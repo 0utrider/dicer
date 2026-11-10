@@ -1,1 +1,7 @@
 /* Dicer styles */
+
+#dicer-canvas {
+  position: fixed;
+  pointer-events: none;
+  z-index: 60; /* above the scene, below Foundry UI apps; placed right after #board */
+}
