@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { createMessageGate, WATCHDOG_MS } from '../../src/foundry/message-gate.js';
 import { planThrow as realPlanThrow } from '../../src/throw/throw-planner.js';
+import { explodingD6, rerolledD20, dynamicCountD6, coin } from './foundry-roll.js';
 
 const COMPLETE = 'diceSoNiceRollComplete';
 
@@ -360,7 +361,7 @@ describe('privacy matrix', () => {
     g.onCreate(message('m1', { isContentVisible: false, whisper: ['x'], author: { id: 'x' } }));
     expect(decorateFor).not.toHaveBeenCalled();
     expect(diceBox.rolls).toHaveLength(1);
-    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
     expect(el.classList.contains('dsn-hide')).toBe(true);
     expect(hooks.named('diceSoNiceMessageProcessed')[0][2]).toEqual({ willTrigger3DRoll: true });
     diceBox.rolls[0].landed.resolve();
@@ -371,7 +372,12 @@ describe('privacy matrix', () => {
 
   describe('a blind roll (Foundry whispers it to the GM ids)', () => {
     const blindMsg = (id, visible = false) =>
-      message(id, { isContentVisible: visible, blind: true, whisper: ['gm'], author: { id: 'p1' } });
+      message(id, {
+        isContentVisible: visible,
+        blind: true,
+        whisper: ['gm'],
+        author: { id: 'p1' },
+      });
 
     test('the author, not a recipient: ghost with showGhostDice, none without; never real', () => {
       priv(player).onCreate(blindMsg('m1'));
@@ -380,7 +386,7 @@ describe('privacy matrix', () => {
       settings.showGhostDice = true;
       priv(player).onCreate(blindMsg('m2'));
       expect(diceBox.rolls).toHaveLength(1);
-      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
     });
 
     test('another player, not a recipient: ghost with showGhostDice (whispered), none without', () => {
@@ -390,7 +396,7 @@ describe('privacy matrix', () => {
 
       settings.showGhostDice = true;
       priv(other).onCreate(blindMsg('m2'));
-      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
     });
 
     test('the GM sees it for real', () => {
@@ -471,7 +477,7 @@ describe('privacy matrix', () => {
     const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'real-look' } }));
     const ghostRoll = { ...d20Roll(5), ghost: true };
     priv(player, { decorateFor }).onCreate(message('m1', { rolls: [ghostRoll, d20Roll(9)] }));
-    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 5, ghost: true }]);
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
     expect(diceBox.rolls[1].specs).toEqual([
       { type: 'd20', value: 9, appearance: { tag: 'real-look' } },
     ]);
@@ -734,7 +740,7 @@ describe('message lifecycle depth', () => {
   test('a RollStart listener that changes the views gets a fresh plan', () => {
     hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.roll.ghost = true)];
     makeGate({ currentUser: () => ({ id: 'p1' }) }).onCreate(message());
-    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
   });
 
   describe('showExtraDice', () => {
@@ -943,10 +949,13 @@ describe('message lifecycle depth', () => {
       expect(hooks.named(PROCESSED)).toEqual([[PROCESSED, 'm1', { willTrigger3DRoll: false }]]);
     });
 
-    test.each(['persistent', 'interactiveThrow'])('flags[dice-so-nice].%s: animates normally', (flag) => {
-      gate.onCreate(message('m1', { flags: { 'dice-so-nice': { [flag]: true } } }));
-      expect(diceBox.roll).toHaveBeenCalledTimes(1);
-    });
+    test.each(['persistent', 'interactiveThrow'])(
+      'flags[dice-so-nice].%s: animates normally',
+      (flag) => {
+        gate.onCreate(message('m1', { flags: { 'dice-so-nice': { [flag]: true } } }));
+        expect(diceBox.roll).toHaveBeenCalledTimes(1);
+      },
+    );
 
     test('absent or malformed flags animate normally', () => {
       gate.onCreate(message('m1', { flags: undefined }));
@@ -1010,7 +1019,7 @@ describe('Task 8 review carry-overs', () => {
     expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 1 }]);
     diceBox.rolls[1].landed.resolve();
     await flush();
-    expect(diceBox.rolls[2].specs).toEqual([{ type: 'd20', value: 2, ghost: true }]);
+    expect(diceBox.rolls[2].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
   });
 
   test('immediatelyDisplayChatMessages keeps the ghost and none views', () => {
@@ -1315,7 +1324,7 @@ describe('appended rolls (updateChatMessage)', () => {
     });
 
     append(msg, { ...d20Roll(5), ghost: true });
-    expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 5, ghost: true }]);
+    expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
   });
 
   test('a RollStart flag on an appended roll applies to the appended rolls only', async () => {
@@ -1324,8 +1333,8 @@ describe('appended rolls (updateChatMessage)', () => {
     hooks.listeners[START] = [(id, ctx) => (ctx.roll.ghost = true)];
     append(msg, d20Roll(4), d20Roll(5));
     expect(diceBox.rolls.slice(1).map((r) => r.specs)).toEqual([
-      [{ type: 'd20', value: 4, ghost: true }],
-      [{ type: 'd20', value: 5, ghost: true }],
+      [{ type: 'd20', value: 1, ghost: true }],
+      [{ type: 'd20', value: 1, ghost: true }],
     ]);
   });
 
@@ -1458,5 +1467,48 @@ describe('recentViews (debug record)', () => {
     expect(views.m1).toEqual(['real']);
     expect(views.m2).toEqual(['none']);
     expect(JSON.stringify(views)).not.toMatch(/13|17|"7"/);
+  });
+});
+
+describe('ghost dice use the wire ghost shape (P3-R20)', () => {
+  const player = { id: 'p1', isGM: false };
+  const hiddenWhisper = (id, roll) =>
+    message(id, { rolls: [roll], isContentVisible: false, whisper: ['x'], author: { id: 'x' } });
+  beforeEach(() => {
+    settings.showGhostDice = true;
+    gate = makeGate({ currentUser: () => player });
+  });
+
+  test('1d6x with 3 results throws exactly 1 ghost die', () => {
+    gate.onCreate(hiddenWhisper('m1', explodingD6()));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd6', value: 1, ghost: true }]);
+  });
+
+  test('1d20r1 with 2 results throws exactly 1 ghost die', () => {
+    gate.onCreate(hiddenWhisper('m1', rerolledD20()));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
+  });
+
+  test('a dynamic (1d4)d6 throws no ghost dice and is not animated', () => {
+    gate.onCreate(hiddenWhisper('m1', dynamicCountD6()));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    expect(hooks.named('diceSoNiceMessageProcessed')[0][2]).toEqual({ willTrigger3DRoll: false });
+  });
+
+  test('a RollStart ghost flag also plans from the ghost shape', () => {
+    hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.roll.ghost = true)];
+    gate = makeGate({ currentUser: () => ({ id: 'x', isGM: false }) });
+    gate.onCreate(message('m1', { rolls: [explodingD6()], author: { id: 'x' } }));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd6', value: 1, ghost: true }]);
+  });
+
+  test('a ghost coin keeps its shape through shapeFor', () => {
+    const shapeFor = (t) => (t.constructor?.DENOMINATION === 'c' ? 'dc' : null);
+    gate = makeGate({
+      currentUser: () => player,
+      planThrow: (r, o) => realPlanThrow(r, { shapeFor, ...o }),
+    });
+    gate.onCreate(hiddenWhisper('m1', coin()));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'dc', value: 1, ghost: true }]);
   });
 });

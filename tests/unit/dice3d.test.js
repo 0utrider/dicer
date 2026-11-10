@@ -2,6 +2,7 @@ import { createDice3dApi, materialReadyNotifier } from '../../src/api/dice3d.js'
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { buildScene } from '../../src/render/scene.js';
+import { explodingD6, rerolledD20, dynamicCountD6 } from './foundry-roll.js';
 
 function fakeDiceBox() {
   const rolls = [];
@@ -213,7 +214,9 @@ describe('Task 12: the full game.dice3d surface', () => {
     a.addSystem({ id: 'pf2e', name: 'PF2e' }, 'preferred');
     expect(a.getLoadedDiceSystems()).toBe(registry.systems);
     expect(registry.systems.get('pf2e').mode).toBe('preferred');
-    await expect(a.addDicePreset({ type: 'd20', labels: [], system: 'pf2e' })).resolves.toBeUndefined();
+    await expect(
+      a.addDicePreset({ type: 'd20', labels: [], system: 'pf2e' }),
+    ).resolves.toBeUndefined();
     expect(registry.presetFor('pf2e', 'd20')).not.toBeNull();
     await a.addColorset({ name: 'mine', foreground: '#fff', background: '#000' });
     expect(registry.colorsets.has('mine')).toBe(true);
@@ -240,7 +243,14 @@ describe('Task 12: the full game.dice3d surface', () => {
   });
 
   test('malformed registration calls never throw; async members still resolve', async () => {
-    const throwing = new Proxy({}, { get: () => () => { throw new Error('boom'); } });
+    const throwing = new Proxy(
+      {},
+      {
+        get: () => () => {
+          throw new Error('boom');
+        },
+      },
+    );
     a = make({ registry: throwing });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(() => a.addSystem(null)).not.toThrow();
@@ -303,7 +313,9 @@ describe('Task 12: the full game.dice3d surface', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     a = make({ importMigration: async () => ({}) }); // no such export yet
     await expect(a.loadSaveFile('x')).resolves.toBeUndefined();
-    a = make({ importMigration: async () => ({ loadSaveFile: () => Promise.reject(new Error('x')) }) });
+    a = make({
+      importMigration: async () => ({ loadSaveFile: () => Promise.reject(new Error('x')) }),
+    });
     await expect(a.loadSaveFile('x')).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(2);
     warn.mockRestore();
@@ -337,7 +349,12 @@ describe('Task 12: the full game.dice3d surface', () => {
   describe('preloadPresets', () => {
     const userWith = (flag) => ({ id: 'p1', isGM: false, flags: { dicer: { appearance: flag } } });
     beforeEach(async () => {
-      await registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: ['a.png'], modelFile: 'm.glb' });
+      await registry.addDicePreset({
+        type: 'd20',
+        system: 'pf2e',
+        labels: ['a.png'],
+        modelFile: 'm.glb',
+      });
       await registry.addDicePreset({ type: 'd6', system: 'other', labels: ['b.png'] });
     });
 
@@ -374,7 +391,9 @@ describe('Task 12: the full game.dice3d surface', () => {
       me.flags.dicer.appearance = { global: { system: 'other' } };
       await a.preloadPresets();
       expect(faceTextures.acquire).toHaveBeenCalledTimes(2);
-      expect(faceTextures.release).toHaveBeenCalledWith(expect.objectContaining({ key: 'faces:d20' }));
+      expect(faceTextures.release).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'faces:d20' }),
+      );
     });
 
     test('withTextures false loads models only; presetFaces/presetModels off skip theirs', async () => {
@@ -416,13 +435,22 @@ describe('Task 12: the full game.dice3d surface', () => {
     expect(a._debug.verbose).toBe(true);
     const listened = hooks.on.mock.calls.map(([name]) => name);
     expect(listened).toEqual(
-      expect.arrayContaining(['diceSoNiceMessageProcessed', 'diceSoNiceRollStart', 'diceSoNiceRollComplete']),
+      expect.arrayContaining([
+        'diceSoNiceMessageProcessed',
+        'diceSoNiceRollStart',
+        'diceSoNiceRollComplete',
+      ]),
     );
     const processed = hooks.on.mock.calls.find(([n]) => n === 'diceSoNiceMessageProcessed')[1];
     processed('m1', { willTrigger3DRoll: true });
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('dicer'), 'diceSoNiceMessageProcessed', 'm1', {
-      willTrigger3DRoll: true,
-    });
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('dicer'),
+      'diceSoNiceMessageProcessed',
+      'm1',
+      {
+        willTrigger3DRoll: true,
+      },
+    );
     a.enableDebugMode(); // idempotent: listeners registered once
     expect(hooks.on.mock.calls.filter(([n]) => n === 'diceSoNiceMessageProcessed')).toHaveLength(1);
     log.mockRestore();
@@ -447,7 +475,9 @@ describe('materialReadyNotifier (P3-R3)', () => {
     notify(material, 'd20', appearance, { system: 'pf2e', type: 'd20' });
     notify(material, 'd20', appearance, { system: 'standard', type: 'd20' });
     notify(material, 'd20', appearance, null);
-    expect(hooks.callAll.mock.calls).toEqual([['diceSoNiceOnMaterialReady', material, 'd20', appearance]]);
+    expect(hooks.callAll.mock.calls).toEqual([
+      ['diceSoNiceOnMaterialReady', material, 'd20', appearance],
+    ]);
   });
 
   test('a throwing listener never reaches the die', () => {
@@ -515,7 +545,7 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     a = make({ decorateFor });
     const p = a.showForRoll(roll(20, 12), me, false, null, true);
     await Promise.resolve();
-    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 12, ghost: true }]);
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true }]);
     expect(decorateFor).not.toHaveBeenCalled(); // a ghost never resolves its real look
     diceBox.rolls[0].resolve();
     await expect(p).resolves.toBe(true);
@@ -533,8 +563,8 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     a.animateRoll({ ...roll(6, 3), ghost: true });
     await Promise.resolve();
     expect(diceBox.roll.mock.calls).toEqual([
-      [[{ type: 'd6', value: 2, ghost: true }]],
-      [[{ type: 'd6', value: 3, ghost: true }]],
+      [[{ type: 'd6', value: 1, ghost: true }]],
+      [[{ type: 'd6', value: 1, ghost: true }]],
     ]);
     await expect(a.animateRoll(roll(6, 4), { secret: true })).resolves.toBe(false);
     expect(diceBox.roll).toHaveBeenCalledTimes(2);
@@ -568,7 +598,16 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
 
   test('show(legacy) throws 2 dice for a 2-die legacy payload', async () => {
     const p = a.show(
-      { throws: [{ dice: [{ type: 'd20', result: 7, resultLabel: '7' }, { type: 'd6', result: 2 }] }] },
+      {
+        throws: [
+          {
+            dice: [
+              { type: 'd20', result: 7, resultLabel: '7' },
+              { type: 'd6', result: 2 },
+            ],
+          },
+        ],
+      },
       me,
     );
     await Promise.resolve();
@@ -581,7 +620,10 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
   });
 
   test('show(legacy) maps d100 and dc', async () => {
-    a.show({ throws: [{ dice: [{ type: 'd100', result: 42 }] }, { dice: [{ type: 'dc', result: 2 }] }] }, me);
+    a.show(
+      { throws: [{ dice: [{ type: 'd100', result: 42 }] }, { dice: [{ type: 'dc', result: 2 }] }] },
+      me,
+    );
     await Promise.resolve();
     const [specs] = diceBox.roll.mock.calls[0];
     expect(specs.map((d) => d.type)).toEqual(['d10', 'd10', 'd2']);
@@ -733,7 +775,8 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
   test('a RollStart listener waiting on the messageID waits for this showForRoll', async () => {
     let done = false;
     hooks.callAll.mockImplementation((name, id) => {
-      if (name === 'diceSoNiceRollStart') a.waitFor3DAnimationByMessageID(id).then(() => (done = true));
+      if (name === 'diceSoNiceRollStart')
+        a.waitFor3DAnimationByMessageID(id).then(() => (done = true));
     });
     a.showForRoll(roll(20, 3), me, false, null, false, 'm1');
     await flush();
@@ -767,7 +810,7 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     });
     a.showForRoll(roll(20, 3), me, true, null, false, 'm1');
     await Promise.resolve();
-    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 3, ghost: true }]);
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true }]);
     expect(socket.emit.mock.calls[0][1]).toMatchObject({ ghost: true });
 
     me = { id: 'p1', isGM: false };
@@ -808,4 +851,43 @@ test('_debug.lastRollViews reads the gate record and survives a gate without it'
     throw new Error('x');
   };
   expect(api._debug.lastRollViews).toEqual({});
+});
+
+describe('local ghost showForRoll uses the wire ghost shape (P3-R20)', () => {
+  const me = { id: 'p1', isGM: false };
+  const make = () =>
+    createDice3dApi({
+      diceBox,
+      gate,
+      planThrow,
+      getSetting: (k) => settings[k],
+      currentUser: () => me,
+    });
+  const ghost = { ghost: true };
+
+  test('1d6x with 3 results throws exactly 1 ghost die', async () => {
+    make().showForRoll(explodingD6(), me, false, null, false, null, null, ghost);
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 1, ghost: true }]);
+  });
+
+  test('1d20r1 with 2 results throws exactly 1 ghost die', async () => {
+    make().showForRoll(rerolledD20(), me, false, null, false, null, null, ghost);
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true }]);
+  });
+
+  test('a dynamic (1d4)d6 throws nothing and resolves false', async () => {
+    await expect(
+      make().showForRoll(dynamicCountD6(), me, false, null, false, null, null, ghost),
+    ).resolves.toBe(false);
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('a blind roll seen as ghost (showGhostDice) is shaped the same', async () => {
+    settings.showGhostDice = true;
+    make().showForRoll(explodingD6(), me, false, null, true);
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 1, ghost: true }]);
+  });
 });

@@ -66,11 +66,72 @@ const MAX_DEPTH = 32;
  */
 export function ghostRollData(data) {
   const terms = [];
+  collectGhostDice(data, null, ({ faces, number }) =>
+    terms.push({ class: 'Die', ...ghostDie(faces, number) }),
+  );
+  return { class: 'Roll', formula: '', options: {}, evaluated: true, terms };
+}
+
+const ghostDie = (faces, number) => ({
+  faces,
+  number,
+  results: Array.from({ length: number }, () => ({ result: 1, active: true })),
+});
+
+/**
+ * The roll as ghost dice, for every local ghost render (P3-R20: the gate, showForRoll and
+ * synchronized receivers): a Roll-like `{ghost: true, dice}` with the same dice as ghostRollData
+ * (one die per term `number`, 0 for a dynamic count, none for dynamic faces, every result a 1),
+ * so a ghost never shows explosions, rerolls or discards. Each die keeps its source term's class
+ * as `constructor` (non-enumerable), so shapeFor still shapes a coin or a Fate die. A Roll-like
+ * object without toJSON (the legacy show() shape) counts `number` when it has one, else its
+ * results.
+ */
+export function ghostRoll(roll) {
+  let data;
+  let live;
+  if (typeof roll?.toJSON === 'function') {
+    data = roll.toJSON();
+    live = roll;
+  } else {
+    const dice = Array.isArray(roll?.dice) ? roll.dice : [];
+    live = { terms: dice };
+    // A live dynamic term holds its inner Roll in _number / _faces: marked dynamic, as in JSON.
+    const dynamic = (v) => v != null && typeof v === 'object';
+    data = {
+      terms: dice.map((d) => ({
+        faces: d?.faces,
+        number: Number.isInteger(d?.number) ? d.number : (d?.results?.length ?? 0),
+        results: [],
+        ...(dynamic(d?._number) && { _number: true }),
+        ...(dynamic(d?._faces) && { _faces: true }),
+      })),
+    };
+  }
+  const dice = [];
+  collectGhostDice(data, live, ({ faces, number, term }) => {
+    const die = ghostDie(faces, number);
+    const ctor = term?.constructor;
+    if (typeof ctor === 'function' && ctor !== Object) {
+      Object.defineProperty(die, 'constructor', { value: ctor, enumerable: false });
+    }
+    dice.push(die);
+  });
+  return { ghost: true, dice };
+}
+
+/**
+ * The ghostRollData walk: calls `onDie({faces, number, term})` per die term of `data` it keeps,
+ * `term` being the matching node of `live` (the object `data` was serialized from), if any.
+ */
+function collectGhostDice(data, live, onDie) {
   let total = 0;
-  const visit = (node, depth) => {
+  const visit = (node, depth, mirror) => {
     if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return;
     if (Array.isArray(node)) {
-      for (const child of node) visit(child, depth + 1);
+      node.forEach((child, i) =>
+        visit(child, depth + 1, Array.isArray(mirror) ? mirror[i] : undefined),
+      );
       return;
     }
     if (Array.isArray(node.results) && Object.hasOwn(node, 'faces')) {
@@ -83,18 +144,12 @@ export function ghostRollData(data) {
       const numberStatic = !Object.hasOwn(node, '_number') && Number.isInteger(n) && n > 0;
       const number = numberStatic && total + n <= MAX_RESULTS ? n : 0;
       total += number;
-      terms.push({
-        class: 'Die',
-        faces,
-        number,
-        results: Array.from({ length: number }, () => ({ result: 1, active: true })),
-      });
+      onDie({ faces, number, term: mirror });
       return;
     }
-    for (const key of ['terms', 'rolls', 'roll']) visit(node[key], depth + 1);
+    for (const key of ['terms', 'rolls', 'roll']) visit(node[key], depth + 1, mirror?.[key]);
   };
-  visit(data, 0);
-  return { class: 'Roll', formula: '', options: {}, evaluated: true, terms };
+  visit(data, 0, live);
 }
 
 /**
@@ -114,7 +169,12 @@ export function ghostRollData(data) {
  * @param {(data: object) => object} [deps.fromData] Roll.fromData
  * @returns {{ broadcast(payload: object, recipients?: string[] | null): void, dispose(): void }}
  */
-export function createSync({ socket, currentUser, onShow, fromData = (d) => globalThis.Roll.fromData(d) }) {
+export function createSync({
+  socket,
+  currentUser,
+  onShow,
+  fromData = (d) => globalThis.Roll.fromData(d),
+}) {
   function receive(p, senderUserId) {
     if (!p || typeof p !== 'object' || p.v !== 1 || p.kind !== 'show') return;
     if (senderUserId != null && p.userId !== senderUserId) return;
@@ -146,7 +206,9 @@ export function createSync({ socket, currentUser, onShow, fromData = (d) => glob
       messageID: idOrNull(p.messageID),
       speaker: p.speaker && typeof p.speaker === 'object' ? p.speaker : null,
     });
-    Promise.resolve(shown).catch((err) => console.error('dicer: cannot show a synchronized roll', err));
+    Promise.resolve(shown).catch((err) =>
+      console.error('dicer: cannot show a synchronized roll', err),
+    );
   }
 
   const handler = (payload, senderUserId) => {

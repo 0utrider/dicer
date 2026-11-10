@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { viewFor } from '../compat/privacy.js';
-import { createSync, rollToData, ghostRollData } from '../compat/sync.js';
+import { createSync, rollToData, ghostRollData, ghostRoll } from '../compat/sync.js';
 import { createRegistry } from '../compat/registry.js';
 import { readUserLooks } from '../compat/user-looks.js';
 import { measureArea } from '../foundry/area.js';
@@ -17,11 +17,13 @@ const DEBUG_HOOKS = ['diceSoNiceMessageProcessed', 'diceSoNiceRollStart', 'diceS
 const MIGRATION_PATH = '../compat/migration.js';
 const migrationModules = import.meta.glob('../compat/migration.js');
 const importMigrationModule = () =>
-  migrationModules[MIGRATION_PATH]?.() ?? Promise.reject(new Error('compat/migration.js is not built yet'));
+  migrationModules[MIGRATION_PATH]?.() ??
+  Promise.reject(new Error('compat/migration.js is not built yet'));
 
 /** True when a face set has image or text faces (rasterized into face layers). */
 const needsLayers = (faces) =>
-  Array.isArray(faces?.labels) && faces.labels.some((l) => l?.kind === 'image' || l?.kind === 'text');
+  Array.isArray(faces?.labels) &&
+  faces.labels.some((l) => l?.kind === 'image' || l?.kind === 'text');
 
 /**
  * DiceBox's onMaterial callback (P3-R3): fires diceSoNiceOnMaterialReady(material, diceType,
@@ -44,7 +46,9 @@ const idOrNull = (v) => (typeof v === 'string' && v !== '' ? v : null);
 /** User ids from ids or User objects; an empty list means everyone (null), like a whisper. */
 function idsOf(users) {
   if (!Array.isArray(users)) return null;
-  const ids = users.map((u) => (typeof u === 'string' ? u : u?.id)).filter((id) => typeof id === 'string');
+  const ids = users
+    .map((u) => (typeof u === 'string' ? u : u?.id))
+    .filter((id) => typeof id === 'string');
   return ids.length ? ids : null;
 }
 
@@ -81,7 +85,9 @@ const ghostDecorator = () => ({ ghost: true });
  */
 function narrowedUsers(original, changed) {
   if (!Array.isArray(changed)) return original;
-  const ids = changed.map((u) => (typeof u === 'string' ? u : u?.id)).filter((id) => typeof id === 'string');
+  const ids = changed
+    .map((u) => (typeof u === 'string' ? u : u?.id))
+    .filter((id) => typeof id === 'string');
   return original ? original.filter((id) => ids.includes(id)) : [...new Set(ids)];
 }
 
@@ -281,10 +287,12 @@ export function createDice3dApi({
       const view = viewHere(s);
       debugLog('showForRoll', s.messageID, view);
       if (view === 'none') return false;
-      const { dice } = planThrow(toThrow, {
+      // A ghost is planned from its ghost shape (P3-R20), never from the real results.
+      const ghost = view === 'ghost';
+      const { dice } = planThrow(ghost ? ghostRoll(toThrow) : toThrow, {
         maxDice: Number(getSetting('maxDice')) || 20,
         showExtra: getSetting('showExtraDice') !== false,
-        decorate: view === 'ghost' ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId),
+        decorate: ghost ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId),
       });
       if (!dice.length) return false;
       await diceBox.roll(dice).landed;
@@ -577,7 +585,8 @@ export function createDice3dApi({
      */
     setMessageUpdateHideSelector(selector) {
       try {
-        if (!gate.setUpdateHideSelector(selector)) warnOnce('setMessageUpdateHideSelector', selector);
+        if (!gate.setUpdateHideSelector(selector))
+          warnOnce('setMessageUpdateHideSelector', selector);
       } catch (err) {
         warnOnce('setMessageUpdateHideSelector', err);
       }

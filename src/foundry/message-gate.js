@@ -1,4 +1,5 @@
 import { viewFor } from '../compat/privacy.js';
+import { ghostRoll } from '../compat/sync.js';
 import { HIDE, pinCard, refreshCard, matchesIn, hiddenIn, isSelector } from './chat-hiding.js';
 
 /**
@@ -211,7 +212,8 @@ export function createMessageGate({
   /**
    * Plans every roll against one shared maxDice budget. `views` are decided from the message's own
    * rolls, never from a listener's replacement, so a replaced roll cannot change what is shown.
-   * A 'none' roll is not planned; a 'ghost' roll never resolves its real look.
+   * A 'none' roll is not planned; a 'ghost' roll never resolves its real look and is planned from
+   * its ghost shape (P3-R20: one die per term count, no explosions or rerolls).
    */
   function planAll(rolls, message, views) {
     let budget = Number(getSetting('maxDice')) || 20;
@@ -219,8 +221,13 @@ export function createMessageGate({
     return rolls.map((roll, i) => {
       const view = views[i] ?? 'none';
       if (view === 'none' || budget <= 0) return [];
-      const decorate = view === 'ghost' ? ghostDecorator() : decoratorFor(message, roll);
-      const { dice } = planThrow(roll, { maxDice: budget, showExtra, decorate });
+      const ghost = view === 'ghost';
+      const decorate = ghost ? ghostDecorator() : decoratorFor(message, roll);
+      const { dice } = planThrow(ghost ? ghostRoll(roll) : roll, {
+        maxDice: budget,
+        showExtra,
+        decorate,
+      });
       budget -= dice.length;
       return dice;
     });
@@ -435,7 +442,10 @@ export function createMessageGate({
         blind: false,
         dsnRoll: first,
       };
-      const before = message.rolls.map((r) => ({ ghost: Boolean(r?.ghost), secret: Boolean(r?.secret) }));
+      const before = message.rolls.map((r) => ({
+        ghost: Boolean(r?.ghost),
+        secret: Boolean(r?.secret),
+      }));
       hooks.callAll('diceSoNiceRollStart', id, context);
       if (animating.get(id) !== entry) return; // a listener deleted the message
       // A blind context forces every view to none: nothing is thrown, the message shows at once.

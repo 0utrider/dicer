@@ -1,6 +1,14 @@
-import { createSync, SOCKET_EVENT, MAX_RESULTS, rollToData } from '../../src/compat/sync.js';
+import {
+  createSync,
+  SOCKET_EVENT,
+  MAX_RESULTS,
+  rollToData,
+  ghostRoll,
+  ghostRollData,
+} from '../../src/compat/sync.js';
 import { createDice3dApi } from '../../src/api/dice3d.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
+import { explodingD6, rerolledD20, dynamicCountD6, coin } from './foundry-roll.js';
 
 /** A socket.io-like fake: one handler per event, emits recorded (Foundry never echoes). */
 function fakeSocket() {
@@ -38,7 +46,9 @@ function fakeFromData(data) {
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
-const roll = (...dice) => ({ dice: dice.map(([faces, result]) => ({ faces, results: [{ result, active: true }] })) });
+const roll = (...dice) => ({
+  dice: dice.map(([faces, result]) => ({ faces, results: [{ result, active: true }] })),
+});
 
 const payload = (o = {}) => ({
   v: 1,
@@ -76,7 +86,12 @@ describe('createSync', () => {
     expect(onShow).toHaveBeenCalledTimes(1);
     const got = onShow.mock.calls[0][0];
     expect(got.roll.dice).toHaveLength(1);
-    expect(got).toMatchObject({ userId: 'author', users: ['me', 'other'], messageID: 'm1', blind: false });
+    expect(got).toMatchObject({
+      userId: 'author',
+      users: ['me', 'other'],
+      messageID: 'm1',
+      blind: false,
+    });
   });
 
   test.each([
@@ -145,7 +160,8 @@ describe('showForRoll over the socket', () => {
     socket.emit = vi.fn((event, data, options) => {
       for (const other of bus) {
         if (other.socket === socket) continue;
-        if (Array.isArray(options?.recipients) && !options.recipients.includes(other.user.id)) continue;
+        if (Array.isArray(options?.recipients) && !options.recipients.includes(other.user.id))
+          continue;
         other.socket.handlers.get(event)?.(data, user.id);
       }
     });
@@ -199,7 +215,9 @@ describe('showForRoll over the socket', () => {
     expect(alice.socket.emit.mock.calls[0][2]).toEqual({ recipients: ['gm', 'bob'] });
     alice.api.showForRoll(roll([20, 5]), alice.user, true, null, true);
     expect(alice.socket.emit.mock.calls[1][2]).toEqual({ recipients: ['gm'] });
-    alice.api.showForRoll(roll([20, 5]), alice.user, true, ['bob'], false, null, null, { secret: true });
+    alice.api.showForRoll(roll([20, 5]), alice.user, true, ['bob'], false, null, null, {
+      secret: true,
+    });
     expect(alice.socket.emit.mock.calls[2][2]).toEqual({ recipients: ['gm'] });
     alice.api.showForRoll(roll([20, 5]), alice.user, true);
     expect(alice.socket.emit.mock.calls[3]).toHaveLength(2); // public: no options, everyone
@@ -231,7 +249,9 @@ describe('showForRoll over the socket', () => {
   });
 
   test('receiving a secret roll animates nothing on a player client, real dice for the GM', async () => {
-    alice.api.showForRoll(roll([20, 5]), alice.user, true, null, false, null, null, { secret: true });
+    alice.api.showForRoll(roll([20, 5]), alice.user, true, null, false, null, null, {
+      secret: true,
+    });
     await flush();
     expect(bob.diceBox.roll).not.toHaveBeenCalled();
     expect(gm.diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 5 }]);
@@ -274,7 +294,16 @@ describe('showForRoll over the socket', () => {
   });
 
   test('show(legacy) with synchronize throws the dice on the receiver too', async () => {
-    const legacy = { throws: [{ dice: [{ type: 'd20', result: 7 }, { type: 'd6', result: 3 }] }] };
+    const legacy = {
+      throws: [
+        {
+          dice: [
+            { type: 'd20', result: 7 },
+            { type: 'd6', result: 3 },
+          ],
+        },
+      ],
+    };
     alice.api.show(legacy, alice.user, true);
     await flush();
     expect(alice.diceBox.roll).toHaveBeenCalledWith([
@@ -332,7 +361,11 @@ describe('showForRoll over the socket', () => {
 
     test.each([
       ['roll.ghost', (a) => a.showForRoll(ghostRoll({ ghost: true }), alice.user, true)],
-      ['options.ghost', (a) => a.showForRoll(ghostRoll(), alice.user, true, null, false, null, null, { ghost: true })],
+      [
+        'options.ghost',
+        (a) =>
+          a.showForRoll(ghostRoll(), alice.user, true, null, false, null, null, { ghost: true }),
+      ],
     ])('%s: only allow-list ghost data is broadcast, to everyone', async (_, call) => {
       call(alice.api);
       expect(alice.socket.emit).toHaveBeenCalledTimes(1);
@@ -375,7 +408,9 @@ describe('showForRoll over the socket', () => {
       gm.api.showForRoll(roll([20, 5]), alice.user, true);
       expect(gm.socket.emit.mock.calls[0][1]).toMatchObject({ userId: 'gm', authorId: 'alice' });
       await flush();
-      expect(bob.diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 5, appearance: { tag: 'look' } }]);
+      expect(bob.diceBox.roll).toHaveBeenCalledWith([
+        { type: 'd20', value: 5, appearance: { tag: 'look' } },
+      ]);
       expect(decorateFor).toHaveBeenCalledWith(null, expect.anything(), 'alice');
     });
 
@@ -408,7 +443,8 @@ describe('showForRoll over the socket', () => {
     /** Every number in a JSON tree. */
     const numbers = (node, out = []) => {
       if (typeof node === 'number') out.push(node);
-      else if (node && typeof node === 'object') for (const v of Object.values(node)) numbers(v, out);
+      else if (node && typeof node === 'object')
+        for (const v of Object.values(node)) numbers(v, out);
       return out;
     };
     /** A Foundry-like Roll: nested pool rolls, a success flag and totals in its JSON. */
@@ -418,10 +454,21 @@ describe('showForRoll over the socket', () => {
         class: 'Roll',
         formula: '1d20 + {1d8}',
         terms: [
-          { class: 'Die', faces: 20, number: 1, results: [{ result: 17, active: true, success: true, count: 1 }] },
+          {
+            class: 'Die',
+            faces: 20,
+            number: 1,
+            results: [{ result: 17, active: true, success: true, count: 1 }],
+          },
           {
             class: 'PoolTerm',
-            rolls: [{ class: 'Roll', terms: [{ class: 'Die', faces: 8, results: [{ result: 7, active: true }] }], total: 7 }],
+            rolls: [
+              {
+                class: 'Roll',
+                terms: [{ class: 'Die', faces: 8, results: [{ result: 7, active: true }] }],
+                total: 7,
+              },
+            ],
             results: [{ result: 7, active: true }],
           },
         ],
@@ -444,10 +491,14 @@ describe('showForRoll over the socket', () => {
       for (const term of got.roll.terms) {
         expect(Object.keys(term).sort()).toEqual(['class', 'faces', 'number', 'results']);
         expect(term.class).toBe('Die');
-        expect(term.results).toEqual(Array.from({ length: term.number }, () => ({ result: 1, active: true })));
+        expect(term.results).toEqual(
+          Array.from({ length: term.number }, () => ({ result: 1, active: true })),
+        );
       }
       const text = JSON.stringify(got);
-      expect(text).not.toMatch(/degreeOfSuccess|success|count|total|flavor|exploded|modifiers|Function|Pool/);
+      expect(text).not.toMatch(
+        /degreeOfSuccess|success|count|total|flavor|exploded|modifiers|Function|Pool/,
+      );
     }
 
     test('the real results go to GMs only; listed players get an allow-list ghost payload', async () => {
@@ -461,7 +512,12 @@ describe('showForRoll over the socket', () => {
       await flush();
       expect(numbers(toGm[0].roll)).toEqual(expect.arrayContaining([17, 7, 24]));
       expect(toBob).toHaveLength(1);
-      expect(toBob[0]).toMatchObject({ ghost: true, blind: true, users: ['gm', 'bob'], userId: 'alice' });
+      expect(toBob[0]).toMatchObject({
+        ghost: true,
+        blind: true,
+        users: ['gm', 'bob'],
+        userId: 'alice',
+      });
       // The pool's d8 carries no dice count: it arrives as 0 dice.
       expect(toBob[0].roll.terms).toEqual([
         { class: 'Die', faces: 20, number: 1, results: [{ result: 1, active: true }] },
@@ -480,7 +536,13 @@ describe('showForRoll over the socket', () => {
         formula: '1d20 + 5',
         options: { degreeOfSuccess: 3, type: 'check', dc: { value: 15 } },
         terms: [
-          { class: 'Die', faces: 20, number: 1, results: [{ result: 17, active: true }], options: { flavor: 'x' } },
+          {
+            class: 'Die',
+            faces: 20,
+            number: 1,
+            results: [{ result: 17, active: true }],
+            options: { flavor: 'x' },
+          },
           { class: 'OperatorTerm', operator: '+' },
           { class: 'NumericTerm', number: 5 },
         ],
@@ -531,7 +593,13 @@ describe('showForRoll over the socket', () => {
         total: 14,
         evaluated: true,
       };
-      alice.api.showForRoll(rollWith(json, [{ faces: 6, results }]), alice.user, true, ['gm', 'bob'], true);
+      alice.api.showForRoll(
+        rollWith(json, [{ faces: 6, results }]),
+        alice.user,
+        true,
+        ['gm', 'bob'],
+        true,
+      );
       await flush();
       expectGhostOnly(toBob[0], [6]);
       expect(toBob[0].roll.terms[0].results).toHaveLength(1);
@@ -562,7 +630,13 @@ describe('showForRoll over the socket', () => {
             results: [5, 2, 6].map((result) => ({ result, active: true })),
           },
           { class: 'OperatorTerm', operator: '+' },
-          { class: 'Die', number: 1, faces: 17, _faces: inner(20, 17), results: [{ result: 9, active: true }] },
+          {
+            class: 'Die',
+            number: 1,
+            faces: 17,
+            _faces: inner(20, 17),
+            results: [{ result: 9, active: true }],
+          },
           { class: 'Die', number: 1.5, faces: 6, results: [] },
           { class: 'Die', number: 1, faces: '6', results: [] },
         ],
@@ -628,7 +702,9 @@ describe('showForRoll over the socket', () => {
     test('a blind secret roll goes to GMs only, even to listed players with ghosts on', async () => {
       settings.showGhostDice = true;
       const toBob = record(bob);
-      alice.api.showForRoll(roll([20, 5]), alice.user, true, ['bob'], true, null, null, { secret: true });
+      alice.api.showForRoll(roll([20, 5]), alice.user, true, ['bob'], true, null, null, {
+        secret: true,
+      });
       await flush();
       expect(toBob).toHaveLength(0);
       expect(alice.socket.emit).toHaveBeenCalledTimes(1);
@@ -686,5 +762,57 @@ describe('showForRoll over the socket', () => {
       }
       expect(bob.diceBox.roll).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('ghostRoll (P3-R20: every ghost render uses the wire ghost shape)', () => {
+  const ones = (n) => Array.from({ length: n }, () => ({ result: 1, active: true }));
+
+  test('an exploding 1d6x with 3 results is one ghost die', () => {
+    const g = ghostRoll(explodingD6());
+    expect(g.dice).toHaveLength(1);
+    expect(g.dice[0]).toMatchObject({ faces: 6, number: 1, results: ones(1) });
+    expect(planThrow(g).dice).toEqual([{ type: 'd6', value: 1 }]);
+  });
+
+  test('a rerolled 1d20r1 with 2 results is one ghost die', () => {
+    expect(planThrow(ghostRoll(rerolledD20())).dice).toEqual([{ type: 'd20', value: 1 }]);
+  });
+
+  test('a dynamic count (1d4)d6 is no dice', () => {
+    expect(planThrow(ghostRoll(dynamicCountD6())).dice).toEqual([]);
+  });
+
+  test('matches ghostRollData term for term', () => {
+    const r = explodingD6();
+    const wire = ghostRollData(r.toJSON());
+    expect(
+      ghostRoll(r).dice.map(({ faces, number, results }) => ({ faces, number, results })),
+    ).toEqual(wire.terms.map(({ faces, number, results }) => ({ faces, number, results })));
+  });
+
+  test('keeps the term class, so shapeFor still finds a coin', () => {
+    const shapeFor = (t) => (t.constructor?.DENOMINATION === 'c' ? 'dc' : null);
+    expect(planThrow(ghostRoll(coin()), { shapeFor }).dice).toEqual([{ type: 'dc', value: 1 }]);
+  });
+
+  test('a legacy Roll-like shape uses its number when given, else its result count', () => {
+    const legacy = {
+      dice: [
+        { faces: 6, number: 1, results: [{ result: 6 }, { result: 3 }] },
+        { faces: 8, results: [{ result: 2 }] },
+      ],
+    };
+    expect(planThrow(ghostRoll(legacy)).dice).toEqual([
+      { type: 'd6', value: 1 },
+      { type: 'd8', value: 1 },
+    ]);
+    expect(ghostRoll(null).dice).toEqual([]);
+  });
+
+  test('never copies results, options or flavor', () => {
+    const r = explodingD6();
+    r.dice[0].options = { flavor: 'secret', appearance: { colorset: 'x' } };
+    expect(JSON.stringify(ghostRoll(r))).not.toMatch(/secret|colorset|exploded|"6",|result":6/);
   });
 });
