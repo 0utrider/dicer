@@ -1,0 +1,20 @@
+{
+  "id": "dicer",
+  "title": "Dicer",
+  "description": "<p>Lightweight 3D dice for Foundry VTT.</p>",
+  "version": "0.1.0",
+  "socket": true,
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "authors": [
+    {
+      "name": "RoiLeaf",
+      "discord": "RoiLeaf",
+      "flags": {}
+    }
+  ],
+  "esmodules": ["dist/dicer.js"],
+  "styles": ["styles/dicer.css"]
+}
