@@ -842,7 +842,10 @@ describe('image and text faces', () => {
     const faceTextures = fakeFaceTextures();
     const { renderer, physics, box } = setup({ faceTextures });
     const faces = rasterFaces();
-    const r = box.roll([{ type: 'd6', value: 1, faces }, { type: 'd6', value: 2 }]);
+    const r = box.roll([
+      { type: 'd6', value: 1, faces },
+      { type: 'd6', value: 2 },
+    ]);
     expect(faceTextures.acquire).toHaveBeenCalledTimes(1);
     expect(faceTextures.acquire).toHaveBeenCalledWith(faces);
     expect(physics.streams).toHaveLength(1); // the throw starts at once
@@ -952,7 +955,11 @@ describe('model presets', () => {
   /** The face-forcing rotation of an identity landing for `value`. */
   const forcedFor = (type, value) => {
     const shape = getShape(type);
-    const r = rotationToShow(shape, readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 }), faceForValue(shape, value));
+    const r = rotationToShow(
+      shape,
+      readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 }),
+      faceForValue(shape, value),
+    );
     return new THREE.Quaternion(r.x, r.y, r.z, r.w);
   };
   beforeEach(() => {
@@ -1182,7 +1189,10 @@ describe('pending assets (Task 5 review)', () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const faceTextures = controlledFaces();
       let resolveModel;
-      const model = { geometry: new THREE.BoxGeometry(), material: new THREE.MeshStandardMaterial() };
+      const model = {
+        geometry: new THREE.BoxGeometry(),
+        material: new THREE.MeshStandardMaterial(),
+      };
       const loadModel = vi.fn(() => new Promise((r) => (resolveModel = () => r(model))));
       const { renderer, physics, box } = setup({ faceTextures, loadModel });
       const r = box.roll([
@@ -1209,7 +1219,10 @@ describe('pending assets (Task 5 review)', () => {
 });
 
 describe('model loads reach the registry (fix round 1)', () => {
-  const model = () => ({ geometry: new THREE.BoxGeometry(), material: new THREE.MeshStandardMaterial() });
+  const model = () => ({
+    geometry: new THREE.BoxGeometry(),
+    material: new THREE.MeshStandardMaterial(),
+  });
 
   test('a successful model load is reported once per url', async () => {
     const onModelLoaded = vi.fn();
@@ -1227,7 +1240,10 @@ describe('model loads reach the registry (fix round 1)', () => {
   test('a failed load, or a type with no verified rotation, reports nothing', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const onModelLoaded = vi.fn();
-    const failing = setup({ loadModel: vi.fn(async () => Promise.reject(new Error('404'))), onModelLoaded });
+    const failing = setup({
+      loadModel: vi.fn(async () => Promise.reject(new Error('404'))),
+      onModelLoaded,
+    });
     failing.box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
     const unverified = setup({ loadModel: vi.fn(async () => model()), onModelLoaded });
     unverified.box.roll([{ type: 'd20', value: 5, dsnType: 'd20', model: 'm/dice_20.glb' }]);
@@ -1260,7 +1276,9 @@ describe('onMaterial (P3-R3)', () => {
 
   test('fires once per newly built material of a die with a preset', () => {
     const onMaterial = vi.fn();
-    const presetFor = vi.fn((system, type) => (system === 'pf2e' && type === 'd20' ? preset : null));
+    const presetFor = vi.fn((system, type) =>
+      system === 'pf2e' && type === 'd20' ? preset : null,
+    );
     const { box } = setup({ onMaterial, presetFor });
     const spec = { type: 'd20', value: 3, system: 'pf2e', dsnType: 'd20' };
     box.roll([spec, { ...spec, value: 4 }]);
@@ -1297,7 +1315,10 @@ describe('onMaterial (P3-R3)', () => {
   test('a standard preset die shares the plain cache (no extra material)', () => {
     const std = { system: 'standard', type: 'd20' };
     const { renderer, box } = setup({ presetFor: (s) => (s === 'standard' ? std : null) });
-    box.roll([{ type: 'd20', value: 3 }, { type: 'd20', value: 4, system: 'standard', dsnType: 'd20' }]);
+    box.roll([
+      { type: 'd20', value: 3 },
+      { type: 'd20', value: 4, system: 'standard', dsnType: 'd20' },
+    ]);
     const [a, b] = dieGroups(renderer).map((g) => g.children[0].material);
     expect(a).toBe(b);
     box.clear();
@@ -1307,7 +1328,10 @@ describe('onMaterial (P3-R3)', () => {
     const onMaterial = vi.fn();
     const presetFor = vi.fn(() => null);
     const { box } = setup({ onMaterial, presetFor });
-    box.roll([{ type: 'd20', value: 3, system: 'standard', dsnType: 'd20' }, { type: 'd6', value: 2 }]);
+    box.roll([
+      { type: 'd20', value: 3, system: 'standard', dsnType: 'd20' },
+      { type: 'd6', value: 2 },
+    ]);
     const ghostly = setup({ onMaterial, presetFor: () => preset });
     ghostly.box.roll([{ type: 'd20', value: 1, ghost: true, system: 'pf2e', dsnType: 'd20' }]);
     expect(onMaterial).not.toHaveBeenCalled();
@@ -1336,5 +1360,64 @@ describe('onMaterial (P3-R3)', () => {
     box.clear();
     other.box.clear();
     warn.mockRestore();
+  });
+});
+
+describe('material cache cap', () => {
+  const look = (i) => ({
+    body: { type: 'opaque', color: `#${(i + 1).toString(16).padStart(6, '0')}` },
+  });
+  const idle = (box) => [...box._refs.values()].filter((e) => e.refs === 0 && !e.stale).length;
+  const meshOf = (renderer) => dieGroups(renderer).at(-1).children[0];
+  let error;
+  beforeEach(() => (error = vi.spyOn(console, 'error').mockImplementation(() => {})));
+  afterEach(() => error.mockRestore());
+
+  test('200 rolls with distinct appearances keep at most 64 unreferenced materials, never disposing one in use', async () => {
+    const { renderer, physics, box } = setup();
+    const warm = box.acquireWarmup(['d6', 'd20']);
+    const warmDispose = warm.materials.map((m) => vi.spyOn(m, 'dispose'));
+    // A roll held for the whole run (stream 0): its material must survive every eviction.
+    const held = box.roll([{ type: 'd8', value: 2, appearance: look(9999) }]);
+    const heldDispose = vi.spyOn(meshOf(renderer).material, 'dispose');
+    const disposes = [];
+    for (let i = 0; i < 200; i++) {
+      const r = box.roll([{ type: 'd6', value: 3, appearance: look(i) }]);
+      disposes.push(vi.spyOn(meshOf(renderer).material, 'dispose'));
+      physics.fail(i + 1); // finishes this roll only: its material becomes unreferenced
+      await r.finished;
+      expect(idle(box)).toBeLessThanOrEqual(64);
+    }
+    expect(disposes.filter((d) => d.mock.calls.length === 1)).toHaveLength(200 - 64);
+    for (const spy of disposes) expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
+    // The 64 most recently used stay cached.
+    expect(disposes.slice(-64).every((d) => d.mock.calls.length === 0)).toBe(true);
+    expect(heldDispose).not.toHaveBeenCalled();
+    for (const spy of warmDispose) expect(spy).not.toHaveBeenCalled();
+    box.clear();
+    await held.finished;
+    warm.release();
+    expect(idle(box)).toBeLessThanOrEqual(64);
+  });
+
+  test('the least recently used idle material is the one evicted', async () => {
+    const { renderer, box } = setup();
+    const roll = async (i) => {
+      const r = box.roll([{ type: 'd6', value: 3, appearance: look(i) }]);
+      const mat = meshOf(renderer).material;
+      box.clear();
+      await r.finished;
+      return mat;
+    };
+    const first = await roll(0);
+    const firstDispose = vi.spyOn(first, 'dispose');
+    const second = await roll(1);
+    const secondDispose = vi.spyOn(second, 'dispose');
+    for (let i = 2; i < 64; i++) await roll(i); // 64 idle now
+    expect(await roll(0)).toBe(first); // reused: now the most recent
+    await roll(64); // 65 idle: the LRU (second) goes
+    expect(secondDispose).toHaveBeenCalledTimes(1);
+    expect(firstDispose).not.toHaveBeenCalled();
+    expect(idle(box)).toBe(64);
   });
 });

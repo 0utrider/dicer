@@ -65,7 +65,10 @@ const importModel = (url, options) =>
 
 /** True when a face set has image or text faces (drawn from face layers). */
 function needsLayers(faces) {
-  return Array.isArray(faces?.labels) && faces.labels.some((l) => l?.kind === 'image' || l?.kind === 'text');
+  return (
+    Array.isArray(faces?.labels) &&
+    faces.labels.some((l) => l?.kind === 'image' || l?.kind === 'text')
+  );
 }
 
 /** An id per face-texture result: a layered material is keyed to the texture it samples. */
@@ -85,8 +88,13 @@ function faceTexId(faceTex) {
  * Each roll snapshots the look (getAppearance) and feature flags (getFlags) when it starts.
  * Materials are cached by appearanceKey|programKey|type|variant|faces.key|ghost and refcounted per roll:
  * invalidateMaterials() drops them from the cache and marks them stale, and a stale material
- * is disposed when the last roll (or warm-up) holding it lets go.
+ * is disposed when the last roll (or warm-up) holding it lets go. At most IDLE_MATERIAL_CAP
+ * cached materials held by nothing are kept; beyond that the least recently used is evicted
+ * and disposed, so per-roll appearances cannot grow the cache without bound.
  */
+/** How many cached materials no roll or warm-up holds are kept (least recently used evicted). */
+export const IDLE_MATERIAL_CAP = 64;
+
 export class DiceBox {
   constructor({
     renderer,
@@ -134,7 +142,8 @@ export class DiceBox {
     this._systemWarned = new Set(); // system id|kind: one warning each
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
-    this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
+    this._refs = new Map(); // material -> { refs, stale, key }, cached and stale materials alike
+    this._idle = new Set(); // cached materials with refs 0, least recently used first
     this._rolls = new Set();
     this._area = null;
     this._tick = (now) => this.#frame(now);
@@ -245,6 +254,7 @@ export class DiceBox {
     this.clear();
     for (const g of this._geometries.values()) g.dispose();
     for (const m of [...this._refs.keys()]) this.#disposeMaterial(m);
+    this._idle.clear();
     this._geometries.clear();
     this._materials.clear();
   }
@@ -296,6 +306,7 @@ export class DiceBox {
 
   #retain(material) {
     this._refs.get(material).refs++;
+    this._idle.delete(material);
   }
 
   #release(material) {
@@ -307,11 +318,27 @@ export class DiceBox {
       for (const [k, m] of this._materials) if (m === material) this._materials.delete(k);
       entry.stale = true;
     }
-    if (entry.stale) this.#disposeMaterial(material);
+    if (entry.stale) {
+      this.#disposeMaterial(material);
+      return;
+    }
+    this._idle.add(material); // newest last
+    this.#trimIdle();
+  }
+
+  /** Evicts and disposes the least recently used idle materials beyond IDLE_MATERIAL_CAP. */
+  #trimIdle() {
+    for (const material of this._idle) {
+      if (this._idle.size <= IDLE_MATERIAL_CAP) return;
+      const entry = this._refs.get(material);
+      if (entry && this._materials.get(entry.key) === material) this._materials.delete(entry.key);
+      this.#disposeMaterial(material);
+    }
   }
 
   #disposeMaterial(material) {
     this._refs.delete(material);
+    this._idle.delete(material);
     material.userData.uniforms?.uLabels.value.dispose();
     material.dispose();
   }
@@ -397,10 +424,11 @@ export class DiceBox {
           ? createDiceMaterial(appearance, this._atlas, shape, labels, flags, layered)
           : createDiceMaterial(appearance, this._atlas, shape, labels, flags);
       mat = build();
-      if (hooks) mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
+      if (hooks)
+        mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
       this._materials.set(key, mat);
       // A layered material lives only while rolls hold it: its texture is theirs.
-      this._refs.set(mat, { refs: 0, stale: false, transient: !!layered });
+      this._refs.set(mat, { refs: 0, stale: false, transient: !!layered, key });
       if (found) {
         try {
           this._onMaterial(mat, found.dsnType, appearance, found.preset);
@@ -442,7 +470,12 @@ export class DiceBox {
     try {
       return { instance, cacheString: String(instance.getCacheString(appearance)) };
     } catch (err) {
-      this.#systemWarn(systemId, 'material', 'a material callback threw; its dice use Dicer’s material', err);
+      this.#systemWarn(
+        systemId,
+        'material',
+        'a material callback threw; its dice use Dicer’s material',
+        err,
+      );
       return null;
     }
   }
@@ -455,9 +488,20 @@ export class DiceBox {
    */
   #applySystem(mat, build, { instance, cacheString }, systemId, dsnType, appearance, flags) {
     const failed = (err) =>
-      this.#systemWarn(systemId, 'material', 'a material callback threw; its dice use Dicer’s material', err);
+      this.#systemWarn(
+        systemId,
+        'material',
+        'a material callback threw; its dice use Dicer’s material',
+        err,
+      );
     if (!flags.safe) {
-      chainShaderHook(mat, systemId, cacheString, (shader, m) => instance.beforeShaderCompile(shader, m), failed);
+      chainShaderHook(
+        mat,
+        systemId,
+        cacheString,
+        (shader, m) => instance.beforeShaderCompile(shader, m),
+        failed,
+      );
     }
     try {
       instance.processMaterial(dsnType, mat, appearance);
@@ -508,7 +552,16 @@ export class DiceBox {
     const system = ghost || typeof spec.system !== 'string' ? null : spec.system;
     const dsnType = typeof spec.dsnType === 'string' ? spec.dsnType : null;
     const source = system ? { system, dsnType } : null;
-    const material = this.#material(appearance, flags, spec.type, spec.variant, faces, ghost, null, source);
+    const material = this.#material(
+      appearance,
+      flags,
+      spec.type,
+      spec.variant,
+      faces,
+      ghost,
+      null,
+      source,
+    );
     if (!roll.materials.has(material)) {
       roll.materials.add(material);
       this.#retain(material);
@@ -701,7 +754,10 @@ export class DiceBox {
       if (die.systemInstance) {
         die.spawned = true;
         // No value yet: a die shows its result only once it has landed.
-        this.#fireEvent(die, DICE_EVENT.SPAWN, { dice: [{ type: die.dsnType ?? die.type }], system: die.system });
+        this.#fireEvent(die, DICE_EVENT.SPAWN, {
+          dice: [{ type: die.dsnType ?? die.type }],
+          system: die.system,
+        });
       }
       if (!shadows) continue;
       // The shadow follows the outer group's position and scales by the geometry's sphere.
@@ -754,7 +810,9 @@ export class DiceBox {
     for (const die of roll.dice) {
       if (!die.systemInstance) continue;
       if (!bySystem.has(die.systemInstance)) bySystem.set(die.systemInstance, { die, dice: [] });
-      bySystem.get(die.systemInstance).dice.push({ type: die.dsnType ?? die.type, value: die.value });
+      bySystem
+        .get(die.systemInstance)
+        .dice.push({ type: die.dsnType ?? die.type, value: die.value });
     }
     for (const { die, dice } of bySystem.values()) {
       this.#fireEvent(die, DICE_EVENT.RESULT, { dice, system: die.system });
@@ -806,7 +864,10 @@ export class DiceBox {
       scene.remove(die.outer);
       if (!die.spawned) continue;
       die.spawned = false;
-      this.#fireEvent(die, DICE_EVENT.DESPAWN, { dice: [{ type: die.dsnType ?? die.type }], system: die.system });
+      this.#fireEvent(die, DICE_EVENT.DESPAWN, {
+        dice: [{ type: die.dsnType ?? die.type }],
+        system: die.system,
+      });
     }
     for (const plane of roll.shadows) this._renderer.sceneApi.releaseShadow(plane);
     for (const m of roll.fades ?? []) m.dispose();
