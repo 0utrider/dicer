@@ -127,6 +127,49 @@ function refreshMaterials({ replaceInFlight = false } = {}) {
   warmUp();
 }
 
+/** The raw world settings storage (a WorldSettings collection); DSN's scope is not registered. */
+const worldStorage = () => game.settings.storage?.get('world') ?? null;
+
+/** Which DSN data is still to be migrated, judged from raw data only (no chunk is loaded). */
+function dsnPending() {
+  if (getSetting('migrateFromDsn') === false) return { user: false, world: false };
+  const dsnAppearance = game.user?._source?.flags?.['dice-so-nice']?.appearance;
+  const user =
+    dsnAppearance !== null && typeof dsnAppearance === 'object' && !game.user.getFlag('dicer', 'migratedFromDsn');
+  let world = false;
+  if (game.user?.isGM && !getSetting('dsnWorldMigrated')) {
+    for (const setting of worldStorage() ?? []) {
+      if (typeof setting?.key === 'string' && setting.key.startsWith('dice-so-nice.')) {
+        world = true;
+        break;
+      }
+    }
+  }
+  return { user, world };
+}
+
+/**
+ * Copies Dice So Nice data into Dicer (once). The migration code is a lazy chunk, loaded only
+ * when there is DSN data. Never rejects, never delays the engine; the look mirror waits for it
+ * so a mirrored default does not pre-empt the user's imported global look.
+ */
+async function migrateFromDsn() {
+  try {
+    const pending = dsnPending();
+    if (!pending.user && !pending.world) return;
+    const migration = await import('./compat/migration.js');
+    const done = await migration.runMigration({
+      user: game.user,
+      isGM: pending.world,
+      worldSettings: migration.worldSettingsReader(worldStorage()),
+      settings: game.settings,
+    });
+    if (done) ui.notifications?.info(game.i18n.localize('DICER.Notice.Migrated'));
+  } catch (err) {
+    console.warn('dicer: cannot migrate Dice So Nice data', err);
+  }
+}
+
 /** Publishes the chosen look in the user flag so other clients draw this user's dice with it. */
 function mirrorLook(lookId) {
   mirrorLookSetting(game.user, lookId).catch((err) =>
@@ -182,9 +225,9 @@ Hooks.once('ready', async () => {
     }
     return;
   }
-  mirrorLookIfMissing(game.user, getSetting('look')).catch((err) =>
-    console.warn('dicer: cannot mirror the look setting to the user flag', err),
-  );
+  migrateFromDsn()
+    .then(() => mirrorLookIfMissing(game.user, getSetting('look')))
+    .catch((err) => console.warn('dicer: cannot mirror the look setting to the user flag', err));
   let api = null;
   const started = await startEngine({
     // loadDigitAtlas appends /digits.json and /digits.png to this folder.

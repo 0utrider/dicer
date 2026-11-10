@@ -101,6 +101,21 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange }
     type: Boolean,
     default: true,
   });
+  game.settings.register(MODULE_ID, 'migrateFromDsn', {
+    name: t('migrateFromDsn.Name'),
+    hint: t('migrateFromDsn.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  // Set (to 1) once the GM's run has copied the Dice So Nice world settings.
+  game.settings.register(MODULE_ID, 'dsnWorldMigrated', {
+    scope: 'world',
+    config: false,
+    type: Number,
+    default: 0,
+  });
   game.settings.register(MODULE_ID, 'look', {
     name: t('look.Name'),
     hint: t('look.Hint'),

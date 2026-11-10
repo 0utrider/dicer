@@ -127,3 +127,10 @@ test('onChange without callbacks does not throw', () => {
     expect(() => r[key].onChange('x')).not.toThrow();
   }
 });
+
+test('migrateFromDsn is a world Boolean, default on; dsnWorldMigrated is hidden', () => {
+  const registered = capture();
+  expect(registered.migrateFromDsn).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: Boolean, default: true });
+  expect(registered.migrateFromDsn.name).toBe('DICER.Settings.migrateFromDsn.Name');
+  expect(registered.dsnWorldMigrated).toMatchObject({ scope: 'world', config: false, type: Number, default: 0 });
+});
