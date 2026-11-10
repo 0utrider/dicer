@@ -8,6 +8,7 @@ import {
   normalizeAppearance,
   programKey,
 } from '../look/appearance.js';
+import { GHOST_APPEARANCE } from '../compat/colorset-map.js';
 import { Playback } from './playback.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 
@@ -53,7 +54,7 @@ export function cloneForFade(material) {
  * renderer stops and hides its canvas.
  *
  * Each roll snapshots the look (getAppearance) and feature flags (getFlags) when it starts.
- * Materials are cached by appearanceKey|programKey|type|variant and refcounted per roll:
+ * Materials are cached by appearanceKey|programKey|type|variant|faces.key|ghost and refcounted per roll:
  * invalidateMaterials() drops them from the cache and marks them stale, and a stale material
  * is disposed when the last roll (or warm-up) holding it lets go.
  */
@@ -82,7 +83,7 @@ export class DiceBox {
     this._diceScale = diceScale;
     this._timeBeforeHide = timeBeforeHide;
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
-    this._materials = new Map(); // appearanceKey|programKey|type|variant -> material
+    this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
     this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
     this._rolls = new Set();
     this._area = null;
@@ -132,9 +133,9 @@ export class DiceBox {
     }
     this._rolls.add(roll);
     try {
-      roll.appearance = normalizeAppearance(this._getAppearance());
+      const rollLook = normalizeAppearance(this._getAppearance());
       const flags = this.#flags();
-      for (const spec of specs) roll.dice.push(this.#makeDie(spec, roll, flags));
+      for (const spec of specs) roll.dice.push(this.#makeDie(spec, roll, flags, rollLook));
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
       roll.playback = new Playback({ dice: roll.dice, area: this._area });
       roll.received = 0;
@@ -263,7 +264,14 @@ export class DiceBox {
     const old = roll.materials;
     roll.materials = new Set();
     roll.dice.forEach((die, i) => {
-      const mat = this.#material(roll.appearance, flags, die.type, die.variant);
+      const mat = this.#material(
+        die.appearance,
+        flags,
+        die.type,
+        die.variant,
+        die.faces,
+        die.ghost,
+      );
       if (!roll.materials.has(mat)) {
         roll.materials.add(mat);
         this.#retain(mat);
@@ -294,14 +302,21 @@ export class DiceBox {
   }
 
   /** @param {object} appearance normalized */
-  #material(appearance, flags, type, variant) {
-    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}`;
+  #material(appearance, flags, type, variant, faces, ghost = false) {
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
-      const labels = shape.values.map((v) =>
-        variant === 'd100tens' ? labelFor(type, v * 10, variant) : labelFor(type, v),
-      );
+      const labels = shape.values.map((v, i) => {
+        const dflt = () =>
+          variant === 'd100tens' ? labelFor(type, v * 10, variant) : labelFor(type, v);
+        if (ghost) return '';
+        const face = faces?.labels?.[i];
+        if (!face) return dflt();
+        if (face.kind === 'glyph') return String(face.text ?? '');
+        if (face.kind === 'blank') return '';
+        return dflt(); // text / image render as the default label until image faces exist
+      });
       mat = createDiceMaterial(appearance, this._atlas, shape, labels, flags);
       this._materials.set(key, mat);
       this._refs.set(mat, { refs: 0, stale: false });
@@ -309,10 +324,17 @@ export class DiceBox {
     return mat;
   }
 
-  #makeDie(spec, roll, flags) {
+  #makeDie(spec, roll, flags, rollLook) {
     const shape = getShape(spec.type);
-    const geometry = this.#geometry(spec.type, roll.appearance.edges.style);
-    const material = this.#material(roll.appearance, flags, spec.type, spec.variant);
+    const ghost = spec.ghost === true;
+    const appearance = ghost
+      ? GHOST_APPEARANCE
+      : spec.appearance
+        ? normalizeAppearance(spec.appearance)
+        : rollLook;
+    const faces = ghost ? undefined : spec.faces;
+    const geometry = this.#geometry(spec.type, appearance.edges.style);
+    const material = this.#material(appearance, flags, spec.type, spec.variant, faces, ghost);
     if (!roll.materials.has(material)) {
       roll.materials.add(material);
       this.#retain(material);
@@ -322,8 +344,24 @@ export class DiceBox {
     outer.userData.dicerDie = true;
     outer.visible = false; // at the origin until Playback places it
     outer.add(inner);
-    const targetValue = spec.variant === 'd100tens' ? spec.value / 10 || 10 : spec.value;
-    return { outer, inner, shape, targetValue, geometry, type: spec.type, variant: spec.variant };
+    // A ghost is thrown as a 1: its real value must never reach the die object or the mesh.
+    const targetValue = ghost
+      ? 1
+      : spec.variant === 'd100tens'
+        ? spec.value / 10 || 10
+        : spec.value;
+    return {
+      outer,
+      inner,
+      shape,
+      targetValue,
+      geometry,
+      type: spec.type,
+      variant: spec.variant,
+      appearance,
+      faces,
+      ghost,
+    };
   }
 
   /** Shows a roll's dice (and their shadows) once Playback has placed them. */

@@ -4,7 +4,17 @@ import { DiceBox } from '../../src/throw/dice-box.js';
 import { buildScene } from '../../src/render/scene.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
+import { createDiceMaterial } from '../../src/render/dice-material.js';
+import { getShape, labelFor } from '../../src/core/dice-shapes.js';
+import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 
+vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
+  const mod = await importOriginal();
+  return {
+    ...mod,
+    createDiceMaterial: vi.fn(mod.createDiceMaterial),
+  };
+});
 vi.mock('../../src/core/chamfer.js', async (importOriginal) => {
   const mod = await importOriginal();
   return { ...mod, buildDieGeometry: vi.fn(mod.buildDieGeometry) };
@@ -718,5 +728,78 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     box.roll([{ type: 'd6', value: 1 }]);
     expect(meshOf(renderer).material).toBe(warm.materials[0]);
     box.clear();
+  });
+});
+
+describe('per-die looks', () => {
+  const red = { body: 'opaque', bodyColor: '#f00', fillColor: '#000', fillMetallic: false };
+  const meshes = (renderer) => dieGroups(renderer).map((g) => g.children[0]);
+  beforeEach(() => {
+    createDiceMaterial.mockClear();
+  });
+
+  test('different appearances build different materials, equal ones share', () => {
+    const { renderer, box } = setup();
+    box.roll([
+      { type: 'd6', value: 1, appearance: red },
+      { type: 'd6', value: 2, appearance: red },
+      { type: 'd6', value: 3, appearance },
+      { type: 'd6', value: 4 },
+    ]);
+    const [a, b, c, d] = meshes(renderer).map((m) => m.material);
+    expect(a).toBe(b);
+    expect(c).toBe(d);
+    expect(a).not.toBe(c);
+    expect(createDiceMaterial).toHaveBeenCalledTimes(2);
+  });
+
+  test('face sets split the cache and map glyph / blank labels', () => {
+    const { renderer, box } = setup();
+    const labels = ['A', 'B', 'C', 'D', 'E', 'F'].map((text) => ({ kind: 'glyph', text }));
+    labels[1] = { kind: 'blank' };
+    labels[2] = { kind: 'text', text: 'zzz' };
+    box.roll([
+      { type: 'd6', value: 1, faces: { key: 'k1', labels } },
+      { type: 'd6', value: 1, faces: { key: 'k1', labels } },
+      { type: 'd6', value: 1 },
+    ]);
+    const [a, b, c] = meshes(renderer).map((m) => m.material);
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+    const sent = createDiceMaterial.mock.calls.find((call) => call[3][0] === 'A')[3];
+    expect(sent.slice(0, 2)).toEqual(['A', '']);
+    expect(sent[2]).toBe(labelFor('d6', getShape('d6').values[2])); // text falls back
+  });
+
+  test('a ghost die throws value 1 with the ghost look and blank labels', () => {
+    const { renderer, box } = setup();
+    box.roll([{ type: 'd20', value: 17, ghost: true, appearance: red }]);
+    const [group] = dieGroups(renderer);
+    expect(createDiceMaterial).toHaveBeenCalledTimes(1);
+    const [app, , , labels] = createDiceMaterial.mock.calls[0];
+    expect(app).toBe(GHOST_APPEARANCE);
+    expect(labels.length).toBe(20);
+    expect(labels.every((l) => l === '')).toBe(true);
+    const die = box._rolls.values().next().value.dice[0];
+    expect(die.targetValue).toBe(1);
+    expect(
+      JSON.stringify(die, (k, v) =>
+        k === 'outer' || k === 'inner' || k === 'geometry' || k === 'shape' ? undefined : v,
+      ),
+    ).not.toContain('17');
+    expect(JSON.stringify(group.userData)).not.toContain('17');
+  });
+
+  test('rematerialize keeps each die on its own look', () => {
+    const { renderer, box } = setup();
+    box.roll([
+      { type: 'd6', value: 1, appearance: red },
+      { type: 'd6', value: 2, ghost: true },
+    ]);
+    box.invalidateMaterials({ replaceInFlight: true });
+    const [a, b] = meshes(renderer).map((m) => m.material);
+    expect(a).not.toBe(b);
+    expect(createDiceMaterial).toHaveBeenCalledTimes(4);
+    expect(createDiceMaterial.mock.calls[3][0]).toBe(GHOST_APPEARANCE);
   });
 });
