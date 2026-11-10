@@ -1,3 +1,6 @@
+import { viewFor } from '../compat/privacy.js';
+import { createSync, rollToData } from '../compat/sync.js';
+
 /** DSN registration methods that Plan 3 implements; `async` ones return a Promise in DSN. */
 const SYNC_STUBS = [
   'addSystem',
@@ -33,9 +36,47 @@ function registrationStubs() {
   return stubs;
 }
 
+const isRollLike = (roll) => Boolean(roll) && typeof roll === 'object';
+const idOrNull = (v) => (typeof v === 'string' && v !== '' ? v : null);
+
+/** User ids from ids or User objects; an empty list means everyone (null), like a whisper. */
+function idsOf(users) {
+  if (!Array.isArray(users)) return null;
+  const ids = users.map((u) => (typeof u === 'string' ? u : u?.id)).filter((id) => typeof id === 'string');
+  return ids.length ? ids : null;
+}
+
+/** Face count of a legacy die type: 'd20' -> 20, 'dc' (coin) -> 2; anything else is skipped. */
+function legacyFaces(type) {
+  if (type === 'dc') return 2;
+  const m = /^d(\d+)$/.exec(String(type));
+  return m ? Number(m[1]) : undefined;
+}
+
+/** The legacy show() payload as a Roll-like `{dice: [{faces, results, options}]}`, or null. */
+function legacyRoll(data) {
+  if (!data || typeof data !== 'object' || !Array.isArray(data.throws)) return null;
+  const dice = [];
+  for (const t of data.throws) {
+    for (const d of Array.isArray(t?.dice) ? t.dice : []) {
+      if (!d || typeof d !== 'object' || !Number.isFinite(d.result)) continue;
+      dice.push({
+        faces: legacyFaces(d.type),
+        results: [{ result: d.result, active: true }],
+        options: d.options && typeof d.options === 'object' ? d.options : {},
+      });
+    }
+  }
+  return { dice };
+}
+
+const ghostDecorator = () => ({ ghost: true });
+
 /**
- * Minimal Dice So Nice compatible `game.dice3d`. Plan 1 animates locally only: `synchronize`,
- * `users`, `speaker` and `options` are accepted for signature compatibility (sync is Plan 3).
+ * Dice So Nice compatible `game.dice3d`. showForRoll applies the privacy matrix on every client
+ * (the caller's and, with synchronize, each receiver's) and fires the RollStart/RollComplete
+ * hooks for a call naming a message. `socket` (game.socket) enables synchronize; `_dispose`
+ * stops listening on it.
  */
 export function createDice3dApi({
   diceBox,
@@ -44,6 +85,10 @@ export function createDice3dApi({
   getSetting,
   renderer = null,
   decorateFor = () => undefined,
+  hooks = globalThis.Hooks,
+  socket = null,
+  currentUser = () => globalThis.game?.user,
+  fromData,
 }) {
   const warned = new Set();
   /** A malformed third-party call logs one warning per member, never throws. */
@@ -52,6 +97,143 @@ export function createDice3dApi({
     warned.add(name);
     console.warn(`dicer: game.dice3d.${name} ignored a malformed call`, detail);
   };
+
+  const me = () => {
+    try {
+      return currentUser();
+    } catch {
+      return undefined;
+    }
+  };
+
+  /** messageID -> the promise of the showForRoll animations registered with it, until settled. */
+  const shows = new Map();
+  function track(id, promise) {
+    const combined = Promise.all([shows.get(id), promise]);
+    shows.set(id, combined);
+    const clear = () => {
+      if (shows.get(id) === combined) shows.delete(id);
+    };
+    combined.then(clear, clear);
+  }
+
+  const callHook = (name, ...args) => {
+    try {
+      hooks?.callAll(name, ...args);
+    } catch (err) {
+      console.error(`dicer: a ${name} listener failed`, err);
+    }
+  };
+
+  /** How a roll shows here; the content is visible to everyone unless blind (then GMs only). */
+  function viewHere({ authorId, users, blind, ghost, secret }) {
+    const user = me();
+    const isGM = user?.isGM === true;
+    return viewFor({
+      contentVisible: !blind || isGM,
+      isGM,
+      isAuthor: user?.id != null && authorId === user.id,
+      blind,
+      whispered: Boolean(users),
+      rollGhost: ghost,
+      rollSecret: secret,
+      showGhostDice: getSetting('showGhostDice') === true,
+    });
+  }
+
+  function decoratorFor(roll, authorId) {
+    try {
+      return decorateFor(null, roll, authorId) || undefined;
+    } catch (err) {
+      console.error('dicer: cannot resolve the dice looks', err);
+      return undefined;
+    }
+  }
+
+  function broadcast(roll, s) {
+    try {
+      sync?.broadcast({
+        v: 1,
+        kind: 'show',
+        roll: rollToData(roll),
+        userId: s.authorId,
+        users: s.users,
+        blind: s.blind,
+        ghost: s.ghost,
+        secret: s.secret,
+        messageID: s.messageID,
+        speaker: s.speaker,
+      });
+    } catch (err) {
+      console.error('dicer: cannot synchronize a roll', err);
+    }
+  }
+
+  /**
+   * The local throw (no awaits before the dice are planned). A local call naming a message fires
+   * RollStart first (a listener may make it blind, flag it ghost/secret, or replace the thrown
+   * roll through dsnRoll) and RollComplete exactly once at the end, whatever happens.
+   */
+  async function throwHere(roll, s) {
+    const hooked = s.local && s.messageID != null;
+    try {
+      let toThrow = roll;
+      if (hooked) {
+        const context = { roll, user: s.user, users: s.users, blind: s.blind, dsnRoll: roll };
+        callHook('diceSoNiceRollStart', s.messageID, context);
+        // Privacy-first: a listener can make the roll blind (nothing is shown, nor sent), never
+        // un-blind it; a ghost/secret flag it sets on either roll applies to the whole call.
+        if (context.blind && !s.blind) return false;
+        for (const candidate of new Set([context.roll, context.dsnRoll])) {
+          if (!isRollLike(candidate)) continue;
+          s.ghost ||= Boolean(candidate.ghost);
+          s.secret ||= Boolean(candidate.secret);
+        }
+        if (isRollLike(context.dsnRoll)) toThrow = context.dsnRoll;
+      }
+      if (s.synchronize) broadcast(toThrow, s);
+      const view = viewHere(s);
+      if (view === 'none') return false;
+      const { dice } = planThrow(toThrow, {
+        maxDice: Number(getSetting('maxDice')) || 20,
+        showExtra: getSetting('showExtraDice') !== false,
+        decorate: view === 'ghost' ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId),
+      });
+      if (!dice.length) return false;
+      await diceBox.roll(dice).landed;
+      return true;
+    } catch (err) {
+      console.error('dicer: showForRoll failed', err);
+      return false;
+    } finally {
+      if (hooked) callHook('diceSoNiceRollComplete', s.messageID, []);
+    }
+  }
+
+  function run(roll, s) {
+    if (!getSetting('enabled')) return Promise.resolve(false);
+    const promise = throwHere(roll, s);
+    if (s.messageID != null) track(s.messageID, promise);
+    return promise;
+  }
+
+  /** A synchronized roll from another client: same privacy and maxDice path, no hooks. */
+  function receive(p) {
+    return run(p.roll, {
+      user: null,
+      authorId: p.userId,
+      users: p.users,
+      blind: p.blind,
+      ghost: p.ghost || Boolean(p.roll.ghost),
+      secret: p.secret || Boolean(p.roll.secret),
+      messageID: p.messageID,
+      speaker: p.speaker,
+      synchronize: false,
+      local: false,
+    });
+  }
+
+  const sync = socket ? createSync({ socket, currentUser: me, onShow: receive, fromData }) : null;
 
   const api = {
     ...registrationStubs(),
@@ -76,26 +258,57 @@ export function createDice3dApi({
       return getSetting('showExtraDice') !== false;
     },
 
-    // eslint-disable-next-line no-unused-vars
-    async showForRoll(roll, user, synchronize, users, blind, messageID, speaker, options) {
-      try {
-        if (blind || !getSetting('enabled')) return false;
-        const author = user?.id ?? globalThis.game?.user?.id;
-        const { dice } = planThrow(roll, {
-          maxDice: Number(getSetting('maxDice')) || 20,
-          decorate: decorateFor(null, roll, author) || undefined,
-        });
-        if (!dice.length) return false;
-        await diceBox.roll(dice).landed;
-        return true;
-      } catch (err) {
-        console.error('dicer: showForRoll failed', err);
-        return false;
+    /**
+     * Shows a roll's dice outside the chat flow; with `synchronize`, on the other clients too.
+     * Resolves true once landed, false when nothing was animated here.
+     */
+    showForRoll(
+      roll,
+      user = undefined,
+      synchronize = false,
+      users = null,
+      blind = false,
+      messageID = null,
+      speaker = null,
+      options = {},
+    ) {
+      if (!isRollLike(roll) || (users != null && !Array.isArray(users))) {
+        warnOnce('showForRoll', roll);
+        return Promise.resolve(false);
       }
+      const author = user ?? me();
+      return run(roll, {
+        user: author,
+        authorId: author?.id ?? me()?.id ?? null,
+        users: idsOf(users),
+        blind: Boolean(blind),
+        ghost: Boolean(options?.ghost || roll.ghost),
+        secret: Boolean(options?.secret || roll.secret),
+        messageID: idOrNull(messageID),
+        speaker: speaker && typeof speaker === 'object' ? speaker : null,
+        synchronize: Boolean(synchronize),
+        local: true,
+      });
     },
 
+    /** Local only: showForRoll without synchronize, users, blind or a message. */
+    animateRoll(roll, options = {}) {
+      return api.showForRoll(roll, me(), false, null, false, null, null, options);
+    },
+
+    /** The legacy `{throws: [{dice: [{type, result, resultLabel?, options?}]}]}` payload. */
+    show(data, user = undefined, synchronize = false, users = null, blind = false) {
+      const roll = legacyRoll(data);
+      if (!roll) {
+        warnOnce('show', data);
+        return Promise.resolve(false);
+      }
+      return api.showForRoll(roll, user, synchronize, users, blind);
+    },
+
+    /** Waits on the chat gate's animation and on any showForRoll registered with this id. */
     waitFor3DAnimationByMessageID(id) {
-      return gate.waitFor(id);
+      return Promise.all([gate.waitFor(id), shows.get(id)]).then(() => true);
     },
 
     get messageHookDisabled() {
@@ -103,6 +316,11 @@ export function createDice3dApi({
     },
     set messageHookDisabled(value) {
       gate.disabled = value;
+    },
+
+    /** Stops receiving synchronized rolls (engine teardown). */
+    _dispose() {
+      sync?.dispose();
     },
 
     _debug: {

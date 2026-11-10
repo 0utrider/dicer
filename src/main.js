@@ -228,6 +228,11 @@ Hooks.once('ready', async () => {
         decorateFor,
         getSetting,
         renderer,
+        hooks: Hooks,
+        // showForRoll's synchronize: the module socket ("socket": true in module.json).
+        socket: game.socket ?? null,
+        currentUser: () => game.user,
+        fromData: (data) => foundry.dice.Roll.fromData(data),
       });
       game.dice3d = api;
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
@@ -255,6 +260,7 @@ Hooks.once('ready', async () => {
     registry = null;
     stopWatchingArea?.();
     stopWatchingArea = null;
+    api?._dispose();
     if (api && game.dice3d === api) delete game.dice3d;
   }
 });
