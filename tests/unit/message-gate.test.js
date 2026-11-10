@@ -1512,3 +1512,13 @@ describe('ghost dice use the wire ghost shape (P3-R20)', () => {
     expect(diceBox.rolls[0].specs).toEqual([{ type: 'dc', value: 1, ghost: true }]);
   });
 });
+
+test('RollStart gets a copy of the whisper list: a listener mutating ctx.users leaves the message alone', () => {
+  const whisper = ['gm', 'p1'];
+  hooks.listeners.diceSoNiceRollStart = [(id, ctx) => ctx.users.push('intruder')];
+  gate = makeGate({ currentUser: () => ({ id: 'gm', isGM: true }) });
+  gate.onCreate(message('m1', { whisper }));
+  const ctx = hooks.named('diceSoNiceRollStart')[0][2];
+  expect(ctx.users).not.toBe(whisper);
+  expect(whisper).toEqual(['gm', 'p1']);
+});

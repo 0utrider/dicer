@@ -438,7 +438,8 @@ export function createMessageGate({
       const context = {
         roll: first,
         user: message.author, // a v14 ChatMessage exposes its User as `author`, not `user`
-        users: message.whisper?.length ? message.whisper : null,
+        // A copy, as showForRoll passes: a listener mutating it in place never reaches the message.
+        users: message.whisper?.length ? [...message.whisper] : null,
         blind: false,
         dsnRoll: first,
       };
