@@ -146,3 +146,58 @@ export const FILL_GLOSS = /* glsl */ `
 	material.clearcoatRoughness = mix( material.clearcoatRoughness, 0.0525 + geometryRoughness, uFillGloss * dcMask );
 #endif
 `;
+
+/**
+ * Rasterized faces (DICER_FACE_LAYERS): image and text faces from a FaceSet, one layer of
+ * uFaceTex per face (render/face-textures.js). uFaceLayer[face]: x = layer (-1: none, the MSDF
+ * label draws), y = 1 for a text mask tinted by the fill, 0 for an image at its own colours.
+ * A layered face has an empty MSDF label, so it gets no recess: engraving needs the SDF.
+ */
+
+/** Most faces of any die (the d20). */
+export const MAX_FACE_LAYERS = 20;
+/** Half the edge of the face-centred square the layer covers, in face units (inradius 1). */
+export const FACE_LAYER_HALF = 0.6;
+
+/** Fragment shader: after ENGRAVE_PARS, only in programs with face layers. */
+export const FACE_LAYER_PARS = /* glsl */ `
+#ifdef DICER_FACE_LAYERS
+uniform highp sampler2DArray uFaceTex;
+uniform vec2 uFaceLayer[ ${MAX_FACE_LAYERS} ];
+#endif
+`;
+
+/**
+ * Fragment shader: after ENGRAVE_COLOR, only in programs with face layers. A text layer joins
+ * the fill mask (fill colour, PBR and gloss: a flat inlay); an image is a flat decal.
+ */
+export const FACE_LAYER_COLOR = /* glsl */ `
+#ifdef DICER_FACE_LAYERS
+	vec2 dcFL = uFaceLayer[ clamp( dcFace, 0, ${MAX_FACE_LAYERS - 1} ) ];
+	if ( dcFace < 0 || dcFace >= ${MAX_FACE_LAYERS} ) dcFL = vec2( - 1.0, 0.0 );
+	vec2 dcST = vFaceUV * ${(0.5 / FACE_LAYER_HALF).toFixed(4)} + 0.5;
+	// Canvas rows run top-down; face V points up.
+	vec4 dcLayer = texture( uFaceTex, vec3( dcST.x, 1.0 - dcST.y, max( dcFL.x, 0.0 ) ) );
+	float dcIn = step( 0.0, dcFL.x ) * step( abs( dcST.x - 0.5 ), 0.5 ) * step( abs( dcST.y - 0.5 ), 0.5 );
+	float dcLA = dcLayer.a * dcIn;
+	float dcDecal = 0.0; // image coverage: opaque like the fill, but at its own colours
+	if ( dcFL.y > 0.5 ) {
+		dcMask = max( dcMask, dcLA );
+		diffuseColor.rgb = mix( diffuseColor.rgb, uFillColor, dcLA );
+	} else {
+		dcDecal = dcLA;
+		diffuseColor.rgb = mix( diffuseColor.rgb, dcLayer.rgb, dcLA );
+	}
+#endif
+`;
+
+/**
+ * Body chunk lines that treat the fill (dcMask) as the opaque decoration; in programs with face
+ * layers an image decal joins them (dice-material.js rewrites these lines there only).
+ */
+export const DECAL_OPAQUE = [
+  [
+    'totalDiffuse = mix( totalDiffuse, dcRefracted, 1.0 - dcMask );',
+    'totalDiffuse = mix( totalDiffuse, dcRefracted, 1.0 - max( dcMask, dcDecal ) );',
+  ],
+];

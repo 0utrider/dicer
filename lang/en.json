@@ -58,6 +58,10 @@
       "glow": {
         "Name": "Dice glow",
         "Hint": "Let glowing looks emit light. Off keeps them unlit."
+      },
+      "presetFaces": {
+        "Name": "Picture and symbol faces",
+        "Hint": "Draw the pictures and symbols that dice presets from other modules put on their faces. Off shows plain numbers instead."
       }
     },
     "Quality": {

@@ -47,6 +47,19 @@ export function cloneForFade(material) {
   return clone;
 }
 
+/** True when a face set has image or text faces (drawn from face layers). */
+function needsLayers(faces) {
+  return Array.isArray(faces?.labels) && faces.labels.some((l) => l?.kind === 'image' || l?.kind === 'text');
+}
+
+/** An id per face-texture result: a layered material is keyed to the texture it samples. */
+const faceTexIds = new WeakMap();
+let nextFaceTexId = 1;
+function faceTexId(faceTex) {
+  if (!faceTexIds.has(faceTex)) faceTexIds.set(faceTex, nextFaceTexId++);
+  return faceTexIds.get(faceTex);
+}
+
 /**
  * Orchestrates rolls: physics stream -> Playback -> scene, on one shared render loop.
  * Each roll resolves `landed` once its dice come to rest and `finished` after the linger
@@ -71,6 +84,8 @@ export class DiceBox {
     diceScale = () => 1,
     timeBeforeHide = () => DEFAULT_LINGER_MS,
     visibility = globalThis.document,
+    faceTextures = null,
+    faceLayers = () => true,
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -82,6 +97,8 @@ export class DiceBox {
     this._getArea = getArea;
     this._diceScale = diceScale;
     this._timeBeforeHide = timeBeforeHide;
+    this._faceTextures = faceTextures; // face-textures.js; null: text/image faces show numbers
+    this._faceLayers = faceLayers; // the presetFaces setting
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
     this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
@@ -135,7 +152,9 @@ export class DiceBox {
     try {
       const rollLook = normalizeAppearance(this._getAppearance());
       const flags = this.#flags();
+      roll.flags = flags;
       for (const spec of specs) roll.dice.push(this.#makeDie(spec, roll, flags, rollLook));
+      this.#acquireFaces(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
       roll.playback = new Playback({ dice: roll.dice, area: this._area });
       roll.received = 0;
@@ -164,7 +183,7 @@ export class DiceBox {
           if (roll.received === 1) {
             clearTimeout(roll.firstChunkTimer);
             // The loop starts only once there is a frame to draw (zero idle GPU work).
-            this._renderer.startLoop(this._tick);
+            if (!roll.facesPending) this._renderer.startLoop(this._tick);
           }
         } catch (err) {
           if (!pushed) this._physics.recycle(chunk.data);
@@ -250,7 +269,12 @@ export class DiceBox {
     const entry = this._refs.get(material);
     if (!entry) return;
     entry.refs--;
-    if (entry.stale && entry.refs <= 0) this.#disposeMaterial(material);
+    if (entry.refs > 0) return;
+    if (entry.transient && !entry.stale) {
+      for (const [k, m] of this._materials) if (m === material) this._materials.delete(k);
+      entry.stale = true;
+    }
+    if (entry.stale) this.#disposeMaterial(material);
   }
 
   #disposeMaterial(material) {
@@ -261,6 +285,7 @@ export class DiceBox {
 
   /** Moves a roll's dice (and fade clones) onto materials built with `flags`. */
   #rematerialize(roll, flags) {
+    roll.flags = flags;
     const old = roll.materials;
     roll.materials = new Set();
     roll.dice.forEach((die, i) => {
@@ -271,6 +296,7 @@ export class DiceBox {
         die.variant,
         die.faces,
         die.ghost,
+        die.faceTex,
       );
       if (!roll.materials.has(mat)) {
         roll.materials.add(mat);
@@ -302,8 +328,10 @@ export class DiceBox {
   }
 
   /** @param {object} appearance normalized */
-  #material(appearance, flags, type, variant, faces, ghost = false) {
-    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}`;
+  #material(appearance, flags, type, variant, faces, ghost = false, faceTex = null) {
+    const layered = !ghost && faceTex?.texture ? faceTex : null;
+    const layerKey = layered ? `|fl${faceTexId(layered)}` : '';
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
@@ -315,11 +343,15 @@ export class DiceBox {
         if (!face) return dflt();
         if (face.kind === 'glyph') return String(face.text ?? '');
         if (face.kind === 'blank') return '';
-        return dflt(); // text / image render as the default label until image faces exist
+        if (layered?.layers?.[i] >= 0) return ''; // drawn from its face layer
+        return dflt(); // a text / image face without a layer shows its number
       });
-      mat = createDiceMaterial(appearance, this._atlas, shape, labels, flags);
+      mat = layered
+        ? createDiceMaterial(appearance, this._atlas, shape, labels, flags, layered)
+        : createDiceMaterial(appearance, this._atlas, shape, labels, flags);
       this._materials.set(key, mat);
-      this._refs.set(mat, { refs: 0, stale: false });
+      // A layered material lives only while rolls hold it: its texture is theirs.
+      this._refs.set(mat, { refs: 0, stale: false, transient: !!layered });
     }
     return mat;
   }
@@ -361,7 +393,71 @@ export class DiceBox {
       appearance,
       faces,
       ghost,
+      faceTex: null,
     };
+  }
+
+  /**
+   * Starts loading the face layers of every die whose face set has image or text faces (never
+   * a ghost: its faces stay blank). Until they resolve the roll draws nothing and its playback
+   * does not start; the physics throw runs meanwhile. A face that fails or times out
+   * (face-textures caps the wait) shows its number for this roll.
+   */
+  #acquireFaces(roll) {
+    const ft = this._faceTextures;
+    if (!ft || this._faceLayers() === false) return;
+    const sets = new Map();
+    for (const die of roll.dice) {
+      if (!die.ghost && needsLayers(die.faces)) sets.set(die.faces.key, die.faces);
+    }
+    if (!sets.size) return;
+    roll.faceSets = [...sets.values()];
+    roll.facesPending = true;
+    const failed = (err) => {
+      console.warn('dicer: cannot load face textures; the dice show numbers', err);
+      return null;
+    };
+    const loads = roll.faceSets.map((faces) => {
+      try {
+        return Promise.resolve(ft.acquire(faces)).catch(failed);
+      } catch (err) {
+        return Promise.resolve(failed(err));
+      }
+    });
+    Promise.all(loads).then((results) => {
+      if (roll.removed) return;
+      const byKey = new Map(roll.faceSets.map((f, i) => [f.key, results[i]]));
+      try {
+        for (const die of roll.dice) {
+          const tex = !die.ghost && die.faces ? byKey.get(die.faces.key) : null;
+          if (!tex?.texture) continue;
+          die.faceTex = tex;
+          const { appearance, type, variant, faces } = die;
+          const mat = this.#material(appearance, roll.flags, type, variant, faces, false, tex);
+          this.#swapMaterial(roll, die, mat);
+        }
+      } catch (err) {
+        console.warn('dicer: cannot build face materials; the dice show numbers', err);
+      }
+      roll.facesPending = false;
+      if (roll.received > 0) this._renderer.startLoop(this._tick);
+      if (roll.settled) this.#armLandingTimer(roll, roll.settled.step);
+    });
+  }
+
+  /** Moves a (not yet shown) die onto `mat`, releasing a material no die of the roll uses. */
+  #swapMaterial(roll, die, mat) {
+    const old = die.inner.material;
+    if (old === mat) return;
+    if (!roll.materials.has(mat)) {
+      roll.materials.add(mat);
+      this.#retain(mat);
+    }
+    die.inner.material = mat;
+    if (!roll.dice.some((d) => d.inner.material === old)) {
+      roll.materials.delete(old);
+      this.#release(old);
+    }
   }
 
   /** Shows a roll's dice (and their shadows) once Playback has placed them. */
@@ -383,6 +479,10 @@ export class DiceBox {
    */
   #armLandingTimer(roll, settledStep) {
     if (roll.removed || roll.phase !== 'playing') return;
+    if (roll.facesPending) {
+      roll.settled = { step: settledStep }; // playback has not started: armed once it can
+      return;
+    }
     const steps = Number.isFinite(settledStep) ? settledStep : MAX_STEPS;
     const speed = roll.playback?.speed || 1;
     const ms = Math.ceil((steps * STEP_SECONDS * 1000) / speed) + LANDING_GRACE_MS;
@@ -413,6 +513,7 @@ export class DiceBox {
     for (const roll of [...this._rolls]) {
       try {
         if (roll.phase === 'playing') {
+          if (roll.facesPending) continue; // hidden, playback not started, until faces exist
           const hadFrames = roll.received > 0;
           const state = roll.playback.update(now);
           if (hadFrames && !roll.revealed) this.#reveal(roll);
@@ -452,6 +553,14 @@ export class DiceBox {
     roll.fades = null;
     for (const m of roll.materials) this.#release(m);
     roll.materials.clear();
+    for (const faces of roll.faceSets ?? []) {
+      try {
+        this._faceTextures.release(faces);
+      } catch (err) {
+        console.warn('dicer: cannot release face textures', err);
+      }
+    }
+    roll.faceSets = null;
     if (roll.playback) {
       for (const data of roll.playback.release()) this._physics.recycle(data);
       roll.playback = null;

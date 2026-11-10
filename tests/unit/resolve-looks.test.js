@@ -1,4 +1,5 @@
 import { createLookResolver } from '../../src/compat/resolve-looks.js';
+import { facesFor } from '../../src/compat/faces.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
@@ -157,6 +158,38 @@ describe('dsnType and system resolution', () => {
     const b = make({ users, facesFor: () => set });
     await b.registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: [], modelFile: 'm.glb' });
     expect(look(b.resolver, term(20), 'u').faces).toBe(set);
+  });
+  test('a throwing facesFor drops the faces but keeps the look', async () => {
+    const users = { u: user({ global: { system: 'pf2e' } }) };
+    const facesFor = () => {
+      throw new Error('bad preset');
+    };
+    const { registry, resolver, warn } = make({ users, facesFor });
+    await registry.addDicePreset({
+      type: 'd20',
+      system: 'pf2e',
+      labels: [],
+      modelFile: 'm.glb',
+      colorset: 'fire',
+    });
+    const out = look(resolver, term(20), 'u');
+    expect(out).not.toHaveProperty('faces');
+    expect(out.model).toBe('m.glb');
+    expect(out.appearance).toEqual(fire);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+  test('the real facesFor turns a Fate preset into text and blank faces', async () => {
+    const users = { u: user({ global: { system: 'fate' } }) };
+    const digits = (t) => /^[0-9]{1,2}$/.test(t);
+    const { registry, resolver } = make({ users, facesFor: (p) => facesFor(p, digits) });
+    await registry.addDicePreset({ type: 'df', system: 'fate', labels: ['-', '-', '', '', '+', '+'] }, 'd6');
+    class Fate {
+      static DENOMINATION = 'f';
+    }
+    const t = Object.assign(new Fate(), { faces: 3, options: {}, results: [RES] });
+    const out = look(resolver, t, 'u');
+    expect(out.faces.key.startsWith('fate|df|')).toBe(true);
+    expect(new Set(out.faces.labels.map((l) => l.kind))).toEqual(new Set(['text', 'blank']));
   });
 });
 

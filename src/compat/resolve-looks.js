@@ -104,7 +104,13 @@ export function createLookResolver({
     const out = { appearance };
     if (type) out.dsnType = type;
     if (preset) {
-      const faces = facesFor(preset);
+      // A bad preset loses its faces (the dice show numbers), never the look.
+      let faces;
+      try {
+        faces = facesFor(preset);
+      } catch (err) {
+        warnOnce(err);
+      }
       if (faces !== undefined) out.faces = faces;
       if (preset.modelFile) out.model = preset.modelFile;
     }

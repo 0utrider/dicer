@@ -1,0 +1,64 @@
+import { readFileSync } from 'node:fs';
+import { facesFor, atlasGlyphTest } from '../../src/compat/faces.js';
+import { parseAtlas } from '../../src/render/sdf-atlas.js';
+import { getShape } from '../../src/core/dice-shapes.js';
+
+const atlas = parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8')));
+const digitsOnly = atlasGlyphTest(atlas);
+
+test('labels classify as glyph, image, blank and text', () => {
+  const preset = { system: 'sys', type: 'dx', labels: ['1', 'icons/a.webp?v=2', '', '+', 'A'] };
+  const faces = facesFor(preset, digitsOnly);
+  expect(faces.labels).toEqual([
+    { kind: 'glyph', text: '1' },
+    { kind: 'image', url: 'icons/a.webp?v=2' },
+    { kind: 'blank' },
+    { kind: 'text', text: '+' },
+    { kind: 'text', text: 'A' },
+  ]);
+  expect(faces.key.startsWith('sys|dx|')).toBe(true);
+});
+
+test('image extensions are case-insensitive and ignore the query', () => {
+  for (const url of ['a.PNG', 'b.jpg', 'c.JPEG', 'd.webp#x', 'e.svg?q=1', 'f.Gif']) {
+    const [face] = facesFor({ system: 's', type: 'dx', labels: [url] }, digitsOnly).labels;
+    expect(face).toEqual({ kind: 'image', url });
+  }
+  const [txt] = facesFor({ system: 's', type: 'dx', labels: ['png'] }, digitsOnly).labels;
+  expect(txt.kind).toBe('text');
+});
+
+test('equal label lists give equal keys, different ones different keys', () => {
+  const a = facesFor({ system: 's', type: 'df', labels: ['-', '', '+'] }, digitsOnly);
+  const b = facesFor({ system: 's', type: 'df', labels: ['-', '', '+'] }, digitsOnly);
+  const c = facesFor({ system: 's', type: 'df', labels: ['+', '', '-'] }, digitsOnly);
+  expect(a.key).toBe(b.key);
+  expect(a.key).not.toBe(c.key);
+});
+
+test('faces follow the base shape order (face i shows value values[i])', () => {
+  const labels = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const faces = facesFor({ system: 's', type: 'd6', shape: 'd6', labels }, digitsOnly);
+  const values = getShape('d6').values;
+  expect(faces.labels.map((l) => l.text)).toEqual(values.map((v) => labels[v - 1]));
+});
+
+test('plain numbers and model presets keep the default labels', () => {
+  const d6 = { system: 's', type: 'd6', labels: ['1', '2', '3', '4', '5', '6'] };
+  expect(facesFor(d6, digitsOnly)).toBeUndefined();
+  expect(facesFor({ system: 's', type: 'd6', labels: [] }, digitsOnly)).toBeUndefined();
+});
+
+test('the atlas test needs every character in the atlas and at most two glyphs', () => {
+  expect(digitsOnly('12')).toBe(true);
+  expect(digitsOnly('100')).toBe(false);
+  expect(digitsOnly('A')).toBe(false);
+  expect(digitsOnly('')).toBe(false);
+});
+
+test('a throwing atlas test classifies as text', () => {
+  const [face] = facesFor({ system: 's', type: 'dx', labels: ['1'] }, () => {
+    throw new Error('x');
+  }).labels;
+  expect(face.kind).toBe('text');
+});

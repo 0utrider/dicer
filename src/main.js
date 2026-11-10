@@ -13,6 +13,8 @@ import { startEngine } from './foundry/startup.js';
 import { createDice3dApi } from './api/dice3d.js';
 import { createRegistry } from './compat/registry.js';
 import { createLookResolver } from './compat/resolve-looks.js';
+import { facesFor, atlasGlyphTest } from './compat/faces.js';
+import { createFaceTextures, FACE_FONT_FAMILY } from './render/face-textures.js';
 import { mirrorLookSetting, mirrorLookIfMissing } from './compat/user-looks.js';
 import { DEFAULT_APPEARANCE } from './look/appearance.js';
 import { LOOKS } from './look/looks.js';
@@ -24,6 +26,7 @@ let diceBox = null;
 let diceRenderer = null;
 let quality = null;
 let stopWatchingArea = null;
+let digitAtlas = null;
 
 const NOOP_HANDLERS = { onCreate() {}, onRender() {}, onDelete() {} };
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
@@ -31,6 +34,28 @@ const handlers = () => gate ?? NOOP_HANDLERS;
 
 /** The chosen look; an unknown id (e.g. a removed look) falls back to the default. */
 const getAppearance = () => LOOKS[getSetting('look')]?.appearance ?? DEFAULT_APPEARANCE;
+
+/** A module-relative or absolute URL as the browser can fetch it. */
+const routeOf = (url) =>
+  /^([a-z][a-z0-9+.-]*:|\/)/i.test(url) ? url : foundry.utils.getRoute(url);
+
+/** Makes the bundled DM Serif Display available to canvas text (text die faces). */
+async function loadFaceFont() {
+  const url = routeOf('modules/dicer/assets/fonts/DMSerifDisplay-Regular.woff');
+  const face = new FontFace(FACE_FONT_FAMILY, `url("${url}")`);
+  document.fonts.add(await face.load());
+}
+
+/** Image die faces load through Foundry's route (module paths are relative). */
+function loadFaceImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`cannot load ${url}`));
+    img.src = routeOf(url);
+  });
+}
 
 /** A layer right after #board holding the dice canvas (document.body without a board). */
 function createLayer() {
@@ -84,7 +109,8 @@ function mirrorLook(lookId) {
 
 function onLookChange(key, value) {
   if (key === 'look') mirrorLook(value);
-  if (key === 'shadows') return; // read when each roll is revealed; no material depends on it
+  // Read per roll; no cached material depends on them.
+  if (key === 'shadows' || key === 'presetFaces') return;
   refreshMaterials();
 }
 
@@ -132,6 +158,7 @@ Hooks.once('ready', async () => {
         pixelRatioCap: Number(getSetting('pixelRatioCap')) || 1.5,
       }),
     createDiceBox: ({ atlas, physics, renderer }) => {
+      digitAtlas = atlas;
       // Applies the medium tier now and starts the (cached) probe; rolls never wait for it.
       quality = createQualityController({
         renderer,
@@ -150,6 +177,8 @@ Hooks.once('ready', async () => {
         getArea: () => measureArea(),
         diceScale: () => Number(getSetting('diceScale')) || 1,
         timeBeforeHide: () => Number(getSetting('timeBeforeHide')) || 0,
+        faceTextures: createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont }),
+        faceLayers: () => getSetting('presetFaces') !== false,
       });
     },
     activate: ({ renderer, diceBox: box }) => {
@@ -162,6 +191,8 @@ Hooks.once('ready', async () => {
         registry,
         getUser: (id) => game.users?.get(id),
         getActor: (id) => game.actors?.get(id),
+        // Preset faces the digit atlas cannot draw become image / text face layers.
+        facesFor: (preset) => facesFor(preset, atlasGlyphTest(digitAtlas)),
       });
       const plan = (roll, opts) => planThrow(roll, { shapeFor: resolver.shapeFor, ...opts });
       const decorateFor = (message, roll, authorId) =>

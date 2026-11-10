@@ -7,6 +7,7 @@ import { buildDieGeometry } from '../../src/core/chamfer.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
+import { createFaceTextures } from '../../src/render/face-textures.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -801,5 +802,122 @@ describe('per-die looks', () => {
     expect(a).not.toBe(b);
     expect(createDiceMaterial).toHaveBeenCalledTimes(4);
     expect(createDiceMaterial.mock.calls[3][0]).toBe(GHOST_APPEARANCE);
+  });
+});
+
+describe('image and text faces', () => {
+  const meshes = (renderer) => dieGroups(renderer).map((g) => g.children[0]);
+  const rasterFaces = () => {
+    const labels = getShape('d6').values.map((v) => ({ kind: 'glyph', text: String(v) }));
+    labels[0] = { kind: 'image', url: 'a.png' };
+    labels[1] = { kind: 'text', text: '+' };
+    labels[2] = { kind: 'image', url: 'broken.png' };
+    return { key: 'sys|d6|x', labels };
+  };
+  const fakeFaceTextures = () => {
+    let resolve;
+    const result = {
+      texture: new THREE.DataArrayTexture(new Uint8Array(4 * 4 * 4 * 2), 4, 4, 2),
+      layers: Int16Array.from([0, 1, -1, -1, -1, -1]),
+      tint: Uint8Array.from([0, 1, 0, 0, 0, 0]),
+    };
+    const ft = {
+      result,
+      acquire: vi.fn(() => new Promise((r) => (resolve = () => r(result)))),
+      release: vi.fn(),
+      resolve: () => resolve(),
+    };
+    return ft;
+  };
+  beforeEach(() => {
+    createDiceMaterial.mockClear();
+  });
+
+  test('the roll waits for the face layers before its dice show, then draws them', async () => {
+    const faceTextures = fakeFaceTextures();
+    const { renderer, physics, box } = setup({ faceTextures });
+    const faces = rasterFaces();
+    const r = box.roll([{ type: 'd6', value: 1, faces }, { type: 'd6', value: 2 }]);
+    expect(faceTextures.acquire).toHaveBeenCalledTimes(1);
+    expect(faceTextures.acquire).toHaveBeenCalledWith(faces);
+    expect(physics.streams).toHaveLength(1); // the throw starts at once
+    physics.flush();
+    expect(renderer.isLooping).toBe(false); // nothing to show yet
+    renderer.tick(16);
+    expect(dieGroups(renderer).some((g) => g.visible)).toBe(false);
+
+    faceTextures.resolve();
+    await flushMicrotasks();
+    expect(renderer.isLooping).toBe(true);
+    const call = createDiceMaterial.mock.calls.find((c) => c[5]);
+    expect(call[5]).toBe(faceTextures.result);
+    const labels = call[3];
+    expect(labels.slice(0, 2)).toEqual(['', '']); // layered faces: no MSDF label
+    expect(labels[2]).toBe(labelFor('d6', getShape('d6').values[2])); // failed face: its number
+    expect(meshes(renderer)[0].material.userData.programKey).toMatch(/\|fl1$/);
+    expect(meshes(renderer)[1].material.userData.programKey).not.toMatch(/\|fl1$/);
+    renderer.tick(32);
+    expect(dieGroups(renderer).every((g) => g.visible)).toBe(true);
+
+    box.clear();
+    await r.finished;
+    expect(faceTextures.release).toHaveBeenCalledTimes(1);
+    expect(faceTextures.release).toHaveBeenCalledWith(faces);
+  });
+
+  test('ghost dice and glyph-only face sets never acquire face textures', () => {
+    const faceTextures = fakeFaceTextures();
+    const { box } = setup({ faceTextures });
+    const glyphs = { key: 'g', labels: [{ kind: 'glyph', text: 'A' }] };
+    box.roll([
+      { type: 'd6', value: 1, faces: rasterFaces(), ghost: true },
+      { type: 'd6', value: 1, faces: glyphs },
+    ]);
+    expect(faceTextures.acquire).not.toHaveBeenCalled();
+    for (const call of createDiceMaterial.mock.calls) expect(call[5]).toBeFalsy();
+    box.clear();
+  });
+
+  test('the presetFaces setting off: no face textures are acquired', () => {
+    const faceTextures = fakeFaceTextures();
+    const { box } = setup({ faceTextures, faceLayers: () => false });
+    box.roll([{ type: 'd6', value: 1, faces: rasterFaces() }]);
+    expect(faceTextures.acquire).not.toHaveBeenCalled();
+    box.clear();
+  });
+
+  test('without face textures, text and image faces show their numbers', () => {
+    const { renderer, box } = setup();
+    box.roll([{ type: 'd6', value: 1, faces: rasterFaces() }]);
+    expect(dieGroups(renderer)).toHaveLength(1);
+    const labels = createDiceMaterial.mock.calls[0][3];
+    expect(labels[0]).toBe(labelFor('d6', getShape('d6').values[0]));
+    box.clear();
+  });
+
+  test('failed and slow faces fall back', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.fn();
+    const loadImage = (url) =>
+      url === 'a.png' ? Promise.reject(new Error('404')) : new Promise(() => {});
+    const faceTextures = createFaceTextures({ loadImage, timeoutMs: 4000, warn });
+    const { renderer, physics, box } = setup({ faceTextures });
+    const labels = getShape('d6').values.map((v) => ({ kind: 'glyph', text: String(v) }));
+    labels[0] = { kind: 'image', url: 'a.png' };
+    labels[1] = { kind: 'image', url: 'slow.png' };
+    const { landed } = box.roll([{ type: 'd6', value: 1, faces: { key: 'k', labels } }]);
+    const isLanded = settled(landed);
+    physics.flush();
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(warn).toHaveBeenCalledTimes(2);
+    renderer.tick(5000);
+    expect(dieGroups(renderer).every((g) => g.visible)).toBe(true);
+    renderer.tick(8000);
+    await flushMicrotasks();
+    expect(isLanded()).toBe(true);
+    expect(error).not.toHaveBeenCalled(); // landed, not failed by a stall timer
+    expect(createDiceMaterial.mock.calls.every((c) => !c[5])).toBe(true);
+    box.clear();
+    error.mockRestore();
   });
 });

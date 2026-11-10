@@ -9,6 +9,10 @@ import {
   ENGRAVE_NORMAL,
   ENGRAVE_CLEARCOAT,
   FILL_GLOSS,
+  FACE_LAYER_PARS,
+  FACE_LAYER_COLOR,
+  MAX_FACE_LAYERS,
+  DECAL_OPAQUE,
 } from './shaders/engrave.js';
 import {
   BODY_VERTEX_PARS,
@@ -153,8 +157,11 @@ function patchShader(shader, uniforms, chunks) {
     after('begin_vertex', `${ENGRAVE_VERTEX}\n${BODY_VERTEX}`),
   ];
   const fragment = [
-    after('common', `${ENGRAVE_PARS}\n${chunks.pars}`),
-    after('color_fragment', `${chunks.colorPre}\n${ENGRAVE_COLOR}\n${chunks.colorPost}`),
+    after('common', `${ENGRAVE_PARS}${chunks.facePars ?? ''}\n${chunks.pars}`),
+    after(
+      'color_fragment',
+      `${chunks.colorPre}\n${ENGRAVE_COLOR}${chunks.faceColor ?? ''}\n${chunks.colorPost}`,
+    ),
     after(
       'roughnessmap_fragment',
       `${chunks.roughness}\n\troughnessFactor = mix( roughnessFactor, uFillPBR.y, dcMask );`,
@@ -214,9 +221,20 @@ function makeLabelTexture(shape, labels, atlas) {
  * @param {string[]} labels one label per face (labelFor())
  * @param {{interiors?: boolean, engraving?: boolean, glow?: boolean, interiorSteps?: number}}
  *   [flags] feature flags (quality tier and client settings); missing keys default to on
+ * @param {{texture: THREE.DataArrayTexture|null, layers: Int16Array, tint?: Uint8Array}}
+ *   [faceTex] rasterized faces (face-textures.js acquire()): layers[i] >= 0 draws face i from
+ *   that layer instead of the MSDF label (pass '' as its label). Without a texture the
+ *   program is the plain one.
  * @returns {THREE.MeshPhysicalMaterial}
  */
-export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEFAULT_FLAGS) {
+export function createDiceMaterial(
+  appearance,
+  atlas,
+  shape,
+  labels,
+  flags = DEFAULT_FLAGS,
+  faceTex = null,
+) {
   let a = normalizeAppearance(appearance);
   let f = { ...DEFAULT_FLAGS, ...flags };
   if (f.safe) {
@@ -283,11 +301,33 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
 ${interior.pars}`;
     chunks.lighting = chunks.lighting.replace(INTERIOR_HOOK, interior.main);
   }
+  // Face layers: a define and a cache-key suffix; appearance.programKey stays pure.
+  let cacheKey = key;
+  if (faceTex?.texture) {
+    material.defines.DICER_FACE_LAYERS = '';
+    uniforms.uFaceTex = { value: faceTex.texture };
+    uniforms.uFaceLayer = { value: faceLayerUniform(faceTex) };
+    chunks.facePars = FACE_LAYER_PARS;
+    chunks.faceColor = FACE_LAYER_COLOR;
+    for (const [k, code] of Object.entries(chunks)) {
+      if (typeof code !== 'string') continue;
+      chunks[k] = DECAL_OPAQUE.reduce((c, [from, to]) => c.replaceAll(from, to), code);
+    }
+    cacheKey = `${key}|fl1`;
+  }
   material.userData.uniforms = uniforms;
-  material.userData.programKey = key;
+  material.userData.programKey = cacheKey;
   material.onBeforeCompile = (shader) => patchShader(shader, uniforms, chunks);
-  material.customProgramCacheKey = () => `dicer-${key}`;
+  material.customProgramCacheKey = () => `dicer-${cacheKey}`;
   return material;
+}
+
+/** uFaceLayer: per face (layer, 1 = tinted text mask); unused slots (-1, 0). */
+function faceLayerUniform({ layers, tint }) {
+  return Array.from({ length: MAX_FACE_LAYERS }, (_, i) => {
+    const layer = i < (layers?.length ?? 0) ? layers[i] : -1;
+    return new THREE.Vector2(layer, layer >= 0 && tint?.[i] ? 1 : 0);
+  });
 }
 
 /** Rewrites the label texture of a material created by createDiceMaterial, in place. */

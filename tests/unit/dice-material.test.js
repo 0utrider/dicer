@@ -643,3 +643,61 @@ test('resin exit Fresnel clamps its cosine to [0, 1] before pow (no NaN sparkles
   expect(fs).toContain('float dcRcos = clamp( abs( dot( dcRout, dcRne ) ), 0.0, 1.0 );');
   expect(fs).toMatch(/pow\( 1\.0 - dcRcos, 5\.0 \)/);
 });
+
+describe('face layers (image and text faces)', () => {
+  const d6 = getShape('d6');
+  const d6Labels = d6.values.map((v) => labelFor('d6', v));
+  const faceTex = () => ({
+    texture: new THREE.DataArrayTexture(new Uint8Array(4 * 4 * 4 * 2), 4, 4, 2),
+    layers: Int16Array.from([-1, 0, -1, 1, -1, -1]),
+    tint: Uint8Array.from([0, 0, 0, 1, 0, 0]),
+  });
+
+  test('without layers the program is exactly the one used today', () => {
+    const a = opaque();
+    const plain = createDiceMaterial(a, atlas, d6, d6Labels, FLAGS);
+    const none = createDiceMaterial(a, atlas, d6, d6Labels, FLAGS, {
+      texture: null,
+      layers: new Int16Array(6).fill(-1),
+    });
+    for (const m of [plain, none]) {
+      expect(m.customProgramCacheKey()).toBe('dicer-' + programKey(a, FLAGS));
+      expect(m.defines.DICER_FACE_LAYERS).toBeUndefined();
+      expect(m.userData.uniforms.uFaceTex).toBeUndefined();
+    }
+    expect(patched(none).fragmentShader).toBe(patched(plain).fragmentShader);
+    expect(patched(plain).fragmentShader).not.toContain('uFaceLayer');
+  });
+
+  test('layers add DICER_FACE_LAYERS and the |fl1 cache-key suffix only', () => {
+    const a = opaque();
+    const m = createDiceMaterial(a, atlas, d6, d6Labels, FLAGS, faceTex());
+    expect(m.customProgramCacheKey()).toBe('dicer-' + programKey(a, FLAGS) + '|fl1');
+    expect(m.userData.programKey).toBe(programKey(a, FLAGS) + '|fl1');
+    expect(m.defines).toHaveProperty('DICER_FACE_LAYERS');
+    const fs = patched(m).fragmentShader;
+    expect(fs).toContain('uniform vec2 uFaceLayer[');
+    expect(fs).toContain('sampler2DArray uFaceTex');
+  });
+
+  test('an image decal stays opaque on a resin body (layered programs only)', () => {
+    const resin = look({ body: { type: 'resin' } });
+    const layered = patched(createDiceMaterial(resin, atlas, d6, d6Labels, FLAGS, faceTex()));
+    const plain = patched(createDiceMaterial(resin, atlas, d6, d6Labels, FLAGS));
+    expect(layered.fragmentShader).toContain('1.0 - max( dcMask, dcDecal ) )');
+    expect(plain.fragmentShader).not.toContain('dcDecal');
+    expect(plain.fragmentShader).toContain('dcRefracted, 1.0 - dcMask );');
+  });
+
+  test('uFaceLayer holds the layer and the text tint per face', () => {
+    const tex = faceTex();
+    const m = createDiceMaterial(opaque(), atlas, d6, d6Labels, FLAGS, tex);
+    const u = m.userData.uniforms;
+    expect(u.uFaceTex.value).toBe(tex.texture);
+    const v = u.uFaceLayer.value;
+    expect(v[1].toArray()).toEqual([0, 0]);
+    expect(v[3].toArray()).toEqual([1, 1]);
+    expect(v[0].x).toBe(-1);
+    expect(v[19].x).toBe(-1); // unused slots draw nothing
+  });
+});
