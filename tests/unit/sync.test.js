@@ -538,6 +538,52 @@ describe('showForRoll over the socket', () => {
       expect(bob.diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 1, ghost: true }]);
     });
 
+    test('a dynamic (1d4)d6 or 1d(1d20) never leaks its inner total as number or faces (P3-R19)', async () => {
+      settings.showGhostDice = true;
+      const toBob = record(bob);
+      // As Foundry's DiceTerm.toJSON writes them: the number/faces getters give the inner
+      // roll's total, and _number/_faces hold the inner roll.
+      const inner = (faces, total) => ({
+        class: 'Roll',
+        formula: `1d${faces}`,
+        terms: [{ class: 'Die', number: 1, faces, results: [{ result: total, active: true }] }],
+        total,
+        evaluated: true,
+      });
+      const json = {
+        class: 'Roll',
+        formula: '(1d4)d6 + 1d(1d20)',
+        terms: [
+          {
+            class: 'Die',
+            number: 3,
+            faces: 6,
+            _number: inner(4, 3),
+            results: [5, 2, 6].map((result) => ({ result, active: true })),
+          },
+          { class: 'OperatorTerm', operator: '+' },
+          { class: 'Die', number: 1, faces: 17, _faces: inner(20, 17), results: [{ result: 9, active: true }] },
+          { class: 'Die', number: 1.5, faces: 6, results: [] },
+          { class: 'Die', number: 1, faces: '6', results: [] },
+        ],
+        total: 22,
+        evaluated: true,
+      };
+      const local = [{ faces: 6, results: [{ result: 5, active: true }] }];
+      alice.api.showForRoll(rollWith(json, local), alice.user, true, ['gm', 'bob'], true);
+      await flush();
+      expect(toBob).toHaveLength(1);
+      // (1d4)d6 keeps its static d6 shape with 0 dice; 1d(1d20) and the non-integer faces send nothing.
+      expect(toBob[0].roll.terms).toEqual([
+        { class: 'Die', faces: 6, number: 0, results: [] },
+        { class: 'Die', faces: 6, number: 0, results: [] },
+      ]);
+      expectGhostOnly(toBob[0], [6]);
+      const all = numbers(toBob[0]);
+      expect(all).not.toContain(3);
+      expect(all).not.toContain(17);
+    });
+
     test('a d100 still arrives as a d10 pair; an absurd or missing count is 0 dice', async () => {
       settings.showGhostDice = true;
       const toBob = record(bob);

@@ -59,7 +59,10 @@ const MAX_DEPTH = 32;
  * parenthetical rolls included), only `{class: 'Die', faces, number, results}` where results is
  * `number` copies of `{result: 1, active: true}`: the original dice count, never the result
  * count, so explosions, rerolls and discards show nothing. Nothing else of the source survives:
- * no options, formula, flavor, flags, totals or non-die terms. A non-finite or absurd count is 0.
+ * no options, formula, flavor, flags, totals or non-die terms. A count that is not a plain
+ * positive integer, an absurd count, or a dynamic count (`_number`, as `(1d4)d6` serializes) is
+ * 0 dice. A die whose faces are dynamic (`_faces`, as `1d(1d20)`) or not a plain integer is not
+ * sent at all (P3-R19). The inner rolls of dynamic terms are never read.
  */
 export function ghostRollData(data) {
   const terms = [];
@@ -70,10 +73,15 @@ export function ghostRollData(data) {
       for (const child of node) visit(child, depth + 1);
       return;
     }
-    const faces = node.faces;
-    if (Number.isInteger(faces) && faces > 0 && faces <= MAX_RESULTS && Array.isArray(node.results)) {
-      const n = Number(node.number);
-      const number = Number.isInteger(n) && n > 0 && total + n <= MAX_RESULTS ? n : 0;
+    if (Array.isArray(node.results) && Object.hasOwn(node, 'faces')) {
+      // A dynamic term's serialized number / faces is its inner roll's total (P3-R19: Foundry
+      // writes the getters, plus _number / _faces): such a value is a result, never sent.
+      const faces = node.faces;
+      const facesStatic = !Object.hasOwn(node, '_faces') && Number.isInteger(faces) && faces > 0;
+      if (!facesStatic || faces > MAX_RESULTS) return; // its shape could be a result: nothing
+      const n = node.number;
+      const numberStatic = !Object.hasOwn(node, '_number') && Number.isInteger(n) && n > 0;
+      const number = numberStatic && total + n <= MAX_RESULTS ? n : 0;
       total += number;
       terms.push({
         class: 'Die',

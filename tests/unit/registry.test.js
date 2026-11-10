@@ -313,6 +313,10 @@ describe('hardening (Task 12)', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('1000'));
     await reg.addDicePreset({ type: 'dy', labels: labels(1000) });
     expect(reg.presetFor('standard', 'dy').labels).toHaveLength(1000);
+    // A rejected preset leaves no alias behind.
+    await reg.addDicePreset({ type: 'dz', labels: labels(1001) }, 'd6');
+    expect(reg.presetFor('standard', 'dz')).toBeNull();
+    expect(reg.baseShape('dz')).toBeNull();
   });
 
   test('a 1000-face die is still accepted', async () => {

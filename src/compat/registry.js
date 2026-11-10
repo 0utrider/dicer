@@ -151,13 +151,13 @@ export function createRegistry({
     }
     const systemId = isStr(preset.system) ? preset.system : defaultSystem;
     const hasModel = isStr(preset.modelFile);
-    if (isStr(shape)) setAlias('addDicePreset', type, shape);
-    const base = baseShape(type);
     const given = Array.isArray(preset.labels) ? preset.labels : [];
     if (given.length > MAX_FACES) {
       bad('addDicePreset', `"${type}": more than ${MAX_FACES} labels; skipped`);
       return false;
     }
+    if (isStr(shape)) setAlias('addDicePreset', type, shape);
+    const base = baseShape(type);
     // Model-backed presets (e.g. labels: "") carry their faces in the model.
     if (!Array.isArray(preset.labels) && !hasModel) {
       bad('addDicePreset', `"${type}": \`labels\` should be an array`);
