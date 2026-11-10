@@ -1,3 +1,5 @@
+import { viewFor } from '../compat/privacy.js';
+
 /** The latest a hidden message stays hidden, measured from the start of its animation. */
 export const WATCHDOG_MS = 15000;
 
@@ -55,6 +57,8 @@ function refreshCard(el) {
  * @param {{ isAtBottom: boolean, scrollBottom(opts): Promise<void> } | null} [deps.chatUi]
  *   the ChatLog (`ui.chat`, read lazily when omitted); null disables scrolling
  * @param {() => string | undefined} [deps.currentUserId]
+ * @param {() => { id?: string, isGM?: boolean } | undefined} [deps.currentUser] the viewing user,
+ *   for the privacy matrix (none known: not a GM, not an author)
  */
 export function createMessageGate({
   diceBox,
@@ -64,6 +68,7 @@ export function createMessageGate({
   getSetting,
   chatUi,
   currentUserId = () => globalThis.game?.user?.id,
+  currentUser = () => globalThis.game?.user,
   setTimeoutFn = (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeoutFn = (h) => globalThis.clearTimeout(h),
   documentRef = globalThis.document,
@@ -112,12 +117,41 @@ export function createMessageGate({
     }
   }
 
-  /** Plans every roll against one shared maxDice budget. */
-  function planAll(rolls, message) {
+  /** How each of the message's own rolls shows to the current user (privacy matrix). */
+  function viewsOf(message) {
+    let user;
+    try {
+      user = currentUser();
+    } catch {
+      user = undefined;
+    }
+    const base = {
+      contentVisible: Boolean(message.isContentVisible),
+      isGM: user?.isGM === true,
+      isAuthor: user?.id != null && message.author?.id === user.id,
+      blind: Boolean(message.blind),
+      whispered: (message.whisper?.length ?? 0) > 0,
+      showGhostDice: getSetting('showGhostDice') === true,
+    };
+    return message.rolls.map((roll) =>
+      viewFor({ ...base, rollGhost: Boolean(roll?.ghost), rollSecret: Boolean(roll?.secret) }),
+    );
+  }
+
+  const ghostDecorator = () => () => ({ ghost: true });
+
+  /**
+   * Plans every roll against one shared maxDice budget. `views` are decided from the message's own
+   * rolls, never from a listener's replacement, so a replaced roll cannot change what is shown.
+   * A 'none' roll is not planned; a 'ghost' roll never resolves its real look.
+   */
+  function planAll(rolls, message, views) {
     let budget = Number(getSetting('maxDice')) || 20;
-    return rolls.map((roll) => {
-      if (budget <= 0) return [];
-      const { dice } = planThrow(roll, { maxDice: budget, decorate: decoratorFor(message, roll) });
+    return rolls.map((roll, i) => {
+      const view = views[i] ?? 'none';
+      if (view === 'none' || budget <= 0) return [];
+      const decorate = view === 'ghost' ? ghostDecorator() : decoratorFor(message, roll);
+      const { dice } = planThrow(roll, { maxDice: budget, decorate });
       budget -= dice.length;
       return dice;
     });
@@ -125,9 +159,8 @@ export function createMessageGate({
 
   function isEligible(message) {
     if (disabled || !getSetting('enabled')) return false;
-    if (!message.isContentVisible) return false;
     if (message.flags?.[DSN_SCOPE]?.skip) return false;
-    return planAll(message.rolls, message).some((specs) => specs.length > 0);
+    return planAll(message.rolls, message, viewsOf(message)).some((specs) => specs.length > 0);
   }
 
   function reveal(id, { scroll = true } = {}) {
@@ -188,13 +221,14 @@ export function createMessageGate({
       };
       hooks.callAll('diceSoNiceRollStart', id, context);
       if (!animating.has(id)) return; // a listener deleted the message
+      // A blind context forces every view to none: nothing is thrown, the message shows at once.
       if (context.blind) {
         reveal(id);
         return;
       }
 
       const rolls = [context.dsnRoll ?? first, ...message.rolls.slice(1)];
-      const landed = planAll(rolls, message)
+      const landed = planAll(rolls, message, viewsOf(message))
         .filter((specs) => specs.length > 0)
         .map((specs) => diceBox.roll(specs).landed);
       Promise.all(landed).then(

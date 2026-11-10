@@ -39,6 +39,10 @@
           "ultra": "Ultra"
         }
       },
+      "showGhostDice": {
+        "Name": "Show ghost dice for hidden rolls",
+        "Hint": "Players see neutral, blank dice when a whispered roll or their own blind roll is hidden from them. This reveals that a hidden roll happened, never its result."
+      },
       "qualityCap": {
         "Name": "Maximum graphics quality",
         "Hint": "Upper limit on the dice quality tier for every player in this world."

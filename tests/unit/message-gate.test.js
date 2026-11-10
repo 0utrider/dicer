@@ -324,6 +324,116 @@ test('waitFor(id) on an unknown id resolves true immediately', async () => {
   await expect(gate.waitFor('nope')).resolves.toBe(true);
 });
 
+describe('privacy matrix', () => {
+  const player = { id: 'p1', isGM: false };
+  const gm = { id: 'gm', isGM: true };
+  const priv = (user, extra = {}) => makeGate({ currentUser: () => user, ...extra });
+
+  test('a whisper the user is not in, showGhostDice false: no dice, MessageProcessed(false)', () => {
+    const el = li('m1');
+    const g = priv(player);
+    g.onCreate(message('m1', { isContentVisible: false, whisper: ['x'], author: { id: 'x' } }));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named('diceSoNiceMessageProcessed')).toEqual([
+      ['diceSoNiceMessageProcessed', 'm1', { willTrigger3DRoll: false }],
+    ]);
+    expect(hooks.named(COMPLETE)).toEqual([]);
+  });
+
+  test('the same with showGhostDice true: all ghosts, hidden until landing, RollComplete once', async () => {
+    settings.showGhostDice = true;
+    const el = li('m1');
+    const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'real-look' } }));
+    const g = priv(player, { decorateFor });
+    g.onCreate(message('m1', { isContentVisible: false, whisper: ['x'], author: { id: 'x' } }));
+    expect(decorateFor).not.toHaveBeenCalled();
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    expect(hooks.named('diceSoNiceMessageProcessed')[0][2]).toEqual({ willTrigger3DRoll: true });
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+  });
+
+  test('a blind roll on the author client is ghost or none, never real', () => {
+    const blindMsg = (id) =>
+      message(id, { isContentVisible: false, blind: true, whisper: [], author: { id: 'p1' } });
+    priv(player).onCreate(blindMsg('m1'));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+
+    settings.showGhostDice = true;
+    priv(player).onCreate(blindMsg('m2'));
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(diceBox.rolls[0].specs.every((s) => s.ghost === true)).toBe(true);
+  });
+
+  test('a blind roll on another player client: none even with showGhostDice', () => {
+    settings.showGhostDice = true;
+    priv({ id: 'p2', isGM: false }).onCreate(
+      message('m1', { isContentVisible: false, blind: true, author: { id: 'p1' } }),
+    );
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('roll.secret on a player client: none; on a GM client that sees it: real', () => {
+    const secret = { ...d20Roll(), secret: true };
+    priv(player).onCreate(message('m1', { rolls: [secret] }));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    expect(hooks.named('diceSoNiceMessageProcessed')[0][2]).toEqual({ willTrigger3DRoll: false });
+
+    priv(gm).onCreate(message('m2', { rolls: [secret] }));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17 }]);
+  });
+
+  test('two rolls, one roll.ghost: one ghost group (no real look resolved) and one real group', () => {
+    const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'real-look' } }));
+    const ghostRoll = { ...d20Roll(5), ghost: true };
+    priv(player, { decorateFor }).onCreate(message('m1', { rolls: [ghostRoll, d20Roll(9)] }));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 5, ghost: true }]);
+    expect(diceBox.rolls[1].specs).toEqual([
+      { type: 'd20', value: 9, appearance: { tag: 'real-look' } },
+    ]);
+    // Only the real roll's look is resolved (the gate plans twice: eligibility, then the throw).
+    expect(decorateFor.mock.calls.length).toBeGreaterThan(0);
+    for (const call of decorateFor.mock.calls) expect(call[1]).not.toBe(ghostRoll);
+  });
+
+  test('a ghost-only message is hidden and revealed on landing, even for a player who sees it', async () => {
+    const el = li('m1');
+    priv(player).onCreate(message('m1', { rolls: [{ ...d20Roll(), ghost: true }] }));
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+  });
+
+  test('a RollStart listener cannot swap a secret roll for a visible one', () => {
+    hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.dsnRoll = d20Roll(3))];
+    priv(player).onCreate(message('m1', { rolls: [{ ...d20Roll(), secret: true }] }));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('context.blind forces none: nothing thrown even for real rolls, revealed once', async () => {
+    const el = li('m1');
+    hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.blind = true)];
+    priv(player).onCreate(message('m1', { rolls: [d20Roll(), { ...d20Roll(2), ghost: true }] }));
+    await flush();
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+  });
+
+  test('without a current user nothing is treated as GM or author', () => {
+    const g = makeGate({ currentUser: () => undefined });
+    g.onCreate(message('m1', { rolls: [{ ...d20Roll(), secret: true }] }));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+});
+
 describe('reveal scrolls the chat log (Foundry only scrolls on append, while the message is hidden)', () => {
   function chatUi(isAtBottom) {
     return { isAtBottom, scrollBottom: vi.fn(async () => {}) };

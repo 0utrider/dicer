@@ -20,6 +20,13 @@ test('maxDice is a 1..100 range in steps of 1 (default 20)', () => {
   expect(registered.maxDice.default).toBe(20);
 });
 
+test('showGhostDice is a world Boolean, default off (ghost dice reveal that a hidden roll happened)', () => {
+  const cfg = capture().showGhostDice;
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: Boolean, default: false });
+  expect(cfg.name).toBe('DICER.Settings.showGhostDice.Name');
+  expect(cfg.hint).toBe('DICER.Settings.showGhostDice.Hint');
+});
+
 test('look is a client String whose choices map every LOOKS id to its name (default "default")', () => {
   const { look } = capture();
   expect(look).toMatchObject({

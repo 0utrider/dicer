@@ -68,6 +68,15 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange }
     range: { min: 1, max: 100, step: 1 },
     default: 20,
   });
+  // Ghost dice reveal THAT a hidden roll happened, so the privacy-first default is off.
+  game.settings.register(MODULE_ID, 'showGhostDice', {
+    name: t('showGhostDice.Name'),
+    hint: t('showGhostDice.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false,
+  });
   game.settings.register(MODULE_ID, 'look', {
     name: t('look.Name'),
     hint: t('look.Hint'),
