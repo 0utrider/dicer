@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { createInitiativeHider } from '../../src/compat/initiative.js';
-import { WATCHDOG_MS } from '../../src/foundry/message-gate.js';
+import { createMessageGate, WATCHDOG_MS } from '../../src/foundry/message-gate.js';
+import { planThrow } from '../../src/throw/throw-planner.js';
 
 const HIDDEN = 'dicer-hide-initiative';
 
@@ -191,4 +192,68 @@ test('the enabled switch turns hiding off', () => {
   const html = tracker('c1');
   off.onRenderTracker({}, html);
   expect(hiddenIn(html)).toEqual([]);
+});
+
+test('a throwing apply still releases the hold on waitFor and on the cap', async () => {
+  const boom = { querySelectorAll: () => { throw new Error('dom'); } };
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const make = () => {
+    animating.add('m1');
+    waits.set('m1', deferred());
+    return createInitiativeHider({
+      gate: { isAnimating: (id) => animating.has(id), waitFor: (id) => waits.get(id).promise },
+      getCombat: () => combat,
+      documentRef: boom,
+      rerender,
+    });
+  };
+  let h = make();
+  h.onCreateMessage(initMessage('m1', { token: 'T' }));
+  expect(errorSpy).toHaveBeenCalled();
+  waits.get('m1').resolve(true);
+  await flush();
+  expect(rerender).toHaveBeenCalledTimes(1);
+  const html = tracker('c1');
+  h.onRenderTracker({}, html);
+  expect(hiddenIn(html)).toEqual([]);
+
+  h = make();
+  h.onCreateMessage(initMessage('m1', { token: 'T' }));
+  vi.advanceTimersByTime(WATCHDOG_MS + 1000);
+  expect(rerender).toHaveBeenCalledTimes(2);
+  const again = tracker('c1');
+  h.onRenderTracker({}, again);
+  expect(hiddenIn(again)).toEqual([]);
+  errorSpy.mockRestore();
+});
+
+test('with the real gate, deleting the message mid-roll releases the hold and a re-render shows it', async () => {
+  const gate = createMessageGate({
+    diceBox: { roll: () => ({ landed: new Promise(() => {}) }) },
+    planThrow,
+    hooks: { callAll() {} },
+    getSetting: (k) => ({ enabled: true, maxDice: 20 })[k],
+    documentRef: document,
+  });
+  const real = createInitiativeHider({ gate, getCombat: () => combat, documentRef: document, rerender });
+  const msg = {
+    id: 'mi',
+    rolls: [{ dice: [{ faces: 20, results: [{ result: 9, active: true }] }] }],
+    isContentVisible: true,
+    flags: { core: { initiativeRoll: true } },
+    author: {},
+    speaker: { token: 'T' },
+  };
+  gate.onCreate(msg);
+  real.onCreateMessage(msg);
+  expect(gate.isAnimating('mi')).toBe(true);
+  const held = tracker('c1');
+  real.onRenderTracker({}, held);
+  expect(hiddenIn(held)).toEqual(['c1']);
+  gate.onDelete({ id: 'mi' });
+  await flush();
+  expect(rerender).toHaveBeenCalledTimes(1);
+  const shown = tracker('c1');
+  real.onRenderTracker({}, shown);
+  expect(hiddenIn(shown)).toEqual([]);
 });

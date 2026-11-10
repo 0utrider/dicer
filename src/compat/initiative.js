@@ -76,7 +76,6 @@ export function createInitiativeHider({
       const ids = combatantIdsOf(message);
       if (!ids.length) return;
       for (const cid of ids) held.set(cid, (held.get(cid) ?? 0) + 1);
-      apply(documentRef);
       let done = false;
       let timer = null;
       const finish = () => {
@@ -87,6 +86,12 @@ export function createInitiativeHider({
       };
       timer = setTimeoutFn(finish, WATCHDOG_MS + HOLD_SLACK_MS);
       Promise.resolve(gate.waitFor(id)).then(finish, finish);
+      // After the release is armed: a failure here can never leave the hold stuck.
+      try {
+        apply(documentRef);
+      } catch (err) {
+        console.error('dicer: initiative hiding failed', err);
+      }
     } catch (err) {
       console.error('dicer: initiative hiding failed', err);
     }

@@ -45,7 +45,7 @@
       },
       "hideInitiative": {
         "Name": "Hide initiative until the dice land",
-        "Hint": "In the combat tracker, a combatant's rolled initiative stays hidden until the dice of its initiative roll have landed."
+        "Hint": "In the combat tracker, a combatant's rolled initiative stays hidden until the dice of its initiative roll have landed. This holds even when chat messages are shown immediately."
       },
       "showExtraDice": {
         "Name": "Show extra dice",
