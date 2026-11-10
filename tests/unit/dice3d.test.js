@@ -50,6 +50,30 @@ test('showForRoll resolves true after landing', async () => {
   expect(result).toBe(true);
 });
 
+test('showForRoll decorates with the given user (or the local user) as author', async () => {
+  const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'x' } }));
+  globalThis.game = { user: { id: 'me' } };
+  try {
+    const a = createDice3dApi({
+      diceBox,
+      gate,
+      planThrow,
+      getSetting: (k) => settings[k],
+      decorateFor,
+    });
+    const r = roll(20, 4);
+    a.showForRoll(r, { id: 'remote' });
+    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'remote');
+    expect(diceBox.roll).toHaveBeenLastCalledWith([
+      { type: 'd20', value: 4, appearance: { tag: 'x' } },
+    ]);
+    a.showForRoll(r);
+    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'me');
+  } finally {
+    delete globalThis.game;
+  }
+});
+
 test('showForRoll resolves false for blind', async () => {
   await expect(api.showForRoll(roll(20, 12), {}, false, null, true)).resolves.toBe(false);
   expect(diceBox.roll).not.toHaveBeenCalled();

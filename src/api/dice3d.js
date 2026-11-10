@@ -37,7 +37,14 @@ function registrationStubs() {
  * Minimal Dice So Nice compatible `game.dice3d`. Plan 1 animates locally only: `synchronize`,
  * `users`, `speaker` and `options` are accepted for signature compatibility (sync is Plan 3).
  */
-export function createDice3dApi({ diceBox, gate, planThrow, getSetting, renderer = null }) {
+export function createDice3dApi({
+  diceBox,
+  gate,
+  planThrow,
+  getSetting,
+  renderer = null,
+  decorateFor = () => undefined,
+}) {
   const api = {
     ...registrationStubs(),
 
@@ -49,7 +56,11 @@ export function createDice3dApi({ diceBox, gate, planThrow, getSetting, renderer
     async showForRoll(roll, user, synchronize, users, blind, messageID, speaker, options) {
       try {
         if (blind || !getSetting('enabled')) return false;
-        const { dice } = planThrow(roll, { maxDice: Number(getSetting('maxDice')) || 20 });
+        const author = user?.id ?? globalThis.game?.user?.id;
+        const { dice } = planThrow(roll, {
+          maxDice: Number(getSetting('maxDice')) || 20,
+          decorate: decorateFor(null, roll, author) || undefined,
+        });
         if (!dice.length) return false;
         await diceBox.roll(dice).landed;
         return true;

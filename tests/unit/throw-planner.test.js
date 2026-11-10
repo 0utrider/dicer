@@ -58,6 +58,39 @@ test('decorate returning null leaves the die alone and cannot change type or val
     planThrow({ dice: [term(6, [3])] }, { decorate: () => ({ type: 'd20', value: 9 }) }).dice,
   ).toEqual([{ type: 'd6', value: 3 }]);
 });
+test('decorate cannot overwrite the d100 tens variant', () => {
+  const { dice } = planThrow(
+    { dice: [term(100, [40])] },
+    { decorate: () => ({ variant: 'x', appearance: { n: 1 } }) },
+  );
+  expect(dice.map((d) => d.variant)).toEqual(['d100tens', undefined]);
+  expect(dice[1]).not.toHaveProperty('variant');
+});
+test('a throwing decorate warns once and leaves the dice undecorated', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const decorate = () => {
+    throw new Error('boom');
+  };
+  const { dice } = planThrow({ dice: [term(6, [3, 4])] }, { decorate });
+  expect(dice).toEqual([
+    { type: 'd6', value: 3 },
+    { type: 'd6', value: 4 },
+  ]);
+  expect(warn).toHaveBeenCalledTimes(1);
+  warn.mockRestore();
+});
+test('shapeFor is consulted first; null falls back to the face count', () => {
+  const shapeFor = vi.fn((t) => (t.faces === 7 ? 'd8' : null));
+  const roll = { dice: [term(7, [3]), term(6, [2]), term(100, [40])] };
+  const { dice, skipped } = planThrow(roll, { shapeFor });
+  expect(dice.map((d) => d.type)).toEqual(['d8', 'd6', 'd10', 'd10']);
+  expect(dice[0]).toEqual({ type: 'd8', value: 3 });
+  expect(skipped).toBe(0);
+  expect(planThrow({ dice: [term(7, [3])] }, { shapeFor: () => null })).toEqual({
+    dice: [],
+    skipped: 1,
+  });
+});
 test('showExtra false drops discarded and inactive results without counting them skipped', () => {
   const roll = {
     dice: [

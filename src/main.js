@@ -11,6 +11,9 @@ import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
 import { startEngine } from './foundry/startup.js';
 import { createDice3dApi } from './api/dice3d.js';
+import { createRegistry } from './compat/registry.js';
+import { createLookResolver } from './compat/resolve-looks.js';
+import { mirrorLookSetting, mirrorLookIfMissing } from './compat/user-looks.js';
 import { DEFAULT_APPEARANCE } from './look/appearance.js';
 import { LOOKS } from './look/looks.js';
 import { registerNoticeSetting, registerSettings, getSetting } from './settings.js';
@@ -72,7 +75,15 @@ function refreshMaterials({ replaceInFlight = false } = {}) {
   warmUp();
 }
 
-function onLookChange(key) {
+/** Publishes the chosen look in the user flag so other clients draw this user's dice with it. */
+function mirrorLook(lookId) {
+  mirrorLookSetting(game.user, lookId).catch((err) =>
+    console.warn('dicer: cannot mirror the look setting to the user flag', err),
+  );
+}
+
+function onLookChange(key, value) {
+  if (key === 'look') mirrorLook(value);
   if (key === 'shadows') return; // read when each roll is revealed; no material depends on it
   refreshMaterials();
 }
@@ -106,6 +117,9 @@ Hooks.once('ready', async () => {
     }
     return;
   }
+  mirrorLookIfMissing(game.user, getSetting('look')).catch((err) =>
+    console.warn('dicer: cannot mirror the look setting to the user flag', err),
+  );
   let api = null;
   const started = await startEngine({
     // loadDigitAtlas appends /digits.json and /digits.png to this folder.
@@ -141,8 +155,32 @@ Hooks.once('ready', async () => {
     activate: ({ renderer, diceBox: box }) => {
       diceBox = box;
       diceRenderer = renderer;
-      gate = createMessageGate({ diceBox: box, planThrow, hooks: Hooks, getSetting });
-      api = createDice3dApi({ diceBox: box, gate, planThrow, getSetting, renderer });
+      // Each die resolves its look from its roll's options and its roller's flag; custom die
+      // types are shaped through the registry.
+      const registry = createRegistry();
+      const resolver = createLookResolver({
+        registry,
+        getUser: (id) => game.users?.get(id),
+        getActor: (id) => game.actors?.get(id),
+      });
+      const plan = (roll, opts) => planThrow(roll, { shapeFor: resolver.shapeFor, ...opts });
+      const decorateFor = (message, roll, authorId) =>
+        resolver.decorate(message, roll, authorId ?? message?.author?.id);
+      gate = createMessageGate({
+        diceBox: box,
+        planThrow: plan,
+        decorateFor,
+        hooks: Hooks,
+        getSetting,
+      });
+      api = createDice3dApi({
+        diceBox: box,
+        gate,
+        planThrow: plan,
+        decorateFor,
+        getSetting,
+        renderer,
+      });
       game.dice3d = api;
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(resizeDice);

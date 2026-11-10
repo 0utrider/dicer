@@ -47,7 +47,9 @@ function refreshCard(el) {
  *
  * @param {object} deps
  * @param {{ roll(specs): { landed: Promise<void> } }} deps.diceBox
- * @param {(roll, opts: { maxDice: number }) => { dice: object[] }} deps.planThrow
+ * @param {(roll, opts: { maxDice: number, decorate?: Function }) => { dice: object[] }} deps.planThrow
+ * @param {(message, roll) => Function | undefined} [deps.decorateFor] the per-die decorator for a
+ *   roll of this message (its author's looks); a throwing one is ignored
  * @param {{ callAll(name: string, ...args): void }} deps.hooks
  * @param {(key: string) => any} deps.getSetting
  * @param {{ isAtBottom: boolean, scrollBottom(opts): Promise<void> } | null} [deps.chatUi]
@@ -57,6 +59,7 @@ function refreshCard(el) {
 export function createMessageGate({
   diceBox,
   planThrow,
+  decorateFor = () => undefined,
   hooks,
   getSetting,
   chatUi,
@@ -100,12 +103,21 @@ export function createMessageGate({
     return found ? [...found] : [];
   }
 
+  function decoratorFor(message, roll) {
+    try {
+      return decorateFor(message, roll) || undefined;
+    } catch (err) {
+      console.error('dicer: cannot resolve the dice looks', err);
+      return undefined;
+    }
+  }
+
   /** Plans every roll against one shared maxDice budget. */
-  function planAll(rolls) {
+  function planAll(rolls, message) {
     let budget = Number(getSetting('maxDice')) || 20;
     return rolls.map((roll) => {
       if (budget <= 0) return [];
-      const { dice } = planThrow(roll, { maxDice: budget });
+      const { dice } = planThrow(roll, { maxDice: budget, decorate: decoratorFor(message, roll) });
       budget -= dice.length;
       return dice;
     });
@@ -115,7 +127,7 @@ export function createMessageGate({
     if (disabled || !getSetting('enabled')) return false;
     if (!message.isContentVisible) return false;
     if (message.flags?.[DSN_SCOPE]?.skip) return false;
-    return planAll(message.rolls).some((specs) => specs.length > 0);
+    return planAll(message.rolls, message).some((specs) => specs.length > 0);
   }
 
   function reveal(id, { scroll = true } = {}) {
@@ -182,7 +194,7 @@ export function createMessageGate({
       }
 
       const rolls = [context.dsnRoll ?? first, ...message.rolls.slice(1)];
-      const landed = planAll(rolls)
+      const landed = planAll(rolls, message)
         .filter((specs) => specs.length > 0)
         .map((specs) => diceBox.roll(specs).landed);
       Promise.all(landed).then(

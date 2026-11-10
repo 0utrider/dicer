@@ -192,6 +192,25 @@ test('no animatable dice (planThrow returns empty) → not hidden, MessageProces
   ]);
 });
 
+test('decorateFor decorates the dice with the message as context; a throwing one is ignored', () => {
+  const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'remote' } }));
+  const g = makeGate({ decorateFor });
+  const msg = message('m1', { author: { id: 'remote' } });
+  g.onCreate(msg);
+  expect(decorateFor).toHaveBeenCalledWith(msg, msg.rolls[0]);
+  expect(diceBox.rolls[0].specs).toEqual([
+    { type: 'd20', value: 17, appearance: { tag: 'remote' } },
+  ]);
+
+  const broken = makeGate({
+    decorateFor: () => {
+      throw new Error('x');
+    },
+  });
+  broken.onCreate(message('m2'));
+  expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 17 }]);
+});
+
 test('a message without rolls fires nothing', () => {
   gate.onCreate(message('m1', { rolls: [] }));
   expect(hooks.calls).toEqual([]);
