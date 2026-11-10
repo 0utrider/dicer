@@ -98,8 +98,9 @@ test('legacy flat input still builds', () => {
     labels,
   );
   expect(m).toBeInstanceOf(THREE.MeshPhysicalMaterial);
-  expect(m.transmission).toBeGreaterThan(0.5);
-  expect(m.attenuationColor.getHexString()).toBe(new THREE.Color('#28f').getHexString());
+  expect(m.transmission).toBe(0); // P2-R6: resin is environment refraction
+  expect(m.defines).toHaveProperty('DICER_RESIN');
+  expect(m.color.getHexString()).toBe(new THREE.Color('#28f').getHexString());
   const u = m.userData.uniforms;
   expect(u.uFillColor.value.getHexString()).toBe(new THREE.Color('#fc0').getHexString());
   expect(u.uFillPBR.value.x).toBe(1); // fillMetallic -> gold
@@ -147,20 +148,13 @@ test('body presets', () => {
     s,
     labels,
   );
-  expect(r.transmission).toBeCloseTo(0.9);
-  expect(r.thickness).toBeCloseTo(1.2);
+  expect(r.transmission).toBe(0);
   expect(r.ior).toBeCloseTo(1.52);
-  expect(r.attenuationDistance).toBeCloseTo(0.8);
   expect(r.clearcoat).toBe(1);
   expect(r.roughness).toBeCloseTo(0.04);
-  expect(r.attenuationColor.getHexString()).toBe(new THREE.Color('#28f').getHexString());
-
-  // Until Task 5: marble/pearl render as opaque, other metal finishes as polished metal.
-  const marble = createDiceMaterial(LOOKS['marble-white'].appearance, atlas, s, labels);
-  expect(marble.transmission).toBe(0);
-  expect(marble.clearcoat).toBeCloseTo(0.6);
-  const brushed = createDiceMaterial(LOOKS['silver-brushed'].appearance, atlas, s, labels);
-  expect(brushed.metalness).toBe(1);
+  expect(r.opacity).toBe(1);
+  expect(r.transparent).toBe(false);
+  expect(r.color.getHexString()).toBe(new THREE.Color('#28f').getHexString());
 });
 
 test('label texture has 4 texels per face and updates in place', () => {
@@ -212,10 +206,192 @@ test('onBeforeCompile patches the shaders with the face varyings and uniforms', 
     'metalnessFactor = mix',
     'normal = normalize( normal + dcTilt )',
     'clearcoatNormal = normal',
-    'transmission * ( 1.0 - dcMask )',
     'uFillGloss * dcMask',
   ])
     expect(shader.fragmentShader).toContain(marker);
   expect(shader.vertexShader).toContain('vFaceId = aFaceId');
   expect(shader.uniforms.uAtlas).toBe(m.userData.uniforms.uAtlas);
+});
+
+// ---- Task 5: bodies and finishes -------------------------------------------------------
+
+const BODY_DEFINES = [
+  'DICER_RESIN',
+  'DICER_MARBLE',
+  'DICER_PEARL',
+  'DICER_BRUSHED',
+  'DICER_ANTIQUE',
+  'DICER_BORDER',
+  'DICER_GLOW',
+];
+const definesOf = (m) => BODY_DEFINES.filter((d) => d in m.defines).sort();
+const make = (partial, flags = FLAGS) => createDiceMaterial(look(partial), atlas, s, labels, flags);
+const metal = (finish, extra = {}) =>
+  make({ body: { type: 'metal', color: '#c0c0c0', color2: '#404040', finish }, ...extra });
+
+const CASES = {
+  opaque: [() => make({ body: { type: 'opaque' } }), []],
+  resin: [() => make({ body: { type: 'resin' } }), ['DICER_RESIN']],
+  marble: [() => make({ body: { type: 'marble' } }), ['DICER_MARBLE']],
+  pearl: [() => make({ body: { type: 'pearl' } }), ['DICER_PEARL']],
+  polished: [() => metal('polished'), ['DICER_BORDER']],
+  brushed: [() => metal('brushed'), ['DICER_BORDER', 'DICER_BRUSHED']],
+  antique: [() => metal('antique'), ['DICER_ANTIQUE', 'DICER_BORDER']],
+};
+
+test.each(Object.keys(CASES))('%s: body defines', (name) => {
+  const [build, defines] = CASES[name];
+  expect(definesOf(build())).toEqual(defines.slice().sort());
+});
+
+test.each(Object.keys(CASES))(
+  '%s: anisotropy only on brushed, iridescence only on pearl',
+  (name) => {
+    const m = CASES[name][0]();
+    if (name === 'brushed') expect(m.anisotropy).toBeCloseTo(0.8);
+    else expect(m.anisotropy).toBe(0);
+    if (name === 'pearl') expect(m.iridescence).toBe(1);
+    else expect(m.iridescence).toBe(0);
+    if (name === 'marble' || name === 'pearl') expect(m.sheen).toBeGreaterThan(0);
+    else expect(m.sheen).toBe(0);
+    expect(m.transmission).toBe(0);
+  },
+);
+
+test('marble preset: sheen 0.4 in the body colour, roughness 0.3, vein scale uniform 1.6', () => {
+  const m = make({ body: { type: 'marble', color: '#f1efe9', color2: '#8d8a84' } });
+  expect(m.sheen).toBeCloseTo(0.4);
+  expect(m.sheenColor.getHexString()).toBe(new THREE.Color('#f1efe9').getHexString());
+  expect(m.roughness).toBeCloseTo(0.3);
+  expect(m.metalness).toBe(0);
+  expect(m.userData.uniforms.uVeinScale.value).toBeCloseTo(1.6);
+  expect(m.userData.uniforms.uBodyColor2.value.getHexString()).toBe(
+    new THREE.Color('#8d8a84').getHexString(),
+  );
+});
+
+test('pearl preset: iridescence, sheen in color2, roughness 0.25, clearcoat 1', () => {
+  const m = make({ body: { type: 'pearl', color: '#e9e4f4', color2: '#a9c8f0' } });
+  expect(m.iridescence).toBe(1);
+  expect(m.iridescenceIOR).toBeCloseTo(1.3);
+  expect(m.iridescenceThicknessRange).toEqual([250, 650]);
+  expect(m.sheen).toBeCloseTo(0.6);
+  expect(m.sheenColor.getHexString()).toBe(new THREE.Color('#a9c8f0').getHexString());
+  expect(m.roughness).toBeCloseTo(0.25);
+  expect(m.clearcoat).toBe(1);
+});
+
+test('metal finishes: roughness per finish, metalness 1, the enamel coat is kept', () => {
+  expect(metal('polished').roughness).toBeCloseTo(0.18);
+  expect(metal('brushed').roughness).toBeCloseTo(0.35);
+  expect(metal('antique').roughness).toBeCloseTo(0.45);
+  for (const f of ['polished', 'brushed', 'antique']) {
+    expect(metal(f).metalness).toBe(1);
+    expect(metal(f).clearcoat).toBeCloseTo(0.001);
+  }
+});
+
+test('glow: define only when the flag is on and intensity > 0; colour x intensity uniforms', () => {
+  const g = { glow: { color: '#ff7a1a', intensity: 0.6 } };
+  const on = make({ body: { type: 'opaque' }, ...g });
+  expect(on.defines).toHaveProperty('DICER_GLOW');
+  expect(on.userData.uniforms.uGlowColor.value.getHexString()).toBe(
+    new THREE.Color('#ff7a1a').getHexString(),
+  );
+  expect(on.userData.uniforms.uGlowIntensity.value).toBeCloseTo(0.6);
+  expect(patched(on).fragmentShader).toContain('totalEmissiveRadiance += uGlowColor');
+  const zero = make({ body: { type: 'opaque' }, glow: { color: '#ff7a1a', intensity: 0 } });
+  expect(zero.defines.DICER_GLOW).toBeUndefined();
+  const off = make({ body: { type: 'opaque' }, ...g }, { ...FLAGS, glow: false });
+  expect(off.defines.DICER_GLOW).toBeUndefined();
+  expect(off.customProgramCacheKey()).not.toBe(on.customProgramCacheKey());
+});
+
+test('marble and pearl program keys differ from opaque (and from each other)', () => {
+  const keys = ['opaque', 'marble', 'pearl'].map((t) =>
+    make({ body: { type: t } }).customProgramCacheKey(),
+  );
+  expect(new Set(keys).size).toBe(3);
+});
+
+test('dcFbm3 is injected only for marble and antique', () => {
+  for (const name of Object.keys(CASES)) {
+    const src = patched(CASES[name][0]()).fragmentShader;
+    if (name === 'marble' || name === 'antique') expect(src).toContain('dcFbm3');
+    else expect(src).not.toContain('dcFbm3');
+  }
+});
+
+test('body shader code lands at its anchors', () => {
+  const src = (name) => patched(CASES[name][0]());
+  expect(src('marble').fragmentShader).toContain('uVeinScale');
+  expect(src('pearl').fragmentShader).toContain('uBodyColor2');
+  const brushed = src('brushed').fragmentShader;
+  expect(brushed).toMatch(/tbn = mat3\( dcAnisoT/);
+  // the tangent frame override follows three's own tbn (normal_fragment_begin)
+  expect(brushed.indexOf('dcAnisoT')).toBeGreaterThan(brushed.indexOf('vec3 nonPerturbedNormal'));
+  expect(src('polished').fragmentShader).toContain('dcBorderSlope');
+  expect(src('polished').vertexShader).toContain('vEdgeDist = aEdgeDist');
+  expect(src('antique').fragmentShader).toContain('dcCav');
+});
+
+test('resin: environment refraction, no transmission pass', () => {
+  const m = make({ body: { type: 'resin', color: '#28f' } });
+  expect(m.transmission).toBe(0);
+  expect(m.defines).toHaveProperty('DICER_RESIN');
+  expect(m.userData.uniforms.uResinDensity.value).toBeCloseTo(1.0);
+  const sh = patched(m);
+  const fs = sh.fragmentShader;
+  const block = fs.slice(fs.indexOf('#ifdef DICER_RESIN'));
+  expect(block).toContain('textureCubeUV( envMap');
+  expect(block).toContain('refract(');
+  expect(block).toContain('uResinDensity');
+  // the refracted base goes behind the specular/clearcoat terms
+  const at = fs.indexOf('totalDiffuse = mix( totalDiffuse, dcRefracted');
+  expect(at).toBeGreaterThan(fs.indexOf('vec3 totalSpecular'));
+  expect(at).toBeLessThan(fs.indexOf('vec3 outgoingLight'));
+  expect(sh.vertexShader).toContain('vLocalPos');
+  expect(sh.vertexShader).toContain('vLocalCam');
+  expect(sh.uniforms.uResinDensity).toBe(m.userData.uniforms.uResinDensity);
+});
+
+test('resin program key has no colour in it', () => {
+  const a = make({ body: { type: 'resin', color: '#ff0000', color2: '#00ff00' } });
+  const b = make({ body: { type: 'resin', color: '#0000ff', color2: '#ffffff' } });
+  expect(a.userData.programKey).toBe(b.userData.programKey);
+  expect(a.userData.programKey).not.toMatch(/#|[0-9a-f]{6}/);
+  expect(a.userData.programKey.split('|')[0]).toBe('resin');
+});
+
+test('every chunk anchor the material patches exists in r184 (a three upgrade fails loudly)', () => {
+  const anchors = {
+    vertex: ['common', 'begin_vertex'],
+    fragment: [
+      'common',
+      'color_fragment',
+      'roughnessmap_fragment',
+      'metalnessmap_fragment',
+      'normal_fragment_begin',
+      'normal_fragment_maps',
+      'clearcoat_normal_fragment_begin',
+      'emissivemap_fragment',
+      'lights_physical_fragment',
+      'transmission_fragment',
+    ],
+  };
+  const lib = THREE.ShaderLib.physical;
+  for (const a of anchors.vertex) expect(lib.vertexShader).toContain(`#include <${a}>`);
+  for (const a of anchors.fragment) expect(lib.fragmentShader).toContain(`#include <${a}>`);
+  // the brushed tangent override reassigns three's tbn; the resin block reads these
+  expect(THREE.ShaderChunk.normal_fragment_begin).toContain('mat3 tbn');
+  expect(THREE.ShaderChunk.lights_physical_fragment).toContain('material.anisotropyT = tbn[ 0 ]');
+  expect(THREE.ShaderChunk.lights_fragment_begin).toContain('vec3 geometryViewDir');
+  expect(THREE.ShaderChunk.cube_uv_reflection_fragment).toContain(
+    'vec4 textureCubeUV( sampler2D envMap',
+  );
+  expect(THREE.ShaderChunk.envmap_common_pars_fragment).toContain('uniform mat3 envMapRotation');
+  // every program gets the shared varyings
+  const sh = patched(createDiceMaterial(opaque(), atlas, s, labels));
+  expect(sh.vertexShader).toContain('vLocalPos = transformed');
+  expect(sh.fragmentShader).toContain('varying float vEdgeDist');
 });

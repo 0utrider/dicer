@@ -10,6 +10,14 @@ import {
   ENGRAVE_CLEARCOAT,
   FILL_GLOSS,
 } from './shaders/engrave.js';
+import {
+  BODY_VERTEX_PARS,
+  BODY_VERTEX,
+  RESIN,
+  VEIN_SCALE,
+  bodyChunks,
+  bodyDefines,
+} from './shaders/bodies.js';
 
 /**
  * Layered dice material: a MeshPhysicalMaterial built from a layered Appearance (body,
@@ -35,23 +43,44 @@ export const DEFAULT_FLAGS = Object.freeze({
  */
 const METAL_COAT = 0.001;
 
-/** Body presets (Task 4). marble/pearl and the other metal finishes arrive in Task 5. */
+/** Fixed roughness per metal finish. */
+const METAL_ROUGHNESS = { polished: 0.18, brushed: 0.35, antique: 0.45 };
+
+/**
+ * Body presets: MeshPhysicalMaterial parameters per body type (b: normalized body; color,
+ * color2: THREE.Color). The shader side of each body lives in ./shaders/bodies.js.
+ */
 const BODY_PRESETS = {
   opaque: (b, color) => ({ color, roughness: b.roughness, clearcoat: 0.6 }),
-  metal: (b, color) => ({ color, metalness: 1, roughness: b.roughness, clearcoat: METAL_COAT }),
-  resin: (b, color) => ({
-    color, // also tints what little the overlay has behind the die to transmit
-    transmission: 0.9,
-    thickness: 1.2,
-    ior: 1.52,
-    attenuationColor: color,
-    attenuationDistance: 0.8,
-    roughness: b.roughness,
+  metal: (b, color) => ({
+    color,
+    metalness: 1,
+    roughness: METAL_ROUGHNESS[b.finish] ?? METAL_ROUGHNESS.polished,
+    clearcoat: METAL_COAT,
+    anisotropy: b.finish === 'brushed' ? 0.8 : 0,
+  }),
+  // P2-R6: environment refraction (DICER_RESIN), no transmission pass. Opaque in the
+  // depth/blend sense: the body reads as clear through the refracted environment alone.
+  resin: (b, color) => ({ color, ior: RESIN.ior, roughness: b.roughness, clearcoat: 1 }),
+  marble: (b, color) => ({ color, roughness: 0.3, clearcoat: 0.4, sheen: 0.4, sheenColor: color }),
+  pearl: (b, color, color2) => ({
+    color,
+    roughness: 0.25,
     clearcoat: 1,
+    iridescence: 1,
+    iridescenceIOR: 1.3,
+    iridescenceThicknessRange: [250, 650],
+    sheen: 0.6,
+    sheenColor: color2,
   }),
 };
-/** Bodies without their own preset yet (Task 5) render with this one. */
-const PRESET_FALLBACK = { marble: 'opaque', pearl: 'opaque' };
+
+/** Die-local resin body ellipsoid: the radius-0.85 sphere, flattened to the coin's caps. */
+function resinRadii(shape) {
+  return shape?.kind === 'coin'
+    ? new THREE.Vector3(0.95, 0.125, 0.95)
+    : new THREE.Vector3(RESIN.radius, RESIN.radius, RESIN.radius);
+}
 
 /** Fill PBR: [metalness, roughness, gloss]. */
 const FILLS = {
@@ -61,39 +90,34 @@ const FILLS = {
   enamel: [0, 0.15, 1],
 };
 
-function patchShader(shader, uniforms) {
+const after = (anchor, code) => [`#include <${anchor}>`, `#include <${anchor}>\n${code}`];
+
+function patchShader(shader, uniforms, chunks) {
   Object.assign(shader.uniforms, uniforms);
-  shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', `#include <common>\n${ENGRAVE_VERTEX_PARS}`)
-    .replace('#include <begin_vertex>', `#include <begin_vertex>\n${ENGRAVE_VERTEX}`);
-  const transmission = THREE.ShaderChunk.transmission_fragment.replace(
-    'material.transmission = transmission;',
-    'material.transmission = transmission * ( 1.0 - dcMask ); // the fill is opaque',
-  );
-  shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', `#include <common>\n${ENGRAVE_PARS}`)
-    .replace('#include <color_fragment>', `#include <color_fragment>\n${ENGRAVE_COLOR}`)
-    .replace(
-      '#include <roughnessmap_fragment>',
-      '#include <roughnessmap_fragment>\n\troughnessFactor = mix( roughnessFactor, uFillPBR.y, dcMask );',
-    )
-    .replace(
-      '#include <metalnessmap_fragment>',
-      '#include <metalnessmap_fragment>\n\tmetalnessFactor = mix( metalnessFactor, uFillPBR.x, dcMask );',
-    )
-    .replace(
-      '#include <normal_fragment_maps>',
-      `#include <normal_fragment_maps>\n${ENGRAVE_NORMAL}`,
-    )
-    .replace(
-      '#include <clearcoat_normal_fragment_begin>',
-      `#include <clearcoat_normal_fragment_begin>\n${ENGRAVE_CLEARCOAT}`,
-    )
-    .replace(
-      '#include <lights_physical_fragment>',
-      `#include <lights_physical_fragment>\n${FILL_GLOSS}`,
-    )
-    .replace('#include <transmission_fragment>', transmission);
+  const vertex = [
+    after('common', `${ENGRAVE_VERTEX_PARS}\n${BODY_VERTEX_PARS}`),
+    after('begin_vertex', `${ENGRAVE_VERTEX}\n${BODY_VERTEX}`),
+  ];
+  const fragment = [
+    after('common', `${ENGRAVE_PARS}\n${chunks.pars}`),
+    after('color_fragment', `${chunks.colorPre}\n${ENGRAVE_COLOR}\n${chunks.colorPost}`),
+    after(
+      'roughnessmap_fragment',
+      `${chunks.roughness}\n\troughnessFactor = mix( roughnessFactor, uFillPBR.y, dcMask );`,
+    ),
+    after(
+      'metalnessmap_fragment',
+      '\tmetalnessFactor = mix( metalnessFactor, uFillPBR.x, dcMask );',
+    ),
+    after('normal_fragment_begin', chunks.tangent),
+    after('normal_fragment_maps', `${ENGRAVE_NORMAL}\n${chunks.normal}`),
+    after('clearcoat_normal_fragment_begin', ENGRAVE_CLEARCOAT),
+    after('emissivemap_fragment', chunks.emissive),
+    after('lights_physical_fragment', FILL_GLOSS),
+    after('transmission_fragment', chunks.lighting),
+  ];
+  for (const [a, b] of vertex) shader.vertexShader = shader.vertexShader.replace(a, b);
+  for (const [a, b] of fragment) shader.fragmentShader = shader.fragmentShader.replace(a, b);
 }
 
 function faceCountOf(shape, labels) {
@@ -140,8 +164,10 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
   const key = programKey(a, f);
 
   const body = a.body.type;
-  const preset = BODY_PRESETS[body] ?? BODY_PRESETS[PRESET_FALLBACK[body] ?? 'opaque'];
-  const material = new THREE.MeshPhysicalMaterial(preset(a.body, new THREE.Color(a.body.color)));
+  const preset = BODY_PRESETS[body] ?? BODY_PRESETS.opaque;
+  const material = new THREE.MeshPhysicalMaterial(
+    preset(a.body, new THREE.Color(a.body.color), new THREE.Color(a.body.color2)),
+  );
 
   const [fillMetal, fillRough, fillGloss] = FILLS[a.numbers.fill] ?? FILLS.paint;
   const uniforms = {
@@ -154,13 +180,22 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
     uFillPBR: { value: new THREE.Vector2(fillMetal, fillRough) },
     uFillGloss: { value: fillGloss },
     uEngrave: { value: a.numbers.depth },
+    uBodyColor2: { value: new THREE.Color(a.body.color2) },
+    uVeinScale: { value: VEIN_SCALE },
+    uGlowColor: { value: new THREE.Color(a.glow.color) },
+    uGlowIntensity: { value: a.glow.intensity },
+    uResinDensity: { value: 1.0 },
+    uResinFloor: { value: RESIN.floor },
+    uResinRadii: { value: resinRadii(shape) },
   };
 
   // Keep three's own STANDARD/PHYSICAL defines.
   if (f.engraving) material.defines.DICER_ENGRAVE = '';
+  Object.assign(material.defines, bodyDefines(a, f));
+  const chunks = bodyChunks(body, a.body.finish);
   material.userData.uniforms = uniforms;
   material.userData.programKey = key;
-  material.onBeforeCompile = (shader) => patchShader(shader, uniforms);
+  material.onBeforeCompile = (shader) => patchShader(shader, uniforms, chunks);
   material.customProgramCacheKey = () => `dicer-${key}`;
   return material;
 }

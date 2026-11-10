@@ -29,7 +29,19 @@ const TIERS = {
   ultra: { pixelRatio: 2, interiorSteps: 48, transmissionScale: 1, envResolution: 512 },
 };
 
-const looks = Object.entries(LOOKS);
+/**
+ * Rows: every curated look, plus variants with per-row flag overrides so variant programs
+ * (e.g. the engraving-off #else path) also compile on real WebGL.
+ */
+const VARIANTS = [['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }]];
+const looks = [
+  ...Object.entries(LOOKS).map(([id, look]) => [id, look, {}]),
+  ...VARIANTS.map(([id, base, note, flags]) => [
+    id,
+    { ...LOOKS[base], name: `${LOOKS[base].name} (${note})` },
+    flags,
+  ]),
+];
 const ROWS = looks.length;
 const COLS = TYPES.length;
 const errors = [];
@@ -58,7 +70,7 @@ for (const type of TYPES) {
   h.textContent = type;
   grid.appendChild(h);
 }
-looks.forEach(([id, look], row) => {
+looks.forEach(([id, look, rowFlags], row) => {
   const r = document.createElement('div');
   r.className = 'row';
   r.style.gridArea = `${row + 2} / 1`;
@@ -66,6 +78,7 @@ looks.forEach(([id, look], row) => {
   const detail = [a.body.type, a.body.type === 'metal' ? a.body.finish : null, a.numbers.fill];
   if (a.interior.type !== 'none') detail.push(a.interior.type);
   if (a.edges.style !== 'rounded') detail.push(a.edges.style);
+  if (rowFlags.engraving === false) detail.push('no engraving');
   r.innerHTML = `<span>${look.name}</span><small>${id}</small><small>${detail.filter(Boolean).join(' · ')}</small>`;
   grid.appendChild(r);
 });
@@ -152,7 +165,7 @@ let atlas = null;
 const cells = [];
 
 function buildCells() {
-  looks.forEach(([id, look], row) => {
+  looks.forEach(([id, look, rowFlags], row) => {
     TYPES.forEach((type, col) => {
       const shape = getShape(type);
       const geometry = geometryFor(type, look.appearance.edges.style);
@@ -165,7 +178,7 @@ function buildCells() {
       const shadow = sceneApi.shadowFor({ position: mesh.position, geometry });
       shadow.visible = false;
       const labels = shape.values.map((v) => labelFor(type, v));
-      cells.push({ id, look, type, row, col, shape, labels, mesh, shadow });
+      cells.push({ id, look, rowFlags, type, row, col, shape, labels, mesh, shadow });
     });
   });
 }
@@ -179,7 +192,10 @@ function buildMaterials() {
       c.mesh.material.userData.uniforms.uLabels.value.dispose();
       c.mesh.material.dispose();
     }
-    c.mesh.material = createDiceMaterial(c.look.appearance, atlas, c.shape, c.labels, flags);
+    c.mesh.material = createDiceMaterial(c.look.appearance, atlas, c.shape, c.labels, {
+      ...flags,
+      ...c.rowFlags,
+    });
   }
 }
 
