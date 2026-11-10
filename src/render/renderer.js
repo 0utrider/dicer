@@ -1,7 +1,14 @@
 import * as THREE from 'three';
-import { buildScene } from './scene.js';
+import { buildScene, DEFAULT_ENV_RESOLUTION } from './scene.js';
 
 const CANVAS_ID = 'dicer-canvas';
+
+/** Product-photo tone mapping; split out so it is testable without WebGL. */
+export function configureRenderer(renderer) {
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1;
+  return renderer;
+}
 
 /**
  * One overlay canvas, created once. Idle = canvas display:none and no rAF pending.
@@ -18,6 +25,7 @@ export class DiceRenderer {
   #lost = [];
   #restored = [];
   #sceneApi;
+  #envResolution = DEFAULT_ENV_RESOLUTION;
   #onLost;
   #onRestored;
 
@@ -46,7 +54,7 @@ export class DiceRenderer {
           logarithmicDepthBuffer: false,
           powerPreference: 'high-performance',
         }));
-    this.#renderer = make(canvas);
+    this.#renderer = configureRenderer(make(canvas));
     this.#sceneApi = buildScene();
 
     this.#onLost = (e) => {
@@ -76,6 +84,10 @@ export class DiceRenderer {
   get canvas() {
     return this.#canvas;
   }
+  /** Cube resolution for the next environment build (Task 7 sets it per tier). */
+  set environmentResolution(n) {
+    this.#envResolution = n;
+  }
   get isLooping() {
     return this.#tick !== null;
   }
@@ -95,7 +107,7 @@ export class DiceRenderer {
     this.#tick = tick;
     if (this.#handle !== null) return;
     // Lazy GPU-only step; the fake renderer used in tests is not a real WebGLRenderer.
-    if (this.#renderer.isWebGLRenderer) this.#sceneApi.setEnvironment(this.#renderer);
+    if (this.#renderer.isWebGLRenderer) this.#sceneApi.setEnvironment(this.#renderer, { resolution: this.#envResolution });
     this.#canvas.style.display = '';
     this.#handle = this.#raf((now) => this.#frame(now));
   }

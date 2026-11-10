@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { createStudioScene, disposeStudioScene } from './studio-env.js';
+
+export const DEFAULT_ENV_RESOLUTION = 256;
 
 export const FOV_DEG = 20;
 const SHADOW_Y = 0.01;
@@ -37,7 +39,7 @@ export function cameraHeightFor(halfDepth, fovDeg = FOV_DEG) {
  * DiceRenderer calls it lazily on the first loop start with a real WebGLRenderer; it
  * generates the map once and reuses it.
  */
-export function buildScene() {
+export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(FOV_DEG, 1, 0.1, 100);
   camera.up.set(0, 0, -1); // screen-up is -Z, so +X is right and +Z is down-screen
@@ -60,18 +62,31 @@ export function buildScene() {
   fitArea({ halfWidth: 1, halfDepth: 1 });
 
   let envTarget = null;
-  function setEnvironment(renderer) {
-    if (envTarget) return;
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    envTarget = pmrem.fromScene(new RoomEnvironment(), 0.04);
+  let envResolution = 0;
+  /**
+   * Bakes the procedural studio into a PMREM. Same resolution is a no-op; a different one
+   * disposes the old target and regenerates. r184: fromScene(scene, sigma, near, far, { size }).
+   */
+  function setEnvironment(renderer, { resolution = DEFAULT_ENV_RESOLUTION } = {}) {
+    if (envTarget && resolution === envResolution) return;
+    envTarget?.dispose();
+    const studio = createStudioScene();
+    const pmrem = new PMREMGenerator(renderer);
+    try {
+      envTarget = pmrem.fromScene(studio, 0.02, 0.1, 100, { size: resolution });
+    } finally {
+      pmrem.dispose();
+      disposeStudioScene(studio);
+    }
+    envResolution = resolution;
     scene.environment = envTarget.texture;
-    pmrem.dispose();
   }
 
   /** Drops the PMREM target (a GPU resource three does not re-upload after context restore). */
   function resetEnvironment() {
     envTarget?.dispose();
     envTarget = null;
+    envResolution = 0;
     scene.environment = null;
   }
 

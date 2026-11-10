@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import * as THREE from 'three';
-import { DiceRenderer } from '../../src/render/renderer.js';
+import { DiceRenderer, configureRenderer } from '../../src/render/renderer.js';
 import { buildScene } from '../../src/render/scene.js';
 
 function setup() {
@@ -148,4 +148,19 @@ test('dispose clears environment and removes shadow planes', () => {
   expect(r.scene.children).not.toContain(a);
   expect(r.scene.children).not.toContain(b);
   expect(r.scene.children.filter((c) => c.userData && 'follow' in c.userData)).toEqual([]);
+});
+
+test('startLoop passes the default environment resolution to setEnvironment', () => {
+  const { r, fake } = setup();
+  fake.isWebGLRenderer = true;
+  const setEnv = vi.spyOn(r.sceneApi, 'setEnvironment').mockImplementation(() => {});
+  r.startLoop(() => false);
+  expect(setEnv).toHaveBeenCalledWith(fake, { resolution: 256 });
+});
+
+test('configureRenderer applies NeutralToneMapping with exposure 1', () => {
+  const r = { toneMapping: THREE.NoToneMapping, toneMappingExposure: 0 };
+  configureRenderer(r);
+  expect(r.toneMapping).toBe(THREE.NeutralToneMapping);
+  expect(r.toneMappingExposure).toBe(1);
 });
