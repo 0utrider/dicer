@@ -53,7 +53,7 @@ Also automated in `npm run test:live:compat` (scenario 5). By eye:
 
 1. Start a combat with one combatant. Open the combat tracker.
 2. Roll initiative. While the dice fly, the initiative number must not show.
-3. Pass: it appears when the dice land. With `hideInitiative` off it shows at once.
+3. Pass: it appears when the dice land. With `hideInitiative` off, or with `immediatelyDisplayChatMessages` on, it shows at once.
 
 ## 8. Privacy matrix
 

@@ -14,11 +14,14 @@ const INITIATIVE_SELECTOR = '.token-initiative, .initiative';
  * roll are still flying. The tracker shows the rolled value as soon as the combatant updates, which
  * would spoil the roll the chat gate is hiding.
  *
+ * No hold is taken when the gate shows the card at once (immediatelyDisplayChatMessages): the
+ * card already shows the value, so hiding it in the tracker would only disagree with the chat.
+ *
  * A hold ends when the gate reveals the creating animation (landed, watchdog, delete, failure), or
  * after WATCHDOG_MS + 1000 ms at the latest; the tracker is then re-rendered.
  *
  * @param {object} deps
- * @param {{ isAnimating(id): boolean, waitFor(id): Promise<unknown> }} deps.gate
+ * @param {{ isAnimating(id): boolean, isHiding?(id): boolean, waitFor(id): Promise<unknown> }} deps.gate
  * @param {() => { combatants: Iterable } | null | undefined} deps.getCombat
  * @param {Document} [deps.documentRef]
  * @param {() => boolean} [deps.enabled] the hideInitiative setting
@@ -43,7 +46,8 @@ export function createInitiativeHider({
     const wanted = speaker.token ?? speaker.actor;
     const combatants = getCombat()?.combatants;
     if (!combatants) return [];
-    const list = typeof combatants.values === 'function' ? [...combatants.values()] : [...combatants];
+    const list =
+      typeof combatants.values === 'function' ? [...combatants.values()] : [...combatants];
     return list.filter((c) => c?.[key] === wanted).map((c) => c.id);
   }
 
@@ -73,6 +77,7 @@ export function createInitiativeHider({
       const id = message?.id;
       if (!enabled() || !id || message.flags?.core?.initiativeRoll !== true) return;
       if (!gate.isAnimating(id)) return;
+      if (gate.isHiding?.(id) === false) return; // the card already shows the value
       const ids = combatantIdsOf(message);
       if (!ids.length) return;
       for (const cid of ids) held.set(cid, (held.get(cid) ?? 0) + 1);

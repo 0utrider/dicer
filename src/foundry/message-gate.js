@@ -567,6 +567,8 @@ export function createMessageGate({
     onDelete,
     setUpdateHideSelector,
     isAnimating: (id) => animating.has(id),
+    /** Whether the message's chat card is hidden while its dice fly (immediate display off). */
+    isHiding: (id) => animating.get(id)?.hide === true,
     /** Debug only: the view kinds of the last messages, by id (never values). */
     recentViews: () => Object.fromEntries([...viewLog].map(([id, v]) => [id, v.slice()])),
     waitFor: (id) => animating.get(id)?.promise ?? Promise.resolve(true),

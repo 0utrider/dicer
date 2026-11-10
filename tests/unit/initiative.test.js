@@ -67,9 +67,10 @@ function start(id, speaker, flags) {
   hider.onCreateMessage(initMessage(id, speaker, flags));
 }
 
-const hiddenIn = (root) => [...root.querySelectorAll(`.${HIDDEN}`)].map((e) => e.closest('li').dataset.combatantId);
+const hiddenIn = (root) =>
+  [...root.querySelectorAll(`.${HIDDEN}`)].map((e) => e.closest('li').dataset.combatantId);
 
-test('an animating initiative message hides its token\'s initiative in a rendered tracker', () => {
+test("an animating initiative message hides its token's initiative in a rendered tracker", () => {
   start('m1', { token: 'T' });
   const html = tracker('c1', 'c2');
   hider.onRenderTracker({}, html);
@@ -187,7 +188,13 @@ test('two holds on one combatant release only when both are done', async () => {
 
 test('the enabled switch turns hiding off', () => {
   const gate = { isAnimating: () => true, waitFor: () => new Promise(() => {}) };
-  const off = createInitiativeHider({ gate, getCombat: () => combat, documentRef: document, enabled: () => false, rerender });
+  const off = createInitiativeHider({
+    gate,
+    getCombat: () => combat,
+    documentRef: document,
+    enabled: () => false,
+    rerender,
+  });
   off.onCreateMessage(initMessage('m1', { token: 'T' }));
   const html = tracker('c1');
   off.onRenderTracker({}, html);
@@ -195,7 +202,11 @@ test('the enabled switch turns hiding off', () => {
 });
 
 test('a throwing apply still releases the hold on waitFor and on the cap', async () => {
-  const boom = { querySelectorAll: () => { throw new Error('dom'); } };
+  const boom = {
+    querySelectorAll: () => {
+      throw new Error('dom');
+    },
+  };
   const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   const make = () => {
     animating.add('m1');
@@ -235,7 +246,12 @@ test('with the real gate, deleting the message mid-roll releases the hold and a 
     getSetting: (k) => ({ enabled: true, maxDice: 20 })[k],
     documentRef: document,
   });
-  const real = createInitiativeHider({ gate, getCombat: () => combat, documentRef: document, rerender });
+  const real = createInitiativeHider({
+    gate,
+    getCombat: () => combat,
+    documentRef: document,
+    rerender,
+  });
   const msg = {
     id: 'mi',
     rolls: [{ dice: [{ faces: 20, results: [{ result: 9, active: true }] }] }],
@@ -256,4 +272,66 @@ test('with the real gate, deleting the message mid-roll releases the hold and a 
   const shown = tracker('c1');
   real.onRenderTracker({}, shown);
   expect(hiddenIn(shown)).toEqual([]);
+});
+
+describe('immediatelyDisplayChatMessages: the card already shows the value', () => {
+  const realGate = (settings) =>
+    createMessageGate({
+      diceBox: { roll: () => ({ landed: new Promise(() => {}) }) },
+      planThrow,
+      hooks: { callAll() {} },
+      getSetting: (k) => ({ enabled: true, maxDice: 20, ...settings })[k],
+      documentRef: document,
+    });
+  const msg = () => ({
+    id: 'mi',
+    rolls: [{ dice: [{ faces: 20, results: [{ result: 9, active: true }] }] }],
+    isContentVisible: true,
+    flags: { core: { initiativeRoll: true } },
+    author: {},
+    speaker: { token: 'T' },
+  });
+
+  test('with the real gate and immediate display on, no hold is taken', () => {
+    const gate = realGate({ immediatelyDisplayChatMessages: true });
+    const real = createInitiativeHider({
+      gate,
+      getCombat: () => combat,
+      documentRef: document,
+      rerender,
+    });
+    const m = msg();
+    gate.onCreate(m);
+    real.onCreateMessage(m);
+    expect(gate.isAnimating('mi')).toBe(true);
+    expect(gate.isHiding('mi')).toBe(false);
+    const t = tracker('c1');
+    real.onRenderTracker({}, t);
+    expect(hiddenIn(t)).toEqual([]);
+  });
+
+  test('with the real gate hiding the card, the hold is taken', () => {
+    const gate = realGate({});
+    const real = createInitiativeHider({
+      gate,
+      getCombat: () => combat,
+      documentRef: document,
+      rerender,
+    });
+    const m = msg();
+    gate.onCreate(m);
+    real.onCreateMessage(m);
+    expect(gate.isHiding('mi')).toBe(true);
+    const t = tracker('c1');
+    real.onRenderTracker({}, t);
+    expect(hiddenIn(t)).toEqual(['c1']);
+  });
+
+  test('a gate without isHiding (older shape) still holds', () => {
+    animating.add('m1');
+    hider.onCreateMessage(initMessage('m1', { token: 'T' }));
+    const t = tracker('c1');
+    hider.onRenderTracker({}, t);
+    expect(hiddenIn(t)).toEqual(['c1']);
+  });
 });
