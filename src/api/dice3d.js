@@ -73,6 +73,17 @@ function legacyRoll(data) {
 const ghostDecorator = () => ({ ghost: true });
 
 /**
+ * The users a RollStart listener left, as a narrowing only: a non-array keeps the original, an
+ * array is intersected with the original (null -> array narrows from everyone to that list).
+ * An empty result stays empty (nobody listed), never null (everyone).
+ */
+function narrowedUsers(original, changed) {
+  if (!Array.isArray(changed)) return original;
+  const ids = changed.map((u) => (typeof u === 'string' ? u : u?.id)).filter((id) => typeof id === 'string');
+  return original ? original.filter((id) => ids.includes(id)) : [...new Set(ids)];
+}
+
+/**
  * Dice So Nice compatible `game.dice3d`. showForRoll applies the privacy matrix on every client
  * (the caller's and, with synchronize, each receiver's) and fires the RollStart/RollComplete
  * hooks for a call naming a message. `socket` (game.socket) enables synchronize; `_dispose`
@@ -88,6 +99,7 @@ export function createDice3dApi({
   hooks = globalThis.Hooks,
   socket = null,
   currentUser = () => globalThis.game?.user,
+  gmIds = () => globalThis.game?.users?.filter((u) => u.isGM).map((u) => u.id) ?? [],
   fromData,
 }) {
   const warned = new Set();
@@ -150,9 +162,30 @@ export function createDice3dApi({
     }
   }
 
+  /**
+   * Who may receive a payload (P3-R12; the server honours `recipients` for module sockets), or
+   * null for everyone. A secret roll only ever shows to GMs; a whispered or blind one to the GMs
+   * and the listed users. The sender is left out: the server would echo it to its own socket.
+   */
+  function recipientsFor(s) {
+    if (!s.secret && !s.users && !s.blind) return null;
+    let gms = [];
+    try {
+      gms = gmIds() ?? [];
+    } catch (err) {
+      console.error('dicer: cannot list the GMs', err);
+    }
+    const self = me()?.id;
+    const ids = s.secret ? gms : [...gms, ...(s.users ?? [])];
+    return [...new Set(ids)].filter((id) => typeof id === 'string' && id !== self);
+  }
+
   function broadcast(roll, s) {
     try {
-      sync?.broadcast({
+      if (!sync) return;
+      const recipients = recipientsFor(s);
+      if (recipients && !recipients.length) return;
+      const payload = {
         v: 1,
         kind: 'show',
         roll: rollToData(roll),
@@ -163,7 +196,8 @@ export function createDice3dApi({
         secret: s.secret,
         messageID: s.messageID,
         speaker: s.speaker,
-      });
+      };
+      sync.broadcast(payload, recipients);
     } catch (err) {
       console.error('dicer: cannot synchronize a roll', err);
     }
@@ -171,19 +205,24 @@ export function createDice3dApi({
 
   /**
    * The local throw (no awaits before the dice are planned). A local call naming a message fires
-   * RollStart first (a listener may make it blind, flag it ghost/secret, or replace the thrown
-   * roll through dsnRoll) and RollComplete exactly once at the end, whatever happens.
+   * RollStart first (a listener may make it blind, narrow its users, flag it ghost/secret, or
+   * replace the thrown roll through dsnRoll) and RollComplete exactly once at the end, whatever
+   * happens, the enabled setting being off included.
    */
   async function throwHere(roll, s) {
     const hooked = s.local && s.messageID != null;
     try {
       let toThrow = roll;
       if (hooked) {
-        const context = { roll, user: s.user, users: s.users, blind: s.blind, dsnRoll: roll };
+        // A copy of users, so a listener mutating the list in place cannot widen ours.
+        const users = s.users ? [...s.users] : null;
+        const context = { roll, user: s.user, users, blind: s.blind, dsnRoll: roll };
         callHook('diceSoNiceRollStart', s.messageID, context);
-        // Privacy-first: a listener can make the roll blind (nothing is shown, nor sent), never
-        // un-blind it; a ghost/secret flag it sets on either roll applies to the whole call.
-        if (context.blind && !s.blind) return false;
+        // Privacy-first (P3-R13): a listener can make the roll blind, never un-blind it; it can
+        // narrow users, never widen them; a ghost/secret flag it sets on either roll applies to
+        // the whole call. The local view and the payload both carry the result.
+        if (context.blind) s.blind = true;
+        s.users = narrowedUsers(s.users, context.users);
         for (const candidate of new Set([context.roll, context.dsnRoll])) {
           if (!isRollLike(candidate)) continue;
           s.ghost ||= Boolean(candidate.ghost);
@@ -192,6 +231,9 @@ export function createDice3dApi({
         if (isRollLike(context.dsnRoll)) toThrow = context.dsnRoll;
       }
       if (s.synchronize) broadcast(toThrow, s);
+      // Client-scope (P3-R11): turning 3D dice off here never suppresses the other clients' dice
+      // nor the hooks an integration may wait on.
+      if (!getSetting('enabled')) return false;
       const view = viewHere(s);
       if (view === 'none') return false;
       const { dice } = planThrow(toThrow, {
@@ -210,10 +252,13 @@ export function createDice3dApi({
     }
   }
 
+  /** Registers the messageID before throwHere runs, so a RollStart listener's wait waits too. */
   function run(roll, s) {
-    if (!getSetting('enabled')) return Promise.resolve(false);
+    let settle;
+    const done = new Promise((r) => (settle = r));
+    if (s.messageID != null) track(s.messageID, done);
     const promise = throwHere(roll, s);
-    if (s.messageID != null) track(s.messageID, promise);
+    promise.then(settle, settle);
     return promise;
   }
 

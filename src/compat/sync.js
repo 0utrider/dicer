@@ -62,7 +62,7 @@ export function rollToData(roll) {
  * @param {() => { id?: string } | undefined} deps.currentUser
  * @param {(payload: object) => Promise<unknown>} deps.onShow the payload, its roll parsed
  * @param {(data: object) => object} [deps.fromData] Roll.fromData
- * @returns {{ broadcast(payload: object): void, dispose(): void }}
+ * @returns {{ broadcast(payload: object, recipients?: string[] | null): void, dispose(): void }}
  */
 export function createSync({ socket, currentUser, onShow, fromData = (d) => globalThis.Roll.fromData(d) }) {
   function receive(p) {
@@ -106,8 +106,10 @@ export function createSync({ socket, currentUser, onShow, fromData = (d) => glob
   socket.on(SOCKET_EVENT, handler);
 
   return {
-    broadcast(payload) {
-      socket.emit(SOCKET_EVENT, payload);
+    /** `recipients` (user ids) limits delivery server-side; omitted or null reaches everyone. */
+    broadcast(payload, recipients = null) {
+      if (Array.isArray(recipients)) socket.emit(SOCKET_EVENT, payload, { recipients });
+      else socket.emit(SOCKET_EVENT, payload);
     },
     dispose() {
       socket.off?.(SOCKET_EVENT, handler);

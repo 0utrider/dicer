@@ -62,6 +62,8 @@ describe('createSync', () => {
     expect(socket.on).toHaveBeenCalledWith('module.dicer', expect.any(Function));
     sync.broadcast({ v: 1 });
     expect(socket.emit).toHaveBeenCalledWith('module.dicer', { v: 1 });
+    sync.broadcast({ v: 1 }, ['gm']);
+    expect(socket.emit).toHaveBeenLastCalledWith('module.dicer', { v: 1 }, { recipients: ['gm'] });
     sync.dispose();
     expect(socket.handlers.size).toBe(0);
   });
@@ -123,8 +125,13 @@ describe('showForRoll over the socket', () => {
   /** A client: its own dice box, user and api, sharing one fake socket bus with the others. */
   function client(user, bus) {
     const socket = fakeSocket();
-    socket.emit = vi.fn((event, data) => {
-      for (const other of bus) if (other.socket !== socket) other.socket.handlers.get(event)?.(data);
+    // Like Foundry's handleCustomSocket: `recipients` limits delivery, else everyone but the sender.
+    socket.emit = vi.fn((event, data, options) => {
+      for (const other of bus) {
+        if (other.socket === socket) continue;
+        if (Array.isArray(options?.recipients) && !options.recipients.includes(other.user.id)) continue;
+        other.socket.handlers.get(event)?.(data, user.id);
+      }
     });
     const diceBox = fakeDiceBox();
     const api = createDice3dApi({
@@ -134,6 +141,7 @@ describe('showForRoll over the socket', () => {
       getSetting: (k) => settings[k],
       socket,
       currentUser: () => user,
+      gmIds: () => ['gm'],
       fromData: fakeFromData,
       hooks: { callAll: vi.fn() },
     });
@@ -167,6 +175,35 @@ describe('showForRoll over the socket', () => {
       messageID: 'm1',
       speaker: null,
     });
+  });
+
+  test('restricted payloads are only delivered to their recipients (P3-R12)', () => {
+    alice.api.showForRoll(roll([20, 5]), alice.user, true, ['bob'], false);
+    expect(alice.socket.emit.mock.calls[0][2]).toEqual({ recipients: ['gm', 'bob'] });
+    alice.api.showForRoll(roll([20, 5]), alice.user, true, null, true);
+    expect(alice.socket.emit.mock.calls[1][2]).toEqual({ recipients: ['gm'] });
+    alice.api.showForRoll(roll([20, 5]), alice.user, true, ['bob'], false, null, null, { secret: true });
+    expect(alice.socket.emit.mock.calls[2][2]).toEqual({ recipients: ['gm'] });
+    alice.api.showForRoll(roll([20, 5]), alice.user, true);
+    expect(alice.socket.emit.mock.calls[3]).toHaveLength(2); // public: no options, everyone
+  });
+
+  test('a blind roll never reaches another player socket', async () => {
+    const handler = bob.socket.handlers.get('module.dicer');
+    const spy = vi.fn(handler);
+    bob.socket.handlers.set('module.dicer', spy);
+    alice.api.showForRoll(roll([20, 5]), alice.user, true, null, true);
+    await flush();
+    expect(spy).not.toHaveBeenCalled();
+    expect(gm.diceBox.roll).toHaveBeenCalledTimes(1);
+  });
+
+  test('a disabled sender still synchronizes to the other clients (P3-R11)', async () => {
+    settings.enabled = false;
+    const p = alice.api.showForRoll(roll([20, 5]), alice.user, true);
+    expect(alice.socket.emit).toHaveBeenCalledTimes(1);
+    await expect(p).resolves.toBe(false);
+    expect(alice.diceBox.roll).not.toHaveBeenCalled();
   });
 
   test('a receiver in users animates, one outside it does not', async () => {

@@ -208,6 +208,7 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
       getSetting: (k) => settings[k],
       hooks,
       currentUser: () => me,
+      gmIds: () => ['gm'],
       ...extra,
     });
   beforeEach(() => {
@@ -381,17 +382,86 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     err.mockRestore();
   });
 
-  test('a RollStart listener setting context.blind throws nothing and does not broadcast', async () => {
+  test('a RollStart listener setting context.blind makes the call blind (P3-R13)', async () => {
     const socket = { on: vi.fn(), off: vi.fn(), emit: vi.fn() };
-    me = { id: 'gm', isGM: true };
-    a = make({ socket });
     hooks.callAll.mockImplementation((name, id, ctx) => {
       if (name === 'diceSoNiceRollStart') ctx.blind = true;
     });
+    // a player: nothing drawn locally; the payload carries blind and goes to the GMs only
+    a = make({ socket });
     await expect(a.showForRoll(roll(20, 3), me, true, null, false, 'm1')).resolves.toBe(false);
     expect(diceBox.roll).not.toHaveBeenCalled();
-    expect(socket.emit).not.toHaveBeenCalled();
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+    expect(socket.emit.mock.calls[0][1]).toMatchObject({ blind: true });
+    expect(socket.emit.mock.calls[0][2]).toEqual({ recipients: ['gm'] });
     expect(calls('diceSoNiceRollComplete')).toHaveLength(1);
+    // a GM: the real dice
+    me = { id: 'gm', isGM: true };
+    a.showForRoll(roll(20, 4), me, false, null, false, 'm2');
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 4 }]);
+  });
+
+  test('a RollStart listener can only narrow users (P3-R13)', async () => {
+    const socket = { on: vi.fn(), off: vi.fn(), emit: vi.fn() };
+    a = make({ socket });
+    const sentUsers = () => socket.emit.mock.calls.at(-1)[1].users;
+    const listen = (fn) =>
+      hooks.callAll.mockImplementation((name, id, ctx) => {
+        if (name === 'diceSoNiceRollStart') fn(ctx);
+      });
+
+    listen((ctx) => (ctx.users = ['b', 'c'])); // intersected
+    a.showForRoll(roll(6, 1), me, true, ['a', 'b'], false, 'm1');
+    expect(sentUsers()).toEqual(['b']);
+    expect(socket.emit.mock.calls.at(-1)[2]).toEqual({ recipients: ['gm', 'b'] });
+
+    listen((ctx) => (ctx.users = ['b'])); // null -> array narrows
+    a.showForRoll(roll(6, 1), me, true, null, false, 'm2');
+    expect(sentUsers()).toEqual(['b']);
+
+    listen((ctx) => (ctx.users = null)); // never widens to everyone
+    a.showForRoll(roll(6, 1), me, true, ['a'], false, 'm3');
+    expect(sentUsers()).toEqual(['a']);
+
+    listen((ctx) => ctx.users.push('z')); // an in-place push cannot widen either
+    a.showForRoll(roll(6, 1), me, true, ['a'], false, 'm4');
+    expect(sentUsers()).toEqual(['a']);
+
+    listen((ctx) => (ctx.users = ['q'])); // disjoint: nobody, not everyone
+    a.showForRoll(roll(6, 1), me, true, ['a'], false, 'm5');
+    expect(sentUsers()).toEqual([]);
+  });
+
+  test('a disabled sender emits, fires both hooks once and draws nothing (P3-R11)', async () => {
+    const socket = { on: vi.fn(), off: vi.fn(), emit: vi.fn() };
+    a = make({ socket });
+    settings.enabled = false;
+    await expect(a.showForRoll(roll(20, 3), me, true, null, false, 'm1')).resolves.toBe(false);
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+    expect(calls('diceSoNiceRollStart')).toHaveLength(1);
+    expect(calls('diceSoNiceRollComplete')).toEqual([['diceSoNiceRollComplete', 'm1', []]]);
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('a RollStart listener waiting on the messageID waits for this showForRoll', async () => {
+    let done = false;
+    hooks.callAll.mockImplementation((name, id) => {
+      if (name === 'diceSoNiceRollStart') a.waitFor3DAnimationByMessageID(id).then(() => (done = true));
+    });
+    a.showForRoll(roll(20, 3), me, false, null, false, 'm1');
+    await flush();
+    expect(done).toBe(false);
+    diceBox.rolls[0].resolve();
+    await flush();
+    expect(done).toBe(true);
+  });
+
+  test('restricted payloads with no GM to receive them are not sent', () => {
+    const socket = { on: vi.fn(), off: vi.fn(), emit: vi.fn() };
+    a = make({ socket, gmIds: () => [] });
+    a.showForRoll(roll(20, 3), me, true, null, false, null, null, { secret: true });
+    expect(socket.emit).not.toHaveBeenCalled();
   });
 
   test('a RollStart listener cannot un-blind a blind roll', async () => {
