@@ -7,11 +7,15 @@ import * as THREE from 'three';
  */
 
 const UNDERLINE = '.';
-/** Underline mark proportions, relative to the digit ink height. */
-const UNDERLINE_THICKNESS = 0.13;
-const UNDERLINE_GAP = 0.16;
+/**
+ * The 6/9 mark is a short, thick bar set well below the digit, so that rotated it cannot
+ * read as a "1" (Plan 1's long thin underline could).
+ * Thickness and gap are relative to the digit ink height.
+ */
+const UNDERLINE_THICKNESS = 0.16;
+const UNDERLINE_GAP = 0.26;
 /** Underline ink width, relative to the ink width of the digit above it. */
-const UNDERLINE_WIDTH = 0.75;
+const UNDERLINE_WIDTH = 0.45;
 
 /**
  * @param {object} json BMFont JSON written by build-sdf.mjs

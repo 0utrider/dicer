@@ -9,6 +9,7 @@
     "dev": "vite",
     "test": "vitest run",
     "test:live": "node tests/live/smoke.mjs",
+    "test:visual": "node tests/visual/looks.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

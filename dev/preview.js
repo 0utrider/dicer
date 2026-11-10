@@ -6,10 +6,12 @@ import { loadDigitAtlas } from '../src/render/sdf-atlas.js';
 import { DiceBox } from '../src/throw/dice-box.js';
 import { getShape } from '../src/core/dice-shapes.js';
 import { readTopFace } from '../src/core/face-reader.js';
+import { LOOKS } from '../src/look/looks.js';
 
 const TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 const BODIES = ['opaque', 'metal', 'resin'];
-const BODY_COLORS = { opaque: '#b3202a', metal: '#7d8794', resin: '#1f6f8b' };
+/** One curated layered look per body button. */
+const BODY_LOOKS = { opaque: 'ruby-classic', metal: 'gold-polished', resin: 'default' };
 
 const $ = (id) => document.getElementById(id);
 const results = $('results');
@@ -28,12 +30,7 @@ function makeBox() {
     renderer,
     physics,
     atlas,
-    appearance: {
-      body,
-      bodyColor: BODY_COLORS[body],
-      fillColor: '#f2f2f2',
-      fillMetallic: body === 'metal',
-    },
+    appearance: LOOKS[BODY_LOOKS[body]].appearance,
     getArea: area,
     timeBeforeHide: () => 2000,
   });

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
 import { createDiceMaterial } from '../render/dice-material.js';
+import { normalizeAppearance } from '../look/appearance.js';
 import { Playback } from './playback.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 
@@ -32,6 +33,7 @@ function cloneForFade(material) {
   clone.userData = userData;
   clone.onBeforeCompile = material.onBeforeCompile;
   clone.customProgramCacheKey = material.customProgramCacheKey;
+  clone.defines = { ...material.defines }; // clone() resets them to three's own
   clone.transparent = true;
   clone.depthWrite = false;
   return clone;
@@ -57,11 +59,12 @@ export class DiceBox {
     this._renderer = renderer;
     this._physics = physics;
     this._atlas = atlas;
-    this._appearance = appearance;
+    this._appearance = appearance; // createDiceMaterial normalizes it
+    this._edgeStyle = normalizeAppearance(appearance).edges.style;
     this._getArea = getArea;
     this._diceScale = diceScale;
     this._timeBeforeHide = timeBeforeHide;
-    this._geometries = new Map(); // die type -> BufferGeometry
+    this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // body|type|variant -> material
     this._rolls = new Set();
     this._area = null;
@@ -170,11 +173,13 @@ export class DiceBox {
   }
 
   #geometry(type) {
-    let geo = this._geometries.get(type);
+    const style = this._edgeStyle;
+    const key = `${type}|${style}`;
+    let geo = this._geometries.get(key);
     if (!geo) {
-      geo = buildDieGeometry(getShape(type));
+      geo = buildDieGeometry(getShape(type), { style });
       geo.computeBoundingSphere(); // the blob shadow scales by it
-      this._geometries.set(type, geo);
+      this._geometries.set(key, geo);
     }
     return geo;
   }

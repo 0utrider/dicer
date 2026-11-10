@@ -189,6 +189,9 @@ test('fade uses clones and never mutates the cached materials', async () => {
   expect(original.transparent).toBe(false);
   expect(original.opacity).toBe(1);
   expect(mesh.material.customProgramCacheKey()).toBe(original.customProgramCacheKey());
+  // the clone compiles the same program: Material.clone() resets three's defines
+  expect(original.defines).toHaveProperty('DICER_ENGRAVE');
+  expect(mesh.material.defines).toEqual(original.defines);
 
   const second = box.roll([{ type: 'd6', value: 5 }]);
   physics.flush();
@@ -291,6 +294,27 @@ test('geometry is built once per die type across rolls', async () => {
   physics.flush();
   expect(buildDieGeometry).toHaveBeenCalledTimes(3);
   box.clear();
+});
+
+test('geometry cache is keyed by type|edge style and passes the style (P2-R5)', () => {
+  buildDieGeometry.mockClear();
+  const { physics, box } = setup({
+    appearance: { body: { type: 'resin' }, edges: { style: 'sharp' } },
+  });
+  box.roll([
+    { type: 'd6', value: 1 },
+    { type: 'd6', value: 2 },
+  ]);
+  physics.flush();
+  expect(buildDieGeometry).toHaveBeenCalledTimes(1);
+  expect(buildDieGeometry.mock.calls[0][1]).toEqual({ style: 'sharp' });
+  box.clear();
+  buildDieGeometry.mockClear();
+  const legacy = setup();
+  legacy.box.roll([{ type: 'd6', value: 1 }]);
+  legacy.physics.flush();
+  expect(buildDieGeometry.mock.calls[0][1]).toEqual({ style: 'rounded' });
+  legacy.box.clear();
 });
 
 test('tens dice use their own label set and map onto d10 faces 1..10', () => {

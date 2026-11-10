@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dicer looks</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #3a3f48;
+        color: #e8e8e8;
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      #bar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 8px 12px;
+        background: #22252b;
+      }
+      #status.bad {
+        color: #ff6b6b;
+      }
+      #grid {
+        display: grid;
+        padding: 8px 12px 16px;
+      }
+      #grid .head {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 24px;
+        font-weight: 600;
+      }
+      #grid .row {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding-right: 8px;
+        text-align: right;
+      }
+      #grid .row small {
+        color: #a8aebb;
+      }
+      #stage {
+        position: relative;
+      }
+      #stage canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <strong>Dicer looks</strong>
+      <label>
+        Tier
+        <select id="tier">
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high" selected>high</option>
+          <option value="ultra">ultra</option>
+        </select>
+      </label>
+      <span id="status">loading...</span>
+    </div>
+    <div id="grid"></div>
+    <script type="module" src="./looks.js"></script>
+  </body>
+</html>
