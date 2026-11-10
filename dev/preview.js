@@ -3,7 +3,7 @@ import { createPhysicsWorker, PhysicsClient } from '../src/physics/physics-clien
 import { computeHulls } from '../src/physics/hulls.js';
 import { DiceRenderer } from '../src/render/renderer.js';
 import { loadDigitAtlas } from '../src/render/sdf-atlas.js';
-import { TIERS, TIER_ORDER } from '../src/render/quality.js';
+import { TIERS, TIER_ORDER, flagsFor } from '../src/render/quality.js';
 import { DiceBox } from '../src/throw/dice-box.js';
 import { getShape } from '../src/core/dice-shapes.js';
 import { readTopFace } from '../src/core/face-reader.js';
@@ -32,45 +32,25 @@ const renderer = new DiceRenderer({
 renderer.applyTier(TIERS[tier]);
 
 // ---- frame log: the renderer's frame time (max of tick+render and the rAF interval), plus
-// the GPU time of each render from a timer query when the browser exposes one.
+// the GPU time the renderer itself measures with a timer query (P2-R13) when the browser
+// exposes one: each newly resolved query once (the renderer's timer runs a few frames behind,
+// and its last pending queries are dropped when the loop goes idle).
 const frames = [];
+const gpuTimes = [];
 let recording = false;
-renderer.onFrameTime((ms) => recording && frames.push({ ms }));
+let lastGpu = null;
+renderer.onFrameTime((ms, sample) => {
+  if (!recording) return;
+  frames.push({ ms });
+  if (sample?.gpu != null && sample.gpu !== lastGpu) gpuTimes.push(sample.gpu);
+  lastGpu = sample?.gpu ?? null;
+});
 const glr = renderer.glRenderer;
 const gl = glr.getContext();
 const timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
-const pendingQueries = [];
-const gpuTimes = [];
-const render = glr.render.bind(glr);
-glr.render = (scene, camera) => {
-  if (!recording || !timer) return render(scene, camera);
-  const q = gl.createQuery();
-  gl.beginQuery(timer.TIME_ELAPSED_EXT, q);
-  try {
-    return render(scene, camera);
-  } finally {
-    gl.endQuery(timer.TIME_ELAPSED_EXT);
-    pendingQueries.push(q);
-  }
-};
-function drainQueries() {
-  while (
-    pendingQueries.length &&
-    gl.getQueryParameter(pendingQueries[0], gl.QUERY_RESULT_AVAILABLE)
-  ) {
-    const q = pendingQueries.shift();
-    if (!gl.getParameter(timer.GPU_DISJOINT_EXT))
-      gpuTimes.push(Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6);
-    gl.deleteQuery(q);
-  }
-}
 
-const flags = () => ({
-  interiors: true,
-  engraving: true,
-  glow: true,
-  interiorSteps: TIERS[tier].interiorSteps,
-});
+// Production flags (the quality controller's flagsFor) with every client toggle on.
+const flags = () => flagsFor(TIERS[tier], { interiors: true, engraving: true, glow: true });
 
 function makeBox() {
   box?.dispose();
@@ -131,15 +111,12 @@ async function measuredThrow(n = 10, types = ['d4', 'd6', 'd8', 'd10', 'd12', 'd
   const specs = Array.from({ length: n }, (_, i) => randomSpec(types[i % types.length]));
   frames.length = 0;
   gpuTimes.length = 0;
+  lastGpu = null;
   recording = true;
   try {
     await throwSpecs(specs);
   } finally {
     recording = false;
-  }
-  for (let i = 0; i < 100 && pendingQueries.length; i++) {
-    drainQueries();
-    if (pendingQueries.length) await new Promise((r) => setTimeout(r, 5));
   }
   const ms = frames.map((f) => f.ms);
   const stats = {

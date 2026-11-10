@@ -12,7 +12,7 @@ import { getShape, labelFor } from '../src/core/dice-shapes.js';
 import { faceNormals } from '../src/core/face-reader.js';
 import { LOOKS } from '../src/look/looks.js';
 import { runProbe } from '../src/render/gpu-probe.js';
-import { TIERS } from '../src/render/quality.js';
+import { TIERS, flagsFor } from '../src/render/quality.js';
 
 export const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd2'];
 /** The face shown on top per type (6 and 9 show the underline mark). */
@@ -22,9 +22,12 @@ const ROW_LABEL_PX = 170;
 
 /**
  * Rows: every curated look, plus variants with per-row flag overrides so variant programs
- * (e.g. the engraving-off #else path) also compile on real WebGL.
+ * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL.
  */
-const VARIANTS = [['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }]];
+const VARIANTS = [
+  ['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }],
+  ['default~safe', 'default', 'safe fallback', { safe: true }],
+];
 const looks = [
   ...Object.entries(LOOKS).map(([id, look]) => [id, look, {}]),
   ...VARIANTS.map(([id, base, note, flags]) => [
@@ -70,6 +73,7 @@ looks.forEach(([id, look, rowFlags], row) => {
   if (a.interior.type !== 'none') detail.push(a.interior.type);
   if (a.edges.style !== 'rounded') detail.push(a.edges.style);
   if (rowFlags.engraving === false) detail.push('no engraving');
+  if (rowFlags.safe) detail.push('safe');
   r.innerHTML = `<span>${look.name}</span><small>${id}</small><small>${detail.filter(Boolean).join(' · ')}</small>`;
   grid.appendChild(r);
 });
@@ -263,20 +267,40 @@ function noiseProbe() {
   return { min, max };
 }
 
+/** Side of the centre patch (CSS px) whose mean colour the harness checks per cell. */
+const PATCH = 6;
+
 /**
- * Alpha at every cell centre, read right after a render (no preserveDrawingBuffer). The
- * blob shadows are left out: they sit under every die and would make a cell whose die
- * failed to draw look non-blank.
+ * Alpha at every cell centre, plus the mean RGB of a PATCH x PATCH centre patch (so a black
+ * or NaN render shows up), read right after a render (no preserveDrawingBuffer). The blob
+ * shadows are left out: they sit under every die and would make a cell whose die failed to
+ * draw look non-blank.
  */
 function cellAlphas() {
   renderGrid({ shadows: false });
   const pr = renderer.getPixelRatio();
   const px = new Uint8Array(4);
+  const side = Math.max(1, Math.round(PATCH * pr));
+  const patch = new Uint8Array(side * side * 4);
   return cells.map((c) => {
-    const x = Math.floor((c.col * CELL + CELL / 2) * pr);
-    const y = Math.floor(((ROWS - 1 - c.row) * CELL + CELL / 2) * pr);
-    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    return { id: c.id, type: c.type, alpha: px[3], rgb: [px[0], px[1], px[2]] };
+    const cx = (c.col * CELL + CELL / 2) * pr;
+    const cy = ((ROWS - 1 - c.row) * CELL + CELL / 2) * pr;
+    gl.readPixels(Math.floor(cx), Math.floor(cy), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.readPixels(Math.floor(cx - side / 2), Math.floor(cy - side / 2), side, side, gl.RGBA, gl.UNSIGNED_BYTE, patch);
+    let sum = 0;
+    let covered = 0;
+    for (let i = 0; i < patch.length; i += 4) {
+      sum += (patch[i] + patch[i + 1] + patch[i + 2]) / 3;
+      if (patch[i + 3] > 0) covered++;
+    }
+    return {
+      id: c.id,
+      type: c.type,
+      alpha: px[3],
+      rgb: [px[0], px[1], px[2]],
+      meanRgb: Number((sum / (side * side)).toFixed(1)),
+      coverage: covered / (side * side),
+    };
   });
 }
 
@@ -284,7 +308,9 @@ async function setTier(name) {
   if (!TIERS[name]) throw new Error(`unknown tier "${name}"`);
   tier = name;
   const t = TIERS[name];
-  flags = { interiors: true, engraving: true, glow: true, interiorSteps: t.interiorSteps };
+  // Production flags: the same flagsFor() the quality controller uses, with every client
+  // toggle at its default (on). Low therefore draws the interior fake, exactly as Foundry does.
+  flags = flagsFor(t, { interiors: true, engraving: true, glow: true });
   renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, t.pixelRatio));
   renderer.setSize(COLS * CELL, ROWS * CELL);
   renderer.transmissionResolutionScale = t.transmissionScale;

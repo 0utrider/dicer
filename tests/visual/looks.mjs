@@ -1,8 +1,11 @@
 // Visual check: runs every dice shader on real WebGL via the look gallery (dev/looks.html).
 //
 // Starts the Vite dev server, opens the gallery in Playwright Chromium (GPU flags; falls back
-// to SwiftShader and says so), and for every quality tier: asserts zero shader errors and
-// non-blank cells, saves artifacts/visual/looks-<tier>.png and prints ms/frame.
+// to SwiftShader and says so), and for every quality tier: asserts zero shader errors,
+// non-blank cells, a plausible mean colour in every cell's centre patch (a black or NaN render
+// fails), and at most 2 x distinct programKeys + 2 programs (one program per programKey, never
+// one per colour); saves artifacts/visual/looks-<tier>.png and prints ms/frame.
+// The gallery builds its materials from the production flagsFor().
 // Exits non-zero on any failure. The dev server is always stopped.
 //
 // Env: DICER_VISUAL_PORT (default 5179), DICER_VISUAL_HEADED=1 to watch, DICER_VISUAL_ARGS to
@@ -21,6 +24,14 @@ const GPU_ARGS = process.env.DICER_VISUAL_ARGS
   : ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'];
 const SERVER_TIMEOUT_MS = 30000;
 const READY_TIMEOUT_MS = 180000;
+/**
+ * Plausible mean RGB (0-255, averaged over channels) of a cell's centre patch. NaN shading
+ * and a failed body come out black (about 0) or saturated white. The darkest legitimate cell
+ * is Void Star (near-black resin) at low, where no interior lights it: 5.1 on the d8 (RTX
+ * 5070 Ti, 2026-11-10), so the floor sits just under it.
+ */
+const MEAN_RGB_MIN = 3;
+const MEAN_RGB_MAX = 250;
 
 let server = null;
 
@@ -130,8 +141,24 @@ async function main() {
         );
       }
       nonBlankTotal += alphas.length - blank.length;
+      const implausible = alphas.filter(
+        (c) => c.alpha > 0 && !(c.meanRgb >= MEAN_RGB_MIN && c.meanRgb <= MEAN_RGB_MAX),
+      );
+      if (implausible.length) {
+        failures.push(
+          `${tier}: ${implausible.length} cell(s) with an implausible centre colour: ` +
+            implausible.map((c) => `${c.id}/${c.type}=${c.meanRgb}`).join(', '),
+        );
+      }
+      const means = alphas.map((c) => c.meanRgb);
       const ms = await page.evaluate(() => window.__looks.msPerFrame(10));
       const tierInfo = await page.evaluate(() => window.__looks.info());
+      const maxPrograms = 2 * tierInfo.programKeys + 2;
+      if (tierInfo.programs > maxPrograms) {
+        failures.push(
+          `${tier}: ${tierInfo.programs} programs > 2 x ${tierInfo.programKeys} programKeys + 2`,
+        );
+      }
       const file = `${OUT_DIR}/looks-${tier}.png`;
       await page.screenshot({ path: file, fullPage: true });
       summary.tiers[tier] = {
@@ -141,12 +168,16 @@ async function main() {
         errors: errors.length,
         programs: tierInfo.programs,
         programKeys: tierInfo.programKeys,
+        maxPrograms,
+        meanRgbMin: Math.min(...means),
+        meanRgbMax: Math.max(...means),
         pixelRatio: tierInfo.pixelRatio,
         screenshot: file,
       };
       console.log(
         `visual: ${tier.padEnd(6)} ${ms.toFixed(2).padStart(8)} ms/frame (${first.cells} cells)  ` +
-          `programs ${tierInfo.programs} (programKeys ${tierInfo.programKeys})  ` +
+          `programs ${tierInfo.programs}/${maxPrograms} (programKeys ${tierInfo.programKeys})  ` +
+          `centre RGB ${Math.min(...means)}-${Math.max(...means)}  ` +
           `non-blank ${alphas.length - blank.length}/${alphas.length}  -> ${file}`,
       );
     }
