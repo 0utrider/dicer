@@ -1,0 +1,57 @@
+# Plan 3 — rulings and deferred findings
+
+Record of the decisions made while executing Plan 3 (DSN compatibility depth), and the review findings deferred to later plans. Generated from the controller ledger.
+
+## Rulings
+- | T1↔T4 | presetFor, baseShape; T4 passes `shapeFor` to planThrow | T4 Files omit throw-planner.js → Ruling P3-R1 |
+- | T1↔T6 | loadModel fires diceSoNiceModelLoaded "through injected hooks"; createRegistry has no hooks dep | Ruling P3-R2 |
+- | T12 | fires diceSoNiceOnMaterialReady at material creation; Files omit dice-box.js | Ruling P3-R3 |
+- | T7 self | "not hidden ... dsn-hide still applied" contradicts | Ruling P3-R4 |
+- Ruling P3-R1: Task 4 may modify src/throw/throw-planner.js to add the `shapeFor(type|faces)` option — the plan text requires it but forgot the file — cost if wrong: none (scope only).
+- Ruling P3-R2: Task 6 adds an optional `hooks` dep to createRegistry (default `{ callAll(){} }`), wired in main.js — needed to fire diceSoNiceModelLoaded from PresetEntry.loadModel — cost if wrong: small API churn.
+- Ruling P3-R3: Task 12 may add an `onMaterial(material, type, appearance, preset)` option to DiceBox to fire diceSoNiceOnMaterialReady — plan omitted the file — cost if wrong: none.
+- Ruling P3-R4: ghost-only messages on a client that can't see content still get dsn-hide and are revealed on landing (the plan's second sentence wins) — matching timing for everyone leaks nothing — cost if wrong: an already-unreadable card stays hidden a few seconds.
+- Ruling P3-R5: spec.type stays the engine base shape (DiceBox/getShape contract); the DSN die type rides along as spec.dsnType — brief's "keeps its type as spec.type" conflicts with the engine contract — cost if wrong: one rename later.
+- Ruling P3-R6: system resolution is separate from appearance — system comes from term.options.appearance.system, else the most specific author ref that names a system (type entry, then global), for every rule incl. colorset/flavor matches — a pf2e roller's flavor colour shouldn't drop their dice models — cost if wrong: a flavor-coloured die shows a preset model the roll didn't ask for.
+- Ruling P3-R7: the 4 MB world-start budget is measured in MiB (4×1024²), as Plans 1–2 measured it — cost if wrong: ~40 kB decimal headroom only; Plan 8 must re-check.
+- Ruling P3-R8: a ghost/secret flag that appears during diceSoNiceRollStart on ctx.roll or ctx.dsnRoll (or a replacement) applies to the WHOLE message (ghost → every non-none view becomes ghost; secret → none); flags already on message.rolls[i] before RollStart stay per-roll — G1 privacy-first: a listener's intent covers the message — cost if wrong: a multi-roll message shows more ghosts than the integration meant.
+- Ruling P3-R9: keep viewFor's table as written. Foundry blind rolls whisper to GMs, so non-author players are ordinary whisper non-recipients (and Foundry normally doesn't deliver whispers to them at all); the (blind && isAuthor) clause covers the author, who receives the message without being a recipient. Fix the test fixtures to the real shape (whisper: GM ids) — cost if wrong: with showGhostDice on, non-recipients who do receive a blind message see ghosts (reveals only that a roll happened, same as whispers).
+- Ruling P3-R10: animating appended rolls gets no own setting — it is DSN-compat message handling (part of the existing enabled/immediateDisplay controls), not a new optional feature — cost if wrong: one setting to add later.
+- Ruling P3-R11: `enabled` gates local drawing only: RollStart, broadcast and RollComplete still happen for a disabled sender — client display preference must not hide a roll from others or hang hook waiters — cost if wrong: a disabled client still fires hooks.
+- Ruling P3-R12: restricted payloads (users non-null, blind, or secret) are sent only to the clients allowed real/ghost views if Foundry v14's socket emit supports a recipients option (implementer verifies in client source); if not, accept the residual (receivers filter; same as DSN) and list it in README known gaps — cost if wrong: a non-recipient can read restricted results from the socket in devtools.
+- Ruling P3-R13: a RollStart listener setting context.blind makes the showForRoll blind (players none, GMs real) instead of dropping it; context.users may only narrow (intersect), never widen — privacy-only-increases rule, DSN-consistent meaning of blind — cost if wrong: small behavioural difference from DSN.
+- Ruling P3-R14: a blind showForRoll's real roll JSON goes to GMs only; non-GM `users` recipients of a blind roll get a results-stripped payload (every result value replaced by 1, flagged ghost) only when showGhostDice is on — a blind roll's players can never see its result, so they must never receive it — carried into Task 12 dispatch — cost if wrong: listed players lose ghost dice for synced blind rolls if the stripped path breaks.
+- Ruling P3-R15: receivers ignore a payload whose userId differs from the sender id the server passes to the socket handler (anti-spoofing) — carried into Task 12 — cost if wrong: none expected (server always supplies it in v14).
+- Ruling P3-R16: ghost payloads are built from an allow-list: per Die term only {faces, number} with exactly `number` results of value 1 (never per-result count, no discarded/active/flags), no options/formula/flavor/other terms — G1 leaks nothing — cost if wrong: ghost dice count differs from DSN on exploding/reroll dice.
+- Ruling P3-R17: any roll whose effective view is ghost for everyone (roll.ghost/options.ghost) broadcasts only the allow-list ghost payload — no client may render it real (P3 ghost-for-everyone rule), so no client needs real values — cost if wrong: none.
+- Ruling P3-R18: the socket payload's userId is the real sender (for the anti-spoof check); the caller's `user` travels as authorId, used only for looks and never for the privacy view — cost if wrong: none.
+- Ruling P3-R19 (refines P3-R16): a Die node whose number or faces is dynamic (has `_number`/`_faces`, or non-literal) is emitted as 0 dice in ghost payloads — result-derived — cost if wrong: ghost viewers see fewer dice for dynamic-count rolls.
+- Ruling P3-R9 (corrected): table stands; rationale: Foundry delivers whispered roll messages to everyone (ChatMessage#visible returns true for rolls), so whisper non-recipients are the common ghost/none case; the (blind && isAuthor) clause only matters for a blind roll with an empty whisper list.
+- Ruling P3-R20: P3-R16/R19 ghost shaping applies to EVERY ghost render (gate, local showForRoll, receivers), not only the wire — cost if wrong: none.
+- Ruling P3-R21: DiceSystem.on/off with an unknown event type keeps throwing (DSN interface contract that callers rely on; plan-mandated) — explicit exception to the no-throw rule; addSetting*(null/undefined) must not throw — cost if wrong: a third party passing a bad event type gets an exception, as under DSN.
+- Final: parked — rollToData fallback (non-toJSON roll-like objects passed to showForRoll(..., synchronize)) uses results.length and ignores _number, so ghost receivers can get a result-derived count — Ruling: real but narrow (only third-party non-Roll objects; Foundry Rolls, message rolls and legacy show() unaffected); no second fix wave per process — surfaced to owner as fix-before-merge option.
+
+## Parked
+- Final: parked — rollToData fallback (non-toJSON roll-like objects passed to showForRoll(..., synchronize)) uses results.length and ignores _number, so ghost receivers can get a result-derived count — Ruling: real but narrow (only third-party non-Roll objects; Foundry Rolls, message rolls and legacy show() unaffected); no second fix wave per process — surfaced to owner as fix-before-merge option.
+
+## Deferred findings (for later plans)
+- Task 1: minor (deferred → carry into Task 12 dispatch, which owns the defensive API wiring): unbounded face count from type string (d99999999999) can throw RangeError into caller via addSystem instance — breaks no-throw constraint; cap facesOfType / try-catch storePreset
+- Task 1: minor (deferred → Task 12): aliases unvalidated — preset shape 'zzz' or addDiceShape name 'd20' can rebind built-ins; accept only built-in targets, refuse aliasing built-in names
+- Task 1: minor (deferred): colorsetModes/shapes stored but unread; sfxTriggers/getSFXDefaults unrequested extras; COLORSETS proxy lacks set/delete traps; test gaps (malformed addRole/addDamageTypeDefaults/addSFX*, repeat-warn, throwing warn/listener)
+- Task 1: minor (deferred): prepare*List flat (swade shape unverified); addSFXMode name fields guessed (Plan 4)
+- Task 2: minor (deferred): built-in gold (dark #3b2a00 fg on metal) gets gold fill — readability; gold fill needs body.type metal (chrome+marble texture loses it); NaN index → defaults; round-trip test doesn't catch hex typos; untested edges (object texture, hue boundaries, emissive default)
+- Task 3: minor (deferred): ghost key keeps variant (2 identical blank mats for d100); per-die normalizeAppearance not memoised; ghost JSON-leak test is weak proxy
+- Task 4: minor (deferred): resolver warns once per session; resolver runs twice per message; main.js duplicates author fallback; flavor trimmed before matching
+- Task 5: minor (deferred): face cache only spans overlapping rolls (plan-mandated; consider linger); loadFaceImage duplicates defaultLoadImage; straight-alpha mipmaps darken image edges
+- Task 7: minor (deferred): privacy.js comment on (blind&&isAuthor) is wrong — clause only matters for blind with empty whisper; no test pins it; cloned pre-flagged dsnRoll promotes a per-roll flag to whole message (only more privacy); planAll JSDoc stale
+- Task 8: minor (deferred): chained companions unsupported + linkedTo overriding cancel/skip undocumented in linkCompanion doc; showForRoll ignores showExtraDice (Task 11 should pass it); in-place result mutation in RollStart not detected
+- Task 9: minor (deferred): selector briefly hides an old shown roll before re-render (doc it); DSN hook order for appends unverified
+- Task 11: minor (deferred): rollToData legacy output unverified against real Roll.fromData — add to live check list (Task 15)
+- Task 11: minor (deferred): sender's other sessions miss restricted payloads
+- Task 12: minor (deferred): GLB model material never announced to OnMaterialReady; preloaded faces held across user-flag-only changes; ghost payload turns custom die classes (coin/fate) into plain dice; real Roll.fromData on ghost/legacy payloads unverified live (Task 15 live list); Task 14 must add migration chunk to build.test lazy list
+- Task 13: minor (deferred): DicerAPIReady untested (no main.js harness); overlong doc line in dice-material.js
+- Task 14: minor (deferred): default isCustomized reader and default ForcedReplacement untested; pre-check untested; duplicate @param in migrateWorld JSDoc
+- Task 15: minor (deferred): compat.mjs onlyKinds passes null views; context.blind branch doesn't update lastRollViews; weak value-leak regex test; live test leaves chat messages + may deactivate an active combat (undocumented); README ghost gap omits dynamic-faces dice dropped; prettier on touched files; chatCommandsReady timing (registered inside init) unverified — add to live checklist; scenario 5 selectors speculative
+
+## Not verified (owner)
+- The live tests (`npm run test:live`, `npm run test:live:compat`) and the manual checklist in `docs/live-checks.md` have not been run against a real Foundry world.
