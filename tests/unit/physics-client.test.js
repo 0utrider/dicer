@@ -70,3 +70,37 @@ test('an error message rejects only that stream', async () => {
   w.emit({ type: 'error', id, message: 'boom' });
   await expect(stream.done).rejects.toThrow('boom');
 });
+
+test('init posts the hulls; throws and resizes keep their send order', () => {
+  const w = new FakeWorker();
+  const hulls = { d6: new Float32Array(3) };
+  const client = new PhysicsClient(() => w, { hulls });
+  expect(w.sent[0].m).toMatchObject({ type: 'init', hulls });
+  client.resize({ halfWidth: 5, halfDepth: 5 });
+  client.throw({ dice: [{ type: 'd6' }], seed: 1 });
+  client.resize({ halfWidth: 6, halfDepth: 6 });
+  w.emit({ type: 'ready' });
+  expect(w.sent.slice(1).map((s) => s.m.type)).toEqual(['resize', 'throw', 'resize']);
+});
+
+test('an init failure rejects ready, every queued stream, and later throws', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  const a = client.throw({ dice: [{ type: 'd6' }], seed: 1 });
+  const b = client.throw({ dice: [{ type: 'd6' }], seed: 2 });
+  w.emit({ type: 'error', message: 'wasm failed' });
+  await expect(client.ready()).rejects.toThrow('wasm failed');
+  await expect(a.done).rejects.toThrow('wasm failed');
+  await expect(b.done).rejects.toThrow('wasm failed');
+  await expect(client.throw({ dice: [], seed: 3 }).done).rejects.toThrow('wasm failed');
+  expect(w.sent.some((s) => s.m.type === 'throw')).toBe(false);
+});
+
+test('throw after terminate returns an already rejected stream', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  client.terminate();
+  const stream = client.throw({ dice: [{ type: 'd6' }], seed: 1 });
+  await expect(stream.done).rejects.toThrow(/terminated/);
+  expect(w.sent.some((s) => s.m.type === 'throw')).toBe(false);
+});

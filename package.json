@@ -15,7 +15,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@dimforge/rapier3d-deterministic-compat": "^0.21.0",
+    "@dimforge/rapier3d-deterministic": "^0.21.0",
     "three": "^0.184.0"
   },
   "devDependencies": {

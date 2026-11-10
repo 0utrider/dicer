@@ -1,7 +1,6 @@
-import RAPIER from '@dimforge/rapier3d-deterministic-compat';
-import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-deterministic';
+import * as glue from '@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.js';
 import { getShape } from '../core/dice-shapes.js';
-import { buildDieGeometry } from '../core/chamfer.js';
 import { mulberry32 } from '../core/rng.js';
 import { CHUNK_STEPS, FLOATS_PER_DIE, MAX_STEPS, STEP_SECONDS } from './protocol.js';
 
@@ -15,58 +14,76 @@ const FLOOR_MARGIN = 60; // floor extends beyond the area so spawned dice have g
 const SPAWN_GAP = 1.5; // minimum distance beyond the wall plane
 const DIE_SPACING = 2.4; // spawn grid pitch (circumradius units)
 const INNER_FRACTION = 0.6;
-const CLOSE_MARGIN = 1; // a die is "inside" when its centre is this far within the walls
-const FORCE_CLOSE_STEP = 180; // close the wall regardless, so a stray die cannot hold it open
-const HERD_AFTER_STEP = 20; // while the wall is open, dice still outside get nudged inwards
+const CLOSE_EPSILON = 0.05; // the wall closes once every centre is inside the spawn-side plane
+const HERD_AFTER_STEP = 20; // while the wall is open, dice still beyond the plane get nudged in
 const HERD_DELTA_V = 0.4; // per step
+const SETTLE_LINVEL = 0.3; // a die is at rest below these speeds ...
+const SETTLE_ANGVEL = 0.5;
+const SETTLE_STEPS = 10; // ... for this many consecutive steps (Rapier's sleep flag is too slow)
+const COIN_ANGULAR_DAMPING = 3; // a cylinder has no rolling resistance and would roll on its rim
+const RELAX_FROM_STEP = 120; // after this the rest thresholds widen: a coin leaning on a pile
+const RELAX_PER_STEP = 1 / 30; // can pivot slowly for ever, and must not hold playback to 10 s
 const POOL_LIMIT = 8;
 
 let initialised = null;
 
-export function initPhysics() {
-  initialised ??= RAPIER.init();
+/**
+ * Instantiate the Rapier wasm once. `wasm` is a URL string (fetched, streamed: the worker's
+ * separate asset) or raw bytes / a compiled module (Node tests).
+ */
+export function initPhysics(wasm) {
+  initialised ??= (async () => {
+    const imports = { './rapier_wasm3d_bg.js': glue };
+    let instance;
+    if (typeof wasm === 'string') {
+      ({ instance } = await WebAssembly.instantiateStreaming(fetch(wasm), imports));
+    } else if (wasm instanceof WebAssembly.Module) {
+      instance = await WebAssembly.instantiate(wasm, imports);
+    } else {
+      ({ instance } = await WebAssembly.instantiate(wasm, imports));
+    }
+    glue.__wbg_set_wasm(instance.exports);
+  })();
   return initialised;
 }
 
-const hullCache = new Map();
-
-/** Deduplicated vertex positions of the chamfered visual geometry (the exact visual hull). */
-function hullPoints(type) {
-  let pts = hullCache.get(type);
-  if (!pts) {
-    const pos = buildDieGeometry(getShape(type)).getAttribute('position');
-    const seen = new Set();
-    const out = [];
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const y = pos.getY(i);
-      const z = pos.getZ(i);
-      const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(x, y, z);
-    }
-    pts = new Float32Array(out);
-    hullCache.set(type, pts);
+function dieColliderDesc(type, hulls) {
+  let desc;
+  if (getShape(type).kind === 'coin') {
+    desc = RAPIER.ColliderDesc.cylinder(0.125, 1);
+  } else {
+    const pts = hulls?.[type];
+    if (!pts) throw new Error(`dicer: no hull supplied for "${type}"`);
+    desc = RAPIER.ColliderDesc.convexHull(pts);
   }
-  return pts;
-}
-
-function dieColliderDesc(type) {
-  const shape = getShape(type);
-  const desc =
-    shape.kind === 'coin'
-      ? RAPIER.ColliderDesc.cylinder(0.125, 1)
-      : RAPIER.ColliderDesc.convexHull(hullPoints(type));
   if (!desc) throw new Error(`dicer: could not build collider for "${type}"`);
   return desc.setRestitution(DIE_RESTITUTION).setFriction(DIE_FRICTION).setDensity(1);
+}
+
+/** Uniform random unit quaternion from three uniform samples (Shoemake). */
+function randomQuaternion(u1, u2, u3) {
+  const a = Math.sqrt(1 - u1);
+  const b = Math.sqrt(u1);
+  return {
+    x: a * Math.sin(2 * Math.PI * u2),
+    y: a * Math.cos(2 * Math.PI * u2),
+    z: b * Math.sin(2 * Math.PI * u3),
+    w: b * Math.cos(2 * Math.PI * u3),
+  };
+}
+
+/** Run one 1-die throw per type and discard it: warms colliders, hulls and the wasm paths. */
+export function prewarm(sim, types) {
+  for (const type of types) {
+    sim.throw({ dice: [{ type }], seed: 0 }, (c) => sim.recycle(c.data));
+  }
 }
 
 /**
  * Create a simulation. World units: 1 = a die's circumradius, floor at y = 0.
  * Each throw builds a fresh Rapier world, so a throw depends only on (area, request).
  */
-export function createSim(initialArea) {
+export function createSim(initialArea, hulls) {
   let area = { ...initialArea };
   let disposed = false;
   /** Buffer pool keyed by full-chunk float length. */
@@ -173,25 +190,24 @@ export function createSim(initialArea) {
           const vx = (tx - px) / flight;
           const vz = (tz - pz) / flight;
           const vy = (1 - y + 0.5 * -GRAVITY * flight * flight) / flight;
-          const q = new THREE.Quaternion().setFromEuler(
-            new THREE.Euler(rand() * Math.PI * 2, rand() * Math.PI * 2, rand() * Math.PI * 2),
-          );
+          const q = randomQuaternion(rand(), rand(), rand());
           const spin = {
             x: (rand() * 2 - 1) * 18,
             y: (rand() * 2 - 1) * 18,
             z: (rand() * 2 - 1) * 18,
           };
+          const coin = getShape(req.dice[i].type).kind === 'coin';
           const body = world.createRigidBody(
             RAPIER.RigidBodyDesc.dynamic()
               .setTranslation(px, y, pz)
-              .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+              .setRotation(q)
               .setLinvel(vx, vy, vz)
               .setAngvel(spin)
               .setLinearDamping(0.05)
-              .setAngularDamping(0.1)
+              .setAngularDamping(coin ? COIN_ANGULAR_DAMPING : 0.1)
               .setCcdEnabled(true),
           );
-          world.createCollider(dieColliderDesc(req.dice[i].type), body);
+          world.createCollider(dieColliderDesc(req.dice[i].type, hulls), body);
           bodies.push(body);
         }
 
@@ -201,13 +217,15 @@ export function createSim(initialArea) {
         let inChunk = 0;
         let chunkIndex = 0;
         let wallClosed = false;
+        let restSteps = 0;
         let settledStep = MAX_STEPS;
 
         for (let step = 1; step <= MAX_STEPS; step++) {
           world.step();
 
           let allInside = true;
-          let allAsleep = true;
+          let allAtRest = true;
+          const relax = 1 + Math.max(0, step - RELAX_FROM_STEP) * RELAX_PER_STEP;
           const base = inChunk * floatsPerStep;
           for (let d = 0; d < n; d++) {
             const b = bodies[d];
@@ -221,13 +239,12 @@ export function createSim(initialArea) {
             buf[o + 4] = r.y;
             buf[o + 5] = r.z;
             buf[o + 6] = r.w;
-            if (Math.abs(p.x) > hw - CLOSE_MARGIN || Math.abs(p.z) > hd - CLOSE_MARGIN) {
-              allInside = false;
-              const pastSpawnPlane = alongX
-                ? sign * p.x > hw - CLOSE_MARGIN
-                : sign * p.z > hd - CLOSE_MARGIN;
-              if (!wallClosed && step >= HERD_AFTER_STEP && pastSpawnPlane) {
-                // Past the spawn plane (or knocked back out): push towards the area centre.
+            if (!wallClosed) {
+              // Distance beyond the spawn-side wall plane (positive = outside the area).
+              const beyond = alongX ? sign * p.x - hw : sign * p.z - hd;
+              if (beyond > -CLOSE_EPSILON) allInside = false;
+              if (beyond > 0 && step >= HERD_AFTER_STEP) {
+                // Only dice whose centre is outside (knocked back out, or slow to arrive).
                 const k = HERD_DELTA_V * b.mass();
                 b.applyImpulse(
                   { x: alongX ? -sign * k : 0, y: 0, z: alongX ? 0 : -sign * k },
@@ -235,16 +252,28 @@ export function createSim(initialArea) {
                 );
               }
             }
-            if (!b.isSleeping()) allAsleep = false;
+            if (allAtRest) {
+              const lv = b.linvel();
+              const av = b.angvel();
+              if (
+                Math.hypot(lv.x, lv.y, lv.z) > SETTLE_LINVEL * relax ||
+                Math.hypot(av.x, av.y, av.z) > SETTLE_ANGVEL * relax
+              ) {
+                allAtRest = false;
+              }
+            }
           }
           inChunk++;
 
-          if (!wallClosed && (allInside || step >= FORCE_CLOSE_STEP)) {
+          // Close once every centre is inside the plane: any overlap with the new wall is then
+          // resolved inwards. Never force it closed over a die that is still outside.
+          if (!wallClosed && allInside) {
             spawnWall.setEnabled(true);
             wallClosed = true;
           }
 
-          const finished = (wallClosed && allAsleep) || step === MAX_STEPS;
+          restSteps = wallClosed && allAtRest ? restSteps + 1 : 0;
+          const finished = restSteps >= SETTLE_STEPS || step === MAX_STEPS;
           if (finished) settledStep = step;
           if (inChunk === CHUNK_STEPS || finished) {
             const data = new Float32Array(buf.buffer, 0, inChunk * floatsPerStep);

@@ -1,5 +1,6 @@
-/* Module worker: owns one Rapier sim. Must not touch the DOM. */
-import { createSim, initPhysics } from './sim.js';
+/* Module worker: owns one Rapier sim. Must not touch the DOM or import three.js. */
+import wasmUrl from 'virtual:rapier-wasm-url';
+import { createSim, initPhysics, prewarm } from './sim.js';
 import { MSG, READY } from './protocol.js';
 
 const DEFAULT_AREA = { halfWidth: 12, halfDepth: 7 };
@@ -10,8 +11,10 @@ self.onmessage = async (e) => {
   const msg = e.data;
   try {
     if (msg.type === MSG.INIT) {
-      ready = initPhysics().then(() => {
-        sim = createSim(msg.area ?? DEFAULT_AREA);
+      ready = initPhysics(wasmUrl).then(() => {
+        sim = createSim(msg.area ?? DEFAULT_AREA, msg.hulls);
+        // Pre-warm every die type (colliders, hulls, wasm paths) before announcing ready.
+        prewarm(sim, [...Object.keys(msg.hulls ?? {}), 'd2']);
       });
       await ready;
       self.postMessage({ type: READY });

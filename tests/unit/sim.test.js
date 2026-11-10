@@ -1,19 +1,25 @@
+import { readFileSync } from 'node:fs';
 import { beforeAll, expect, test } from 'vitest';
-import { createSim, initPhysics } from '../../src/physics/sim.js';
+import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
+import { computeHulls } from '../../src/physics/hulls.js';
 import { FLOATS_PER_DIE, MAX_STEPS } from '../../src/physics/protocol.js';
 
 const area = { halfWidth: 12, halfDepth: 7 };
 
+const hulls = computeHulls();
+
 beforeAll(async () => {
-  await initPhysics();
-  // Warm up hull building and the WASM paths so the timing test is not measuring a cold start.
-  const s = createSim(area);
-  s.throw({ dice: [{ type: 'd6' }], seed: 0 }, () => {});
+  await initPhysics(
+    readFileSync('node_modules/@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.wasm'),
+  );
+  // The worker pre-warms every type before it reports ready; do the same here.
+  const s = createSim(area, hulls);
+  prewarm(s, [...Object.keys(hulls), 'd2']);
   s.dispose();
 });
 
 function run(dice, seed) {
-  const sim = createSim(area);
+  const sim = createSim(area, hulls);
   const chunks = [];
   const res = sim.throw({ dice: dice.map((type) => ({ type })), seed }, (c) =>
     chunks.push({ ...c, data: c.data.slice() }),
@@ -48,7 +54,7 @@ test('dice start outside the area', () => {
 });
 
 test('first chunk arrives in under 50 ms for 30 dice', () => {
-  const sim = createSim(area);
+  const sim = createSim(area, hulls);
   const t0 = performance.now();
   let first = null;
   sim.throw({ dice: Array(30).fill({ type: 'd6' }), seed: 1 }, () => (first ??= performance.now()));
@@ -57,7 +63,7 @@ test('first chunk arrives in under 50 ms for 30 dice', () => {
 });
 
 test('a transferred (detached) pooled buffer is discarded, a live one is reused', () => {
-  const sim = createSim(area);
+  const sim = createSim(area, hulls);
   const seen = [];
   const req = { dice: [{ type: 'd6' }], seed: 5 };
   sim.throw(req, (c) => seen.push(c.data));
@@ -71,4 +77,29 @@ test('a transferred (detached) pooled buffer is discarded, a live one is reused'
   expect(again[0].buffer).toBe(first.buffer);
   expect(again[0].buffer.byteLength).toBeGreaterThan(0);
   sim.dispose();
+});
+
+test('coin piles come to rest well before MAX_STEPS', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const { res } = run(Array(10).fill('d2'), seed);
+    expect(res.settledStep).toBeLessThan(MAX_STEPS);
+  }
+});
+
+test('every die type settles inside the area', () => {
+  for (const type of ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+    const { res, chunks } = run(Array(12).fill(type), 9);
+    expect(res.settledStep).toBeLessThan(MAX_STEPS);
+    const last = chunks.at(-1);
+    const base = (last.steps - 1) * 12 * FLOATS_PER_DIE;
+    for (let d = 0; d < 12; d++) {
+      expect(Math.abs(last.data[base + d * FLOATS_PER_DIE])).toBeLessThan(area.halfWidth);
+      expect(Math.abs(last.data[base + d * FLOATS_PER_DIE + 2])).toBeLessThan(area.halfDepth);
+    }
+  }
+});
+
+test('a missing hull is an error, not a silent fallback', () => {
+  const sim = createSim(area, {});
+  expect(() => sim.throw({ dice: [{ type: 'd6' }], seed: 1 }, () => {})).toThrow(/no hull/);
 });
