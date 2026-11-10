@@ -26,10 +26,16 @@ test('tierFromProbe boundaries', () => {
   expect(t(16)).toBe('low');
 });
 
+// P2-R10: the first 10 frames after construction / reset() are ignored.
+const grace = (q) => {
+  for (let i = 0; i < 10; i++) q.frame(1000);
+};
+
 describe('AdaptiveQuality', () => {
   test('29 slow frames do not drop, the 30th does', () => {
     const onDrop = vi.fn();
     const q = new AdaptiveQuality({ onDrop });
+    grace(q);
     for (let i = 0; i < 29; i++) q.frame(40);
     expect(onDrop).not.toHaveBeenCalled();
     q.frame(40);
@@ -40,6 +46,7 @@ describe('AdaptiveQuality', () => {
   test('a fast stretch resets the streak', () => {
     const onDrop = vi.fn();
     const q = new AdaptiveQuality({ onDrop });
+    grace(q);
     for (let i = 0; i < 20; i++) q.frame(40);
     for (let i = 0; i < 60; i++) q.frame(1); // EMA decays under budget
     for (let i = 0; i < 29; i++) q.frame(40);
@@ -49,16 +56,56 @@ describe('AdaptiveQuality', () => {
   test('after a drop the counter restarts', () => {
     const onDrop = vi.fn();
     const q = new AdaptiveQuality({ onDrop });
+    grace(q);
     for (let i = 0; i < 30; i++) q.frame(40);
     expect(onDrop).toHaveBeenCalledTimes(1);
+    grace(q);
     for (let i = 0; i < 29; i++) q.frame(40);
     expect(onDrop).toHaveBeenCalledTimes(1);
     q.frame(40);
     expect(onDrop).toHaveBeenLastCalledWith(2);
   });
 
+  test('after a drop the grace window applies again before counting restarts', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    grace(q);
+    for (let i = 0; i < 30; i++) q.frame(40);
+    grace(q); // ignored, even though they are slow
+    for (let i = 0; i < 29; i++) q.frame(40);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+    q.frame(40);
+    expect(onDrop).toHaveBeenCalledTimes(2);
+  });
+
+  test('a single 1000 ms hitch followed by normal frames causes no drop', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    grace(q);
+    q.frame(1000);
+    for (let i = 0; i < 200; i++) q.frame(10);
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  test('frames inside the 10-frame grace window are ignored', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    for (let i = 0; i < 39; i++) q.frame(500);
+    expect(onDrop).not.toHaveBeenCalled(); // 10 ignored + 30 slow: the drop is the 40th
+  });
+
+  test('a sustained slowdown still drops after grace + window', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    for (let i = 0; i < 39; i++) q.frame(40);
+    expect(onDrop).not.toHaveBeenCalled();
+    q.frame(40);
+    expect(onDrop).toHaveBeenCalledWith(1);
+  });
+
   test('reset clears dropped', () => {
     const q = new AdaptiveQuality({});
+    grace(q);
     for (let i = 0; i < 30; i++) q.frame(40);
     q.reset();
     expect(q.dropped).toBe(0);

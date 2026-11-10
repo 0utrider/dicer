@@ -64,9 +64,13 @@ export async function runProbe(renderer, { frames = 20, atlas } = {}) {
   let material = null;
   let geometry = null;
   let prevTarget = null;
+  let gl = null;
+  let ext = null;
+  let openQuery = null;
+  const queries = [];
   try {
     prevTarget = renderer.getRenderTarget?.() ?? null;
-    const gl = renderer.getContext();
+    gl = renderer.getContext();
     const info = gl.getExtension('WEBGL_debug_renderer_info');
     const gpu = (info && String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL))) || 'unknown';
     const cached = readCache(gpu);
@@ -101,22 +105,24 @@ export async function runProbe(renderer, { frames = 20, atlas } = {}) {
     renderer.render(scene, camera); // warm-up frame (program link, uploads)
     gl.finish();
 
-    const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
-    const queries = [];
+    ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    if (ext) gl.getParameter(ext.GPU_DISJOINT_EXT); // reading clears a stale disjoint flag
     const t0 = performance.now();
     for (let i = 0; i < frames; i++) {
-      let q = null;
       if (ext) {
-        q = gl.createQuery();
-        gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
+        openQuery = gl.createQuery();
+        gl.beginQuery(ext.TIME_ELAPSED_EXT, openQuery);
       }
       renderer.render(scene, camera);
-      if (q) {
+      if (openQuery) {
         gl.endQuery(ext.TIME_ELAPSED_EXT);
-        queries.push(q);
+        queries.push(openQuery);
+        openQuery = null;
       }
     }
     gl.finish();
+    // finish() can return early on some drivers; a synchronous readback really waits.
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
     let msPerFrame = (performance.now() - t0) / frames;
     if (ext) {
       try {
@@ -124,8 +130,6 @@ export async function runProbe(renderer, { frames = 20, atlas } = {}) {
         if (timed !== null && Number.isFinite(timed) && timed > 0) msPerFrame = timed;
       } catch {
         // keep the wall-clock figure
-      } finally {
-        queries.forEach((q) => gl.deleteQuery(q));
       }
     }
     if (!Number.isFinite(msPerFrame) || msPerFrame <= 0) return { ...FALLBACK, gpu };
@@ -134,6 +138,15 @@ export async function runProbe(renderer, { frames = 20, atlas } = {}) {
   } catch {
     return { ...FALLBACK };
   } finally {
+    try {
+      if (openQuery) {
+        gl.endQuery(ext.TIME_ELAPSED_EXT);
+        gl.deleteQuery(openQuery);
+      }
+      queries.forEach((q) => gl.deleteQuery(q));
+    } catch {
+      // ignore
+    }
     try {
       renderer.setRenderTarget?.(prevTarget);
     } catch {

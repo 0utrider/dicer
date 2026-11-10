@@ -53,6 +53,8 @@ export function tierFromProbe({ msPerFrame }) {
   return 'low';
 }
 
+const GRACE_FRAMES = 10;
+
 /**
  * Drops a tier (session only) when frame time stays over budget. Call frame(ms) once per
  * rendered frame while a roll animates. EMA alpha 0.1, seeded by the first sample.
@@ -64,6 +66,7 @@ export class AdaptiveQuality {
   #ema = null;
   #streak = 0;
   #dropped = 0;
+  #grace = GRACE_FRAMES;
 
   constructor({ budgetMs = 20, window = 30, onDrop } = {}) {
     this.#budget = budgetMs;
@@ -76,6 +79,11 @@ export class AdaptiveQuality {
   }
 
   frame(ms) {
+    if (this.#grace > 0) {
+      this.#grace--; // P2-R10: ignore the frames right after construction, reset() or a tier change
+      return;
+    }
+    ms = Math.min(ms, 3 * this.#budget); // one hitch must not count as a sustained slowdown
     this.#ema = this.#ema === null ? ms : this.#ema + 0.1 * (ms - this.#ema);
     if (this.#ema <= this.#budget) {
       this.#streak = 0;
@@ -85,6 +93,7 @@ export class AdaptiveQuality {
     this.#dropped++;
     this.#ema = null;
     this.#streak = 0;
+    this.#grace = GRACE_FRAMES;
     this.#onDrop?.(this.#dropped);
   }
 
@@ -93,5 +102,6 @@ export class AdaptiveQuality {
     this.#ema = null;
     this.#streak = 0;
     this.#dropped = 0;
+    this.#grace = GRACE_FRAMES;
   }
 }

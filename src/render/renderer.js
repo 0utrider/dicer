@@ -29,6 +29,7 @@ export class DiceRenderer {
   #envResolution = DEFAULT_ENV_RESOLUTION;
   #tierRatio = Infinity;
   #frameTime = [];
+  #lastFrameAt = null;
   #onLost;
   #onRestored;
 
@@ -142,8 +143,9 @@ export class DiceRenderer {
 
   /**
    * Compiles the given dice materials and their fade variants ahead of the first roll, via
-   * compileAsync. The meshes are added to the real scene (so light and environment state
-   * match what rolls use) for the compile only, then removed; no loop starts.
+   * compileAsync. The meshes live in a private scene that is never rendered; the real scene is
+   * passed as compileAsync's targetScene so lights and environment match what rolls use.
+   * No loop starts.
    */
   async warmup(materials, geometry) {
     if (!this.#renderer.compileAsync) return;
@@ -151,16 +153,16 @@ export class DiceRenderer {
       this.#sceneApi.setEnvironment(this.#renderer, { resolution: this.#envResolution });
     }
     const fades = materials.map((m) => cloneForFade(m));
-    const meshes = [...materials, ...fades].map((m) => {
+    const tmp = new THREE.Scene();
+    for (const m of [...materials, ...fades]) {
       const mesh = new THREE.Mesh(geometry, m);
       mesh.frustumCulled = false;
-      this.scene.add(mesh);
-      return mesh;
-    });
+      tmp.add(mesh);
+    }
     try {
-      await this.#renderer.compileAsync(this.scene, this.camera);
+      await this.#renderer.compileAsync(tmp, this.camera, this.scene);
     } finally {
-      for (const mesh of meshes) this.scene.remove(mesh);
+      tmp.clear();
       // dispose() on a clone only drops its own program refs; userData is shared and untouched.
       for (const f of fades) f.dispose();
     }
@@ -192,6 +194,8 @@ export class DiceRenderer {
     if (!tick) return;
     let again = false;
     const t0 = performance.now();
+    const prev = this.#lastFrameAt;
+    this.#lastFrameAt = now;
     try {
       again = tick(now);
     } finally {
@@ -199,7 +203,9 @@ export class DiceRenderer {
       try {
         this.#sceneApi.updateShadows();
         this.#renderer.render(this.scene, this.camera);
-        const ms = performance.now() - t0;
+        // CPU submit time alone misses GPU-bound frames: also take the rAF interval (capped).
+        let ms = performance.now() - t0;
+        if (prev !== null && Number.isFinite(now - prev)) ms = Math.max(ms, Math.min(now - prev, 100));
         for (const cb of this.#frameTime) cb(ms);
       } finally {
         if (again && this.#tick) this.#handle = this.#raf((t) => this.#frame(t));
@@ -212,6 +218,7 @@ export class DiceRenderer {
     if (this.#handle !== null) this.#caf(this.#handle);
     this.#handle = null;
     this.#tick = null;
+    this.#lastFrameAt = null;
   }
 
   hide() {

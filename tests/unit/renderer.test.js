@@ -202,7 +202,7 @@ describe('quality hooks', () => {
     expect(typeof cb.mock.calls[0][0]).toBe('number');
   });
 
-  test('warmup compiles normal and fade variants, leaves the scene clean and starts no loop', async () => {
+  test('warmup compiles normal and fade variants from a private scene, targeting the real one', async () => {
     const { r, fake, frames } = setup();
     fake.compileAsync = vi.fn(async (scene) => {
       fake.seen = scene.children.filter((c) => c.isMesh).map((c) => c.material);
@@ -211,10 +211,40 @@ describe('quality hooks', () => {
     const before = r.scene.children.length;
     await r.warmup(mats, new THREE.BoxGeometry());
     expect(fake.compileAsync).toHaveBeenCalledTimes(1);
+    expect(fake.compileAsync.mock.calls[0][0]).not.toBe(r.scene);
+    expect(fake.compileAsync.mock.calls[0][2]).toBe(r.scene);
     expect(fake.seen.length).toBe(4);
     expect(fake.seen.filter((m) => m.transparent).length).toBe(2);
     expect(r.scene.children.length).toBe(before);
     expect(frames.length).toBe(0);
     expect(r.isLooping).toBe(false);
+  });
+
+  test('a frame rendered while the warmup compile is pending never contains a warm-up mesh', async () => {
+    const { r, fake, step } = setup();
+    let release;
+    fake.compileAsync = vi.fn(() => new Promise((res) => (release = res)));
+    const rendered = [];
+    fake.render.mockImplementation((scene) => rendered.push(scene.children.filter((c) => c.isMesh).length));
+    const pending = r.warmup([new THREE.MeshBasicMaterial()], new THREE.BoxGeometry());
+    r.startLoop(() => false);
+    step();
+    expect(rendered.length).toBe(1);
+    expect(rendered[0]).toBe(0);
+    release();
+    await pending;
+  });
+
+  test('onFrameTime reports the rAF interval when it exceeds CPU time, none for the first frame', () => {
+    const { r, frames } = setup();
+    const cb = vi.fn();
+    r.onFrameTime(cb);
+    r.startLoop(() => true);
+    for (const t of [0, 16, 60]) frames.splice(0).forEach((f) => f(t));
+    const v = cb.mock.calls.map((c) => c[0]);
+    expect(v[0]).toBeLessThan(10); // first frame: CPU time only
+    expect(v[1]).toBeGreaterThanOrEqual(16);
+    expect(v[2]).toBeGreaterThanOrEqual(44);
+    expect(v[2]).toBeLessThan(100);
   });
 });
