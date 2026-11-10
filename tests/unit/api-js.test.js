@@ -18,7 +18,13 @@ describe('DiceSystem constants', () => {
       STRING: 'string',
     });
     expect(DiceSystem.SETTING_FORMATING).toEqual({ SEPARATOR: 'separator', HTML: 'html' });
-    expect(DiceSystem.DICE_EVENT_TYPE).toEqual({ SPAWN: 0, CLICK: 1, RESULT: 2, COLLIDE: 3, DESPAWN: 4 });
+    expect(DiceSystem.DICE_EVENT_TYPE).toEqual({
+      SPAWN: 0,
+      CLICK: 1,
+      RESULT: 2,
+      COLLIDE: 3,
+      DESPAWN: 4,
+    });
     expect(DiceSFX.PLAY_ONLY_ONCE_PER_MESH).toBe(false);
   });
 
@@ -108,7 +114,9 @@ describe('DiceSystem instance', () => {
       global: { look: 'default', systemSettings: { mine: { tint: '#123456' } } },
       d6: { systemSettings: { mine: { tint: '#abcdef' }, other: { tint: '#000000' } } },
     };
-    vi.stubGlobal('game', { user: { getFlag: (s, k) => (s === 'dicer' && k === 'appearance' ? flag : undefined) } });
+    vi.stubGlobal('game', {
+      user: { getFlag: (s, k) => (s === 'dicer' && k === 'appearance' ? flag : undefined) },
+    });
     try {
       sys.loadSettings();
     } finally {
@@ -126,6 +134,35 @@ describe('DiceSystem instance', () => {
     expect(sys.settings).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  test('addSetting*(null) or a non-object warns once per member and returns (P3-R21)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sys = new DiceSystem('mine', 'Mine');
+    const members = [
+      'addSettingSeparator',
+      'addSettingHTML',
+      'addSettingBoolean',
+      'addSettingColor',
+      'addSettingRange',
+      'addSettingFile',
+      'addSettingSelect',
+      'addSettingString',
+    ];
+    for (const m of members) {
+      expect(() => sys[m](null)).not.toThrow();
+      expect(sys[m](null)).toBeUndefined();
+      expect(() => sys[m]('nope')).not.toThrow();
+    }
+    expect(sys.settings).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(members.length);
+    warn.mockRestore();
+  });
+
+  test('an explicit undefined defaultValue still gets the member default', () => {
+    const sys = new DiceSystem('mine', 'Mine');
+    sys.addSettingRange({ id: 'r', defaultValue: undefined, max: undefined });
+    expect(sys.settings[0]).toMatchObject({ id: 'r', defaultValue: 0, min: 0, max: 100, step: 1 });
   });
 
   test('roles', () => {
@@ -298,7 +335,9 @@ describe('DiceBox applies a registered DiceSystem', () => {
 
   const spec = (value) => ({ type: 'd20', value, system: 'mine', dsnType: 'd20' });
   const meshes = (renderer) =>
-    renderer.scene.children.filter((o) => o.isGroup && o.userData.dicerDie).map((g) => g.children[0]);
+    renderer.scene.children
+      .filter((o) => o.isGroup && o.userData.dicerDie)
+      .map((g) => g.children[0]);
 
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

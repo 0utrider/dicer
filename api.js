@@ -131,48 +131,72 @@ export class DiceSystem {
     return this.#layout.filter((s) => !formatting.includes(s.type));
   }
 
-  addSettingSeparator({ name = '' } = {}) {
-    this.#layout.push({ type: DiceSystem.SETTING_FORMATING.SEPARATOR, name });
+  /** The options object of an addSetting* call (`{}` when omitted), or null after one warning. */
+  #options(member, opts) {
+    if (opts === undefined) return {};
+    if (isObj(opts)) return opts;
+    this.#warn(member, 'expected an options object');
+    return null;
   }
 
-  addSettingHTML({ name } = {}) {
-    this.#layout.push({ type: DiceSystem.SETTING_FORMATING.HTML, name });
+  addSettingSeparator(opts) {
+    const o = this.#options('addSettingSeparator', opts);
+    if (o) this.#layout.push({ type: DiceSystem.SETTING_FORMATING.SEPARATOR, name: o.name ?? '' });
   }
 
-  #addSetting(member, type, { id, name, scope = DiceSystem.SETTING_SCOPE.SHARED, defaultValue, ...extra }) {
+  addSettingHTML(opts) {
+    const o = this.#options('addSettingHTML', opts);
+    if (o) this.#layout.push({ type: DiceSystem.SETTING_FORMATING.HTML, name: o.name });
+  }
+
+  /** `defaults` fill the options left undefined, as destructuring defaults would. */
+  #addSetting(member, type, opts, defaults) {
+    const o = this.#options(member, opts);
+    if (!o) return;
+    const filled = { ...o };
+    for (const [k, v] of Object.entries(defaults)) if (filled[k] === undefined) filled[k] = v;
+    const { id, name, scope = DiceSystem.SETTING_SCOPE.SHARED, defaultValue, ...extra } = filled;
     if (!isId(id)) return this.#warn(member, 'expected a setting with a string `id`');
     this.#layout = this.#layout.filter((s) => s.id !== id);
     this.#layout.push({ id, name: name ?? id, type, scope, defaultValue, ...extra });
   }
 
-  addSettingBoolean({ defaultValue = false, ...rest } = {}) {
-    this.#addSetting('addSettingBoolean', DiceSystem.SETTING_TYPE.BOOLEAN, { ...rest, defaultValue });
-  }
-
-  addSettingColor({ defaultValue = '#ffffff', ...rest } = {}) {
-    this.#addSetting('addSettingColor', DiceSystem.SETTING_TYPE.COLOR, { ...rest, defaultValue });
-  }
-
-  addSettingRange({ defaultValue = 0, min = 0, max = 100, step = 1, ...rest } = {}) {
-    this.#addSetting('addSettingRange', DiceSystem.SETTING_TYPE.RANGE, {
-      ...rest,
-      defaultValue,
-      min,
-      max,
-      step,
+  addSettingBoolean(opts) {
+    this.#addSetting('addSettingBoolean', DiceSystem.SETTING_TYPE.BOOLEAN, opts, {
+      defaultValue: false,
     });
   }
 
-  addSettingFile({ defaultValue = '', ...rest } = {}) {
-    this.#addSetting('addSettingFile', DiceSystem.SETTING_TYPE.FILE, { ...rest, defaultValue });
+  addSettingColor(opts) {
+    this.#addSetting('addSettingColor', DiceSystem.SETTING_TYPE.COLOR, opts, {
+      defaultValue: '#ffffff',
+    });
   }
 
-  addSettingSelect({ defaultValue = null, options = {}, ...rest } = {}) {
-    this.#addSetting('addSettingSelect', DiceSystem.SETTING_TYPE.SELECT, { ...rest, defaultValue, options });
+  addSettingRange(opts) {
+    this.#addSetting('addSettingRange', DiceSystem.SETTING_TYPE.RANGE, opts, {
+      defaultValue: 0,
+      min: 0,
+      max: 100,
+      step: 1,
+    });
   }
 
-  addSettingString({ defaultValue = '', ...rest } = {}) {
-    this.#addSetting('addSettingString', DiceSystem.SETTING_TYPE.STRING, { ...rest, defaultValue });
+  addSettingFile(opts) {
+    this.#addSetting('addSettingFile', DiceSystem.SETTING_TYPE.FILE, opts, { defaultValue: '' });
+  }
+
+  addSettingSelect(opts) {
+    this.#addSetting('addSettingSelect', DiceSystem.SETTING_TYPE.SELECT, opts, {
+      defaultValue: null,
+      options: {},
+    });
+  }
+
+  addSettingString(opts) {
+    this.#addSetting('addSettingString', DiceSystem.SETTING_TYPE.STRING, opts, {
+      defaultValue: '',
+    });
   }
 
   /** { settingId: defaultValue } for every value setting. */
@@ -183,7 +207,11 @@ export class DiceSystem {
   /** The defaults, overridden by the 'global' values, overridden by this die type's. */
   getSettingsByDiceType(type, scope = 'basic') {
     const byType = this.#values[scope] ?? {};
-    return { ...this.getDefaultSettings(), ...byType.global, ...(type === 'global' ? {} : byType[type]) };
+    return {
+      ...this.getDefaultSettings(),
+      ...byType.global,
+      ...(type === 'global' ? {} : byType[type]),
+    };
   }
 
   getScopedSettingValue(type, id, scope = 'basic') {
@@ -222,6 +250,7 @@ export class DiceSystem {
 
   // Events
 
+  // An unknown event type throws: that is DSN's interface contract for on/off (ruling P3-R21).
   #listenersOf(member, type) {
     if (!Object.values(DiceSystem.DICE_EVENT_TYPE).includes(type)) {
       throw new TypeError(`dicer | DiceSystem.${member}: unknown dice event type ${String(type)}`);
