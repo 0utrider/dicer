@@ -113,3 +113,39 @@ test('shadowFor reuses released planes', () => {
   expect(c).toBe(a);
   expect(scene.children).toContain(c);
 });
+
+test('context restore resets the environment so the next startLoop rebuilds it', () => {
+  const { r, fake, container, step } = setup();
+  fake.isWebGLRenderer = true;
+  const api = r.sceneApi;
+  const setEnv = vi.spyOn(api, 'setEnvironment').mockImplementation(() => {});
+  const reset = vi.spyOn(api, 'resetEnvironment');
+  r.startLoop(() => false);
+  step();
+  expect(setEnv).toHaveBeenCalledTimes(1);
+  container.querySelector('#dicer-canvas').dispatchEvent(new Event('webglcontextrestored'));
+  expect(reset).toHaveBeenCalledTimes(1);
+  r.startLoop(() => false);
+  expect(setEnv).toHaveBeenCalledTimes(2);
+});
+
+test('resetEnvironment clears scene.environment and allows regeneration', () => {
+  const { scene, resetEnvironment } = buildScene();
+  scene.environment = new THREE.Texture();
+  resetEnvironment();
+  expect(scene.environment).toBeNull();
+});
+
+test('dispose clears environment and removes shadow planes', () => {
+  const { r } = setup();
+  const api = r.sceneApi;
+  const a = api.shadowFor(new THREE.Mesh());
+  const b = api.shadowFor(new THREE.Mesh());
+  api.releaseShadow(b);
+  r.scene.environment = new THREE.Texture();
+  r.dispose();
+  expect(r.scene.environment).toBeNull();
+  expect(r.scene.children).not.toContain(a);
+  expect(r.scene.children).not.toContain(b);
+  expect(r.scene.children.filter((c) => c.userData && 'follow' in c.userData)).toEqual([]);
+});

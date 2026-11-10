@@ -54,7 +54,11 @@ export class DiceRenderer {
       this.#stop();
       this.#lost.forEach((cb) => cb());
     };
-    this.#onRestored = () => this.#restored.forEach((cb) => cb());
+    this.#onRestored = () => {
+      // PMREM targets are not re-uploaded by three after a restore: rebuild on next startLoop.
+      this.#sceneApi.resetEnvironment();
+      this.#restored.forEach((cb) => cb());
+    };
     canvas.addEventListener('webglcontextlost', this.#onLost);
     canvas.addEventListener('webglcontextrestored', this.#onRestored);
   }

@@ -68,6 +68,13 @@ export function buildScene() {
     pmrem.dispose();
   }
 
+  /** Drops the PMREM target (a GPU resource three does not re-upload after context restore). */
+  function resetEnvironment() {
+    envTarget?.dispose();
+    envTarget = null;
+    scene.environment = null;
+  }
+
   // Shadow pool: one shared texture, material and geometry; planes reused after release.
   let shadowTex = null;
   let shadowMat = null;
@@ -118,13 +125,14 @@ export function buildScene() {
   }
 
   function dispose() {
+    for (const plane of [...active]) releaseShadow(plane);
+    for (const plane of free) scene.remove(plane);
+    resetEnvironment();
     shadowTex?.dispose();
     shadowMat?.dispose();
     shadowGeo?.dispose();
-    envTarget?.dispose();
-    shadowTex = shadowMat = shadowGeo = envTarget = null;
+    shadowTex = shadowMat = shadowGeo = null;
     free.length = 0;
-    active.clear();
   }
 
   return {
@@ -132,6 +140,7 @@ export function buildScene() {
     camera,
     fitArea,
     setEnvironment,
+    resetEnvironment,
     shadowFor,
     releaseShadow,
     updateShadows,
