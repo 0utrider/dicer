@@ -60,9 +60,10 @@ function dieColliderDesc(type, hulls) {
   if (getShape(type).kind === 'coin') {
     desc = RAPIER.ColliderDesc.cylinder(0.125, 1);
   } else {
-    const pts = hulls?.[type];
-    if (!pts) throw new Error(`dicer: no hull supplied for "${type}"`);
-    desc = RAPIER.ColliderDesc.convexHull(pts);
+    const hull = hulls?.[type];
+    if (!hull) throw new Error(`dicer: no hull supplied for "${type}"`);
+    // P2-R4: the exact Minkowski solid (shrunk polyhedron + border radius) of the visual mesh.
+    desc = RAPIER.ColliderDesc.roundConvexHull(hull.points, hull.radius);
   }
   if (!desc) throw new Error(`dicer: could not build collider for "${type}"`);
   return desc.setRestitution(DIE_RESTITUTION).setFriction(DIE_FRICTION).setDensity(1);

@@ -99,6 +99,30 @@ test('every die type settles inside the area', () => {
   }
 });
 
+test('hulls are round convex hulls: shrunk points plus a border radius (P2-R4)', () => {
+  for (const [type, h] of Object.entries(hulls)) {
+    expect(h.points, type).toBeInstanceOf(Float32Array);
+    expect(h.points.length % 3, type).toBe(0);
+    expect(h.radius, type).toBeGreaterThan(0);
+    for (let i = 0; i < h.points.length; i += 3)
+      expect(Math.hypot(h.points[i], h.points[i + 1], h.points[i + 2]) + h.radius).toBeLessThan(1);
+  }
+});
+
+test('30 d20 whole throw finishes in under 60 ms after pre-warm', () => {
+  // Best of 3 so a GC pause or a busy parallel test worker doesn't fail a regression guard
+  // (measured ~25 ms median in isolation; the mesh-vertex hulls of 2189502 took 60-95 ms).
+  const sim = createSim(area, hulls);
+  let best = Infinity;
+  for (const seed of [3, 4, 5]) {
+    const t0 = performance.now();
+    sim.throw({ dice: Array(30).fill({ type: 'd20' }), seed }, (c) => sim.recycle(c.data));
+    best = Math.min(best, performance.now() - t0);
+  }
+  sim.dispose();
+  expect(best).toBeLessThan(60);
+});
+
 test('a missing hull is an error, not a silent fallback', () => {
   const sim = createSim(area, {});
   expect(() => sim.throw({ dice: [{ type: 'd6' }], seed: 1 }, () => {})).toThrow(/no hull/);

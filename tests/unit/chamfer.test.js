@@ -1,6 +1,6 @@
 import { getShape } from '../../src/core/dice-shapes.js';
 import { faceNormals } from '../../src/core/face-reader.js';
-import { buildDieGeometry } from '../../src/core/chamfer.js';
+import { buildDieGeometry, minkowskiHull } from '../../src/core/chamfer.js';
 
 const ALL = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 
@@ -192,4 +192,52 @@ test('an explicit chamfer overrides the style default', () => {
     return a;
   };
   expect(area({ style: 'sharp', chamfer: 0.07, bevelSegments: 3 })).toBeCloseTo(area({}), 6);
+});
+
+// ---- P2-R4: the Minkowski parameters behind the rounded mesh (physics collider) ----
+
+const POLY = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+
+test.each(POLY)('%s minkowskiHull is the solid the visual mesh approximates', (t) => {
+  const s = getShape(t);
+  for (const style of ['rounded', 'sharp']) {
+    const { points, radius } = minkowskiHull(s, { style });
+    expect(points.length).toBe(s.vertices.length);
+    expect(radius).toBeGreaterThan(0);
+    // Every mesh vertex is shrunkVertex + radius * unitNormal, so its distance from the nearest
+    // shrunk vertex is at least radius and the farthest mesh vertex is |point| + radius out.
+    const p = buildDieGeometry(s, { style }).getAttribute('position');
+    let maxMesh = 0;
+    for (let i = 0; i < p.count; i++)
+      maxMesh = Math.max(maxMesh, Math.hypot(p.getX(i), p.getY(i), p.getZ(i)));
+    const maxPt = Math.max(...points.map((q) => Math.hypot(...q)));
+    expect(maxMesh).toBeCloseTo(maxPt + radius, 5);
+  }
+  expect(minkowskiHull(s, { style: 'sharp' }).radius).toBeLessThan(
+    0.25 * minkowskiHull(s).radius,
+  );
+});
+
+test('minkowskiHull: d6 rounded radius is the 0.07 inset (90 degree turn)', () => {
+  expect(minkowskiHull(getShape('d6')).radius).toBeCloseTo(0.07, 9);
+  expect(() => minkowskiHull(getShape('d2'))).toThrow();
+});
+
+test.each(POLY)('%s centroid aEdgeDist matches every inset edge distance within 0.5%%', (t) => {
+  // Task 5 relies on aEdgeDist being a true edge distance (the d10 kites included).
+  const g = buildDieGeometry(getShape(t));
+  const p = g.getAttribute('position'),
+    ids = g.getAttribute('aFaceId'),
+    ed = g.getAttribute('aEdgeDist'),
+    uv = g.getAttribute('aFaceUV');
+  for (let i = 0; i < p.count; i += 3) {
+    if (ids.getX(i) < 0) continue;
+    // Fan triangle (centroid, a, b): the UV-space distance from the centroid to edge ab
+    // (UV is face units) must equal the centroid's aEdgeDist.
+    const [c, a, b] = [0, 1, 2].map((k) => [uv.getX(i + k), uv.getY(i + k)]);
+    const ex = b[0] - a[0],
+      ey = b[1] - a[1];
+    const dist = Math.abs(ex * (c[1] - a[1]) - ey * (c[0] - a[0])) / Math.hypot(ex, ey);
+    expect(Math.abs(dist / ed.getX(i) - 1)).toBeLessThan(0.005);
+  }
 });

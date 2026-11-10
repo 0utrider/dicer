@@ -12,7 +12,7 @@ export function createPhysicsWorker() {
 export class PhysicsClient {
   /**
    * @param {() => Worker} createWorker
-   * @param {{ hulls?: Record<string, Float32Array>, area?: object }} [options] hulls come from
+   * @param {{ hulls?: Record<string, { points: Float32Array, radius: number }>, area?: object }} [options] hulls come from
    *   `computeHulls()` (main thread); the worker never builds geometry.
    */
   constructor(createWorker, { hulls, area } = {}) {

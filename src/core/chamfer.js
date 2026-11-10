@@ -15,10 +15,12 @@ import { faceNormals } from './face-reader.js';
  *
  * Faces are centroid fans: each face triangle is (centroid, v_i, v_i+1). aEdgeDist is linear
  * in each fan triangle: 0 at the polygon vertices (so 0 along the polygon edge v_i v_i+1) and,
- * at the centroid, the inset face's inradius in face units. On regular faces that is exactly
- * the distance to the triangle's polygon edge; on the d10 kites (whose centroid is not
- * equidistant from all four edges) it is that distance rescaled per triangle so every face has
- * one centroid value. Bevel, corner and rim triangles carry 0.
+ * at the centroid, the inset face's inradius in face units (min centroid-to-inset-edge
+ * distance). On regular faces that is exactly the distance to the triangle's polygon edge. On
+ * the d10 kites the inset kite's centroid-to-edge distances are 0.3913 / 0.3921 / 0.3921 /
+ * 0.3913 (a 0.2% spread; the 1.000 / 1.086 spread of the original kite is evened out because
+ * the inset is a homothety about the insphere tangent point, not the centroid), so aEdgeDist
+ * is the true edge distance to within 0.2% there too. Bevel, corner and rim triangles carry 0.
  *
  * Edge profile (polyhedra): the die is the Minkowski sum of the polyhedron shrunk about its
  * centre with a sphere of radius rho. Each face keeps its plane; its flat part is the face
@@ -101,7 +103,11 @@ function slerpUnit(a, b, t) {
     .normalize();
 }
 
-function buildPolyhedron(shape, chamfer, segs, b) {
+/**
+ * Shared polyhedron setup: per-face frames plus the Minkowski parameters (shrink factor s and
+ * profile radius rho). Used by buildDieGeometry and minkowskiHull, so the maths lives once.
+ */
+function polyhedronFrame(shape, chamfer) {
   const V = shape.vertices.map((v) => new THREE.Vector3(v[0], v[1], v[2]));
   const normals = faceNormals(shape).map((n) => new THREE.Vector3(n.x, n.y, n.z));
 
@@ -142,6 +148,11 @@ function buildPolyhedron(shape, chamfer, segs, b) {
   const rIn = Math.min(...info.map((f) => f.c.dot(f.n)));
   const rho = w > 0 && maxTurn > 0 ? w / Math.tan(maxTurn / 2) : 0;
   const s = (rIn - rho) / rIn;
+  return { V, normals, info, edges, rho, s };
+}
+
+function buildPolyhedron(shape, chamfer, segs, b) {
+  const { V, normals, info, edges, rho, s } = polyhedronFrame(shape, chamfer);
   /** Surface point over vertex vi in direction dir: shrunk vertex + rho * dir. */
   const at = (vi, dir) => V[vi].clone().multiplyScalar(s).addScaledVector(dir, rho);
 
@@ -199,10 +210,8 @@ function buildPolyhedron(shape, chamfer, segs, b) {
   // Corner patches: the rho-sphere around each shrunk vertex, bounded by the adjacent faces'
   // normals. One fan per corner from the mean normal d to the boundary arcs, which are sampled
   // exactly like the strip rows (so they meet crack-free). Every vertex is on the sphere; the
-  // patch interior is not subdivided further. Judgment call: interior rows would add
-  // ~(segs - 1) * segs / 2 points per sector to the physics hull (P2-R3 uses this geometry), and
-  // measured they doubled the per-step contact cost (30 x d20 first chunk 16 -> 32 ms) for a
-  // silhouette sag of under 0.01 units at the default radius.
+  // patch interior is not subdivided further: the chord sag is under 0.01 units at the default
+  // radius, and the extra rows would roughly double the corner vertex count for no visible gain.
   V.forEach((vp, vi) => {
     const ring = [];
     shape.faces.forEach((f, i) => {
@@ -315,6 +324,32 @@ function buildCoin(chamfer, segs, b) {
   }
 }
 
+function resolveOptions(opts) {
+  const style = opts.style ?? 'rounded';
+  const def = Object.hasOwn(EDGE_STYLES, style) ? EDGE_STYLES[style] : null;
+  if (!def) throw new Error(`Dicer: unknown edge style "${style}"`);
+  return {
+    style,
+    chamfer: Math.max(0, opts.chamfer ?? def.chamfer),
+    segs: Math.max(1, Math.floor(opts.bevelSegments ?? def.bevelSegments)),
+  };
+}
+
+/**
+ * The exact Minkowski solid that buildDieGeometry's rounded mesh approximates: the shrunk
+ * polyhedron s * V plus a sphere of radius rho (P2-R4: the physics collider is
+ * roundConvexHull(points, radius)). Polyhedra only.
+ * @param {object} shape ShapeDef from getShape()
+ * @param {{chamfer?: number, style?: 'rounded'|'sharp'}} [opts] same options as buildDieGeometry
+ * @returns {{ points: number[][], radius: number }}
+ */
+export function minkowskiHull(shape, opts = {}) {
+  if (shape.kind === 'coin') throw new Error('Dicer: minkowskiHull is for polyhedra only');
+  const { chamfer } = resolveOptions(opts);
+  const { V, rho, s } = polyhedronFrame(shape, chamfer);
+  return { points: V.map((v) => [v.x * s, v.y * s, v.z * s]), radius: rho };
+}
+
 /**
  * @param {object} shape ShapeDef from getShape()
  * @param {{chamfer?: number, bevelSegments?: number, style?: 'rounded'|'sharp'}} [opts]
@@ -323,11 +358,7 @@ function buildCoin(chamfer, segs, b) {
  * @returns {THREE.BufferGeometry}
  */
 export function buildDieGeometry(shape, opts = {}) {
-  const style = opts.style ?? 'rounded';
-  const def = Object.hasOwn(EDGE_STYLES, style) ? EDGE_STYLES[style] : null;
-  if (!def) throw new Error(`Dicer: unknown edge style "${style}"`);
-  const chamfer = Math.max(0, opts.chamfer ?? def.chamfer);
-  const segs = Math.max(1, Math.floor(opts.bevelSegments ?? def.bevelSegments));
+  const { style, chamfer, segs } = resolveOptions(opts);
   const b = new Builder();
   if (shape.kind === 'coin') buildCoin(chamfer, segs, b);
   else buildPolyhedron(shape, chamfer, segs, b);

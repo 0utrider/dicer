@@ -73,7 +73,7 @@ test('an error message rejects only that stream', async () => {
 
 test('init posts the hulls; throws and resizes keep their send order', () => {
   const w = new FakeWorker();
-  const hulls = { d6: new Float32Array(3) };
+  const hulls = { d6: { points: new Float32Array(3), radius: 0.07 } };
   const client = new PhysicsClient(() => w, { hulls });
   expect(w.sent[0].m).toMatchObject({ type: 'init', hulls });
   client.resize({ halfWidth: 5, halfDepth: 5 });
