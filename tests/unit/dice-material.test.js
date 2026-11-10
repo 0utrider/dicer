@@ -598,3 +598,48 @@ test('low-tier tint keeps the body luminance: a near-black Void Star with a gold
   const mixed = body.clone().lerp(new THREE.Color(t.x, t.y, t.z), t.w);
   expect(Math.max(mixed.r, mixed.g, mixed.b)).toBeLessThan(0.01);
 });
+
+describe('P2-R12 safe flags', () => {
+  const SAFE = { ...FLAGS, safe: true };
+  const bodies = [
+    look({ body: { type: 'resin' }, interior: { type: 'nebula' }, glow: { intensity: 1 } }),
+    look({ body: { type: 'metal', finish: 'brushed' } }),
+    look({ body: { type: 'metal', finish: 'antique' } }),
+    look({ body: { type: 'marble' } }),
+    look({ body: { type: 'pearl' } }),
+    opaque(),
+  ];
+
+  test('every body becomes plain opaque physical: no DICER_* define, no body chunk, one program', () => {
+    const keys = new Set();
+    for (const a of bodies) {
+      const m = createDiceMaterial(a, atlas, s, labels, SAFE);
+      expect(Object.keys(m.defines).filter((k) => k.startsWith('DICER_'))).toEqual([]);
+      const fs = patched(m).fragmentShader;
+      for (const marker of ['dcRefracted', 'dcBorderSlope', 'dcMw', 'dcFilm', 'dcBrush', 'dcGrime', 'dcIVolume'])
+        expect(fs).not.toContain(marker);
+      expect(m.metalness).toBe(0);
+      expect(m.transmission).toBe(0);
+      expect(m.iridescence).toBe(0);
+      expect(m.sheen).toBe(0);
+      expect(m.anisotropy).toBe(0);
+      expect(m.color.getHexString()).toBe(a.body.color.slice(1));
+      keys.add(m.customProgramCacheKey());
+    }
+    expect(keys.size).toBe(1);
+  });
+
+  test('the numbers stay readable (label colour mask), without the recess', () => {
+    const m = createDiceMaterial(bodies[0], atlas, s, labels, SAFE);
+    const fs = patched(m).fragmentShader;
+    expect(fs).toContain('dcMask');
+    expect(m.defines.DICER_ENGRAVE).toBeUndefined();
+  });
+});
+
+test('resin exit Fresnel clamps its cosine to [0, 1] before pow (no NaN sparkles)', () => {
+  const m = createDiceMaterial(look({ body: { type: 'resin' } }), atlas, s, labels, FLAGS);
+  const fs = patched(m).fragmentShader;
+  expect(fs).toContain('float dcRcos = clamp( abs( dot( dcRout, dcRne ) ), 0.0, 1.0 );');
+  expect(fs).toMatch(/pow\( 1\.0 - dcRcos, 5\.0 \)/);
+});

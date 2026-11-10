@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { buildScene, DEFAULT_ENV_RESOLUTION } from './scene.js';
 import { cloneForFade } from '../throw/dice-box.js';
+import { compileGuarded, COMPILE_TIMEOUT_MS } from './compile-guard.js';
 
 const CANVAS_ID = 'dicer-canvas';
+/** Unresolved GPU timer queries kept at most; the next frames go unmeasured past it. */
+const MAX_PENDING_QUERIES = 8;
 
 /** Product-photo tone mapping; split out so it is testable without WebGL. */
 export function configureRenderer(renderer) {
@@ -32,6 +35,10 @@ export class DiceRenderer {
   #lastFrameAt = null;
   #onLost;
   #onRestored;
+  #gpu = undefined; // { gl, ext } | null (no timer) | undefined (not looked up yet)
+  #queries = [];
+  #gpuMs = null;
+  #compileTimeoutMs;
 
   constructor({
     container,
@@ -39,10 +46,12 @@ export class DiceRenderer {
     raf = (cb) => globalThis.requestAnimationFrame(cb),
     caf = (h) => globalThis.cancelAnimationFrame(h),
     pixelRatioCap = 1.5,
+    compileTimeoutMs = COMPILE_TIMEOUT_MS,
   }) {
     this.#raf = raf;
     this.#caf = caf;
     this.#cap = pixelRatioCap;
+    this.#compileTimeoutMs = compileTimeoutMs;
     const canvas = document.createElement('canvas');
     canvas.id = CANVAS_ID;
     canvas.style.display = 'none';
@@ -67,6 +76,7 @@ export class DiceRenderer {
       this.#lost.forEach((cb) => cb());
     };
     this.#onRestored = () => {
+      this.#gpu = undefined; // extensions must be fetched again on the restored context
       // PMREM targets are not re-uploaded by three after a restore: rebuild on next startLoop.
       this.#sceneApi.resetEnvironment();
       this.#restored.forEach((cb) => cb());
@@ -136,7 +146,11 @@ export class DiceRenderer {
     };
   }
 
-  /** cb(ms) with each rendered frame's tick + render wall time. */
+  /**
+   * cb(ms, { interval, cpu, gpu }) per rendered frame: ms = max(tick + render wall time, rAF
+   * interval capped at 100 ms); interval is undefined on a loop's first frame; gpu is the
+   * latest resolved GPU timer query in ms (a few frames behind), or null without the timer.
+   */
   onFrameTime(cb) {
     this.#frameTime.push(cb);
   }
@@ -145,7 +159,8 @@ export class DiceRenderer {
    * Compiles the given dice materials and their fade variants ahead of the first roll, via
    * compileAsync. The meshes live in a private scene that is never rendered; the real scene is
    * passed as compileAsync's targetScene so lights and environment match what rolls use.
-   * No loop starts.
+   * No loop starts. Rejects (CompileAbortedError) when the context is lost mid-compile or the
+   * compile outlasts compileTimeoutMs (10 s), so the caller's cleanup always runs.
    */
   async warmup(materials, geometry) {
     if (!this.#renderer.compileAsync) return;
@@ -160,7 +175,10 @@ export class DiceRenderer {
       tmp.add(mesh);
     }
     try {
-      await this.#renderer.compileAsync(tmp, this.camera, this.scene);
+      await compileGuarded(this.#renderer, tmp, this.camera, this.scene, {
+        canvas: this.#canvas,
+        timeoutMs: this.#compileTimeoutMs,
+      });
     } finally {
       tmp.clear();
       // dispose() on a clone only drops its own program refs; userData is shared and untouched.
@@ -202,11 +220,13 @@ export class DiceRenderer {
       // Render the final frame too, then go idle when tick is done (or threw).
       try {
         this.#sceneApi.updateShadows();
-        this.#renderer.render(this.scene, this.camera);
+        this.#timedRender();
         // CPU submit time alone misses GPU-bound frames: also take the rAF interval (capped).
-        let ms = performance.now() - t0;
-        if (prev !== null && Number.isFinite(now - prev)) ms = Math.max(ms, Math.min(now - prev, 100));
-        for (const cb of this.#frameTime) cb(ms);
+        const cpu = performance.now() - t0;
+        const interval = prev !== null && Number.isFinite(now - prev) ? Math.min(now - prev, 100) : undefined;
+        const ms = interval === undefined ? cpu : Math.max(cpu, interval);
+        const sample = { interval, cpu, gpu: this.#pollGpuTime() };
+        for (const cb of this.#frameTime) cb(ms, sample);
       } finally {
         if (again && this.#tick) this.#handle = this.#raf((t) => this.#frame(t));
         else this.hide();
@@ -214,11 +234,88 @@ export class DiceRenderer {
     }
   }
 
+  /** The GPU timer (EXT_disjoint_timer_query_webgl2), looked up once; null when unavailable. */
+  #timer() {
+    if (this.#gpu === undefined) {
+      try {
+        const gl = this.#renderer.getContext?.();
+        const ext = gl?.getExtension?.('EXT_disjoint_timer_query_webgl2');
+        this.#gpu = ext ? { gl, ext } : null;
+      } catch {
+        this.#gpu = null;
+      }
+    }
+    return this.#gpu;
+  }
+
+  /** Renders the frame, inside a GPU timer query when the extension exists (P2-R13). */
+  #timedRender() {
+    const t = this.#queries.length < MAX_PENDING_QUERIES ? this.#timer() : null;
+    let q = null;
+    if (t) {
+      try {
+        q = t.gl.createQuery();
+        t.gl.beginQuery(t.ext.TIME_ELAPSED_EXT, q);
+      } catch {
+        q = null;
+      }
+    }
+    try {
+      this.#renderer.render(this.scene, this.camera);
+    } finally {
+      if (q) {
+        try {
+          t.gl.endQuery(t.ext.TIME_ELAPSED_EXT);
+          this.#queries.push(q);
+        } catch {
+          // a failed query is simply not measured
+        }
+      }
+    }
+  }
+
+  /**
+   * Latest resolved GPU ms (a few frames behind; non-blocking), or null. A disjoint event
+   * (e.g. a GPU clock change) invalidates every pending result.
+   */
+  #pollGpuTime() {
+    const t = this.#gpu;
+    if (!t || !this.#queries.length) return this.#gpuMs;
+    const { gl, ext } = t;
+    try {
+      if (gl.getParameter(ext.GPU_DISJOINT_EXT)) {
+        this.#dropQueries();
+        return null;
+      }
+      while (this.#queries.length && gl.getQueryParameter(this.#queries[0], gl.QUERY_RESULT_AVAILABLE)) {
+        const q = this.#queries.shift();
+        this.#gpuMs = Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6;
+        gl.deleteQuery(q);
+      }
+    } catch {
+      this.#dropQueries();
+    }
+    return this.#gpuMs;
+  }
+
+  #dropQueries() {
+    const gl = this.#gpu?.gl;
+    for (const q of this.#queries.splice(0)) {
+      try {
+        gl?.deleteQuery(q);
+      } catch {
+        // context lost: nothing to free
+      }
+    }
+    this.#gpuMs = null;
+  }
+
   #stop() {
     if (this.#handle !== null) this.#caf(this.#handle);
     this.#handle = null;
     this.#tick = null;
     this.#lastFrameAt = null;
+    this.#dropQueries(); // idle: no query left pending, and no stale GPU time for the next roll
   }
 
   hide() {

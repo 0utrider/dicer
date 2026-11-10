@@ -248,3 +248,110 @@ describe('quality hooks', () => {
     expect(v[2]).toBeLessThan(100);
   });
 });
+
+describe('warm-up exits (context loss, timeout)', () => {
+  function pendingCompile(fake) {
+    fake.compileAsync = vi.fn(() => new Promise(() => {})); // three's poll never resolving
+  }
+
+  test('a context loss mid-warm-up rejects and disposes the fade clones; a later warm-up still runs', async () => {
+    const { r, fake, container } = setup();
+    pendingCompile(fake);
+    const mat = new THREE.MeshBasicMaterial();
+    const disposed = [];
+    const origClone = THREE.Material.prototype.clone;
+    const spy = vi.spyOn(THREE.Material.prototype, 'clone').mockImplementation(function () {
+      const c = origClone.call(this);
+      c.addEventListener('dispose', () => disposed.push(c));
+      return c;
+    });
+    const pending = r.warmup([mat], new THREE.BoxGeometry());
+    container.querySelector('#dicer-canvas').dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
+    await expect(pending).rejects.toMatchObject({ name: 'CompileAbortedError', reason: 'context-lost' });
+    expect(disposed.length).toBe(1);
+    spy.mockRestore();
+    fake.compileAsync = vi.fn(async () => {});
+    await r.warmup([mat], new THREE.BoxGeometry());
+    expect(fake.compileAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('a warm-up on an already lost context rejects without compiling', async () => {
+    const { r, fake } = setup();
+    fake.compileAsync = vi.fn(async () => {});
+    fake.getContext = () => ({ isContextLost: () => true });
+    await expect(r.warmup([new THREE.MeshBasicMaterial()], new THREE.BoxGeometry())).rejects.toMatchObject({
+      reason: 'context-lost',
+    });
+    expect(fake.compileAsync).not.toHaveBeenCalled();
+  });
+
+  test('a compile that outlasts the timeout rejects', async () => {
+    vi.useFakeTimers();
+    try {
+      const container = document.createElement('div');
+      const fake = { setSize() {}, setPixelRatio() {}, render() {}, dispose() {}, debug: {} };
+      pendingCompile(fake);
+      const r = new DiceRenderer({ container, createRenderer: () => fake, raf: () => 1, caf() {}, compileTimeoutMs: 500 });
+      const pending = r.warmup([new THREE.MeshBasicMaterial()], new THREE.BoxGeometry());
+      const check = expect(pending).rejects.toMatchObject({ reason: 'timeout' });
+      await vi.advanceTimersByTimeAsync(501);
+      await check;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('GPU frame time (P2-R13)', () => {
+  function timerGl() {
+    const live = new Set();
+    let next = 0;
+    const gl = {
+      live,
+      QUERY_RESULT_AVAILABLE: 1,
+      QUERY_RESULT: 2,
+      getExtension: (n) => (n === 'EXT_disjoint_timer_query_webgl2' ? { TIME_ELAPSED_EXT: 9, GPU_DISJOINT_EXT: 8 } : null),
+      getParameter: () => false,
+      createQuery: () => {
+        const q = { id: next++ };
+        live.add(q);
+        return q;
+      },
+      beginQuery: vi.fn(),
+      endQuery: vi.fn(),
+      deleteQuery: (q) => live.delete(q),
+      // results arrive one frame late
+      getQueryParameter: (q, p) => (p === 1 ? q.id < next - 1 : 3e6 + q.id * 1e6),
+    };
+    return gl;
+  }
+
+  test('renders inside a timer query and reports the resolved GPU ms; idle leaves no query pending', () => {
+    const { r, fake, frames } = setup();
+    const gl = timerGl();
+    fake.getContext = () => gl;
+    const samples = [];
+    r.onFrameTime((ms, s) => samples.push(s));
+    let n = 4;
+    r.startLoop(() => --n > 0);
+    for (const t of [0, 16, 32, 48]) frames.splice(0).forEach((f) => f(t));
+    expect(gl.beginQuery).toHaveBeenCalledTimes(4);
+    expect(samples[0]).toMatchObject({ interval: undefined, gpu: null });
+    expect(samples[1].interval).toBe(16);
+    expect(samples[1].gpu).toBeCloseTo(3); // query 0 resolved
+    expect(samples[3].gpu).toBeCloseTo(5);
+    expect(gl.live.size).toBe(0);
+    expect(r.isLooping).toBe(false);
+  });
+
+  test('without the extension gpu is null and render is called directly', () => {
+    const { r, fake, step } = setup();
+    fake.getContext = () => ({ getExtension: () => null });
+    const samples = [];
+    r.onFrameTime((ms, s) => samples.push(s));
+    r.startLoop(() => false);
+    step();
+    expect(samples[0].gpu).toBeNull();
+    expect(fake.render).toHaveBeenCalledTimes(1);
+  });
+});

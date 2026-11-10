@@ -85,3 +85,80 @@ test('an open timer query is deleted when render throws', async () => {
   expect(gl.calls.filter((c) => Array.isArray(c) && c[0] === 'delete').length).toBe(1);
   expect(gl.calls).toContain('end');
 });
+
+describe('render target binding and compile exits', () => {
+  function trackingRenderer(gl, { compile } = {}) {
+    const prev = { id: 'canvas-target' };
+    const r = {
+      current: prev,
+      prev,
+      bound: [],
+      getContext: () => gl,
+      getRenderTarget: () => r.current,
+      setRenderTarget: (t) => {
+        r.current = t;
+      },
+      compileAsync: vi.fn((...args) => {
+        r.bound.push(['compile', r.current]);
+        return compile ? compile(...args) : Promise.resolve();
+      }),
+      render: () => r.bound.push(['render', r.current]),
+    };
+    return r;
+  }
+
+  test('the probe target is bound only around the synchronous blocks, never across an await', async () => {
+    const gl = fakeGl({ timer: true });
+    let release;
+    const r = trackingRenderer(gl, { compile: () => new Promise((res) => (release = res)) });
+    let polls = 0;
+    const atPoll = [];
+    gl.getQueryParameter = (q, p) => {
+      if (p === 3) {
+        atPoll.push(r.current); // the timer poll runs between awaits
+        return ++polls > 2;
+      }
+      return 1e6;
+    };
+    const pending = runProbe(r, { frames: 2, atlas });
+    await Promise.resolve();
+    expect(r.compileAsync).toHaveBeenCalledTimes(1);
+    // compiled for the probe target (program params depend on it), then restored while pending
+    expect(r.bound[0][1]).not.toBe(r.prev);
+    expect(r.current).toBe(r.prev);
+    release();
+    const res = await pending;
+    expect(res.msPerFrame).toBeCloseTo(1);
+    expect(r.bound.filter(([k]) => k === 'render').every(([, t]) => t !== r.prev)).toBe(true);
+    expect(r.current).toBe(r.prev);
+    expect(polls).toBeGreaterThan(2);
+    expect(atPoll.every((t) => t === r.prev)).toBe(true);
+  });
+
+  test('a context lost during the compile falls back to medium and is not cached', async () => {
+    const gl = fakeGl();
+    const canvas = new EventTarget();
+    const r = trackingRenderer(gl, { compile: () => new Promise(() => {}) });
+    r.domElement = canvas;
+    const pending = runProbe(r, { frames: 2, atlas });
+    await Promise.resolve();
+    canvas.dispatchEvent(new Event('webglcontextlost'));
+    await expect(pending).resolves.toEqual({ msPerFrame: 16, gpu: 'unknown' });
+    expect(localStorage.getItem('dicer.probe.v1')).toBeNull();
+    expect(r.current).toBe(r.prev);
+  });
+
+  test('a compile that never finishes times out to the fallback, uncached', async () => {
+    vi.useFakeTimers();
+    try {
+      const gl = fakeGl();
+      const r = trackingRenderer(gl, { compile: () => new Promise(() => {}) });
+      const pending = runProbe(r, { frames: 2, atlas, compileTimeoutMs: 300 });
+      await vi.advanceTimersByTimeAsync(301);
+      await expect(pending).resolves.toEqual({ msPerFrame: 16, gpu: 'unknown' });
+      expect(localStorage.getItem('dicer.probe.v1')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

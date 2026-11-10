@@ -89,15 +89,29 @@ describe('programKey', () => {
     expect(programKey(on1, { ...flags, glow: false })).toBe(programKey(off, flags));
     expect(programKey(off, { ...flags, glow: false })).toBe(programKey(off, flags));
   });
-  test('engraving, metal finish and edges matter', () => {
+  test('engraving and metal finish matter; edge style does not (no define depends on it)', () => {
     const a = resin();
     expect(programKey(a, { ...flags, engraving: false })).not.toBe(programKey(a, flags));
-    expect(programKey(resin({ edges: { style: 'sharp' } }), flags)).not.toBe(programKey(a, flags));
+    expect(programKey(resin({ edges: { style: 'sharp' } }), flags)).toBe(programKey(a, flags));
+    expect(programKey(a, flags)).not.toMatch(/rounded|sharp/);
     const m1 = normalizeAppearance({ body: { type: 'metal', finish: 'brushed' } });
     const m2 = normalizeAppearance({ body: { type: 'metal', finish: 'antique' } });
     expect(programKey(m1, flags)).not.toBe(programKey(m2, flags));
     // finish only matters for metal
     const r1 = resin({ body: { type: 'resin', finish: 'brushed' } });
     expect(programKey(r1, flags)).toBe(programKey(a, flags));
+  });
+  test('P2-R12: safe is a boolean part of the key; every safe body shares one program', () => {
+    const safe = { ...flags, safe: true };
+    expect(programKey(resin(), safe)).not.toBe(programKey(resin(), flags));
+    expect(programKey(resin(), flags)).toMatch(/\|safe0$/);
+    expect(programKey(resin(), { ...flags, safe: undefined })).toBe(programKey(resin(), flags));
+    const keys = new Set(
+      ['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) =>
+        programKey(normalizeAppearance({ body: { type, finish: 'brushed' }, glow: { intensity: 1 } }), safe),
+      ),
+    );
+    expect(keys.size).toBe(1);
+    expect([...keys][0]).toMatch(/\|safe1$/);
   });
 });

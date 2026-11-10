@@ -1,4 +1,11 @@
-import { TIERS, TIER_ORDER, effectiveTier, tierFromProbe, AdaptiveQuality } from './quality.js';
+import {
+  TIERS,
+  TIER_ORDER,
+  effectiveTier,
+  tierFromProbe,
+  AdaptiveQuality,
+  flagsFor,
+} from './quality.js';
 import { runProbe } from './gpu-probe.js';
 
 /** The tier used for `auto` until the probe has answered (rolls never wait for it). */
@@ -14,11 +21,15 @@ function memoryStorage() {
 /**
  * Owns the quality tier: runs the GPU probe once, applies min(choice or autoTier, worldCap)
  * minus the session drops to the renderer, drops a tier when frames stay over budget, and
- * forces `low` when a shader fails to compile.
+ * forces `low` when a shader fails to compile. P2-R12: a shader error while already at low,
+ * or a second shader error, switches to SAFE flags (every feature off, plain opaque body) for
+ * the rest of the session.
  *
  * onChange(cb) listeners get `{ tier, config, reason }` whenever the effective tier changes
  * after ready: reason is 'settings' (refresh()), 'drop' (adaptive) or 'shader' (deferred to a
- * microtask so materials are never swapped in the middle of a render).
+ * microtask so materials are never swapped in the middle of a render; `safe: true` once the
+ * safe flags are on). Shader errors reported before that microtask runs belong to the same
+ * failing frame and count as one incident.
  *
  * @param {object} o
  * @param {object} o.renderer DiceRenderer (glRenderer, applyTier, onFrameTime, onShaderError)
@@ -43,9 +54,12 @@ export function createQualityController({
   // clears; a shader failure forces low for the rest of the session.
   let adaptiveCeiling = null;
   let shaderForcedLow = false;
+  let safe = false;
+  let shaderSwapPending = false;
   let tier = null;
   let disposed = false;
   let shaderLogged = false;
+  let safeLogged = false;
   let notified = false;
   const listeners = new Set();
 
@@ -73,7 +87,7 @@ export function createQualityController({
   }
 
   function emit(reason) {
-    const event = { tier, config: TIERS[tier], reason };
+    const event = { tier, config: TIERS[tier], reason, safe };
     for (const cb of [...listeners]) {
       try {
         cb(event);
@@ -108,25 +122,45 @@ export function createQualityController({
   }
 
   function onShaderError(info) {
-    if (disposed) return;
-    if (!shaderLogged) {
-      shaderLogged = true;
-      console.warn(
-        'dicer: a dice shader failed to compile; falling back to the low tier',
-        info?.log,
-      );
+    if (disposed || safe) return;
+    if (shaderSwapPending) return; // same failing frame: the swap already queued covers it
+    let changed;
+    if (shaderForcedLow || tier === 'low') {
+      // P2-R12: low itself failed (or a second incident): drop every Dicer shader feature
+      safe = true;
+      shaderForcedLow = true;
+      if (!safeLogged) {
+        safeLogged = true;
+        console.warn(
+          'dicer: a dice shader failed to compile at the low tier; using plain dice materials for this session',
+          info?.log,
+        );
+      }
+      apply();
+      changed = true; // the flags changed even when the tier did not
+    } else {
+      if (!shaderLogged) {
+        shaderLogged = true;
+        console.warn(
+          'dicer: a dice shader failed to compile; falling back to the low tier',
+          info?.log,
+        );
+      }
+      shaderForcedLow = true; // for the session, whatever the user picks
+      changed = apply();
     }
-    shaderForcedLow = true; // for the session, whatever the user picks
-    if (!apply()) return;
+    if (!changed) return;
     // The error fires inside renderer.render(): swap materials after this frame, before the next.
+    shaderSwapPending = true;
     queueMicrotask(() => {
+      shaderSwapPending = false;
       if (!disposed) emit('shader');
     });
   }
 
   apply(); // pre-probe tier, so early rolls use consistent flags and pixel ratio
-  renderer.onFrameTime?.((ms) => {
-    if (!disposed) adaptive.frame(ms);
+  renderer.onFrameTime?.((ms, sample) => {
+    if (!disposed) adaptive.frame(ms, sample); // sample: P2-R13 interval baseline / GPU time
   });
   renderer.onShaderError?.(onShaderError);
 
@@ -152,15 +186,14 @@ export function createQualityController({
     get config() {
       return TIERS[tier];
     },
-    /** Material feature flags: client toggles combined with the tier. */
+    /** Material feature flags: client toggles combined with the tier (flagsFor), or SAFE. */
     flags() {
-      const steps = TIERS[tier].interiorSteps;
-      return {
-        interiors: !!getSetting('interiors') && steps > 0,
-        engraving: !!getSetting('engraving'),
-        glow: !!getSetting('glow'),
-        interiorSteps: steps,
+      const settings = {
+        interiors: getSetting('interiors'),
+        engraving: getSetting('engraving'),
+        glow: getSetting('glow'),
       };
+      return flagsFor(TIERS[tier], settings, { safe });
     },
     onChange(cb) {
       listeners.add(cb);

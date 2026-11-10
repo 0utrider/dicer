@@ -3,6 +3,7 @@ import { computeHulls } from './physics/hulls.js';
 import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
+import { createWarmup } from './render/warmup.js';
 import { DiceBox } from './throw/dice-box.js';
 import { planThrow } from './throw/throw-planner.js';
 import { createMessageGate } from './foundry/message-gate.js';
@@ -20,8 +21,6 @@ let diceBox = null;
 let diceRenderer = null;
 let quality = null;
 let stopWatchingArea = null;
-let warming = null;
-let warmAgain = false;
 
 const NOOP_HANDLERS = { onCreate() {}, onRender() {}, onDelete() {} };
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
@@ -50,34 +49,14 @@ function resizeDice() {
 
 /**
  * Compiles the current look's materials (one per die type, current tier) without starting the
- * render loop. Calls made while one runs are coalesced into one more pass afterwards.
+ * render loop; calls made while one runs coalesce. A context loss or a 10 s timeout rejects
+ * the compile, so the pass still releases its materials and later warm-ups still run.
  */
-function warmUp() {
-  if (warming) {
-    warmAgain = true;
-    return warming;
-  }
-  warming = (async () => {
-    do {
-      warmAgain = false;
-      const box = diceBox;
-      const renderer = diceRenderer;
-      if (!box || !renderer) return;
-      const warm = box.acquireWarmup();
-      try {
-        await renderer.warmup(warm.materials, warm.geometry);
-        quality?.warmedUp(); // P2-R10: fresh adaptive window once the new programs exist
-      } catch (err) {
-        console.warn('dicer: material warm-up failed', err);
-      } finally {
-        warm.release();
-      }
-    } while (warmAgain);
-  })().finally(() => {
-    warming = null;
-  });
-  return warming;
-}
+const warmUp = createWarmup({
+  getBox: () => diceBox,
+  getRenderer: () => diceRenderer,
+  onWarmed: () => quality?.warmedUp(), // P2-R10: fresh adaptive window once the new programs exist
+});
 
 /**
  * The look, a feature flag or the tier changed: new rolls get rebuilt materials, rolls in
@@ -167,7 +146,10 @@ Hooks.once('ready', async () => {
       game.dice3d = api;
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(resizeDice);
+      // 'shader': the low fallback or the P2-R12 safe flags; dice in flight move over too.
       quality.onChange((event) => refreshMaterials({ replaceInFlight: event.reason === 'shader' }));
+      // three rebuilds every program lazily on a restored context: compile them ahead again.
+      renderer.onContextRestored(() => warmUp());
       // Once the probe has picked the tier: rebuild for it and compile ahead of the first roll.
       // Not awaited, so the probe never delays readiness; no render loop starts.
       quality.ready

@@ -321,7 +321,8 @@ export const RESIN_REFRACTION = /* glsl */ `
 		vec3 dcRne = normalize( mix( dcRp / ( dcRrad * dcRrad ), - dcRn, ${f(RESIN.parallel)} ) );
 		vec3 dcRout = refract( dcRd, - dcRne, ${f(RESIN.ior)} );
 		float dcRtir = dot( dcRout, dcRout ) < 1e-6 ? 1.0 : 0.0;
-		float dcRcos = abs( dot( dcRout, dcRne ) );
+		// clamped: rounding can push |cos| past 1, and pow() of a negative base is NaN
+		float dcRcos = clamp( abs( dot( dcRout, dcRne ) ), 0.0, 1.0 );
 		float dcRF = mix( 0.04 + 0.96 * pow( 1.0 - dcRcos, 5.0 ), 1.0, dcRtir );
 		// chord 2: the internal reflection back through the body
 		vec3 dcRr = reflect( dcRd, - dcRne );

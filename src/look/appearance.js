@@ -104,8 +104,12 @@ export function appearanceKey(a) {
  * Shader-program key. Excludes every colour and numeric look parameter.
  * P2-R1: interior part (type, shape, steps) only when the interior is active.
  * P2-R2: glow part is the boolean flags.glow && glow.intensity > 0.
+ * P2-R12: the safe flag is a boolean part; a safe material is plain opaque whatever the body,
+ * so every safe look shares one key. edges.style is not part of it: no define depends on it
+ * (it only selects the geometry).
  */
 export function programKey(a, flags) {
+  if (flags.safe) return ['opaque', '-', 'none', 'eng0', 'glow0', 'safe1'].join('|');
   const steps = flags.interiorSteps;
   const active =
     a.body.type === 'resin' && !!flags.interiors && steps > 0 && a.interior.type !== 'none';
@@ -114,5 +118,5 @@ export function programKey(a, flags) {
     : 'none';
   const finish = a.body.type === 'metal' ? a.body.finish : '-';
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
-  return [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, a.edges.style].join('|');
+  return [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, 'safe0'].join('|');
 }

@@ -4,6 +4,7 @@ import { buildDieGeometry } from '../core/chamfer.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { LOOKS } from '../look/looks.js';
 import { TIERS } from './quality.js';
+import { compileGuarded, COMPILE_TIMEOUT_MS } from './compile-guard.js';
 
 const CACHE_KEY = 'dicer.probe.v1';
 const SIZE = 512;
@@ -53,13 +54,19 @@ async function collectTimers(gl, ext, queries) {
 /**
  * Measures per-pixel interior cost: 3 resin dice with the nebula interior and the High-tier
  * program (32 steps) fill a 512x512 target, so ray-march cost dominates over draw calls.
- * Never throws; on any error resolves to { msPerFrame: 16, gpu: 'unknown' } (medium).
+ * Never throws; on any error resolves to { msPerFrame: 16, gpu: 'unknown' } (medium), and
+ * that fallback is never cached. A context lost during the compile, or a compile longer than
+ * compileTimeoutMs, is such an error (compileGuarded).
  * The result is cached in localStorage under dicer.probe.v1, keyed by the GPU string.
  *
  * @param {THREE.WebGLRenderer} renderer
- * @param {{frames?: number, atlas: object}} opts atlas from loadDigitAtlas()
+ * @param {{frames?: number, atlas: object, compileTimeoutMs?: number}} opts atlas from
+ *   loadDigitAtlas()
  */
-export async function runProbe(renderer, { frames = 20, atlas } = {}) {
+export async function runProbe(
+  renderer,
+  { frames = 20, atlas, compileTimeoutMs = COMPILE_TIMEOUT_MS } = {},
+) {
   let target = null;
   let material = null;
   let geometry = null;
@@ -100,30 +107,48 @@ export async function runProbe(renderer, { frames = 20, atlas } = {}) {
     camera.lookAt(0, 0, 0);
 
     target = new THREE.WebGLRenderTarget(SIZE, SIZE);
-    renderer.setRenderTarget(target);
-    await renderer.compileAsync?.(scene, camera);
-    renderer.render(scene, camera); // warm-up frame (program link, uploads)
-    gl.finish();
+    // The target is bound only inside synchronous blocks and the caller's target is restored
+    // before every await: a roll rendering meanwhile must draw to its own canvas.
+    let compiled = null;
+    if (renderer.compileAsync) {
+      renderer.setRenderTarget(target); // compile() reads it: programs are built for the target
+      try {
+        compiled = compileGuarded(renderer, scene, camera, null, { timeoutMs: compileTimeoutMs });
+      } finally {
+        renderer.setRenderTarget(prevTarget);
+      }
+      await compiled; // context lost / timeout rejects: the fallback, not cached
+    }
 
     ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
-    if (ext) gl.getParameter(ext.GPU_DISJOINT_EXT); // reading clears a stale disjoint flag
-    const t0 = performance.now();
-    for (let i = 0; i < frames; i++) {
-      if (ext) {
-        openQuery = gl.createQuery();
-        gl.beginQuery(ext.TIME_ELAPSED_EXT, openQuery);
+    let t0;
+    let t1;
+    renderer.setRenderTarget(target);
+    try {
+      renderer.render(scene, camera); // warm-up frame (program link, uploads)
+      gl.finish();
+      if (ext) gl.getParameter(ext.GPU_DISJOINT_EXT); // reading clears a stale disjoint flag
+      t0 = performance.now();
+      for (let i = 0; i < frames; i++) {
+        if (ext) {
+          openQuery = gl.createQuery();
+          gl.beginQuery(ext.TIME_ELAPSED_EXT, openQuery);
+        }
+        renderer.render(scene, camera);
+        if (openQuery) {
+          gl.endQuery(ext.TIME_ELAPSED_EXT);
+          queries.push(openQuery);
+          openQuery = null;
+        }
       }
-      renderer.render(scene, camera);
-      if (openQuery) {
-        gl.endQuery(ext.TIME_ELAPSED_EXT);
-        queries.push(openQuery);
-        openQuery = null;
-      }
+      gl.finish();
+      // finish() can return early on some drivers; a synchronous readback really waits.
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+      t1 = performance.now();
+    } finally {
+      renderer.setRenderTarget(prevTarget);
     }
-    gl.finish();
-    // finish() can return early on some drivers; a synchronous readback really waits.
-    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
-    let msPerFrame = (performance.now() - t0) / frames;
+    let msPerFrame = (t1 - t0) / frames;
     if (ext) {
       try {
         const timed = await collectTimers(gl, ext, queries);

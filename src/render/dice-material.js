@@ -25,8 +25,8 @@ import { interiorChunk, SHAPE_ROT } from './shaders/interior.js';
  * Layered dice material: a MeshPhysicalMaterial built from a layered Appearance (body,
  * numbers, edges, ...) whose shader is assembled from the modules in ./shaders/.
  *
- * One program per programKey (body type, finish, interior, engraving/glow flags, edge
- * style): every colour and numeric look parameter is a uniform or a material property
+ * One program per programKey (body type, finish, interior, engraving/glow/safe flags):
+ * every colour and numeric look parameter is a uniform or a material property
  * that three uploads as a uniform, never a define.
  */
 
@@ -37,6 +37,7 @@ export const DEFAULT_FLAGS = Object.freeze({
   engraving: true,
   glow: true,
   interiorSteps: 32,
+  safe: false,
 });
 
 /**
@@ -216,8 +217,15 @@ function makeLabelTexture(shape, labels, atlas) {
  * @returns {THREE.MeshPhysicalMaterial}
  */
 export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEFAULT_FLAGS) {
-  const a = normalizeAppearance(appearance);
-  const f = { ...DEFAULT_FLAGS, ...flags };
+  let a = normalizeAppearance(appearance);
+  let f = { ...DEFAULT_FLAGS, ...flags };
+  if (f.safe) {
+    // P2-R12: plain opaque MeshPhysicalMaterial with the look's body colour and roughness; no
+    // Dicer body chunk (resin refraction, border, marble, pearl, brushed/antique), no
+    // interior, glow or engraving recess. The label colour mask stays so numbers read.
+    a = { ...a, body: { ...a.body, type: 'opaque' }, interior: { ...a.interior, type: 'none' } };
+    f = { ...f, interiors: false, engraving: false, glow: false, interiorSteps: 0, safe: true };
+  }
   const key = programKey(a, f);
 
   const body = a.body.type;

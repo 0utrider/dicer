@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
+import * as THREE from 'three';
 import { createQualityController } from '../../src/render/quality-controller.js';
-import { TIERS } from '../../src/render/quality.js';
+import { TIERS, flagsFor } from '../../src/render/quality.js';
+import { createDiceMaterial } from '../../src/render/dice-material.js';
+import { parseAtlas } from '../../src/render/sdf-atlas.js';
+import { getShape, labelFor } from '../../src/core/dice-shapes.js';
+import { LOOKS } from '../../src/look/looks.js';
 
 function fakeRenderer() {
   const r = {
@@ -219,11 +225,9 @@ test('a shader error forces low, calls onChange after the current frame, and log
   expect(cb).not.toHaveBeenCalled(); // deferred: never swap materials mid-render
   await flushMicrotasks();
   expect(cb).toHaveBeenCalledWith(expect.objectContaining({ tier: 'low', reason: 'shader' }));
-  renderer.shaderError();
-  await flushMicrotasks();
   expect(warn).toHaveBeenCalledTimes(1);
   expect(cb).toHaveBeenCalledTimes(1);
-  expect(qc.flags().interiors).toBe(false);
+  expect(qc.flags().interiorSteps).toBe(0);
   warn.mockRestore();
 });
 
@@ -236,10 +240,16 @@ test('a shader error before the probe resolves still ends at low', async () => {
   warn.mockRestore();
 });
 
-test('flags(): interiorSteps comes from the tier; interiors needs the setting AND the tier', async () => {
+test('flags(): interiorSteps comes from the tier; interiors is the client setting (low keeps it on for the fake)', async () => {
   const { qc, values, renderer } = setup({ ms: 5 }); // high
   await qc.ready;
-  expect(qc.flags()).toEqual({ interiors: true, engraving: true, glow: true, interiorSteps: 32 });
+  expect(qc.flags()).toEqual({
+    interiors: true,
+    engraving: true,
+    glow: true,
+    interiorSteps: 32,
+    safe: false,
+  });
   values.interiors = false;
   values.engraving = false;
   values.glow = false;
@@ -248,12 +258,121 @@ test('flags(): interiorSteps comes from the tier; interiors needs the setting AN
     engraving: false,
     glow: false,
     interiorSteps: 32,
+    safe: false,
   });
   values.interiors = true;
   values.qualityCap = 'low';
   qc.refresh();
-  expect(qc.flags()).toMatchObject({ interiors: false, interiorSteps: 0 });
+  expect(qc.flags()).toMatchObject({ interiors: true, interiorSteps: 0 });
   expect(renderer.applyTier).toHaveBeenLastCalledWith(TIERS.low);
+});
+
+test('flags() equal flagsFor(tier, settings): the gallery and preview cannot drift', async () => {
+  const { qc, values } = setup({ ms: 5 });
+  await qc.ready;
+  for (const cap of ['low', 'medium', 'high', 'ultra']) {
+    values.qualityCap = cap;
+    qc.refresh('qualityCap');
+    expect(qc.flags()).toEqual(flagsFor(TIERS[qc.tier], values));
+  }
+});
+
+test('production flags at low reach the interior fake: createDiceMaterial tints the resin body', async () => {
+  const { qc } = setup({ ms: 30 }); // low
+  await qc.ready;
+  expect(qc.tier).toBe('low');
+  const atlas = {
+    ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
+    texture: new THREE.Texture(),
+  };
+  const shape = getShape('d20');
+  const labels = shape.values.map((v) => labelFor('d20', v));
+  const m = createDiceMaterial(LOOKS.default.appearance, atlas, shape, labels, qc.flags());
+  expect(m.userData.uniforms.uResinTint.value.w).toBeGreaterThan(0);
+  expect(m.defines.DICER_INTERIOR).toBeUndefined(); // no march at low
+  expect(m.userData.programKey.split('|')[2]).toBe('none');
+});
+
+describe('P2-R12: safe flags after a shader error at low or a second shader error', () => {
+  test('a second shader error switches to safe flags, emits after the frame, and logs once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { qc, renderer } = setup({ ms: 2 });
+    await qc.ready;
+    const cb = vi.fn();
+    qc.onChange(cb);
+    renderer.shaderError();
+    await flushMicrotasks();
+    expect(qc.flags().safe).toBe(false);
+    renderer.shaderError();
+    expect(qc.flags()).toEqual(flagsFor(TIERS.low, {}, { safe: true }));
+    expect(cb).toHaveBeenCalledTimes(1); // deferred like the low swap
+    await flushMicrotasks();
+    expect(cb).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tier: 'low', reason: 'shader', safe: true }),
+    );
+    renderer.shaderError();
+    await flushMicrotasks();
+    expect(cb).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(2); // once for low, once for safe
+    warn.mockRestore();
+  });
+
+  test('a shader error while already at low goes straight to safe', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { qc, renderer } = setup({ ms: 30 });
+    await qc.ready;
+    expect(qc.tier).toBe('low');
+    const cb = vi.fn();
+    qc.onChange(cb);
+    renderer.shaderError();
+    expect(qc.flags().safe).toBe(true);
+    await flushMicrotasks();
+    expect(cb).toHaveBeenCalledWith(expect.objectContaining({ reason: 'shader', safe: true }));
+    warn.mockRestore();
+  });
+
+  test('errors from the same failing frame count as one incident', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { qc, renderer } = setup({ ms: 2 });
+    await qc.ready;
+    renderer.shaderError();
+    renderer.shaderError(); // e.g. the fade variant of the same look, same render
+    expect(qc.tier).toBe('low');
+    expect(qc.flags().safe).toBe(false);
+    warn.mockRestore();
+  });
+
+  test('safe mode stays for the session, whatever the user picks', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { qc, renderer, values } = setup({ ms: 30 });
+    await qc.ready;
+    renderer.shaderError();
+    values.quality = 'ultra';
+    qc.refresh('quality');
+    expect(qc.tier).toBe('low');
+    expect(qc.flags().safe).toBe(true);
+    warn.mockRestore();
+  });
+
+  test('safe flags build a material with no Dicer body defines', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { qc, renderer } = setup({ ms: 30 });
+    await qc.ready;
+    renderer.shaderError();
+    const atlas = { ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))) };
+    const shape = getShape('d20');
+    const labels = shape.values.map((v) => labelFor('d20', v));
+    const m = createDiceMaterial(LOOKS.default.appearance, atlas, shape, labels, qc.flags());
+    expect(Object.keys(m.defines).filter((k) => k.startsWith('DICER_'))).toEqual([]);
+    warn.mockRestore();
+  });
+});
+
+test('frame samples reach the adaptive judge: a steady 30 Hz cap never drops (P2-R13)', async () => {
+  const { qc, renderer } = setup({ ms: 2 }); // ultra
+  await qc.ready;
+  for (let i = 0; i < 500; i++) for (const cb of renderer.frameCbs) cb(33.3, { interval: 33.3, cpu: 2 });
+  expect(qc.tier).toBe('ultra');
 });
 
 test('a probe that rejects falls back to medium and ready still resolves', async () => {

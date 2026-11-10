@@ -4,6 +4,7 @@ import {
   effectiveTier,
   tierFromProbe,
   AdaptiveQuality,
+  flagsFor,
 } from '../../src/render/quality.js';
 
 test('tier table: exactly four tiers, interiorSteps 0 only at low', () => {
@@ -123,5 +124,106 @@ describe('AdaptiveQuality', () => {
     for (let i = 0; i < 30; i++) q.frame(40);
     q.reset();
     expect(q.dropped).toBe(0);
+  });
+});
+
+describe('flagsFor (one source for production, gallery and preview)', () => {
+  const on = { interiors: true, engraving: true, glow: true };
+  test('low keeps interiors on (steps 0 selects the fake), other tiers march', () => {
+    expect(flagsFor(TIERS.low, on)).toEqual({
+      interiors: true,
+      engraving: true,
+      glow: true,
+      interiorSteps: 0,
+      safe: false,
+    });
+    expect(flagsFor(TIERS.high, on)).toMatchObject({ interiors: true, interiorSteps: 32 });
+  });
+  test('client toggles pass through as booleans', () => {
+    expect(flagsFor(TIERS.medium, { interiors: 0, engraving: undefined, glow: 'x' })).toEqual({
+      interiors: false,
+      engraving: false,
+      glow: true,
+      interiorSteps: 16,
+      safe: false,
+    });
+  });
+  test('safe: every feature off (P2-R12)', () => {
+    expect(flagsFor(TIERS.ultra, on, { safe: true })).toEqual({
+      interiors: false,
+      engraving: false,
+      glow: false,
+      interiorSteps: 0,
+      safe: true,
+    });
+  });
+});
+
+describe('AdaptiveQuality: learned baseline (P2-R13)', () => {
+  const run = (q, n, ms, interval = ms) => {
+    for (let i = 0; i < n; i++) q.frame(ms, { interval });
+  };
+
+  test('a steady 33 ms interval (30 Hz cap) never drops', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    run(q, 1000, 33.3);
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  test('a heavy host scene (steady 45 ms interval, Dicer itself cheap) never drops', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    run(q, 500, 45);
+    q.reset();
+    run(q, 500, 45);
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  test('a 16 ms baseline then sustained 40 ms frames still drops after grace + window', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    run(q, 70, 16.7);
+    run(q, 40, 40);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+
+  test('the baseline survives reset(): after a tier change the slow frames are still judged against 16 ms', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    run(q, 70, 16.7);
+    q.reset();
+    run(q, 10 + 40, 40);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+
+  test('a single hitch on a 16 ms baseline does not drop', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    run(q, 70, 16.7);
+    run(q, 1, 400, 100);
+    run(q, 300, 16.7);
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  test('GPU time, when given, is preferred over the rAF interval', () => {
+    const capped = vi.fn();
+    const q1 = new AdaptiveQuality({ onDrop: capped });
+    // 30 Hz cap, but Dicer's GPU work is 2 ms: never slow
+    for (let i = 0; i < 300; i++) q1.frame(33.3, { interval: 33.3, cpu: 1, gpu: 2 });
+    expect(capped).not.toHaveBeenCalled();
+    const heavy = vi.fn();
+    const q2 = new AdaptiveQuality({ onDrop: heavy });
+    // 60 Hz cadence (the browser drops frames rather than slowing rAF), Dicer's GPU work 30 ms
+    for (let i = 0; i < 60; i++) q2.frame(16.7, { interval: 16.7, cpu: 1, gpu: 30 });
+    expect(heavy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a 60 Hz → 30 Hz cap switch mid-session costs at most one drop', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    run(q, 70, 16.7);
+    run(q, 1000, 33.3);
+    expect(onDrop.mock.calls.length).toBeLessThanOrEqual(1);
   });
 });

@@ -89,3 +89,28 @@ test('setEnvironment: same resolution is a no-op, a new resolution regenerates',
   expect(fromScene.mock.calls[1][4]).toEqual({ size: 128 });
   expect(api.scene.environment).toBe(targets[1].texture);
 });
+
+test('setEnvironment: a throwing fromScene leaves no disposed target behind the no-op guard', () => {
+  const targets = [];
+  let fail = false;
+  const fromScene = vi.fn(() => {
+    if (fail) throw new Error('lost');
+    const t = { texture: new THREE.Texture(), dispose: vi.fn() };
+    targets.push(t);
+    return t;
+  });
+  const gen = vi.fn(function () {
+    this.fromScene = fromScene;
+    this.dispose = vi.fn();
+  });
+  const api = buildScene({ PMREMGenerator: gen });
+  api.setEnvironment({}, { resolution: 256 });
+  fail = true;
+  expect(() => api.setEnvironment({}, { resolution: 128 })).toThrow('lost');
+  expect(targets[0].dispose).toHaveBeenCalledTimes(1);
+  expect(api.scene.environment).toBeNull(); // not the disposed texture
+  fail = false;
+  api.setEnvironment({}, { resolution: 256 }); // same resolution as the disposed one: rebuilt
+  expect(fromScene).toHaveBeenCalledTimes(3);
+  expect(api.scene.environment).toBe(targets[1].texture);
+});

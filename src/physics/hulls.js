@@ -7,6 +7,12 @@ export const HULL_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
  * Physics hull of a die (P2-R4): the exact Minkowski solid its rounded visual mesh
  * approximates, i.e. the shrunk polyhedron's vertices plus a border radius, for
  * `RAPIER.ColliderDesc.roundConvexHull(points, radius)`. Same defaults as the visual geometry.
+ *
+ * Sharp-style dice (appearance.edges.style 'sharp') reuse this rounded collider on purpose:
+ * the sharp mesh differs from the rounded solid only within the sharp chamfer radius
+ * (ρ_sharp) of each edge and corner, a dip far below a pixel at play size, while one hull per
+ * type keeps the worker's init payload and the roll physics independent of the look (a look
+ * change never changes how a die tumbles or lands).
  * @returns {{ points: Float32Array, radius: number }}
  */
 export function hullPointsFor(type) {

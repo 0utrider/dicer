@@ -69,7 +69,12 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
    */
   function setEnvironment(renderer, { resolution = DEFAULT_ENV_RESOLUTION } = {}) {
     if (envTarget && resolution === envResolution) return;
+    // Forget the old target before regenerating: if fromScene throws (e.g. a lost context),
+    // neither the no-op guard nor scene.environment may keep pointing at a disposed texture.
     envTarget?.dispose();
+    envTarget = null;
+    envResolution = 0;
+    scene.environment = null;
     const studio = createStudioScene();
     const pmrem = new PMREMGenerator(renderer);
     try {
