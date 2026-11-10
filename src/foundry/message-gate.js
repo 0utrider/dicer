@@ -64,7 +64,8 @@ export function createMessageGate({
     for (const el of [...entry.elements, ...elementsFor(id)]) el.classList.remove(HIDE);
     entry.resolve(true);
     try {
-      hooks.callAll('diceSoNiceRollComplete', id);
+      // DSN's signature: (messageId, companionIds). Plan 1 has no companion messages.
+      hooks.callAll('diceSoNiceRollComplete', id, []);
     } catch (err) {
       console.error('dicer: a diceSoNiceRollComplete listener failed', err);
     }
@@ -94,7 +95,7 @@ export function createMessageGate({
       const first = message.rolls[0];
       const context = {
         roll: first,
-        user: message.user,
+        user: message.author, // a v14 ChatMessage exposes its User as `author`, not `user`
         users: message.whisper ?? [],
         blind: false,
         dsnRoll: first,

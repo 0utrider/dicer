@@ -41,7 +41,7 @@ function fakeDiceBox() {
 const d20Roll = (result = 17) => ({ dice: [{ faces: 20, results: [{ result, active: true }] }] });
 
 function message(id = 'm1', extra = {}) {
-  return { id, rolls: [d20Roll()], isContentVisible: true, flags: {}, user: {}, ...extra };
+  return { id, rolls: [d20Roll()], isContentVisible: true, flags: {}, author: {}, ...extra };
 }
 
 function li(id) {
@@ -108,11 +108,12 @@ test('hides the message (dsn-hide on render and on an already-rendered element),
   expect(start[0][1]).toBe('m1');
   expect(start[0][2]).toEqual({
     roll: msg.rolls[0],
-    user: msg.user,
+    user: msg.author,
     users: [],
     blind: false,
     dsnRoll: msg.rolls[0],
   });
+  expect(start[0][2].user).toBe(msg.author);
   // MessageProcessed precedes RollStart.
   expect(hooks.calls.map((c) => c[0])).toEqual([
     'diceSoNiceMessageProcessed',
@@ -121,7 +122,7 @@ test('hides the message (dsn-hide on render and on an already-rendered element),
   expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 17 }]);
 });
 
-test('on landed: removes dsn-hide and fires diceSoNiceRollComplete(id) exactly once', async () => {
+test('on landed: removes dsn-hide and fires diceSoNiceRollComplete(id, []) exactly once', async () => {
   const el = li('m1');
   gate.onCreate(message());
   const rendered = document.createElement('li');
@@ -131,7 +132,7 @@ test('on landed: removes dsn-hide and fires diceSoNiceRollComplete(id) exactly o
   await flush();
   expect(el.classList.contains('dsn-hide')).toBe(false);
   expect(rendered.classList.contains('dsn-hide')).toBe(false);
-  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1']]);
+  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
   expect(gate.isAnimating('m1')).toBe(false);
   vi.advanceTimersByTime(WATCHDOG_MS + 1);
   await flush();
@@ -145,7 +146,7 @@ test('RollStart listener setting context.blind=true → no animation, message re
   await flush();
   expect(diceBox.roll).not.toHaveBeenCalled();
   expect(el.classList.contains('dsn-hide')).toBe(false);
-  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1']]);
+  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
   vi.advanceTimersByTime(WATCHDOG_MS + 1);
   expect(hooks.named(COMPLETE)).toHaveLength(1);
 });
@@ -223,7 +224,7 @@ test('watchdog: landed never resolves → revealed and RollComplete fired at 150
   vi.advanceTimersByTime(1);
   await flush();
   expect(el.classList.contains('dsn-hide')).toBe(false);
-  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1']]);
+  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
   diceBox.rolls[0].landed.resolve();
   await flush();
   expect(hooks.named(COMPLETE)).toHaveLength(1);
@@ -236,7 +237,7 @@ test('diceBox.roll throws synchronously → revealed immediately, RollComplete o
   });
   gate.onCreate(message());
   expect(el.classList.contains('dsn-hide')).toBe(false);
-  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1']]);
+  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
   expect(errorSpy).toHaveBeenCalled();
   vi.advanceTimersByTime(WATCHDOG_MS + 1);
   await flush();
@@ -247,7 +248,7 @@ test('deleted mid-animation → RollComplete once, waitFor resolves true, later 
   gate.onCreate(message());
   const wait = gate.waitFor('m1');
   gate.onDelete({ id: 'm1' });
-  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1']]);
+  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
   await expect(wait).resolves.toBe(true);
   diceBox.rolls[0].landed.resolve();
   await flush();
@@ -266,13 +267,13 @@ test('two messages created in the same tick → both hidden, each revealed by it
   await flush();
   expect(a.classList.contains('dsn-hide')).toBe(true);
   expect(b.classList.contains('dsn-hide')).toBe(false);
-  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'b']]);
+  expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'b', []]]);
   diceBox.rolls[0].landed.resolve();
   await flush();
   expect(a.classList.contains('dsn-hide')).toBe(false);
   expect(hooks.named(COMPLETE)).toEqual([
-    [COMPLETE, 'b'],
-    [COMPLETE, 'a'],
+    [COMPLETE, 'b', []],
+    [COMPLETE, 'a', []],
   ]);
 });
 
