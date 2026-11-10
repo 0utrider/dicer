@@ -80,3 +80,116 @@ test('coin caps: UV spans the cap disc and the rim is bevelled', () => {
   expect(maxR).toBeLessThanOrEqual(1.0001);
   expect(Array.from(ids.array).some((f) => f === -1)).toBe(true);
 });
+
+// ---- Plan 2: edge styles and face-edge distance ----
+
+const triArea = (p, i) => {
+  const [a, b, c] = [0, 1, 2].map((k) => [p.getX(i + k), p.getY(i + k), p.getZ(i + k)]);
+  const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  return (
+    0.5 *
+    Math.hypot(
+      e1[1] * e2[2] - e1[2] * e2[1],
+      e1[2] * e2[0] - e1[0] * e2[2],
+      e1[0] * e2[1] - e1[1] * e2[0],
+    )
+  );
+};
+
+test.each(ALL)('%s rounded stays within the unit sphere at bevelSegments 32', (t) => {
+  const g = buildDieGeometry(getShape(t), { style: 'rounded', bevelSegments: 32 });
+  g.computeBoundingSphere();
+  expect(g.boundingSphere.radius).toBeLessThanOrEqual(1.0001);
+  const p = g.getAttribute('position');
+  for (let i = 0; i < p.count; i++)
+    expect(Math.hypot(p.getX(i), p.getY(i), p.getZ(i))).toBeLessThanOrEqual(1 + 1e-6);
+});
+
+test('style defaults to rounded and is recorded in userData', () => {
+  expect(buildDieGeometry(getShape('d6')).userData.style).toBe('rounded');
+  expect(buildDieGeometry(getShape('d6'), { style: 'sharp' }).userData.style).toBe('sharp');
+  expect(buildDieGeometry(getShape('d2'), { style: 'sharp' }).userData.style).toBe('sharp');
+});
+
+test('rounded silhouette bulges', () => {
+  // d6 strip between the +X and +Y faces; its +Z end row points share z with the faces' inset corners.
+  const g = buildDieGeometry(getShape('d6'));
+  const p = g.getAttribute('position'),
+    n = g.getAttribute('normal'),
+    ids = g.getAttribute('aFaceId');
+  let zEnd = -Infinity;
+  for (let i = 0; i < p.count; i++)
+    if (ids.getX(i) >= 0 && n.getX(i) > 0.99) zEnd = Math.max(zEnd, p.getZ(i));
+  const seen = new Map();
+  for (let i = 0; i < p.count; i++) {
+    if (ids.getX(i) >= 0) continue;
+    const [x, y, z] = [p.getX(i), p.getY(i), p.getZ(i)];
+    if (Math.abs(z - zEnd) > 1e-5 || x < 0.1 || y < 0.1) continue;
+    seen.set(`${x.toFixed(5)},${y.toFixed(5)}`, [x, y, z]);
+  }
+  const row = [...seen.values()].sort((a, b) => b[0] - b[1] - (a[0] - a[1]));
+  expect(row.length).toBeGreaterThanOrEqual(3);
+  const d = row.map((q) => Math.hypot(...q));
+  const N = row.length - 1;
+  const mid = Math.floor(N / 2);
+  const lin = d[0] + ((d[N] - d[0]) * mid) / N;
+  expect(d[mid] - lin).toBeGreaterThanOrEqual(0.003);
+});
+
+test.each(ALL)('%s face triangles are centroid fans with aEdgeDist', (t) => {
+  const g = buildDieGeometry(getShape(t));
+  const ids = g.getAttribute('aFaceId'),
+    uv = g.getAttribute('aFaceUV'),
+    ed = g.getAttribute('aEdgeDist');
+  expect(ed).toBeDefined();
+  expect(ed.itemSize).toBe(1);
+  const max = new Map();
+  for (let i = 0; i < ids.count; i++) {
+    const f = ids.getX(i);
+    if (f < 0) expect(ed.getX(i)).toBe(0);
+    else max.set(f, Math.max(max.get(f) ?? 0, ed.getX(i)));
+  }
+  for (const m of max.values()) expect(m).toBeGreaterThan(0.5);
+  for (let i = 0; i < ids.count; i += 3) {
+    const f = ids.getX(i);
+    if (f < 0) continue;
+    let centres = 0,
+      zeros = 0;
+    for (let k = 0; k < 3; k++) {
+      const e = ed.getX(i + k);
+      if (Math.abs(e - max.get(f)) < 1e-6) {
+        centres++;
+        expect(Math.hypot(uv.getX(i + k), uv.getY(i + k))).toBeLessThan(1e-6);
+      } else if (e === 0) zeros++;
+    }
+    expect(centres).toBe(1);
+    expect(zeros).toBe(2);
+  }
+});
+
+test('sharp has a much narrower bevel than rounded', () => {
+  const bevelArea = (style) => {
+    const g = buildDieGeometry(getShape('d20'), { style });
+    const p = g.getAttribute('position'),
+      ids = g.getAttribute('aFaceId');
+    let a = 0;
+    for (let i = 0; i < p.count; i += 3) if (ids.getX(i) < 0) a += triArea(p, i);
+    return a;
+  };
+  const sharp = bevelArea('sharp');
+  expect(sharp).toBeGreaterThan(0);
+  expect(sharp).toBeLessThan(0.25 * bevelArea('rounded'));
+});
+
+test('an explicit chamfer overrides the style default', () => {
+  const area = (opts) => {
+    const g = buildDieGeometry(getShape('d20'), opts);
+    const p = g.getAttribute('position'),
+      ids = g.getAttribute('aFaceId');
+    let a = 0;
+    for (let i = 0; i < p.count; i += 3) if (ids.getX(i) < 0) a += triArea(p, i);
+    return a;
+  };
+  expect(area({ style: 'sharp', chamfer: 0.07, bevelSegments: 3 })).toBeCloseTo(area({}), 6);
+});
