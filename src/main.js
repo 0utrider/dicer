@@ -11,7 +11,7 @@ import { createInitiativeHider } from './compat/initiative.js';
 import { registerChatCommands } from './compat/chat-commands.js';
 import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
-import { startEngine } from './foundry/startup.js';
+import { startEngine, announceReady } from './foundry/startup.js';
 import { createDice3dApi, materialReadyNotifier } from './api/dice3d.js';
 import { createRegistry } from './compat/registry.js';
 import { createLookResolver } from './compat/resolve-looks.js';
@@ -133,9 +133,13 @@ const worldStorage = () => game.settings.storage?.get('world') ?? null;
 
 /** The DSN world settings the migration maps or logs (keys as stored in the world settings). */
 const DSN_WORLD_KEYS = new Set(
-  ['maxDiceNumber', 'immediatelyDisplayChatMessages', 'showGhostDice', 'hideNpcRolls', 'diceCanBeFlipped'].map(
-    (k) => `dice-so-nice.${k}`,
-  ),
+  [
+    'maxDiceNumber',
+    'immediatelyDisplayChatMessages',
+    'showGhostDice',
+    'hideNpcRolls',
+    'diceCanBeFlipped',
+  ].map((k) => `dice-so-nice.${k}`),
 );
 
 /** Which DSN data is still to be migrated, judged from raw data only (no chunk is loaded). */
@@ -216,6 +220,17 @@ function openDicerSettings() {
   new SettingsConfig({ initialCategory: 'dicer' }).render({ force: true });
 }
 
+// /dice3d, /d3d and /dsn through the chat-commands module (absent: nothing to register).
+// Registered at module load, not in init: the hook may fire before Dicer's init runs, so
+// dormancy is checked here, from game.modules too in case init has not set it yet.
+Hooks.on('chatCommandsReady', (commands) => {
+  if (dormant || dsnIsActive(game)) return;
+  registerChatCommands(commands, {
+    openSettings: openDicerSettings,
+    description: game.i18n.localize('DICER.Commands.Description'),
+  });
+});
+
 Hooks.once('init', () => {
   if (dsnIsActive(game)) {
     dormant = true;
@@ -224,13 +239,6 @@ Hooks.once('init', () => {
   }
   registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange });
   loadPublicApi();
-  // /dice3d, /d3d and /dsn through the chat-commands module (absent: nothing to register).
-  Hooks.on('chatCommandsReady', (commands) =>
-    registerChatCommands(commands, {
-      openSettings: openDicerSettings,
-      description: game.i18n.localize('DICER.Commands.Description'),
-    }),
-  );
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
     initiative?.onCreateMessage(message);
@@ -355,8 +363,6 @@ Hooks.once('ready', async () => {
       quality.ready
         .then(() => refreshMaterials())
         .catch((err) => console.warn('dicer: quality setup failed', err));
-      Hooks.callAll('diceSoNiceInit', game.dice3d);
-      Hooks.callAll('diceSoNiceReady', game.dice3d);
     },
   });
   if (!started) {
@@ -373,5 +379,9 @@ Hooks.once('ready', async () => {
     stopWatchingArea = null;
     api?._dispose();
     if (api && game.dice3d === api) delete game.dice3d;
+    return;
   }
+  // After api.js has loaded, so game.dice3d.DiceSystem is set inside both hooks. Not awaited:
+  // the engine is already up, and announceReady never rejects.
+  announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady });
 });

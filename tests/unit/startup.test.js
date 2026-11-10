@@ -1,4 +1,4 @@
-import { startEngine } from '../../src/foundry/startup.js';
+import { startEngine, announceReady } from '../../src/foundry/startup.js';
 
 function parts() {
   const physics = { terminate: vi.fn() };
@@ -68,4 +68,55 @@ test('the atlas fails to load → nothing was created, nothing to release', asyn
   await expect(startEngine(deps)).resolves.toBe(null);
   expect(deps.createPhysics).not.toHaveBeenCalled();
   expect(deps.warn).toHaveBeenCalledTimes(1);
+});
+
+describe('announceReady', () => {
+  const hooks = () => ({
+    calls: [],
+    callAll(name, ...a) {
+      this.calls.push([name, ...a]);
+    },
+  });
+
+  test('fires diceSoNiceInit then diceSoNiceReady only after the api.js promise settles', async () => {
+    const h = hooks();
+    const api = { id: 'dice3d' };
+    let settle;
+    const apiReady = new Promise((r) => (settle = r));
+    const seen = [];
+    h.callAll = (name, a) => seen.push([name, a, globalThis.__loaded === true]);
+    const done = announceReady({ hooks: h, api, apiReady });
+    await Promise.resolve();
+    expect(seen).toEqual([]);
+    globalThis.__loaded = true;
+    settle({ DiceSystem: class {} });
+    await done;
+    delete globalThis.__loaded;
+    expect(seen).toEqual([
+      ['diceSoNiceInit', api, true],
+      ['diceSoNiceReady', api, true],
+    ]);
+  });
+
+  test('still fires both when the promise is missing or rejects, and never rejects itself', async () => {
+    for (const make of [() => undefined, () => null, () => Promise.reject(new Error('x'))]) {
+      const h = hooks();
+      await expect(announceReady({ hooks: h, api: 1, apiReady: make() })).resolves.toBeUndefined();
+      expect(h.calls.map((c) => c[0])).toEqual(['diceSoNiceInit', 'diceSoNiceReady']);
+    }
+  });
+
+  test('a throwing hooks object is logged, never thrown', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = {
+      callAll: () => {
+        throw new Error('boom');
+      },
+    };
+    await expect(
+      announceReady({ hooks: h, api: 1, apiReady: Promise.resolve() }),
+    ).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });

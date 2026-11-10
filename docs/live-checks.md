@@ -58,3 +58,12 @@ Also automated in `npm run test:live:compat` (scenario 5). By eye:
 ## 8. Privacy matrix
 
 Also automated in `npm run test:live:compat` (scenarios 2 and 3). With `showGhostDice` off, a player must never see a GM whisper or a blind roll's dice, nor its result before the message is revealed.
+
+## 9. `chatCommandsReady` timing
+
+Dicer listens for `chatCommandsReady` from module load, not from its `init` hook, so the commands register whenever the chat-commands module fires it.
+
+1. Enable the chat-commands module next to Dicer. Reload.
+2. Type `/dice3d`, then `/d3d` and `/dsn`, in chat.
+3. Pass: all three autocomplete and open the settings on the Dicer tab, and no chat message is posted.
+4. Enable Dice So Nice too (Dicer goes dormant) and reload. Pass: Dicer registers none of the three; `/dsn` belongs to DSN.

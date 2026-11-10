@@ -45,3 +45,23 @@ export async function startEngine({
     return null;
   }
 }
+
+/**
+ * Fires diceSoNiceInit then diceSoNiceReady with `api` once `apiReady` (globalThis.DicerAPIReady)
+ * has settled, so `game.dice3d.DiceSystem` is set inside both hooks. A missing or rejected
+ * promise still fires them; nothing here rejects or throws. Not awaited by startup, so a slow
+ * api.js never delays the engine.
+ */
+export async function announceReady({ hooks, api, apiReady }) {
+  try {
+    await apiReady;
+  } catch {
+    // DicerAPIReady never rejects; anything else must not stop the hooks
+  }
+  try {
+    hooks.callAll('diceSoNiceInit', api);
+    hooks.callAll('diceSoNiceReady', api);
+  } catch (err) {
+    console.error('dicer: cannot announce game.dice3d', err);
+  }
+}
