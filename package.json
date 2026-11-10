@@ -8,6 +8,7 @@
     "build:sdf": "node scripts/build-sdf.mjs",
     "dev": "vite",
     "test": "vitest run",
+    "test:live": "node tests/live/smoke.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -8,6 +8,9 @@ export default defineConfig({
   base: './',
   plugins: [rapierWasmPlugin(), minifyChunksPlugin()],
   worker: { format: 'es', plugins: () => [rapierWasmPlugin(), minifyChunksPlugin()] },
+  // Dev: pre-bundling would give the package and sim.js's deep glue import two separate copies
+  // of the wasm-bindgen glue (the wasm is bound to one of them), so keep it unbundled.
+  optimizeDeps: { exclude: ['@dimforge/rapier3d-deterministic'] },
   server: { open: '/dev/preview.html' },
   build: {
     lib: {
