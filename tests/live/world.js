@@ -1,4 +1,4 @@
-/* global Roll */
+/* global Roll, Combat */
 /**
  * Browser-side RPC module for the live smoke test. Foundry serves it at
  * /modules/dicer/tests/live/world.js; smoke.mjs imports it inside the page.
@@ -82,5 +82,145 @@ export async function rollAndTrack(formula) {
     };
   } finally {
     Hooks.off('diceSoNiceRollComplete', hookId);
+  }
+}
+
+/* ------------------------------------------------------------------------------------------ *
+ * Privacy and compatibility RPCs (tests/live/compat.mjs). Everything recorded here is a view
+ * kind, a count or a flag: never a roll value.
+ * ------------------------------------------------------------------------------------------ */
+
+const SAMPLE_MS = 40;
+
+function freshWindow() {
+  return {
+    complete: {}, // message id -> diceSoNiceRollComplete count
+    processed: {}, // message id -> willTrigger3DRoll
+    elements: new Set(), // message ids that got a [data-message-id] element on this client
+    maxActive: 0, // most dice rolls in flight (game.dice3d._debug.activeRolls)
+    canvasShown: false, // the dice canvas was displayed at some sample
+    looping: false,
+  };
+}
+
+/** Starts recording on this client (idempotent). */
+export function arm() {
+  if (globalThis.__dicerCompat) return true;
+  const state = { cur: freshWindow() };
+  state.hookComplete = Hooks.on('diceSoNiceRollComplete', (id) => {
+    state.cur.complete[id] = (state.cur.complete[id] ?? 0) + 1;
+  });
+  state.hookProcessed = Hooks.on('diceSoNiceMessageProcessed', (id, info) => {
+    state.cur.processed[id] = Boolean(info?.willTrigger3DRoll);
+  });
+  const note = (node) => {
+    if (node.nodeType !== 1) return;
+    const own = node.dataset?.messageId;
+    if (own) state.cur.elements.add(own);
+    for (const el of node.querySelectorAll?.('[data-message-id]') ?? []) {
+      state.cur.elements.add(el.dataset.messageId);
+    }
+  };
+  state.observer = new MutationObserver((records) => {
+    for (const r of records) r.addedNodes.forEach(note);
+  });
+  state.observer.observe(document.body, { childList: true, subtree: true });
+  state.timer = setInterval(() => {
+    const debug = game.dice3d?._debug;
+    state.cur.maxActive = Math.max(state.cur.maxActive, debug?.activeRolls ?? 0);
+    state.cur.looping ||= Boolean(debug?.isLooping);
+    const canvas = document.querySelector('#dicer-layer canvas');
+    if (canvas && canvas.style.display !== 'none') state.cur.canvasShown = true;
+  }, SAMPLE_MS);
+  globalThis.__dicerCompat = state;
+  return true;
+}
+
+/** Forgets everything recorded so far; the next scenario starts clean. */
+export function mark() {
+  globalThis.__dicerCompat.cur = freshWindow();
+  return true;
+}
+
+/** What this client saw for message `id` (null: only the window-wide facts). */
+export function report(id) {
+  const cur = globalThis.__dicerCompat.cur;
+  return {
+    completeCount: id ? (cur.complete[id] ?? 0) : null,
+    processed: id ? (cur.processed[id] ?? null) : null,
+    hasElement: id ? cur.elements.has(id) : null,
+    views: id ? (game.dice3d._debug.lastRollViews[id] ?? null) : null,
+    maxActive: cur.maxActive,
+    canvasShown: cur.canvasShown,
+    looping: cur.looping,
+  };
+}
+
+export function getGhostSetting() {
+  return game.settings.get('dicer', 'showGhostDice');
+}
+
+export function setGhostSetting(value) {
+  return game.settings.set('dicer', 'showGhostDice', Boolean(value));
+}
+
+/** Rolls into chat with a roll mode ('publicroll' | 'gmroll' | 'blindroll' | 'selfroll'). */
+export async function rollInChat({ formula, rollMode }) {
+  const message = await new Roll(formula).toMessage({}, { rollMode });
+  return message.id;
+}
+
+/** game.dice3d.showForRoll(roll, game.user, synchronize); resolves when the local show ends. */
+export async function showForRollSynced(formula) {
+  const roll = await new Roll(formula).evaluate();
+  const shown = await game.dice3d.showForRoll(roll, game.user, true);
+  return { shown };
+}
+
+/**
+ * Rolls initiative for a throwaway combatant and samples the tracker row: was the value hidden
+ * (dicer-hide-initiative) while the dice flew, and shown again afterwards. Cleans up after
+ * itself. Returns { skipped } when there is no scene to hold a combat.
+ */
+export async function initiativeTrack() {
+  if (!canvas?.scene) return { skipped: 'no active scene to hold a combat' };
+  const combat = await Combat.create({ scene: canvas.scene.id, active: true });
+  try {
+    const [combatant] = await combat.createEmbeddedDocuments('Combatant', [
+      { name: 'Dicer compat test' },
+    ]);
+    await ui.combat?.render?.({ force: true });
+    ui.combat?.activate?.();
+    const row = () =>
+      ui.combat?.element?.querySelector(`[data-combatant-id="${combatant.id}"]`) ?? null;
+    const valueEl = () => row()?.querySelector('.token-initiative, .initiative') ?? null;
+    let hiddenWhileFlying = false;
+    let sawValueEl = false;
+    const sampler = setInterval(() => {
+      const el = valueEl();
+      if (!el) return;
+      sawValueEl = true;
+      if (el.classList.contains('dicer-hide-initiative')) hiddenWhileFlying = true;
+    }, 10);
+    const done = new Promise((resolve) => {
+      const hookId = Hooks.on('diceSoNiceRollComplete', () => {
+        Hooks.off('diceSoNiceRollComplete', hookId);
+        resolve(true);
+      });
+      setTimeout(() => resolve(false), 16000);
+    });
+    await combat.rollInitiative([combatant.id]);
+    const completed = await done;
+    clearInterval(sampler);
+    await sleep(600); // the reveal re-renders the tracker
+    const el = valueEl();
+    return {
+      completed,
+      sawValueEl,
+      hiddenWhileFlying,
+      shownAfter: Boolean(el) && !el.classList.contains('dicer-hide-initiative'),
+    };
+  } finally {
+    await combat.delete();
   }
 }

@@ -88,6 +88,9 @@
         "Hint": "Show the 3D dice models that dice presets from other modules provide, for the die types whose face layout Dicer has verified. Off shows Dicer's own dice instead."
       }
     },
+    "Commands": {
+      "Description": "Open the Dicer settings."
+    },
     "Quality": {
       "Dropped": "Dicer lowered the dice graphics quality for this session to keep rolls smooth."
     }

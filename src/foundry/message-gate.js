@@ -9,6 +9,7 @@ export const WATCHDOG_MS = 15000;
 
 /** How many message ids the gate remembers a roll count for (to spot appended rolls). */
 export const ROLL_COUNT_LIMIT = 200;
+const VIEW_LOG_LIMIT = 50;
 
 const DSN_SCOPE = 'dice-so-nice';
 const MODULE_SCOPE = 'dicer';
@@ -111,6 +112,13 @@ export function createMessageGate({
   const companionOf = new Map();
   /** id -> the message's roll count when last seen (LRU, oldest first) */
   const rollCounts = new Map();
+  /** message id -> the view kinds ('real' | 'ghost' | 'none') of its rolls, never values. */
+  const viewLog = new Map();
+  function recordViews(id, views) {
+    viewLog.delete(id);
+    viewLog.set(id, views.slice());
+    if (viewLog.size > VIEW_LOG_LIMIT) viewLog.delete(viewLog.keys().next().value);
+  }
   let disabled = false;
   let updateSelector = null;
   const chat = () => (chatUi === undefined ? globalThis.ui?.chat : chatUi);
@@ -227,6 +235,7 @@ export function createMessageGate({
     if (disabled || !getSetting('enabled') || !(message.rolls?.length > from)) return null;
     if (flagOf(message, 'skip') || flagOf(message, 'pendingCard')) return null;
     const views = onlyFrom(viewsOf(message), from);
+    recordViews(message.id, views);
     const plan = planAll(message.rolls, message, views);
     return plan.some((specs) => specs.length > 0) ? { views, plan } : null;
   }
@@ -439,6 +448,7 @@ export function createMessageGate({
       rolls[from] = context.dsnRoll ?? first;
       const flags = appearedFlags(context, before, message);
       const views = onlyFrom(viewsOf(message, { before, ...flags }), from);
+      recordViews(id, views);
       // RollStart can only change the views or replace the first animated roll. The maxDice
       // budget is shared, so any such change re-plans every animated roll.
       const unchanged = rolls[from] === first && views.every((v, i) => v === eligible.views[i]);
@@ -546,6 +556,8 @@ export function createMessageGate({
     onDelete,
     setUpdateHideSelector,
     isAnimating: (id) => animating.has(id),
+    /** Debug only: the view kinds of the last messages, by id (never values). */
+    recentViews: () => Object.fromEntries([...viewLog].map(([id, v]) => [id, v.slice()])),
     waitFor: (id) => animating.get(id)?.promise ?? Promise.resolve(true),
     get disabled() {
       return disabled;

@@ -666,6 +666,17 @@ export function createDice3dApi({
       get activeRolls() {
         return diceBox.activeRolls;
       },
+      /**
+       * message id -> view kinds ('real' | 'ghost' | 'none') per roll for the last messages
+       * this client handled. Kinds only, never values: the privacy live test reads it.
+       */
+      get lastRollViews() {
+        try {
+          return gate.recentViews?.() ?? {};
+        } catch {
+          return {};
+        }
+      },
     },
   };
   return api;

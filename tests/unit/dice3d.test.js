@@ -800,3 +800,12 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     err.mockRestore();
   });
 });
+
+test('_debug.lastRollViews reads the gate record and survives a gate without it', () => {
+  gate.recentViews = () => ({ m1: ['ghost'] });
+  expect(api._debug.lastRollViews).toEqual({ m1: ['ghost'] });
+  gate.recentViews = () => {
+    throw new Error('x');
+  };
+  expect(api._debug.lastRollViews).toEqual({});
+});

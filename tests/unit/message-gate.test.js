@@ -1447,3 +1447,16 @@ describe('appended rolls (updateChatMessage)', () => {
     expect(hooks.named(COMPLETE)).toHaveLength(2);
   });
 });
+
+describe('recentViews (debug record)', () => {
+  it('records view kinds per message and never roll values', () => {
+    gate.onCreate(message('m1', { rolls: [d20Roll(13)] }));
+    gate.onCreate(
+      message('m2', { rolls: [d20Roll(7)], isContentVisible: false, blind: true, whisper: ['gm'] }),
+    );
+    const views = gate.recentViews();
+    expect(views.m1).toEqual(['real']);
+    expect(views.m2).toEqual(['none']);
+    expect(JSON.stringify(views)).not.toMatch(/13|17|"7"/);
+  });
+});

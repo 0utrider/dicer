@@ -8,6 +8,7 @@ import { DiceBox } from './throw/dice-box.js';
 import { planThrow } from './throw/throw-planner.js';
 import { createMessageGate } from './foundry/message-gate.js';
 import { createInitiativeHider } from './compat/initiative.js';
+import { registerChatCommands } from './compat/chat-commands.js';
 import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
 import { startEngine } from './foundry/startup.js';
@@ -209,6 +210,12 @@ function onQualityChange(key) {
   quality?.refresh(key); // emits onChange (-> refreshMaterials) only if the tier changed
 }
 
+/** Opens Foundry's settings on the Dicer tab (Dicer's own dialog is Plan 7). */
+function openDicerSettings() {
+  const SettingsConfig = foundry.applications.settings.SettingsConfig;
+  new SettingsConfig({ initialCategory: 'dicer' }).render({ force: true });
+}
+
 Hooks.once('init', () => {
   if (dsnIsActive(game)) {
     dormant = true;
@@ -217,6 +224,13 @@ Hooks.once('init', () => {
   }
   registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange });
   loadPublicApi();
+  // /dice3d, /d3d and /dsn through the chat-commands module (absent: nothing to register).
+  Hooks.on('chatCommandsReady', (commands) =>
+    registerChatCommands(commands, {
+      openSettings: openDicerSettings,
+      description: game.i18n.localize('DICER.Commands.Description'),
+    }),
+  );
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
     initiative?.onCreateMessage(message);
