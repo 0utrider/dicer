@@ -1275,6 +1275,34 @@ describe('onMaterial (P3-R3)', () => {
     box.clear();
   });
 
+  test('a non-standard preset die never shares a material with a standard die', () => {
+    const onMaterial = vi.fn();
+    const presetFor = (system, type) => (system === 'pf2e' && type === 'd20' ? preset : null);
+    const { renderer, box } = setup({ onMaterial, presetFor });
+    // The standard die builds first: the pf2e die must still get (and announce) its own.
+    box.roll([
+      { type: 'd20', value: 3, system: 'standard', dsnType: 'd20' },
+      { type: 'd20', value: 4, system: 'pf2e', dsnType: 'd20' },
+    ]);
+    const [plain, custom] = dieGroups(renderer).map((g) => g.children[0].material);
+    expect(custom).not.toBe(plain);
+    expect(onMaterial).toHaveBeenCalledTimes(1);
+    expect(onMaterial.mock.calls[0][0]).toBe(custom);
+    // A listener mutating the announced material cannot reach the standard die.
+    onMaterial.mock.calls[0][0].userData.mutated = true;
+    expect(plain.userData.mutated).toBeUndefined();
+    box.clear();
+  });
+
+  test('a standard preset die shares the plain cache (no extra material)', () => {
+    const std = { system: 'standard', type: 'd20' };
+    const { renderer, box } = setup({ presetFor: (s) => (s === 'standard' ? std : null) });
+    box.roll([{ type: 'd20', value: 3 }, { type: 'd20', value: 4, system: 'standard', dsnType: 'd20' }]);
+    const [a, b] = dieGroups(renderer).map((g) => g.children[0].material);
+    expect(a).toBe(b);
+    box.clear();
+  });
+
   test('no preset, no system, or a ghost: nothing fires', () => {
     const onMaterial = vi.fn();
     const presetFor = vi.fn(() => null);

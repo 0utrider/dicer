@@ -306,6 +306,15 @@ describe('hardening (Task 12)', () => {
     },
   );
 
+  test('a custom type with more than 1000 labels warns and is skipped', async () => {
+    const { reg, warn } = make();
+    await expect(reg.addDicePreset({ type: 'dx', labels: labels(1001) })).resolves.toBeUndefined();
+    expect(reg.presetFor('standard', 'dx')).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('1000'));
+    await reg.addDicePreset({ type: 'dy', labels: labels(1000) });
+    expect(reg.presetFor('standard', 'dy').labels).toHaveLength(1000);
+  });
+
   test('a 1000-face die is still accepted', async () => {
     const { reg } = make();
     await reg.addDicePreset({ type: 'd1000', labels: [] });

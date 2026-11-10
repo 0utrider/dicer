@@ -28,6 +28,8 @@ export const LANDING_GRACE_MS = 3000;
  * falls back, even if a loader never settles.
  */
 export const ASSET_WAIT_MS = 4250;
+/** Dice So Nice's built-in system id: its presets share Dicer's plain material cache. */
+const STANDARD_SYSTEM = 'standard';
 /** Die types whose materials acquireWarmup() builds by default. */
 export const WARMUP_TYPES = Object.freeze(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
 
@@ -355,12 +357,16 @@ export class DiceBox {
   /**
    * @param {object} appearance normalized
    * @param {{system?: string, dsnType?: string} | null} [source] the die it is built for: a
-   *   newly built material is announced through onMaterial when the die has a preset
+   *   newly built material is announced through onMaterial when the die has a preset. A preset
+   *   of a non-standard system keys its own materials, so a standard die can neither suppress
+   *   the announcement nor share a material a listener may change.
    */
   #material(appearance, flags, type, variant, faces, ghost = false, faceTex = null, source = null) {
     const layered = !ghost && faceTex?.texture ? faceTex : null;
     const layerKey = layered ? `|fl${faceTexId(layered)}` : '';
-    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}`;
+    const found = ghost ? null : this.#presetOf(source, type);
+    const systemKey = found && found.preset.system !== STANDARD_SYSTEM ? `|sys:${found.preset.system}` : '';
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${systemKey}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
@@ -381,20 +387,27 @@ export class DiceBox {
       this._materials.set(key, mat);
       // A layered material lives only while rolls hold it: its texture is theirs.
       this._refs.set(mat, { refs: 0, stale: false, transient: !!layered });
-      if (!ghost) this.#announce(mat, appearance, type, source);
+      if (found) {
+        try {
+          this._onMaterial(mat, found.dsnType, appearance, found.preset);
+        } catch (err) {
+          console.warn('dicer: a material-ready listener threw; the die keeps its look', err);
+        }
+      }
     }
     return mat;
   }
 
-  /** Tells onMaterial about a new material of a die whose preset is registered. Never throws. */
-  #announce(material, appearance, type, source) {
-    if (typeof source?.system !== 'string') return;
+  /** The registered preset of the die `source` describes, as { preset, dsnType }, or null. */
+  #presetOf(source, type) {
+    if (typeof source?.system !== 'string') return null;
     try {
       const dsnType = source.dsnType ?? type;
       const preset = this._presetFor(source.system, dsnType);
-      if (preset) this._onMaterial(material, dsnType, appearance, preset);
+      return preset && typeof preset === 'object' ? { preset, dsnType } : null;
     } catch (err) {
-      console.warn('dicer: a material-ready listener threw; the die keeps its look', err);
+      console.warn('dicer: cannot look up a die preset; the die keeps its look', err);
+      return null;
     }
   }
 

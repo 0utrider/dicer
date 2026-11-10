@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { viewFor } from '../compat/privacy.js';
-import { createSync, rollToData, stripResults } from '../compat/sync.js';
+import { createSync, rollToData, ghostRollData } from '../compat/sync.js';
 import { createRegistry } from '../compat/registry.js';
 import { readUserLooks } from '../compat/user-looks.js';
 import { measureArea } from '../foundry/area.js';
@@ -149,14 +149,17 @@ export function createDice3dApi({
     }
   };
 
-  /** How a roll shows here; the content is visible to everyone unless blind (then GMs only). */
-  function viewHere({ authorId, users, blind, ghost, secret }) {
+  /**
+   * How a roll shows here; the content is visible to everyone unless blind (then GMs only).
+   * The author for privacy is the verified sender (P3-R18), never the caller's `user` argument.
+   */
+  function viewHere({ senderId, users, blind, ghost, secret }) {
     const user = me();
     const isGM = user?.isGM === true;
     return viewFor({
       contentVisible: !blind || isGM,
       isGM,
-      isAuthor: user?.id != null && authorId === user.id,
+      isAuthor: user?.id != null && senderId === user.id,
       blind,
       whispered: Boolean(users),
       rollGhost: ghost,
@@ -205,19 +208,24 @@ export function createDice3dApi({
   }
 
   /**
-   * Two emits at most: the real roll to its recipients and, for a blind (not secret) roll with
-   * showGhostDice on, a results-stripped ghost payload to the listed users who are not GMs, so
-   * the real results never reach a socket that may not see them (P3-R14).
+   * Two emits at most: the roll to its recipients and, for a blind (not secret) roll with
+   * showGhostDice on, an allow-list ghost payload (ghostRollData, P3-R16) to the listed users who
+   * are not GMs, so the real results never reach a socket that may not see them (P3-R14). A roll
+   * that is ghost for everyone sends only ghost data, to everyone it goes to (P3-R17).
+   * `userId` is the real sender, which receivers check against the server's sender id; the
+   * caller's `user` travels as `authorId`, for the dice look only (P3-R18).
    */
   function broadcast(roll, s) {
     try {
       if (!sync) return;
       const gms = listGms();
+      const data = rollToData(roll);
       const payload = {
         v: 1,
         kind: 'show',
-        roll: rollToData(roll),
-        userId: s.authorId,
+        roll: s.ghost ? ghostRollData(data) : data,
+        userId: s.senderId,
+        authorId: s.authorId,
         users: s.users,
         blind: s.blind,
         ghost: s.ghost,
@@ -230,7 +238,7 @@ export function createDice3dApi({
       if (!s.blind || s.secret || !s.users || getSetting('showGhostDice') !== true) return;
       const players = withoutSelf(s.users.filter((id) => !gms.includes(id)));
       if (!players.length) return;
-      sync.broadcast({ ...payload, roll: stripResults(payload.roll), ghost: true }, players);
+      sync.broadcast({ ...payload, roll: ghostRollData(data), ghost: true }, players);
     } catch (err) {
       console.error('dicer: cannot synchronize a roll', err);
     }
@@ -303,7 +311,8 @@ export function createDice3dApi({
   function receive(p) {
     return run(p.roll, {
       user: null,
-      authorId: p.userId,
+      senderId: p.userId,
+      authorId: p.authorId ?? p.userId,
       users: p.users,
       blind: p.blind,
       ghost: p.ghost || Boolean(p.roll.ghost),
@@ -603,6 +612,7 @@ export function createDice3dApi({
       const author = user ?? me();
       return run(roll, {
         user: author,
+        senderId: me()?.id ?? null,
         authorId: author?.id ?? me()?.id ?? null,
         users: idsOf(users),
         blind: Boolean(blind),

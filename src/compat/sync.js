@@ -50,36 +50,43 @@ export function rollToData(roll) {
   };
 }
 
-/** Keys of roll JSON that carry a result: totals are dropped from a stripped roll. */
-const TOTAL_KEYS = new Set(['total', '_total']);
+/** How deep ghostRollData looks for dice inside nested terms (pools, parentheticals). */
+const MAX_DEPTH = 32;
 
 /**
- * A copy of roll JSON with nothing a result could be read from (P3-R14): every `results` entry
- * becomes `{result: 1}` keeping only its active/discarded/hidden flags (success, count and the
- * like are dropped) and every total is removed, however deeply the terms nest.
+ * Ghost roll data built from an allow-list (P3-R16): a fresh `{class: 'Roll', formula: '',
+ * options: {}, evaluated: true, terms}` with, per die term found in `data` (nested pool and
+ * parenthetical rolls included), only `{class: 'Die', faces, number, results}` where results is
+ * `number` copies of `{result: 1, active: true}`: the original dice count, never the result
+ * count, so explosions, rerolls and discards show nothing. Nothing else of the source survives:
+ * no options, formula, flavor, flags, totals or non-die terms. A non-finite or absurd count is 0.
  */
-export function stripResults(data) {
-  const walk = (node, depth) => {
-    if (depth > 64) return null;
-    if (Array.isArray(node)) return node.map((v) => walk(v, depth + 1));
-    if (!node || typeof node !== 'object') return node;
-    const out = {};
-    for (const [key, value] of Object.entries(node)) {
-      if (TOTAL_KEYS.has(key)) continue;
-      if (key === 'results' && Array.isArray(value)) {
-        out.results = value.map((r) => {
-          const kept = { result: 1, active: r?.active !== false };
-          if (r?.discarded === true) kept.discarded = true;
-          if (r?.hidden === true) kept.hidden = true;
-          return kept;
-        });
-      } else {
-        out[key] = walk(value, depth + 1);
-      }
+export function ghostRollData(data) {
+  const terms = [];
+  let total = 0;
+  const visit = (node, depth) => {
+    if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, depth + 1);
+      return;
     }
-    return out;
+    const faces = node.faces;
+    if (Number.isInteger(faces) && faces > 0 && faces <= MAX_RESULTS && Array.isArray(node.results)) {
+      const n = Number(node.number);
+      const number = Number.isInteger(n) && n > 0 && total + n <= MAX_RESULTS ? n : 0;
+      total += number;
+      terms.push({
+        class: 'Die',
+        faces,
+        number,
+        results: Array.from({ length: number }, () => ({ result: 1, active: true })),
+      });
+      return;
+    }
+    for (const key of ['terms', 'rolls', 'roll']) visit(node[key], depth + 1);
   };
-  return walk(data, 0);
+  visit(data, 0);
+  return { class: 'Roll', formula: '', options: {}, evaluated: true, terms };
 }
 
 /**
@@ -88,7 +95,8 @@ export function stripResults(data) {
  * its `users` list is malformed or excludes the current user, when its roll holds more than
  * MAX_RESULTS results, or when the roll fails `fromData`. The server calls the handler with
  * `(data, senderUserId)`; when a sender id is given, a payload whose `userId` differs from it is
- * ignored (P3-R15: nobody can throw dice in another user's name). What the receiver then shows
+ * ignored (P3-R15: nobody can throw dice in another user's name). `authorId` (the caller's
+ * `user`, P3-R18) only picks the dice look. What the receiver then shows
  * (privacy view, maxDice) is onShow's job. Nothing a payload does throws into the socket handler.
  *
  * @param {object} deps
@@ -120,6 +128,8 @@ export function createSync({ socket, currentUser, onShow, fromData = (d) => glob
     const shown = onShow({
       roll,
       userId: idOrNull(p.userId),
+      // Whose look the dice wear (P3-R18); privacy keeps using the verified userId.
+      authorId: idOrNull(p.authorId) ?? idOrNull(p.userId),
       users,
       // Any truthy flag counts: a malformed flag errs towards showing less.
       blind: Boolean(p.blind),

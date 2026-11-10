@@ -154,6 +154,10 @@ export function createRegistry({
     if (isStr(shape)) setAlias('addDicePreset', type, shape);
     const base = baseShape(type);
     const given = Array.isArray(preset.labels) ? preset.labels : [];
+    if (given.length > MAX_FACES) {
+      bad('addDicePreset', `"${type}": more than ${MAX_FACES} labels; skipped`);
+      return false;
+    }
     // Model-backed presets (e.g. labels: "") carry their faces in the model.
     if (!Array.isArray(preset.labels) && !hasModel) {
       bad('addDicePreset', `"${type}": \`labels\` should be an array`);
