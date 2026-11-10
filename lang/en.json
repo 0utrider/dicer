@@ -43,6 +43,10 @@
         "Name": "Show ghost dice for hidden rolls",
         "Hint": "Players see neutral, blank dice when a whispered roll or their own blind roll is hidden from them. This reveals that a hidden roll happened, never its result."
       },
+      "hideInitiative": {
+        "Name": "Hide initiative until the dice land",
+        "Hint": "In the combat tracker, a combatant's rolled initiative stays hidden until the dice of its initiative roll have landed."
+      },
       "showExtraDice": {
         "Name": "Show extra dice",
         "Hint": "Also throw dice whose results do not count, such as the dropped die of an advantage roll or rerolled dice."

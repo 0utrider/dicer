@@ -104,7 +104,7 @@ export function createMessageGate({
 }) {
   /**
    * id -> { elements: Set<HTMLElement>, companions: Map<id, { elements }>, timer, resolve,
-   * promise, own, hide, selector: string | null, pending: { message, from } | undefined }
+   * promise, own, hide, selector: string | null, pending: { message, from, count } | undefined }
    */
   const animating = new Map();
   /** companion id -> the id of the animating message it is linked to */
@@ -300,7 +300,10 @@ export function createMessageGate({
       console.error('dicer: a diceSoNiceRollComplete listener failed', err);
     }
     const pending = next ? entry.pending : undefined;
-    if (pending && !animating.has(id)) animate(pending.message, pending.from, updateSelector);
+    if (pending && !animating.has(id)) {
+      // Merged appends span more than the selector's match (e.g. the last roll): hide it whole.
+      animate(pending.message, pending.from, pending.count > 1 ? null : updateSelector);
+    }
   }
 
   /**
@@ -309,7 +312,11 @@ export function createMessageGate({
    * append's selector cannot leave the new rolls showing.
    */
   function queueAppend(id, entry, message, from) {
-    entry.pending = { message, from: Math.min(entry.pending?.from ?? from, from) };
+    entry.pending = {
+      message,
+      from: Math.min(entry.pending?.from ?? from, from),
+      count: (entry.pending?.count ?? 0) + 1,
+    };
     if (!entry.hide || !entry.selector) return;
     entry.selector = null;
     for (const el of elementsFor(id)) hideInto(entry, el);
@@ -354,7 +361,8 @@ export function createMessageGate({
         () => next(i + 1),
         (err) => {
           console.error('dicer: roll failed', err);
-          reveal(id);
+          // A stale rejection (this animation was revealed meanwhile) must not reveal the next one.
+          if (animating.get(id) === entry) reveal(id);
         },
       );
     };

@@ -93,6 +93,14 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange }
     type: Boolean,
     default: false,
   });
+  game.settings.register(MODULE_ID, 'hideInitiative', {
+    name: t('hideInitiative.Name'),
+    hint: t('hideInitiative.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
   game.settings.register(MODULE_ID, 'look', {
     name: t('look.Name'),
     hint: t('look.Hint'),

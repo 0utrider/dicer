@@ -6,8 +6,12 @@ const COMPLETE = 'diceSoNiceRollComplete';
 
 function deferred() {
   let resolve;
-  const promise = new Promise((r) => (resolve = r));
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 function fakeHooks() {
@@ -1341,6 +1345,95 @@ describe('appended rolls (updateChatMessage)', () => {
     append(msg, d20Roll(4));
     expect(diceBox.rolls).toHaveLength(1);
     expect(el.classList.contains('dsn-hide')).toBe(false);
+  });
+
+  test('the watchdog fires during a selector append: revealed, RollComplete once more, a late landing is ignored', async () => {
+    const el = card('m1');
+    const msg = await created();
+    gate.setUpdateHideSelector('.dice-roll:last-child');
+    append(msg, d20Roll(4));
+    expect(el.children[1].classList.contains('dsn-hide')).toBe(true);
+    vi.advanceTimersByTime(WATCHDOG_MS);
+    await flush();
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('the watchdog fires on an animation with a queued append: the append starts, RollComplete once per animation', async () => {
+    li('m1');
+    const msg = message();
+    gate.onCreate(msg);
+    append(msg, d20Roll(4));
+    vi.advanceTimersByTime(WATCHDOG_MS);
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    expect(diceBox.rolls).toHaveLength(2);
+    expect(gate.isAnimating('m1')).toBe(true);
+    diceBox.rolls[0].landed.resolve(); // the first one lands late: nothing happens
+    await flush();
+    expect(gate.isAnimating('m1')).toBe(true);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+    vi.advanceTimersByTime(WATCHDOG_MS * 2);
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
+  });
+
+  test('diceBox.roll throwing during an append reveals once and hides nothing', async () => {
+    const el = li('m1');
+    const msg = await created();
+    diceBox.roll.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    append(msg, d20Roll(4));
+    expect(errorSpy).toHaveBeenCalled();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(gate.isAnimating('m1')).toBe(false);
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+    vi.advanceTimersByTime(WATCHDOG_MS * 2);
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('a stale landed rejection does not reveal the next animation of the same id', async () => {
+    li('m1');
+    const msg = message();
+    gate.onCreate(msg);
+    append(msg, d20Roll(4));
+    vi.advanceTimersByTime(WATCHDOG_MS); // A revealed, B starts
+    await flush();
+    expect(gate.isAnimating('m1')).toBe(true);
+    diceBox.rolls[0].landed.promise.catch(() => {});
+    diceBox.rolls[0].landed.reject(new Error('late'));
+    await flush();
+    expect(gate.isAnimating('m1')).toBe(true);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('two appends merged into one animation start with whole-message hiding, not the selector', async () => {
+    const el = card('m1');
+    gate.setUpdateHideSelector('.dice-roll:last-child');
+    const msg = message();
+    gate.onCreate(msg);
+    append(msg, d20Roll(4));
+    append(msg, d20Roll(5));
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(diceBox.rolls).toHaveLength(3);
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    expect(el.querySelectorAll('.dsn-hide')).toHaveLength(0);
+    diceBox.rolls[1].landed.resolve();
+    diceBox.rolls[2].landed.resolve();
+    await flush();
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
   });
 
   test('immediatelyDisplayChatMessages: an append hides nothing but still completes once', async () => {

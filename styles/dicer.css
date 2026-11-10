@@ -10,3 +10,8 @@
 .dsn-hide {
   display: none !important;
 }
+
+/* Initiative stays hidden in the combat tracker until its roll's dice land. */
+.dicer-hide-initiative {
+  visibility: hidden;
+}

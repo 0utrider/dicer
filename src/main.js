@@ -7,6 +7,7 @@ import { createWarmup } from './render/warmup.js';
 import { DiceBox } from './throw/dice-box.js';
 import { planThrow } from './throw/throw-planner.js';
 import { createMessageGate } from './foundry/message-gate.js';
+import { createInitiativeHider } from './compat/initiative.js';
 import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
 import { startEngine } from './foundry/startup.js';
@@ -22,6 +23,7 @@ import { registerNoticeSetting, registerSettings, getSetting } from './settings.
 
 let dormant = false;
 let gate = null;
+let initiative = null; // hides rolled initiative in the combat tracker while its dice fly
 let diceBox = null;
 let diceRenderer = null;
 let quality = null;
@@ -130,7 +132,11 @@ Hooks.once('init', () => {
     return;
   }
   registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange });
-  Hooks.on('createChatMessage', (message) => handlers().onCreate(message));
+  Hooks.on('createChatMessage', (message) => {
+    handlers().onCreate(message); // first: the hider reads gate.isAnimating
+    initiative?.onCreateMessage(message);
+  });
+  Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
   Hooks.on('updateChatMessage', (message, changes) => handlers().onUpdate(message, changes));
   Hooks.on('renderChatMessageHTML', (message, html) => handlers().onRender(message, html));
   Hooks.on('deleteChatMessage', (message) => handlers().onDelete(message));
@@ -209,6 +215,12 @@ Hooks.once('ready', async () => {
         hooks: Hooks,
         getSetting,
       });
+      initiative = createInitiativeHider({
+        gate,
+        getCombat: () => game.combat ?? null,
+        documentRef: document,
+        enabled: () => getSetting('hideInitiative') !== false,
+      });
       api = createDice3dApi({
         diceBox: box,
         gate,
@@ -237,6 +249,7 @@ Hooks.once('ready', async () => {
     quality?.dispose();
     quality = null;
     gate = null;
+    initiative = null;
     diceBox = null;
     diceRenderer = null;
     registry = null;
