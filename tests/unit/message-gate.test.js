@@ -304,3 +304,164 @@ test('waitFor(id) resolves true once the animation completes', async () => {
 test('waitFor(id) on an unknown id resolves true immediately', async () => {
   await expect(gate.waitFor('nope')).resolves.toBe(true);
 });
+
+describe('reveal scrolls the chat log (Foundry only scrolls on append, while the message is hidden)', () => {
+  function chatUi(isAtBottom) {
+    return { isAtBottom, scrollBottom: vi.fn(async () => {}) };
+  }
+
+  test('at the bottom → scrollBottom({ popout: true }) after dsn-hide is removed', async () => {
+    const el = li('m1');
+    const ui = chatUi(true);
+    let hiddenWhenScrolled = null;
+    ui.scrollBottom.mockImplementation(async () => {
+      hiddenWhenScrolled = el.classList.contains('dsn-hide');
+    });
+    gate = makeGate({ chatUi: ui, currentUserId: () => 'me' });
+    gate.onCreate(message('m1', { author: { id: 'other' } }));
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(ui.scrollBottom).toHaveBeenCalledTimes(1);
+    expect(ui.scrollBottom).toHaveBeenCalledWith({ popout: true });
+    expect(hiddenWhenScrolled).toBe(false);
+  });
+
+  test("scrolled up, someone else's roll → no scroll", async () => {
+    li('m1');
+    const ui = chatUi(false);
+    gate = makeGate({ chatUi: ui, currentUserId: () => 'me' });
+    gate.onCreate(message('m1', { author: { id: 'other' } }));
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(ui.scrollBottom).not.toHaveBeenCalled();
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+  });
+
+  test('scrolled up, own roll → scrolls (mirrors Foundry: isAtBottom || author is the user)', async () => {
+    li('m1');
+    const ui = chatUi(false);
+    gate = makeGate({ chatUi: ui, currentUserId: () => 'me' });
+    gate.onCreate(message('m1', { author: { id: 'me' } }));
+    vi.advanceTimersByTime(WATCHDOG_MS); // the watchdog reveal scrolls too
+    await flush();
+    expect(ui.scrollBottom).toHaveBeenCalledWith({ popout: true });
+  });
+
+  test('isAtBottom is read before dsn-hide is removed', async () => {
+    const el = li('m1');
+    const ui = {
+      get isAtBottom() {
+        return el.classList.contains('dsn-hide'); // true only while still hidden
+      },
+      scrollBottom: vi.fn(async () => {}),
+    };
+    gate = makeGate({ chatUi: ui, currentUserId: () => 'me' });
+    gate.onCreate(message('m1', { author: { id: 'other' } }));
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(ui.scrollBottom).toHaveBeenCalledTimes(1);
+  });
+
+  test('a deleted message does not scroll', () => {
+    li('m1');
+    const ui = chatUi(true);
+    gate = makeGate({ chatUi: ui, currentUserId: () => 'me' });
+    gate.onCreate(message());
+    gate.onDelete({ id: 'm1' });
+    expect(ui.scrollBottom).not.toHaveBeenCalled();
+  });
+
+  test('a throwing or rejecting scrollBottom still fires RollComplete once', async () => {
+    li('m1');
+    const ui = chatUi(true);
+    ui.scrollBottom.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    gate = makeGate({ chatUi: ui, currentUserId: () => 'me' });
+    gate.onCreate(message());
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+
+    const ui2 = chatUi(true);
+    ui2.scrollBottom.mockImplementation(() => Promise.reject(new Error('later')));
+    gate = makeGate({ chatUi: ui2, currentUserId: () => 'me' });
+    li('m2');
+    gate.onCreate(message('m2'));
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('no chat UI (tests, early startup) → reveal still works', async () => {
+    const el = li('m1');
+    gate = makeGate({ chatUi: null });
+    gate.onCreate(message());
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+  });
+});
+
+describe('chat notification cards (#chat-notifications, Foundry element._lifeSpan)', () => {
+  /** Mimics ChatLog#postNotification: the card is rendered, connected, then _lifeSpan = 0. */
+  function postCard(id) {
+    let box = document.getElementById('chat-notifications');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'chat-notifications';
+      box.innerHTML = '<div class="overflow"><ol class="chat-log"></ol></div>';
+      document.body.appendChild(box);
+    }
+    const card = document.createElement('li');
+    card.className = 'chat-message message';
+    card.dataset.messageId = id;
+    return { box, card, connect: () => box.querySelector('.chat-log').append(card) };
+  }
+  /** One ChatLog#checkNotificationLifeSpan tick (NOTIFY_TICKER 500, NOTIFY_DURATION 5000). */
+  const tick = (card) => {
+    card._lifeSpan += 500;
+    return card._lifeSpan >= 5000; // true → Foundry would dismiss it
+  };
+
+  test('a card hidden longer than NOTIFY_DURATION is not dismissed, and gets a fresh lifespan on reveal', async () => {
+    gate.onCreate(message());
+    const { card, connect } = postCard('m1');
+    gate.onRender(message(), card); // renderChatMessageHTML fires before the card is connected
+    connect();
+    vi.advanceTimersByTime(0);
+    card._lifeSpan = 0; // Foundry, at the end of the insertion animation
+    for (let i = 0; i < 20; i++) expect(tick(card)).toBe(false); // 10 s hidden
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(card.classList.contains('dsn-hide')).toBe(false);
+    expect(card._lifeSpan).toBe(0);
+    for (let i = 0; i < 9; i++) expect(tick(card)).toBe(false);
+    expect(tick(card)).toBe(true); // normal 5 s life after the reveal
+  });
+
+  test('a card whose lifespan already ran is reset on reveal', async () => {
+    gate.onCreate(message());
+    const { card, connect } = postCard('m1');
+    connect();
+    card._lifeSpan = 3500; // posted before the gate could pin it
+    card.classList.add('dsn-hide');
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(card._lifeSpan).toBe(0);
+  });
+
+  test('chat-log messages (outside #chat-notifications) never get a _lifeSpan', async () => {
+    const el = li('m1');
+    gate.onCreate(message());
+    const rendered = document.createElement('li');
+    rendered.dataset.messageId = 'm1';
+    gate.onRender(message(), rendered);
+    document.body.appendChild(rendered);
+    vi.advanceTimersByTime(0);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect('_lifeSpan' in el).toBe(false);
+    expect('_lifeSpan' in rendered).toBe(false);
+  });
+});

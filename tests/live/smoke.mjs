@@ -21,8 +21,13 @@ const CASES = [
 
 function check({ formula, animated }, r) {
   const failures = [];
+  if (r.hiddenEarly === null) failures.push('element not found within 500 ms');
   if (animated) {
-    if (r.hiddenEarly !== true) failures.push('message was not hidden (dsn-hide) at 100 ms');
+    if (r.hiddenEarly === false)
+      failures.push('message was not hidden (dsn-hide) when it appeared');
+    if (r.scrolledIntoView === false) {
+      failures.push('revealed message is below the visible chat log (not scrolled into view)');
+    }
     if (r.completeCount !== 1) failures.push(`diceSoNiceRollComplete fired ${r.completeCount}x`);
     if (!(r.msToComplete >= 0 && r.msToComplete < 15000)) {
       failures.push(`msToComplete ${r.msToComplete} is not under 15000`);
@@ -102,6 +107,13 @@ async function main() {
     if (state.dsn) die('Dice So Nice is active; disable it (Dicer stays dormant beside it).');
     if (!state.dicer)
       die('game.dice3d is missing; enable Dicer in this world and run "npm run build".');
+
+    // The scrolled-into-view check needs the sidebar chat log on screen, at the bottom.
+    await page.evaluate(async () => {
+      ui.chat.activate();
+      await ui.chat.scrollBottom();
+    });
+    await page.waitForTimeout(400); // the 250 ms sidebar transition
 
     const results = [];
     for (const c of CASES) {

@@ -3,6 +3,38 @@ export const WATCHDOG_MS = 15000;
 
 const HIDE = 'dsn-hide';
 const DSN_SCOPE = 'dice-so-nice';
+const NOTIFICATIONS = '#chat-notifications';
+/**
+ * Foundry v14 ChatLog keeps each notification card's age in an expando property on the card
+ * element itself: #postNotification sets `element._lifeSpan = 0`, #checkNotificationLifeSpan
+ * adds NOTIFY_TICKER (500) to it and dismisses the card at NOTIFY_DURATION (5000), and
+ * #rerenderMessage copies it to the replacement element (client/applications/sidebar/tabs/
+ * chat.mjs). There is no public API for it.
+ */
+const LIFESPAN = '_lifeSpan';
+
+const pinnedLifespan = (el) => Boolean(Object.getOwnPropertyDescriptor(el, LIFESPAN)?.get);
+
+/**
+ * While a notification card is hidden its lifespan is held at 0 (an own accessor on that one
+ * element that reads 0 and ignores writes), so Foundry cannot dismiss a card nobody has seen.
+ */
+function pinCard(el) {
+  if (!el?.isConnected || !el.closest?.(NOTIFICATIONS) || pinnedLifespan(el)) return;
+  Object.defineProperty(el, LIFESPAN, {
+    configurable: true,
+    enumerable: true,
+    get: () => 0,
+    set() {},
+  });
+}
+
+/** On reveal: drop the pin and give the card a fresh NOTIFY_DURATION from now. */
+function refreshCard(el) {
+  const pinned = pinnedLifespan(el);
+  if (pinned) delete el[LIFESPAN];
+  if (pinned || (LIFESPAN in el && el.closest?.(NOTIFICATIONS))) el[LIFESPAN] = 0;
+}
 
 /**
  * The chat message gate: hides an eligible roll message, throws its dice, and reveals it when
@@ -18,19 +50,49 @@ const DSN_SCOPE = 'dice-so-nice';
  * @param {(roll, opts: { maxDice: number }) => { dice: object[] }} deps.planThrow
  * @param {{ callAll(name: string, ...args): void }} deps.hooks
  * @param {(key: string) => any} deps.getSetting
+ * @param {{ isAtBottom: boolean, scrollBottom(opts): Promise<void> } | null} [deps.chatUi]
+ *   the ChatLog (`ui.chat`, read lazily when omitted); null disables scrolling
+ * @param {() => string | undefined} [deps.currentUserId]
  */
 export function createMessageGate({
   diceBox,
   planThrow,
   hooks,
   getSetting,
+  chatUi,
+  currentUserId = () => globalThis.game?.user?.id,
   setTimeoutFn = (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeoutFn = (h) => globalThis.clearTimeout(h),
   documentRef = globalThis.document,
 }) {
-  /** id -> { elements: Set<HTMLElement>, timer, resolve, promise } */
+  /** id -> { elements: Set<HTMLElement>, timer, resolve, promise, own } */
   const animating = new Map();
   let disabled = false;
+  const chat = () => (chatUi === undefined ? globalThis.ui?.chat : chatUi);
+
+  /**
+   * Foundry scrolls the log only when it appends a message (ChatLog#postOne: if isAtBottom or
+   * the author is this user), and then the message is still display:none. Mirror that rule
+   * at reveal time; read isAtBottom before the message grows the log.
+   */
+  function shouldScroll(entry) {
+    try {
+      const ui = chat();
+      return Boolean(ui && (ui.isAtBottom || entry.own));
+    } catch {
+      return false;
+    }
+  }
+
+  function scrollToBottom() {
+    try {
+      Promise.resolve(chat()?.scrollBottom({ popout: true })).catch((err) =>
+        console.error('dicer: cannot scroll the chat log', err),
+      );
+    } catch (err) {
+      console.error('dicer: cannot scroll the chat log', err);
+    }
+  }
 
   function elementsFor(id) {
     const safe = String(id).replace(/["\\]/g, '\\$&');
@@ -56,12 +118,21 @@ export function createMessageGate({
     return planAll(message.rolls).some((specs) => specs.length > 0);
   }
 
-  function reveal(id) {
+  function reveal(id, { scroll = true } = {}) {
     const entry = animating.get(id);
     if (!entry) return;
     animating.delete(id);
     clearTimeoutFn(entry.timer);
-    for (const el of [...entry.elements, ...elementsFor(id)]) el.classList.remove(HIDE);
+    const scrollAfter = scroll && shouldScroll(entry);
+    for (const el of new Set([...entry.elements, ...elementsFor(id)])) {
+      el.classList.remove(HIDE);
+      try {
+        refreshCard(el);
+      } catch (err) {
+        console.error('dicer: cannot refresh a chat notification card', err);
+      }
+    }
+    if (scrollAfter) scrollToBottom();
     entry.resolve(true);
     try {
       // DSN's signature: (messageId, companionIds). Plan 1 has no companion messages.
@@ -83,11 +154,14 @@ export function createMessageGate({
 
       let resolve;
       const promise = new Promise((r) => (resolve = r));
-      const entry = { elements: new Set(), timer: null, resolve, promise };
+      const userId = currentUserId();
+      const own = userId != null && message.author?.id === userId;
+      const entry = { elements: new Set(), timer: null, resolve, promise, own };
       animating.set(id, entry);
       for (const el of elementsFor(id)) {
         el.classList.add(HIDE);
         entry.elements.add(el);
+        pinCard(el);
       }
       entry.timer = setTimeoutFn(() => reveal(id), WATCHDOG_MS);
 
@@ -130,6 +204,16 @@ export function createMessageGate({
       if (!entry || !html?.classList) return;
       html.classList.add(HIDE);
       entry.elements.add(html);
+      // renderChatMessageHTML fires before ChatLog connects the element. Its placement is known
+      // one macrotask later (only microtasks separate the hook from replaceWith/append).
+      const id = message.id;
+      setTimeoutFn(() => {
+        try {
+          if (animating.get(id)?.elements.has(html)) pinCard(html);
+        } catch (err) {
+          console.error('dicer: cannot pin a chat notification card', err);
+        }
+      }, 0);
     } catch (err) {
       console.error('dicer: chat render gate failed', err);
       html?.classList?.remove(HIDE);
@@ -138,7 +222,7 @@ export function createMessageGate({
 
   function onDelete(message) {
     try {
-      reveal(message?.id);
+      reveal(message?.id, { scroll: false });
     } catch (err) {
       console.error('dicer: chat delete gate failed', err);
     }

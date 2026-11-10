@@ -406,3 +406,94 @@ test('a roll that completes normally does not trip the stall timeouts', async ()
   box.clear();
   err.mockRestore();
 });
+
+describe('hidden tabs get no animation frames', () => {
+  class FakeVisibility extends EventTarget {
+    hidden = false;
+    setHidden(value) {
+      this.hidden = value;
+      this.dispatchEvent(new Event('visibilitychange'));
+    }
+  }
+
+  test('(a) a roll made while the document is hidden resolves landed and finished at once, without throwing', async () => {
+    const visibility = new FakeVisibility();
+    visibility.hidden = true;
+    const { renderer, physics, box } = setup({ visibility });
+    const r = box.roll([{ type: 'd6', value: 2 }]);
+    await Promise.all([r.landed, r.finished]);
+    expect(physics.streams).toHaveLength(0);
+    expect(box.activeRolls).toBe(0);
+    expect(renderer.startLoop).not.toHaveBeenCalled();
+    expect(dieGroups(renderer)).toHaveLength(0);
+  });
+
+  test('(b) visibilitychange to hidden clears every roll; back to visible does nothing', async () => {
+    const visibility = new FakeVisibility();
+    const { physics, box } = setup({ visibility });
+    const a = box.roll([{ type: 'd6', value: 2 }]);
+    physics.flush();
+    visibility.setHidden(false);
+    expect(box.activeRolls).toBe(1);
+    visibility.setHidden(true);
+    await Promise.all([a.landed, a.finished]);
+    expect(box.activeRolls).toBe(0);
+  });
+
+  test('(b) dispose() stops listening for visibilitychange', () => {
+    const visibility = new FakeVisibility();
+    const { box } = setup({ visibility });
+    const remove = vi.spyOn(visibility, 'removeEventListener');
+    box.dispose();
+    expect(remove).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+  });
+
+  test('(c) after done, a roll that gets no frames fails at its expected duration + 3000 ms', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { physics, box } = setup();
+    const r = box.roll([{ type: 'd6', value: 2 }]);
+    const isLanded = settled(r.landed);
+    physics.flush(); // done: settledStep 59 → ceil(59 / 60 s) = 984 ms
+    await flushMicrotasks();
+    vi.advanceTimersByTime(984 + 3000 - 1);
+    await flushMicrotasks();
+    expect(isLanded()).toBe(false);
+    vi.advanceTimersByTime(1);
+    await Promise.all([r.landed, r.finished]);
+    expect(box.activeRolls).toBe(0);
+    expect(err).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+
+  test('(c) the landing timeout is cleared when the roll lands normally', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { renderer, physics, box } = setup({ timeBeforeHide: () => 60000 });
+    const r = box.roll([{ type: 'd6', value: 2 }]);
+    physics.flush();
+    await flushMicrotasks();
+    renderer.tick(0);
+    renderer.tick(2000);
+    await r.landed;
+    vi.advanceTimersByTime(10000);
+    expect(box.activeRolls).toBe(1);
+    expect(err).not.toHaveBeenCalled();
+    box.clear();
+    err.mockRestore();
+  });
+
+  test('(d) an exception inside the chunk handler fails the roll instead of escaping', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { renderer, physics, box } = setup();
+    renderer.startLoop.mockImplementation(() => {
+      throw new Error('startLoop boom');
+    });
+    const r = box.roll([{ type: 'd6', value: 2 }]);
+    expect(() => physics.flush()).not.toThrow();
+    await Promise.all([r.landed, r.finished]);
+    expect(box.activeRolls).toBe(0);
+    expect(err).toHaveBeenCalledTimes(1);
+    // The rest of the stream's chunks went straight back to the pool.
+    expect(physics.recycle).toHaveBeenCalledTimes(physics.emitted);
+    err.mockRestore();
+  });
+});

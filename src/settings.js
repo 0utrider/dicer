@@ -58,6 +58,7 @@ export function registerSettings({ onAreaChange } = {}) {
     scope: 'world',
     config: true,
     type: Number,
+    range: { min: 1, max: 100, step: 1 },
     default: 20,
   });
   registerNoticeSetting();

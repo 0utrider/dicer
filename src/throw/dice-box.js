@@ -3,6 +3,7 @@ import { getShape, labelFor } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
 import { createDiceMaterial } from '../render/dice-material.js';
 import { Playback } from './playback.js';
+import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 
 /** Die edge size on screen, in CSS px, at diceScale 1. One world unit is one die size. */
 export const DIE_SIZE_PX = 48;
@@ -11,6 +12,8 @@ const DEFAULT_LINGER_MS = 2000;
 /** R12 stall timeouts, measured from roll(). */
 export const FIRST_CHUNK_TIMEOUT_MS = 5000;
 export const DONE_TIMEOUT_MS = 15000;
+/** After done: a roll that has not landed by its playback duration plus this fails. */
+export const LANDING_GRACE_MS = 3000;
 
 /**
  * Clone a cached die material for the fade. Material.clone() deep-copies userData through
@@ -49,6 +52,7 @@ export class DiceBox {
     getArea,
     diceScale = () => 1,
     timeBeforeHide = () => DEFAULT_LINGER_MS,
+    visibility = globalThis.document,
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -64,6 +68,12 @@ export class DiceBox {
     this._tick = (now) => this.#frame(now);
     this.onResize();
     renderer.onContextLost?.(() => this.clear());
+    // A hidden tab gets no animation frames, so nothing could land: drop every roll.
+    this._visibility = visibility ?? null;
+    this._onVisibility = () => {
+      if (this._visibility?.hidden) this.clear();
+    };
+    this._visibility?.addEventListener?.('visibilitychange', this._onVisibility);
   }
 
   get activeRolls() {
@@ -86,7 +96,8 @@ export class DiceBox {
     roll.landed = new Promise((r) => (roll.resolveLanded = r));
     roll.finished = new Promise((r) => (roll.resolveFinished = r));
     const result = { landed: roll.landed, finished: roll.finished };
-    if (!specs?.length) {
+    // Empty, or a hidden tab (no animation frames would ever land it): resolve at once.
+    if (!specs?.length || this._visibility?.hidden === true) {
       roll.resolveLanded();
       roll.resolveFinished();
       return result;
@@ -113,16 +124,26 @@ export class DiceBox {
           this._physics.recycle(chunk.data);
           return;
         }
-        roll.playback.push(chunk);
-        roll.received += 1;
-        if (chunk.done) clearTimeout(roll.doneTimer);
-        if (roll.received === 1) {
-          clearTimeout(roll.firstChunkTimer);
-          // The loop starts only once there is a frame to draw (zero idle GPU work).
-          this._renderer.startLoop(this._tick);
+        let pushed = false;
+        try {
+          roll.playback.push(chunk);
+          pushed = true;
+          roll.received += 1;
+          if (chunk.done) clearTimeout(roll.doneTimer);
+          if (roll.received === 1) {
+            clearTimeout(roll.firstChunkTimer);
+            // The loop starts only once there is a frame to draw (zero idle GPU work).
+            this._renderer.startLoop(this._tick);
+          }
+        } catch (err) {
+          if (!pushed) this._physics.recycle(chunk.data);
+          this.#fail(roll, err);
         }
       });
-      stream.done.catch((err) => this.#fail(roll, err));
+      stream.done.then(
+        (res) => this.#armLandingTimer(roll, res?.settledStep),
+        (err) => this.#fail(roll, err),
+      );
     } catch (err) {
       this.#fail(roll, err);
     }
@@ -135,8 +156,9 @@ export class DiceBox {
     this._renderer.hide?.();
   }
 
-  /** Clear, then free the cached geometries and materials. */
+  /** Clear, stop listening, then free the cached geometries and materials. */
   dispose() {
+    this._visibility?.removeEventListener?.('visibilitychange', this._onVisibility);
     this.clear();
     for (const g of this._geometries.values()) g.dispose();
     for (const m of this._materials.values()) {
@@ -194,7 +216,23 @@ export class DiceBox {
     roll.revealed = true;
   }
 
+  /**
+   * Landing guard that needs no animation frames: once physics is done, the roll must land
+   * within its playback duration (settledStep steps at the playback speed) plus a grace.
+   */
+  #armLandingTimer(roll, settledStep) {
+    if (roll.removed || roll.phase !== 'playing') return;
+    const steps = Number.isFinite(settledStep) ? settledStep : MAX_STEPS;
+    const speed = roll.playback?.speed || 1;
+    const ms = Math.ceil((steps * STEP_SECONDS * 1000) / speed) + LANDING_GRACE_MS;
+    roll.landingTimer = setTimeout(
+      () => this.#fail(roll, new Error(`dice did not land within ${ms} ms of physics done`)),
+      ms,
+    );
+  }
+
   #land(roll) {
+    clearTimeout(roll.landingTimer);
     roll.phase = 'lingering';
     roll.resolveLanded();
     roll.timer = setTimeout(() => {
@@ -245,6 +283,7 @@ export class DiceBox {
     clearTimeout(roll.timer);
     clearTimeout(roll.firstChunkTimer);
     clearTimeout(roll.doneTimer);
+    clearTimeout(roll.landingTimer);
     const scene = this._renderer.scene;
     for (const die of roll.dice) scene.remove(die.outer);
     for (const plane of roll.shadows) this._renderer.sceneApi.releaseShadow(plane);

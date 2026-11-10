@@ -36,7 +36,15 @@ export function initPhysics(wasm) {
     const imports = { './rapier_wasm3d_bg.js': glue };
     let instance;
     if (typeof wasm === 'string') {
-      ({ instance } = await WebAssembly.instantiateStreaming(fetch(wasm), imports));
+      try {
+        ({ instance } = await WebAssembly.instantiateStreaming(fetch(wasm), imports));
+      } catch (err) {
+        // Streaming needs `Content-Type: application/wasm`; some hosts/proxies send another
+        // type (or the API is missing). Compile from the raw bytes instead.
+        console.debug('dicer: instantiateStreaming failed, compiling the wasm from bytes', err);
+        const bytes = await (await fetch(wasm)).arrayBuffer();
+        ({ instance } = await WebAssembly.instantiate(bytes, imports));
+      }
     } else if (wasm instanceof WebAssembly.Module) {
       instance = await WebAssembly.instantiate(wasm, imports);
     } else {

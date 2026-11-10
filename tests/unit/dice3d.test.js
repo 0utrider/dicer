@@ -88,3 +88,58 @@ test('_debug exposes isLooping and activeRolls', () => {
   api.showForRoll(roll(6, 2));
   expect(api._debug.activeRolls).toBe(1);
 });
+
+test('showForRoll resolves false without rolling when the enabled setting is off', async () => {
+  settings.enabled = false;
+  await expect(api.showForRoll(roll(20, 12))).resolves.toBe(false);
+  expect(diceBox.roll).not.toHaveBeenCalled();
+});
+
+describe('Plan 3 registration stubs (integrations call them from diceSoNiceReady)', () => {
+  const STUBS = [
+    'addSystem',
+    'addDicePreset',
+    'addColorset',
+    'addTexture',
+    'addDiceShape',
+    'addSFXTrigger',
+    'addSFXMode',
+    'addDamageTypeDefaults',
+    'addRole',
+  ];
+
+  test.each(STUBS)('%s exists and does not throw', async (name) => {
+    expect(typeof api[name]).toBe('function');
+    vi.spyOn(console, 'debug').mockImplementation(() => {});
+    let out;
+    expect(() => (out = api[name]({ id: 'x', name: 'X' }, 'default'))).not.toThrow();
+    await out; // the async DSN methods resolve
+    vi.restoreAllMocks();
+  });
+
+  test('the async DSN methods return promises so `.then` chains work', async () => {
+    vi.spyOn(console, 'debug').mockImplementation(() => {});
+    for (const name of ['addDicePreset', 'addColorset', 'addTexture']) {
+      await expect(api[name]({})).resolves.toBeUndefined();
+    }
+    vi.restoreAllMocks();
+  });
+
+  test('each stub logs once at debug level', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    for (const name of STUBS) {
+      api[name]({});
+      api[name]({});
+    }
+    expect(debug).toHaveBeenCalledTimes(STUBS.length);
+    expect(debug.mock.calls.every(([msg]) => /Plan 3/.test(msg))).toBe(true);
+    debug.mockRestore();
+  });
+
+  test('getLoadedDiceSystems returns an empty Map, getSFXModes an empty object', () => {
+    const systems = api.getLoadedDiceSystems();
+    expect(systems).toBeInstanceOf(Map);
+    expect(systems.size).toBe(0);
+    expect(api.getSFXModes()).toEqual({});
+  });
+});
