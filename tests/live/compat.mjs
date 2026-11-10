@@ -102,7 +102,9 @@ async function run(gm, player) {
       'both: real view': onlyKinds(g.views, ['real']) && onlyKinds(p.views, ['real']),
     });
 
-    // 2. A GM whisper: the player gets no message element and no dice; the GM sees dice.
+    // 2. A GM whisper: Foundry still delivers the roll card to the player (ChatMessage#visible is
+    // true for rolls), with its content hidden. The player sees no result and draws no dice
+    // (showGhostDice is off here; with it on they would be ghost dice only). The GM sees dice.
     await Promise.all([rpc(gm, 'mark'), rpc(player, 'mark')]);
     id = await rpc(gm, 'rollInChat', { formula: '1d20', rollMode: 'gmroll' });
     await waitComplete(gm, id);
@@ -112,7 +114,9 @@ async function run(gm, player) {
     scenario('2 GM whisper stays private (showGhostDice off)', {
       'GM: dice animated': g.maxActive > 0,
       'GM: RollComplete fired exactly once': g.completeCount === 1,
-      'player: no [data-message-id] element': p.hasElement === false,
+      'player: gets the card ([data-message-id] element)': p.hasElement === true,
+      'player: the card shows no result content': p.resultShown === false,
+      'player: view is none, never real or ghost': onlyKinds(p.views, ['none']),
       'player: no dice in flight': p.maxActive === 0,
       'player: dice canvas never shown': p.canvasShown === false,
       'player: no render loop': p.looping === false,

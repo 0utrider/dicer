@@ -98,7 +98,7 @@ Status is Works, Works with gaps or Not supported. One row per package surveyed 
 - DSN-scoped user flags and settings that other packages read directly return nothing. Dicer keeps its own under the `dicer` scope.
 - `box`, `pipeline`, `persistent` and `pendingThrows` internals are not supported. Pending and interactive throws come in Plan 6.
 - GLB model presets: only the d2 and d6 orientations are verified. Other die types show Dicer's own die with the preset's faces and colours. The reasons are in `docs/research/dsn-model-orientation.md`.
-- Ghost payloads for synced rolls send dice shapes only. Custom die classes, such as coins and Fate dice, arrive as plain dice with the same face count. Dice whose count comes from another roll show as zero ghost dice.
+- Ghost payloads for synced rolls send dice shapes only. Custom die classes, such as coins and Fate dice, arrive as plain dice with the same face count. Dice whose count comes from another roll show as zero ghost dice. Dice whose face count comes from another roll, such as `1d(1d20)`, are not sent at all.
 - The `diceSoNiceOnMaterialReady` hook is not fired for a GLB model's own material.
 
 ### Integration guide
@@ -118,7 +118,7 @@ Use `game.dice3d` and the `diceSoNice*` hooks as you do with DSN. Feature-detect
 `npm run test:live:compat` logs a GM and a player into your local Foundry (two browser contexts). It checks that:
 
 1. a public roll animates on both clients and fires `diceSoNiceRollComplete` once on each;
-2. a GM whisper roll sends the player no message element and no dice (ghost dice off), while the GM sees dice;
+2. a GM whisper roll reaches the player as a card with its content hidden (Foundry delivers whispered roll messages to everyone): the card shows no result and the player draws no dice (ghost dice off; with them on, only ghost dice), while the GM sees dice;
 3. a blind player roll shows the player ghost dice or none, never real ones (read through `game.dice3d._debug.lastRollViews`, which holds view kinds and never values);
 4. `showForRoll(roll, game.user, true)` from the GM animates on the player's client;
 5. an initiative roll hides the tracker value until the reveal.
@@ -133,7 +133,7 @@ Use a world with Dicer enabled, DSN disabled, a GM and a player account. Scenari
 | `DICER_PLAYER_USER`     | Player user name (required)                   |
 | `DICER_PLAYER_PASSWORD` | Player password (required)                    |
 
-It prints `compat: N/N passed`, writes `artifacts/live/compat.json` and exits 0 on success. It changes `showGhostDice` while it runs and restores it at the end. It creates and deletes one temporary combat. Missing variables or an unreachable Foundry exit 1 with a one-line message.
+It prints `compat: N/N passed`, writes `artifacts/live/compat.json` and exits 0 on success. It changes `showGhostDice` while it runs and restores it at the end. It creates and deletes one temporary combat; creating it may change which combat is active. It leaves its chat messages in the world. Missing variables or an unreachable Foundry exit 1 with a one-line message.
 
 Unit tests cannot check some things. The manual list is in `docs/live-checks.md`.
 

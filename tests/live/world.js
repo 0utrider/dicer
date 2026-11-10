@@ -142,6 +142,23 @@ export function mark() {
   return true;
 }
 
+/**
+ * Whether the rendered message shows any roll result: a total other than Foundry's private "?"
+ * placeholder, or tooltip dice. A boolean only: no value ever leaves the page.
+ */
+function resultShownIn(id) {
+  const safe = String(id).replace(/["\\]/g, '\\$&');
+  const els = document.querySelectorAll(`[data-message-id="${safe}"]`);
+  for (const el of els) {
+    for (const total of el.querySelectorAll('.dice-total')) {
+      const text = total.textContent.trim();
+      if (text !== '' && text !== '?') return true;
+    }
+    if (el.querySelector('.dice-tooltip .roll.die, .dice-rolls .roll')) return true;
+  }
+  return false;
+}
+
 /** What this client saw for message `id` (null: only the window-wide facts). */
 export function report(id) {
   const cur = globalThis.__dicerCompat.cur;
@@ -149,6 +166,7 @@ export function report(id) {
     completeCount: id ? (cur.complete[id] ?? 0) : null,
     processed: id ? (cur.processed[id] ?? null) : null,
     hasElement: id ? cur.elements.has(id) : null,
+    resultShown: id ? resultShownIn(id) : null,
     views: id ? (game.dice3d._debug.lastRollViews[id] ?? null) : null,
     maxActive: cur.maxActive,
     canvasShown: cur.canvasShown,
