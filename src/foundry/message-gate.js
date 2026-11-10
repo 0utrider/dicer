@@ -5,6 +5,7 @@ export const WATCHDOG_MS = 15000;
 
 const HIDE = 'dsn-hide';
 const DSN_SCOPE = 'dice-so-nice';
+const MODULE_SCOPE = 'dicer';
 const NOTIFICATIONS = '#chat-notifications';
 /**
  * Foundry v14 ChatLog keeps each notification card's age in an expando property on the card
@@ -14,6 +15,44 @@ const NOTIFICATIONS = '#chat-notifications';
  * chat.mjs). There is no public API for it.
  */
 const LIFESPAN = '_lifeSpan';
+
+/**
+ * A message flag from `flags['dice-so-nice']`, else `flags.dicer`. An absent or malformed scope
+ * reads undefined.
+ */
+function flagOf(message, key) {
+  const scoped = (scope) => {
+    const flags = message.flags?.[scope];
+    return flags && typeof flags === 'object' ? flags[key] : undefined;
+  };
+  return scoped(DSN_SCOPE) ?? scoped(MODULE_SCOPE);
+}
+
+const finite = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+
+/** `roll.options.rollOrder`, else the lowest `term.options.rollOrder`, else 0. */
+function rollOrderOf(roll) {
+  const own = finite(roll?.options?.rollOrder);
+  if (own !== undefined) return own;
+  const terms = Array.isArray(roll?.terms) ? roll.terms : [];
+  const orders = terms.map((t) => finite(t?.options?.rollOrder)).filter((o) => o !== undefined);
+  return orders.length ? Math.min(...orders) : 0;
+}
+
+/**
+ * The planned dice grouped by ascending rollOrder, in roll order inside a group. Empty plans are
+ * dropped, so every group throws something.
+ */
+function groupsOf(rolls, plan) {
+  const byOrder = new Map();
+  plan.forEach((specs, i) => {
+    if (!specs.length) return;
+    const order = rollOrderOf(rolls[i]);
+    if (!byOrder.has(order)) byOrder.set(order, []);
+    byOrder.get(order).push(specs);
+  });
+  return [...byOrder.keys()].sort((a, b) => a - b).map((order) => byOrder.get(order));
+}
 
 const pinnedLifespan = (el) => Boolean(Object.getOwnPropertyDescriptor(el, LIFESPAN)?.get);
 
@@ -45,7 +84,13 @@ function refreshCard(el) {
  *
  * Guarantee: diceSoNiceRollComplete fires exactly once per animated message (reveal is
  * idempotent per id), whether the dice land, the watchdog fires, the roll throws, a RollStart
- * listener makes it blind, or the message is deleted mid-roll.
+ * listener makes it blind, or the message is deleted mid-roll. A message's rolls are thrown in
+ * rollOrder groups; privacy views and RollStart happen once, before the first group.
+ *
+ * Message flags (`flags['dice-so-nice']`, else `flags.dicer`): `skip` and `pendingCard` are not
+ * animated; `linkedTo: <id>` makes the message a companion of `<id>` (see linkCompanion);
+ * `persistent` and `interactiveThrow` animate normally. Settings read through getSetting:
+ * enabled, maxDice, showGhostDice, showExtraDice, immediatelyDisplayChatMessages.
  *
  * @param {object} deps
  * @param {{ roll(specs): { landed: Promise<void> } }} deps.diceBox
@@ -73,8 +118,13 @@ export function createMessageGate({
   clearTimeoutFn = (h) => globalThis.clearTimeout(h),
   documentRef = globalThis.document,
 }) {
-  /** id -> { elements: Set<HTMLElement>, timer, resolve, promise, own } */
+  /**
+   * id -> { elements: Set<HTMLElement>, companions: Map<id, { elements }>, timer, resolve,
+   * promise, own, hide }
+   */
   const animating = new Map();
+  /** companion id -> the id of the animating message it is linked to */
+  const companionOf = new Map();
   let disabled = false;
   const chat = () => (chatUi === undefined ? globalThis.ui?.chat : chatUi);
 
@@ -170,29 +220,38 @@ export function createMessageGate({
    */
   function planAll(rolls, message, views) {
     let budget = Number(getSetting('maxDice')) || 20;
+    const showExtra = getSetting('showExtraDice') !== false;
     return rolls.map((roll, i) => {
       const view = views[i] ?? 'none';
       if (view === 'none' || budget <= 0) return [];
       const decorate = view === 'ghost' ? ghostDecorator() : decoratorFor(message, roll);
-      const { dice } = planThrow(roll, { maxDice: budget, decorate });
+      const { dice } = planThrow(roll, { maxDice: budget, showExtra, decorate });
       budget -= dice.length;
       return dice;
     });
   }
 
-  function isEligible(message) {
-    if (disabled || !getSetting('enabled')) return false;
-    if (message.flags?.[DSN_SCOPE]?.skip) return false;
-    return planAll(message.rolls, message, viewsOf(message)).some((specs) => specs.length > 0);
+  /**
+   * The eligibility plan, or null when the message is not animated. The plan is kept for the
+   * throw, so planAll runs once per message unless RollStart changes what it depends on.
+   */
+  function eligiblePlan(message) {
+    if (disabled || !getSetting('enabled') || !message.rolls?.length) return null;
+    if (flagOf(message, 'skip') || flagOf(message, 'pendingCard')) return null;
+    const views = viewsOf(message);
+    const plan = planAll(message.rolls, message, views);
+    return plan.some((specs) => specs.length > 0) ? { views, plan } : null;
   }
 
-  function reveal(id, { scroll = true } = {}) {
-    const entry = animating.get(id);
-    if (!entry) return;
-    animating.delete(id);
-    clearTimeoutFn(entry.timer);
-    const scrollAfter = scroll && shouldScroll(entry);
-    for (const el of new Set([...entry.elements, ...elementsFor(id)])) {
+  /** Hides a message's element (and pins its notification card) for a hiding holder. */
+  function hideInto(holder, el) {
+    el.classList.add(HIDE);
+    holder.elements.add(el);
+    pinCard(el);
+  }
+
+  function showElements(id, elements) {
+    for (const el of new Set([...elements, ...elementsFor(id)])) {
       el.classList.remove(HIDE);
       try {
         refreshCard(el);
@@ -200,21 +259,96 @@ export function createMessageGate({
         console.error('dicer: cannot refresh a chat notification card', err);
       }
     }
-    if (scrollAfter) scrollToBottom();
+  }
+
+  function reveal(id, { scroll = true } = {}) {
+    const entry = animating.get(id);
+    if (!entry) return;
+    animating.delete(id);
+    clearTimeoutFn(entry.timer);
+    const companionIds = [...entry.companions.keys()];
+    for (const companionId of companionIds) companionOf.delete(companionId);
+    if (entry.hide) {
+      const scrollAfter = scroll && shouldScroll(entry);
+      showElements(id, entry.elements);
+      // Companions are released with their target, before RollComplete names them.
+      for (const [companionId, companion] of entry.companions) {
+        showElements(companionId, companion.elements);
+      }
+      if (scrollAfter) scrollToBottom();
+    }
     entry.resolve(true);
     try {
-      // DSN's signature: (messageId, companionIds). Plan 1 has no companion messages.
-      hooks.callAll('diceSoNiceRollComplete', id, []);
+      hooks.callAll('diceSoNiceRollComplete', id, companionIds);
     } catch (err) {
       console.error('dicer: a diceSoNiceRollComplete listener failed', err);
     }
   }
 
+  /**
+   * `linkedTo`: the message is not animated itself. While its target animates it is hidden and
+   * released with the target, which lists it in RollComplete's companion ids.
+   */
+  function linkCompanion(id, targetId) {
+    const target = animating.get(targetId);
+    if (!target || targetId === id || target.companions.has(id)) return;
+    const companion = { elements: new Set() };
+    target.companions.set(id, companion);
+    companionOf.set(id, targetId);
+    if (target.hide) for (const el of elementsFor(id)) hideInto(companion, el);
+  }
+
+  /**
+   * Throws the rolls in ascending rollOrder groups, each after the previous one lands. Each group
+   * gets its own watchdog. A watchdog, a failure or a delete reveals the message once, and the
+   * remaining groups are never thrown.
+   */
+  function throwGroups(id, entry, groups) {
+    const next = (i) => {
+      if (animating.get(id) !== entry) return; // revealed meanwhile (watchdog, delete)
+      if (i >= groups.length) {
+        reveal(id);
+        return;
+      }
+      clearTimeoutFn(entry.timer);
+      entry.timer = setTimeoutFn(() => reveal(id), WATCHDOG_MS);
+      let landed;
+      try {
+        landed = groups[i].map((specs) => diceBox.roll(specs).landed);
+      } catch (err) {
+        console.error('dicer: roll failed', err);
+        reveal(id);
+        return;
+      }
+      Promise.all(landed).then(
+        () => next(i + 1),
+        (err) => {
+          console.error('dicer: roll failed', err);
+          reveal(id);
+        },
+      );
+    };
+    next(0);
+  }
+
   function onCreate(message) {
     const id = message?.id;
-    if (!id || !message.rolls?.length) return;
+    if (!id) return;
     try {
-      if (!isEligible(message)) {
+      const interception = { willTrigger3DRoll: true };
+      try {
+        hooks.callAll('diceSoNiceMessagePreProcess', id, interception);
+      } catch (err) {
+        console.error('dicer: a diceSoNiceMessagePreProcess listener failed', err);
+      }
+      const linkedTo = flagOf(message, 'linkedTo');
+      if (linkedTo != null && linkedTo !== '') {
+        linkCompanion(id, linkedTo);
+        hooks.callAll('diceSoNiceMessageProcessed', id, { willTrigger3DRoll: false });
+        return;
+      }
+      const eligible = interception.willTrigger3DRoll ? eligiblePlan(message) : null;
+      if (!eligible) {
         hooks.callAll('diceSoNiceMessageProcessed', id, { willTrigger3DRoll: false });
         return;
       }
@@ -224,13 +358,18 @@ export function createMessageGate({
       const promise = new Promise((r) => (resolve = r));
       const userId = currentUserId();
       const own = userId != null && message.author?.id === userId;
-      const entry = { elements: new Set(), timer: null, resolve, promise, own };
+      const hide = getSetting('immediatelyDisplayChatMessages') !== true;
+      const entry = {
+        elements: new Set(),
+        companions: new Map(),
+        timer: null,
+        resolve,
+        promise,
+        own,
+        hide,
+      };
       animating.set(id, entry);
-      for (const el of elementsFor(id)) {
-        el.classList.add(HIDE);
-        entry.elements.add(el);
-        pinCard(el);
-      }
+      if (hide) for (const el of elementsFor(id)) hideInto(entry, el);
       entry.timer = setTimeoutFn(() => reveal(id), WATCHDOG_MS);
 
       hooks.callAll('diceSoNiceMessageProcessed', id, { willTrigger3DRoll: true });
@@ -238,13 +377,13 @@ export function createMessageGate({
       const context = {
         roll: first,
         user: message.author, // a v14 ChatMessage exposes its User as `author`, not `user`
-        users: message.whisper ?? [],
+        users: message.whisper?.length ? message.whisper : null,
         blind: false,
         dsnRoll: first,
       };
       const before = message.rolls.map((r) => ({ ghost: Boolean(r?.ghost), secret: Boolean(r?.secret) }));
       hooks.callAll('diceSoNiceRollStart', id, context);
-      if (!animating.has(id)) return; // a listener deleted the message
+      if (animating.get(id) !== entry) return; // a listener deleted the message
       // A blind context forces every view to none: nothing is thrown, the message shows at once.
       if (context.blind) {
         reveal(id);
@@ -253,16 +392,11 @@ export function createMessageGate({
 
       const rolls = [context.dsnRoll ?? first, ...message.rolls.slice(1)];
       const views = viewsOf(message, { before, ...appearedFlags(context, before, message) });
-      const landed = planAll(rolls, message, views)
-        .filter((specs) => specs.length > 0)
-        .map((specs) => diceBox.roll(specs).landed);
-      Promise.all(landed).then(
-        () => reveal(id),
-        (err) => {
-          console.error('dicer: roll failed', err);
-          reveal(id);
-        },
-      );
+      // RollStart can only change the views or replace the first roll. The maxDice budget is
+      // shared, so any such change re-plans the whole message.
+      const unchanged = rolls[0] === first && views.every((v, i) => v === eligible.views[i]);
+      const plan = unchanged ? eligible.plan : planAll(rolls, message, views);
+      throwGroups(id, entry, groupsOf(rolls, plan));
     } catch (err) {
       console.error('dicer: chat message gate failed', err);
       reveal(id);
@@ -271,16 +405,18 @@ export function createMessageGate({
 
   function onRender(message, html) {
     try {
-      const entry = animating.get(message?.id);
-      if (!entry || !html?.classList) return;
+      const id = message?.id;
+      const entry = animating.get(id);
+      const target = entry ? null : animating.get(companionOf.get(id));
+      const holder = entry ?? target?.companions.get(id);
+      if (!holder || !(entry ?? target).hide || !html?.classList) return;
       html.classList.add(HIDE);
-      entry.elements.add(html);
+      holder.elements.add(html);
       // renderChatMessageHTML fires before ChatLog connects the element. Its placement is known
       // one macrotask later (only microtasks separate the hook from replaceWith/append).
-      const id = message.id;
       setTimeoutFn(() => {
         try {
-          if (animating.get(id)?.elements.has(html)) pinCard(html);
+          if (holder.elements.has(html) && html.classList.contains(HIDE)) pinCard(html);
         } catch (err) {
           console.error('dicer: cannot pin a chat notification card', err);
         }
@@ -293,7 +429,13 @@ export function createMessageGate({
 
   function onDelete(message) {
     try {
-      reveal(message?.id, { scroll: false });
+      const id = message?.id;
+      const targetId = companionOf.get(id);
+      if (targetId !== undefined) {
+        companionOf.delete(id);
+        animating.get(targetId)?.companions.delete(id);
+      }
+      reveal(id, { scroll: false });
     } catch (err) {
       console.error('dicer: chat delete gate failed', err);
     }

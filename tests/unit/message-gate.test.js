@@ -109,13 +109,14 @@ test('hides the message (dsn-hide on render and on an already-rendered element),
   expect(start[0][2]).toEqual({
     roll: msg.rolls[0],
     user: msg.author,
-    users: [],
+    users: null,
     blind: false,
     dsnRoll: msg.rolls[0],
   });
   expect(start[0][2].user).toBe(msg.author);
   // MessageProcessed precedes RollStart.
   expect(hooks.calls.map((c) => c[0])).toEqual([
+    'diceSoNiceMessagePreProcess',
     'diceSoNiceMessageProcessed',
     'diceSoNiceRollStart',
   ]);
@@ -211,9 +212,15 @@ test('decorateFor decorates the dice with the message as context; a throwing one
   expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 17 }]);
 });
 
-test('a message without rolls fires nothing', () => {
+test('a message without rolls fires PreProcess then MessageProcessed(willTrigger3DRoll false)', () => {
   gate.onCreate(message('m1', { rolls: [] }));
-  expect(hooks.calls).toEqual([]);
+  gate.onCreate(message('m2', { rolls: undefined }));
+  expect(hooks.calls).toEqual([
+    ['diceSoNiceMessagePreProcess', 'm1', { willTrigger3DRoll: true }],
+    ['diceSoNiceMessageProcessed', 'm1', { willTrigger3DRoll: false }],
+    ['diceSoNiceMessagePreProcess', 'm2', { willTrigger3DRoll: true }],
+    ['diceSoNiceMessageProcessed', 'm2', { willTrigger3DRoll: false }],
+  ]);
   expect(diceBox.roll).not.toHaveBeenCalled();
 });
 
@@ -464,8 +471,8 @@ describe('privacy matrix', () => {
     expect(diceBox.rolls[1].specs).toEqual([
       { type: 'd20', value: 9, appearance: { tag: 'real-look' } },
     ]);
-    // Only the real roll's look is resolved (the gate plans twice: eligibility, then the throw).
-    expect(decorateFor.mock.calls.length).toBeGreaterThan(0);
+    // Only the real roll's look is resolved, once: the eligibility plan is reused for the throw.
+    expect(decorateFor).toHaveBeenCalledTimes(1);
     for (const call of decorateFor.mock.calls) expect(call[1]).not.toBe(ghostRoll);
   });
 
@@ -660,5 +667,306 @@ describe('chat notification cards (#chat-notifications, Foundry element._lifeSpa
     await flush();
     expect('_lifeSpan' in el).toBe(false);
     expect('_lifeSpan' in rendered).toBe(false);
+  });
+});
+
+describe('message lifecycle depth', () => {
+  const PRE = 'diceSoNiceMessagePreProcess';
+  const PROCESSED = 'diceSoNiceMessageProcessed';
+  const linked = (target, scope = 'dice-so-nice') => ({ flags: { [scope]: { linkedTo: target } } });
+  /** A d20 roll ordered by roll.options.rollOrder. */
+  const ordered = (result, order) => ({ ...d20Roll(result), options: { rollOrder: order } });
+  /** A d20 roll ordered by its terms' lowest options.rollOrder. */
+  const termOrdered = (result, order) => ({
+    ...d20Roll(result),
+    terms: [{ options: { rollOrder: order + 5 } }, { options: { rollOrder: order } }, {}],
+  });
+
+  test('PreProcess fires first, with { willTrigger3DRoll: true }', () => {
+    gate.onCreate(message());
+    expect(hooks.calls[0]).toEqual([PRE, 'm1', { willTrigger3DRoll: true }]);
+  });
+
+  test('a PreProcess listener cancelling: no dice, not hidden, Processed(false), no RollStart or RollComplete', () => {
+    const el = li('m1');
+    hooks.listeners[PRE] = [(id, interception) => (interception.willTrigger3DRoll = false)];
+    gate.onCreate(message());
+    const rendered = document.createElement('li');
+    gate.onRender(message(), rendered);
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(rendered.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named(PROCESSED)).toEqual([[PROCESSED, 'm1', { willTrigger3DRoll: false }]]);
+    expect(hooks.named('diceSoNiceRollStart')).toEqual([]);
+    expect(hooks.named(COMPLETE)).toEqual([]);
+  });
+
+  test('a throwing PreProcess listener is logged and the message still animates', () => {
+    hooks.listeners[PRE] = [
+      () => {
+        throw new Error('listener');
+      },
+    ];
+    gate.onCreate(message());
+    expect(errorSpy).toHaveBeenCalled();
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+  });
+
+  test('context.users is message.whisper when non-empty, else null', () => {
+    gate.onCreate(message('m1', { whisper: ['a', 'b'] }));
+    gate.onCreate(message('m2', { whisper: [] }));
+    const starts = hooks.named('diceSoNiceRollStart');
+    expect(starts[0][2].users).toEqual(['a', 'b']);
+    expect(starts[1][2].users).toBeNull();
+  });
+
+  test('planThrow runs once per roll (the eligibility plan is reused for the throw)', () => {
+    const planThrow = vi.fn(realPlanThrow);
+    makeGate({ planThrow }).onCreate(message('m1', { rolls: [d20Roll(1), d20Roll(2)] }));
+    expect(planThrow).toHaveBeenCalledTimes(2);
+    expect(diceBox.roll).toHaveBeenCalledTimes(2);
+  });
+
+  test('a RollStart listener that changes the views gets a fresh plan', () => {
+    hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.roll.ghost = true)];
+    makeGate({ currentUser: () => ({ id: 'p1' }) }).onCreate(message());
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+  });
+
+  describe('showExtraDice', () => {
+    const withDiscard = () => ({
+      dice: [
+        {
+          faces: 20,
+          results: [
+            { result: 17, active: true },
+            { result: 3, active: false, discarded: true },
+          ],
+        },
+      ],
+    });
+
+    test('unset or true: discarded dice are thrown', () => {
+      gate.onCreate(message('m1', { rolls: [withDiscard()] }));
+      settings.showExtraDice = true;
+      gate.onCreate(message('m2', { rolls: [withDiscard()] }));
+      expect(diceBox.rolls[0].specs).toHaveLength(2);
+      expect(diceBox.rolls[1].specs).toHaveLength(2);
+    });
+
+    test('false: only the active dice are thrown', () => {
+      settings.showExtraDice = false;
+      gate.onCreate(message('m1', { rolls: [withDiscard()] }));
+      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17 }]);
+    });
+  });
+
+  describe('roll order', () => {
+    test('orders 2 and 1: 1 is thrown first, 2 only after it lands, RollComplete once after both', async () => {
+      const el = li('m1');
+      gate.onCreate(message('m1', { rolls: [ordered(2, 2), ordered(1, 1)] }));
+      expect(diceBox.rolls.map((r) => r.specs[0].value)).toEqual([1]);
+      await flush();
+      expect(diceBox.rolls).toHaveLength(1);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(diceBox.rolls.map((r) => r.specs[0].value)).toEqual([1, 2]);
+      expect(el.classList.contains('dsn-hide')).toBe(true);
+      expect(hooks.named(COMPLETE)).toEqual([]);
+      diceBox.rolls[1].landed.resolve();
+      await flush();
+      expect(el.classList.contains('dsn-hide')).toBe(false);
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+      expect(hooks.named('diceSoNiceRollStart')).toHaveLength(1);
+    });
+
+    test('the lowest term.options.rollOrder orders a roll; rolls without an order go in group 0', async () => {
+      gate.onCreate(message('m1', { rolls: [termOrdered(5, 1), d20Roll(9), ordered(6, 0)] }));
+      expect(diceBox.rolls.map((r) => r.specs[0].value)).toEqual([9, 6]);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(diceBox.rolls).toHaveLength(2); // the whole group must land
+      diceBox.rolls[1].landed.resolve();
+      await flush();
+      expect(diceBox.rolls.map((r) => r.specs[0].value)).toEqual([9, 6, 5]);
+    });
+
+    test('the watchdog runs per group, measured from that group start', async () => {
+      const el = li('m1');
+      gate.onCreate(message('m1', { rolls: [ordered(1, 1), ordered(2, 2)] }));
+      vi.advanceTimersByTime(WATCHDOG_MS - 1000);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(diceBox.rolls).toHaveLength(2);
+      vi.advanceTimersByTime(WATCHDOG_MS - 1);
+      await flush();
+      expect(el.classList.contains('dsn-hide')).toBe(true);
+      expect(hooks.named(COMPLETE)).toEqual([]);
+      vi.advanceTimersByTime(1);
+      await flush();
+      expect(el.classList.contains('dsn-hide')).toBe(false);
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+    });
+
+    test('a group watchdog reveals once and the remaining groups are skipped', async () => {
+      gate.onCreate(message('m1', { rolls: [ordered(1, 1), ordered(2, 2)] }));
+      vi.advanceTimersByTime(WATCHDOG_MS);
+      await flush();
+      expect(hooks.named(COMPLETE)).toHaveLength(1);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(diceBox.rolls).toHaveLength(1);
+      expect(hooks.named(COMPLETE)).toHaveLength(1);
+    });
+
+    test('a later group that throws synchronously reveals once, error logged', async () => {
+      gate.onCreate(message('m1', { rolls: [ordered(1, 1), ordered(2, 2)] }));
+      diceBox.roll.mockImplementationOnce(() => {
+        throw new Error('boom');
+      });
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+      expect(errorSpy).toHaveBeenCalled();
+      vi.advanceTimersByTime(WATCHDOG_MS * 2);
+      expect(hooks.named(COMPLETE)).toHaveLength(1);
+    });
+
+    test('deleted while queued: RollComplete once, group 2 never thrown, a linked B waiting on it is revealed', async () => {
+      const b = li('B');
+      gate.onCreate(message('A', { rolls: [ordered(1, 1), ordered(2, 2)] }));
+      gate.onCreate(message('B', linked('A')));
+      expect(b.classList.contains('dsn-hide')).toBe(true);
+      gate.onDelete({ id: 'A' }); // group 1 is in flight
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'A', ['B']]]);
+      expect(b.classList.contains('dsn-hide')).toBe(false);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      vi.advanceTimersByTime(WATCHDOG_MS * 3);
+      await flush();
+      expect(diceBox.rolls).toHaveLength(1);
+      expect(hooks.named(COMPLETE)).toHaveLength(1);
+    });
+  });
+
+  describe('linkedTo', () => {
+    test('B linked to animating A: B hidden (also on render) until A reveals; A RollComplete gets [B.id]', async () => {
+      const a = li('A');
+      const b = li('B');
+      gate.onCreate(message('A'));
+      const msgB = message('B', linked('A'));
+      gate.onCreate(msgB);
+      const renderedB = document.createElement('li');
+      renderedB.dataset.messageId = 'B';
+      gate.onRender(msgB, renderedB);
+      expect(diceBox.rolls).toHaveLength(1); // B is not animated itself
+      expect(gate.isAnimating('B')).toBe(false);
+      expect(b.classList.contains('dsn-hide')).toBe(true);
+      expect(renderedB.classList.contains('dsn-hide')).toBe(true);
+      expect(hooks.named(PROCESSED)).toContainEqual([PROCESSED, 'B', { willTrigger3DRoll: false }]);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(a.classList.contains('dsn-hide')).toBe(false);
+      expect(b.classList.contains('dsn-hide')).toBe(false);
+      expect(renderedB.classList.contains('dsn-hide')).toBe(false);
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'A', ['B']]]);
+    });
+
+    test('flags.dicer.linkedTo works too, and companions are revealed before RollComplete fires', async () => {
+      const b = li('B');
+      let hiddenAtComplete = null;
+      hooks.listeners[COMPLETE] = [() => (hiddenAtComplete = b.classList.contains('dsn-hide'))];
+      gate.onCreate(message('A'));
+      gate.onCreate(message('B', linked('A', 'dicer')));
+      expect(b.classList.contains('dsn-hide')).toBe(true);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(hiddenAtComplete).toBe(false);
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'A', ['B']]]);
+    });
+
+    test('B linked to a non-animating id shows at once and fires no RollComplete', () => {
+      const b = li('B');
+      gate.onCreate(message('B', linked('nope')));
+      expect(b.classList.contains('dsn-hide')).toBe(false);
+      expect(diceBox.roll).not.toHaveBeenCalled();
+      expect(hooks.named(PROCESSED)).toEqual([[PROCESSED, 'B', { willTrigger3DRoll: false }]]);
+      expect(hooks.named(COMPLETE)).toEqual([]);
+    });
+
+    test('the target watchdog releases B', async () => {
+      const b = li('B');
+      gate.onCreate(message('A'));
+      gate.onCreate(message('B', linked('A')));
+      vi.advanceTimersByTime(WATCHDOG_MS);
+      await flush();
+      expect(b.classList.contains('dsn-hide')).toBe(false);
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'A', ['B']]]);
+    });
+
+    test('the target failing releases B', async () => {
+      const b = li('B');
+      gate.onCreate(message('A'));
+      gate.onCreate(message('B', linked('A')));
+      diceBox.rolls[0].landed.resolve(Promise.reject(new Error('lost')));
+      await flush();
+      expect(b.classList.contains('dsn-hide')).toBe(false);
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'A', ['B']]]);
+    });
+
+    test('B deleted before A reveals is not listed as a companion', async () => {
+      li('B');
+      gate.onCreate(message('A'));
+      gate.onCreate(message('B', linked('A')));
+      gate.onDelete({ id: 'B' });
+      expect(hooks.named(COMPLETE)).toEqual([]);
+      diceBox.rolls[0].landed.resolve();
+      await flush();
+      expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'A', []]]);
+    });
+  });
+
+  describe('flags', () => {
+    test.each([
+      ['dice-so-nice', 'pendingCard'],
+      ['dicer', 'pendingCard'],
+      ['dicer', 'skip'],
+    ])('flags[%s].%s: no animation, Processed(false)', (scope, flag) => {
+      const el = li('m1');
+      gate.onCreate(message('m1', { flags: { [scope]: { [flag]: true } } }));
+      expect(diceBox.roll).not.toHaveBeenCalled();
+      expect(el.classList.contains('dsn-hide')).toBe(false);
+      expect(hooks.named(PROCESSED)).toEqual([[PROCESSED, 'm1', { willTrigger3DRoll: false }]]);
+    });
+
+    test.each(['persistent', 'interactiveThrow'])('flags[dice-so-nice].%s: animates normally', (flag) => {
+      gate.onCreate(message('m1', { flags: { 'dice-so-nice': { [flag]: true } } }));
+      expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    });
+
+    test('absent or malformed flags animate normally', () => {
+      gate.onCreate(message('m1', { flags: undefined }));
+      gate.onCreate(message('m2', { flags: { 'dice-so-nice': 'x', dicer: null } }));
+      expect(diceBox.roll).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  test('immediatelyDisplayChatMessages: nothing is hidden, the dice animate, the hooks fire', async () => {
+    settings.immediatelyDisplayChatMessages = true;
+    const el = li('m1');
+    const b = li('B');
+    gate.onCreate(message('m1'));
+    gate.onCreate(message('B', linked('m1')));
+    const rendered = document.createElement('li');
+    gate.onRender(message('m1'), rendered);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(b.classList.contains('dsn-hide')).toBe(false);
+    expect(rendered.classList.contains('dsn-hide')).toBe(false);
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(hooks.named(PROCESSED)[0][2]).toEqual({ willTrigger3DRoll: true });
+    expect(hooks.named('diceSoNiceRollStart')).toHaveLength(1);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', ['B']]]);
   });
 });

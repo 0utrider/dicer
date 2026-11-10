@@ -52,6 +52,10 @@ export function createDice3dApi({
       return Boolean(getSetting('enabled'));
     },
 
+    showExtraDiceByDefault() {
+      return getSetting('showExtraDice') !== false;
+    },
+
     // eslint-disable-next-line no-unused-vars
     async showForRoll(roll, user, synchronize, users, blind, messageID, speaker, options) {
       try {

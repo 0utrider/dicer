@@ -77,6 +77,22 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange }
     type: Boolean,
     default: false,
   });
+  game.settings.register(MODULE_ID, 'showExtraDice', {
+    name: t('showExtraDice.Name'),
+    hint: t('showExtraDice.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  game.settings.register(MODULE_ID, 'immediatelyDisplayChatMessages', {
+    name: t('immediatelyDisplayChatMessages.Name'),
+    hint: t('immediatelyDisplayChatMessages.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false,
+  });
   game.settings.register(MODULE_ID, 'look', {
     name: t('look.Name'),
     hint: t('look.Hint'),

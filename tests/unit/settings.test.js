@@ -27,6 +27,20 @@ test('showGhostDice is a world Boolean, default off (ghost dice reveal that a hi
   expect(cfg.hint).toBe('DICER.Settings.showGhostDice.Hint');
 });
 
+test('showExtraDice is a client Boolean, default on', () => {
+  const cfg = capture().showExtraDice;
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(cfg.name).toBe('DICER.Settings.showExtraDice.Name');
+  expect(cfg.hint).toBe('DICER.Settings.showExtraDice.Hint');
+});
+
+test('immediatelyDisplayChatMessages is a world Boolean, default off', () => {
+  const cfg = capture().immediatelyDisplayChatMessages;
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: Boolean, default: false });
+  expect(cfg.name).toBe('DICER.Settings.immediatelyDisplayChatMessages.Name');
+  expect(cfg.hint).toBe('DICER.Settings.immediatelyDisplayChatMessages.Hint');
+});
+
 test('look is a client String whose choices map every LOOKS id to its name (default "default")', () => {
   const { look } = capture();
   expect(look).toMatchObject({

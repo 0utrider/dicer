@@ -43,6 +43,14 @@
         "Name": "Show ghost dice for hidden rolls",
         "Hint": "Players see neutral, blank dice when a whispered roll or their own blind roll is hidden from them. This reveals that a hidden roll happened, never its result."
       },
+      "showExtraDice": {
+        "Name": "Show extra dice",
+        "Hint": "Also throw dice whose results do not count, such as the dropped die of an advantage roll or rerolled dice."
+      },
+      "immediatelyDisplayChatMessages": {
+        "Name": "Show chat messages immediately",
+        "Hint": "Roll messages appear in the chat at once instead of waiting for the dice to land. The dice still animate."
+      },
       "qualityCap": {
         "Name": "Maximum graphics quality",
         "Hint": "Upper limit on the dice quality tier for every player in this world."

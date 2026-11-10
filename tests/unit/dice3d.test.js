@@ -33,6 +33,14 @@ beforeEach(() => {
   });
 });
 
+test('showExtraDiceByDefault follows the showExtraDice setting (unset counts as on)', () => {
+  expect(api.showExtraDiceByDefault()).toBe(true);
+  settings.showExtraDice = false;
+  expect(api.showExtraDiceByDefault()).toBe(false);
+  settings.showExtraDice = true;
+  expect(api.showExtraDiceByDefault()).toBe(true);
+});
+
 test('isEnabled follows the enabled setting', () => {
   expect(api.isEnabled()).toBe(true);
   settings.enabled = false;
