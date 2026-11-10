@@ -27,6 +27,7 @@ let diceRenderer = null;
 let quality = null;
 let stopWatchingArea = null;
 let digitAtlas = null;
+let registry = null; // the DSN registry, once activate() made it
 
 const NOOP_HANDLERS = { onCreate() {}, onRender() {}, onDelete() {} };
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
@@ -180,6 +181,7 @@ Hooks.once('ready', async () => {
         faceTextures: createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont }),
         faceLayers: () => getSetting('presetFaces') !== false,
         modelPresets: () => getSetting('presetModels') !== false,
+        onModelLoaded: (url) => registry?.noteModelLoaded(url),
       });
     },
     activate: ({ renderer, diceBox: box }) => {
@@ -187,7 +189,8 @@ Hooks.once('ready', async () => {
       diceRenderer = renderer;
       // Each die resolves its look from its roll's options and its roller's flag; custom die
       // types are shaped through the registry.
-      const registry = createRegistry({ hooks: Hooks });
+      // Model urls go through the same routeOf as face images: one url policy.
+      registry = createRegistry({ hooks: Hooks, routeUrl: routeOf });
       const resolver = createLookResolver({
         registry,
         getUser: (id) => game.users?.get(id),
@@ -235,6 +238,7 @@ Hooks.once('ready', async () => {
     gate = null;
     diceBox = null;
     diceRenderer = null;
+    registry = null;
     stopWatchingArea?.();
     stopWatchingArea = null;
     if (api && game.dice3d === api) delete game.dice3d;

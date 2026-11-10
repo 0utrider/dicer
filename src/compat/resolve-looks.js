@@ -112,7 +112,8 @@ export function createLookResolver({
         warnOnce(err);
       }
       if (faces !== undefined) out.faces = faces;
-      if (preset.modelFile) out.model = preset.modelFile;
+      // The routed url (registry routeUrl): the one the registry and DiceBox both load.
+      if (preset.modelFile) out.model = preset.modelUrl ?? preset.modelFile;
     }
     return out;
   }

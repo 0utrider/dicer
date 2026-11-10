@@ -99,6 +99,7 @@ export class DiceBox {
     faceLayers = () => true,
     loadModel = importModel,
     modelPresets = () => true,
+    onModelLoaded = () => {},
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -114,6 +115,7 @@ export class DiceBox {
     this._faceLayers = faceLayers; // the presetFaces setting
     this._loadModel = loadModel; // (url, { radius }) -> Promise<{ geometry, material }>
     this._modelPresets = modelPresets; // the presetModels setting
+    this._onModelLoaded = onModelLoaded; // (url) after a successful load: registry.noteModelLoaded
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
     this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
@@ -508,8 +510,15 @@ export class DiceBox {
         load = Promise.reject(err);
       }
       return load.then(
-        (model) =>
-          model?.geometry && model.material ? () => this.#applyModel(roll, dice, model) : null,
+        (model) => {
+          if (!model?.geometry || !model.material) return null;
+          try {
+            this._onModelLoaded(url); // the preset is loaded, whether or not this roll waits
+          } catch (err) {
+            console.warn('dicer: a model-loaded listener threw', err);
+          }
+          return () => this.#applyModel(roll, dice, model);
+        },
         (err) => {
           console.warn(`dicer: cannot load the die model ${url}; showing Dicer's die`, err);
           return null;

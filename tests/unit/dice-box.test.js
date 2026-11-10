@@ -1207,3 +1207,50 @@ describe('pending assets (Task 5 review)', () => {
     },
   );
 });
+
+describe('model loads reach the registry (fix round 1)', () => {
+  const model = () => ({ geometry: new THREE.BoxGeometry(), material: new THREE.MeshStandardMaterial() });
+
+  test('a successful model load is reported once per url', async () => {
+    const onModelLoaded = vi.fn();
+    const { box } = setup({ loadModel: vi.fn(async () => model()), onModelLoaded });
+    box.roll([
+      { type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' },
+      { type: 'd6', value: 2, dsnType: 'd6', model: 'm/dice_6.glb' },
+    ]);
+    await flushMicrotasks();
+    expect(onModelLoaded).toHaveBeenCalledTimes(1);
+    expect(onModelLoaded).toHaveBeenCalledWith('m/dice_6.glb');
+    box.clear();
+  });
+
+  test('a failed load, or a type with no verified rotation, reports nothing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onModelLoaded = vi.fn();
+    const failing = setup({ loadModel: vi.fn(async () => Promise.reject(new Error('404'))), onModelLoaded });
+    failing.box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
+    const unverified = setup({ loadModel: vi.fn(async () => model()), onModelLoaded });
+    unverified.box.roll([{ type: 'd20', value: 5, dsnType: 'd20', model: 'm/dice_20.glb' }]);
+    await flushMicrotasks();
+    expect(onModelLoaded).not.toHaveBeenCalled();
+    failing.box.clear();
+    unverified.box.clear();
+    vi.restoreAllMocks();
+  });
+
+  test('a throwing reporter changes nothing for the roll', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = model();
+    const { renderer, box } = setup({
+      loadModel: vi.fn(async () => m),
+      onModelLoaded: () => {
+        throw new Error('listener');
+      },
+    });
+    box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
+    await flushMicrotasks();
+    expect(dieGroups(renderer)[0].children[0].material).toBe(m.material);
+    box.clear();
+    vi.restoreAllMocks();
+  });
+});

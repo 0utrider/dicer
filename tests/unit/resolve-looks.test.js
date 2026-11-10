@@ -106,6 +106,15 @@ describe('systems and presets', () => {
   });
 });
 
+describe('model urls', () => {
+  test('a die gets the routed model url, the one the registry loads', async () => {
+    const registry = createRegistry({ warn: () => {}, routeUrl: (u) => `/prefix/${u}` });
+    const resolver = createLookResolver({ registry, getUser: () => undefined, warn: vi.fn() });
+    await registry.addDicePreset({ type: 'd20', system: 'standard', labels: '', modelFile: 'm.glb' });
+    expect(look(resolver, term(20), 'u').model).toBe('/prefix/m.glb');
+  });
+});
+
 describe('dsnType and system resolution', () => {
   test('dsnType carries the DSN die type; custom dice use d + denomination', () => {
     const { resolver } = make();

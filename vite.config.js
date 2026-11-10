@@ -1,10 +1,19 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { rapierWasmPlugin } from './build/rapier-wasm-plugin.js';
 import { minifyChunksPlugin } from './build/minify-plugin.js';
 import { dracoDecoderPlugin } from './build/draco-plugin.js';
 
+const THREE_SRC = fileURLToPath(new URL('./node_modules/three/src/Three.js', import.meta.url));
+
 export default defineConfig({
   root: '.',
+  // Bare `three` (ours and three/examples/jsm's) resolves to three's per-file sources, not the
+  // prebuilt three.core.js: Rollup can then leave the classes only GLTFLoader uses in the lazy
+  // model-loader chunk. There is still one copy of three (every import goes through this).
+  resolve: {
+    alias: [{ find: /^three$/, replacement: THREE_SRC }],
+  },
   // Relative asset URLs: Foundry serves the module from /modules/dicer/dist/.
   base: './',
   plugins: [rapierWasmPlugin(), minifyChunksPlugin(), dracoDecoderPlugin()],

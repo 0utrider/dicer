@@ -31,8 +31,15 @@ const importModel = (url) => import('../render/model-loader.js').then((m) => m.l
  * @param {{ callAll(hook: string, ...args: unknown[]): unknown }} [deps.hooks] Foundry's Hooks
  *   (P3-R2); PresetEntry.loadModel() fires diceSoNiceModelLoaded through it
  * @param {(url: string) => Promise<unknown>} [deps.loadModel]
+ * @param {(url: string) => string} [deps.routeUrl] turns a preset's modelFile into the url
+ *   Dicer loads (main.js: the same routeOf as face images)
  */
-export function createRegistry({ warn = console.warn, hooks = { callAll() {} }, loadModel = importModel } = {}) {
+export function createRegistry({
+  warn = console.warn,
+  hooks = { callAll() {} },
+  loadModel = importModel,
+  routeUrl = (url) => url,
+} = {}) {
   const systems = new Map();
   const colorsets = new Map();
   const colorsetModes = new Map();
@@ -82,6 +89,27 @@ export function createRegistry({ warn = console.warn, hooks = { callAll() {} }, 
   }
   ensureSystem(STANDARD, 'Standard');
 
+  /** The url Dicer loads a modelFile from; a throwing router leaves it as given. */
+  const routed = (file) => {
+    try {
+      const url = routeUrl(file);
+      return isStr(url) ? url : file;
+    } catch {
+      return file;
+    }
+  };
+
+  /** Marks a model preset loaded and fires diceSoNiceModelLoaded, once per preset. */
+  function markModelLoaded(entry) {
+    if (entry.modelLoaded) return;
+    entry.modelLoaded = true;
+    try {
+      hooks.callAll('diceSoNiceModelLoaded', entry);
+    } catch (err) {
+      bad('loadModel', `a diceSoNiceModelLoaded listener threw: ${err?.message ?? err}`);
+    }
+  }
+
   /** Store one preset; returns false when it is unusable. */
   function storePreset(preset, shape, defaultSystem = STANDARD) {
     if (!isObj(preset) || !isStr(preset.type)) {
@@ -122,27 +150,22 @@ export function createRegistry({ warn = console.warn, hooks = { callAll() {} }, 
       font: preset.font,
       fontScale: preset.fontScale,
       modelFile: hasModel ? preset.modelFile : undefined,
+      modelUrl: hasModel ? routed(preset.modelFile) : undefined,
       emissiveMaps: preset.emissiveMaps,
       modelLoaded: false,
     };
     let modelLoad = null;
-    // Loads once; never rejects into a third-party caller. A failed load can be retried.
+    // Loads once (nothing if a roll already loaded it); never rejects into a third-party
+    // caller. A failed load can be retried.
     entry.loadModel = () => {
-      if (!hasModel) return Promise.resolve();
+      if (!hasModel || entry.modelLoaded) return Promise.resolve();
       modelLoad ??= Promise.resolve()
-        .then(() => loadModel(entry.modelFile))
+        .then(() => loadModel(entry.modelUrl))
         .then(
-          () => {
-            entry.modelLoaded = true;
-            try {
-              hooks.callAll('diceSoNiceModelLoaded', entry);
-            } catch (err) {
-              bad('loadModel', `a diceSoNiceModelLoaded listener threw: ${err?.message ?? err}`);
-            }
-          },
+          () => markModelLoaded(entry),
           (err) => {
             modelLoad = null;
-            bad('loadModel', `"${type}": cannot load ${entry.modelFile}: ${err?.message ?? err}`);
+            bad('loadModel', `"${type}": cannot load ${entry.modelUrl}: ${err?.message ?? err}`);
           },
         );
       return modelLoad;
@@ -336,6 +359,13 @@ export function createRegistry({ warn = console.warn, hooks = { callAll() {} }, 
     getSFXModes: () => names(sfxModes, (k, m) => m.name),
     getLoadedDiceSystems: () => systems,
     presetFor,
+    /** A roll loaded the model at `url` (DiceBox): every preset using it is now loaded. */
+    noteModelLoaded(url) {
+      if (!isStr(url)) return;
+      for (const sys of systems.values()) {
+        for (const entry of sys.dice.values()) if (entry.modelUrl === url) markModelLoaded(entry);
+      }
+    },
     baseShape,
     onChange(cb) {
       listeners.add(cb);

@@ -1,20 +1,38 @@
 import * as THREE from 'three';
 import { loadDieModel, clearModelCache } from '../../src/render/model-loader.js';
 
-/** A stub GLTFLoader: one off-centre box mesh (radius sqrt(3) * 10 around (5, 0, 0)). */
-function stubLoader({ fail = false, empty = false } = {}) {
+/** A box with no material groups (BoxGeometry has one per side). */
+const box = (size) => {
+  const g = new THREE.BoxGeometry(size, size, size);
+  g.clearGroups();
+  return g;
+};
+
+/**
+ * A stub GLTFLoader: one off-centre box mesh (radius sqrt(3) * 10 around (5, 0, 0)) under a
+ * node. `split` adds a second mesh; `groups` gives the mesh two material groups.
+ */
+function stubLoader({ empty = false, split = false, groups = false } = {}) {
   const material = new THREE.MeshStandardMaterial();
   return {
     material,
     loadAsync: vi.fn(async (url) => {
-      if (fail || url === 'bad.glb') throw new Error(`404 ${url}`);
+      if (url === 'bad.glb') throw new Error(`404 ${url}`);
       const scene = new THREE.Group();
       if (!empty) {
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(20, 20, 20), material);
+        const geometry = box(20);
+        let mat = material;
+        if (groups) {
+          geometry.addGroup(0, 18, 0);
+          geometry.addGroup(18, 18, 1);
+          mat = [material, new THREE.MeshStandardMaterial()];
+        }
+        const mesh = new THREE.Mesh(geometry, mat);
         mesh.position.set(5, 0, 0);
         const holder = new THREE.Group();
         holder.add(mesh);
-        scene.add(holder, new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)));
+        scene.add(holder);
+        if (split) scene.add(new THREE.Mesh(box(1), new THREE.MeshStandardMaterial()));
       }
       return { scene };
     }),
@@ -23,7 +41,7 @@ function stubLoader({ fail = false, empty = false } = {}) {
 
 beforeEach(() => clearModelCache());
 
-test('takes the first mesh, recentres it and scales it to the target radius', async () => {
+test('takes the die mesh, recentres it and scales it to the target radius', async () => {
   const loader = stubLoader();
   const { geometry, material } = await loadDieModel('a.glb', { radius: 0.9, loader });
   expect(material).toBe(loader.material);
@@ -59,4 +77,22 @@ test('rejects cleanly on a bad url, and a failed load is retried next time', asy
 test('rejects a model without a mesh', async () => {
   const loader = stubLoader({ empty: true });
   await expect(loadDieModel('e.glb', { loader })).rejects.toThrow(/no mesh/);
+});
+
+test('rejects a die split over several meshes, or with several material groups', async () => {
+  await expect(loadDieModel('split.glb', { loader: stubLoader({ split: true }) })).rejects.toThrow(
+    /split over 2 meshes/,
+  );
+  await expect(loadDieModel('groups.glb', { loader: stubLoader({ groups: true }) })).rejects.toThrow(
+    /several material groups/,
+  );
+  const oneGroup = stubLoader();
+  oneGroup.loadAsync.mockImplementationOnce(async () => {
+    const g = box(2);
+    g.addGroup(0, Infinity, 0); // a single group is still one surface
+    return { scene: new THREE.Mesh(g, oneGroup.material) };
+  });
+  await expect(loadDieModel('one.glb', { loader: oneGroup })).resolves.toMatchObject({
+    material: oneGroup.material,
+  });
 });

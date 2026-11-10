@@ -227,3 +227,65 @@ describe('model presets (P3-R2)', () => {
     expect(reg.presetFor('x', 'd6').modelLoaded).toBe(true);
   });
 });
+
+describe('model preset urls and DiceBox loads (fix round 1)', () => {
+  const route = (url) => `/prefix/${url}`;
+  const setup = () => {
+    const hooks = { callAll: vi.fn() };
+    const loadModel = vi.fn(async () => ({}));
+    const reg = createRegistry({ warn: vi.fn(), hooks, loadModel, routeUrl: route });
+    return { reg, hooks, loadModel };
+  };
+  const preset = (system, file = 'modules/x/dice_6.glb') => ({ type: 'd6', labels: '', modelFile: file, system });
+
+  test('the model url is routed once; modelFile stays as the module gave it', async () => {
+    const { reg, loadModel } = setup();
+    await reg.addDicePreset(preset('x'));
+    const p = reg.presetFor('x', 'd6');
+    expect(p.modelFile).toBe('modules/x/dice_6.glb');
+    expect(p.modelUrl).toBe('/prefix/modules/x/dice_6.glb');
+    await p.loadModel();
+    expect(loadModel).toHaveBeenCalledWith('/prefix/modules/x/dice_6.glb');
+  });
+
+  test('a throwing router keeps the url as given', async () => {
+    const reg = createRegistry({
+      warn: vi.fn(),
+      loadModel: async () => ({}),
+      routeUrl: () => {
+        throw new Error('no foundry');
+      },
+    });
+    await reg.addDicePreset(preset('x'));
+    expect(reg.presetFor('x', 'd6').modelUrl).toBe('modules/x/dice_6.glb');
+  });
+
+  test('noteModelLoaded(url) marks every preset of that model loaded and fires once per preset', async () => {
+    const { reg, hooks, loadModel } = setup();
+    await reg.addDicePreset(preset('x'));
+    await reg.addDicePreset(preset('y'));
+    await reg.addDicePreset(preset('z', 'modules/x/dice_8.glb'));
+    const [x, y, z] = ['x', 'y', 'z'].map((s) => reg.presetFor(s, 'd6'));
+    reg.noteModelLoaded('/prefix/modules/x/dice_6.glb');
+    reg.noteModelLoaded('/prefix/modules/x/dice_6.glb');
+    expect([x.modelLoaded, y.modelLoaded, z.modelLoaded]).toEqual([true, true, false]);
+    expect(hooks.callAll.mock.calls).toEqual([
+      ['diceSoNiceModelLoaded', x],
+      ['diceSoNiceModelLoaded', y],
+    ]);
+    // A third party's loadModel() afterwards neither reloads nor fires again.
+    await x.loadModel();
+    expect(loadModel).not.toHaveBeenCalled();
+    expect(hooks.callAll).toHaveBeenCalledTimes(2);
+  });
+
+  test('after loadModel(), noteModelLoaded fires nothing more; unknown urls fire nothing', async () => {
+    const { reg, hooks } = setup();
+    await reg.addDicePreset(preset('x'));
+    await reg.presetFor('x', 'd6').loadModel();
+    reg.noteModelLoaded('/prefix/modules/x/dice_6.glb');
+    reg.noteModelLoaded('nope.glb');
+    reg.noteModelLoaded(undefined);
+    expect(hooks.callAll).toHaveBeenCalledTimes(1);
+  });
+});
