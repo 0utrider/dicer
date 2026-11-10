@@ -60,3 +60,15 @@ test('shape: rounded profile, curvature shading and a soft silhouette', () => {
   expect(pars).toContain('uniform mat3 uShapeRot');
   expect(interiorChunk('shape', 'heart').pars).toMatch(/halfT = [\d.]+ \* sqrt\(/);
 });
+
+test('glitter flakes and nebula stars sit in [0.3, 0.7] of their cell (no cell-clipped shards)', () => {
+  expect(INTERIOR.cellMin).toBeCloseTo(0.3);
+  expect(INTERIOR.cellMax).toBeCloseTo(0.7);
+  expect(interiorChunk('glitter').pars).toContain('( cell + 0.3000 + 0.4000 * dcHash33( cell ) )');
+  expect(interiorChunk('nebula').pars).toMatch(/\( cell \+ 0\.3000 \+ 0\.4000 \* vec3\(/);
+  // the flake disc (radius 0.3 cell) fits inside its cell
+  expect(interiorChunk('glitter').pars).toContain(
+    `${((0.3 / INTERIOR.glitterCells) ** 2).toFixed(4)}`,
+  );
+  expect(0.3).toBeLessThanOrEqual(INTERIOR.cellMin + 1e-9);
+});

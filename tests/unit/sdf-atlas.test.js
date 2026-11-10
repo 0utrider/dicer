@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { parseAtlas, layoutLabel } from '../../src/render/sdf-atlas.js';
+import { ENGRAVE_PARS } from '../../src/render/shaders/engrave.js';
 
 const atlas = parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8')));
 
@@ -41,6 +42,11 @@ function inkRect(L, k, ch) {
   const padY = (atlas.pad / atlas.scaleH) * fy;
   const w = ((g.w - 2 * atlas.pad) / atlas.scaleW) * fx;
   const h = ((g.h - 2 * atlas.pad) / atlas.scaleH) * fy;
+  if (ch === '.') {
+    // the 6/9 mark is a box SDF slot: uv = (-1, centre y, half width, half height)
+    const cx = (x0 + x1) / 2;
+    return { x0: cx - u1, x1: cx + u1, y0: v0 - v1, y1: v0 + v1 };
+  }
   const left = x0 + padX;
   if (ch === '.') return { x0: left, x1: left + w, y0: y0 + padY, y1: y0 + padY + h };
   return { x0: left, x1: left + w, y0: y1 - padY - h, y1: y1 - padY };
@@ -82,4 +88,17 @@ test('uv rects lie inside the atlas', () => {
       expect(L[g + k]).toBeLessThanOrEqual(1);
     }
   }
+});
+
+test('the 6/9 mark is a clean rectangle: a box SDF slot, not a stretched serif "."', () => {
+  const L = layoutLabel('9.', atlas);
+  const [x0, y0, x1, y1, u0, cy, hw, hh] = L.slice(8, 16);
+  expect(u0).toBe(-1); // sentinel: the shader draws a box, no atlas lookup
+  expect(hw).toBeGreaterThan(0);
+  expect(hh).toBeGreaterThan(0);
+  // the ink box sits inside the slot rect (the distance margin stays around it)
+  expect((x0 + x1) / 2 - hw).toBeGreaterThan(x0);
+  expect(cy - hh).toBeGreaterThan(y0);
+  expect(cy + hh).toBeLessThan(y1);
+  expect(ENGRAVE_PARS).toContain('if ( t.x < 0.0 )');
 });

@@ -36,13 +36,13 @@ export const TIERS = Object.freeze({
 const index = (tier) => Math.max(0, TIER_ORDER.indexOf(tier));
 
 /**
- * min(choice or autoTier, cap), lowered by `dropped` steps, floored at low.
- * @param {{choice: 'auto'|string, autoTier: string, cap: string, dropped: number}} o
+ * min(choice or autoTier, cap). The session's adaptive drop is a ceiling the quality
+ * controller applies on top (P2-R11).
+ * @param {{choice: 'auto'|string, autoTier: string, cap: string}} o
  */
-export function effectiveTier({ choice, autoTier, cap, dropped = 0 }) {
+export function effectiveTier({ choice, autoTier, cap }) {
   const base = choice === 'auto' ? autoTier : choice;
-  const i = Math.min(index(base), index(cap)) - Math.max(0, dropped);
-  return TIER_ORDER[Math.max(0, i)];
+  return TIER_ORDER[Math.min(index(base), index(cap))];
 }
 
 /** Maps the probe's ms per frame to a tier. */

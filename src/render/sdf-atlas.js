@@ -95,7 +95,10 @@ function clipY(b, edge, y) {
 /**
  * Lays out a face label (up to 2 glyphs) in face-local units, centred at the origin.
  * Each glyph is 8 floats: x0, y0, x1, y1 (face rect), u0, v0, u1, v1 (atlas rect).
- * A trailing "." is the underline mark under the preceding digit. Unused slots are zero.
+ * A trailing "." is the underline mark under the preceding digit. It is drawn as a clean
+ * rectangle (a box SDF in the shader), not from the stretched serif "." glyph: its uv rect
+ * becomes (-1, ink centre y, ink half width, ink half height) in face units. Unused slots
+ * are zero.
  * `size` is the digit ink height in face units. Glyph rects never overlap: the shader
  * samples each glyph only inside its own rect.
  * @returns {Float32Array} length 16
@@ -121,6 +124,7 @@ export function layoutLabel(label, atlas, size = 0.62) {
       const mid = (above.iy0 + inkTop) / 2;
       if (above.y0 < mid + 0.25) clipY(above, 'bottom', mid + 0.25);
       if (u.y1 > mid - 0.25) clipY(u, 'top', mid - 0.25);
+      u.box = true;
       boxes.push(u);
       continue;
     }
@@ -142,7 +146,10 @@ export function layoutLabel(label, atlas, size = 0.62) {
   const s = size / digitHeight;
   boxes.forEach((b, i) => {
     const rect = [(b.x0 - cx) * s, (b.y0 - cy) * s, (b.x1 - cx) * s, (b.y1 - cy) * s];
-    out.set([...rect, b.g.u0, b.v0, b.g.u1, b.v1], i * 8);
+    const uv = b.box
+      ? [-1, ((b.iy0 + b.iy1) / 2 - cy) * s, ((b.ix1 - b.ix0) / 2) * s, ((b.iy1 - b.iy0) / 2) * s]
+      : [b.g.u0, b.v0, b.g.u1, b.v1];
+    out.set([...rect, ...uv], i * 8);
   });
   return out;
 }

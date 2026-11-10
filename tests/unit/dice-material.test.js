@@ -258,8 +258,8 @@ test.each(Object.keys(CASES))(
   },
 );
 
-test('marble preset: sheen 0.4 in the body colour, roughness 0.3, vein scale uniform 1.6', () => {
-  const m = make({ body: { type: 'marble', color: '#f1efe9', color2: '#8d8a84' } });
+test('marble preset: sheen 0.4 in the body colour, body roughness, vein scale uniform 1.6', () => {
+  const m = make({ body: { type: 'marble', color: '#f1efe9', color2: '#8d8a84', roughness: 0.3 } });
   expect(m.sheen).toBeCloseTo(0.4);
   expect(m.sheenColor.getHexString()).toBe(new THREE.Color('#f1efe9').getHexString());
   expect(m.roughness).toBeCloseTo(0.3);
@@ -270,8 +270,8 @@ test('marble preset: sheen 0.4 in the body colour, roughness 0.3, vein scale uni
   );
 });
 
-test('pearl preset: iridescence, sheen in color2, roughness 0.25, clearcoat 1', () => {
-  const m = make({ body: { type: 'pearl', color: '#e9e4f4', color2: '#a9c8f0' } });
+test('pearl preset: iridescence, sheen in color2, body roughness, clearcoat 1', () => {
+  const m = make({ body: { type: 'pearl', color: '#e9e4f4', color2: '#a9c8f0', roughness: 0.25 } });
   expect(m.iridescence).toBe(1);
   expect(m.iridescenceIOR).toBeCloseTo(1.3);
   expect(m.iridescenceThicknessRange).toEqual([250, 650]);
@@ -281,10 +281,10 @@ test('pearl preset: iridescence, sheen in color2, roughness 0.25, clearcoat 1', 
   expect(m.clearcoat).toBe(1);
 });
 
-test('metal finishes: roughness per finish, metalness 1, the enamel coat is kept', () => {
-  expect(metal('polished').roughness).toBeCloseTo(0.18);
-  expect(metal('brushed').roughness).toBeCloseTo(0.35);
-  expect(metal('antique').roughness).toBeCloseTo(0.45);
+test('metal finishes: the body roughness, metalness 1, the enamel coat is kept', () => {
+  expect(
+    metal('polished', { body: { type: 'metal', finish: 'polished', roughness: 0.18 } }).roughness,
+  ).toBeCloseTo(0.18);
   for (const f of ['polished', 'brushed', 'antique']) {
     expect(metal(f).metalness).toBe(1);
     expect(metal(f).clearcoat).toBeCloseTo(0.001);
@@ -437,7 +437,11 @@ test('interior: steps 0 has no march and tints the resin towards colors[0] (low-
   const t = m.userData.uniforms.uResinTint.value;
   expect(t.w).toBeGreaterThan(0);
   const tint = new THREE.Color(t.x, t.y, t.z);
-  expect(tint.getHexString()).toBe(new THREE.Color('#8a4dff').getHexString());
+  // colors[0]'s hue at the body's luminance (see the Void Star test below)
+  const c0 = new THREE.Color('#8a4dff');
+  const lum = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  expect(tint.r / tint.b).toBeCloseTo(c0.r / c0.b);
+  expect(lum(tint)).toBeCloseTo(lum(new THREE.Color('#1f5fd1')));
   const tinted = new THREE.Color('#1f5fd1').lerp(tint, t.w);
   expect(tinted.getHexString()).not.toBe(m.color.getHexString());
   // the Beer-Lambert colour reads the tint
@@ -493,4 +497,104 @@ test('interior: the coin lays the shape flat in its caps (uShapeRot), dice keep 
   expect(v.distanceTo(new THREE.Vector3(0, 0, 1))).toBeLessThan(1e-6);
   // orientation is a uniform: coin and die share the program
   expect(c.customProgramCacheKey()).toBe(d.customProgramCacheKey());
+});
+
+// ---- Task 9: tuning-list fixes ---------------------------------------------------------
+
+test('P2-R8: body.roughness is honoured for every body type and metal finish', () => {
+  const bodies = [
+    { type: 'opaque' },
+    { type: 'resin' },
+    { type: 'marble' },
+    { type: 'pearl' },
+    { type: 'metal', finish: 'polished' },
+    { type: 'metal', finish: 'brushed' },
+    { type: 'metal', finish: 'antique' },
+  ];
+  for (const b of bodies) {
+    for (const r of [0.13, 0.62]) {
+      expect(make({ body: { ...b, roughness: r } }).roughness).toBeCloseTo(r);
+    }
+  }
+});
+
+test('resin: entry Fresnel scales the refracted base (and the interior) by 1 - F_schlick', () => {
+  const fs = patched(make(nebula())).fragmentShader;
+  expect(fs).toMatch(/float dcRFin = [^;]*pow\( 1\.0 - [^;]*dcRn[^;]*5\.0 \)/);
+  const scale = fs.indexOf('dcRefracted *= 1.0 - dcRFin');
+  expect(scale).toBeGreaterThan(fs.indexOf('dcRefracted = dcRefracted * ( 1.0 - dcIacc.a )'));
+  expect(scale).toBeLessThan(fs.indexOf('totalDiffuse = mix( totalDiffuse, dcRefracted'));
+  // a clear resin without an interior gets it too
+  const clear = patched(
+    make({ body: { type: 'resin' }, interior: { type: 'none' } }),
+  ).fragmentShader;
+  expect(clear).toContain('dcRefracted *= 1.0 - dcRFin');
+});
+
+test('resin: bevels (aFaceId < 0) are rougher, so the rounded edge does not mirror a strip light', () => {
+  const fs = patched(make({ body: { type: 'resin' } })).fragmentShader;
+  expect(fs).toMatch(/vFaceId < - 0\.5 \) roughnessFactor = max\( roughnessFactor, [\d.]+ \)/);
+  expect(patched(make({ body: { type: 'opaque' } })).fragmentShader).not.toMatch(
+    /roughnessFactor = max\( roughnessFactor/,
+  );
+});
+
+test('low-tier interior tint is per type: glitter 0.1, shape 0.2, nebula/liquid/swirl 0.45', () => {
+  const expected = { glitter: 0.1, shape: 0.2, nebula: 0.45, liquid: 0.45, swirl: 0.45 };
+  for (const [type, share] of Object.entries(expected)) {
+    const m = make(nebula({ interior: { type, colors: ['#8a4dff', '#22d3ee'] } }), {
+      ...FLAGS,
+      interiorSteps: 0,
+    });
+    expect(m.userData.uniforms.uResinTint.value.w).toBeCloseTo(share);
+  }
+});
+
+test('resin coin: a per-shape density boost (uniform), dice keep density 1', () => {
+  const a = look({ body: { type: 'resin', color: '#1f5fd1' }, interior: { type: 'none' } });
+  const coin = createDiceMaterial(a, atlas, getShape('d2'), ['1', '2'], FLAGS);
+  const die = createDiceMaterial(a, atlas, s, labels, FLAGS);
+  expect(die.userData.uniforms.uResinDensity.value).toBeCloseTo(1);
+  expect(coin.userData.uniforms.uResinDensity.value).toBeGreaterThan(2);
+  expect(coin.customProgramCacheKey()).toBe(die.customProgramCacheKey());
+});
+
+test('interior: the inner light reuses the up-facing environment sample of the floor term', () => {
+  const fs = patched(make(nebula())).fragmentShader;
+  expect(fs).toContain('dcILight = dcRup * envMapIntensity');
+  const ups = fs.match(/textureCubeUV\( envMap, envMapRotation \* vec3\( 0\.0, 1\.0, 0\.0 \)/g);
+  expect(ups).toHaveLength(1);
+});
+
+test('resin and pearl bevels also get a rougher clearcoat (the lobe that drew the white bar)', () => {
+  for (const type of ['resin', 'pearl']) {
+    const fs = patched(make({ body: { type } })).fragmentShader;
+    const at = fs.search(
+      /vFaceId < - 0\.5 \) material\.clearcoatRoughness = max\( material\.clearcoatRoughness, [\d.]+ \)/,
+    );
+    expect(at).toBeGreaterThan(
+      fs.indexOf('material.clearcoat = max( material.clearcoat, uFillGloss'),
+    );
+  }
+  for (const type of ['opaque', 'marble', 'metal'])
+    expect(patched(make({ body: { type } })).fragmentShader).not.toContain(
+      'material.clearcoatRoughness = max(',
+    );
+});
+
+test('low-tier tint keeps the body luminance: a near-black Void Star with a gold star stays dark, not olive', () => {
+  const m = make(
+    {
+      body: { type: 'resin', color: '#08080f' },
+      interior: { type: 'shape', colors: ['#ffe27a', '#ff9d2e'], shape: 'star' },
+    },
+    { ...FLAGS, interiorSteps: 0 },
+  );
+  const t = m.userData.uniforms.uResinTint.value;
+  const body = new THREE.Color('#08080f');
+  const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  expect(lum(t.x, t.y, t.z)).toBeCloseTo(lum(body.r, body.g, body.b), 4);
+  // the tinted Beer-Lambert colour stays within a hair of the body
+  const mixed = body.clone().lerp(new THREE.Color(t.x, t.y, t.z), t.w);
+  expect(Math.max(mixed.r, mixed.g, mixed.b)).toBeLessThan(0.01);
 });

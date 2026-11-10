@@ -1,19 +1,33 @@
-import { TIERS, TIER_ORDER, effectiveTier, tierFromProbe, AdaptiveQuality } from '../../src/render/quality.js';
+import {
+  TIERS,
+  TIER_ORDER,
+  effectiveTier,
+  tierFromProbe,
+  AdaptiveQuality,
+} from '../../src/render/quality.js';
 
 test('tier table: exactly four tiers, interiorSteps 0 only at low', () => {
   expect(Object.keys(TIERS)).toEqual(['low', 'medium', 'high', 'ultra']);
   expect(TIER_ORDER).toEqual(['low', 'medium', 'high', 'ultra']);
   for (const t of TIER_ORDER) expect(TIERS[t].interiorSteps === 0).toBe(t === 'low');
-  expect(TIERS.high).toEqual({ pixelRatio: 1.5, interiorSteps: 32, transmissionScale: 1, envResolution: 256, anisotropy: true });
+  expect(TIERS.high).toEqual({
+    pixelRatio: 1.5,
+    interiorSteps: 32,
+    transmissionScale: 1,
+    envResolution: 256,
+    anisotropy: true,
+  });
   expect(TIERS.low.anisotropy).toBe(false);
 });
 
-test('effectiveTier', () => {
-  expect(effectiveTier({ choice: 'auto', autoTier: 'ultra', cap: 'high', dropped: 0 })).toBe('high');
-  expect(effectiveTier({ choice: 'ultra', autoTier: 'low', cap: 'medium', dropped: 0 })).toBe('medium');
-  expect(effectiveTier({ choice: 'high', autoTier: 'low', cap: 'ultra', dropped: 1 })).toBe('medium');
-  expect(effectiveTier({ choice: 'high', autoTier: 'low', cap: 'ultra', dropped: 9 })).toBe('low');
-  expect(effectiveTier({ choice: 'auto', autoTier: 'medium', cap: 'ultra', dropped: 0 })).toBe('medium');
+test('effectiveTier: min(choice or auto, cap); the adaptive drop lives in the controller', () => {
+  expect(effectiveTier({ choice: 'auto', autoTier: 'ultra', cap: 'high' })).toBe('high');
+  expect(effectiveTier({ choice: 'ultra', autoTier: 'low', cap: 'medium' })).toBe('medium');
+  expect(effectiveTier({ choice: 'high', autoTier: 'low', cap: 'ultra' })).toBe('high');
+  expect(effectiveTier({ choice: 'low', autoTier: 'ultra', cap: 'ultra' })).toBe('low');
+  expect(effectiveTier({ choice: 'auto', autoTier: 'medium', cap: 'ultra' })).toBe('medium');
+  // the old `dropped` param is gone (P2-R11 keeps the drop as the controller's ceiling)
+  expect(effectiveTier({ choice: 'high', autoTier: 'low', cap: 'ultra', dropped: 1 })).toBe('high');
 });
 
 test('tierFromProbe boundaries', () => {

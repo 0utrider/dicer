@@ -45,29 +45,39 @@ export const DEFAULT_FLAGS = Object.freeze({
  */
 const METAL_COAT = 0.001;
 
-/** Fixed roughness per metal finish. */
-const METAL_ROUGHNESS = { polished: 0.18, brushed: 0.35, antique: 0.45 };
-
 /**
  * Body presets: MeshPhysicalMaterial parameters per body type (b: normalized body; color,
  * color2: THREE.Color). The shader side of each body lives in ./shaders/bodies.js.
+ * P2-R8: every body honours b.roughness (the curated looks carry the per-finish values).
  */
 const BODY_PRESETS = {
   opaque: (b, color) => ({ color, roughness: b.roughness, clearcoat: 0.6 }),
   metal: (b, color) => ({
     color,
     metalness: 1,
-    roughness: METAL_ROUGHNESS[b.finish] ?? METAL_ROUGHNESS.polished,
+    roughness: b.roughness,
     clearcoat: METAL_COAT,
     anisotropy: b.finish === 'brushed' ? 0.8 : 0,
   }),
   // P2-R6: environment refraction (DICER_RESIN), no transmission pass. Opaque in the
   // depth/blend sense: the body reads as clear through the refracted environment alone.
-  resin: (b, color) => ({ color, ior: RESIN.ior, roughness: b.roughness, clearcoat: 1 }),
-  marble: (b, color) => ({ color, roughness: 0.3, clearcoat: 0.4, sheen: 0.4, sheenColor: color }),
+  resin: (b, color) => ({
+    color,
+    ior: RESIN.ior,
+    roughness: b.roughness,
+    clearcoat: 1,
+    clearcoatRoughness: RESIN.coatRoughness,
+  }),
+  marble: (b, color) => ({
+    color,
+    roughness: b.roughness,
+    clearcoat: 0.4,
+    sheen: 0.4,
+    sheenColor: color,
+  }),
   pearl: (b, color, color2) => ({
     color,
-    roughness: 0.25,
+    roughness: b.roughness,
     clearcoat: 1,
     iridescence: 1,
     iridescenceIOR: 1.3,
@@ -91,8 +101,30 @@ function resinRadii(shape) {
  */
 export const KEY_LIGHT_DIR = Object.freeze([-6, 4, 2].map((v) => v / Math.hypot(-6, 4, 2)));
 
-/** Share of colors[0] mixed into the resin body colour by the low-tier interior fake. */
-export const INTERIOR_TINT = 0.45;
+/**
+ * Share of colors[0] mixed into the resin body colour by the low-tier interior fake, per
+ * interior type: sparse glitter and a single small shape barely tint the body (a dark Void
+ * Star must not turn olive); clouds and liquids fill it.
+ */
+export const INTERIOR_TINT = Object.freeze({
+  glitter: 0.1,
+  shape: 0.2,
+  nebula: 0.45,
+  liquid: 0.45,
+  swirl: 0.45,
+});
+
+const luminance = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+/**
+ * The low-tier tint target: colors[0]'s hue at the body colour's luminance (linear). The fake
+ * shifts the body's hue towards the interior without lifting a dark body: a near-black resin
+ * with a gold star would otherwise turn olive.
+ */
+function tintTarget(c0, body) {
+  const l = luminance(c0);
+  return l > 0 ? c0.clone().multiplyScalar(luminance(body) / l) : body.clone();
+}
 
 /**
  * P2-R1: the interior is marched only for a resin body with flags.interiors, steps > 0 and a
@@ -134,7 +166,11 @@ function patchShader(shader, uniforms, chunks) {
     after('normal_fragment_maps', `${ENGRAVE_NORMAL}\n${chunks.normal}`),
     after('clearcoat_normal_fragment_begin', ENGRAVE_CLEARCOAT),
     after('emissivemap_fragment', chunks.emissive),
-    after('lights_physical_fragment', FILL_GLOSS),
+    after(
+      'lights_physical_fragment',
+      `${FILL_GLOSS}
+${chunks.coat}`,
+    ),
     after('transmission_fragment', chunks.lighting),
   ];
   for (const [a, b] of vertex) shader.vertexShader = shader.vertexShader.replace(a, b);
@@ -193,6 +229,7 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
   const [fillMetal, fillRough, fillGloss] = FILLS[a.numbers.fill] ?? FILLS.paint;
   const mode = interiorMode(a, f);
   const c0 = new THREE.Color(a.interior.colors[0]);
+  const tint = tintTarget(c0, new THREE.Color(a.body.color));
   const uniforms = {
     uAtlas: { value: atlas.texture ?? null },
     uLabels: { value: makeLabelTexture(shape, labels, atlas) },
@@ -207,10 +244,17 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
     uVeinScale: { value: VEIN_SCALE },
     uGlowColor: { value: new THREE.Color(a.glow.color) },
     uGlowIntensity: { value: a.glow.intensity },
-    uResinDensity: { value: 1.0 },
+    uResinDensity: { value: shape?.kind === 'coin' ? RESIN.coinDensity : 1.0 },
     uResinFloor: { value: RESIN.floor },
     uResinRadii: { value: resinRadii(shape) },
-    uResinTint: { value: new THREE.Vector4(c0.r, c0.g, c0.b, mode === 'fake' ? INTERIOR_TINT : 0) },
+    uResinTint: {
+      value: new THREE.Vector4(
+        tint.r,
+        tint.g,
+        tint.b,
+        mode === 'fake' ? (INTERIOR_TINT[a.interior.type] ?? 0) : 0,
+      ),
+    },
     uInteriorColors: { value: [c0, new THREE.Color(a.interior.colors[1])] },
     uInteriorDensity: { value: a.interior.density },
     uKeyLightDir: { value: new THREE.Vector3(...KEY_LIGHT_DIR) },

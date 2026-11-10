@@ -8,8 +8,8 @@
  *   direction, dt: length, all in the canonical interior frame below).
  * - main: the march. It runs inside the resin refraction block (shaders/bodies.js), after the
  *   refracted environment colour dcRefracted is known, and reuses that block's die-local
- *   entry point (vLocalPos), refracted ray (dcRd), model rotation (dcRm) and Beer-Lambert
- *   body colour (dcRbody, dcRk). The interior is composited over dcRefracted (P2-R6), which
+ *   entry point (vLocalPos), refracted ray (dcRd), model rotation (dcRm), up-facing environment
+ *   sample (dcRup) and Beer-Lambert body colour (dcRbody, dcRk). The interior is composited over dcRefracted (P2-R6), which
  *   the number fill (dcMask) then covers, so the numbers stay on top.
  *
  * Canonical frame: die-local space divided by uResinRadii / RESIN.radius (the resin body
@@ -32,9 +32,13 @@ export const INTERIOR = Object.freeze({
   shapeScale: 0.35,
   glitterCells: 11,
   starCells: 11,
+  cellMin: 0.3,
+  cellMax: 0.7,
 });
 
 const f = (x) => x.toFixed(4);
+/** GLSL: a point in [cellMin, cellMax] of a cell from hash h in [0, 1). */
+const cellPos = (h) => `${f(INTERIOR.cellMin)} + ${f(INTERIOR.cellMax - INTERIOR.cellMin)} * ${h}`;
 
 const COMMON_PARS = /* glsl */ `
 uniform vec3 uInteriorColors[ 2 ];
@@ -92,7 +96,9 @@ vec3 dcHash33( vec3 p ) {
 vec4 dcFlake( vec3 cell, vec3 p, vec3 rd, float dt ) {
 	// density: expected flakes per cell, 0.06 .. 0.24 (about 60 .. 250 in the whole volume)
 	if ( dcHash13( cell + 23.9 ) > 0.06 + 0.18 * uInteriorDensity ) return vec4( 0.0 );
-	vec3 c = ( cell + 0.15 + 0.7 * dcHash33( cell ) ) / DC_GLITTER_CELLS;
+	// the centre stays in [${INTERIOR.cellMin}, ${INTERIOR.cellMax}] of the cell, so the whole disc (radius 0.3
+	// cell) lies in it: a flake whose cell the march skips is missed whole, never cut to a shard
+	vec3 c = ( cell + ${cellPos('dcHash33( cell )')} ) / DC_GLITTER_CELLS;
 	if ( length( c ) > ${f(INTERIOR.radius - 0.05)} ) return vec4( 0.0 );
 	vec3 n = normalize( dcHash33( cell + 3.7 ) - 0.5 );
 	float dn = dot( rd, n );
@@ -150,7 +156,7 @@ const NEBULA = /* glsl */ `
 vec3 dcStars( vec3 cell, vec3 p, vec3 rd, float dt ) {
 	float h = dcHash13( cell + 71.1 );
 	if ( h < 0.86 ) return vec3( 0.0 );
-	vec3 c = ( cell + 0.25 + 0.5 * vec3( dcHash13( cell + 3.1 ), dcHash13( cell + 5.9 ), dcHash13( cell + 8.3 ) ) ) / DC_STAR_CELLS;
+	vec3 c = ( cell + ${cellPos('vec3( dcHash13( cell + 3.1 ), dcHash13( cell + 5.9 ), dcHash13( cell + 8.3 ) )')} ) / DC_STAR_CELLS;
 	float t = dot( c - p, rd );
 	if ( t < 0.0 || t >= dt || length( c ) > ${f(INTERIOR.radius - 0.04)} ) return vec3( 0.0 );
 	vec3 q = p + rd * t - c;
@@ -247,9 +253,9 @@ function rotation(a, b) {
   return [0, 1, 2].flatMap((c) => [0, 1, 2].map((row) => r[row][c]));
 }
 /**
- * Shape orientation (uShapeRot, column-major). Dice: rotate x by 0.8 rad, then y by -0.18 rad,
- * chosen so a flat shape faces the camera at least half-on for every die resting face up in
- * the gallery (|cos| >= 0.46 for d4..d20); rolled dice show it at any angle anyway. Coin: the
+ * Shape orientation (uShapeRot, column-major). Dice: R = Ry(3.2) * Rx(0.95), picked by eye in
+ * the Task 6 fix round so the flat star reads well on the dice resting face up in the
+ * gallery; rolled dice show it at any angle anyway. Coin: the
  * shape's flat axis (z) along the coin's thin axis (local y), so the star lies in the caps
  * instead of being crushed edge-on by the 0.125 half-height.
  */
@@ -331,9 +337,9 @@ const MARCH = /* glsl */ `
 		if ( dcIt.y > dcIt.x ) {
 			dcIKey = normalize( normalize( transpose( dcRm ) * uKeyLightDir ) * dcIs );
 		#if defined( USE_ENVMAP ) && defined( ENVMAP_TYPE_CUBE_UV )
-			dcILight = textureCubeUV( envMap, envMapRotation * vec3( 0.0, 1.0, 0.0 ), 1.0 ).rgb * envMapIntensity;
+			dcILight = dcRup * envMapIntensity; // the resin block's up-facing sample
 		#else
-			dcILight = vec3( 0.5 );
+			dcILight = dcRup;
 		#endif
 			float dcIdt = ( dcIt.y - dcIt.x ) / float( DICER_STEPS );
 			float dcIj = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );

@@ -19,7 +19,10 @@ export const BORDER = Object.freeze({ from: 0.06, to: 0.14, height: 0.012 });
 /**
  * Resin: index of refraction, body ellipsoid radius (die-local), Beer-Lambert reference chord
  * (a full diameter transmits the body colour), lit-table albedo, exit-normal share of the
- * mirrored entry face (vs the ellipsoid normal).
+ * mirrored entry face (vs the ellipsoid normal), the coin's density boost (its chord through
+ * the thin caps is about a seventh of a die's, so it would read pale grey), the clearcoat
+ * roughness and the minimum roughness on the rounded bevels (aFaceId < 0), which otherwise
+ * mirror the studio strip lights as a hard white bar.
  */
 export const RESIN = Object.freeze({
   ior: 1.52,
@@ -27,7 +30,13 @@ export const RESIN = Object.freeze({
   refChord: 1.7,
   floor: 0.35,
   parallel: 0.5,
+  coinDensity: 4.0,
+  coatRoughness: 0.06,
+  bevelRoughness: 0.3,
+  bevelCoatRoughness: 0.35,
 });
+/** Schlick F0 at the air/resin interface: ((n - 1) / (n + 1))^2. */
+const RESIN_F0 = ((RESIN.ior - 1) / (RESIN.ior + 1)) ** 2;
 /**
  * Marker line in RESIN_REFRACTION where the interior march (shaders/interior.js) is spliced
  * in: after dcRefracted, inside the block that owns the refracted ray (dcRd, dcRm, dcRbody).
@@ -155,7 +164,7 @@ export const BRUSHED_COLOR = /* glsl */ `
 #ifdef DICER_BRUSHED
 	// Grooves run along face V (the anisotropic highlight stretches along U, across them).
 	// Faded out where a groove is under a pixel wide.
-	float dcBrushFreq = 60.0;
+	float dcBrushFreq = 22.0;
 	float dcBrushAA = 1.0 - smoothstep( 0.6, 2.0, fwidth( vFaceUV.x ) * dcBrushFreq );
 	float dcBrush = vFaceId > - 0.5
 		? ( dcLines( vFaceUV.x * dcBrushFreq + vFaceId * 37.0 ) * 0.7 + dcLines( vFaceUV.x * dcBrushFreq * 0.31 + 11.0 ) * 0.3 - 0.5 ) * dcBrushAA
@@ -194,6 +203,24 @@ export const BODY_ROUGHNESS = /* glsl */ `
 #endif
 #ifdef DICER_ANTIQUE
 	roughnessFactor = mix( roughnessFactor, 0.85, dcCav );
+#endif
+`;
+
+/**
+ * Resin and pearl: rougher bevels (fragment shader, after `#include <roughnessmap_fragment>`).
+ * A rounded bevel is a cylinder that mirrors a whole line of directions, so any studio panel
+ * crossing it drew a hard bar along the edge.
+ */
+export const BEVEL_ROUGHNESS = /* glsl */ `
+#if defined( DICER_RESIN ) || defined( DICER_PEARL )
+	if ( vFaceId < - 0.5 ) roughnessFactor = max( roughnessFactor, ${f(RESIN.bevelRoughness)} );
+#endif
+`;
+
+/** The same for the clearcoat lobe (after `#include <lights_physical_fragment>` and FILL_GLOSS). */
+export const BEVEL_COAT = /* glsl */ `
+#if defined( USE_CLEARCOAT ) && ( defined( DICER_RESIN ) || defined( DICER_PEARL ) )
+	if ( vFaceId < - 0.5 ) material.clearcoatRoughness = max( material.clearcoatRoughness, ${f(RESIN.bevelCoatRoughness)} );
 #endif
 `;
 
@@ -270,6 +297,7 @@ export const GLOW_EMISSIVE = /* glsl */ `
  *   backdrop, which would make every clear die read black over any scene);
  * - Beer-Lambert colour per path: bodyColour^(uResinDensity * chord / ${RESIN.refChord}), so a
  *   full diameter transmits exactly the body colour.
+ * - the refracted light (interior included) is scaled by 1 - F_schlick at entry.
  * The number fill (dcMask) stays opaque.
  */
 export const RESIN_REFRACTION = /* glsl */ `
@@ -279,6 +307,9 @@ export const RESIN_REFRACTION = /* glsl */ `
 		mat3 dcRm = mat3( modelMatrix ); // rotation x uniform scale
 		vec3 dcRi = normalize( vLocalPos - vLocalCam );
 		vec3 dcRn = normalize( transpose( dcRm ) * inverseTransformDirection( normal, viewMatrix ) );
+		// entry Fresnel: the share reflected at the surface (drawn by the specular/clearcoat
+		// lobes) never enters, so the refracted light is scaled by 1 - F
+		float dcRFin = ${f(RESIN_F0)} + ${f(1 - RESIN_F0)} * pow( 1.0 - clamp( dot( dcRn, - dcRi ), 0.0, 1.0 ), 5.0 );
 		vec3 dcRd = refract( dcRi, dcRn, ${f(1 / RESIN.ior)} );
 		if ( dot( dcRd, dcRd ) < 1e-6 ) dcRd = dcRi;
 		// chord 1: entry to the far side of the body ellipsoid
@@ -297,8 +328,11 @@ export const RESIN_REFRACTION = /* glsl */ `
 		float dcRt2 = dcChord( dcRp, dcRr, dcRrad );
 		vec3 dcRwOut = normalize( dcRm * ( dcRtir > 0.5 ? dcRr : dcRout ) );
 		vec3 dcRwRefl = normalize( dcRm * dcRr );
+		// up-facing environment irradiance: the lit table below, and the interior's inner light
+		vec3 dcRup = vec3( 0.5 );
 	#if defined( USE_ENVMAP ) && defined( ENVMAP_TYPE_CUBE_UV )
-		vec3 dcRfloor = uResinFloor * textureCubeUV( envMap, envMapRotation * vec3( 0.0, 1.0, 0.0 ), 1.0 ).rgb;
+		dcRup = textureCubeUV( envMap, envMapRotation * vec3( 0.0, 1.0, 0.0 ), 1.0 ).rgb;
+		vec3 dcRfloor = uResinFloor * dcRup;
 		vec3 dcRe1 = textureCubeUV( envMap, envMapRotation * dcRwOut, material.roughness ).rgb;
 		vec3 dcRe2 = textureCubeUV( envMap, envMapRotation * dcRwRefl, min( material.roughness + 0.25, 1.0 ) ).rgb;
 		dcRe1 = mix( dcRe1, dcRfloor, smoothstep( 0.1, - 0.5, dcRwOut.y ) );
@@ -315,6 +349,7 @@ export const RESIN_REFRACTION = /* glsl */ `
 		dcRefracted = ( 1.0 - dcRF ) * dcRe1 * pow( dcRbody, vec3( dcRk * dcRt1 ) )
 			+ dcRF * dcRe2 * pow( dcRbody, vec3( dcRk * ( dcRt1 + dcRt2 ) ) );
 ${INTERIOR_HOOK}
+		dcRefracted *= 1.0 - dcRFin;
 	}
 	totalDiffuse = mix( totalDiffuse, dcRefracted, 1.0 - dcMask );
 #endif
@@ -322,8 +357,9 @@ ${INTERIOR_HOOK}
 
 /**
  * The fragment chunks a program needs, by body type and metal finish (the define-gated GLSL
- * is only injected where its define can be set, so e.g. dcFbm3 is only compiled for marble
- * and antique metal).
+ * is only injected where its define can be set, so the body chunks only bring dcFbm3 in for
+ * marble and antique metal; a marched resin interior adds the noise library itself, through
+ * interiorChunk).
  */
 export function bodyChunks(body, finish) {
   const metal = body === 'metal';
@@ -338,10 +374,14 @@ export function bodyChunks(body, finish) {
       brushed ? BRUSHED_COLOR : '',
     ].join('\n'),
     colorPost: antique ? ANTIQUE_COLOR : '',
-    roughness: brushed || antique ? BODY_ROUGHNESS : '',
+    roughness: [
+      brushed || antique ? BODY_ROUGHNESS : '',
+      body === 'resin' || body === 'pearl' ? BEVEL_ROUGHNESS : '',
+    ].join('\n'),
     tangent: brushed ? BRUSHED_TANGENT : '',
     normal: metal ? BORDER_NORMAL : '',
     emissive: GLOW_EMISSIVE,
+    coat: body === 'resin' || body === 'pearl' ? BEVEL_COAT : '',
     lighting: body === 'resin' ? RESIN_REFRACTION : '',
   };
 }

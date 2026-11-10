@@ -12,6 +12,8 @@
 export const DEPTH_SCALE = 0.02;
 /** Width of the sloped wall band at the glyph edge, in face units. */
 export const WALL_BAND = 0.035;
+/** Corner radius of the 6/9 mark's box, in face units. */
+export const BOX_ROUND = 0.012;
 
 /** Vertex shader: after `#include <common>`. */
 export const ENGRAVE_VERTEX_PARS = /* glsl */ `
@@ -50,6 +52,14 @@ float dcGlyph( int face, int k, vec2 p, out vec2 grad ) {
 	vec4 t = texelFetch( uLabels, ivec2( 2 * k + 1, face ), 0 );
 	grad = vec2( 0.0 );
 	if ( r.z <= r.x || any( lessThan( p, r.xy ) ) || any( greaterThan( p, r.zw ) ) ) return - 1.0;
+	if ( t.x < 0.0 ) {
+		// the 6/9 mark: a rounded box (t.y: centre y, t.zw: half extents), no atlas lookup
+		vec2 sg = sign( p - vec2( 0.5 * ( r.x + r.z ), t.y ) );
+		vec2 q = abs( p - vec2( 0.5 * ( r.x + r.z ), t.y ) ) - t.zw + ${BOX_ROUND.toFixed(4)};
+		bool outside = max( q.x, q.y ) > 0.0;
+		grad = outside ? - normalize( max( q, 0.0 ) ) * sg : ( q.x > q.y ? vec2( - sg.x, 0.0 ) : vec2( 0.0, - sg.y ) );
+		return ${BOX_ROUND.toFixed(4)} - length( max( q, 0.0 ) ) - min( max( q.x, q.y ), 0.0 );
+	}
 	vec2 uvPerFace = ( t.zw - t.xy ) / ( r.zw - r.xy );
 	vec2 facePerPx = 1.0 / ( uvPerFace * uAtlasInfo.yz );
 	vec2 uv = t.xy + ( p - r.xy ) * uvPerFace;
