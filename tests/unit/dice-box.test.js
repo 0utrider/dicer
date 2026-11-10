@@ -62,6 +62,13 @@ function fakePhysics() {
         s.resolve({ settledStep: 59 });
       }
     },
+    /** Emits only the first (not done) chunk of stream i. */
+    emitFirst(i) {
+      const s = streams[i];
+      s.flushed = true;
+      this.emitted += 1;
+      s.cb(chunksFor(s.req.dice.length)[0]);
+    },
     fail(i, err = new Error('boom')) {
       streams[i].reject(err);
     },
@@ -135,10 +142,7 @@ test('landed resolves after playback lands; finished after timeBeforeHide + fade
   const { landed, finished } = box.roll([{ type: 'd6', value: 3 }]);
   const isLanded = settled(landed);
   const isFinished = settled(finished);
-  expect(renderer.startLoop).toHaveBeenCalled();
   expect(box.activeRolls).toBe(1);
-
-  renderer.tick(0);
   expect(dieGroups(renderer).every((g) => !g.visible)).toBe(true);
 
   physics.flush();
@@ -340,4 +344,65 @@ test('context loss clears every roll', async () => {
   renderer.onContextLost.mock.calls[0][0]();
   await Promise.all([r.landed, r.finished]);
   expect(box.activeRolls).toBe(0);
+});
+
+test('the loop starts on the first chunk, not when the roll is made', () => {
+  const { renderer, physics, box } = setup();
+  box.roll([{ type: 'd6', value: 2 }]);
+  expect(renderer.startLoop).not.toHaveBeenCalled();
+  physics.emitFirst(0);
+  expect(renderer.startLoop).toHaveBeenCalledTimes(1);
+  box.clear();
+});
+
+test('a roll with no chunk within 5000 ms fails without ever starting the loop', async () => {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { renderer, box } = setup();
+  const r = box.roll([{ type: 'd6', value: 2 }]);
+  const isFinished = settled(r.finished);
+  vi.advanceTimersByTime(4999);
+  await flushMicrotasks();
+  expect(isFinished()).toBe(false);
+  vi.advanceTimersByTime(1);
+  await Promise.all([r.landed, r.finished]);
+  expect(box.activeRolls).toBe(0);
+  expect(renderer.startLoop).not.toHaveBeenCalled();
+  expect(dieGroups(renderer)).toHaveLength(0);
+  expect(err).toHaveBeenCalledTimes(1);
+  err.mockRestore();
+});
+
+test('a roll whose done chunk never comes fails after 15000 ms and recycles its buffers', async () => {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { renderer, physics, box } = setup();
+  const r = box.roll([{ type: 'd6', value: 2 }]);
+  const isFinished = settled(r.finished);
+  vi.advanceTimersByTime(1000);
+  physics.emitFirst(0);
+  renderer.tick(0);
+  vi.advanceTimersByTime(13999);
+  await flushMicrotasks();
+  expect(isFinished()).toBe(false);
+  vi.advanceTimersByTime(1);
+  await Promise.all([r.landed, r.finished]);
+  expect(box.activeRolls).toBe(0);
+  expect(physics.recycle).toHaveBeenCalledTimes(1);
+  expect(renderer.tick(16)).toBe(false);
+  expect(err).toHaveBeenCalledTimes(1);
+  err.mockRestore();
+});
+
+test('a roll that completes normally does not trip the stall timeouts', async () => {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { renderer, physics, box } = setup({ timeBeforeHide: () => 20000 });
+  const r = box.roll([{ type: 'd6', value: 2 }]);
+  physics.flush();
+  renderer.tick(0);
+  renderer.tick(2000);
+  await r.landed;
+  vi.advanceTimersByTime(16000);
+  expect(box.activeRolls).toBe(1);
+  expect(err).not.toHaveBeenCalled();
+  box.clear();
+  err.mockRestore();
 });

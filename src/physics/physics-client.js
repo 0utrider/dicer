@@ -28,6 +28,13 @@ export class PhysicsClient {
     });
     this._ready.catch(() => {}); // surfaced via ready(); avoid unhandled rejection noise
     this._worker.onmessage = (e) => this._onMessage(e.data);
+    // A crashed or unreadable worker never answers again: fail everything pending.
+    this._worker.onerror = (e) => {
+      e?.preventDefault?.();
+      this._fail(new Error(`dicer: physics worker error: ${e?.message ?? 'unknown error'}`));
+    };
+    this._worker.onmessageerror = () =>
+      this._fail(new Error('dicer: physics worker message could not be deserialized'));
     this._worker.postMessage({ type: MSG.INIT, hulls, area });
   }
 
@@ -83,6 +90,7 @@ export class PhysicsClient {
 
   /** Permanently fail: reject ready and every pending stream, drop queued messages. */
   _fail(err) {
+    if (this._failed) return;
     this._failed = err;
     this._rejectReady(err);
     for (const s of this._streams.values()) s.reject(err);

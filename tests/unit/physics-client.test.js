@@ -104,3 +104,24 @@ test('throw after terminate returns an already rejected stream', async () => {
   await expect(stream.done).rejects.toThrow(/terminated/);
   expect(w.sent.some((s) => s.m.type === 'throw')).toBe(false);
 });
+
+test('a worker error event rejects every pending stream', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  w.emit({ type: 'ready' });
+  const a = client.throw({ dice: [{ type: 'd6' }], seed: 1 });
+  const b = client.throw({ dice: [{ type: 'd6' }], seed: 2 });
+  w.onerror({ message: 'worker crashed', preventDefault() {} });
+  await expect(a.done).rejects.toThrow('worker crashed');
+  await expect(b.done).rejects.toThrow('worker crashed');
+  await expect(client.throw({ dice: [], seed: 3 }).done).rejects.toThrow('worker crashed');
+});
+
+test('a worker messageerror event rejects every pending stream', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  w.emit({ type: 'ready' });
+  const a = client.throw({ dice: [{ type: 'd6' }], seed: 1 });
+  w.onmessageerror({});
+  await expect(a.done).rejects.toThrow(/could not be deserialized/);
+});

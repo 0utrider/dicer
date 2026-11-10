@@ -8,6 +8,9 @@ import { Playback } from './playback.js';
 export const DIE_SIZE_PX = 48;
 export const FADE_MS = 400;
 const DEFAULT_LINGER_MS = 2000;
+/** R12 stall timeouts, measured from roll(). */
+export const FIRST_CHUNK_TIMEOUT_MS = 5000;
+export const DONE_TIMEOUT_MS = 15000;
 
 /**
  * Clone a cached die material for the fade. Material.clone() deep-copies userData through
@@ -96,15 +99,30 @@ export class DiceBox {
       roll.received = 0;
       const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
       const stream = this._physics.throw({ dice: specs.map((s) => ({ type: s.type })), seed });
+      // Stall guards (R12): a worker that never answers must not keep a roll alive.
+      roll.firstChunkTimer = setTimeout(
+        () => this.#fail(roll, new Error(`no physics chunk within ${FIRST_CHUNK_TIMEOUT_MS} ms`)),
+        FIRST_CHUNK_TIMEOUT_MS,
+      );
+      roll.doneTimer = setTimeout(
+        () => this.#fail(roll, new Error(`physics not done within ${DONE_TIMEOUT_MS} ms`)),
+        DONE_TIMEOUT_MS,
+      );
       stream.onChunk((chunk) => {
-        if (roll.removed) this._physics.recycle(chunk.data);
-        else {
-          roll.playback.push(chunk);
-          roll.received += 1;
+        if (roll.removed) {
+          this._physics.recycle(chunk.data);
+          return;
+        }
+        roll.playback.push(chunk);
+        roll.received += 1;
+        if (chunk.done) clearTimeout(roll.doneTimer);
+        if (roll.received === 1) {
+          clearTimeout(roll.firstChunkTimer);
+          // The loop starts only once there is a frame to draw (zero idle GPU work).
+          this._renderer.startLoop(this._tick);
         }
       });
       stream.done.catch((err) => this.#fail(roll, err));
-      this._renderer.startLoop(this._tick);
     } catch (err) {
       this.#fail(roll, err);
     }
@@ -225,6 +243,8 @@ export class DiceBox {
     roll.removed = true;
     this._rolls.delete(roll);
     clearTimeout(roll.timer);
+    clearTimeout(roll.firstChunkTimer);
+    clearTimeout(roll.doneTimer);
     const scene = this._renderer.scene;
     for (const die of roll.dice) scene.remove(die.outer);
     for (const plane of roll.shadows) this._renderer.sceneApi.releaseShadow(plane);
