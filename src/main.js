@@ -130,16 +130,27 @@ function refreshMaterials({ replaceInFlight = false } = {}) {
 /** The raw world settings storage (a WorldSettings collection); DSN's scope is not registered. */
 const worldStorage = () => game.settings.storage?.get('world') ?? null;
 
+/** The DSN world settings the migration maps or logs (keys as stored in the world settings). */
+const DSN_WORLD_KEYS = new Set(
+  ['maxDiceNumber', 'immediatelyDisplayChatMessages', 'showGhostDice', 'hideNpcRolls', 'diceCanBeFlipped'].map(
+    (k) => `dice-so-nice.${k}`,
+  ),
+);
+
 /** Which DSN data is still to be migrated, judged from raw data only (no chunk is loaded). */
 function dsnPending() {
   if (getSetting('migrateFromDsn') === false) return { user: false, world: false };
   const dsnAppearance = game.user?._source?.flags?.['dice-so-nice']?.appearance;
   const user =
-    dsnAppearance !== null && typeof dsnAppearance === 'object' && !game.user.getFlag('dicer', 'migratedFromDsn');
+    dsnAppearance !== null &&
+    typeof dsnAppearance === 'object' &&
+    !Array.isArray(dsnAppearance) &&
+    Object.keys(dsnAppearance).length > 0 &&
+    !game.user.getFlag('dicer', 'migratedFromDsn');
   let world = false;
   if (game.user?.isGM && !getSetting('dsnWorldMigrated')) {
     for (const setting of worldStorage() ?? []) {
-      if (typeof setting?.key === 'string' && setting.key.startsWith('dice-so-nice.')) {
+      if (DSN_WORLD_KEYS.has(setting?.key)) {
         world = true;
         break;
       }

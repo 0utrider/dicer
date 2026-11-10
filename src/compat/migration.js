@@ -73,6 +73,9 @@ const dsnFlags = (user) => {
   return isPlainObject(flags) ? flags : null;
 };
 
+/** The bare `{look:'default'}` the ready-time mirror writes: not a choice the user made. */
+const isMirroredDefault = (ref) => Object.keys(ref).length === 1 && ref.look === 'default';
+
 /** The user's own `dicer.appearance` entries; no default is invented. */
 function ownLooks(user) {
   try {
@@ -96,7 +99,7 @@ export async function migrateUser(user) {
   const own = ownLooks(user);
   let wrote = false;
   for (const [scope, ref] of Object.entries(looks)) {
-    if (isPlainObject(own[scope])) continue;
+    if (isPlainObject(own[scope]) && !isMirroredDefault(own[scope])) continue;
     own[scope] = ref;
     wrote = true;
   }
@@ -105,14 +108,29 @@ export async function migrateUser(user) {
   return wrote;
 }
 
+/** True when the world settings storage holds an explicit `dicer.<key>` value. */
+function storedWorldValue(key) {
+  try {
+    const storage = globalThis.game?.settings?.storage?.get('world');
+    return (storage?.getItem?.(`${FLAG_SCOPE}.${key}`) ?? null) !== null;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Maps DSN's world settings onto Dicer's. GM only. Does nothing once `dsnWorldMigrated` is set,
  * or when no DSN world setting exists (that is not flagged either).
  * @param {{ get(key: string): unknown }} worldSettings DSN setting by bare key (parsed value)
+ * @param {{ isCustomized?: (key: string) => boolean }} [deps] isCustomized: Dicer already has an
+ *   explicit stored world value for the key (default: reads the world settings storage)
  * @param {{ settings?: { get(scope: string, key: string): unknown, set(scope: string, key: string, value: unknown): Promise<unknown> } }} [deps]
  * @returns {Promise<Record<string, unknown>>} the Dicer settings written
  */
-export async function migrateWorld(worldSettings, { settings = globalThis.game?.settings } = {}) {
+export async function migrateWorld(
+  worldSettings,
+  { settings = globalThis.game?.settings, isCustomized = storedWorldValue } = {},
+) {
   if (settings.get(FLAG_SCOPE, WORLD_FLAG)) return {};
   const mapped = {};
   let found = false;
@@ -121,7 +139,8 @@ export async function migrateWorld(worldSettings, { settings = globalThis.game?.
     if (raw === undefined || raw === null) continue;
     found = true;
     const value = check(raw);
-    if (value !== undefined) mapped[key] = value;
+    // A value the GM already set in Dicer is never overwritten.
+    if (value !== undefined && !isCustomized(key)) mapped[key] = value;
   }
   for (const dsnKey of UNMAPPED) {
     if (worldSettings.get(dsnKey) === undefined) continue;
@@ -154,7 +173,7 @@ export function worldSettingsReader(storage) {
  * a failure in one is warned and the other still runs.
  * @returns {Promise<boolean>} true if anything was migrated (the caller shows the notice)
  */
-export async function runMigration({ user, isGM, worldSettings, settings }) {
+export async function runMigration({ user, isGM, worldSettings, settings, isCustomized }) {
   let migrated = false;
   try {
     migrated = (await migrateUser(user)) || migrated;
@@ -163,7 +182,7 @@ export async function runMigration({ user, isGM, worldSettings, settings }) {
   }
   if (isGM) {
     try {
-      const mapped = await migrateWorld(worldSettings, { settings });
+      const mapped = await migrateWorld(worldSettings, { settings, ...(isCustomized && { isCustomized }) });
       migrated = Object.keys(mapped).length > 0 || migrated;
     } catch (err) {
       console.warn('dicer: cannot migrate the Dice So Nice world settings', err);
@@ -177,7 +196,11 @@ export async function runMigration({ user, isGM, worldSettings, settings }) {
  * user choice, so DSN data wins here.
  * @returns {Promise<boolean>} false (with a warning) when the profile is missing or empty
  */
-export async function loadSaveFile(user, name) {
+export async function loadSaveFile(
+  user,
+  name,
+  { replace = globalThis.foundry?.data?.operators?.ForcedReplacement?.create } = {},
+) {
   const saves = dsnFlags(user)?.saves;
   const profile = isPlainObject(saves) && Object.hasOwn(saves, name) ? saves[name] : null;
   const looks = dsnAppearanceToLooks(profile?.appearance);
@@ -185,7 +208,7 @@ export async function loadSaveFile(user, name) {
     console.warn(`dicer: no Dice So Nice save profile "${name}" to load`);
     return false;
   }
-  // `==` replaces the flag outright: setFlag would merge, leaving scopes the save does not have.
-  await user.update({ flags: { [FLAG_SCOPE]: { [`==${FLAG_KEY}`]: looks } } });
+  // A forced replacement, not setFlag (which merges and would keep scopes the save lacks).
+  await user.update({ flags: { [FLAG_SCOPE]: { [FLAG_KEY]: replace(looks) } } });
   return true;
 }
