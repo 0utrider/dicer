@@ -16,5 +16,12 @@
     }
   ],
   "esmodules": ["dist/dicer.js"],
-  "styles": ["styles/dicer.css"]
+  "styles": ["styles/dicer.css"],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ]
 }

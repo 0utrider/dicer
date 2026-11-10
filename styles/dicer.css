@@ -5,3 +5,8 @@
   pointer-events: none;
   z-index: 60; /* above the scene, below Foundry UI apps; placed right after #board */
 }
+
+/* Dice So Nice compatible: a chat message hidden until its dice land. */
+.dsn-hide {
+  display: none !important;
+}
