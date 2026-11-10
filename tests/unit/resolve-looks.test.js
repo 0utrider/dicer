@@ -124,6 +124,14 @@ describe('dsnType and system resolution', () => {
     expect(look(resolver, term(20), 'u').dsnType).toBe('d20');
     expect(look(resolver, term(2, { constructor: Coin }), 'u').dsnType).toBe('dc');
   });
+  test('the decorated spec carries the preset system, else the resolved one, else standard', async () => {
+    const users = { u: user({ global: { system: 'pf2e' } }), v: user(undefined) };
+    const { registry, resolver } = make({ users });
+    await registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: [], modelFile: 'm.glb' });
+    expect(look(resolver, term(20), 'u').system).toBe('pf2e');
+    expect(look(resolver, term(6), 'u').system).toBe('pf2e'); // no d6 preset: the resolved system
+    expect(look(resolver, term(20), 'v').system).toBe('standard');
+  });
   test('a custom die finds its per-type flag and preset by d + denomination', async () => {
     class Coin {
       static DENOMINATION = 'c';

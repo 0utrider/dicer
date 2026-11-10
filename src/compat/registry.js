@@ -7,6 +7,8 @@ import { dieTypeForFaces } from '../core/dice-shapes.js';
 import { cssToHex } from './colors.js';
 
 const MODES = ['default', 'preferred', 'exclusive'];
+/** A `dN` type with more faces than this is not a die Dicer can label: warned and skipped. */
+export const MAX_FACES = 1000;
 const BUILTIN_TYPES = [2, 4, 6, 8, 10, 12, 20].map(dieTypeForFaces);
 const STANDARD = 'standard';
 const APPEARANCE_COLORS = ['foreground', 'background', 'outline', 'edge'];
@@ -110,16 +112,46 @@ export function createRegistry({
     }
   }
 
-  /** Store one preset; returns false when it is unusable. */
+  /**
+   * Aliases `type` to the built-in `shape`. Only a built-in shape may be targeted, and a
+   * built-in type name is never re-aliased (it would reshape every standard die of that type).
+   */
+  function setAlias(member, type, shape) {
+    if (BUILTIN_TYPES.includes(type)) {
+      bad(member, `"${type}" is a built-in die type and keeps its own shape`);
+      return false;
+    }
+    if (!BUILTIN_TYPES.includes(shape)) {
+      bad(member, `"${type}": shape "${shape}" is not a built-in die shape`);
+      return false;
+    }
+    aliases.set(type, shape);
+    return true;
+  }
+
+  /** Store one preset; returns false when it is unusable. Never throws. */
   function storePreset(preset, shape, defaultSystem = STANDARD) {
+    try {
+      return storePresetUnsafe(preset, shape, defaultSystem);
+    } catch (err) {
+      bad('addDicePreset', `unusable preset: ${err?.message ?? err}`);
+      return false;
+    }
+  }
+
+  function storePresetUnsafe(preset, shape, defaultSystem) {
     if (!isObj(preset) || !isStr(preset.type)) {
       bad('addDicePreset', 'expected a preset object with a string `type`');
       return false;
     }
     const type = preset.type;
+    if ((facesOfType(type) ?? 0) > MAX_FACES) {
+      bad('addDicePreset', `"${type}": more than ${MAX_FACES} faces; skipped`);
+      return false;
+    }
     const systemId = isStr(preset.system) ? preset.system : defaultSystem;
     const hasModel = isStr(preset.modelFile);
-    if (isStr(shape)) aliases.set(type, shape);
+    if (isStr(shape)) setAlias('addDicePreset', type, shape);
     const base = baseShape(type);
     const given = Array.isArray(preset.labels) ? preset.labels : [];
     // Model-backed presets (e.g. labels: "") carry their faces in the model.
@@ -187,7 +219,11 @@ export function createRegistry({
     sys.group = system.group;
     if (isMapLike(system.dice)) {
       sys.instance = system;
-      system.dice.forEach((preset) => storePreset(preset, undefined, system.id));
+      try {
+        system.dice.forEach((preset) => storePreset(preset, undefined, system.id));
+      } catch (err) {
+        bad('addSystem', `"${system.id}": cannot read its dice: ${err?.message ?? err}`);
+      }
     } else {
       sys.instance = null;
     }
@@ -228,8 +264,8 @@ export function createRegistry({
       bad('addDiceShape', `"${def.name}": no usable \`faces\` or \`baseShape\``);
       return;
     }
+    if (!setAlias('addDiceShape', def.name, alias)) return;
     shapes.set(def.name, def);
-    aliases.set(def.name, alias);
     changed();
   }
 

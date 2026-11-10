@@ -1254,3 +1254,59 @@ describe('model loads reach the registry (fix round 1)', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('onMaterial (P3-R3)', () => {
+  const preset = { system: 'pf2e', type: 'd20' };
+
+  test('fires once per newly built material of a die with a preset', () => {
+    const onMaterial = vi.fn();
+    const presetFor = vi.fn((system, type) => (system === 'pf2e' && type === 'd20' ? preset : null));
+    const { box } = setup({ onMaterial, presetFor });
+    const spec = { type: 'd20', value: 3, system: 'pf2e', dsnType: 'd20' };
+    box.roll([spec, { ...spec, value: 4 }]);
+    expect(onMaterial).toHaveBeenCalledTimes(1);
+    const [material, type, look, got] = onMaterial.mock.calls[0];
+    expect(material).toBeInstanceOf(THREE.Material);
+    expect(type).toBe('d20');
+    expect(look).toEqual(expect.any(Object));
+    expect(got).toBe(preset);
+    box.roll([spec]); // cached material: not new
+    expect(onMaterial).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
+  test('no preset, no system, or a ghost: nothing fires', () => {
+    const onMaterial = vi.fn();
+    const presetFor = vi.fn(() => null);
+    const { box } = setup({ onMaterial, presetFor });
+    box.roll([{ type: 'd20', value: 3, system: 'standard', dsnType: 'd20' }, { type: 'd6', value: 2 }]);
+    const ghostly = setup({ onMaterial, presetFor: () => preset });
+    ghostly.box.roll([{ type: 'd20', value: 1, ghost: true, system: 'pf2e', dsnType: 'd20' }]);
+    expect(onMaterial).not.toHaveBeenCalled();
+    box.clear();
+    ghostly.box.clear();
+  });
+
+  test('a throwing presetFor or onMaterial changes nothing for the roll', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { renderer, box } = setup({
+      presetFor: () => preset,
+      onMaterial: () => {
+        throw new Error('listener');
+      },
+    });
+    box.roll([{ type: 'd20', value: 3, system: 'pf2e', dsnType: 'd20' }]);
+    const other = setup({
+      presetFor: () => {
+        throw new Error('registry');
+      },
+      onMaterial: vi.fn(),
+    });
+    other.box.roll([{ type: 'd20', value: 3, system: 'pf2e', dsnType: 'd20' }]);
+    expect(dieGroups(renderer)).toHaveLength(1);
+    expect(dieGroups(other.renderer)).toHaveLength(1);
+    box.clear();
+    other.box.clear();
+    warn.mockRestore();
+  });
+});

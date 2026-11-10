@@ -120,6 +120,22 @@ describe('createSync', () => {
   });
 });
 
+describe('anti-spoofing (P3-R15)', () => {
+  test('a payload whose userId differs from the server-supplied sender is ignored', () => {
+    const socket = fakeSocket();
+    const onShow = vi.fn(async () => {});
+    createSync({ socket, currentUser: () => ({ id: 'me' }), onShow, fromData: fakeFromData });
+    const handler = socket.handlers.get(SOCKET_EVENT);
+    expect(() => handler(payload({ userId: 'author' }), 'mallory')).not.toThrow();
+    expect(() => handler(payload({ userId: null }), 'mallory')).not.toThrow();
+    expect(onShow).not.toHaveBeenCalled();
+    handler(payload({ userId: 'author' }), 'author');
+    expect(onShow).toHaveBeenCalledTimes(1);
+    handler(payload({ userId: 'author' })); // no sender id supplied: not checked
+    expect(onShow).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('showForRoll over the socket', () => {
   let settings;
   /** A client: its own dice box, user and api, sharing one fake socket bus with the others. */
@@ -232,7 +248,8 @@ describe('showForRoll over the socket', () => {
     alice.api.showForRoll(roll([20, 5]), alice.user, true, ['gm', 'bob'], true);
     await flush();
     const [specs] = bob.diceBox.roll.mock.calls[0];
-    expect(specs).toEqual([{ type: 'd20', value: 5, ghost: true }]);
+    // P3-R14: the player only ever receives a stripped payload, so the ghost is thrown as a 1.
+    expect(specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
   });
 
   test('a ghost roll is thrown as ghosts on every receiver, the GM included', async () => {
@@ -285,6 +302,98 @@ describe('showForRoll over the socket', () => {
     alice.api.showForRoll(roll([20, 5]), alice.user, true);
     await flush();
     expect(bob.diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test("a payload forged in another user's name is ignored by every receiver (P3-R15)", async () => {
+    // bob claims the GM sent it; the server tells receivers it came from bob.
+    bob.socket.emit('module.dicer', payload({ userId: 'gm' }));
+    await flush();
+    expect(gm.diceBox.roll).not.toHaveBeenCalled();
+    expect(alice.diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  describe('blind rolls on the wire (P3-R14)', () => {
+    /** Every payload each client's socket receives, as the server would deliver it. */
+    function record(c) {
+      const got = [];
+      const handler = c.socket.handlers.get('module.dicer');
+      c.socket.handlers.set('module.dicer', (data, sender) => {
+        got.push(JSON.parse(JSON.stringify(data)));
+        return handler(data, sender);
+      });
+      return got;
+    }
+    /** Every number in a JSON tree. */
+    const numbers = (node, out = []) => {
+      if (typeof node === 'number') out.push(node);
+      else if (node && typeof node === 'object') for (const v of Object.values(node)) numbers(v, out);
+      return out;
+    };
+    /** A Foundry-like Roll: nested pool rolls, a success flag and totals in its JSON. */
+    const richRoll = () => ({
+      dice: [{ faces: 20, results: [{ result: 17, active: true }] }],
+      toJSON: () => ({
+        class: 'Roll',
+        formula: '1d20 + {1d8}',
+        terms: [
+          { class: 'Die', faces: 20, number: 1, results: [{ result: 17, active: true, success: true, count: 1 }] },
+          {
+            class: 'PoolTerm',
+            rolls: [{ class: 'Roll', terms: [{ class: 'Die', faces: 8, results: [{ result: 7, active: true }] }], total: 7 }],
+            results: [{ result: 7, active: true }],
+          },
+        ],
+        total: 24,
+        _total: 24,
+        evaluated: true,
+      }),
+    });
+
+    test('the real results go to GMs only; listed players get a stripped ghost payload', async () => {
+      settings.showGhostDice = true;
+      const toGm = record(gm);
+      const toBob = record(bob);
+      alice.api.showForRoll(richRoll(), alice.user, true, ['gm', 'bob'], true);
+      expect(alice.socket.emit).toHaveBeenCalledTimes(2);
+      expect(alice.socket.emit.mock.calls[0][2]).toEqual({ recipients: ['gm'] });
+      expect(alice.socket.emit.mock.calls[1][2]).toEqual({ recipients: ['bob'] });
+      await flush();
+      expect(numbers(toGm[0].roll)).toEqual(expect.arrayContaining([17, 7, 24]));
+      expect(toBob).toHaveLength(1);
+      expect(toBob[0]).toMatchObject({ ghost: true, blind: true, users: ['gm', 'bob'], userId: 'alice' });
+      // Only the dice shapes (faces 20 and 8) and 1s survive: no result, success or total.
+      expect(numbers(toBob[0].roll).filter((n) => n !== 1 && n !== 20 && n !== 8)).toEqual([]);
+      expect(JSON.stringify(toBob[0].roll)).not.toMatch(/success|count|total/);
+      expect(gm.diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 17 }]);
+      expect(bob.diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true }]);
+    });
+
+    test('without showGhostDice the listed players receive nothing at all', async () => {
+      settings.showGhostDice = false;
+      const toBob = record(bob);
+      alice.api.showForRoll(richRoll(), alice.user, true, ['gm', 'bob'], true);
+      expect(alice.socket.emit).toHaveBeenCalledTimes(1);
+      expect(alice.socket.emit.mock.calls[0][2]).toEqual({ recipients: ['gm'] });
+      await flush();
+      expect(toBob).toHaveLength(0);
+    });
+
+    test('a blind roll with no listed users never reaches a player socket, ghosts on or off', async () => {
+      settings.showGhostDice = true;
+      const toBob = record(bob);
+      alice.api.showForRoll(roll([20, 5]), alice.user, true, null, true);
+      await flush();
+      expect(toBob).toHaveLength(0);
+    });
+
+    test('a blind secret roll goes to GMs only, even to listed players with ghosts on', async () => {
+      settings.showGhostDice = true;
+      const toBob = record(bob);
+      alice.api.showForRoll(roll([20, 5]), alice.user, true, ['bob'], true, null, null, { secret: true });
+      await flush();
+      expect(toBob).toHaveLength(0);
+      expect(alice.socket.emit).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('forged payloads are harmless (Review Focus 3)', () => {

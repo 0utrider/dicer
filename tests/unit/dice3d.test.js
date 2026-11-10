@@ -1,5 +1,7 @@
-import { createDice3dApi } from '../../src/api/dice3d.js';
+import { createDice3dApi, materialReadyNotifier } from '../../src/api/dice3d.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
+import { createRegistry } from '../../src/compat/registry.js';
+import { buildScene } from '../../src/render/scene.js';
 
 function fakeDiceBox() {
   const rolls = [];
@@ -127,52 +129,336 @@ test('showForRoll resolves false without rolling when the enabled setting is off
   expect(diceBox.roll).not.toHaveBeenCalled();
 });
 
-describe('Plan 3 registration stubs (integrations call them from diceSoNiceReady)', () => {
-  const STUBS = [
+describe('Task 12: the full game.dice3d surface', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const METHODS = [
     'addSystem',
     'addDicePreset',
+    'addDiceShape',
     'addColorset',
     'addTexture',
-    'addDiceShape',
-    'addSFXTrigger',
-    'addSFXMode',
     'addDamageTypeDefaults',
     'addRole',
+    'getRole',
+    'getRoles',
+    'addSFXTrigger',
+    'addSFXDefaults',
+    'addSFXMode',
+    'getSFXModes',
+    'preloadPresets',
+    'loadSaveFile',
+    'getLoadedDiceSystems',
+    'setMessageUpdateHideSelector',
+    'showForRoll',
+    'animateRoll',
+    'show',
+    'showExtraDiceByDefault',
+    'waitFor3DAnimationByMessageID',
+    'getScreenPosition',
+    'isEnabled',
+    'enableDebugMode',
   ];
+  const OBJECTS = ['DiceFactory', 'box', 'uniforms', 'config', 'exports'];
 
-  test.each(STUBS)('%s exists and does not throw', async (name) => {
-    expect(typeof api[name]).toBe('function');
-    vi.spyOn(console, 'debug').mockImplementation(() => {});
-    let out;
-    expect(() => (out = api[name]({ id: 'x', name: 'X' }, 'default'))).not.toThrow();
-    await out; // the async DSN methods resolve
-    vi.restoreAllMocks();
+  let registry, hooks, me, renderer, faceTextures, facesFor, importMigration, a;
+  const make = (extra = {}) =>
+    createDice3dApi({
+      diceBox,
+      gate,
+      planThrow,
+      getSetting: (k) => settings[k],
+      renderer,
+      registry,
+      hooks,
+      currentUser: () => me,
+      gmIds: () => ['gm'],
+      faceTextures,
+      facesFor,
+      importMigration,
+      ...extra,
+    });
+  beforeEach(() => {
+    registry = createRegistry({ warn: () => {}, loadModel: vi.fn(async () => ({})) });
+    hooks = { callAll: vi.fn(), on: vi.fn() };
+    me = { id: 'p1', isGM: false };
+    const canvas = { id: 'dicer-canvas' };
+    renderer = { isLooping: false, startLoop: vi.fn(), canvas, camera: null };
+    faceTextures = { acquire: vi.fn(async () => ({ texture: {} })), release: vi.fn() };
+    facesFor = vi.fn((preset) => ({
+      key: `faces:${preset.type}`,
+      labels: preset.labels.map((l) => ({ kind: 'image', url: l })),
+    }));
+    importMigration = undefined;
+    a = make();
   });
 
-  test('the async DSN methods return promises so `.then` chains work', async () => {
-    vi.spyOn(console, 'debug').mockImplementation(() => {});
-    for (const name of ['addDicePreset', 'addColorset', 'addTexture']) {
-      await expect(api[name]({})).resolves.toBeUndefined();
+  test('contract: every G1 member exists with the right kind', () => {
+    for (const name of METHODS) expect(typeof a[name], name).toBe('function');
+    for (const name of OBJECTS) expect(a[name], name).toEqual(expect.any(Object));
+    expect(typeof a.messageHookDisabled).toBe('boolean');
+    expect(a.canvas).toBe(renderer.canvas);
+    expect(a.DiceSystem).toBeNull();
+    // Positional callers: DSN code calls these with at least their first argument.
+    expect(a.showForRoll.length).toBeGreaterThanOrEqual(1);
+    expect(a.addDicePreset.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("the ready argument passes pf2e's duck-type check", () => {
+    for (const name of ['addSystem', 'addDicePreset', 'addTexture', 'addColorset']) {
+      expect(name in a).toBe(true);
     }
-    vi.restoreAllMocks();
   });
 
-  test('each stub logs once at debug level', () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
-    for (const name of STUBS) {
-      api[name]({});
-      api[name]({});
+  test('the registration stubs are gone: add* and get* delegate to the registry', async () => {
+    a.addSystem({ id: 'pf2e', name: 'PF2e' }, 'preferred');
+    expect(a.getLoadedDiceSystems()).toBe(registry.systems);
+    expect(registry.systems.get('pf2e').mode).toBe('preferred');
+    await expect(a.addDicePreset({ type: 'd20', labels: [], system: 'pf2e' })).resolves.toBeUndefined();
+    expect(registry.presetFor('pf2e', 'd20')).not.toBeNull();
+    await a.addColorset({ name: 'mine', foreground: '#fff', background: '#000' });
+    expect(registry.colorsets.has('mine')).toBe(true);
+    await a.addTexture('stone', { name: 'Stone', source: 'x.webp' });
+    expect(registry.textures.has('stone')).toBe(true);
+    a.addDiceShape({ name: 'dh.r', faces: new Array(12).fill([]) });
+    expect(registry.baseShape('dh.r')).toBe('d12');
+    a.addRole({ id: 'boss' }, { package: 'p' });
+    expect(a.getRole('boss')).toMatchObject({ id: 'boss', package: 'p' });
+    expect(a.getRoles()).toHaveLength(1);
+    a.addDamageTypeDefaults({ fire: 'fire' });
+    expect(registry.damageTypeDefaults.fire).toBe('fire');
+    a.addSFXTrigger('t', 'T', ['20']);
+    expect(registry.sfxTriggers.has('t')).toBe(true);
+    class Boom {
+      static id = 'Boom';
     }
-    expect(debug).toHaveBeenCalledTimes(STUBS.length);
-    expect(debug.mock.calls.every(([msg]) => /Plan 3/.test(msg))).toBe(true);
-    debug.mockRestore();
+    a.addSFXMode(Boom);
+    expect(a.getSFXModes()).toEqual({ Boom: 'Boom' });
+    a.addSFXDefaults(['x']);
+    expect(registry.getSFXDefaults()).toEqual(['x']);
+    expect(a.DiceFactory).toBe(registry.diceFactory);
+    expect(a.exports).toBe(registry.exports);
   });
 
-  test('getLoadedDiceSystems returns an empty Map, getSFXModes an empty object', () => {
-    const systems = api.getLoadedDiceSystems();
-    expect(systems).toBeInstanceOf(Map);
-    expect(systems.size).toBe(0);
-    expect(api.getSFXModes()).toEqual({});
+  test('malformed registration calls never throw; async members still resolve', async () => {
+    const throwing = new Proxy({}, { get: () => () => { throw new Error('boom'); } });
+    a = make({ registry: throwing });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => a.addSystem(null)).not.toThrow();
+    await expect(a.addDicePreset(null)).resolves.toBeUndefined();
+    await expect(a.addColorset(null)).resolves.toBeUndefined();
+    expect(() => a.getRoles()).not.toThrow();
+    warn.mockRestore();
+  });
+
+  test('config is a live read-only view of the settings', () => {
+    settings.timeBeforeHide = 2000;
+    settings.showGhostDice = false;
+    settings.immediatelyDisplayChatMessages = true;
+    expect(a.config).toMatchObject({
+      enabled: true,
+      maxDice: 20,
+      hideAfterRoll: true,
+      showGhostDice: false,
+      immediatelyDisplayChatMessages: true,
+    });
+    settings.enabled = false;
+    settings.timeBeforeHide = 0;
+    expect(a.config.enabled).toBe(false);
+    expect(a.config.hideAfterRoll).toBe(false);
+    expect(() => (a.config.enabled = true)).not.toThrow();
+    expect(a.config.enabled).toBe(false);
+  });
+
+  test('uniforms accepts any write; moonPhase defaults to 0', () => {
+    expect(a.uniforms.moonPhase).toBe(0);
+    expect(() => (a.uniforms.foo = 1)).not.toThrow();
+    expect(a.uniforms.foo).toBe(1);
+    expect(a.box).toEqual({});
+  });
+
+  test('DiceSystem reads globalThis.DicerAPI lazily', () => {
+    class DiceSystem {}
+    globalThis.DicerAPI = { DiceSystem };
+    try {
+      expect(a.DiceSystem).toBe(DiceSystem);
+    } finally {
+      delete globalThis.DicerAPI;
+    }
+    expect(a.DiceSystem).toBeNull();
+  });
+
+  test("loadSaveFile('missing') warns and resolves while migration.js is absent", async () => {
+    a = make({ importMigration: undefined });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(a.loadSaveFile('missing')).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  test('loadSaveFile delegates to migration.loadSaveFile(user, name); a failure warns', async () => {
+    const loadSaveFile = vi.fn(async () => {});
+    a = make({ importMigration: async () => ({ loadSaveFile }) });
+    await expect(a.loadSaveFile('Old dice')).resolves.toBeUndefined();
+    expect(loadSaveFile).toHaveBeenCalledWith(me, 'Old dice');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    a = make({ importMigration: async () => ({}) }); // no such export yet
+    await expect(a.loadSaveFile('x')).resolves.toBeUndefined();
+    a = make({ importMigration: async () => ({ loadSaveFile: () => Promise.reject(new Error('x')) }) });
+    await expect(a.loadSaveFile('x')).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  test('getScreenPosition maps the area centre to the area-rect centre', () => {
+    const sceneApi = buildScene();
+    sceneApi.fitArea({ halfWidth: 10, halfDepth: 5 });
+    renderer.camera = sceneApi.camera;
+    const rect = { left: 100, top: 50, width: 960, height: 480 };
+    a = make({ getArea: () => rect });
+    const centre = a.getScreenPosition({ x: 0, y: 0, z: 0 });
+    expect(centre.x).toBeCloseTo(580);
+    expect(centre.y).toBeCloseTo(290);
+    // The floor's right and bottom edges (screen-up is -Z).
+    const corner = a.getScreenPosition({ x: 10, y: 0, z: 5 });
+    expect(corner.x).toBeCloseTo(1060);
+    expect(corner.y).toBeCloseTo(530);
+  });
+
+  test('getScreenPosition with a malformed vector warns once and returns a point', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    renderer.camera = buildScene().camera;
+    a = make({ getArea: () => ({ left: 0, top: 0, width: 100, height: 100 }) });
+    expect(a.getScreenPosition(null)).toEqual({ x: 0, y: 0 });
+    expect(a.getScreenPosition('x')).toEqual({ x: 0, y: 0 });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  describe('preloadPresets', () => {
+    const userWith = (flag) => ({ id: 'p1', isGM: false, flags: { dicer: { appearance: flag } } });
+    beforeEach(async () => {
+      await registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: ['a.png'], modelFile: 'm.glb' });
+      await registry.addDicePreset({ type: 'd6', system: 'other', labels: ['b.png'] });
+    });
+
+    test('loads the faces and models of a referenced preset and never starts the loop', async () => {
+      me = userWith({ global: { system: 'pf2e' } });
+      a = make();
+      await expect(a.preloadPresets()).resolves.toBeUndefined();
+      expect(faceTextures.acquire).toHaveBeenCalledTimes(1);
+      const [faces] = faceTextures.acquire.mock.calls[0];
+      expect(faces.key).toBe('faces:d20');
+      expect(faces.labels[0]).toEqual({ kind: 'image', url: 'a.png' });
+      expect(facesFor).toHaveBeenCalledWith(registry.presetFor('pf2e', 'd20'));
+      expect(registry.presetFor('pf2e', 'd20').modelLoaded).toBe(true);
+      expect(renderer.startLoop).not.toHaveBeenCalled();
+    });
+
+    test('holds the preloaded faces until the next look change', async () => {
+      me = userWith({ global: { system: 'pf2e' } });
+      a = make();
+      await a.preloadPresets();
+      await a.preloadPresets(); // already held: not acquired twice
+      expect(faceTextures.acquire).toHaveBeenCalledTimes(1);
+      expect(faceTextures.release).not.toHaveBeenCalled();
+      a._releasePreloads();
+      expect(faceTextures.release).toHaveBeenCalledTimes(1);
+      a._releasePreloads();
+      expect(faceTextures.release).toHaveBeenCalledTimes(1);
+    });
+
+    test('a later preload releases faces no look references any more', async () => {
+      me = userWith({ global: { system: 'pf2e' } });
+      a = make();
+      await a.preloadPresets();
+      me.flags.dicer.appearance = { global: { system: 'other' } };
+      await a.preloadPresets();
+      expect(faceTextures.acquire).toHaveBeenCalledTimes(2);
+      expect(faceTextures.release).toHaveBeenCalledWith(expect.objectContaining({ key: 'faces:d20' }));
+    });
+
+    test('withTextures false loads models only; presetFaces/presetModels off skip theirs', async () => {
+      me = userWith({ global: { system: 'pf2e' } });
+      a = make();
+      await a.preloadPresets(false);
+      expect(faceTextures.acquire).not.toHaveBeenCalled();
+      expect(registry.presetFor('pf2e', 'd20').modelLoaded).toBe(true);
+      settings.presetFaces = false;
+      await a.preloadPresets(true);
+      expect(faceTextures.acquire).not.toHaveBeenCalled();
+    });
+
+    test('a user with no system refs preloads the standard system only', async () => {
+      await registry.addDicePreset({ type: 'd8', labels: ['c.png'] });
+      me = userWith(undefined);
+      a = make();
+      await a.preloadPresets();
+      expect(faceTextures.acquire).toHaveBeenCalledTimes(1);
+      expect(faceTextures.acquire.mock.calls[0][0].key).toBe('faces:d8');
+    });
+
+    test('a throwing loader never rejects', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      me = userWith({ global: { system: 'pf2e' } });
+      faceTextures.acquire = vi.fn(() => {
+        throw new Error('gpu');
+      });
+      a = make({ facesFor: () => ({ key: 'k', labels: [{ kind: 'image', url: 'a.png' }] }) });
+      await expect(a.preloadPresets()).resolves.toBeUndefined();
+      warn.mockRestore();
+    });
+  });
+
+  test('enableDebugMode sets _debug.verbose and logs gate decisions', () => {
+    const log = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    expect(a._debug.verbose).toBe(false);
+    a.enableDebugMode();
+    expect(a._debug.verbose).toBe(true);
+    const listened = hooks.on.mock.calls.map(([name]) => name);
+    expect(listened).toEqual(
+      expect.arrayContaining(['diceSoNiceMessageProcessed', 'diceSoNiceRollStart', 'diceSoNiceRollComplete']),
+    );
+    const processed = hooks.on.mock.calls.find(([n]) => n === 'diceSoNiceMessageProcessed')[1];
+    processed('m1', { willTrigger3DRoll: true });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('dicer'), 'diceSoNiceMessageProcessed', 'm1', {
+      willTrigger3DRoll: true,
+    });
+    a.enableDebugMode(); // idempotent: listeners registered once
+    expect(hooks.on.mock.calls.filter(([n]) => n === 'diceSoNiceMessageProcessed')).toHaveLength(1);
+    log.mockRestore();
+  });
+
+  test('verbose mode logs the showForRoll view decision', async () => {
+    const log = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    a.enableDebugMode();
+    await a.showForRoll(roll(20, 3), me, false, null, true);
+    expect(log.mock.calls.some((args) => args.includes('none'))).toBe(true);
+    log.mockRestore();
+    await flush();
+  });
+});
+
+describe('materialReadyNotifier (P3-R3)', () => {
+  test('fires diceSoNiceOnMaterialReady only for a preset of a non-standard system', () => {
+    const hooks = { callAll: vi.fn() };
+    const notify = materialReadyNotifier(hooks);
+    const material = {};
+    const appearance = { tag: 'a' };
+    notify(material, 'd20', appearance, { system: 'pf2e', type: 'd20' });
+    notify(material, 'd20', appearance, { system: 'standard', type: 'd20' });
+    notify(material, 'd20', appearance, null);
+    expect(hooks.callAll.mock.calls).toEqual([['diceSoNiceOnMaterialReady', material, 'd20', appearance]]);
+  });
+
+  test('a throwing listener never reaches the die', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const notify = materialReadyNotifier({
+      callAll: () => {
+        throw new Error('x');
+      },
+    });
+    expect(() => notify({}, 'd20', {}, { system: 'pf2e' })).not.toThrow();
+    err.mockRestore();
   });
 });
 

@@ -103,6 +103,8 @@ export function createLookResolver({
 
     const out = { appearance };
     if (type) out.dsnType = type;
+    // DiceBox finds the preset again by system + dsnType (diceSoNiceOnMaterialReady, P3-R3).
+    out.system = preset?.system ?? system ?? STANDARD;
     if (preset) {
       // A bad preset loses its faces (the dice show numbers), never the look.
       let faces;

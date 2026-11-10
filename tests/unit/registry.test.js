@@ -289,3 +289,57 @@ describe('model preset urls and DiceBox loads (fix round 1)', () => {
     expect(hooks.callAll).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('hardening (Task 12)', () => {
+  test.each(['d99999999999', 'd1e9', 'd1001', 'd4294967296'])(
+    'an absurd face count (%s) warns and skips, never throws',
+    async (type) => {
+      const { reg, warn } = make();
+      await expect(reg.addDicePreset({ type, labels: [] })).resolves.toBeUndefined();
+      const dice = new Map([[type, { type, labels: ['1'] }]]);
+      expect(() => reg.addSystem({ id: 'big', name: 'Big', dice })).not.toThrow();
+      // 'd1e9' is not a dN type at all: stored as a label-counted custom die, still no throw.
+      if (type === 'd1e9') return;
+      expect(reg.presetFor('standard', type)).toBeNull();
+      expect(reg.presetFor('big', type)).toBeNull();
+      expect(warn).toHaveBeenCalled();
+    },
+  );
+
+  test('a 1000-face die is still accepted', async () => {
+    const { reg } = make();
+    await reg.addDicePreset({ type: 'd1000', labels: [] });
+    expect(reg.presetFor('standard', 'd1000').labels).toHaveLength(1000);
+  });
+
+  test('a throwing dice map in addSystem never reaches the caller', () => {
+    const { reg } = make();
+    const dice = { forEach() { throw new Error('evil'); } };
+    expect(() => reg.addSystem({ id: 'evil', name: 'Evil', dice })).not.toThrow();
+    const preset = { get type() { throw new Error('evil getter'); } };
+    expect(() => reg.addSystem({ id: 'evil2', name: 'E', dice: new Map([['x', preset]]) })).not.toThrow();
+  });
+
+  test('a preset shape alias may only target a built-in shape', async () => {
+    const { reg, warn } = make();
+    reg.addDiceShape({ name: 'dh.r', faces: new Array(12).fill([]) });
+    await reg.addDicePreset({ type: 'dq', labels: labels(12) }, 'dh.r'); // custom shape: refused
+    expect(reg.baseShape('dq')).toBeNull();
+    await reg.addDicePreset({ type: 'dz', labels: labels(6) }, 'd7'); // not a shape at all
+    expect(reg.baseShape('dz')).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    await reg.addDicePreset({ type: 'dy', labels: labels(6) }, 'd6');
+    expect(reg.baseShape('dy')).toBe('d6');
+  });
+
+  test('a built-in die type is never re-aliased', async () => {
+    const { reg, warn } = make();
+    await reg.addDicePreset({ type: 'd20', labels: labels(20) }, 'd6');
+    expect(reg.baseShape('d20')).toBe('d20');
+    reg.addDiceShape({ name: 'd20', faces: new Array(12).fill([]) });
+    reg.addDiceShape({ name: 'd6', baseShape: 'd4' });
+    expect(reg.baseShape('d20')).toBe('d20');
+    expect(reg.baseShape('d6')).toBe('d6');
+    expect(warn).toHaveBeenCalled();
+  });
+});

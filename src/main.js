@@ -11,7 +11,7 @@ import { createInitiativeHider } from './compat/initiative.js';
 import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
 import { startEngine } from './foundry/startup.js';
-import { createDice3dApi } from './api/dice3d.js';
+import { createDice3dApi, materialReadyNotifier } from './api/dice3d.js';
 import { createRegistry } from './compat/registry.js';
 import { createLookResolver } from './compat/resolve-looks.js';
 import { facesFor, atlasGlyphTest } from './compat/faces.js';
@@ -30,6 +30,8 @@ let quality = null;
 let stopWatchingArea = null;
 let digitAtlas = null;
 let registry = null; // the DSN registry, once activate() made it
+let faceTextures = null; // shared by DiceBox and preloadPresets (one cache)
+let dice3d = null; // game.dice3d, once activate() made it
 
 const NOOP_HANDLERS = { onCreate() {}, onUpdate() {}, onRender() {}, onDelete() {} };
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
@@ -110,8 +112,14 @@ function mirrorLook(lookId) {
   );
 }
 
+/** Preset face sets the digit atlas cannot draw, as image / text face layers. */
+const presetFaces = (preset) => facesFor(preset, atlasGlyphTest(digitAtlas));
+
 function onLookChange(key, value) {
-  if (key === 'look') mirrorLook(value);
+  if (key === 'look') {
+    mirrorLook(value);
+    dice3d?._releasePreloads(); // preloadPresets holds faces until the look changes
+  }
   // Read per roll; no cached material depends on them.
   if (key === 'shadows' || key === 'presetFaces' || key === 'presetModels') return;
   refreshMaterials();
@@ -175,6 +183,7 @@ Hooks.once('ready', async () => {
         notify: (message) => ui.notifications?.info(message),
         localize: (key) => game.i18n.localize(key),
       });
+      faceTextures = createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont });
       return new DiceBox({
         renderer,
         physics,
@@ -185,10 +194,12 @@ Hooks.once('ready', async () => {
         getArea: () => measureArea(),
         diceScale: () => Number(getSetting('diceScale')) || 1,
         timeBeforeHide: () => Number(getSetting('timeBeforeHide')) || 0,
-        faceTextures: createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont }),
+        faceTextures,
         faceLayers: () => getSetting('presetFaces') !== false,
         modelPresets: () => getSetting('presetModels') !== false,
         onModelLoaded: (url) => registry?.noteModelLoaded(url),
+        presetFor: (system, type) => registry?.presetFor(system, type) ?? null,
+        onMaterial: materialReadyNotifier(Hooks),
       });
     },
     activate: ({ renderer, diceBox: box }) => {
@@ -203,7 +214,7 @@ Hooks.once('ready', async () => {
         getUser: (id) => game.users?.get(id),
         getActor: (id) => game.actors?.get(id),
         // Preset faces the digit atlas cannot draw become image / text face layers.
-        facesFor: (preset) => facesFor(preset, atlasGlyphTest(digitAtlas)),
+        facesFor: presetFaces,
       });
       const plan = (roll, opts) => planThrow(roll, { shapeFor: resolver.shapeFor, ...opts });
       const decorateFor = (message, roll, authorId) =>
@@ -233,7 +244,12 @@ Hooks.once('ready', async () => {
         socket: game.socket ?? null,
         currentUser: () => game.user,
         fromData: (data) => foundry.dice.Roll.fromData(data),
+        registry,
+        faceTextures,
+        facesFor: presetFaces,
+        getArea: () => measureArea(),
       });
+      dice3d = api;
       game.dice3d = api;
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(resizeDice);
@@ -258,6 +274,8 @@ Hooks.once('ready', async () => {
     diceBox = null;
     diceRenderer = null;
     registry = null;
+    faceTextures = null;
+    dice3d = null;
     stopWatchingArea?.();
     stopWatchingArea = null;
     api?._dispose();

@@ -50,12 +50,46 @@ export function rollToData(roll) {
   };
 }
 
+/** Keys of roll JSON that carry a result: totals are dropped from a stripped roll. */
+const TOTAL_KEYS = new Set(['total', '_total']);
+
+/**
+ * A copy of roll JSON with nothing a result could be read from (P3-R14): every `results` entry
+ * becomes `{result: 1}` keeping only its active/discarded/hidden flags (success, count and the
+ * like are dropped) and every total is removed, however deeply the terms nest.
+ */
+export function stripResults(data) {
+  const walk = (node, depth) => {
+    if (depth > 64) return null;
+    if (Array.isArray(node)) return node.map((v) => walk(v, depth + 1));
+    if (!node || typeof node !== 'object') return node;
+    const out = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (TOTAL_KEYS.has(key)) continue;
+      if (key === 'results' && Array.isArray(value)) {
+        out.results = value.map((r) => {
+          const kept = { result: 1, active: r?.active !== false };
+          if (r?.discarded === true) kept.discarded = true;
+          if (r?.hidden === true) kept.hidden = true;
+          return kept;
+        });
+      } else {
+        out[key] = walk(value, depth + 1);
+      }
+    }
+    return out;
+  };
+  return walk(data, 0);
+}
+
 /**
  * Sends and receives showForRoll payloads over the module socket. Foundry never echoes an emit
  * back to its sender. A received payload is ignored when it is not `{v: 1, kind: 'show'}`, when
  * its `users` list is malformed or excludes the current user, when its roll holds more than
- * MAX_RESULTS results, or when the roll fails `fromData`. What the receiver then shows (privacy
- * view, maxDice) is onShow's job. Nothing a payload does throws into the socket handler.
+ * MAX_RESULTS results, or when the roll fails `fromData`. The server calls the handler with
+ * `(data, senderUserId)`; when a sender id is given, a payload whose `userId` differs from it is
+ * ignored (P3-R15: nobody can throw dice in another user's name). What the receiver then shows
+ * (privacy view, maxDice) is onShow's job. Nothing a payload does throws into the socket handler.
  *
  * @param {object} deps
  * @param {{ on(event, fn): void, off?(event, fn): void, emit(event, data): void }} deps.socket
@@ -65,8 +99,9 @@ export function rollToData(roll) {
  * @returns {{ broadcast(payload: object, recipients?: string[] | null): void, dispose(): void }}
  */
 export function createSync({ socket, currentUser, onShow, fromData = (d) => globalThis.Roll.fromData(d) }) {
-  function receive(p) {
+  function receive(p, senderUserId) {
     if (!p || typeof p !== 'object' || p.v !== 1 || p.kind !== 'show') return;
+    if (senderUserId != null && p.userId !== senderUserId) return;
     let users = null;
     if (p.users != null) {
       if (!Array.isArray(p.users)) return;
@@ -96,9 +131,9 @@ export function createSync({ socket, currentUser, onShow, fromData = (d) => glob
     Promise.resolve(shown).catch((err) => console.error('dicer: cannot show a synchronized roll', err));
   }
 
-  const handler = (payload) => {
+  const handler = (payload, senderUserId) => {
     try {
-      receive(payload);
+      receive(payload, senderUserId);
     } catch (err) {
       console.error('dicer: cannot handle a socket payload', err);
     }

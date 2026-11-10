@@ -100,6 +100,8 @@ export class DiceBox {
     loadModel = importModel,
     modelPresets = () => true,
     onModelLoaded = () => {},
+    presetFor = () => null,
+    onMaterial = () => {},
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -116,6 +118,10 @@ export class DiceBox {
     this._loadModel = loadModel; // (url, { radius }) -> Promise<{ geometry, material }>
     this._modelPresets = modelPresets; // the presetModels setting
     this._onModelLoaded = onModelLoaded; // (url) after a successful load: registry.noteModelLoaded
+    this._presetFor = presetFor; // (system, dsnType) -> registry preset or null
+    // (material, dsnType, appearance, preset) once per material built for a die with a preset
+    // (main.js: diceSoNiceOnMaterialReady for non-standard systems, P3-R3)
+    this._onMaterial = onMaterial;
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
     this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
@@ -315,6 +321,7 @@ export class DiceBox {
         die.faces,
         die.ghost,
         die.faceTex,
+        die,
       );
       if (!roll.materials.has(mat)) {
         roll.materials.add(mat);
@@ -345,8 +352,12 @@ export class DiceBox {
     return geo;
   }
 
-  /** @param {object} appearance normalized */
-  #material(appearance, flags, type, variant, faces, ghost = false, faceTex = null) {
+  /**
+   * @param {object} appearance normalized
+   * @param {{system?: string, dsnType?: string} | null} [source] the die it is built for: a
+   *   newly built material is announced through onMaterial when the die has a preset
+   */
+  #material(appearance, flags, type, variant, faces, ghost = false, faceTex = null, source = null) {
     const layered = !ghost && faceTex?.texture ? faceTex : null;
     const layerKey = layered ? `|fl${faceTexId(layered)}` : '';
     const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}`;
@@ -370,8 +381,21 @@ export class DiceBox {
       this._materials.set(key, mat);
       // A layered material lives only while rolls hold it: its texture is theirs.
       this._refs.set(mat, { refs: 0, stale: false, transient: !!layered });
+      if (!ghost) this.#announce(mat, appearance, type, source);
     }
     return mat;
+  }
+
+  /** Tells onMaterial about a new material of a die whose preset is registered. Never throws. */
+  #announce(material, appearance, type, source) {
+    if (typeof source?.system !== 'string') return;
+    try {
+      const dsnType = source.dsnType ?? type;
+      const preset = this._presetFor(source.system, dsnType);
+      if (preset) this._onMaterial(material, dsnType, appearance, preset);
+    } catch (err) {
+      console.warn('dicer: a material-ready listener threw; the die keeps its look', err);
+    }
   }
 
   #makeDie(spec, roll, flags, rollLook) {
@@ -384,7 +408,11 @@ export class DiceBox {
         : rollLook;
     const faces = ghost ? undefined : spec.faces;
     const geometry = this.#geometry(spec.type, appearance.edges.style);
-    const material = this.#material(appearance, flags, spec.type, spec.variant, faces, ghost);
+    // A ghost has no preset: nothing about its real look is announced.
+    const system = ghost || typeof spec.system !== 'string' ? null : spec.system;
+    const dsnType = typeof spec.dsnType === 'string' ? spec.dsnType : null;
+    const source = system ? { system, dsnType } : null;
+    const material = this.#material(appearance, flags, spec.type, spec.variant, faces, ghost, null, source);
     if (!roll.materials.has(material)) {
       roll.materials.add(material);
       this.#retain(material);
@@ -411,6 +439,8 @@ export class DiceBox {
       appearance,
       faces,
       ghost,
+      system,
+      dsnType,
       faceTex: null,
       // A ghost never shows a model: its numbers would show through.
       modelUrl: !ghost && typeof spec.model === 'string' && spec.model ? spec.model : null,
@@ -487,7 +517,7 @@ export class DiceBox {
       if (die.ghost || die.model || die.faces?.key !== faces.key) continue;
       die.faceTex = tex;
       const { appearance, type, variant } = die;
-      const mat = this.#material(appearance, roll.flags, type, variant, die.faces, false, tex);
+      const mat = this.#material(appearance, roll.flags, type, variant, die.faces, false, tex, die);
       this.#swapMaterial(roll, die, mat);
     }
   }
