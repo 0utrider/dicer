@@ -29,7 +29,7 @@ let stopWatchingArea = null;
 let digitAtlas = null;
 let registry = null; // the DSN registry, once activate() made it
 
-const NOOP_HANDLERS = { onCreate() {}, onRender() {}, onDelete() {} };
+const NOOP_HANDLERS = { onCreate() {}, onUpdate() {}, onRender() {}, onDelete() {} };
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
 const handlers = () => gate ?? NOOP_HANDLERS;
 
@@ -131,6 +131,7 @@ Hooks.once('init', () => {
   }
   registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange });
   Hooks.on('createChatMessage', (message) => handlers().onCreate(message));
+  Hooks.on('updateChatMessage', (message, changes) => handlers().onUpdate(message, changes));
   Hooks.on('renderChatMessageHTML', (message, html) => handlers().onRender(message, html));
   Hooks.on('deleteChatMessage', (message) => handlers().onDelete(message));
 });

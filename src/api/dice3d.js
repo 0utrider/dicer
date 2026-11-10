@@ -45,8 +45,28 @@ export function createDice3dApi({
   renderer = null,
   decorateFor = () => undefined,
 }) {
+  const warned = new Set();
+  /** A malformed third-party call logs one warning per member, never throws. */
+  const warnOnce = (name, detail) => {
+    if (warned.has(name)) return;
+    warned.add(name);
+    console.warn(`dicer: game.dice3d.${name} ignored a malformed call`, detail);
+  };
+
   const api = {
     ...registrationStubs(),
+
+    /**
+     * While rolls appended to an existing message fly, hide only the elements matching
+     * `selector` inside it instead of the whole message; null restores whole-message hiding.
+     */
+    setMessageUpdateHideSelector(selector) {
+      try {
+        if (!gate.setUpdateHideSelector(selector)) warnOnce('setMessageUpdateHideSelector', selector);
+      } catch (err) {
+        warnOnce('setMessageUpdateHideSelector', err);
+      }
+    },
 
     isEnabled() {
       return Boolean(getSetting('enabled'));

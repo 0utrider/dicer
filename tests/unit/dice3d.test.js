@@ -175,3 +175,24 @@ describe('Plan 3 registration stubs (integrations call them from diceSoNiceReady
     expect(api.getSFXModes()).toEqual({});
   });
 });
+
+describe('setMessageUpdateHideSelector', () => {
+  test('passes the selector to the gate and returns nothing', () => {
+    gate.setUpdateHideSelector = vi.fn(() => true);
+    expect(api.setMessageUpdateHideSelector('.dice-roll')).toBeUndefined();
+    expect(api.setMessageUpdateHideSelector(null)).toBeUndefined();
+    expect(gate.setUpdateHideSelector.mock.calls).toEqual([['.dice-roll'], [null]]);
+  });
+
+  test('a rejected selector logs one warning per member and never throws', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    gate.setUpdateHideSelector = vi.fn(() => false);
+    expect(() => api.setMessageUpdateHideSelector(42)).not.toThrow();
+    gate.setUpdateHideSelector = vi.fn(() => {
+      throw new Error('x');
+    });
+    expect(() => api.setMessageUpdateHideSelector('div[')).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});

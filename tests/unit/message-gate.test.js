@@ -970,3 +970,387 @@ describe('message lifecycle depth', () => {
     expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', ['B']]]);
   });
 });
+
+describe('Task 8 review carry-overs', () => {
+  const PRE = 'diceSoNiceMessagePreProcess';
+  const ordered = (result, order) => ({ ...d20Roll(result), options: { rollOrder: order } });
+  const player = { id: 'p1', isGM: false };
+
+  test('a duplicate onCreate for an animating id fires PreProcess once', () => {
+    gate.onCreate(message());
+    gate.onCreate(message());
+    expect(hooks.named(PRE)).toHaveLength(1);
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+  });
+
+  test("roll 0's rollOrder is read from the message, not from a RollStart replacement", async () => {
+    hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.dsnRoll = ordered(3, 0))];
+    gate.onCreate(message('m1', { rolls: [ordered(1, 2), ordered(2, 1)] }));
+    expect(diceBox.rolls.map((r) => r.specs[0].value)).toEqual([2]);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(diceBox.rolls.map((r) => r.specs[0].value)).toEqual([2, 3]);
+  });
+
+  test('rollOrder with privacy: a secret roll in group 2 is never thrown, a ghost one is thrown as a ghost', async () => {
+    const g = makeGate({ currentUser: () => player });
+    g.onCreate(message('m1', { rolls: [ordered(1, 1), { ...ordered(2, 2), secret: true }] }));
+    expect(diceBox.rolls).toHaveLength(1);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+
+    g.onCreate(message('m2', { rolls: [ordered(1, 1), { ...ordered(2, 2), ghost: true }] }));
+    expect(diceBox.rolls).toHaveLength(2);
+    expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 1 }]);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(diceBox.rolls[2].specs).toEqual([{ type: 'd20', value: 2, ghost: true }]);
+  });
+
+  test('immediatelyDisplayChatMessages keeps the ghost and none views', () => {
+    settings.immediatelyDisplayChatMessages = true;
+    const el = li('m1');
+    const rolls = [{ ...d20Roll(1), ghost: true }, { ...d20Roll(2), secret: true }, d20Roll(3)];
+    makeGate({ currentUser: () => player }).onCreate(message('m1', { rolls }));
+    expect(diceBox.rolls.map((r) => r.specs)).toEqual([
+      [{ type: 'd20', value: 1, ghost: true }],
+      [{ type: 'd20', value: 3 }],
+    ]);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+  });
+});
+
+describe('appended rolls (updateChatMessage)', () => {
+  const PRE = 'diceSoNiceMessagePreProcess';
+  const START = 'diceSoNiceRollStart';
+  const ordered = (result, order) => ({ ...d20Roll(result), options: { rollOrder: order } });
+
+  /** Creates a one-roll message and lets it land. */
+  async function created(id = 'm1', extra = {}) {
+    const msg = message(id, extra);
+    gate.onCreate(msg);
+    diceBox.rolls.at(-1).landed.resolve();
+    await flush();
+    return msg;
+  }
+
+  function append(msg, ...rolls) {
+    msg.rolls = [...msg.rolls, ...rolls];
+    gate.onUpdate(msg, { rolls: msg.rolls });
+  }
+
+  /** A rendered message with two .dice-roll children. */
+  function card(id) {
+    const el = li(id);
+    el.innerHTML = '<div class="dice-roll">a</div><div class="dice-roll">b</div>';
+    return el;
+  }
+
+  test('create with 1 roll, update to 2: only the 2nd is thrown, the message is hidden until it lands, RollComplete once more', async () => {
+    const el = li('m1');
+    const msg = await created();
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    const second = d20Roll(4);
+    append(msg, second);
+    expect(diceBox.rolls).toHaveLength(2);
+    expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 4 }]);
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    const rendered = document.createElement('li');
+    gate.onRender(msg, rendered);
+    expect(rendered.classList.contains('dsn-hide')).toBe(true);
+    expect(gate.isAnimating('m1')).toBe(true);
+    expect(hooks.named(PRE)).toHaveLength(2);
+    const starts = hooks.named(START);
+    expect(starts).toHaveLength(2);
+    expect(starts[1][2].roll).toBe(second);
+    expect(starts[1][2].dsnRoll).toBe(second);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(rendered.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named(COMPLETE)).toEqual([
+      [COMPLETE, 'm1', []],
+      [COMPLETE, 'm1', []],
+    ]);
+    vi.advanceTimersByTime(WATCHDOG_MS * 2);
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('only the appended rolls are planned', async () => {
+    const planThrow = vi.fn(realPlanThrow);
+    gate = makeGate({ planThrow });
+    const msg = await created();
+    planThrow.mockClear();
+    append(msg, d20Roll(4));
+    expect(planThrow).toHaveBeenCalledTimes(1);
+    expect(planThrow.mock.calls[0][0]).toBe(msg.rolls[1]);
+  });
+
+  test('a selector .dice-roll:last-child hides only the matching element, also on re-render', async () => {
+    const el = card('m1');
+    const msg = await created();
+    expect(gate.setUpdateHideSelector('.dice-roll:last-child')).toBe(true);
+    append(msg, d20Roll(4));
+    const [first, last] = el.children;
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(first.classList.contains('dsn-hide')).toBe(false);
+    expect(last.classList.contains('dsn-hide')).toBe(true);
+
+    const rendered = document.createElement('li');
+    rendered.innerHTML = '<div class="dice-roll">a</div><div class="dice-roll">b</div>';
+    gate.onRender(msg, rendered);
+    expect(rendered.classList.contains('dsn-hide')).toBe(false);
+    expect(rendered.children[0].classList.contains('dsn-hide')).toBe(false);
+    expect(rendered.children[1].classList.contains('dsn-hide')).toBe(true);
+
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
+    expect(rendered.querySelectorAll('.dsn-hide')).toHaveLength(0);
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('with a selector a notification card is pinned while its match hides, and refreshed on reveal', async () => {
+    const box = document.createElement('div');
+    box.id = 'chat-notifications';
+    document.body.appendChild(box);
+    const msg = await created();
+    gate.setUpdateHideSelector('.dice-roll:last-child');
+    append(msg, d20Roll(4));
+    const cardEl = document.createElement('li');
+    cardEl.dataset.messageId = 'm1';
+    cardEl.innerHTML = '<div class="dice-roll">a</div><div class="dice-roll">b</div>';
+    gate.onRender(msg, cardEl);
+    box.append(cardEl);
+    vi.advanceTimersByTime(0);
+    cardEl._lifeSpan = 4500;
+    expect(cardEl._lifeSpan).toBe(0);
+    expect(cardEl.classList.contains('dsn-hide')).toBe(false);
+    expect(cardEl.children[1].classList.contains('dsn-hide')).toBe(true);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(cardEl.children[1].classList.contains('dsn-hide')).toBe(false);
+    cardEl._lifeSpan = 500;
+    expect(cardEl._lifeSpan).toBe(500); // unpinned
+  });
+
+  test('the selector never applies to a create; null restores whole-message hiding', async () => {
+    const el = card('m1');
+    gate.setUpdateHideSelector('.dice-roll:last-child');
+    const msg = message();
+    gate.onCreate(msg);
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(gate.setUpdateHideSelector(null)).toBe(true);
+    append(msg, d20Roll(4));
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    expect(el.querySelectorAll('.dsn-hide')).toHaveLength(0);
+  });
+
+  test('setUpdateHideSelector rejects a non-string or an invalid selector and keeps the previous one', async () => {
+    const el = card('m1');
+    const msg = await created();
+    expect(gate.setUpdateHideSelector('.dice-roll:last-child')).toBe(true);
+    expect(gate.setUpdateHideSelector(42)).toBe(false);
+    expect(gate.setUpdateHideSelector('div[')).toBe(false);
+    expect(gate.setUpdateHideSelector('')).toBe(false);
+    append(msg, d20Roll(4));
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(el.children[1].classList.contains('dsn-hide')).toBe(true);
+  });
+
+  test('an update with no new rolls, or without changes.rolls, does nothing', async () => {
+    const el = li('m1');
+    const msg = await created();
+    hooks.calls.length = 0;
+    gate.onUpdate(msg, { rolls: msg.rolls });
+    gate.onUpdate(msg, { content: 'x' });
+    msg.rolls = [...msg.rolls, d20Roll(4)];
+    gate.onUpdate(msg, { content: 'y' }); // not a rolls change
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.calls).toEqual([]);
+  });
+
+  test('an update to an unknown id does nothing', () => {
+    const el = li('m1');
+    const msg = message('m1', { rolls: [d20Roll(1), d20Roll(2)] });
+    gate.onUpdate(msg, { rolls: msg.rolls });
+    gate.onUpdate(undefined, { rolls: [] });
+    gate.onUpdate({}, { rolls: [] });
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.calls).toEqual([]);
+  });
+
+  test('a later update to an id first seen by an update animates the rolls added since', () => {
+    const msg = message('m1', { rolls: [d20Roll(1)] });
+    gate.onUpdate(msg, { rolls: msg.rolls });
+    append(msg, d20Roll(2));
+    expect(diceBox.rolls.map((r) => r.specs[0].value)).toEqual([2]);
+  });
+
+  test('roll counts are kept for the last 200 ids only', () => {
+    const first = message('m0', { flags: { dicer: { skip: true } } });
+    gate.onCreate(first);
+    first.flags = {};
+    for (let i = 1; i <= 200; i++) gate.onCreate(message(`m${i}`, { rolls: [] }));
+    append(first, d20Roll(4));
+    expect(diceBox.roll).not.toHaveBeenCalled(); // m0 was evicted: unknown, not animated
+
+    const recent = message('m200', { rolls: [] });
+    append(recent, d20Roll(5));
+    expect(diceBox.rolls.map((r) => r.specs)).toEqual([[{ type: 'd20', value: 5 }]]);
+  });
+
+  test('deleted mid-append: RollComplete once, nothing stays hidden', async () => {
+    const el = card('m1');
+    const msg = await created();
+    gate.setUpdateHideSelector('.dice-roll:last-child');
+    append(msg, d20Roll(4));
+    expect(el.children[1].classList.contains('dsn-hide')).toBe(true);
+    gate.onDelete({ id: 'm1' });
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    vi.advanceTimersByTime(WATCHDOG_MS * 2);
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
+  });
+
+  test('an append while the create animates is queued until the create reveals', async () => {
+    const el = li('m1');
+    const msg = message();
+    gate.onCreate(msg);
+    append(msg, d20Roll(4));
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(hooks.named(PRE)).toHaveLength(1);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
+    expect(diceBox.rolls).toHaveLength(2);
+    expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 4 }]);
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('two appends queued behind one animation are thrown together, with one RollComplete', async () => {
+    const msg = message();
+    gate.onCreate(msg);
+    append(msg, d20Roll(4));
+    append(msg, d20Roll(5));
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    expect(diceBox.rolls.slice(1).map((r) => r.specs[0].value)).toEqual([4, 5]);
+    diceBox.rolls[1].landed.resolve();
+    diceBox.rolls[2].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+
+  test('an append queued behind a selector append hides the whole message meanwhile', async () => {
+    const el = card('m1');
+    const msg = await created();
+    gate.setUpdateHideSelector('.dice-roll:last-child');
+    append(msg, d20Roll(4));
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    append(msg, d20Roll(5));
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    const rendered = document.createElement('li');
+    rendered.innerHTML = '<div class="dice-roll">a</div>';
+    gate.onRender(msg, rendered);
+    expect(rendered.classList.contains('dsn-hide')).toBe(true);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    // The queued append starts with the selector again.
+    expect(diceBox.rolls).toHaveLength(3);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(el.children[1].classList.contains('dsn-hide')).toBe(true);
+    diceBox.rolls[2].landed.resolve();
+    await flush();
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
+    expect(hooks.named(COMPLETE)).toHaveLength(3);
+  });
+
+  test('deleted while an append is queued: RollComplete once, the append is never thrown, nothing hidden', async () => {
+    li('m1');
+    const msg = message();
+    gate.onCreate(msg);
+    append(msg, d20Roll(4));
+    gate.onDelete({ id: 'm1' });
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    diceBox.rolls[0].landed.resolve();
+    await flush();
+    vi.advanceTimersByTime(WATCHDOG_MS * 2);
+    await flush();
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    expect(document.querySelectorAll('.dsn-hide')).toHaveLength(0);
+  });
+
+  test('appended rolls follow the privacy views: a secret append is not animated for a player', async () => {
+    gate = makeGate({ currentUser: () => ({ id: 'p1', isGM: false }) });
+    const el = li('m1');
+    const msg = await created();
+    append(msg, { ...d20Roll(4), secret: true });
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    expect(hooks.named('diceSoNiceMessageProcessed').at(-1)[2]).toEqual({
+      willTrigger3DRoll: false,
+    });
+
+    append(msg, { ...d20Roll(5), ghost: true });
+    expect(diceBox.rolls[1].specs).toEqual([{ type: 'd20', value: 5, ghost: true }]);
+  });
+
+  test('a RollStart flag on an appended roll applies to the appended rolls only', async () => {
+    gate = makeGate({ currentUser: () => ({ id: 'p1', isGM: false }) });
+    const msg = await created();
+    hooks.listeners[START] = [(id, ctx) => (ctx.roll.ghost = true)];
+    append(msg, d20Roll(4), d20Roll(5));
+    expect(diceBox.rolls.slice(1).map((r) => r.specs)).toEqual([
+      [{ type: 'd20', value: 4, ghost: true }],
+      [{ type: 'd20', value: 5, ghost: true }],
+    ]);
+  });
+
+  test('appended rolls are thrown in rollOrder groups', async () => {
+    const msg = await created();
+    append(msg, ordered(4, 2), ordered(5, 1));
+    expect(diceBox.rolls.slice(1).map((r) => r.specs[0].value)).toEqual([5]);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(diceBox.rolls.slice(1).map((r) => r.specs[0].value)).toEqual([5, 4]);
+  });
+
+  test('a PreProcess listener can cancel an append', async () => {
+    const el = li('m1');
+    const msg = await created();
+    hooks.listeners[PRE] = [(id, i) => (i.willTrigger3DRoll = false)];
+    append(msg, d20Roll(4));
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+  });
+
+  test('immediatelyDisplayChatMessages: an append hides nothing but still completes once', async () => {
+    settings.immediatelyDisplayChatMessages = true;
+    const el = li('m1');
+    const msg = await created();
+    append(msg, d20Roll(4));
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    diceBox.rolls[1].landed.resolve();
+    await flush();
+    expect(hooks.named(COMPLETE)).toHaveLength(2);
+  });
+});

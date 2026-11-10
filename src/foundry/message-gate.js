@@ -1,20 +1,17 @@
 import { viewFor } from '../compat/privacy.js';
+import { HIDE, pinCard, refreshCard, matchesIn, hiddenIn, isSelector } from './chat-hiding.js';
 
-/** The latest a hidden message stays hidden, measured from the start of its animation. */
+/**
+ * The longest one rollOrder group may take to land, measured from that group's start (each
+ * group re-arms it). When it fires, the message is revealed and the remaining groups are skipped.
+ */
 export const WATCHDOG_MS = 15000;
 
-const HIDE = 'dsn-hide';
+/** How many message ids the gate remembers a roll count for (to spot appended rolls). */
+export const ROLL_COUNT_LIMIT = 200;
+
 const DSN_SCOPE = 'dice-so-nice';
 const MODULE_SCOPE = 'dicer';
-const NOTIFICATIONS = '#chat-notifications';
-/**
- * Foundry v14 ChatLog keeps each notification card's age in an expando property on the card
- * element itself: #postNotification sets `element._lifeSpan = 0`, #checkNotificationLifeSpan
- * adds NOTIFY_TICKER (500) to it and dismisses the card at NOTIFY_DURATION (5000), and
- * #rerenderMessage copies it to the replacement element (client/applications/sidebar/tabs/
- * chat.mjs). There is no public API for it.
- */
-const LIFESPAN = '_lifeSpan';
 
 /**
  * A message flag from `flags['dice-so-nice']`, else `flags.dicer`. An absent or malformed scope
@@ -54,38 +51,25 @@ function groupsOf(rolls, plan) {
   return [...byOrder.keys()].sort((a, b) => a - b).map((order) => byOrder.get(order));
 }
 
-const pinnedLifespan = (el) => Boolean(Object.getOwnPropertyDescriptor(el, LIFESPAN)?.get);
-
-/**
- * While a notification card is hidden its lifespan is held at 0 (an own accessor on that one
- * element that reads 0 and ignores writes), so Foundry cannot dismiss a card nobody has seen.
- */
-function pinCard(el) {
-  if (!el?.isConnected || !el.closest?.(NOTIFICATIONS) || pinnedLifespan(el)) return;
-  Object.defineProperty(el, LIFESPAN, {
-    configurable: true,
-    enumerable: true,
-    get: () => 0,
-    set() {},
-  });
-}
-
-/** On reveal: drop the pin and give the card a fresh NOTIFY_DURATION from now. */
-function refreshCard(el) {
-  const pinned = pinnedLifespan(el);
-  if (pinned) delete el[LIFESPAN];
-  if (pinned || (LIFESPAN in el && el.closest?.(NOTIFICATIONS))) el[LIFESPAN] = 0;
-}
+/** The views with every roll before `from` (already shown) set to 'none'. */
+const onlyFrom = (views, from) => views.map((v, i) => (i >= from ? v : 'none'));
 
 /**
  * The chat message gate: hides an eligible roll message, throws its dice, and reveals it when
  * they land (or the watchdog fires), firing the Dice So Nice hooks. Pure: every Foundry
  * dependency is injected, so it is unit-tested without Foundry.
  *
- * Guarantee: diceSoNiceRollComplete fires exactly once per animated message (reveal is
- * idempotent per id), whether the dice land, the watchdog fires, the roll throws, a RollStart
- * listener makes it blind, or the message is deleted mid-roll. A message's rolls are thrown in
- * rollOrder groups; privacy views and RollStart happen once, before the first group.
+ * Guarantee: diceSoNiceRollComplete fires exactly once per animation (reveal is idempotent per
+ * id), whether the dice land, the watchdog fires, the roll throws, a RollStart listener makes it
+ * blind, or the message is deleted mid-roll. A message's rolls are thrown in rollOrder groups;
+ * privacy views and RollStart happen once, before the first group.
+ *
+ * Appended rolls (updateChatMessage): the roll count of the last ROLL_COUNT_LIMIT ids is
+ * remembered; an update that adds rolls to a known id animates only the new ones, through the
+ * same PreProcess, privacy, RollStart and roll order path. While they fly the whole message is
+ * hidden, or only the elements matching the update hide selector. One animation runs per id:
+ * an append that arrives while the id animates is queued (appends merge) and starts when that
+ * animation reveals; meanwhile the whole message is hidden. A delete drops the queued append.
  *
  * Message flags (`flags['dice-so-nice']`, else `flags.dicer`): `skip` and `pendingCard` are not
  * animated; `linkedTo: <id>` makes the message a companion of `<id>` (see linkCompanion);
@@ -120,12 +104,15 @@ export function createMessageGate({
 }) {
   /**
    * id -> { elements: Set<HTMLElement>, companions: Map<id, { elements }>, timer, resolve,
-   * promise, own, hide }
+   * promise, own, hide, selector: string | null, pending: { message, from } | undefined }
    */
   const animating = new Map();
   /** companion id -> the id of the animating message it is linked to */
   const companionOf = new Map();
+  /** id -> the message's roll count when last seen (LRU, oldest first) */
+  const rollCounts = new Map();
   let disabled = false;
+  let updateSelector = null;
   const chat = () => (chatUi === undefined ? globalThis.ui?.chat : chatUi);
 
   /**
@@ -232,15 +219,22 @@ export function createMessageGate({
   }
 
   /**
-   * The eligibility plan, or null when the message is not animated. The plan is kept for the
-   * throw, so planAll runs once per message unless RollStart changes what it depends on.
+   * The eligibility plan for the rolls from index `from` on, or null when they are not animated.
+   * The plan is kept for the throw, so planAll runs once unless RollStart changes what it
+   * depends on.
    */
-  function eligiblePlan(message) {
-    if (disabled || !getSetting('enabled') || !message.rolls?.length) return null;
+  function eligiblePlan(message, from) {
+    if (disabled || !getSetting('enabled') || !(message.rolls?.length > from)) return null;
     if (flagOf(message, 'skip') || flagOf(message, 'pendingCard')) return null;
-    const views = viewsOf(message);
+    const views = onlyFrom(viewsOf(message), from);
     const plan = planAll(message.rolls, message, views);
     return plan.some((specs) => specs.length > 0) ? { views, plan } : null;
+  }
+
+  function rememberCount(id, count) {
+    rollCounts.delete(id);
+    rollCounts.set(id, count);
+    if (rollCounts.size > ROLL_COUNT_LIMIT) rollCounts.delete(rollCounts.keys().next().value);
   }
 
   /** Hides a message's element (and pins its notification card) for a hiding holder. */
@@ -250,8 +244,29 @@ export function createMessageGate({
     pinCard(el);
   }
 
+  /**
+   * With a selector, hides the matching elements inside `root` (re-found on each render) and
+   * pins its card; without one, or when the selector cannot be used, hides `root` itself.
+   * Returns whether `root` itself was hidden.
+   */
+  function hideIn(holder, root, selector) {
+    const matches = selector ? matchesIn(root, selector) : null;
+    if (!matches) {
+      hideInto(holder, root);
+      return true;
+    }
+    for (const el of matches) {
+      el.classList.add(HIDE);
+      holder.elements.add(el);
+    }
+    pinCard(root);
+    return false;
+  }
+
   function showElements(id, elements) {
-    for (const el of new Set([...elements, ...elementsFor(id)])) {
+    const roots = elementsFor(id);
+    const inner = [...elements, ...roots].flatMap(hiddenIn);
+    for (const el of new Set([...elements, ...roots, ...inner])) {
       el.classList.remove(HIDE);
       try {
         refreshCard(el);
@@ -261,7 +276,8 @@ export function createMessageGate({
     }
   }
 
-  function reveal(id, { scroll = true } = {}) {
+  /** `next: false` (a delete) drops a queued append instead of starting it. */
+  function reveal(id, { scroll = true, next = true } = {}) {
     const entry = animating.get(id);
     if (!entry) return;
     animating.delete(id);
@@ -283,6 +299,20 @@ export function createMessageGate({
     } catch (err) {
       console.error('dicer: a diceSoNiceRollComplete listener failed', err);
     }
+    const pending = next ? entry.pending : undefined;
+    if (pending && !animating.has(id)) animate(pending.message, pending.from, updateSelector);
+  }
+
+  /**
+   * An append for an id that is still animating waits for that animation to reveal. Appends
+   * merge (the earliest new roll on). Until then the whole message is hidden, so an earlier
+   * append's selector cannot leave the new rolls showing.
+   */
+  function queueAppend(id, entry, message, from) {
+    entry.pending = { message, from: Math.min(entry.pending?.from ?? from, from) };
+    if (!entry.hide || !entry.selector) return;
+    entry.selector = null;
+    for (const el of elementsFor(id)) hideInto(entry, el);
   }
 
   /**
@@ -331,9 +361,14 @@ export function createMessageGate({
     next(0);
   }
 
-  function onCreate(message) {
-    const id = message?.id;
-    if (!id) return;
+  /**
+   * Animates the message's rolls from index `from` on (0 for a create, the first appended roll
+   * for an update): PreProcess, linkedTo, eligibility, hiding, RollStart, then the throw. The
+   * caller has checked that the id is not animating. `selector`: hide only the elements
+   * matching it inside each rendered copy (null hides the whole message).
+   */
+  function animate(message, from, selector) {
+    const id = message.id;
     try {
       const interception = { willTrigger3DRoll: true };
       try {
@@ -347,12 +382,12 @@ export function createMessageGate({
         hooks.callAll('diceSoNiceMessageProcessed', id, { willTrigger3DRoll: false });
         return;
       }
-      const eligible = interception.willTrigger3DRoll ? eligiblePlan(message) : null;
+      const eligible = interception.willTrigger3DRoll ? eligiblePlan(message, from) : null;
       if (!eligible) {
         hooks.callAll('diceSoNiceMessageProcessed', id, { willTrigger3DRoll: false });
         return;
       }
-      if (animating.has(id)) return;
+      if (animating.has(id)) return; // a PreProcess listener started one meanwhile
 
       let resolve;
       const promise = new Promise((r) => (resolve = r));
@@ -367,13 +402,15 @@ export function createMessageGate({
         promise,
         own,
         hide,
+        selector: hide ? selector : null,
+        pending: undefined,
       };
       animating.set(id, entry);
-      if (hide) for (const el of elementsFor(id)) hideInto(entry, el);
+      if (hide) for (const el of elementsFor(id)) hideIn(entry, el, entry.selector);
       entry.timer = setTimeoutFn(() => reveal(id), WATCHDOG_MS);
 
       hooks.callAll('diceSoNiceMessageProcessed', id, { willTrigger3DRoll: true });
-      const first = message.rolls[0];
+      const first = message.rolls[from];
       const context = {
         roll: first,
         user: message.author, // a v14 ChatMessage exposes its User as `author`, not `user`
@@ -390,16 +427,51 @@ export function createMessageGate({
         return;
       }
 
-      const rolls = [context.dsnRoll ?? first, ...message.rolls.slice(1)];
-      const views = viewsOf(message, { before, ...appearedFlags(context, before, message) });
-      // RollStart can only change the views or replace the first roll. The maxDice budget is
-      // shared, so any such change re-plans the whole message.
-      const unchanged = rolls[0] === first && views.every((v, i) => v === eligible.views[i]);
+      const rolls = message.rolls.slice();
+      rolls[from] = context.dsnRoll ?? first;
+      const flags = appearedFlags(context, before, message);
+      const views = onlyFrom(viewsOf(message, { before, ...flags }), from);
+      // RollStart can only change the views or replace the first animated roll. The maxDice
+      // budget is shared, so any such change re-plans every animated roll.
+      const unchanged = rolls[from] === first && views.every((v, i) => v === eligible.views[i]);
       const plan = unchanged ? eligible.plan : planAll(rolls, message, views);
-      throwGroups(id, entry, groupsOf(rolls, plan));
+      // The order is the message's own, like the views: a replacement cannot reorder.
+      throwGroups(id, entry, groupsOf(message.rolls, plan));
     } catch (err) {
       console.error('dicer: chat message gate failed', err);
       reveal(id);
+    }
+  }
+
+  function onCreate(message) {
+    const id = message?.id;
+    if (!id) return;
+    try {
+      rememberCount(id, message.rolls?.length ?? 0);
+    } catch (err) {
+      console.error('dicer: chat message gate failed', err);
+    }
+    if (animating.has(id)) return; // a duplicate create: PreProcess fired already
+    animate(message, 0, null);
+  }
+
+  /**
+   * updateChatMessage: animates the rolls a known message gained. An unknown id (never seen, or
+   * evicted) has no previous count, so nothing is animated rather than its old rolls.
+   */
+  function onUpdate(message, changes) {
+    try {
+      const id = message?.id;
+      if (!id || !changes || typeof changes !== 'object' || !('rolls' in changes)) return;
+      const count = message.rolls?.length ?? 0;
+      const from = rollCounts.get(id);
+      rememberCount(id, count);
+      if (from === undefined || count <= from) return;
+      const current = animating.get(id);
+      if (current) queueAppend(id, current, message, from);
+      else animate(message, from, updateSelector);
+    } catch (err) {
+      console.error('dicer: chat update gate failed', err);
     }
   }
 
@@ -410,13 +482,15 @@ export function createMessageGate({
       const target = entry ? null : animating.get(companionOf.get(id));
       const holder = entry ?? target?.companions.get(id);
       if (!holder || !(entry ?? target).hide || !html?.classList) return;
-      html.classList.add(HIDE);
-      holder.elements.add(html);
+      const whole = hideIn(holder, html, entry?.selector ?? null);
       // renderChatMessageHTML fires before ChatLog connects the element. Its placement is known
       // one macrotask later (only microtasks separate the hook from replaceWith/append).
       setTimeoutFn(() => {
         try {
-          if (holder.elements.has(html) && html.classList.contains(HIDE)) pinCard(html);
+          const hiding = whole
+            ? holder.elements.has(html) && html.classList.contains(HIDE)
+            : animating.get(id) === entry;
+          if (hiding) pinCard(html);
         } catch (err) {
           console.error('dicer: cannot pin a chat notification card', err);
         }
@@ -435,16 +509,34 @@ export function createMessageGate({
         companionOf.delete(id);
         animating.get(targetId)?.companions.delete(id);
       }
-      reveal(id, { scroll: false });
+      rollCounts.delete(id);
+      reveal(id, { scroll: false, next: false });
     } catch (err) {
       console.error('dicer: chat delete gate failed', err);
     }
   }
 
+  /**
+   * The selector whose matches inside a message are hidden while its appended rolls fly (null:
+   * the whole message). Returns false, keeping the previous one, for anything else than null or
+   * a valid CSS selector string.
+   */
+  function setUpdateHideSelector(selector) {
+    if (selector === null) {
+      updateSelector = null;
+      return true;
+    }
+    if (!isSelector(selector, documentRef)) return false;
+    updateSelector = selector;
+    return true;
+  }
+
   return {
     onCreate,
+    onUpdate,
     onRender,
     onDelete,
+    setUpdateHideSelector,
     isAnimating: (id) => animating.has(id),
     waitFor: (id) => animating.get(id)?.promise ?? Promise.resolve(true),
     get disabled() {
