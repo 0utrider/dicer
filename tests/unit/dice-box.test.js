@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { DiceBox } from '../../src/throw/dice-box.js';
+import { DiceBox, ASSET_WAIT_MS } from '../../src/throw/dice-box.js';
+import { MODEL_ROTATIONS } from '../../src/compat/dsn-orientation.js';
+import { rotationToShow, readTopFace, faceForValue } from '../../src/core/face-reader.js';
 import { buildScene } from '../../src/render/scene.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
@@ -131,7 +133,10 @@ const settled = (p) => {
   p.then(() => (done = true));
   return () => done;
 };
-const flushMicrotasks = () => new Promise((r) => queueMicrotask(r)).then(() => Promise.resolve());
+/** Drains the microtask queue (asset loads settle through a few promise hops). */
+const flushMicrotasks = async () => {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+};
 const dieGroups = (renderer) =>
   renderer.scene.children.filter((o) => o.isGroup && o.userData.dicerDie);
 
@@ -920,4 +925,285 @@ describe('image and text faces', () => {
     box.clear();
     error.mockRestore();
   });
+});
+
+describe('model presets', () => {
+  const meshes = (renderer) => dieGroups(renderer).map((g) => g.children[0]);
+  const fakeModels = () => {
+    const pending = [];
+    const model = {
+      geometry: new THREE.BoxGeometry(1, 1, 1),
+      material: new THREE.MeshStandardMaterial(),
+    };
+    const loadModel = vi.fn(
+      () =>
+        new Promise((resolve, reject) => pending.push({ resolve: () => resolve(model), reject })),
+    );
+    return { model, loadModel, pending };
+  };
+  const liveRefs = (box) => [...box._refs.values()].filter((e) => e.refs > 0).length;
+  const landRoll = async (renderer, r) => {
+    const isLanded = settled(r.landed);
+    renderer.tick(10000);
+    renderer.tick(20000);
+    await flushMicrotasks();
+    return isLanded();
+  };
+  /** The face-forcing rotation of an identity landing for `value`. */
+  const forcedFor = (type, value) => {
+    const shape = getShape(type);
+    const r = rotationToShow(shape, readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 }), faceForValue(shape, value));
+    return new THREE.Quaternion(r.x, r.y, r.z, r.w);
+  };
+  beforeEach(() => {
+    createDiceMaterial.mockClear();
+  });
+
+  test('a model whose type has no verified rotation renders procedurally, and the roll lands', async () => {
+    const models = fakeModels();
+    const { renderer, physics, box } = setup({ loadModel: models.loadModel });
+    const r = box.roll([{ type: 'd20', value: 7, dsnType: 'd20', model: 'm/dice_20.glb' }]);
+    expect(models.loadModel).not.toHaveBeenCalled();
+    physics.flush();
+    expect(renderer.isLooping).toBe(true); // nothing to wait for
+    const [mesh] = meshes(renderer);
+    expect(mesh.material).toBe(createDiceMaterial.mock.results[0].value);
+    expect(await landRoll(renderer, r)).toBe(true);
+    box.clear();
+  });
+
+  test('a verified model waits, then becomes the inner mesh with its rotation premultiplied', async () => {
+    const models = fakeModels();
+    const { renderer, physics, box } = setup({ loadModel: models.loadModel });
+    const r = box.roll([
+      { type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' },
+      { type: 'd6', value: 2, dsnType: 'd6', model: 'm/dice_6.glb' },
+    ]);
+    expect(models.loadModel).toHaveBeenCalledTimes(1); // one load per url
+    const [url, opts] = models.loadModel.mock.calls[0];
+    expect(url).toBe('m/dice_6.glb');
+    expect(opts.radius).toBeCloseTo(meshes(renderer)[0].geometry.boundingSphere.radius, 9);
+    const procedural = meshes(renderer)[0].material;
+    physics.flush(); // results applied while the model is still loading
+    expect(renderer.isLooping).toBe(false);
+    renderer.tick(16);
+    expect(dieGroups(renderer).some((g) => g.visible)).toBe(false);
+    const forced = meshes(renderer).map((m) => m.quaternion.clone());
+
+    models.pending[0].resolve();
+    await flushMicrotasks();
+    expect(renderer.isLooping).toBe(true);
+    const M = new THREE.Quaternion(...MODEL_ROTATIONS.d6);
+    meshes(renderer).forEach((mesh, i) => {
+      expect(mesh.geometry).toBe(models.model.geometry);
+      expect(mesh.material).toBe(models.model.material);
+      const want = forced[i].clone().multiply(M);
+      expect(Math.abs(mesh.quaternion.dot(want))).toBeCloseTo(1, 9);
+    });
+    expect(box._refs.get(procedural)?.refs ?? 0).toBe(0); // no die uses it any more
+    expect(await landRoll(renderer, r)).toBe(true);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(20100); // fade: a clone of the model material
+    expect(meshes(renderer)[0].material).not.toBe(models.model.material);
+    expect(models.model.material.transparent).toBe(false);
+    box.clear();
+    await r.finished;
+    expect(liveRefs(box)).toBe(0);
+  });
+
+  test('a model that loads before the results arrive still gets the rotation', async () => {
+    const models = fakeModels();
+    const { renderer, physics, box } = setup({ loadModel: models.loadModel });
+    box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
+    models.pending[0].resolve();
+    await flushMicrotasks();
+    physics.flush();
+    const [mesh] = meshes(renderer);
+    expect(mesh.material).toBe(models.model.material);
+    const want = forcedFor('d6', 5).multiply(new THREE.Quaternion(...MODEL_ROTATIONS.d6));
+    expect(Math.abs(mesh.quaternion.dot(want))).toBeCloseTo(1, 9);
+    box.clear();
+  });
+
+  test('a failed model load falls back to the procedural die and the roll lands', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const models = fakeModels();
+    const { renderer, physics, box } = setup({ loadModel: models.loadModel });
+    const r = box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
+    const procedural = meshes(renderer)[0].material;
+    physics.flush();
+    models.pending[0].reject(new Error('404'));
+    await flushMicrotasks();
+    expect(renderer.isLooping).toBe(true);
+    const [mesh] = meshes(renderer);
+    expect(mesh.material).toBe(procedural);
+    expect(Math.abs(mesh.quaternion.dot(forcedFor('d6', 5)))).toBeCloseTo(1, 9); // no model rotation
+    expect(await landRoll(renderer, r)).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
+    box.clear();
+    error.mockRestore();
+    warn.mockRestore();
+  });
+
+  test('the presetModels setting off, ghosts and dice without a model load nothing', () => {
+    const models = fakeModels();
+    const off = setup({ loadModel: models.loadModel, modelPresets: () => false });
+    off.box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
+    const on = setup({ loadModel: models.loadModel });
+    on.box.roll([
+      { type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb', ghost: true },
+      { type: 'd6', value: 5, dsnType: 'd6' },
+    ]);
+    expect(models.loadModel).not.toHaveBeenCalled();
+    off.box.clear();
+    on.box.clear();
+  });
+
+  test('a material rebuild leaves model dice on their model material', async () => {
+    const models = fakeModels();
+    const { renderer, physics, box } = setup({ loadModel: models.loadModel });
+    box.roll([
+      { type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' },
+      { type: 'd6', value: 1 },
+    ]);
+    models.pending[0].resolve();
+    await flushMicrotasks();
+    physics.flush();
+    box.invalidateMaterials({ replaceInFlight: true });
+    const [model, plain] = meshes(renderer);
+    expect(model.material).toBe(models.model.material);
+    expect(plain.material).toBe(createDiceMaterial.mock.results.at(-1).value);
+    box.clear();
+    expect(liveRefs(box)).toBe(0);
+  });
+});
+
+describe('pending assets (Task 5 review)', () => {
+  const meshes = (renderer) => dieGroups(renderer).map((g) => g.children[0]);
+  const rasterFaces = () => {
+    const labels = getShape('d6').values.map((v) => ({ kind: 'glyph', text: String(v) }));
+    labels[0] = { kind: 'image', url: 'a.png' };
+    return { key: 'sys|d6|x', labels };
+  };
+  const result = () => ({
+    texture: new THREE.DataArrayTexture(new Uint8Array(4 * 4 * 4), 4, 4, 1),
+    layers: Int16Array.from([0, -1, -1, -1, -1, -1]),
+    tint: Uint8Array.from([0, 0, 0, 0, 0, 0]),
+  });
+  const controlledFaces = () => {
+    let resolve;
+    return {
+      acquire: vi.fn(() => new Promise((r) => (resolve = () => r(result())))),
+      release: vi.fn(),
+      resolve: () => resolve(),
+    };
+  };
+  const liveRefs = (box) => [...box._refs.values()].filter((e) => e.refs > 0).length;
+  beforeEach(() => {
+    createDiceMaterial.mockClear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('(a) loaders that never settle cannot keep a roll alive: it proceeds after the cap', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const faceTextures = { acquire: vi.fn(() => new Promise(() => {})), release: vi.fn() };
+    const loadModel = vi.fn(() => new Promise(() => {}));
+    const { renderer, physics, box } = setup({ faceTextures, loadModel });
+    const r = box.roll([
+      { type: 'd6', value: 1, faces: rasterFaces() },
+      { type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' },
+    ]);
+    const isLanded = settled(r.landed);
+    const isFinished = settled(r.finished);
+    physics.flush();
+    await vi.advanceTimersByTimeAsync(ASSET_WAIT_MS - 1);
+    expect(renderer.isLooping).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(renderer.isLooping).toBe(true);
+    renderer.tick(10000);
+    renderer.tick(20000);
+    await flushMicrotasks();
+    expect(isLanded()).toBe(true);
+    await vi.advanceTimersByTimeAsync(2000);
+    renderer.tick(20100);
+    renderer.tick(21000);
+    await flushMicrotasks();
+    expect(isFinished()).toBe(true);
+    expect(error).not.toHaveBeenCalled(); // landed, not failed
+    expect(faceTextures.release).toHaveBeenCalledTimes(1);
+    expect(liveRefs(box)).toBe(0);
+  });
+
+  test('(a) a load that settles after the cap swaps nothing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const faceTextures = controlledFaces();
+    const { renderer, physics, box } = setup({ faceTextures });
+    box.roll([{ type: 'd6', value: 1, faces: rasterFaces() }]);
+    const before = meshes(renderer)[0].material;
+    physics.flush();
+    await vi.advanceTimersByTimeAsync(ASSET_WAIT_MS);
+    faceTextures.resolve();
+    await flushMicrotasks();
+    expect(meshes(renderer)[0].material).toBe(before);
+    expect(createDiceMaterial.mock.calls.every((c) => !c[5])).toBe(true);
+    box.clear();
+    expect(faceTextures.release).toHaveBeenCalledTimes(1);
+    expect(liveRefs(box)).toBe(0);
+  });
+
+  test('(b) a pending roll does not keep the loop drawing empty frames', async () => {
+    const faceTextures = controlledFaces();
+    const { renderer, physics, box } = setup({ faceTextures });
+    const a = box.roll([{ type: 'd6', value: 3 }]);
+    box.roll([{ type: 'd6', value: 1, faces: rasterFaces() }]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+    await flushMicrotasks();
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2100);
+    expect(renderer.tick(2600)).toBe(false); // a finished; only the pending roll is left
+    await a.finished;
+    expect(box.activeRolls).toBe(1);
+    faceTextures.resolve();
+    await flushMicrotasks();
+    expect(renderer.isLooping).toBe(true); // restarted once the faces exist
+    box.clear();
+  });
+
+  test.each(['cleared', 'failed'])(
+    '(c) a roll %s mid-wait releases once; a late resolve swaps nothing and leaks no refs',
+    async (how) => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const faceTextures = controlledFaces();
+      let resolveModel;
+      const model = { geometry: new THREE.BoxGeometry(), material: new THREE.MeshStandardMaterial() };
+      const loadModel = vi.fn(() => new Promise((r) => (resolveModel = () => r(model))));
+      const { renderer, physics, box } = setup({ faceTextures, loadModel });
+      const r = box.roll([
+        { type: 'd6', value: 1, faces: rasterFaces() },
+        { type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' },
+      ]);
+      const dice = meshes(renderer);
+      const before = dice.map((m) => m.material);
+      if (how === 'cleared') box.clear();
+      else physics.fail(0);
+      await r.finished;
+      expect(faceTextures.release).toHaveBeenCalledTimes(1);
+      faceTextures.resolve();
+      resolveModel();
+      await flushMicrotasks();
+      expect(dice.map((m) => m.material)).toEqual(before);
+      expect(dice[1].geometry).not.toBe(model.geometry);
+      expect(createDiceMaterial.mock.calls.every((c) => !c[5])).toBe(true);
+      expect(faceTextures.release).toHaveBeenCalledTimes(1);
+      expect(liveRefs(box)).toBe(0);
+      expect(renderer.isLooping).toBe(false);
+    },
+  );
 });

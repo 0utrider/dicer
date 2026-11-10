@@ -22,7 +22,17 @@ function facesOfType(type) {
   return m ? Number(m[1]) : null;
 }
 
-export function createRegistry({ warn = console.warn } = {}) {
+/** Default model loader: the GLTF chunk loads only when a preset's model is first asked for. */
+const importModel = (url) => import('../render/model-loader.js').then((m) => m.loadDieModel(url));
+
+/**
+ * @param {object} [deps]
+ * @param {(message: string) => void} [deps.warn]
+ * @param {{ callAll(hook: string, ...args: unknown[]): unknown }} [deps.hooks] Foundry's Hooks
+ *   (P3-R2); PresetEntry.loadModel() fires diceSoNiceModelLoaded through it
+ * @param {(url: string) => Promise<unknown>} [deps.loadModel]
+ */
+export function createRegistry({ warn = console.warn, hooks = { callAll() {} }, loadModel = importModel } = {}) {
   const systems = new Map();
   const colorsets = new Map();
   const colorsetModes = new Map();
@@ -101,7 +111,7 @@ export function createRegistry({ warn = console.warn } = {}) {
       labels = Array.from({ length: faces }, (_, i) => (i < given.length ? String(given[i]) : String(values.min + i)));
     }
     const sys = ensureSystem(systemId);
-    sys.dice.set(type, {
+    const entry = {
       ...preset,
       type,
       shape: base,
@@ -114,9 +124,32 @@ export function createRegistry({ warn = console.warn } = {}) {
       modelFile: hasModel ? preset.modelFile : undefined,
       emissiveMaps: preset.emissiveMaps,
       modelLoaded: false,
-      loadModel: async () => {},
-      loadTextures: async () => {},
-    });
+    };
+    let modelLoad = null;
+    // Loads once; never rejects into a third-party caller. A failed load can be retried.
+    entry.loadModel = () => {
+      if (!hasModel) return Promise.resolve();
+      modelLoad ??= Promise.resolve()
+        .then(() => loadModel(entry.modelFile))
+        .then(
+          () => {
+            entry.modelLoaded = true;
+            try {
+              hooks.callAll('diceSoNiceModelLoaded', entry);
+            } catch (err) {
+              bad('loadModel', `a diceSoNiceModelLoaded listener threw: ${err?.message ?? err}`);
+            }
+          },
+          (err) => {
+            modelLoad = null;
+            bad('loadModel', `"${type}": cannot load ${entry.modelFile}: ${err?.message ?? err}`);
+          },
+        );
+      return modelLoad;
+    };
+    // A model preset's textures live in its model.
+    entry.loadTextures = () => entry.loadModel();
+    sys.dice.set(type, entry);
     return true;
   }
 

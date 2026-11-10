@@ -17,7 +17,7 @@ export function registerNoticeSetting() {
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
  * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when look,
- *   interiors, engraving, shadows, glow or presetFaces changes
+ *   interiors, engraving, shadows, glow, presetFaces or presetModels changes
  * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
  *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
  */
@@ -100,7 +100,7 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange }
     default: 'ultra',
     onChange: (value) => onQualityChange?.('qualityCap', value),
   });
-  for (const key of ['interiors', 'engraving', 'shadows', 'glow', 'presetFaces']) {
+  for (const key of ['interiors', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels']) {
     game.settings.register(MODULE_ID, key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),

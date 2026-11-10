@@ -3,7 +3,8 @@ import { createRegistry } from '../../src/compat/registry.js';
 const labels = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
 const make = () => {
   const warn = vi.fn();
-  return { reg: createRegistry({ warn }), warn };
+  // loadModel is injected: the default would import the GLTF chunk and fetch for real.
+  return { reg: createRegistry({ warn, loadModel: async () => ({}) }), warn };
 };
 
 describe('registry', () => {
@@ -158,5 +159,71 @@ describe('registry', () => {
     expect(preset.labels).toHaveLength(20);
     expect(preset.labels.slice(0, 3)).toEqual(['1', '2', '3']);
     expect(preset.labels.every((l) => typeof l === 'string')).toBe(true);
+  });
+});
+
+describe('model presets (P3-R2)', () => {
+  const setup = (loadModel) => {
+    const warn = vi.fn();
+    const hooks = { callAll: vi.fn() };
+    const reg = createRegistry({ warn, hooks, loadModel });
+    return { reg, warn, hooks };
+  };
+  const modelPreset = { type: 'd6', labels: '', modelFile: 'modules/x/dice_6.glb', system: 'x' };
+
+  test('loadModel() loads once, sets modelLoaded, then fires diceSoNiceModelLoaded(preset)', async () => {
+    const loadModel = vi.fn(async () => ({ geometry: {}, material: {} }));
+    const { reg, hooks } = setup(loadModel);
+    await reg.addDicePreset(modelPreset);
+    const preset = reg.presetFor('x', 'd6');
+    expect(preset.modelLoaded).toBe(false);
+    hooks.callAll.mockImplementation(() => expect(preset.modelLoaded).toBe(true));
+    await preset.loadModel();
+    await preset.loadModel();
+    expect(loadModel).toHaveBeenCalledTimes(1);
+    expect(loadModel).toHaveBeenCalledWith('modules/x/dice_6.glb');
+    expect(hooks.callAll).toHaveBeenCalledTimes(1);
+    expect(hooks.callAll).toHaveBeenCalledWith('diceSoNiceModelLoaded', preset);
+  });
+
+  test('a failed load warns, resolves, and fires nothing', async () => {
+    const { reg, hooks, warn } = setup(async () => {
+      throw new Error('404');
+    });
+    await reg.addDicePreset(modelPreset);
+    const preset = reg.presetFor('x', 'd6');
+    await expect(preset.loadModel()).resolves.toBeUndefined();
+    expect(preset.modelLoaded).toBe(false);
+    expect(hooks.callAll).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  test('a throwing hook listener never reaches the caller', async () => {
+    const { reg, hooks } = setup(async () => ({}));
+    hooks.callAll.mockImplementation(() => {
+      throw new Error('listener');
+    });
+    await reg.addDicePreset(modelPreset);
+    await expect(reg.presetFor('x', 'd6').loadModel()).resolves.toBeUndefined();
+  });
+
+  test('a preset without a model loads nothing; loadTextures() loads a model preset', async () => {
+    const loadModel = vi.fn(async () => ({}));
+    const { reg, hooks } = setup(loadModel);
+    await reg.addDicePreset({ type: 'd6', labels: labels(6), system: 'x' });
+    await reg.presetFor('x', 'd6').loadModel();
+    await reg.presetFor('x', 'd6').loadTextures();
+    expect(loadModel).not.toHaveBeenCalled();
+    await reg.addDicePreset({ ...modelPreset, system: 'y' });
+    await reg.presetFor('y', 'd6').loadTextures();
+    expect(loadModel).toHaveBeenCalledTimes(1);
+    expect(hooks.callAll).toHaveBeenCalledTimes(1);
+  });
+
+  test('hooks default to a no-op', async () => {
+    const reg = createRegistry({ warn: vi.fn(), loadModel: async () => ({}) });
+    await reg.addDicePreset(modelPreset);
+    await expect(reg.presetFor('x', 'd6').loadModel()).resolves.toBeUndefined();
+    expect(reg.presetFor('x', 'd6').modelLoaded).toBe(true);
   });
 });

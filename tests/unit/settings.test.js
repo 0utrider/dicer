@@ -48,7 +48,7 @@ test('qualityCap is a world String low/medium/high/ultra (default ultra)', () =>
   expect(Object.keys(qualityCap.choices)).toEqual(['low', 'medium', 'high', 'ultra']);
 });
 
-test.each(['interiors', 'engraving', 'shadows', 'glow', 'presetFaces'])(
+test.each(['interiors', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels'])(
   '%s is a client Boolean toggle, default on',
   (key) => {
     const cfg = capture()[key];

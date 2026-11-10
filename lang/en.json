@@ -62,6 +62,10 @@
       "presetFaces": {
         "Name": "Picture and symbol faces",
         "Hint": "Draw the pictures and symbols that dice presets from other modules put on their faces. Off shows plain numbers instead."
+      },
+      "presetModels": {
+        "Name": "3D model dice",
+        "Hint": "Show the 3D dice models that dice presets from other modules provide, for the die types whose face layout Dicer has verified. Off shows Dicer's own dice instead."
       }
     },
     "Quality": {

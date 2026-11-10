@@ -9,6 +9,7 @@ import {
   programKey,
 } from '../look/appearance.js';
 import { GHOST_APPEARANCE } from '../compat/colorset-map.js';
+import { modelRotationFor } from '../compat/dsn-orientation.js';
 import { Playback } from './playback.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 
@@ -21,6 +22,12 @@ export const FIRST_CHUNK_TIMEOUT_MS = 5000;
 export const DONE_TIMEOUT_MS = 15000;
 /** After done: a roll that has not landed by its playback duration plus this fails. */
 export const LANDING_GRACE_MS = 3000;
+/**
+ * Longest wait for a roll's face layers and models (face-textures caps each image at 4000 ms;
+ * the margin lets that cap win). Past it the roll plays with whatever has arrived and the rest
+ * falls back, even if a loader never settles.
+ */
+export const ASSET_WAIT_MS = 4250;
 /** Die types whose materials acquireWarmup() builds by default. */
 export const WARMUP_TYPES = Object.freeze(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
 
@@ -46,6 +53,10 @@ export function cloneForFade(material) {
   clone.depthWrite = false;
   return clone;
 }
+
+/** GLTF loading lives in its own chunk, fetched the first time a roll shows a model. */
+const importModel = (url, options) =>
+  import('../render/model-loader.js').then((m) => m.loadDieModel(url, options));
 
 /** True when a face set has image or text faces (drawn from face layers). */
 function needsLayers(faces) {
@@ -86,6 +97,8 @@ export class DiceBox {
     visibility = globalThis.document,
     faceTextures = null,
     faceLayers = () => true,
+    loadModel = importModel,
+    modelPresets = () => true,
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -99,6 +112,8 @@ export class DiceBox {
     this._timeBeforeHide = timeBeforeHide;
     this._faceTextures = faceTextures; // face-textures.js; null: text/image faces show numbers
     this._faceLayers = faceLayers; // the presetFaces setting
+    this._loadModel = loadModel; // (url, { radius }) -> Promise<{ geometry, material }>
+    this._modelPresets = modelPresets; // the presetModels setting
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
     this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
@@ -154,7 +169,7 @@ export class DiceBox {
       const flags = this.#flags();
       roll.flags = flags;
       for (const spec of specs) roll.dice.push(this.#makeDie(spec, roll, flags, rollLook));
-      this.#acquireFaces(roll);
+      this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
       roll.playback = new Playback({ dice: roll.dice, area: this._area });
       roll.received = 0;
@@ -183,7 +198,7 @@ export class DiceBox {
           if (roll.received === 1) {
             clearTimeout(roll.firstChunkTimer);
             // The loop starts only once there is a frame to draw (zero idle GPU work).
-            if (!roll.facesPending) this._renderer.startLoop(this._tick);
+            if (!roll.assetsPending) this._renderer.startLoop(this._tick);
           }
         } catch (err) {
           if (!pushed) this._physics.recycle(chunk.data);
@@ -289,6 +304,7 @@ export class DiceBox {
     const old = roll.materials;
     roll.materials = new Set();
     roll.dice.forEach((die, i) => {
+      if (die.model) return; // keeps the model's own material (and its fade clone)
       const mat = this.#material(
         die.appearance,
         flags,
@@ -394,55 +410,132 @@ export class DiceBox {
       faces,
       ghost,
       faceTex: null,
+      // A ghost never shows a model: its numbers would show through.
+      modelUrl: !ghost && typeof spec.model === 'string' && spec.model ? spec.model : null,
+      modelRotation: ghost ? null : modelRotationFor(spec),
+      model: null,
+      modelQuat: null, // set once the model is in: Playback premultiplies it
     };
   }
 
   /**
-   * Starts loading the face layers of every die whose face set has image or text faces (never
-   * a ghost: its faces stay blank). Until they resolve the roll draws nothing and its playback
-   * does not start; the physics throw runs meanwhile. A face that fails or times out
-   * (face-textures caps the wait) shows its number for this roll.
+   * Starts loading the roll's pending assets: the face layers of every die whose face set has
+   * image or text faces, and the model of every die whose model has a verified rotation (never
+   * a ghost's). Until they are in, or ASSET_WAIT_MS passes, the roll draws nothing and its
+   * playback does not start; the physics throw runs meanwhile. Each asset is applied as it
+   * arrives; one that fails, or arrives after the wait, leaves its die as it is (numbers for
+   * a face, Dicer's own die for a model).
    */
-  #acquireFaces(roll) {
+  #acquireAssets(roll) {
+    const loads = [...this.#faceLoads(roll), ...this.#modelLoads(roll)];
+    if (!loads.length) return;
+    roll.assetsPending = true;
+    const deadline = new Promise((resolve) => {
+      roll.assetTimer = setTimeout(() => {
+        console.warn(`dicer: dice assets not ready within ${ASSET_WAIT_MS} ms; showing the rest`);
+        resolve();
+      }, ASSET_WAIT_MS);
+    });
+    const applied = loads.map((load) =>
+      load.then((apply) => {
+        if (roll.removed || !roll.assetsPending) return; // late: swaps nothing
+        try {
+          apply?.();
+        } catch (err) {
+          console.warn('dicer: cannot apply a die asset; the die keeps its look', err);
+        }
+      }),
+    );
+    Promise.race([Promise.all(applied), deadline]).then(() => {
+      clearTimeout(roll.assetTimer);
+      if (roll.removed || !roll.assetsPending) return;
+      roll.assetsPending = false;
+      if (roll.received > 0) this._renderer.startLoop(this._tick);
+      if (roll.settled) this.#armLandingTimer(roll, roll.settled.step);
+    });
+  }
+
+  /** Face-layer loads, each resolving to a function that applies it (or null). Never rejects. */
+  #faceLoads(roll) {
     const ft = this._faceTextures;
-    if (!ft || this._faceLayers() === false) return;
+    if (!ft || this._faceLayers() === false) return [];
     const sets = new Map();
     for (const die of roll.dice) {
       if (!die.ghost && needsLayers(die.faces)) sets.set(die.faces.key, die.faces);
     }
-    if (!sets.size) return;
-    roll.faceSets = [...sets.values()];
-    roll.facesPending = true;
+    if (!sets.size) return [];
+    roll.faceSets = [...sets.values()]; // released when the roll finishes, however it ends
     const failed = (err) => {
       console.warn('dicer: cannot load face textures; the dice show numbers', err);
       return null;
     };
-    const loads = roll.faceSets.map((faces) => {
+    return roll.faceSets.map((faces) => {
+      let load;
       try {
-        return Promise.resolve(ft.acquire(faces)).catch(failed);
+        load = Promise.resolve(ft.acquire(faces)).catch(failed);
       } catch (err) {
-        return Promise.resolve(failed(err));
+        load = Promise.resolve(failed(err));
       }
+      return load.then((tex) => (tex?.texture ? () => this.#applyFaces(roll, faces, tex) : null));
     });
-    Promise.all(loads).then((results) => {
-      if (roll.removed) return;
-      const byKey = new Map(roll.faceSets.map((f, i) => [f.key, results[i]]));
+  }
+
+  #applyFaces(roll, faces, tex) {
+    for (const die of roll.dice) {
+      if (die.ghost || die.model || die.faces?.key !== faces.key) continue;
+      die.faceTex = tex;
+      const { appearance, type, variant } = die;
+      const mat = this.#material(appearance, roll.flags, type, variant, die.faces, false, tex);
+      this.#swapMaterial(roll, die, mat);
+    }
+  }
+
+  /** Model loads (one per url), each resolving to a function that applies it. Never rejects. */
+  #modelLoads(roll) {
+    if (this._modelPresets() === false) return [];
+    const byUrl = new Map();
+    for (const die of roll.dice) {
+      if (!die.modelUrl || !die.modelRotation) continue;
+      if (!byUrl.has(die.modelUrl)) byUrl.set(die.modelUrl, []);
+      byUrl.get(die.modelUrl).push(die);
+    }
+    return [...byUrl].map(([url, dice]) => {
+      const radius = dice[0].geometry.boundingSphere.radius;
+      let load;
       try {
-        for (const die of roll.dice) {
-          const tex = !die.ghost && die.faces ? byKey.get(die.faces.key) : null;
-          if (!tex?.texture) continue;
-          die.faceTex = tex;
-          const { appearance, type, variant, faces } = die;
-          const mat = this.#material(appearance, roll.flags, type, variant, faces, false, tex);
-          this.#swapMaterial(roll, die, mat);
-        }
+        load = Promise.resolve(this._loadModel(url, { radius }));
       } catch (err) {
-        console.warn('dicer: cannot build face materials; the dice show numbers', err);
+        load = Promise.reject(err);
       }
-      roll.facesPending = false;
-      if (roll.received > 0) this._renderer.startLoop(this._tick);
-      if (roll.settled) this.#armLandingTimer(roll, roll.settled.step);
+      return load.then(
+        (model) =>
+          model?.geometry && model.material ? () => this.#applyModel(roll, dice, model) : null,
+        (err) => {
+          console.warn(`dicer: cannot load the die model ${url}; showing Dicer's die`, err);
+          return null;
+        },
+      );
     });
+  }
+
+  /**
+   * Moves (not yet shown) dice onto a model: its geometry and its own material on the inner
+   * mesh, the model rotation premultiplied before the face-forcing one. The collider and the
+   * shadow keep Dicer's shape.
+   */
+  #applyModel(roll, dice, model) {
+    for (const die of dice) {
+      const old = die.inner.material;
+      die.model = model;
+      die.modelQuat = new THREE.Quaternion(...die.modelRotation);
+      die.inner.geometry = model.geometry;
+      die.inner.material = model.material;
+      if (roll.playback?.resultsApplied) die.inner.quaternion.multiply(die.modelQuat);
+      if (!roll.dice.some((d) => d.inner.material === old)) {
+        roll.materials.delete(old);
+        this.#release(old);
+      }
+    }
   }
 
   /** Moves a (not yet shown) die onto `mat`, releasing a material no die of the roll uses. */
@@ -479,7 +572,7 @@ export class DiceBox {
    */
   #armLandingTimer(roll, settledStep) {
     if (roll.removed || roll.phase !== 'playing') return;
-    if (roll.facesPending) {
+    if (roll.assetsPending) {
       roll.settled = { step: settledStep }; // playback has not started: armed once it can
       return;
     }
@@ -513,7 +606,7 @@ export class DiceBox {
     for (const roll of [...this._rolls]) {
       try {
         if (roll.phase === 'playing') {
-          if (roll.facesPending) continue; // hidden, playback not started, until faces exist
+          if (roll.assetsPending) continue; // hidden, playback not started, until assets are in
           const hadFrames = roll.received > 0;
           const state = roll.playback.update(now);
           if (hadFrames && !roll.revealed) this.#reveal(roll);
@@ -528,7 +621,9 @@ export class DiceBox {
         this.#fail(roll, err);
       }
     }
-    return this._rolls.size > 0;
+    // A roll still waiting for its assets draws nothing: it restarts the loop when they are in.
+    for (const roll of this._rolls) if (!roll.assetsPending) return true;
+    return false;
   }
 
   #fail(roll, err) {
@@ -546,6 +641,7 @@ export class DiceBox {
     clearTimeout(roll.firstChunkTimer);
     clearTimeout(roll.doneTimer);
     clearTimeout(roll.landingTimer);
+    clearTimeout(roll.assetTimer);
     const scene = this._renderer.scene;
     for (const die of roll.dice) scene.remove(die.outer);
     for (const plane of roll.shadows) this._renderer.sceneApi.releaseShadow(plane);

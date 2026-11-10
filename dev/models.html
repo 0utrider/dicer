@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dicer model orientation</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #3a3f48;
+        color: #e8e8e8;
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      #out {
+        margin: 0;
+        padding: 8px 12px;
+        font:
+          12px ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="320" height="320"></canvas>
+    <pre id="out">Driven from tests/visual/model-orientation.mjs (window.__models).</pre>
+    <script type="module" src="./models.js"></script>
+  </body>
+</html>

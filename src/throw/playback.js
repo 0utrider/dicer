@@ -61,6 +61,8 @@ export class Playback {
       const target = faceForValue(die.shape, die.targetValue);
       const r = rotationToShow(die.shape, landed, target);
       die.inner.quaternion.set(r.x, r.y, r.z, r.w);
+      // A model die: its model rotation first, then the face-forcing one.
+      if (die.modelQuat) die.inner.quaternion.multiply(die.modelQuat);
     });
     this.resultsApplied = true;
   }

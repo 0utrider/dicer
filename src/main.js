@@ -110,7 +110,7 @@ function mirrorLook(lookId) {
 function onLookChange(key, value) {
   if (key === 'look') mirrorLook(value);
   // Read per roll; no cached material depends on them.
-  if (key === 'shadows' || key === 'presetFaces') return;
+  if (key === 'shadows' || key === 'presetFaces' || key === 'presetModels') return;
   refreshMaterials();
 }
 
@@ -179,6 +179,7 @@ Hooks.once('ready', async () => {
         timeBeforeHide: () => Number(getSetting('timeBeforeHide')) || 0,
         faceTextures: createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont }),
         faceLayers: () => getSetting('presetFaces') !== false,
+        modelPresets: () => getSetting('presetModels') !== false,
       });
     },
     activate: ({ renderer, diceBox: box }) => {
@@ -186,7 +187,7 @@ Hooks.once('ready', async () => {
       diceRenderer = renderer;
       // Each die resolves its look from its roll's options and its roller's flag; custom die
       // types are shaped through the registry.
-      const registry = createRegistry();
+      const registry = createRegistry({ hooks: Hooks });
       const resolver = createLookResolver({
         registry,
         getUser: (id) => game.users?.get(id),
