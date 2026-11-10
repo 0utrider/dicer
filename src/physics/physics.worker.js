@@ -1,0 +1,34 @@
+/* Module worker: owns one Rapier sim. Must not touch the DOM. */
+import { createSim, initPhysics } from './sim.js';
+import { MSG, READY } from './protocol.js';
+
+const DEFAULT_AREA = { halfWidth: 12, halfDepth: 7 };
+let sim = null;
+let ready = null;
+
+self.onmessage = async (e) => {
+  const msg = e.data;
+  try {
+    if (msg.type === MSG.INIT) {
+      ready = initPhysics().then(() => {
+        sim = createSim(msg.area ?? DEFAULT_AREA);
+      });
+      await ready;
+      self.postMessage({ type: READY });
+      return;
+    }
+    await ready; // messages sent before init completes are handled in order afterwards
+    if (msg.type === MSG.RESIZE) {
+      sim.resize(msg.area);
+    } else if (msg.type === MSG.RECYCLE) {
+      sim.recycle(msg.buffer);
+    } else if (msg.type === MSG.THROW) {
+      const { settledStep } = sim.throw({ dice: msg.dice, seed: msg.seed }, (c) =>
+        self.postMessage({ type: MSG.CHUNK, id: msg.id, ...c }, [c.data.buffer]),
+      );
+      self.postMessage({ type: MSG.DONE, id: msg.id, settledStep });
+    }
+  } catch (err) {
+    self.postMessage({ type: MSG.ERROR, id: msg.id, message: String(err?.message ?? err) });
+  }
+};

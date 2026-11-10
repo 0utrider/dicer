@@ -1,0 +1,72 @@
+import { expect, test } from 'vitest';
+import { PhysicsClient } from '../../src/physics/physics-client.js';
+
+class FakeWorker {
+  constructor() {
+    this.sent = [];
+    this.terminated = false;
+  }
+  postMessage(m, t) {
+    this.sent.push({ m, t });
+  }
+  terminate() {
+    this.terminated = true;
+  }
+  emit(data) {
+    this.onmessage({ data });
+  }
+}
+
+test('throw before ready is queued, chunks are forwarded in order, done resolves', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  const stream = client.throw({ dice: [{ type: 'd20' }], seed: 1 });
+  expect(w.sent.some((s) => s.m.type === 'throw')).toBe(false);
+  w.emit({ type: 'ready' });
+  await client.ready();
+  const throwMsg = w.sent.find((s) => s.m.type === 'throw').m;
+  const got = [];
+  stream.onChunk((c) => got.push(c.index));
+  w.emit({
+    type: 'chunk',
+    id: throwMsg.id,
+    index: 0,
+    steps: 30,
+    data: new Float32Array(210),
+    done: false,
+  });
+  w.emit({
+    type: 'chunk',
+    id: throwMsg.id,
+    index: 1,
+    steps: 5,
+    data: new Float32Array(35),
+    done: true,
+  });
+  w.emit({ type: 'done', id: throwMsg.id, settledStep: 35 });
+  await expect(stream.done).resolves.toEqual({ settledStep: 35 });
+  expect(got).toEqual([0, 1]);
+});
+
+test('recycle transfers the buffer back; terminate terminates the single worker', () => {
+  let created = 0;
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => (created++, w));
+  const buf = new Float32Array(7);
+  client.recycle(buf);
+  expect(w.sent.at(-1).t).toEqual([buf.buffer]);
+  client.resize({ halfWidth: 5, halfDepth: 5 });
+  expect(created).toBe(1);
+  client.terminate();
+  expect(w.terminated).toBe(true);
+});
+
+test('an error message rejects only that stream', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  w.emit({ type: 'ready' });
+  const stream = client.throw({ dice: [{ type: 'd20' }], seed: 1 });
+  const id = w.sent.find((s) => s.m.type === 'throw').m.id;
+  w.emit({ type: 'error', id, message: 'boom' });
+  await expect(stream.done).rejects.toThrow('boom');
+});
