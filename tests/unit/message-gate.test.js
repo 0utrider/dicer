@@ -358,24 +358,92 @@ describe('privacy matrix', () => {
     expect(hooks.named(COMPLETE)).toEqual([[COMPLETE, 'm1', []]]);
   });
 
-  test('a blind roll on the author client is ghost or none, never real', () => {
-    const blindMsg = (id) =>
-      message(id, { isContentVisible: false, blind: true, whisper: [], author: { id: 'p1' } });
-    priv(player).onCreate(blindMsg('m1'));
-    expect(diceBox.roll).not.toHaveBeenCalled();
+  describe('a blind roll (Foundry whispers it to the GM ids)', () => {
+    const blindMsg = (id, visible = false) =>
+      message(id, { isContentVisible: visible, blind: true, whisper: ['gm'], author: { id: 'p1' } });
 
-    settings.showGhostDice = true;
-    priv(player).onCreate(blindMsg('m2'));
-    expect(diceBox.rolls).toHaveLength(1);
-    expect(diceBox.rolls[0].specs.every((s) => s.ghost === true)).toBe(true);
+    test('the author, not a recipient: ghost with showGhostDice, none without; never real', () => {
+      priv(player).onCreate(blindMsg('m1'));
+      expect(diceBox.roll).not.toHaveBeenCalled();
+
+      settings.showGhostDice = true;
+      priv(player).onCreate(blindMsg('m2'));
+      expect(diceBox.rolls).toHaveLength(1);
+      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+    });
+
+    test('another player, not a recipient: ghost with showGhostDice (whispered), none without', () => {
+      const other = { id: 'p2', isGM: false };
+      priv(other).onCreate(blindMsg('m1'));
+      expect(diceBox.roll).not.toHaveBeenCalled();
+
+      settings.showGhostDice = true;
+      priv(other).onCreate(blindMsg('m2'));
+      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17, ghost: true }]);
+    });
+
+    test('the GM sees it for real', () => {
+      priv(gm).onCreate(blindMsg('m1', true));
+      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 17 }]);
+    });
   });
 
-  test('a blind roll on another player client: none even with showGhostDice', () => {
-    settings.showGhostDice = true;
-    priv({ id: 'p2', isGM: false }).onCreate(
-      message('m1', { isContentVisible: false, blind: true, author: { id: 'p1' } }),
-    );
-    expect(diceBox.roll).not.toHaveBeenCalled();
+  describe('a RollStart listener flagging a roll applies to the whole message (pf2e)', () => {
+    const two = () => [d20Roll(4), d20Roll(8)];
+
+    test('ctx.roll.ghost = true on a two-roll message: every roll is a ghost', () => {
+      hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.roll.ghost = true)];
+      priv(player).onCreate(message('m1', { rolls: two() }));
+      expect(diceBox.rolls).toHaveLength(2);
+      for (const r of diceBox.rolls) expect(r.specs.every((s) => s.ghost === true)).toBe(true);
+    });
+
+    test('ctx.dsnRoll replaced with a ghost roll: every roll is a ghost', () => {
+      hooks.listeners.diceSoNiceRollStart = [
+        (id, ctx) => (ctx.dsnRoll = { ...d20Roll(3), ghost: true }),
+      ];
+      priv(player).onCreate(message('m1', { rolls: two() }));
+      expect(diceBox.rolls).toHaveLength(2);
+      for (const r of diceBox.rolls) expect(r.specs.every((s) => s.ghost === true)).toBe(true);
+    });
+
+    test('ctx.roll replaced with a ghost roll: every roll is a ghost', () => {
+      hooks.listeners.diceSoNiceRollStart = [
+        (id, ctx) => (ctx.roll = { ...d20Roll(3), ghost: true }),
+      ];
+      priv(player).onCreate(message('m1', { rolls: two() }));
+      expect(diceBox.rolls).toHaveLength(2);
+      for (const r of diceBox.rolls) expect(r.specs.every((s) => s.ghost === true)).toBe(true);
+    });
+
+    test('ctx.dsnRoll replaced with a secret roll on a player client: none', () => {
+      hooks.listeners.diceSoNiceRollStart = [
+        (id, ctx) => (ctx.dsnRoll = { ...d20Roll(3), secret: true }),
+      ];
+      priv(player).onCreate(message('m1', { rolls: two() }));
+      expect(diceBox.roll).not.toHaveBeenCalled();
+    });
+
+    test('ctx.roll replaced with a secret roll on a player client: none', () => {
+      hooks.listeners.diceSoNiceRollStart = [
+        (id, ctx) => (ctx.roll = { ...d20Roll(3), secret: true }),
+      ];
+      priv(player).onCreate(message('m1', { rolls: two() }));
+      expect(diceBox.roll).not.toHaveBeenCalled();
+    });
+
+    test('ctx.roll.secret = true on a player client: none for every roll', () => {
+      hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.roll.secret = true)];
+      priv(player).onCreate(message('m1', { rolls: two() }));
+      expect(diceBox.roll).not.toHaveBeenCalled();
+    });
+
+    test('a roll that was already ghost before RollStart stays per roll', () => {
+      const rolls = [{ ...d20Roll(4), ghost: true }, d20Roll(8)];
+      priv(player).onCreate(message('m1', { rolls }));
+      expect(diceBox.rolls[0].specs[0].ghost).toBe(true);
+      expect(diceBox.rolls[1].specs[0].ghost).toBeUndefined();
+    });
   });
 
   test('roll.secret on a player client: none; on a GM client that sees it: real', () => {

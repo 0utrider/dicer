@@ -118,7 +118,7 @@ export function createMessageGate({
   }
 
   /** How each of the message's own rolls shows to the current user (privacy matrix). */
-  function viewsOf(message) {
+  function viewsOf(message, { before, ghostAll = false, secretAll = false } = {}) {
     let user;
     try {
       user = currentUser();
@@ -133,9 +133,32 @@ export function createMessageGate({
       whispered: (message.whisper?.length ?? 0) > 0,
       showGhostDice: getSetting('showGhostDice') === true,
     };
-    return message.rolls.map((roll) =>
-      viewFor({ ...base, rollGhost: Boolean(roll?.ghost), rollSecret: Boolean(roll?.secret) }),
-    );
+    return message.rolls.map((roll, i) => {
+      // Flags are OR-ed: a flag seen before RollStart is never dropped by a later change.
+      const view = viewFor({
+        ...base,
+        rollGhost: Boolean(roll?.ghost || before?.[i]?.ghost),
+        rollSecret: secretAll || Boolean(roll?.secret || before?.[i]?.secret),
+      });
+      return ghostAll && view !== 'none' ? 'ghost' : view;
+    });
+  }
+
+  /**
+   * A RollStart listener (pf2e) flags `ctx.roll` or `ctx.dsnRoll` to mean the whole message, while
+   * only that one roll carries it. A ghost/secret flag that appeared there during RollStart, on
+   * the roll itself or on a replacement object, applies to every roll of the message.
+   */
+  function appearedFlags(context, before, message) {
+    const prior = new Map(message.rolls.map((r, i) => [r, before[i]]));
+    const out = { ghostAll: false, secretAll: false };
+    for (const candidate of new Set([context.roll, context.dsnRoll])) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const was = prior.get(candidate);
+      if (candidate.ghost && !was?.ghost) out.ghostAll = true;
+      if (candidate.secret && !was?.secret) out.secretAll = true;
+    }
+    return out;
   }
 
   const ghostDecorator = () => () => ({ ghost: true });
@@ -219,6 +242,7 @@ export function createMessageGate({
         blind: false,
         dsnRoll: first,
       };
+      const before = message.rolls.map((r) => ({ ghost: Boolean(r?.ghost), secret: Boolean(r?.secret) }));
       hooks.callAll('diceSoNiceRollStart', id, context);
       if (!animating.has(id)) return; // a listener deleted the message
       // A blind context forces every view to none: nothing is thrown, the message shows at once.
@@ -228,7 +252,8 @@ export function createMessageGate({
       }
 
       const rolls = [context.dsnRoll ?? first, ...message.rolls.slice(1)];
-      const landed = planAll(rolls, message, viewsOf(message))
+      const views = viewsOf(message, { before, ...appearedFlags(context, before, message) });
+      const landed = planAll(rolls, message, views)
         .filter((specs) => specs.length > 0)
         .map((specs) => diceBox.roll(specs).landed);
       Promise.all(landed).then(

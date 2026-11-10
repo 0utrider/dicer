@@ -27,6 +27,8 @@ export function viewFor({
   showGhostDice,
 }) {
   if (rollSecret && !(isGM && contentVisible)) return 'none';
+  // `blind && isAuthor` exists because Foundry whispers a blind roll to the GMs only: its author
+  // receives it without being a whisper recipient, so `whispered` alone would not cover them.
   if (!contentVisible) {
     return showGhostDice && (whispered || (blind && isAuthor)) ? 'ghost' : 'none';
   }
