@@ -1,3 +1,5 @@
+import { LOOKS } from './look/looks.js';
+
 export const MODULE_ID = 'dicer';
 
 /** The hidden world flag behind the one-time "Dice So Nice is active" GM notice. */
@@ -12,9 +14,14 @@ export function registerNoticeSetting() {
 
 /**
  * Registers every Dicer setting.
- * @param {{ onAreaChange?: () => void }} [callbacks] onAreaChange runs when diceScale changes.
+ * @param {object} [callbacks]
+ * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
+ * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when look,
+ *   interiors, engraving, shadows or glow changes
+ * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
+ *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
  */
-export function registerSettings({ onAreaChange } = {}) {
+export function registerSettings({ onAreaChange, onLookChange, onQualityChange } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   game.settings.register(MODULE_ID, 'enabled', {
     name: t('enabled.Name'),
@@ -61,6 +68,49 @@ export function registerSettings({ onAreaChange } = {}) {
     range: { min: 1, max: 100, step: 1 },
     default: 20,
   });
+  game.settings.register(MODULE_ID, 'look', {
+    name: t('look.Name'),
+    hint: t('look.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: Object.fromEntries(Object.entries(LOOKS).map(([id, look]) => [id, look.name])),
+    default: 'default',
+    onChange: (value) => onLookChange?.('look', value),
+  });
+  const tiers = ['low', 'medium', 'high', 'ultra'];
+  const tierChoices = (keys) => Object.fromEntries(keys.map((k) => [k, t(`quality.Choices.${k}`)]));
+  game.settings.register(MODULE_ID, 'quality', {
+    name: t('quality.Name'),
+    hint: t('quality.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: tierChoices(['auto', ...tiers]),
+    default: 'auto',
+    onChange: (value) => onQualityChange?.('quality', value),
+  });
+  game.settings.register(MODULE_ID, 'qualityCap', {
+    name: t('qualityCap.Name'),
+    hint: t('qualityCap.Hint'),
+    scope: 'world',
+    config: true,
+    type: String,
+    choices: tierChoices(tiers),
+    default: 'ultra',
+    onChange: (value) => onQualityChange?.('qualityCap', value),
+  });
+  for (const key of ['interiors', 'engraving', 'shadows', 'glow']) {
+    game.settings.register(MODULE_ID, key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope: 'client',
+      config: true,
+      type: Boolean,
+      default: true,
+      onChange: (value) => onLookChange?.(key, value),
+    });
+  }
   registerNoticeSetting();
 }
 

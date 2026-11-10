@@ -23,7 +23,45 @@
       "maxDice": {
         "Name": "Maximum dice per message",
         "Hint": "Dice beyond this number are not thrown."
+      },
+      "look": {
+        "Name": "Dice look",
+        "Hint": "The material and colours of your dice on this client."
+      },
+      "quality": {
+        "Name": "Graphics quality",
+        "Hint": "Auto measures your GPU once and picks a tier. Lower tiers are faster; the world cap still applies.",
+        "Choices": {
+          "auto": "Auto",
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "ultra": "Ultra"
+        }
+      },
+      "qualityCap": {
+        "Name": "Maximum graphics quality",
+        "Hint": "Upper limit on the dice quality tier for every player in this world."
+      },
+      "interiors": {
+        "Name": "Dice interiors",
+        "Hint": "Draw the liquid, glitter, swirl and nebula interiors of resin dice. Off is faster."
+      },
+      "engraving": {
+        "Name": "Engraved numbers",
+        "Hint": "Shade the numbers as engraved into the die. Off draws them flat."
+      },
+      "shadows": {
+        "Name": "Dice shadows",
+        "Hint": "Draw a soft shadow under each die."
+      },
+      "glow": {
+        "Name": "Dice glow",
+        "Hint": "Let glowing looks emit light. Off keeps them unlit."
       }
+    },
+    "Quality": {
+      "Dropped": "Dicer lowered the dice graphics quality for this session to keep rolls smooth."
     }
   }
 }

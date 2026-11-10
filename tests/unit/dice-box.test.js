@@ -521,3 +521,202 @@ describe('hidden tabs get no animation frames', () => {
     err.mockRestore();
   });
 });
+
+describe('per-roll appearance, flags and refcounted materials', () => {
+  const ruby = { body: { type: 'opaque', color: '#b3202a' }, numbers: { fill: 'paint' } };
+  const jade = { body: { type: 'marble', color: '#3f9a6c' }, numbers: { fill: 'gold' } };
+  const meshOf = (renderer, i = -1) => dieGroups(renderer).at(i).children[0];
+
+  test('two looks give different cached materials; same look reuses', () => {
+    let look = ruby;
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => look });
+    box.roll([{ type: 'd6', value: 1 }]);
+    const a = meshOf(renderer).material;
+    look = jade;
+    box.roll([{ type: 'd6', value: 1 }]);
+    const b = meshOf(renderer).material;
+    expect(b).not.toBe(a);
+    look = { ...ruby }; // a different object, the same look
+    box.roll([{ type: 'd6', value: 1 }]);
+    expect(meshOf(renderer).material).toBe(a);
+    box.clear();
+  });
+
+  test('the fixed appearance option still works as a constant getter', () => {
+    const { renderer, box } = setup({ appearance: ruby });
+    box.roll([{ type: 'd6', value: 1 }]);
+    box.roll([{ type: 'd6', value: 2 }]);
+    expect(meshOf(renderer, 0).material).toBe(meshOf(renderer, 1).material);
+    box.clear();
+  });
+
+  test('flags change the programKey part of the cache key', () => {
+    const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
+    const { renderer, box } = setup({
+      appearance: undefined,
+      getAppearance: () => ({}),
+      getFlags: () => flags,
+    });
+    box.roll([{ type: 'd6', value: 1 }]);
+    const a = meshOf(renderer).material;
+    flags.interiorSteps = 16;
+    box.roll([{ type: 'd6', value: 1 }]);
+    const b = meshOf(renderer).material;
+    expect(b).not.toBe(a);
+    expect(b.userData.programKey).not.toBe(a.userData.programKey);
+    expect(b.userData.programKey).toContain(':16');
+    flags.interiorSteps = 32;
+    box.roll([{ type: 'd6', value: 1 }]);
+    expect(meshOf(renderer).material).toBe(a);
+    box.clear();
+  });
+
+  test('the geometry edge style follows the look of each roll', () => {
+    buildDieGeometry.mockClear();
+    let look = ruby;
+    const { box } = setup({ appearance: undefined, getAppearance: () => look });
+    box.roll([{ type: 'd6', value: 1 }]);
+    look = { ...ruby, edges: { style: 'sharp' } };
+    box.roll([{ type: 'd6', value: 1 }]);
+    expect(buildDieGeometry.mock.calls.map((c) => c[1])).toEqual([
+      { style: 'rounded' },
+      { style: 'sharp' },
+    ]);
+    box.clear();
+  });
+
+  test('invalidateMaterials during a roll keeps the rolling dice rendering with their material, disposes it after finished', async () => {
+    const { renderer, physics, box } = setup({ appearance: ruby });
+    const r = box.roll([{ type: 'd6', value: 3 }]);
+    physics.flush();
+    renderer.tick(0);
+    const mesh = meshOf(renderer);
+    const mat = mesh.material;
+    const dispose = vi.spyOn(mat, 'dispose');
+    const labels = vi.spyOn(mat.userData.uniforms.uLabels.value, 'dispose');
+    box.invalidateMaterials();
+    expect(dispose).not.toHaveBeenCalled();
+    expect(mesh.material).toBe(mat);
+    // A new roll gets a fresh material for the same look.
+    const r2 = box.roll([{ type: 'd6', value: 4 }]);
+    expect(meshOf(renderer).material).not.toBe(mat);
+    renderer.tick(2000);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2100); // fade (a clone of the stale material)
+    expect(dispose).not.toHaveBeenCalled();
+    renderer.tick(2600);
+    await r.finished;
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(labels).toHaveBeenCalledTimes(1);
+    box.clear();
+    await r2.finished;
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test('an unused stale material is disposed immediately', async () => {
+    const { renderer, box } = setup({ appearance: ruby });
+    const r = box.roll([{ type: 'd6', value: 3 }]);
+    const mat = meshOf(renderer).material;
+    const dispose = vi.spyOn(mat, 'dispose');
+    box.clear();
+    await r.finished;
+    expect(dispose).not.toHaveBeenCalled(); // still cached for the next roll
+    box.invalidateMaterials();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    box.dispose();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test('a material shared by two rolls is disposed only when the last one finishes', async () => {
+    const { renderer, physics, box } = setup({ appearance: ruby });
+    const a = box.roll([{ type: 'd6', value: 3 }]);
+    const mat = meshOf(renderer).material;
+    const b = box.roll([{ type: 'd6', value: 5 }]);
+    expect(meshOf(renderer).material).toBe(mat);
+    const dispose = vi.spyOn(mat, 'dispose');
+    box.invalidateMaterials();
+    physics.flush(0);
+    renderer.tick(0);
+    renderer.tick(2000);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2100);
+    renderer.tick(2600);
+    await a.finished;
+    expect(dispose).not.toHaveBeenCalled();
+    box.clear();
+    await b.finished;
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test('invalidateMaterials({ replaceInFlight }) swaps rolling and fading dice onto rebuilt materials', async () => {
+    const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
+    const { renderer, physics, box } = setup({
+      appearance: undefined,
+      getAppearance: () => ({}),
+      getFlags: () => flags,
+    });
+    const fading = box.roll([{ type: 'd6', value: 3 }]);
+    physics.flush(0);
+    renderer.tick(0);
+    renderer.tick(2000);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2100);
+    renderer.tick(2200); // fading, opacity 0.75
+    const rolling = box.roll([{ type: 'd8', value: 2 }]);
+    const fadeMesh = meshOf(renderer, 0);
+    const rollMesh = meshOf(renderer, 1);
+    const oldFade = fadeMesh.material;
+    const oldRoll = rollMesh.material;
+    const disposeRoll = vi.spyOn(oldRoll, 'dispose');
+    const disposeFade = vi.spyOn(oldFade, 'dispose');
+    flags.interiorSteps = 0; // e.g. a shader error forced low
+    box.invalidateMaterials({ replaceInFlight: true });
+    expect(rollMesh.material).not.toBe(oldRoll);
+    expect(rollMesh.material.userData.programKey).toContain('|none|');
+    expect(disposeRoll).toHaveBeenCalledTimes(1);
+    expect(fadeMesh.material).not.toBe(oldFade);
+    expect(fadeMesh.material.transparent).toBe(true);
+    expect(fadeMesh.material.opacity).toBeCloseTo(0.75, 5);
+    expect(fadeMesh.material.userData.programKey).toContain('|none|');
+    expect(disposeFade).toHaveBeenCalledTimes(1);
+    renderer.tick(2300);
+    expect(fadeMesh.material.opacity).toBeCloseTo(0.5, 5);
+    box.clear();
+    await Promise.all([fading.finished, rolling.finished]);
+  });
+
+  test('shadows() false creates no shadow planes', async () => {
+    const { renderer, physics, box } = setup({ shadows: () => false });
+    const r = box.roll([{ type: 'd6', value: 3 }]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(16);
+    expect(dieGroups(renderer).every((g) => g.visible)).toBe(true);
+    expect(renderer.scene.children.filter((o) => o.isMesh)).toHaveLength(0);
+    box.clear();
+    await r.finished;
+  });
+
+  test('acquireWarmup() holds the current look materials until released', () => {
+    const { box } = setup({ appearance: ruby });
+    const warm = box.acquireWarmup(['d6', 'd20']);
+    expect(warm.materials).toHaveLength(2);
+    expect(warm.geometry.isBufferGeometry).toBe(true);
+    const disposes = warm.materials.map((m) => vi.spyOn(m, 'dispose'));
+    box.invalidateMaterials();
+    for (const d of disposes) expect(d).not.toHaveBeenCalled();
+    warm.release();
+    for (const d of disposes) expect(d).toHaveBeenCalledTimes(1);
+    warm.release(); // idempotent
+    for (const d of disposes) expect(d).toHaveBeenCalledTimes(1);
+  });
+
+  test('warm-up materials are the ones the next roll uses', () => {
+    const { renderer, box } = setup({ appearance: ruby });
+    const warm = box.acquireWarmup(['d6']);
+    warm.release();
+    box.roll([{ type: 'd6', value: 1 }]);
+    expect(meshOf(renderer).material).toBe(warm.materials[0]);
+    box.clear();
+  });
+});

@@ -1,8 +1,13 @@
 import * as THREE from 'three';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
-import { createDiceMaterial } from '../render/dice-material.js';
-import { normalizeAppearance } from '../look/appearance.js';
+import { createDiceMaterial, DEFAULT_FLAGS } from '../render/dice-material.js';
+import {
+  DEFAULT_APPEARANCE,
+  appearanceKey,
+  normalizeAppearance,
+  programKey,
+} from '../look/appearance.js';
 import { Playback } from './playback.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 
@@ -15,6 +20,8 @@ export const FIRST_CHUNK_TIMEOUT_MS = 5000;
 export const DONE_TIMEOUT_MS = 15000;
 /** After done: a roll that has not landed by its playback duration plus this fails. */
 export const LANDING_GRACE_MS = 3000;
+/** Die types whose materials acquireWarmup() builds by default. */
+export const WARMUP_TYPES = Object.freeze(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
 
 /**
  * Clone a cached die material for the fade. Material.clone() deep-copies userData through
@@ -44,6 +51,11 @@ export function cloneForFade(material) {
  * Each roll resolves `landed` once its dice come to rest and `finished` after the linger
  * (timeBeforeHide) and a 400 ms fade. When no roll remains the tick returns false, so the
  * renderer stops and hides its canvas.
+ *
+ * Each roll snapshots the look (getAppearance) and feature flags (getFlags) when it starts.
+ * Materials are cached by appearanceKey|programKey|type|variant and refcounted per roll:
+ * invalidateMaterials() drops them from the cache and marks them stale, and a stale material
+ * is disposed when the last roll (or warm-up) holding it lets go.
  */
 export class DiceBox {
   constructor({
@@ -51,6 +63,9 @@ export class DiceBox {
     physics,
     atlas,
     appearance,
+    getAppearance,
+    getFlags = () => DEFAULT_FLAGS,
+    shadows = () => true,
     getArea,
     diceScale = () => 1,
     timeBeforeHide = () => DEFAULT_LINGER_MS,
@@ -59,13 +74,16 @@ export class DiceBox {
     this._renderer = renderer;
     this._physics = physics;
     this._atlas = atlas;
-    this._appearance = appearance; // createDiceMaterial normalizes it
-    this._edgeStyle = normalizeAppearance(appearance).edges.style;
+    // The fixed `appearance` option (Plan 1) is kept as a constant getter.
+    this._getAppearance = getAppearance ?? (() => appearance ?? DEFAULT_APPEARANCE);
+    this._getFlags = getFlags;
+    this._shadows = shadows;
     this._getArea = getArea;
     this._diceScale = diceScale;
     this._timeBeforeHide = timeBeforeHide;
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
-    this._materials = new Map(); // body|type|variant -> material
+    this._materials = new Map(); // appearanceKey|programKey|type|variant -> material
+    this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
     this._rolls = new Set();
     this._area = null;
     this._tick = (now) => this.#frame(now);
@@ -95,7 +113,14 @@ export class DiceBox {
 
   /** @param {import('./throw-planner.js').DieSpec[]} specs */
   roll(specs) {
-    const roll = { dice: [], shadows: [], fades: null, phase: 'playing', removed: false };
+    const roll = {
+      dice: [],
+      shadows: [],
+      fades: null,
+      materials: new Set(),
+      phase: 'playing',
+      removed: false,
+    };
     roll.landed = new Promise((r) => (roll.resolveLanded = r));
     roll.finished = new Promise((r) => (roll.resolveFinished = r));
     const result = { landed: roll.landed, finished: roll.finished };
@@ -107,7 +132,9 @@ export class DiceBox {
     }
     this._rolls.add(roll);
     try {
-      for (const spec of specs) roll.dice.push(this.#makeDie(spec));
+      roll.appearance = normalizeAppearance(this._getAppearance());
+      const flags = this.#flags();
+      for (const spec of specs) roll.dice.push(this.#makeDie(spec, roll, flags));
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
       roll.playback = new Playback({ dice: roll.dice, area: this._area });
       roll.received = 0;
@@ -159,21 +186,103 @@ export class DiceBox {
     this._renderer.hide?.();
   }
 
-  /** Clear, stop listening, then free the cached geometries and materials. */
+  /** Clear, stop listening, then free the cached geometries and every live material. */
   dispose() {
     this._visibility?.removeEventListener?.('visibilitychange', this._onVisibility);
     this.clear();
     for (const g of this._geometries.values()) g.dispose();
-    for (const m of this._materials.values()) {
-      m.userData.uniforms?.uLabels.value.dispose();
-      m.dispose();
-    }
+    for (const m of [...this._refs.keys()]) this.#disposeMaterial(m);
     this._geometries.clear();
     this._materials.clear();
   }
 
-  #geometry(type) {
-    const style = this._edgeStyle;
+  /**
+   * Drops every cached material and marks it stale; the next roll builds fresh ones for the
+   * current look and flags. Rolls in flight keep theirs, and each stale material is disposed
+   * when its last holder finishes (now, if nothing holds it).
+   * With replaceInFlight (a shader failure), rolling and fading dice are moved onto rebuilt
+   * materials right away (their own look, the current flags), so they never go invisible.
+   */
+  invalidateMaterials({ replaceInFlight = false } = {}) {
+    for (const m of this._materials.values()) this._refs.get(m).stale = true;
+    this._materials.clear();
+    if (replaceInFlight) {
+      const flags = this.#flags();
+      for (const roll of this._rolls) this.#rematerialize(roll, flags);
+    }
+    for (const [m, entry] of [...this._refs])
+      if (entry.stale && entry.refs <= 0) this.#disposeMaterial(m);
+  }
+
+  /**
+   * Materials of the current look and flags for `types`, held until release() so an
+   * invalidation during the async compile cannot dispose them. The geometry is the d20 of the
+   * look's edge style: every die type shares one program per programKey, and the program does
+   * not depend on the geometry (all dice have the same attributes).
+   */
+  acquireWarmup(types = WARMUP_TYPES) {
+    const appearance = normalizeAppearance(this._getAppearance());
+    const flags = this.#flags();
+    const materials = [...new Set(types.map((t) => this.#material(appearance, flags, t)))];
+    for (const m of materials) this.#retain(m);
+    let released = false;
+    return {
+      materials,
+      geometry: this.#geometry('d20', appearance.edges.style),
+      release: () => {
+        if (released) return;
+        released = true;
+        for (const m of materials) this.#release(m);
+      },
+    };
+  }
+
+  #flags() {
+    return { ...DEFAULT_FLAGS, ...this._getFlags() };
+  }
+
+  #retain(material) {
+    this._refs.get(material).refs++;
+  }
+
+  #release(material) {
+    const entry = this._refs.get(material);
+    if (!entry) return;
+    entry.refs--;
+    if (entry.stale && entry.refs <= 0) this.#disposeMaterial(material);
+  }
+
+  #disposeMaterial(material) {
+    this._refs.delete(material);
+    material.userData.uniforms?.uLabels.value.dispose();
+    material.dispose();
+  }
+
+  /** Moves a roll's dice (and fade clones) onto materials built with `flags`. */
+  #rematerialize(roll, flags) {
+    const old = roll.materials;
+    roll.materials = new Set();
+    roll.dice.forEach((die, i) => {
+      const mat = this.#material(roll.appearance, flags, die.type, die.variant);
+      if (!roll.materials.has(mat)) {
+        roll.materials.add(mat);
+        this.#retain(mat);
+      }
+      if (roll.fades) {
+        const prev = roll.fades[i];
+        const fade = cloneForFade(mat);
+        fade.opacity = prev.opacity;
+        roll.fades[i] = fade;
+        die.inner.material = fade;
+        prev.dispose();
+      } else {
+        die.inner.material = mat;
+      }
+    });
+    for (const m of old) this.#release(m);
+  }
+
+  #geometry(type, style) {
     const key = `${type}|${style}`;
     let geo = this._geometries.get(key);
     if (!geo) {
@@ -184,36 +293,45 @@ export class DiceBox {
     return geo;
   }
 
-  #material(type, variant) {
-    const key = `${this._appearance.body}|${type}|${variant ?? ''}`;
+  /** @param {object} appearance normalized */
+  #material(appearance, flags, type, variant) {
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
       const labels = shape.values.map((v) =>
         variant === 'd100tens' ? labelFor(type, v * 10, variant) : labelFor(type, v),
       );
-      mat = createDiceMaterial(this._appearance, this._atlas, shape, labels);
+      mat = createDiceMaterial(appearance, this._atlas, shape, labels, flags);
       this._materials.set(key, mat);
+      this._refs.set(mat, { refs: 0, stale: false });
     }
     return mat;
   }
 
-  #makeDie(spec) {
+  #makeDie(spec, roll, flags) {
     const shape = getShape(spec.type);
-    const geometry = this.#geometry(spec.type);
-    const inner = new THREE.Mesh(geometry, this.#material(spec.type, spec.variant));
+    const geometry = this.#geometry(spec.type, roll.appearance.edges.style);
+    const material = this.#material(roll.appearance, flags, spec.type, spec.variant);
+    if (!roll.materials.has(material)) {
+      roll.materials.add(material);
+      this.#retain(material);
+    }
+    const inner = new THREE.Mesh(geometry, material);
     const outer = new THREE.Group();
     outer.userData.dicerDie = true;
     outer.visible = false; // at the origin until Playback places it
     outer.add(inner);
     const targetValue = spec.variant === 'd100tens' ? spec.value / 10 || 10 : spec.value;
-    return { outer, inner, shape, targetValue, geometry };
+    return { outer, inner, shape, targetValue, geometry, type: spec.type, variant: spec.variant };
   }
 
   /** Shows a roll's dice (and their shadows) once Playback has placed them. */
   #reveal(roll) {
+    const shadows = this._shadows() !== false;
     for (const die of roll.dice) {
       die.outer.visible = true;
+      if (!shadows) continue;
       // The shadow follows the outer group's position and scales by the geometry's sphere.
       const follow = { position: die.outer.position, geometry: die.geometry };
       roll.shadows.push(this._renderer.sceneApi.shadowFor(follow));
@@ -293,6 +411,9 @@ export class DiceBox {
     for (const die of roll.dice) scene.remove(die.outer);
     for (const plane of roll.shadows) this._renderer.sceneApi.releaseShadow(plane);
     for (const m of roll.fades ?? []) m.dispose();
+    roll.fades = null;
+    for (const m of roll.materials) this.#release(m);
+    roll.materials.clear();
     if (roll.playback) {
       for (const data of roll.playback.release()) this._physics.recycle(data);
       roll.playback = null;
