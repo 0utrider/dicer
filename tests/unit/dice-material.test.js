@@ -479,3 +479,18 @@ test('interior: composites into the refracted colour, before the number mask', (
   expect(march).toBeLessThan(fs.indexOf('totalDiffuse = mix( totalDiffuse, dcRefracted'));
   expect(fs).toContain('dcRefracted = dcRefracted * ( 1.0 - dcIacc.a ) + dcIacc.rgb');
 });
+
+test('interior: the coin lays the shape flat in its caps (uShapeRot), dice keep the tilt', () => {
+  const star = { body: { type: 'resin' }, interior: { type: 'shape', shape: 'star' } };
+  const coin = getShape('d2');
+  const c = createDiceMaterial(look(star), atlas, coin, ['1', '2'], FLAGS);
+  const d = make(star);
+  const rc = c.userData.uniforms.uShapeRot.value;
+  const rd = d.userData.uniforms.uShapeRot.value;
+  expect(rc.equals(rd)).toBe(false);
+  // the shape's flat axis (z in SDF space) is the coin's thin axis: R * y = z
+  const v = new THREE.Vector3(0, 1, 0).applyMatrix3(rc);
+  expect(v.distanceTo(new THREE.Vector3(0, 0, 1))).toBeLessThan(1e-6);
+  // orientation is a uniform: coin and die share the program
+  expect(c.customProgramCacheKey()).toBe(d.customProgramCacheKey());
+});

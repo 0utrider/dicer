@@ -176,8 +176,9 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 const SHAPE_SDF = {
   star: /* glsl */ `
 float dcSdStar( vec3 p ) {
-	// 5-point star (iq's sdStar5) in the xy plane, extruded along z and puffed: thick at the
-	// centre, thin at the tips, so it reads as solid from any angle.
+	// 5-point star (iq's sdStar5) in the xy plane, inflated along z: the half-thickness is an
+	// elliptical profile of the inner distance (sqrt), so the faces curve smoothly from a
+	// rounded spine down to rim edges that meet the outline vertically (no flat facets).
 	vec2 q = p.xy;
 	const vec2 k1 = vec2( 0.809016994375, - 0.587785252292 );
 	const vec2 k2 = vec2( - k1.x, k1.y );
@@ -189,14 +190,14 @@ float dcSdStar( vec3 p ) {
 	vec2 ba = 0.45 * vec2( - k1.y, k1.x ) - vec2( 0.0, 1.0 );
 	float h = clamp( dot( q, ba ) / dot( ba, ba ), 0.0, 1.0 );
 	float d2 = length( q - ba * h ) * sign( q.y * ba.x - q.x * ba.y );
-	float halfT = 0.12 + 0.34 * clamp( 1.0 - length( p.xy ), 0.0, 1.0 );
-	vec2 w = vec2( d2, abs( p.z ) - halfT );
-	return min( max( w.x, w.y ), 0.0 ) + length( max( w, 0.0 ) ) - 0.04;
+	float halfT = 0.4 * sqrt( clamp( - d2 / 0.36, 0.0, 1.0 ) );
+	return max( d2, 0.75 * ( abs( p.z ) - halfT ) ) - 0.03;
 }
 `,
   heart: /* glsl */ `
 float dcSdHeart( vec3 p ) {
-	// iq's 2D heart (xy, point down), extruded along z with rounded, puffy edges.
+	// iq's 2D heart (xy, point down), inflated along z with the same elliptical profile as
+	// the star (a pillowy heart).
 	vec2 q = vec2( abs( p.x ), p.y + 0.55 ) * 1.1;
 	float d2;
 	if ( q.y + q.x > 1.0 ) d2 = length( q - vec2( 0.25, 0.75 ) ) - 0.353553;
@@ -206,9 +207,8 @@ float dcSdHeart( vec3 p ) {
 		d2 = sqrt( min( dot( a, a ), dot( b, b ) ) ) * sign( q.x - q.y );
 	}
 	d2 /= 1.1;
-	float halfT = 0.12 + 0.2 * clamp( - d2 * 3.0, 0.0, 1.0 );
-	vec2 w = vec2( d2, abs( p.z ) - halfT );
-	return min( max( w.x, w.y ), 0.0 ) + length( max( w, 0.0 ) ) - 0.06;
+	float halfT = 0.38 * sqrt( clamp( - d2 / 0.4, 0.0, 1.0 ) );
+	return max( d2, 0.75 * ( abs( p.z ) - halfT ) ) - 0.03;
 }
 `,
   skull: /* glsl */ `
@@ -236,42 +236,60 @@ float dcSdSkull( vec3 p ) {
 float dcSdSphere( vec3 p ) { return length( p ) - 1.0; }
 `,
 };
-/**
- * Fixed tilt of the shape (column-major mat3): rotate x by 0.8 rad, then y by -0.18 rad. Chosen
- * so a flat shape faces the camera at least half-on for every die resting face up in the
- * gallery (|cos| >= 0.46 for d4..d20); rolled dice show it at any angle anyway.
- */
-const SHAPE_ROT = (() => {
-  const [a, b] = [0.8, -0.18];
+/** Column-major mat3 of R = Ry(b) * Rx(a), for GLSL. */
+function rotation(a, b) {
   const [ca, sa, cb, sb] = [Math.cos(a), Math.sin(a), Math.cos(b), Math.sin(b)];
-  // R = Ry(b) * Rx(a), rows
   const r = [
     [cb, sb * sa, sb * ca],
     [0, ca, -sa],
     [-sb, cb * sa, cb * ca],
   ];
-  const cols = [0, 1, 2].flatMap((c) => [0, 1, 2].map((row) => r[row][c]));
-  return cols.map(f).join(', ');
-})();
+  return [0, 1, 2].flatMap((c) => [0, 1, 2].map((row) => r[row][c]));
+}
+/**
+ * Shape orientation (uShapeRot, column-major). Dice: rotate x by 0.8 rad, then y by -0.18 rad,
+ * chosen so a flat shape faces the camera at least half-on for every die resting face up in
+ * the gallery (|cos| >= 0.46 for d4..d20); rolled dice show it at any angle anyway. Coin: the
+ * shape's flat axis (z) along the coin's thin axis (local y), so the star lies in the caps
+ * instead of being crushed edge-on by the 0.125 half-height.
+ */
+export const SHAPE_ROT = Object.freeze({
+  die: Object.freeze(rotation(0.95, 3.2)),
+  coin: Object.freeze(rotation(Math.PI / 2, 0)),
+});
 const SDF_NAME = { star: 'dcSdStar', heart: 'dcSdHeart', skull: 'dcSdSkull', sphere: 'dcSdSphere' };
 
 /**
- * Suspended shape: the SDF is sampled at each march point; inside it, the hit is refined by
- * bisection back over the segment, shaded matte in colors[0] (key light + inner light, a
- * soft rim) and returned opaque, which ends the march. Outside it, a colors[1] haze that
- * thickens towards the surface (a glow halo).
+ * Suspended shape. Each segment end samples the SDF:
+ * - inside: the hit is refined by bisection back over the segment and shaded (matte
+ *   colors[0] with wrap diffuse from the key light and the inner light, a Blinn-Phong key
+ *   highlight, SDF ambient occlusion and a colors[1] Fresnel rim), opaque, which ends the march;
+ * - just outside (within DC_SHAPE_AA): the same shading at partial coverage, fading with the
+ *   distance, so grazing rays that miss soften the silhouette instead of a hard, jittered edge;
+ * - elsewhere: a colors[1] haze that thickens towards the surface (a glow halo).
  */
 const shapeMarch = (fn) => /* glsl */ `
-// Fixed tilt so a flat shape is never seen exactly edge-on when its die rests face up.
-const mat3 DC_SHAPE_ROT = mat3( ${SHAPE_ROT} );
+uniform mat3 uShapeRot;
+#define DC_SHAPE_AA 0.012
 float dcSdShape( vec3 p ) {
-	return ${fn}( DC_SHAPE_ROT * p / ${f(INTERIOR.shapeScale)} ) * ${f(INTERIOR.shapeScale)};
+	return ${fn}( uShapeRot * p / ${f(INTERIOR.shapeScale)} ) * ${f(INTERIOR.shapeScale)};
 }
 vec3 dcShapeNormal( vec3 p ) {
 	const vec2 k = vec2( 1.0, - 1.0 );
 	const float e = 0.003;
 	return normalize( k.xyy * dcSdShape( p + k.xyy * e ) + k.yyx * dcSdShape( p + k.yyx * e )
 		+ k.yxy * dcSdShape( p + k.yxy * e ) + k.xxx * dcSdShape( p + k.xxx * e ) );
+}
+vec3 dcShapeShade( vec3 hp, vec3 rd ) {
+	vec3 n = dcShapeNormal( hp );
+	vec3 v = - rd;
+	float wrap = clamp( ( dot( n, dcIKey ) + 0.4 ) / 1.4, 0.0, 1.0 );
+	float spec = pow( max( dot( n, normalize( dcIKey + v ) ), 0.0 ), 36.0 );
+	float ao = clamp( 0.45 + 0.55 * dcSdShape( hp + n * 0.05 ) / 0.05, 0.0, 1.0 );
+	float rim = pow( 1.0 - max( dot( n, v ), 0.0 ), 3.0 );
+	return uInteriorColors[ 0 ] * ( dcILight * ( 0.25 + 0.75 * wrap ) + 0.12 ) * ao
+		+ ( uInteriorColors[ 0 ] + 0.5 ) * spec * 1.6
+		+ uInteriorColors[ 1 ] * rim * ( 0.5 + dcILight );
 }
 vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	vec3 e = p + rd * dt;
@@ -284,16 +302,15 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 			if ( dcSdShape( p + rd * mid ) < 0.0 ) hi = mid;
 			else lo = mid;
 		}
-		vec3 hp = p + rd * hi;
-		vec3 n = dcShapeNormal( hp );
-		float diff = max( dot( n, dcIKey ), 0.0 );
-		float rim = pow( 1.0 - max( dot( n, - rd ), 0.0 ), 3.0 );
-		vec3 col = uInteriorColors[ 0 ] * ( dcILight * ( 0.35 + 0.65 * diff ) + 0.15 )
-			+ uInteriorColors[ 1 ] * rim * ( 0.6 + dcILight );
-		return vec4( col, 1.0 );
+		return vec4( dcShapeShade( p + rd * hi, rd ), 1.0 );
 	}
-	float a = dcIAlpha( mix( 0.2, 1.8, uInteriorDensity ) * exp( - max( d, 0.0 ) * 10.0 ) * dcIEdge( e ), dt );
-	return vec4( uInteriorColors[ 1 ] * ( dcILight + 0.4 ) * a, a );
+	float a = dcIAlpha( mix( 0.2, 1.8, uInteriorDensity ) * exp( - d * 10.0 ) * dcIEdge( e ), dt );
+	vec4 haze = vec4( uInteriorColors[ 1 ] * ( dcILight + 0.4 ) * a, a );
+	if ( d < DC_SHAPE_AA ) {
+		float cover = 0.7 * ( 1.0 - d / DC_SHAPE_AA );
+		return vec4( dcShapeShade( e, rd ) * cover, cover ) + ( 1.0 - cover ) * haze;
+	}
+	return haze;
 }
 `;
 

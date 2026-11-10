@@ -19,7 +19,7 @@ import {
   bodyChunks,
   bodyDefines,
 } from './shaders/bodies.js';
-import { interiorChunk } from './shaders/interior.js';
+import { interiorChunk, SHAPE_ROT } from './shaders/interior.js';
 
 /**
  * Layered dice material: a MeshPhysicalMaterial built from a layered Appearance (body,
@@ -214,6 +214,9 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
     uInteriorColors: { value: [c0, new THREE.Color(a.interior.colors[1])] },
     uInteriorDensity: { value: a.interior.density },
     uKeyLightDir: { value: new THREE.Vector3(...KEY_LIGHT_DIR) },
+    uShapeRot: {
+      value: new THREE.Matrix3().fromArray(shape?.kind === 'coin' ? SHAPE_ROT.coin : SHAPE_ROT.die),
+    },
   };
 
   // Keep three's own STANDARD/PHYSICAL defines.

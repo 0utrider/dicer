@@ -45,3 +45,18 @@ test('unknown type (or shape) throws', () => {
   expect(() => interiorChunk('none')).toThrow();
   expect(() => interiorChunk('shape', 'cube')).toThrow();
 });
+
+test('shape: rounded profile, curvature shading and a soft silhouette', () => {
+  const { pars } = interiorChunk('shape', 'star');
+  // elliptical thickness profile instead of a flat extrusion
+  expect(pars).toMatch(/halfT = [\d.]+ \* sqrt\(/);
+  // key highlight, wrap diffuse, SDF ambient occlusion
+  expect(pars).toContain('normalize( dcIKey + v )');
+  expect(pars).toMatch(/float wrap = /);
+  expect(pars).toMatch(/float ao = /);
+  // grazing misses within DC_SHAPE_AA get partial coverage
+  expect(pars).toContain('d < DC_SHAPE_AA');
+  // orientation is a uniform (die tilt vs coin)
+  expect(pars).toContain('uniform mat3 uShapeRot');
+  expect(interiorChunk('shape', 'heart').pars).toMatch(/halfT = [\d.]+ \* sqrt\(/);
+});
