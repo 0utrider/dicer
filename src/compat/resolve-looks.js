@@ -16,10 +16,13 @@ import {
 
 const STANDARD = 'standard';
 
-/** The Dice So Nice die type of a term: 'd20', or a custom DENOMINATION such as 'dc'. */
+/**
+ * The Dice So Nice die type of a term: 'd20', or 'd' + the bare-letter DENOMINATION of a custom
+ * die ('c' gives 'dc', 'f' gives 'df'), which is how DSN presets name them.
+ */
 function dieTypeOf(term) {
   const denom = term?.constructor?.DENOMINATION;
-  if (typeof denom === 'string' && denom && denom !== 'd') return denom;
+  if (typeof denom === 'string' && denom && denom !== 'd') return `d${denom}`;
   return Number.isInteger(term?.faces) && term.faces > 0 ? `d${term.faces}` : null;
 }
 
@@ -64,56 +67,45 @@ export function createLookResolver({
     const options = isPlainObject(term?.options) ? term.options : {};
     let appearance = null;
     let system = null;
-    let explicit = false; // rules 1-4 matched: the preset colorset must not replace it
 
     if (isPlainObject(options.appearance)) {
       appearance = normalizeAppearance(options.appearance);
       system = systemOf(options.appearance);
-      explicit = true;
     }
     if (!appearance) {
       appearance = colorsetNameToAppearance(options.colorset, registry, index);
-      explicit = Boolean(appearance);
     }
     if (!appearance && typeof term?.flavor === 'string') {
       const flavor = term.flavor.trim();
       const named = flavor.toLowerCase().startsWith('die:') ? flavor.slice(4).trim() : flavor;
       appearance = colorsetNameToAppearance(named, registry, index);
-      explicit = Boolean(appearance);
     }
     if (!appearance && typeof options.dsnActorId === 'string') {
       const ref = getActor(options.dsnActorId)?.flags?.dicer?.appearance;
       appearance = lookRefToAppearance(ref, registry, index);
-      if (appearance) {
-        explicit = true;
-        system = systemOf(ref);
-      }
+      if (appearance) system = systemOf(ref);
     }
 
-    let authorRef = null;
-    if (!appearance) {
-      const looks = readUserLooks(getUser(authorId));
-      const shape = type ? registry.baseShape?.(type) : null;
-      for (const key of [type, shape, 'global']) {
-        const ref = key ? looks[key] : null;
-        if (ref && lookRefToAppearance(ref, registry, index)) {
-          authorRef = ref;
-          break;
-        }
-      }
-      if (!authorRef) authorRef = looks.global;
-      system = systemOf(authorRef);
-    }
+    // The author's refs, most specific first. They feed rule 5 and, for every rule, the system.
+    const looks = readUserLooks(getUser(authorId));
+    const shape = type ? registry.baseShape?.(type) : null;
+    const refs = [type, shape, 'global'].map((key) => (key ? looks[key] : null)).filter(Boolean);
+
+    if (system === null) system = refs.map(systemOf).find(Boolean) ?? null;
 
     const preset = type ? registry.presetFor?.(system ?? STANDARD, type) : null;
     if (!appearance) {
-      const fromPreset = preset?.colorset && !explicit ? presetAppearance(preset, index) : null;
+      // Rules 5-6: the preset's colorset replaces the author's look, then the default.
+      const authorRef = refs.find((ref) => lookRefToAppearance(ref, registry, index));
+      const fromPreset = preset?.colorset ? presetAppearance(preset, index) : null;
       appearance = fromPreset ?? lookRefToAppearance(authorRef, registry, index) ?? DEFAULT_APPEARANCE;
     }
 
     const out = { appearance };
+    if (type) out.dsnType = type;
     if (preset) {
-      out.faces = facesFor(preset);
+      const faces = facesFor(preset);
+      if (faces !== undefined) out.faces = faces;
       if (preset.modelFile) out.model = preset.modelFile;
     }
     return out;

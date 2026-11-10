@@ -72,5 +72,7 @@ describe('mirrorLookSetting', () => {
     expect(setFlag).not.toHaveBeenCalled();
     await mirrorLookIfMissing({ ...userWith(undefined), setFlag }, 'ruby-classic');
     expect(setFlag).toHaveBeenCalledTimes(1);
+    await mirrorLookIfMissing({ ...userWith('x'), setFlag }, 'ruby-classic');
+    expect(setFlag).toHaveBeenCalledTimes(2);
   });
 });

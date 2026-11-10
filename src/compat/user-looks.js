@@ -71,6 +71,6 @@ export async function mirrorLookSetting(user, lookId) {
 /** The once-at-ready mirror: only when this user has no flag yet. */
 export async function mirrorLookIfMissing(user, lookId) {
   const flag = rawFlag(user);
-  if (flag !== undefined && flag !== null) return;
+  if (isPlainObject(flag)) return;
   await mirrorLookSetting(user, lookId);
 }

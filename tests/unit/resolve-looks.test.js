@@ -84,7 +84,7 @@ describe('systems and presets', () => {
     await registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: [], modelFile: 'm.glb' });
     const out = look(resolver, term(20), 'u');
     expect(out.model).toBe('m.glb');
-    expect(out.faces).toBeUndefined();
+    expect(out).not.toHaveProperty('faces');
     expect(facesFor).toHaveBeenCalledWith(registry.presetFor('pf2e', 'd20'));
   });
   test('the system can come from options.appearance.system', async () => {
@@ -105,15 +105,75 @@ describe('systems and presets', () => {
   });
 });
 
+describe('dsnType and system resolution', () => {
+  test('dsnType carries the DSN die type; custom dice use d + denomination', () => {
+    const { resolver } = make();
+    class Coin {
+      static DENOMINATION = 'c';
+    }
+    expect(look(resolver, term(20), 'u').dsnType).toBe('d20');
+    expect(look(resolver, term(2, { constructor: Coin }), 'u').dsnType).toBe('dc');
+  });
+  test('a custom die finds its per-type flag and preset by d + denomination', async () => {
+    class Coin {
+      static DENOMINATION = 'c';
+    }
+    const users = { u: user({ dc: { look: 'sharp-crystal', system: 'coins' } }) };
+    const { registry, resolver } = make({ users });
+    await registry.addDicePreset({ type: 'dc', system: 'coins', labels: ['H', 'T'], modelFile: 'c.glb' });
+    const out = look(resolver, term(2, { constructor: Coin }), 'u');
+    expect(out.appearance).toBe(CRYSTAL);
+    expect(out.model).toBe('c.glb');
+  });
+  test('a system-only d20 ref keeps the global look as its colour source', async () => {
+    const flag = { d20: { system: 'pf2e' }, global: { look: 'ruby-classic' } };
+    const { registry, resolver } = make({ users: { u: user(flag) } });
+    await registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: [], modelFile: 'm.glb' });
+    const out = look(resolver, term(20), 'u');
+    expect(out.model).toBe('m.glb');
+    expect(out.appearance).toBe(RUBY);
+    expect(look(resolver, term(6), 'u').model).toBeUndefined();
+  });
+  test('a die:fire flavor keeps the author preset model', async () => {
+    const { registry, resolver } = make({ users: { u: user({ global: { system: 'pf2e' } }) } });
+    await registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: [], modelFile: 'm.glb' });
+    const out = look(resolver, term(20, { flavor: 'die:fire' }), 'u');
+    expect(out.appearance).toEqual(fire);
+    expect(out.model).toBe('m.glb');
+  });
+  test('options.appearance.system beats the author system', async () => {
+    const { registry, resolver } = make({ users: { u: user({ global: { system: 'a' } }) } });
+    await registry.addDicePreset({ type: 'd20', system: 'a', labels: [], modelFile: 'a.glb' });
+    await registry.addDicePreset({ type: 'd20', system: 'b', labels: [], modelFile: 'b.glb' });
+    const t = term(20, { options: { appearance: { system: 'b' } } });
+    expect(look(resolver, t, 'u').model).toBe('b.glb');
+  });
+  test('faces is absent when the seam returns undefined, present otherwise', async () => {
+    const users = { u: user({ global: { system: 'pf2e' } }) };
+    const a = make({ users });
+    await a.registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: [], modelFile: 'm.glb' });
+    expect(look(a.resolver, term(20), 'u')).not.toHaveProperty('faces');
+    const set = { key: 'k', labels: [] };
+    const b = make({ users, facesFor: () => set });
+    await b.registry.addDicePreset({ type: 'd20', system: 'pf2e', labels: [], modelFile: 'm.glb' });
+    expect(look(b.resolver, term(20), 'u').faces).toBe(set);
+  });
+});
+
 describe('shapeFor', () => {
   test('built-in dN types, aliases and custom denominations; d100 and unknown give null', async () => {
     const { registry, resolver } = make();
     await registry.addDicePreset({ type: 'dc', labels: ['1', '2', '3', '4', '5', '6'] }, 'd6');
+    await registry.addDicePreset({ type: 'df', labels: ['-', '-', '0', '0', '+', '+'] }, 'd6');
     class Coin {
-      static DENOMINATION = 'dc';
+      static DENOMINATION = 'c';
+    }
+    class Fate {
+      static DENOMINATION = 'f';
     }
     expect(resolver.shapeFor(term(20))).toBe('d20');
     expect(resolver.shapeFor(term(6, { constructor: Coin }))).toBe('d6');
+    expect(resolver.shapeFor(term(3, { constructor: Fate }))).toBe('d6');
     expect(resolver.shapeFor(term(100))).toBeNull();
     expect(resolver.shapeFor(term(7))).toBeNull();
     expect(resolver.shapeFor({})).toBeNull();
