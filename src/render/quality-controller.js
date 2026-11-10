@@ -39,20 +39,26 @@ export function createQualityController({
   storage = memoryStorage(),
 }) {
   let autoTier = null;
-  let dropped = 0;
+  // P2-R11: an adaptive drop sets a ceiling (tier index; null = none) that a user quality pick
+  // clears; a shader failure forces low for the rest of the session.
+  let adaptiveCeiling = null;
+  let shaderForcedLow = false;
   let tier = null;
   let disposed = false;
   let shaderLogged = false;
   let notified = false;
   const listeners = new Set();
 
-  const compute = () =>
-    effectiveTier({
+  function compute() {
+    if (shaderForcedLow) return 'low';
+    const base = effectiveTier({
       choice: String(getSetting('quality') ?? 'auto'),
       autoTier: autoTier ?? PENDING_AUTO_TIER,
       cap: String(getSetting('qualityCap') ?? 'ultra'),
-      dropped,
     });
+    const ceiling = adaptiveCeiling ?? TIER_ORDER.length - 1;
+    return TIER_ORDER[Math.min(TIER_ORDER.indexOf(base), ceiling)];
+  }
 
   const adaptive = new AdaptiveQuality({ onDrop: () => onDrop() });
 
@@ -79,7 +85,7 @@ export function createQualityController({
 
   function onDrop() {
     if (disposed || tier === 'low') return;
-    dropped++;
+    adaptiveCeiling = Math.max(0, TIER_ORDER.indexOf(tier) - 1);
     if (!apply()) return;
     emit('drop');
     notifyOnce();
@@ -110,7 +116,7 @@ export function createQualityController({
         info?.log,
       );
     }
-    dropped = TIER_ORDER.length - 1; // enough to reach low from any tier
+    shaderForcedLow = true; // for the session, whatever the user picks
     if (!apply()) return;
     // The error fires inside renderer.render(): swap materials after this frame, before the next.
     queueMicrotask(() => {
@@ -160,9 +166,18 @@ export function createQualityController({
       listeners.add(cb);
       return () => listeners.delete(cb);
     },
-    /** Re-reads quality and qualityCap (settings onChange); emits 'settings' on a change. */
-    refresh() {
+    /**
+     * Re-reads quality and qualityCap (settings onChange); emits 'settings' on a change.
+     * @param {'quality'|'qualityCap'} [key] the setting that changed. A user `quality` pick
+     *   clears the adaptive ceiling and restarts the adaptive window (P2-R11); a qualityCap
+     *   change keeps the ceiling.
+     */
+    refresh(key) {
       if (disposed) return;
+      if (key === 'quality') {
+        adaptiveCeiling = null;
+        adaptive.reset(); // also when the tier is unchanged: the user asked for a fresh try
+      }
       if (apply()) emit('settings');
     },
     /** Call when the warm-up for the current tier/look has compiled (P2-R10). */

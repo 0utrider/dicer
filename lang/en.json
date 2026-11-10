@@ -30,7 +30,7 @@
       },
       "quality": {
         "Name": "Graphics quality",
-        "Hint": "Auto measures your GPU once and picks a tier. Lower tiers are faster; the world cap still applies.",
+        "Hint": "Auto measures your GPU once and picks a tier. Lower tiers are faster; the world cap still applies. If rolls stutter, Dicer lowers the tier for this session; choosing a quality here tries again at your choice.",
         "Choices": {
           "auto": "Auto",
           "low": "Low",

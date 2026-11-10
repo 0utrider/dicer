@@ -98,9 +98,12 @@ function onLookChange(key) {
   refreshMaterials();
 }
 
-/** quality (client) or qualityCap (world; its onChange fires on every client). */
-function onQualityChange() {
-  quality?.refresh(); // emits onChange (-> refreshMaterials) only if the tier changed
+/**
+ * quality (client) or qualityCap (world; its onChange fires on every client). A quality pick
+ * clears the session's adaptive ceiling; a cap change keeps it (P2-R11).
+ */
+function onQualityChange(key) {
+  quality?.refresh(key); // emits onChange (-> refreshMaterials) only if the tier changed
 }
 
 Hooks.once('init', () => {

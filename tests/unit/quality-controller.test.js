@@ -110,14 +110,81 @@ test('an adaptive drop re-applies the lower tier and notifies once; a second dro
   expect(notify).toHaveBeenCalledTimes(1);
 });
 
-test('the session drop survives a settings refresh', async () => {
-  const { qc, renderer, values } = setup({ ms: 2 });
-  await qc.ready;
-  renderer.frames(DROP_FRAMES, 100);
-  expect(qc.tier).toBe('high');
-  values.quality = 'ultra';
-  qc.refresh();
-  expect(qc.tier).toBe('high');
+describe('P2-R11: adaptive ceiling and shader-forced low', () => {
+  test('auto→high, a drop → medium; the user then picks medium → medium, ultra → ultra', async () => {
+    const { qc, renderer, values } = setup({ ms: 5 });
+    await qc.ready;
+    expect(qc.tier).toBe('high');
+    renderer.frames(DROP_FRAMES, 100);
+    expect(qc.tier).toBe('medium');
+    values.quality = 'medium';
+    qc.refresh('quality');
+    expect(qc.tier).toBe('medium'); // a ceiling, not a count subtracted from the choice
+    values.quality = 'ultra';
+    qc.refresh('quality');
+    expect(qc.tier).toBe('ultra');
+    expect(lastTier(renderer)).toBe(TIERS.ultra);
+  });
+
+  test('the drop is a ceiling under the base tier, not a subtraction', async () => {
+    const { qc, renderer, values } = setup({ ms: 2 }); // ultra
+    await qc.ready;
+    renderer.frames(DROP_FRAMES, 100);
+    expect(qc.tier).toBe('high'); // ceiling = high
+    values.qualityCap = 'medium';
+    qc.refresh('qualityCap');
+    expect(qc.tier).toBe('medium'); // min(ultra, medium, high)
+  });
+
+  test('after a drop, a qualityCap change keeps the ceiling', async () => {
+    const { qc, renderer, values } = setup({ ms: 2 }); // ultra
+    await qc.ready;
+    renderer.frames(DROP_FRAMES, 100);
+    expect(qc.tier).toBe('high');
+    values.qualityCap = 'high';
+    qc.refresh('qualityCap');
+    values.qualityCap = 'ultra';
+    qc.refresh('qualityCap');
+    expect(qc.tier).toBe('high');
+  });
+
+  test('a user quality pick resets the adaptive window even when the tier is unchanged', async () => {
+    const { qc, renderer } = setup({ ms: 2 });
+    await qc.ready;
+    renderer.frames(10 + 25, 100);
+    qc.refresh('quality'); // same tier: no applyTier, but a fresh window
+    renderer.frames(10 + 25, 100);
+    expect(qc.tier).toBe('ultra');
+  });
+
+  test('a shader error forces low, and a later user pick stays low', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { qc, renderer, values } = setup({ ms: 2 });
+    await qc.ready;
+    renderer.shaderError();
+    expect(qc.tier).toBe('low');
+    values.quality = 'ultra';
+    qc.refresh('quality');
+    expect(qc.tier).toBe('low');
+    values.qualityCap = 'ultra';
+    qc.refresh('qualityCap');
+    expect(qc.tier).toBe('low');
+    warn.mockRestore();
+  });
+
+  test('the notice fires once across a drop, a user change and a second drop', async () => {
+    const { qc, renderer, values, notify } = setup({ ms: 2 });
+    await qc.ready;
+    renderer.frames(DROP_FRAMES, 100);
+    expect(qc.tier).toBe('high');
+    expect(notify).toHaveBeenCalledTimes(1);
+    values.quality = 'ultra';
+    qc.refresh('quality');
+    expect(qc.tier).toBe('ultra');
+    renderer.frames(DROP_FRAMES, 100);
+    expect(qc.tier).toBe('high');
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
 });
 
 test('a drop at low changes nothing and does not notify', async () => {
