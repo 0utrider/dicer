@@ -12,23 +12,13 @@ import { getShape, labelFor } from '../src/core/dice-shapes.js';
 import { faceNormals } from '../src/core/face-reader.js';
 import { LOOKS } from '../src/look/looks.js';
 import { runProbe } from '../src/render/gpu-probe.js';
+import { TIERS } from '../src/render/quality.js';
 
 export const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd2'];
 /** The face shown on top per type (6 and 9 show the underline mark). */
 const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d20: 20, d2: 2 };
 const CELL = 128;
 const ROW_LABEL_PX = 170;
-
-/**
- * Quality tiers as planned for src/render/quality.js (Task 7). The gallery keeps its own
- * copy until that module exists; only the fields the gallery applies are used.
- */
-const TIERS = {
-  low: { pixelRatio: 1, interiorSteps: 0, transmissionScale: 0.5, envResolution: 128 },
-  medium: { pixelRatio: 1.25, interiorSteps: 16, transmissionScale: 0.5, envResolution: 256 },
-  high: { pixelRatio: 1.5, interiorSteps: 32, transmissionScale: 1, envResolution: 256 },
-  ultra: { pixelRatio: 2, interiorSteps: 48, transmissionScale: 1, envResolution: 512 },
-};
 
 /**
  * Rows: every curated look, plus variants with per-row flag overrides so variant programs
@@ -345,6 +335,102 @@ function closeup(id, type, size = 300) {
   return url;
 }
 
+const pct = (a, p) => {
+  const s = a.slice().sort((x, y) => x - y);
+  return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
+};
+
+/**
+ * Full-screen per-pixel interior cost (spec G2): one die (look id x type) filling ~70% of the
+ * height of a width x height drawing buffer at `pixelRatio`, at quality tier `tierName`.
+ * Renders `frames` frames; each is timed with EXT_disjoint_timer_query_webgl2 (GPU ms) and by
+ * wall clock with a readback per frame (ms incl. CPU submit). Returns p50/p95 of both.
+ * The grid canvas and tier are restored afterwards.
+ */
+async function fullscreenCost({
+  id = 'galaxy-nebula',
+  type = 'd20',
+  tier: tierName = 'high',
+  width = 1920,
+  height = 1080,
+  pixelRatio = 1,
+  frames = 120,
+  fill = 0.7,
+} = {}) {
+  const prevTier = tier;
+  await setTier(tierName);
+  const c = cells.find((x) => x.id === id && x.type === type);
+  if (!c) throw new Error(`no cell ${id}/${type}`);
+  const prevSize = renderer.getSize(new THREE.Vector2());
+  const prevRatio = renderer.getPixelRatio();
+  renderer.setPixelRatio(pixelRatio);
+  renderer.setSize(width, height, false);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, width, height);
+  const cam = camera.clone();
+  cam.aspect = width / height;
+  // the die's bounding sphere spans `fill` of the vertical field of view
+  const r = c.mesh.geometry.boundingSphere.radius;
+  const dist = r / (fill * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)));
+  _target.set(0, c.mesh.position.y, 0);
+  cam.position.copy(_target).addScaledVector(VIEW_DIR, dist);
+  cam.lookAt(_target);
+  cam.updateProjectionMatrix();
+  c.mesh.visible = true;
+  const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+  const wall = [];
+  const queries = [];
+  try {
+    renderer.render(scene, cam); // warm-up
+    syncGpu();
+    if (ext) gl.getParameter(ext.GPU_DISJOINT_EXT);
+    for (let i = 0; i < frames; i++) {
+      const t0 = performance.now();
+      let q = null;
+      if (ext) {
+        q = gl.createQuery();
+        gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
+      }
+      renderer.render(scene, cam);
+      if (q) {
+        gl.endQuery(ext.TIME_ELAPSED_EXT);
+        queries.push(q);
+      }
+      syncGpu();
+      wall.push(performance.now() - t0);
+    }
+    const gpu = [];
+    let disjoint = false;
+    for (const q of queries) {
+      for (let k = 0; k < 500 && !gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE); k++)
+        await new Promise((res) => setTimeout(res, 2));
+      if (gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))
+        gpu.push(Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6);
+      gl.deleteQuery(q);
+    }
+    if (ext && gl.getParameter(ext.GPU_DISJOINT_EXT)) disjoint = true;
+    return {
+      id,
+      type,
+      tier: tierName,
+      buffer: [Math.round(width * pixelRatio), Math.round(height * pixelRatio)],
+      steps: TIERS[tierName].interiorSteps,
+      frames,
+      timer: !!ext && !disjoint && gpu.length === frames,
+      gpuP50: gpu.length ? pct(gpu, 50) : null,
+      gpuP95: gpu.length ? pct(gpu, 95) : null,
+      wallP50: pct(wall, 50),
+      wallP95: pct(wall, 95),
+    };
+  } finally {
+    c.mesh.visible = false;
+    renderer.setPixelRatio(prevRatio);
+    renderer.setSize(prevSize.x, prevSize.y);
+    if (prevTier && prevTier !== tierName) await setTier(prevTier);
+    else renderGrid();
+  }
+}
+
 function info() {
   const ext = gl.getExtension('WEBGL_debug_renderer_info');
   const keys = new Set(cells.map((c) => c.mesh.material?.userData?.programKey));
@@ -375,4 +461,15 @@ $('tier').addEventListener('change', (e) => {
   setTier(e.target.value).catch((err) => report(`setTier failed: ${err?.stack ?? err}`));
 });
 
-window.__looks = { ready, errors, probe: (frames) => runProbe(renderer, { frames, atlas }), msPerFrame, setTier, cellAlphas, info, noiseProbe, closeup };
+window.__looks = {
+  ready,
+  errors,
+  probe: (frames) => runProbe(renderer, { frames, atlas }),
+  msPerFrame,
+  setTier,
+  cellAlphas,
+  info,
+  noiseProbe,
+  closeup,
+  fullscreenCost,
+};

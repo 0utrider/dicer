@@ -1,15 +1,21 @@
 import * as THREE from 'three';
 
-// name, intensity, colour, [w, h], position. Values are the Task 3 starting point (tunable in Task 9).
+// name, intensity, colour, [w, h], position. Task 9 tuning: the overhead softbox is larger and
+// dimmer (a 6x6 panel at 6 drew a hard bar on every rounded bevel), and two large dim panels
+// were added so polished metal reflects a bright studio instead of the black backdrop: a sweep
+// behind and above (what a top face mirrors at the gallery's 52-degree view) and a table below
+// the horizon (what lower faces mirror).
 const PANELS = [
-  ['overhead', 6, '#ffffff', [6, 6], [0, 8, 0]],
+  ['overhead', 2.5, '#ffffff', [10, 10], [0, 8, 0]],
   ['key', 10, '#ffffff', [1, 5], [-6, 4, 2]],
   ['rim', 8, '#ffffff', [1, 5], [6, 3, -3]],
   ['fill', 1.5, '#ffe6c7', [5, 2], [0, 1, 7]],
+  ['sweep', 0.9, '#ffffff', [18, 8], [0, 6, -7]],
+  ['table', 0.5, '#e8e2d8', [24, 24], [0, -5, 0]],
 ];
 
 /**
- * Procedural product-photo studio: a dark backdrop sphere and four emissive softbox panels,
+ * Procedural product-photo studio: a dark backdrop sphere and six emissive softbox panels,
  * each aimed at the origin. Rendered once through PMREM; costs zero asset bytes (no textures).
  */
 export function createStudioScene() {

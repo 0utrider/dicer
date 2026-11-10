@@ -7,9 +7,16 @@ function panels(scene) {
   return scene.children.filter((c) => c.isMesh && c.userData.panel);
 }
 
-test('studio scene has exactly 4 emissive panels plus 1 backdrop', () => {
+test('studio scene has 6 emissive panels plus 1 backdrop', () => {
   const scene = createStudioScene();
-  expect(panels(scene).length).toBe(4);
+  expect(panels(scene).map((p) => p.userData.panel)).toEqual([
+    'overhead',
+    'key',
+    'rim',
+    'fill',
+    'sweep',
+    'table',
+  ]);
   const backdrops = scene.children.filter((c) => c.isMesh && !c.userData.panel);
   expect(backdrops.length).toBe(1);
   expect(backdrops[0].material.side).toBe(THREE.BackSide);
@@ -34,10 +41,23 @@ test('every panel normal faces the origin', () => {
 test('panels are emissive: colour is multiplied by intensity', () => {
   const byName = Object.fromEntries(panels(createStudioScene()).map((p) => [p.userData.panel, p]));
   expect(byName.key.material.color.r).toBeCloseTo(10);
-  expect(byName.overhead.material.color.r).toBeCloseTo(6);
+  expect(byName.overhead.material.color.r).toBeCloseTo(2.5);
   expect(byName.rim.material.color.r).toBeCloseTo(8);
   expect(byName.fill.material.color.r).toBeCloseTo(1.5);
   expect(byName.fill.material.color.b).toBeLessThan(byName.fill.material.color.r);
+});
+
+test('metals see a bright studio: a large dim sweep behind and above, and a dim table below', () => {
+  const byName = Object.fromEntries(panels(createStudioScene()).map((p) => [p.userData.panel, p]));
+  const { sweep, table } = byName;
+  // the sweep fills the upper back hemisphere that a 52-degree gallery view mirrors off top faces
+  expect(sweep.position.z).toBeLessThan(0);
+  expect(sweep.position.y).toBeGreaterThan(0);
+  expect(sweep.geometry.parameters.width).toBeGreaterThanOrEqual(12);
+  // the table is below the horizon (lower faces of metal dice reflect it instead of black)
+  expect(table.position.y).toBeLessThan(0);
+  for (const p of [sweep, table])
+    expect(p.material.color.r).toBeLessThan(byName.fill.material.color.r);
 });
 
 test('no textures are used, so the environment costs zero asset bytes', () => {

@@ -1,4 +1,5 @@
-// Curated named looks. Colours are provisional; Task 9 tunes them.
+// Curated named looks, tuned in Task 9 against the product photos in
+// docs/reference/look-references.md (P2-R8: roughness per finish).
 import { DEFAULT_APPEARANCE, normalizeAppearance } from './appearance.js';
 
 const make = (name, partial) => ({ name, appearance: normalizeAppearance(partial) });
@@ -15,7 +16,7 @@ const defs = {
     numbers: { fill: 'silver', color: '#d8e4ee', depth: 0.5 },
   }),
   'starlit-glitter': make('Starlit Glitter', {
-    body: { type: 'resin', color: '#3a1a6b', color2: '#12062b', roughness: 0.05 },
+    body: { type: 'resin', color: '#2e1260', color2: '#12062b', roughness: 0.05 },
     interior: { type: 'glitter', colors: ['#ffd76a', '#ff9ad5'], density: 0.7 },
     numbers: { fill: 'gold', color: '#f3c969', depth: 0.5 },
   }),
@@ -25,33 +26,51 @@ const defs = {
     numbers: { fill: 'silver', color: '#e8ecff', depth: 0.5 },
   }),
   'sharp-crystal': make('Sharp Crystal', {
-    body: { type: 'resin', color: '#9fd8e8', color2: '#4a8aa0', roughness: 0.02 },
+    body: { type: 'resin', color: '#58c0d6', color2: '#2a7890', roughness: 0.02 },
     interior: { type: 'none' },
-    numbers: { fill: 'paint', color: '#10202a', depth: 0.6 },
+    numbers: { fill: 'paint', color: '#f4f8fa', depth: 0.6 },
     edges: { style: 'sharp' },
   }),
   'dwarven-brass': make('Dwarven Brass', {
-    body: { type: 'metal', color: '#b08a3e', color2: '#5e4519', finish: 'antique', roughness: 0.4 },
+    body: {
+      type: 'metal',
+      color: '#b08a3e',
+      color2: '#5e4519',
+      finish: 'antique',
+      roughness: 0.45,
+    },
     numbers: { fill: 'enamel', color: '#1a1410', depth: 0.7 },
   }),
   'silver-brushed': make('Brushed Silver', {
-    body: { type: 'metal', color: '#c9ced6', color2: '#7d838c', finish: 'brushed', roughness: 0.35 },
+    body: {
+      type: 'metal',
+      color: '#c9ced6',
+      color2: '#7d838c',
+      finish: 'brushed',
+      roughness: 0.35,
+    },
     numbers: { fill: 'enamel', color: '#0c0c0e', depth: 0.6 },
   }),
   'gold-polished': make('Polished Gold', {
-    body: { type: 'metal', color: '#e3b341', color2: '#9a6d12', finish: 'polished', roughness: 0.12 },
+    body: {
+      type: 'metal',
+      color: '#e3b341',
+      color2: '#9a6d12',
+      finish: 'polished',
+      roughness: 0.18,
+    },
     numbers: { fill: 'enamel', color: '#2a1a05', depth: 0.6 },
   }),
   'marble-white': make('White Marble', {
-    body: { type: 'marble', color: '#f1efe9', color2: '#8d8a84', roughness: 0.15 },
+    body: { type: 'marble', color: '#f1efe9', color2: '#8d8a84', roughness: 0.3 },
     numbers: { fill: 'gold', color: '#d9a93a', depth: 0.5 },
   }),
   'jade-marble': make('Jade Marble', {
-    body: { type: 'marble', color: '#3f9a6c', color2: '#12452c', roughness: 0.12 },
+    body: { type: 'marble', color: '#2f7d55', color2: '#0e3a24', roughness: 0.3 },
     numbers: { fill: 'gold', color: '#f0cf72', depth: 0.5 },
   }),
   'pearl-moon': make('Moon Pearl', {
-    body: { type: 'pearl', color: '#e9e4f4', color2: '#a9c8f0', roughness: 0.2 },
+    body: { type: 'pearl', color: '#f2eff6', color2: '#b9d4f2', roughness: 0.25 },
     numbers: { fill: 'silver', color: '#5b5f78', depth: 0.45 },
   }),
   'ember-core': make('Ember Core', {
@@ -78,7 +97,8 @@ const defs = {
 };
 
 function deepFreeze(o) {
-  for (const v of Object.values(o)) if (v && typeof v === 'object' && !Object.isFrozen(v)) deepFreeze(v);
+  for (const v of Object.values(o))
+    if (v && typeof v === 'object' && !Object.isFrozen(v)) deepFreeze(v);
   return Object.freeze(o);
 }
 
