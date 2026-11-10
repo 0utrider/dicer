@@ -2,12 +2,13 @@
 import * as THREE from 'three';
 import { DiceRenderer, configureRenderer } from '../../src/render/renderer.js';
 import { buildScene } from '../../src/render/scene.js';
+import { TIERS } from '../../src/render/quality.js';
 
 function setup() {
   const frames = [];
   const raf = (cb) => (frames.push(cb), frames.length);
   const caf = vi.fn();
-  const fake = { setSize: vi.fn(), setPixelRatio: vi.fn(), render: vi.fn(), dispose: vi.fn() };
+  const fake = { setSize: vi.fn(), setPixelRatio: vi.fn(), render: vi.fn(), dispose: vi.fn(), debug: {} };
   const createRenderer = vi.fn(() => fake);
   const container = document.createElement('div');
   const r = new DiceRenderer({ container, createRenderer, raf, caf });
@@ -163,4 +164,57 @@ test('configureRenderer applies NeutralToneMapping with exposure 1', () => {
   configureRenderer(r);
   expect(r.toneMapping).toBe(THREE.NeutralToneMapping);
   expect(r.toneMappingExposure).toBe(1);
+});
+
+describe('quality hooks', () => {
+  test('applyTier caps the pixel ratio at pixelRatioCap, sets transmission scale, stores env resolution', () => {
+    globalThis.devicePixelRatio = 3;
+    const { r, fake } = setup();
+    fake.transmissionResolutionScale = 1;
+    r.applyTier(TIERS.ultra);
+    expect(fake.setPixelRatio).toHaveBeenLastCalledWith(1.5);
+    expect(fake.transmissionResolutionScale).toBe(1);
+    r.applyTier(TIERS.low);
+    expect(fake.setPixelRatio).toHaveBeenLastCalledWith(1);
+    expect(fake.transmissionResolutionScale).toBe(0.5);
+    r.applyTier(TIERS.medium);
+    r.setArea({ left: 0, top: 0, width: 10, height: 10 });
+    expect(fake.setPixelRatio).toHaveBeenLastCalledWith(1.25);
+  });
+
+  test('onShaderError registers on renderer.debug and forwards program info', () => {
+    const { r, fake } = setup();
+    const cb = vi.fn();
+    r.onShaderError(cb);
+    expect(typeof fake.debug.onShaderError).toBe('function');
+    fake.debug.onShaderError({}, {}, {}, {});
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  test('onFrameTime receives a number per frame', () => {
+    const { r, step } = setup();
+    const cb = vi.fn();
+    r.onFrameTime(cb);
+    r.startLoop(() => true);
+    step();
+    step();
+    expect(cb).toHaveBeenCalledTimes(2);
+    expect(typeof cb.mock.calls[0][0]).toBe('number');
+  });
+
+  test('warmup compiles normal and fade variants, leaves the scene clean and starts no loop', async () => {
+    const { r, fake, frames } = setup();
+    fake.compileAsync = vi.fn(async (scene) => {
+      fake.seen = scene.children.filter((c) => c.isMesh).map((c) => c.material);
+    });
+    const mats = [new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial()];
+    const before = r.scene.children.length;
+    await r.warmup(mats, new THREE.BoxGeometry());
+    expect(fake.compileAsync).toHaveBeenCalledTimes(1);
+    expect(fake.seen.length).toBe(4);
+    expect(fake.seen.filter((m) => m.transparent).length).toBe(2);
+    expect(r.scene.children.length).toBe(before);
+    expect(frames.length).toBe(0);
+    expect(r.isLooping).toBe(false);
+  });
 });

@@ -21,7 +21,7 @@ export const LANDING_GRACE_MS = 3000;
  * JSON, which would serialise the label and atlas textures, so userData is shared instead
  * (the clone never writes to it). The original is left exactly as it was.
  */
-function cloneForFade(material) {
+export function cloneForFade(material) {
   const userData = material.userData;
   material.userData = {};
   let clone;

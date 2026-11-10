@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildScene, DEFAULT_ENV_RESOLUTION } from './scene.js';
+import { cloneForFade } from '../throw/dice-box.js';
 
 const CANVAS_ID = 'dicer-canvas';
 
@@ -26,6 +27,8 @@ export class DiceRenderer {
   #restored = [];
   #sceneApi;
   #envResolution = DEFAULT_ENV_RESOLUTION;
+  #tierRatio = Infinity;
+  #frameTime = [];
   #onLost;
   #onRestored;
 
@@ -91,6 +94,77 @@ export class DiceRenderer {
   get isLooping() {
     return this.#tick !== null;
   }
+  /** The underlying THREE.WebGLRenderer (for the GPU probe). */
+  get glRenderer() {
+    return this.#renderer;
+  }
+
+  #pixelRatio() {
+    return Math.min(globalThis.devicePixelRatio || 1, this.#tierRatio, this.#cap);
+  }
+
+  /** Applies a quality tier (see quality.js TIERS); pixelRatioCap stays the upper bound. */
+  applyTier(tier) {
+    this.#tierRatio = tier.pixelRatio;
+    this.#envResolution = tier.envResolution;
+    if ('transmissionResolutionScale' in this.#renderer) {
+      this.#renderer.transmissionResolutionScale = tier.transmissionScale;
+    }
+    this.#renderer.setPixelRatio(this.#pixelRatio());
+  }
+
+  /** cb(info) when a shader fails to compile or link; info = { gl, program, vertexShader, fragmentShader, log }. */
+  onShaderError(cb) {
+    const debug = this.#renderer.debug;
+    if (!debug) return;
+    debug.checkShaderErrors = true;
+    debug.onShaderError = (gl, program, vertexShader, fragmentShader) => {
+      let log = '';
+      try {
+        log = [
+          gl.getProgramInfoLog?.(program),
+          gl.getShaderInfoLog?.(vertexShader),
+          gl.getShaderInfoLog?.(fragmentShader),
+        ]
+          .filter(Boolean)
+          .join(' | ');
+      } catch {
+        // ignore: the callback still fires
+      }
+      cb({ gl, program, vertexShader, fragmentShader, log });
+    };
+  }
+
+  /** cb(ms) with each rendered frame's tick + render wall time. */
+  onFrameTime(cb) {
+    this.#frameTime.push(cb);
+  }
+
+  /**
+   * Compiles the given dice materials and their fade variants ahead of the first roll, via
+   * compileAsync. The meshes are added to the real scene (so light and environment state
+   * match what rolls use) for the compile only, then removed; no loop starts.
+   */
+  async warmup(materials, geometry) {
+    if (!this.#renderer.compileAsync) return;
+    if (this.#renderer.isWebGLRenderer) {
+      this.#sceneApi.setEnvironment(this.#renderer, { resolution: this.#envResolution });
+    }
+    const fades = materials.map((m) => cloneForFade(m));
+    const meshes = [...materials, ...fades].map((m) => {
+      const mesh = new THREE.Mesh(geometry, m);
+      mesh.frustumCulled = false;
+      this.scene.add(mesh);
+      return mesh;
+    });
+    try {
+      await this.#renderer.compileAsync(this.scene, this.camera);
+    } finally {
+      for (const mesh of meshes) this.scene.remove(mesh);
+      // dispose() on a clone only drops its own program refs; userData is shared and untouched.
+      for (const f of fades) f.dispose();
+    }
+  }
 
   setArea({ left, top, width, height }) {
     const s = this.#canvas.style;
@@ -98,7 +172,7 @@ export class DiceRenderer {
     s.top = `${top}px`;
     s.width = `${width}px`;
     s.height = `${height}px`;
-    this.#renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, this.#cap));
+    this.#renderer.setPixelRatio(this.#pixelRatio());
     this.#renderer.setSize(width, height, false);
   }
 
@@ -117,6 +191,7 @@ export class DiceRenderer {
     const tick = this.#tick;
     if (!tick) return;
     let again = false;
+    const t0 = performance.now();
     try {
       again = tick(now);
     } finally {
@@ -124,6 +199,8 @@ export class DiceRenderer {
       try {
         this.#sceneApi.updateShadows();
         this.#renderer.render(this.scene, this.camera);
+        const ms = performance.now() - t0;
+        for (const cb of this.#frameTime) cb(ms);
       } finally {
         if (again && this.#tick) this.#handle = this.#raf((t) => this.#frame(t));
         else this.hide();

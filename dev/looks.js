@@ -11,6 +11,7 @@ import { buildDieGeometry } from '../src/core/chamfer.js';
 import { getShape, labelFor } from '../src/core/dice-shapes.js';
 import { faceNormals } from '../src/core/face-reader.js';
 import { LOOKS } from '../src/look/looks.js';
+import { runProbe } from '../src/render/gpu-probe.js';
 
 export const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd2'];
 /** The face shown on top per type (6 and 9 show the underline mark). */
@@ -374,4 +375,4 @@ $('tier').addEventListener('change', (e) => {
   setTier(e.target.value).catch((err) => report(`setTier failed: ${err?.stack ?? err}`));
 });
 
-window.__looks = { ready, errors, msPerFrame, setTier, cellAlphas, info, noiseProbe, closeup };
+window.__looks = { ready, errors, probe: (frames) => runProbe(renderer, { frames, atlas }), msPerFrame, setTier, cellAlphas, info, noiseProbe, closeup };
