@@ -322,6 +322,40 @@ ${interior.pars}`;
   return material;
 }
 
+/**
+ * Chains a third-party shader hook (a DiceSystem's beforeShaderCompile) after Dicer's own
+ * patch, and keys the program by `cacheString` too so three never shares it with a plain
+ * Dicer program. A throwing hook is reported through onError and its changes to the shader
+ * are undone: the program compiles as Dicer's own.
+ */
+export function chainShaderHook(material, cacheString, hook, onError) {
+  const dicerPatch = material.onBeforeCompile;
+  const key = material.userData.programKey;
+  material.onBeforeCompile = function (shader, renderer) {
+    dicerPatch.call(this, shader, renderer);
+    const { vertexShader, fragmentShader } = shader;
+    const uniforms = shader.uniforms && { ...shader.uniforms };
+    const defines = shader.defines && { ...shader.defines };
+    try {
+      hook(shader, this);
+    } catch (err) {
+      shader.vertexShader = vertexShader;
+      shader.fragmentShader = fragmentShader;
+      restoreEntries(shader.uniforms, uniforms);
+      restoreEntries(shader.defines, defines);
+      onError(err);
+    }
+  };
+  material.customProgramCacheKey = () => `${cacheString}|dicer-${key}`;
+}
+
+/** Puts `target`'s entries back to `saved` in place (the object may be shared with three). */
+function restoreEntries(target, saved) {
+  if (!target || !saved) return;
+  for (const k of Object.keys(target)) if (!(k in saved)) delete target[k];
+  Object.assign(target, saved);
+}
+
 /** uFaceLayer: per face (layer, 1 = tinted text mask); unused slots (-1, 0). */
 function faceLayerUniform({ layers, tint }) {
   return Array.from({ length: MAX_FACE_LAYERS }, (_, i) => {

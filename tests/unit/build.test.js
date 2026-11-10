@@ -3,8 +3,8 @@ import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { sep } from 'node:path';
 
 const BUDGET = 4 * 1024 * 1024;
-/** Loaded at world start besides dist/ (loadDigitAtlas). */
-const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json'];
+/** Loaded at world start besides dist/ (loadDigitAtlas; main.js imports api.js at init). */
+const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json', 'api.js'];
 
 /** Fetched only when a roll first shows a die model (dynamic import / DRACOLoader). */
 const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|draco\/)/.test(p);
@@ -37,11 +37,17 @@ describe('build', () => {
       [chunk, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
     );
   });
-  it('keeps the world-start download (dist/ minus lazy chunks, plus the font atlas) under 4 MB', () => {
+  it('leaves api.js out of the bundle: it ships beside module.json, imported at runtime', () => {
+    expect(statSync('api.js').isFile()).toBe(true);
+    for (const p of distFiles().filter((f) => f.endsWith('.js'))) {
+      expect(readFileSync(p, 'utf8')).not.toContain('SETTING_FORMATING');
+    }
+  });
+  it('keeps the world-start download (dist/ minus lazy chunks, plus the font atlas and api.js) under 4 MB', () => {
     const total = worldStartBytes();
     const kib = (n) => `${(n / 1024).toFixed(1)} KiB`;
     console.info(
-      `dicer size guard: ${kib(total)} of ${kib(BUDGET)} (world-start dist/ + digits.png + digits.json); ` +
+      `dicer size guard: ${kib(total)} of ${kib(BUDGET)} (world-start dist/ + digits.png + digits.json + api.js); ` +
         `headroom ${kib(BUDGET - total)}`,
     );
     expect(total).toBeLessThanOrEqual(BUDGET);

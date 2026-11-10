@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
-import { createDiceMaterial, DEFAULT_FLAGS } from '../render/dice-material.js';
+import { createDiceMaterial, chainShaderHook, DEFAULT_FLAGS } from '../render/dice-material.js';
 import {
   DEFAULT_APPEARANCE,
   appearanceKey,
@@ -32,6 +32,9 @@ export const ASSET_WAIT_MS = 4250;
 const STANDARD_SYSTEM = 'standard';
 /** Die types whose materials acquireWarmup() builds by default. */
 export const WARMUP_TYPES = Object.freeze(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
+/** The DiceSystem.DICE_EVENT_TYPE values DiceBox fires (api.js; CLICK and COLLIDE are not). */
+const DICE_EVENT = Object.freeze({ SPAWN: 0, RESULT: 2, DESPAWN: 4 });
+const MATERIAL_HOOKS = ['getCacheString', 'processMaterial', 'beforeShaderCompile'];
 
 /**
  * Clone a cached die material for the fade. Material.clone() deep-copies userData through
@@ -104,6 +107,7 @@ export class DiceBox {
     onModelLoaded = () => {},
     presetFor = () => null,
     onMaterial = () => {},
+    systemFor = () => null,
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -124,6 +128,10 @@ export class DiceBox {
     // (material, dsnType, appearance, preset) once per material built for a die with a preset
     // (main.js: diceSoNiceOnMaterialReady for non-standard systems, P3-R3)
     this._onMaterial = onMaterial;
+    // (systemId) -> the DiceSystem instance it was registered with, or null (api.js): its
+    // material callbacks and dice events apply to that system's dice.
+    this._systemFor = systemFor;
+    this._systemWarned = new Set(); // system id|kind: one warning each
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
     this._refs = new Map(); // material -> { refs, stale }, cached and stale materials alike
@@ -365,8 +373,11 @@ export class DiceBox {
     const layered = !ghost && faceTex?.texture ? faceTex : null;
     const layerKey = layered ? `|fl${faceTexId(layered)}` : '';
     const found = ghost ? null : this.#presetOf(source, type);
-    const systemKey = found && found.preset.system !== STANDARD_SYSTEM ? `|sys:${found.preset.system}` : '';
-    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${systemKey}`;
+    const custom = found && found.preset.system !== STANDARD_SYSTEM ? found.preset.system : null;
+    const systemKey = custom ? `|sys:${custom}` : '';
+    const hooks = custom ? this.#materialHooks(custom, appearance) : null;
+    const hookKey = hooks ? `|sc:${hooks.cacheString}` : '';
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${systemKey}${hookKey}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
@@ -381,9 +392,12 @@ export class DiceBox {
         if (layered?.layers?.[i] >= 0) return ''; // drawn from its face layer
         return dflt(); // a text / image face without a layer shows its number
       });
-      mat = layered
-        ? createDiceMaterial(appearance, this._atlas, shape, labels, flags, layered)
-        : createDiceMaterial(appearance, this._atlas, shape, labels, flags);
+      const build = () =>
+        layered
+          ? createDiceMaterial(appearance, this._atlas, shape, labels, flags, layered)
+          : createDiceMaterial(appearance, this._atlas, shape, labels, flags);
+      mat = build();
+      if (hooks) mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
       this._materials.set(key, mat);
       // A layered material lives only while rolls hold it: its texture is theirs.
       this._refs.set(mat, { refs: 0, stale: false, transient: !!layered });
@@ -396,6 +410,75 @@ export class DiceBox {
       }
     }
     return mat;
+  }
+
+  /** The DiceSystem instance registered for `systemId`, or null; never throws. */
+  #systemOf(systemId) {
+    if (typeof systemId !== 'string') return null;
+    try {
+      const instance = this._systemFor(systemId);
+      return instance && typeof instance === 'object' ? instance : null;
+    } catch (err) {
+      this.#systemWarn(systemId, 'lookup', 'cannot look up the dice system', err);
+      return null;
+    }
+  }
+
+  #systemWarn(systemId, kind, message, err) {
+    const id = `${systemId}|${kind}`;
+    if (this._systemWarned.has(id)) return;
+    this._systemWarned.add(id);
+    console.warn(`dicer: dice system "${systemId}": ${message}`, err);
+  }
+
+  /**
+   * { instance, cacheString } when `systemId` was registered with a DiceSystem-like instance
+   * (all three material callbacks), else null. A throwing getCacheString warns once and gives
+   * null: its dice use the plain Dicer material.
+   */
+  #materialHooks(systemId, appearance) {
+    const instance = this.#systemOf(systemId);
+    if (!instance || !MATERIAL_HOOKS.every((m) => typeof instance[m] === 'function')) return null;
+    try {
+      return { instance, cacheString: String(instance.getCacheString(appearance)) };
+    } catch (err) {
+      this.#systemWarn(systemId, 'material', 'a material callback threw; its dice use Dicer’s material', err);
+      return null;
+    }
+  }
+
+  /**
+   * Applies a DiceSystem's material callbacks to a freshly built material: beforeShaderCompile
+   * chained after Dicer's patch (not under the safe flags, whose point is a plain program),
+   * then processMaterial. If processMaterial throws, the material is replaced by a plain one
+   * from `build` and the system warns once.
+   */
+  #applySystem(mat, build, { instance, cacheString }, systemId, dsnType, appearance, flags) {
+    const failed = (err) =>
+      this.#systemWarn(systemId, 'material', 'a material callback threw; its dice use Dicer’s material', err);
+    if (!flags.safe) {
+      chainShaderHook(mat, cacheString, (shader, m) => instance.beforeShaderCompile(shader, m), failed);
+    }
+    try {
+      instance.processMaterial(dsnType, mat, appearance);
+      return mat;
+    } catch (err) {
+      failed(err);
+      mat.userData.uniforms?.uLabels.value.dispose();
+      mat.dispose();
+      return build();
+    }
+  }
+
+  /** Fires a dice event on a system instance; a throwing dispatch warns once per system. */
+  #fireEvent(die, type, event) {
+    const instance = die.systemInstance;
+    if (typeof instance?.fire !== 'function') return;
+    try {
+      instance.fire(type, event);
+    } catch (err) {
+      this.#systemWarn(die.system, 'event', 'a dice event listener threw', err);
+    }
   }
 
   /** The registered preset of the die `source` describes, as { preset, dsnType }, or null. */
@@ -454,6 +537,11 @@ export class DiceBox {
       ghost,
       system,
       dsnType,
+      // The system's DiceSystem instance (api.js), if any: it gets this die's dice events.
+      // A ghost has no system, so it never fires one.
+      systemInstance: system ? this.#systemOf(system) : null,
+      value: ghost ? undefined : spec.value,
+      spawned: false,
       faceTex: null,
       // A ghost never shows a model: its numbers would show through.
       modelUrl: !ghost && typeof spec.model === 'string' && spec.model ? spec.model : null,
@@ -610,6 +698,11 @@ export class DiceBox {
     const shadows = this._shadows() !== false;
     for (const die of roll.dice) {
       die.outer.visible = true;
+      if (die.systemInstance) {
+        die.spawned = true;
+        // No value yet: a die shows its result only once it has landed.
+        this.#fireEvent(die, DICE_EVENT.SPAWN, { dice: [{ type: die.dsnType ?? die.type }], system: die.system });
+      }
       if (!shadows) continue;
       // The shadow follows the outer group's position and scales by the geometry's sphere.
       const follow = { position: die.outer.position, geometry: die.geometry };
@@ -640,6 +733,7 @@ export class DiceBox {
   #land(roll) {
     clearTimeout(roll.landingTimer);
     roll.phase = 'lingering';
+    this.#fireResults(roll);
     roll.resolveLanded();
     roll.timer = setTimeout(() => {
       if (roll.removed) return;
@@ -652,6 +746,19 @@ export class DiceBox {
       });
       this._renderer.startLoop(this._tick); // restarts the loop if it was stopped meanwhile
     }, this._timeBeforeHide() ?? DEFAULT_LINGER_MS);
+  }
+
+  /** One RESULT event per system instance, with that system's landed dice. */
+  #fireResults(roll) {
+    const bySystem = new Map(); // instance -> { die, dice }
+    for (const die of roll.dice) {
+      if (!die.systemInstance) continue;
+      if (!bySystem.has(die.systemInstance)) bySystem.set(die.systemInstance, { die, dice: [] });
+      bySystem.get(die.systemInstance).dice.push({ type: die.dsnType ?? die.type, value: die.value });
+    }
+    for (const { die, dice } of bySystem.values()) {
+      this.#fireEvent(die, DICE_EVENT.RESULT, { dice, system: die.system });
+    }
   }
 
   #frame(now) {
@@ -695,7 +802,12 @@ export class DiceBox {
     clearTimeout(roll.landingTimer);
     clearTimeout(roll.assetTimer);
     const scene = this._renderer.scene;
-    for (const die of roll.dice) scene.remove(die.outer);
+    for (const die of roll.dice) {
+      scene.remove(die.outer);
+      if (!die.spawned) continue;
+      die.spawned = false;
+      this.#fireEvent(die, DICE_EVENT.DESPAWN, { dice: [{ type: die.dsnType ?? die.type }], system: die.system });
+    }
     for (const plane of roll.shadows) this._renderer.sceneApi.releaseShadow(plane);
     for (const m of roll.fades ?? []) m.dispose();
     roll.fades = null;

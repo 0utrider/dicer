@@ -44,6 +44,20 @@ const getAppearance = () => LOOKS[getSetting('look')]?.appearance ?? DEFAULT_APP
 const routeOf = (url) =>
   /^([a-z][a-z0-9+.-]*:|\/)/i.test(url) ? url : foundry.utils.getRoute(url);
 
+/**
+ * The public api.js (DiceSystem, DiceSFX, DiceMap) ships beside module.json, outside the
+ * bundle: it is imported at runtime from its route (the path is computed so Vite leaves the
+ * import alone) and exposed as globalThis.DicerAPI. Third parties may import the same url.
+ */
+async function loadPublicApi() {
+  try {
+    const url = foundry.utils.getRoute(['modules', 'dicer', 'api.js'].join('/'));
+    globalThis.DicerAPI = await import(/* @vite-ignore */ url);
+  } catch (err) {
+    console.warn('dicer: cannot load api.js; DiceSystem and DiceSFX are unavailable', err);
+  }
+}
+
 /** Makes the bundled DM Serif Display available to canvas text (text die faces). */
 async function loadFaceFont() {
   const url = routeOf('modules/dicer/assets/fonts/DMSerifDisplay-Regular.woff');
@@ -140,6 +154,7 @@ Hooks.once('init', () => {
     return;
   }
   registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange });
+  loadPublicApi();
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
     initiative?.onCreateMessage(message);
@@ -200,6 +215,8 @@ Hooks.once('ready', async () => {
         onModelLoaded: (url) => registry?.noteModelLoaded(url),
         presetFor: (system, type) => registry?.presetFor(system, type) ?? null,
         onMaterial: materialReadyNotifier(Hooks),
+        // addSystem(DiceSystem instance): its material callbacks and dice events (api.js).
+        systemFor: (id) => registry?.systems.get(id)?.instance ?? null,
       });
     },
     activate: ({ renderer, diceBox: box }) => {
