@@ -457,7 +457,7 @@ export class DiceBox {
     const failed = (err) =>
       this.#systemWarn(systemId, 'material', 'a material callback threw; its dice use Dicer’s material', err);
     if (!flags.safe) {
-      chainShaderHook(mat, cacheString, (shader, m) => instance.beforeShaderCompile(shader, m), failed);
+      chainShaderHook(mat, systemId, cacheString, (shader, m) => instance.beforeShaderCompile(shader, m), failed);
     }
     try {
       instance.processMaterial(dsnType, mat, appearance);

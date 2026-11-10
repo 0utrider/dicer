@@ -324,11 +324,11 @@ ${interior.pars}`;
 
 /**
  * Chains a third-party shader hook (a DiceSystem's beforeShaderCompile) after Dicer's own
- * patch, and keys the program by `cacheString` too so three never shares it with a plain
- * Dicer program. A throwing hook is reported through onError and its changes to the shader
+ * patch, and keys the program by `systemId` and `cacheString` too so three never shares it
+ * with a plain Dicer program or another system's. A throwing hook is reported through onError and its changes to the shader
  * are undone: the program compiles as Dicer's own.
  */
-export function chainShaderHook(material, cacheString, hook, onError) {
+export function chainShaderHook(material, systemId, cacheString, hook, onError) {
   const dicerPatch = material.onBeforeCompile;
   const key = material.userData.programKey;
   material.onBeforeCompile = function (shader, renderer) {
@@ -346,7 +346,8 @@ export function chainShaderHook(material, cacheString, hook, onError) {
       onError(err);
     }
   };
-  material.customProgramCacheKey = () => `${cacheString}|dicer-${key}`;
+  // The system id too: two systems' getCacheString may agree while their hooks differ.
+  material.customProgramCacheKey = () => `sys:${systemId}|${cacheString}|dicer-${key}`;
 }
 
 /** Puts `target`'s entries back to `saved` in place (the object may be shared with three). */

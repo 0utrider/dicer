@@ -289,11 +289,15 @@ export class DiceSystem {
     this.#shaderCallbacks.push(callback);
   }
 
-  /** The first preset with this base shape and these values ({min, max} or a list). */
+  /**
+   * The first preset with these values ({min, max} or a list) and this base shape; a preset
+   * without a `shape` matches on its values alone.
+   */
   getDiceByShapeAndValues(shape, values) {
     const want = JSON.stringify(values);
     for (const preset of this.#dice.values()) {
-      if (preset?.shape === shape && JSON.stringify(preset.values) === want) return preset;
+      if (!preset || JSON.stringify(preset.values) !== want) continue;
+      if (preset.shape == null || preset.shape === shape) return preset;
     }
     return undefined;
   }

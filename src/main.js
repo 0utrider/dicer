@@ -47,15 +47,23 @@ const routeOf = (url) =>
 /**
  * The public api.js (DiceSystem, DiceSFX, DiceMap) ships beside module.json, outside the
  * bundle: it is imported at runtime from its route (the path is computed so Vite leaves the
- * import alone) and exposed as globalThis.DicerAPI. Third parties may import the same url.
+ * import alone) and exposed as globalThis.DicerAPI, which is set asynchronously during init.
+ * globalThis.DicerAPIReady is a promise of the module (null if the load failed); it never
+ * rejects. Integrations should prefer importing `modules/dicer/api.js` directly (e.g.
+ * `import { DiceSystem } from '/modules/dicer/api.js'`): it needs neither global.
  */
-async function loadPublicApi() {
-  try {
-    const url = foundry.utils.getRoute(['modules', 'dicer', 'api.js'].join('/'));
-    globalThis.DicerAPI = await import(/* @vite-ignore */ url);
-  } catch (err) {
-    console.warn('dicer: cannot load api.js; DiceSystem and DiceSFX are unavailable', err);
-  }
+function loadPublicApi() {
+  globalThis.DicerAPIReady = (async () => {
+    try {
+      const url = foundry.utils.getRoute(['modules', 'dicer', 'api.js'].join('/'));
+      const api = await import(/* @vite-ignore */ url);
+      globalThis.DicerAPI = api;
+      return api;
+    } catch (err) {
+      console.warn('dicer: cannot load api.js; DiceSystem and DiceSFX are unavailable', err);
+      return null;
+    }
+  })();
 }
 
 /** Makes the bundled DM Serif Display available to canvas text (text die faces). */

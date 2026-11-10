@@ -159,6 +159,17 @@ describe('DiceSystem instance', () => {
     expect(sys.getDiceByShapeAndValues('d8', { min: 1, max: 8 })).toBeUndefined();
   });
 
+  test('getDiceByShapeAndValues matches a shapeless preset on its values alone', () => {
+    const sys = new DiceSystem('mine', 'Mine');
+    const shaped = { type: 'dx', shape: 'd8', values: { min: 1, max: 4 } };
+    const shapeless = { type: 'dz', values: { min: 1, max: 4 } };
+    sys.dice.set('dx', shaped);
+    sys.dice.set('dz', shapeless);
+    expect(sys.getDiceByShapeAndValues('d4', { min: 1, max: 4 })).toBe(shapeless);
+    expect(sys.getDiceByShapeAndValues('d8', { min: 1, max: 4 })).toBe(shaped);
+    expect(sys.getDiceByShapeAndValues('d4', { min: 0, max: 3 })).toBeUndefined();
+  });
+
   test('getCacheString differs for different appearances and settings', () => {
     const sys = new DiceSystem('mine', 'Mine');
     sys.addSettingColor({ id: 'tint', name: 'Tint' });
@@ -265,10 +276,12 @@ describe('DiceBox applies a registered DiceSystem', () => {
     return r;
   }
 
-  function setup(system) {
+  function setup(...systems) {
     const registry = createRegistry({ warn: () => {} });
-    system.dice.set('d20', { type: 'd20', labels });
-    registry.addSystem(system);
+    for (const system of systems) {
+      system.dice.set('d20', { type: 'd20', labels });
+      registry.addSystem(system);
+    }
     const renderer = fakeRenderer();
     const physics = fakePhysics();
     const box = new DiceBox({
@@ -331,6 +344,21 @@ describe('DiceBox applies a registered DiceSystem', () => {
     box.roll([spec(4)]);
     const second = meshes(renderer)[1].material;
     expect(second).not.toBe(first);
+    box.clear();
+  });
+
+  test('two systems with the same cache string never share a program', () => {
+    class Same extends DiceSystem {
+      getCacheString() {
+        return 'SAME';
+      }
+    }
+    const { renderer, box } = setup(new Same('mine', 'Mine'), new Same('yours', 'Yours'));
+    box.roll([spec(3), { ...spec(4), system: 'yours' }]);
+    const [a, b] = meshes(renderer).map((m) => m.material);
+    expect(a.customProgramCacheKey()).toBe(`sys:mine|SAME|dicer-${a.userData.programKey}`);
+    expect(b.customProgramCacheKey()).toBe(`sys:yours|SAME|dicer-${b.userData.programKey}`);
+    expect(a.customProgramCacheKey()).not.toBe(b.customProgramCacheKey());
     box.clear();
   });
 
@@ -436,15 +464,40 @@ describe('DiceBox applies a registered DiceSystem', () => {
     physics.flush();
     renderer.tick(16);
     expect(events.filter(([n]) => n === 'SPAWN')).toHaveLength(1);
-    expect(events[0][1]).toMatchObject({ system: 'mine', dice: [{ type: 'd20' }] });
+    // No value before landing.
+    expect(events[0][1]).toEqual({ system: 'mine', dice: [{ type: 'd20' }] });
+    expect(events.some(([n]) => n === 'RESULT')).toBe(false);
+    renderer.tick(500); // still rolling
+    expect(events.some(([n]) => n === 'RESULT')).toBe(false);
     renderer.tick(2000);
     const results = events.filter(([n]) => n === 'RESULT');
     expect(results).toHaveLength(1);
     expect(results[0][1]).toEqual({ system: 'mine', dice: [{ type: 'd20', value: 7 }] });
     box.clear();
     await finished;
-    expect(events.filter(([n]) => n === 'DESPAWN')).toHaveLength(1);
+    const despawns = events.filter(([n]) => n === 'DESPAWN');
+    expect(despawns).toHaveLength(1);
+    expect(despawns[0][1]).toEqual({ system: 'mine', dice: [{ type: 'd20' }] });
     expect(events.some(([n]) => n === 'CLICK' || n === 'COLLIDE')).toBe(false);
+  });
+
+  test('a roll that fails after its dice spawned still fires DESPAWN, and no RESULT', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sys = new DiceSystem('mine', 'Mine');
+    const events = [];
+    const T = DiceSystem.DICE_EVENT_TYPE;
+    for (const [name, type] of Object.entries(T)) sys.on(type, (e) => events.push([name, e]));
+    const { renderer, physics, box } = setup(sys);
+    const { finished } = box.roll([spec(7)]);
+    physics.flush();
+    renderer.tick(16); // revealed: SPAWN
+    // No more frames: the landing guard fails the roll.
+    await vi.advanceTimersByTimeAsync(30000); // async: the guard is armed after physics done
+    await finished;
+    expect(error).toHaveBeenCalledWith('dicer: roll failed', expect.any(Error));
+    expect(events.map(([n]) => n)).toEqual(['SPAWN', 'DESPAWN']);
+    expect(events[1][1]).toEqual({ system: 'mine', dice: [{ type: 'd20' }] });
+    error.mockRestore();
   });
 
   test('a throwing event listener or fire never breaks the roll; ghosts fire nothing', async () => {
