@@ -14,10 +14,12 @@ import {
   BODY_VERTEX_PARS,
   BODY_VERTEX,
   RESIN,
+  INTERIOR_HOOK,
   VEIN_SCALE,
   bodyChunks,
   bodyDefines,
 } from './shaders/bodies.js';
+import { interiorChunk } from './shaders/interior.js';
 
 /**
  * Layered dice material: a MeshPhysicalMaterial built from a layered Appearance (body,
@@ -80,6 +82,25 @@ function resinRadii(shape) {
   return shape?.kind === 'coin'
     ? new THREE.Vector3(0.95, 0.125, 0.95)
     : new THREE.Vector3(RESIN.radius, RESIN.radius, RESIN.radius);
+}
+
+/**
+ * Key light direction for the interior sparkle (uKeyLightDir, world space, towards the
+ * light): the studio key strip at (-6, 4, 2) aimed at the origin. DiceBox may later update it
+ * from the scene's key light.
+ */
+export const KEY_LIGHT_DIR = Object.freeze([-6, 4, 2].map((v) => v / Math.hypot(-6, 4, 2)));
+
+/** Share of colors[0] mixed into the resin body colour by the low-tier interior fake. */
+export const INTERIOR_TINT = 0.45;
+
+/**
+ * P2-R1: the interior is marched only for a resin body with flags.interiors, steps > 0 and a
+ * type. 'fake': the same, but steps 0 (low tier): no march, the body is tinted instead.
+ */
+function interiorMode(a, f) {
+  if (a.body.type !== 'resin' || !f.interiors || a.interior.type === 'none') return 'none';
+  return f.interiorSteps > 0 ? 'march' : 'fake';
 }
 
 /** Fill PBR: [metalness, roughness, gloss]. */
@@ -170,6 +191,8 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
   );
 
   const [fillMetal, fillRough, fillGloss] = FILLS[a.numbers.fill] ?? FILLS.paint;
+  const mode = interiorMode(a, f);
+  const c0 = new THREE.Color(a.interior.colors[0]);
   const uniforms = {
     uAtlas: { value: atlas.texture ?? null },
     uLabels: { value: makeLabelTexture(shape, labels, atlas) },
@@ -187,12 +210,24 @@ export function createDiceMaterial(appearance, atlas, shape, labels, flags = DEF
     uResinDensity: { value: 1.0 },
     uResinFloor: { value: RESIN.floor },
     uResinRadii: { value: resinRadii(shape) },
+    uResinTint: { value: new THREE.Vector4(c0.r, c0.g, c0.b, mode === 'fake' ? INTERIOR_TINT : 0) },
+    uInteriorColors: { value: [c0, new THREE.Color(a.interior.colors[1])] },
+    uInteriorDensity: { value: a.interior.density },
+    uKeyLightDir: { value: new THREE.Vector3(...KEY_LIGHT_DIR) },
   };
 
   // Keep three's own STANDARD/PHYSICAL defines.
   if (f.engraving) material.defines.DICER_ENGRAVE = '';
   Object.assign(material.defines, bodyDefines(a, f));
-  const chunks = bodyChunks(body, a.body.finish);
+  const chunks = { ...bodyChunks(body, a.body.finish) };
+  if (mode === 'march') {
+    material.defines.DICER_INTERIOR = '';
+    material.defines.DICER_STEPS = f.interiorSteps;
+    const interior = interiorChunk(a.interior.type, a.interior.shape);
+    chunks.pars = `${chunks.pars}
+${interior.pars}`;
+    chunks.lighting = chunks.lighting.replace(INTERIOR_HOOK, interior.main);
+  }
   material.userData.uniforms = uniforms;
   material.userData.programKey = key;
   material.onBeforeCompile = (shader) => patchShader(shader, uniforms, chunks);

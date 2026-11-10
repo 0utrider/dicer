@@ -28,6 +28,11 @@ export const RESIN = Object.freeze({
   floor: 0.35,
   parallel: 0.5,
 });
+/**
+ * Marker line in RESIN_REFRACTION where the interior march (shaders/interior.js) is spliced
+ * in: after dcRefracted, inside the block that owns the refracted ray (dcRd, dcRm, dcRbody).
+ */
+export const INTERIOR_HOOK = '\t\t// dicer:interior';
 /** Marble vein scale (uVeinScale default). */
 export const VEIN_SCALE = 1.6;
 
@@ -61,6 +66,7 @@ uniform float uGlowIntensity;
 uniform float uResinDensity; // Beer-Lambert strength (1: a full ${RESIN.refChord} chord transmits the body colour)
 uniform float uResinFloor;   // albedo of the lit table seen below the horizon through resin
 uniform vec3 uResinRadii;    // body ellipsoid semi-axes, die-local (a ${RESIN.radius} sphere; flattened on the coin)
+uniform vec4 uResinTint;     // rgb: tint target, a: its share of the Beer-Lambert body colour
 varying float vEdgeDist;
 varying vec3 vLocalPos;
 #ifdef DICER_RESIN
@@ -303,10 +309,12 @@ export const RESIN_REFRACTION = /* glsl */ `
 		vec3 dcRe1 = vec3( 0.5 ); // no environment yet: a neutral grey stand-in
 		vec3 dcRe2 = vec3( 0.5 );
 	#endif
-		vec3 dcRbody = max( diffuse, vec3( 1e-3 ) );
+		// uResinTint: the low-tier interior fake (Task 6) leans the body colour towards the interior
+		vec3 dcRbody = max( mix( diffuse, uResinTint.rgb, uResinTint.a ), vec3( 1e-3 ) );
 		float dcRk = uResinDensity / ${f(RESIN.refChord)};
 		dcRefracted = ( 1.0 - dcRF ) * dcRe1 * pow( dcRbody, vec3( dcRk * dcRt1 ) )
 			+ dcRF * dcRe2 * pow( dcRbody, vec3( dcRk * ( dcRt1 + dcRt2 ) ) );
+${INTERIOR_HOOK}
 	}
 	totalDiffuse = mix( totalDiffuse, dcRefracted, 1.0 - dcMask );
 #endif

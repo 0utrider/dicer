@@ -314,12 +314,16 @@ test('marble and pearl program keys differ from opaque (and from each other)', (
   expect(new Set(keys).size).toBe(3);
 });
 
-test('dcFbm3 is injected only for marble and antique', () => {
+test('dcFbm3 is injected only for marble, antique and marched resin interiors', () => {
   for (const name of Object.keys(CASES)) {
     const src = patched(CASES[name][0]()).fragmentShader;
-    if (name === 'marble' || name === 'antique') expect(src).toContain('dcFbm3');
+    // the resin case is the default appearance: a nebula interior, marched at 32 steps
+    if (name === 'marble' || name === 'antique' || name === 'resin')
+      expect(src).toContain('dcFbm3');
     else expect(src).not.toContain('dcFbm3');
   }
+  const clear = make({ body: { type: 'resin' }, interior: { type: 'none' } });
+  expect(patched(clear).fragmentShader).not.toContain('dcFbm3');
 });
 
 test('body shader code lands at its anchors', () => {
@@ -394,4 +398,84 @@ test('every chunk anchor the material patches exists in r184 (a three upgrade fa
   const sh = patched(createDiceMaterial(opaque(), atlas, s, labels));
   expect(sh.vertexShader).toContain('vLocalPos = transformed');
   expect(sh.fragmentShader).toContain('varying float vEdgeDist');
+});
+
+// ---- Task 6: ray-marched interiors -----------------------------------------------------
+
+const nebula = (extra = {}) => ({
+  body: { type: 'resin', color: '#1f5fd1' },
+  interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6 },
+  ...extra,
+});
+
+test('interior: steps are part of the program key and the DICER_STEPS define', () => {
+  const a = make(nebula(), { ...FLAGS, interiorSteps: 32 });
+  const b = make(nebula(), { ...FLAGS, interiorSteps: 16 });
+  expect(a.customProgramCacheKey()).not.toBe(b.customProgramCacheKey());
+  expect(a.defines.DICER_STEPS).toBe(32);
+  expect(b.defines.DICER_STEPS).toBe(16);
+  expect(a.defines).toHaveProperty('DICER_INTERIOR');
+  const fs = patched(a).fragmentShader;
+  expect(fs).toContain('vec4 dcInterior( vec3 p');
+});
+
+test('interior: interiors off gives the same key and defines as a plain resin', () => {
+  const off = make(nebula(), { ...FLAGS, interiors: false });
+  const none = make(nebula({ interior: { type: 'none' } }));
+  expect(off.customProgramCacheKey()).toBe(none.customProgramCacheKey());
+  expect(off.defines).toEqual(none.defines);
+  expect(off.defines.DICER_STEPS).toBeUndefined();
+  expect(patched(off).fragmentShader).not.toContain('dcInterior');
+  expect(off.userData.uniforms.uResinTint.value.w).toBe(0);
+});
+
+test('interior: steps 0 has no march and tints the resin towards colors[0] (low-tier fake)', () => {
+  const m = make(nebula(), { ...FLAGS, interiorSteps: 0 });
+  expect(m.defines.DICER_STEPS).toBeUndefined();
+  expect(m.defines.DICER_INTERIOR).toBeUndefined();
+  expect(patched(m).fragmentShader).not.toContain('dcInterior');
+  const t = m.userData.uniforms.uResinTint.value;
+  expect(t.w).toBeGreaterThan(0);
+  const tint = new THREE.Color(t.x, t.y, t.z);
+  expect(tint.getHexString()).toBe(new THREE.Color('#8a4dff').getHexString());
+  const tinted = new THREE.Color('#1f5fd1').lerp(tint, t.w);
+  expect(tinted.getHexString()).not.toBe(m.color.getHexString());
+  // the Beer-Lambert colour reads the tint
+  expect(patched(m).fragmentShader).toMatch(/mix\( diffuse, uResinTint\.rgb, uResinTint\.a \)/);
+  // marched and interior-less resins are untinted
+  expect(make(nebula()).userData.uniforms.uResinTint.value.w).toBe(0);
+  expect(make(nebula({ interior: { type: 'none' } })).userData.uniforms.uResinTint.value.w).toBe(0);
+});
+
+test('interior: a non-resin body never gets interior defines', () => {
+  for (const type of ['opaque', 'metal', 'marble', 'pearl']) {
+    const m = make({ body: { type }, interior: { type: 'nebula' } });
+    expect(m.defines.DICER_STEPS).toBeUndefined();
+    expect(m.defines.DICER_INTERIOR).toBeUndefined();
+    expect(patched(m).fragmentShader).not.toContain('dcInterior');
+  }
+});
+
+test('interior: uniforms (colours, density, key light) and per-shape programs', () => {
+  const m = make(nebula());
+  const u = m.userData.uniforms;
+  expect(u.uInteriorColors.value[0].getHexString()).toBe(new THREE.Color('#8a4dff').getHexString());
+  expect(u.uInteriorColors.value[1].getHexString()).toBe(new THREE.Color('#22d3ee').getHexString());
+  expect(u.uInteriorDensity.value).toBeCloseTo(0.6);
+  const k = u.uKeyLightDir.value;
+  expect(k.length()).toBeCloseTo(1);
+  const expected = new THREE.Vector3(-6, 4, 2).normalize();
+  expect(k.distanceTo(expected)).toBeLessThan(1e-6);
+  const star = make({ body: { type: 'resin' }, interior: { type: 'shape', shape: 'star' } });
+  const heart = make({ body: { type: 'resin' }, interior: { type: 'shape', shape: 'heart' } });
+  expect(star.customProgramCacheKey()).not.toBe(heart.customProgramCacheKey());
+  expect(patched(heart).fragmentShader).toContain('dcSdHeart');
+});
+
+test('interior: composites into the refracted colour, before the number mask', () => {
+  const fs = patched(make(nebula())).fragmentShader;
+  const march = fs.indexOf('dcInterior( dcIp');
+  expect(march).toBeGreaterThan(fs.indexOf('dcRefracted = ( 1.0 - dcRF )'));
+  expect(march).toBeLessThan(fs.indexOf('totalDiffuse = mix( totalDiffuse, dcRefracted'));
+  expect(fs).toContain('dcRefracted = dcRefracted * ( 1.0 - dcIacc.a ) + dcIacc.rgb');
 });

@@ -317,6 +317,33 @@ async function msPerFrame(frames = 10) {
   return (performance.now() - t0) / frames;
 }
 
+/**
+ * Close-up of one cell (look id x die type) at size x size CSS px, as a PNG data URL. The
+ * grid is re-rendered afterwards. For judging interiors that are too small at cell size.
+ */
+function closeup(id, type, size = 300) {
+  const c = cells.find((x) => x.id === id && x.type === type);
+  if (!c) throw new Error(`no cell ${id}/${type}`);
+  const prev = renderer.getSize(new THREE.Vector2());
+  renderer.setSize(size, size, false);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, size, size);
+  _target.set(0, c.mesh.position.y * 0.85, 0);
+  camera.position.copy(_target).addScaledVector(VIEW_DIR, VIEW_DISTANCE);
+  camera.lookAt(_target);
+  c.mesh.visible = c.shadow.visible = true;
+  let url;
+  try {
+    renderer.render(scene, camera);
+    url = canvas.toDataURL('image/png');
+  } finally {
+    c.mesh.visible = c.shadow.visible = false;
+    renderer.setSize(prev.x, prev.y);
+    renderGrid();
+  }
+  return url;
+}
+
 function info() {
   const ext = gl.getExtension('WEBGL_debug_renderer_info');
   const keys = new Set(cells.map((c) => c.mesh.material?.userData?.programKey));
@@ -347,4 +374,4 @@ $('tier').addEventListener('change', (e) => {
   setTier(e.target.value).catch((err) => report(`setTier failed: ${err?.stack ?? err}`));
 });
 
-window.__looks = { ready, errors, msPerFrame, setTier, cellAlphas, info, noiseProbe };
+window.__looks = { ready, errors, msPerFrame, setTier, cellAlphas, info, noiseProbe, closeup };
