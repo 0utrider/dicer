@@ -12,7 +12,7 @@ const GM_USER = process.env.DICER_GM_USER;
 const GM_PASSWORD = process.env.DICER_GM_PASSWORD;
 const HEADLESS = process.env.DICER_BENCH_HEADLESS === '1';
 const SETTLE_MS = 3000; // after login and settings, before the first roll
-const BIG_POOL = 30; // H-R7: G2's big pool is 30 dice; Dicer's maxDice default is 20
+const READY = () => Boolean(globalThis.game?.ready && globalThis.game?.dice3d);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const errText = (e) => String(e?.message ?? e).split('\n')[0];
@@ -48,12 +48,14 @@ function printPlan(plan, decision) {
   const p = lib.profiles();
   console.log(`bench: dry run, ${plan.length} runs (nothing launched, nothing changed)`);
   for (const [i, e] of plan.entries()) {
+    const flag = lib.dsnFlagFor(e);
     const extra = [
       `cpu ${p[e.profile].cpuThrottle}x`,
       `${p[e.profile].viewport.width}x${p[e.profile].viewport.height}@${p[e.profile].deviceScaleFactor}`,
       e.dicerQuality ? `dicer quality ${e.dicerQuality}` : null,
-      e.dsnEffectsOff ? 'dsn effects off' : null,
-      e.product === 'dicer' ? `maxDice ${BIG_POOL}` : null,
+      e.product === 'dicer' ? `maxDice ${lib.DICER_MAX_DICE}` : null,
+      e.product === 'dice-so-nice' ? `maxDiceNumber ${lib.DSN_MAX_DICE}` : null,
+      flag ? (flag.exists ? 'dsn user flag = effects off' : 'dsn user flag unset') : null,
     ].filter(Boolean);
     console.log(`  ${i + 1}. ${lib.runName(e)}: ${e.ids.join(', ')} (${extra.join(', ')})`);
   }
@@ -100,6 +102,7 @@ async function login(page) {
 function createHarness(chromium) {
   const browsers = {};
   let interrupted = false;
+  let restoring = false;
   let knownProduct = null; // verified active product; runEntry re-checks it on every run
 
   async function browserFor(mode) {
@@ -167,14 +170,7 @@ function createHarness(chromium) {
       });
       await login(page);
       if (!(await rpc(page, 'isGM'))) throw Error(`"${GM_USER}" is not a GM.`);
-      await page.waitForFunction(
-        () => Boolean(globalThis.game?.ready && globalThis.game?.dice3d),
-        null,
-        {
-          timeout: 60000,
-          polling: 250,
-        },
-      );
+      await page.waitForFunction(READY, null, { timeout: 60000, polling: 250 });
       return { context, page, cdp, pageErrors, close: () => context.close().catch(() => {}) };
     } catch (e) {
       await context.close().catch(() => {});
@@ -210,14 +206,48 @@ function createHarness(chromium) {
     }
   }
 
-  async function raiseMaxDice(page, restore) {
-    if (restore.maxDice === undefined) {
-      restore.maxDice = await rpc(page, 'getDicerSetting', 'maxDice');
+  /**
+   * Raises a product's world dice cap for the run, saving the original in restore.json (under
+   * `field`) before the first change.
+   */
+  async function raiseCap(page, restore, field, namespace, key, value) {
+    if (restore[field] === undefined) {
+      restore[field] = await rpc(page, 'getSetting', { namespace, key });
       await writeRestore(restore);
     }
-    if ((await rpc(page, 'getDicerSetting', 'maxDice')) !== BIG_POOL) {
-      await rpc(page, 'setDicerSetting', { key: 'maxDice', value: BIG_POOL });
+    if ((await rpc(page, 'getSetting', { namespace, key })) !== value) {
+      await rpc(page, 'setSetting', { namespace, key, value });
     }
+  }
+
+  /** Reloads /game in the same context (the session cookie survives; log in again if not). */
+  async function reloadGame(page) {
+    await page.reload();
+    if (/\/join/.test(page.url())) await login(page);
+    await page.waitForFunction(READY, null, { timeout: 90000, polling: 250 });
+  }
+
+  /**
+   * H-R8: writes the run's DSN user flag (effects-off overrides, or unset for defaults), saving
+   * the original first, then reloads so DSN reads it at init. Throws when it did not stick.
+   */
+  async function applyDsnFlag(page, restore, want) {
+    if (restore.dsnUserFlag === undefined) {
+      restore.dsnUserFlag = await rpc(page, 'getDsnUserFlag');
+      await writeRestore(restore);
+    }
+    const back = await rpc(page, 'setDsnUserFlag', want);
+    if (!lib.flagApplied(back, want)) {
+      throw Error(
+        `DSN user flag could not be written: wanted ${JSON.stringify(want)}, read back ${JSON.stringify(back)}`,
+      );
+    }
+    await reloadGame(page);
+    const after = await rpc(page, 'getDsnUserFlag');
+    if (!lib.flagApplied(after, want)) {
+      throw Error(`DSN user flag changed across the reload: read back ${JSON.stringify(after)}`);
+    }
+    return after;
   }
 
   async function runEntry(entry, restore) {
@@ -227,30 +257,30 @@ function createHarness(chromium) {
       const active = await rpc(s.page, 'benchProduct');
       if (active !== entry.product)
         throw Error(`expected ${entry.product} active, found ${active ?? 'none or both'}`);
-      if (entry.product === 'dicer') await raiseMaxDice(s.page, restore);
+      let dsnFlag = null;
+      if (entry.product === 'dicer') {
+        await raiseCap(s.page, restore, 'maxDice', 'dicer', 'maxDice', lib.DICER_MAX_DICE);
+      } else {
+        const cap = lib.DSN_MAX_DICE;
+        await raiseCap(s.page, restore, 'dsnMaxDiceNumber', 'dice-so-nice', 'maxDiceNumber', cap);
+        dsnFlag = await applyDsnFlag(s.page, restore, lib.dsnFlagFor(entry));
+      }
       if (entry.dicerQuality)
         await rpc(s.page, 'setDicerSetting', { key: 'quality', value: entry.dicerQuality });
-      let dsnKeys = null;
-      let dsnFailed = [];
-      if (entry.dsnEffectsOff) {
-        dsnKeys = lib.dsnEffectsOff(await rpc(s.page, 'dsnSettingsList'));
-        dsnFailed = await rpc(s.page, 'setDsnSettings', dsnKeys);
-      }
       const settings = await rpc(s.page, 'benchSettings');
-      if (p.cpuThrottle > 1)
-        await s.cdp.send('Emulation.setCPUThrottlingRate', { rate: p.cpuThrottle });
+      await s.cdp.send('Emulation.setCPUThrottlingRate', { rate: p.cpuThrottle });
       await sleep(SETTLE_MS);
       const suite = await rpc(s.page, 'benchRun', { ids: entry.ids, profile: lib.runName(entry) });
       return {
         at: new Date().toISOString(),
         entry,
         settings,
-        dsnKeys,
-        dsnFailed,
+        dsnFlag,
         pageErrors: s.pageErrors,
         suite,
       };
     } finally {
+      await s.cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {});
       await s.close();
     }
   }
@@ -258,26 +288,42 @@ function createHarness(chromium) {
   /** Puts the world back (bench-lib restorePlan), then deletes restore.json. */
   async function performRestore(restore) {
     knownProduct = null;
-    let s = await openSession('pc', 'vsync');
+    restoring = true;
     try {
-      const active = await rpc(s.page, 'benchProduct');
-      for (const step of lib.restorePlan(restore, active)) {
-        if (step.op === 'switch') {
-          await rpc(s.page, 'setDiceModule', step.product);
-          await s.close();
-          s = await openSession('pc', 'vsync');
-          const now = await rpc(s.page, 'benchProduct');
-          if (now !== step.product) throw Error(`restore: could not activate ${step.product}`);
-        } else if (step.op === 'setMaxDice') {
-          await rpc(s.page, 'setDicerSetting', { key: 'maxDice', value: step.value });
-        } else if (step.op === 'setModuleConfiguration') {
-          await rpc(s.page, 'setModuleConfiguration', step.value);
+      let s = await openSession('pc', 'vsync');
+      try {
+        const active = await rpc(s.page, 'benchProduct');
+        for (const step of lib.restorePlan(restore, active)) {
+          if (step.op === 'switch') {
+            await rpc(s.page, 'setDiceModule', step.product);
+            await s.close();
+            s = await openSession('pc', 'vsync');
+            const now = await rpc(s.page, 'benchProduct');
+            if (now !== step.product) throw Error(`restore: could not activate ${step.product}`);
+          } else if (step.op === 'setMaxDice') {
+            await rpc(s.page, 'setSetting', {
+              namespace: 'dicer',
+              key: 'maxDice',
+              value: step.value,
+            });
+          } else if (step.op === 'setDsnMaxDiceNumber') {
+            const set = { namespace: 'dice-so-nice', key: 'maxDiceNumber', value: step.value };
+            await rpc(s.page, 'setSetting', set);
+          } else if (step.op === 'setDsnUserFlag') {
+            const back = await rpc(s.page, 'setDsnUserFlag', step.value);
+            if (!lib.flagApplied(back, step.value))
+              throw Error('restore: DSN user flag not restored');
+          } else if (step.op === 'setModuleConfiguration') {
+            await rpc(s.page, 'mergeModuleConfiguration', step.value);
+          }
         }
+      } finally {
+        await s.close();
       }
+      await deleteRestore();
     } finally {
-      await s.close();
+      restoring = false;
     }
-    await deleteRestore();
   }
 
   return {
@@ -288,6 +334,9 @@ function createHarness(chromium) {
     closeBrowsers,
     get interrupted() {
       return interrupted;
+    },
+    get restoring() {
+      return restoring;
     },
     interrupt() {
       interrupted = true;
@@ -317,8 +366,17 @@ async function main() {
 
   const { chromium } = await import('playwright');
   const h = createHarness(chromium);
+  let sigintDuringRestore = false;
   process.on('SIGINT', () => {
-    if (h.interrupted) {
+    // Once the restore has started, the first Ctrl+C is ignored so it can finish.
+    if (h.restoring && !sigintDuringRestore) {
+      sigintDuringRestore = true;
+      console.error(
+        `bench: restore in progress, Ctrl+C ignored (again to abandon it; ${lib.RESTORE_FILE} is kept)`,
+      );
+      return;
+    }
+    if (h.interrupted || h.restoring) {
       console.error(
         `bench: second Ctrl+C, exiting; ${lib.RESTORE_FILE} is kept and the next run restores it`,
       );
@@ -331,7 +389,7 @@ async function main() {
   const outDir = lib.outDirName(new Date());
   const reports = [];
   const errors = [];
-  let dsnKeys = null;
+  let dsnFlag = null;
   let restore = null;
   try {
     if (decision.action === 'restore') {
@@ -356,7 +414,7 @@ async function main() {
       try {
         await h.ensureProduct(entry.product);
         const rep = await h.runEntry(entry, restore);
-        if (rep.dsnKeys) dsnKeys = rep.dsnKeys;
+        if (lib.dsnFlagFor(entry)?.exists) dsnFlag = rep.dsnFlag;
         reports.push(rep);
         await writeFile(`${outDir}/${name}.json`, JSON.stringify(rep, null, 2));
       } catch (e) {
@@ -368,7 +426,9 @@ async function main() {
     if (restore) {
       try {
         await h.performRestore(restore);
-        console.log('bench: world module configuration and maxDice restored');
+        console.log(
+          'bench: world restored (module configuration, maxDice, maxDiceNumber, DSN user flag)',
+        );
       } catch (e) {
         errors.push({ run: 'restore', error: errText(e) });
         console.error(
@@ -380,7 +440,7 @@ async function main() {
   }
 
   const rows = lib.verdicts(reports);
-  const md = lib.summaryMarkdown({ date: outDir.split('/').pop(), reports, rows, errors, dsnKeys });
+  const md = lib.summaryMarkdown({ date: outDir.split('/').pop(), reports, rows, errors, dsnFlag });
   await mkdir(outDir, { recursive: true });
   await writeFile(`${outDir}/summary.md`, md);
   console.log(md);

@@ -371,50 +371,46 @@ export function getModuleConfiguration() {
   return plain(game.settings.get('core', 'moduleConfiguration'));
 }
 
-export async function setModuleConfiguration(cfg) {
+/**
+ * Merges `partial` into core.moduleConfiguration (other modules untouched). The restore passes
+ * only the dicer / dice-so-nice keys of the original snapshot. The caller reloads.
+ */
+export async function mergeModuleConfiguration(partial) {
+  const cfg = { ...(game.settings.get('core', 'moduleConfiguration') ?? {}), ...(partial ?? {}) };
   await game.settings.set('core', 'moduleConfiguration', cfg);
   return true;
 }
 
 /** core.moduleConfiguration with exactly one of dicer / dice-so-nice enabled. The caller reloads. */
-export async function setDiceModule(id) {
+export function setDiceModule(id) {
   if (id !== 'dicer' && id !== 'dice-so-nice') throw Error(`unknown dice module: ${id}`);
-  const cfg = { ...(game.settings.get('core', 'moduleConfiguration') ?? {}) };
-  cfg.dicer = id === 'dicer';
-  cfg['dice-so-nice'] = id === 'dice-so-nice';
-  await game.settings.set('core', 'moduleConfiguration', cfg);
+  return mergeModuleConfiguration({ dicer: id === 'dicer', 'dice-so-nice': id === 'dice-so-nice' });
+}
+
+/** A registered setting's value (the namespace's module must be active). */
+export function getSetting({ namespace, key }) {
+  return plain(game.settings.get(namespace, key));
+}
+
+export async function setSetting({ namespace, key, value }) {
+  await game.settings.set(namespace, key, value);
   return true;
 }
 
-/** DSN's registered settings as plain data (the runtime registry only, never DSN source). */
-export function dsnSettingsList() {
-  const out = [];
-  for (const s of game.settings.settings.values()) {
-    if (s.namespace !== 'dice-so-nice') continue;
-    const t =
-      typeof s.type === 'function' ? s.type.name : (s.type?.constructor?.name ?? String(s.type));
-    out.push({
-      namespace: s.namespace,
-      key: s.key,
-      scope: s.scope,
-      type: /^Boolean/.test(t) ? 'Boolean' : t,
-      choices: s.choices ? Object.keys(s.choices) : null,
-    });
-  }
-  return out;
+/**
+ * H-R8: DSN 6.4.5's graphics options live in the user flag flags['dice-so-nice'].settings.
+ * Returns `{exists, value?}` (read raw, so it works whatever module is active).
+ */
+export function getDsnUserFlag() {
+  const v = game.user.flags?.['dice-so-nice']?.settings;
+  return v === undefined || v === null ? { exists: false } : { exists: true, value: plain(v) };
 }
 
-/** Sets DSN client settings `{key: value}`; returns the ones that failed. */
-export async function setDsnSettings(map) {
-  const failed = [];
-  for (const [k, v] of Object.entries(map ?? {})) {
-    try {
-      await game.settings.set('dice-so-nice', k, v);
-    } catch (e) {
-      failed.push(`${k}: ${e?.message ?? e}`);
-    }
-  }
-  return failed;
+/** Writes `{exists, value?}`: unset, or replace with exactly `value` (DSN must be active). */
+export async function setDsnUserFlag(flag) {
+  await game.user.unsetFlag('dice-so-nice', 'settings');
+  if (flag?.exists) await game.user.setFlag('dice-so-nice', 'settings', flag.value);
+  return getDsnUserFlag();
 }
 
 function benchBrowser() {
@@ -544,6 +540,7 @@ export async function benchRun({ ids, profile }) {
   const { runSuite } = await import(`${BENCH}scenarios.js`);
   const { createDicerAdapter } = await import(`${BENCH}dicer-adapter.js`);
   const adapter = benchAdapter(product, createDicerAdapter);
+  const warmup = await warmupRoll();
   const results = [];
   let meta = null;
   for (const id of ids) {
@@ -568,6 +565,30 @@ export async function benchRun({ ids, profile }) {
     tier: meta?.tier ?? null,
     version: meta?.version ?? null,
     profile,
+    warmup,
     results,
   };
+}
+
+/**
+ * One unrecorded 1d20 chat roll before the scenarios (both products), so neither pays its
+ * first-roll setup inside a measured scenario. Waits for its diceSoNiceRollComplete (16 s cap).
+ */
+async function warmupRoll() {
+  let id = null;
+  let resolveDone;
+  const done = new Promise((r) => (resolveDone = r));
+  const seen = new Set();
+  const hookId = Hooks.on('diceSoNiceRollComplete', (mid) => {
+    seen.add(mid);
+    if (mid === id) resolveDone(true);
+  });
+  try {
+    id = (await new Roll('1d20').toMessage()).id;
+    if (seen.has(id)) resolveDone(true);
+    const completed = await Promise.race([done, sleep(IDLE_WAIT_MS).then(() => false)]);
+    return { completed };
+  } finally {
+    Hooks.off('diceSoNiceRollComplete', hookId);
+  }
 }

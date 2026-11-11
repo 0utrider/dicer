@@ -4,12 +4,16 @@ import {
   modes,
   matrix,
   runName,
-  dsnEffectsOff,
+  DSN_EFFECTS_OFF,
+  DICER_MAX_DICE,
+  DSN_MAX_DICE,
+  dsnFlagFor,
+  flagApplied,
   verdicts,
   exitCode,
   startupDecision,
   restorePlan,
-  moduleConfigFor,
+  pickProductModules,
   outDirName,
   parseArgs,
   summaryMarkdown,
@@ -123,8 +127,6 @@ test('matrix: Dicer quality per entry (throttled medium, effects-off pairing low
   expect(entry('dicer', 'throttled', 'vsync').dicerQuality).toBe('medium');
   expect(entry('dicer', 'throttled', 'uncapped').dicerQuality).toBe('medium');
   expect(entry('dicer', 'pc', 'uncapped', 'low').dicerQuality).toBe('low');
-  expect(entry('dice-so-nice', 'pc', 'uncapped', 'effectsOff').dsnEffectsOff).toBe(true);
-  expect(entry('dice-so-nice', 'pc', 'uncapped').dsnEffectsOff).toBe(false);
 });
 
 test('runName is unique per entry and file-safe', () => {
@@ -137,57 +139,46 @@ test('runName is unique per entry and file-safe', () => {
   for (const n of names) expect(n).toMatch(/^[a-z0-9-]+$/i);
 });
 
-test('dsnEffectsOff picks shadow-like and glow Boolean keys, leaves unrelated keys alone', () => {
-  const list = [
-    {
-      namespace: 'dice-so-nice',
-      key: 'shadowQuality',
-      scope: 'client',
-      type: 'String',
-      choices: ['none', 'low', 'high'],
-    },
-    { namespace: 'dice-so-nice', key: 'glow', scope: 'client', type: 'Boolean' },
-    { namespace: 'dice-so-nice', key: 'bumpMapping', scope: 'client', type: 'Boolean' },
-    {
-      namespace: 'dice-so-nice',
-      key: 'antialiasing',
-      scope: 'client',
-      type: 'String',
-      choices: ['none', 'smaa', 'msaa'],
-    },
-    { namespace: 'dice-so-nice', key: 'sounds', scope: 'client', type: 'Boolean' },
-    { namespace: 'dice-so-nice', key: 'immersiveDarkness', scope: 'client', type: 'Boolean' },
-    { namespace: 'dice-so-nice', key: 'disableShadows', scope: 'client', type: 'Boolean' },
-    // unrelated, non-Boolean without an off choice, other scope, other module
-    {
-      namespace: 'dice-so-nice',
-      key: 'enabledSimultaneousRolls',
-      scope: 'client',
-      type: 'Boolean',
-    },
-    { namespace: 'dice-so-nice', key: 'hideAfterRoll', scope: 'client', type: 'Boolean' },
-    { namespace: 'dice-so-nice', key: 'soundsVolume', scope: 'client', type: 'Number' },
-    {
-      namespace: 'dice-so-nice',
-      key: 'soundsSurface',
-      scope: 'client',
-      type: 'String',
-      choices: ['felt', 'wood'],
-    },
-    { namespace: 'dice-so-nice', key: 'glowWorld', scope: 'world', type: 'Boolean' },
-    { namespace: 'other', key: 'glow', scope: 'client', type: 'Boolean' },
-  ];
-  expect(dsnEffectsOff(list)).toEqual({
+test('H-R8: DSN effects-off overrides, verbatim', () => {
+  expect(DSN_EFFECTS_OFF).toEqual({
     shadowQuality: 'none',
     glow: false,
     bumpMapping: false,
     antialiasing: 'none',
     sounds: false,
-    immersiveDarkness: false,
-    disableShadows: true,
+    useHighDPI: false,
+    persistentDiceOutlines: false,
+    advancedGlass: false,
   });
-  expect(dsnEffectsOff([])).toEqual({});
-  expect(dsnEffectsOff(null)).toEqual({});
+  expect(Object.isFrozen(DSN_EFFECTS_OFF)).toBe(true);
+});
+
+test('dsnFlagFor: effects-off writes the overrides, DSN defaults unset the flag, Dicer leaves it', () => {
+  expect(dsnFlagFor(entry('dice-so-nice', 'pc', 'uncapped', 'effectsOff'))).toEqual({
+    exists: true,
+    value: { ...DSN_EFFECTS_OFF },
+  });
+  expect(dsnFlagFor(entry('dice-so-nice', 'pc', 'uncapped'))).toEqual({ exists: false });
+  expect(dsnFlagFor(entry('dice-so-nice', 'throttled', 'uncapped'))).toEqual({ exists: false });
+  expect(dsnFlagFor(entry('dicer', 'pc', 'uncapped', 'low'))).toBeNull();
+});
+
+test('flagApplied: read-back must hold every override, or be unset for a defaults run', () => {
+  const want = { exists: true, value: { ...DSN_EFFECTS_OFF } };
+  expect(flagApplied({ exists: true, value: { ...DSN_EFFECTS_OFF, extra: 1 } }, want)).toBe(true);
+  expect(flagApplied({ exists: true, value: { ...DSN_EFFECTS_OFF, glow: true } }, want)).toBe(
+    false,
+  );
+  expect(flagApplied({ exists: false }, want)).toBe(false);
+  expect(flagApplied(null, want)).toBe(false);
+  expect(flagApplied({ exists: false }, { exists: false })).toBe(true);
+  expect(flagApplied({ exists: true, value: { glow: false } }, { exists: false })).toBe(false);
+});
+
+test('caps: Dicer maxDice 30 (H-R7), DSN maxDiceNumber 35 (range 20-100 step 5)', () => {
+  expect(DICER_MAX_DICE).toBe(30);
+  expect(DSN_MAX_DICE).toBe(35);
+  expect(DSN_MAX_DICE % 5).toBe(0);
 });
 
 test('verdicts: pc-defaults 9.5 vs 10 fails (needs clearly less), throttled with the same numbers passes', () => {
@@ -265,6 +256,22 @@ test('verdicts: roll failures and a renderer rebuilt on resize fail; a rebuild o
   expect(rows.find((r) => r.scenario === 'contextLoss' && r.id === 'failures').pass).toBe(true);
 });
 
+test('verdicts: a head-to-head row fails when either side had roll failures, even if faster', () => {
+  const reports = [
+    report(entry('dicer', 'throttled', 'uncapped'), [
+      result('d20', { frame: sum(5), failures: 1 }),
+      result('mixed10', { frame: sum(5) }),
+    ]),
+    report(entry('dice-so-nice', 'throttled', 'uncapped'), [
+      result('d20', { product: 'dice-so-nice', frame: sum(10) }),
+      result('mixed10', { product: 'dice-so-nice', frame: sum(10), failures: 3 }),
+    ]),
+  ];
+  const h2h = verdicts(reports).filter((r) => r.type === 'h2h');
+  expect(h2h.find((r) => r.scenario === 'd20')).toMatchObject({ dicerFailures: 1, pass: false });
+  expect(h2h.find((r) => r.scenario === 'mixed10')).toMatchObject({ dsnFailures: 3, pass: false });
+});
+
 test('verdicts: a missing counterpart yields an n/a row, not a crash', () => {
   const reports = [report(entry('dicer', 'pc', 'uncapped'), [result('d20')])];
   const [row] = verdicts(reports).filter((r) => r.type === 'h2h');
@@ -286,38 +293,77 @@ test('restore decision: restore.json at startup means restore first; garbage abo
   expect(startupDecision('{}').action).toBe('abort');
 });
 
-test('restorePlan: maxDice needs Dicer active; module configuration is restored last', () => {
-  const r = { moduleConfiguration: { dicer: true, 'dice-so-nice': true }, maxDice: 20 };
+test('restore decision: the DSN items (user flag, maxDiceNumber) round-trip; malformed ones abort', () => {
+  const cfg = { dicer: true, 'dice-so-nice': false };
+  const full = {
+    moduleConfiguration: cfg,
+    maxDice: 20,
+    dsnMaxDiceNumber: 20,
+    dsnUserFlag: { exists: true, value: { glow: true } },
+  };
+  expect(startupDecision(JSON.stringify(full))).toEqual({ action: 'restore', restore: full });
+  const unset = { moduleConfiguration: cfg, dsnUserFlag: { exists: false } };
+  expect(startupDecision(JSON.stringify(unset)).action).toBe('restore');
+  for (const bad of [
+    { moduleConfiguration: cfg, dsnUserFlag: { value: {} } },
+    { moduleConfiguration: cfg, dsnUserFlag: 'x' },
+    { moduleConfiguration: cfg, dsnMaxDiceNumber: 'many' },
+    { moduleConfiguration: cfg, maxDice: null },
+  ]) {
+    expect(startupDecision(JSON.stringify(bad)).action).toBe('abort');
+  }
+});
+
+const CFG = { dicer: true, 'dice-so-nice': false, foo: true };
+const PICKED = { dicer: true, 'dice-so-nice': false };
+const FLAG = { exists: true, value: { glow: true } };
+
+test('restorePlan: maxDice needs Dicer active; module configuration (its two keys) last', () => {
+  const r = { moduleConfiguration: CFG, maxDice: 20 };
   expect(restorePlan(r, 'dicer')).toEqual([
     { op: 'setMaxDice', value: 20 },
-    { op: 'setModuleConfiguration', value: r.moduleConfiguration },
+    { op: 'setModuleConfiguration', value: PICKED },
   ]);
   expect(restorePlan(r, 'dice-so-nice')).toEqual([
     { op: 'switch', product: 'dicer' },
     { op: 'setMaxDice', value: 20 },
-    { op: 'setModuleConfiguration', value: r.moduleConfiguration },
+    { op: 'setModuleConfiguration', value: PICKED },
   ]);
-  expect(restorePlan({ moduleConfiguration: r.moduleConfiguration }, null)).toEqual([
-    { op: 'setModuleConfiguration', value: r.moduleConfiguration },
+  expect(restorePlan({ moduleConfiguration: CFG }, null)).toEqual([
+    { op: 'setModuleConfiguration', value: PICKED },
   ]);
 });
 
-test('moduleConfigFor enables exactly one product and keeps the other modules', () => {
-  const cfg = { dicer: true, 'dice-so-nice': true, foo: true, bar: false };
-  expect(moduleConfigFor(cfg, 'dicer')).toEqual({
+test('restorePlan: DSN maxDiceNumber and the user flag need DSN active; the active product goes first', () => {
+  const r = { moduleConfiguration: CFG, maxDice: 20, dsnMaxDiceNumber: 25, dsnUserFlag: FLAG };
+  expect(restorePlan(r, 'dice-so-nice')).toEqual([
+    { op: 'setDsnMaxDiceNumber', value: 25 },
+    { op: 'setDsnUserFlag', value: FLAG },
+    { op: 'switch', product: 'dicer' },
+    { op: 'setMaxDice', value: 20 },
+    { op: 'setModuleConfiguration', value: PICKED },
+  ]);
+  expect(restorePlan(r, 'dicer')).toEqual([
+    { op: 'setMaxDice', value: 20 },
+    { op: 'switch', product: 'dice-so-nice' },
+    { op: 'setDsnMaxDiceNumber', value: 25 },
+    { op: 'setDsnUserFlag', value: FLAG },
+    { op: 'setModuleConfiguration', value: PICKED },
+  ]);
+  const dsnOnly = { moduleConfiguration: CFG, dsnUserFlag: { exists: false } };
+  expect(restorePlan(dsnOnly, null)).toEqual([
+    { op: 'switch', product: 'dice-so-nice' },
+    { op: 'setDsnUserFlag', value: { exists: false } },
+    { op: 'setModuleConfiguration', value: PICKED },
+  ]);
+});
+
+test('pickProductModules keeps only the dicer and dice-so-nice keys, as booleans', () => {
+  expect(pickProductModules({ dicer: true, foo: true })).toEqual({
     dicer: true,
     'dice-so-nice': false,
-    foo: true,
-    bar: false,
   });
-  expect(moduleConfigFor(cfg, 'dice-so-nice')).toEqual({
-    dicer: false,
-    'dice-so-nice': true,
-    foo: true,
-    bar: false,
-  });
-  expect(cfg.dicer).toBe(true); // not mutated
-  expect(() => moduleConfigFor(cfg, 'nope')).toThrow();
+  expect(pickProductModules(null)).toEqual({ dicer: false, 'dice-so-nice': false });
 });
 
 test('outDirName is an ISO date without colons', () => {
@@ -345,7 +391,7 @@ test('summaryMarkdown: target checks, then the head-to-head table, n/a for missi
     reports,
     rows,
     errors: [],
-    dsnKeys: { glow: false },
+    dsnFlag: { exists: true, value: { glow: false } },
   });
   const targetsAt = md.indexOf('## G2 target checks');
   const h2hAt = md.indexOf('## Head-to-head');
@@ -354,5 +400,7 @@ test('summaryMarkdown: target checks, then the head-to-head table, n/a for missi
   expect(md).toContain('n/a');
   expect(md).not.toContain('NaN');
   expect(md).toContain('glow');
-  expect(md).toMatch(/\| defaults \| pc \| d20 \| 8\.00 \| 10\.00 \| 0\.80 \| 0\.90 \| PASS \|/);
+  expect(md).toMatch(
+    /\| defaults \| pc \| d20 \| 8\.00 \| 10\.00 \| 0\.80 \| 0\.90 \| 0 \| 0 \| PASS \|/,
+  );
 });

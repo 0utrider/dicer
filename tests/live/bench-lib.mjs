@@ -6,7 +6,6 @@ import { checkTargets, compare } from '../../src/bench/report.js';
 import { TARGETS } from '../../src/bench/stats.js';
 
 export const RESTORE_FILE = 'artifacts/bench/restore.json';
-export const PRODUCTS = Object.freeze(['dicer', 'dice-so-nice']);
 const H2H = Object.freeze(['d20', 'mixed10', 'pool30', 'burst100']);
 const THROTTLED_VSYNC = Object.freeze(['d20', 'mixed10', 'pool30']);
 
@@ -46,7 +45,6 @@ function mk(product, profile, mode, variant, ids) {
     variant,
     ids: Object.freeze([...ids]),
     dicerQuality,
-    dsnEffectsOff: product === 'dice-so-nice' && variant === 'effectsOff',
   });
 }
 
@@ -74,31 +72,45 @@ export function runName(e) {
   return e.variant && e.variant !== 'defaults' ? `${base}-${e.variant}` : base;
 }
 
-const EFFECT_RE = /shadow|glow|bump|antialias|sound|effect|immersive/i;
-const NEGATED_RE = /^(disable|no[A-Z_]|hide)/;
-const OFF_CHOICE_RE = /^(none|off|disabled?|false|0)$/i;
+/** H-R7: Dicer's world maxDice for the run (G2's big pool is 30 dice). */
+export const DICER_MAX_DICE = 30;
+/** DSN's world maxDiceNumber for the run (range 20-100, step 5): above pool30, like for like. */
+export const DSN_MAX_DICE = 35;
 
 /**
- * DSN's effects-off client settings, picked by key pattern from the runtime settings registry
- * (`game.settings.settings` as plain `{namespace, key, scope, type, choices}`). Booleans go off
- * (true for a negated key such as disableShadows); a choice setting goes to its "none"/"off"
- * choice when it has one. Only client scope: a fresh browser context resets those.
- * @returns {Record<string, boolean | string>}
+ * H-R8: DSN 6.4.5 keeps its graphics options in the user flag `flags['dice-so-nice'].settings`,
+ * merged over defaults derived from core.performanceMode. The effects-off run writes these.
  */
-export function dsnEffectsOff(settingsList) {
-  const out = {};
-  for (const s of Array.isArray(settingsList) ? settingsList : []) {
-    if (s?.namespace !== 'dice-so-nice' || s.scope !== 'client') continue;
-    const key = String(s.key ?? '');
-    if (!EFFECT_RE.test(key)) continue;
-    if (s.type === 'Boolean') {
-      out[key] = NEGATED_RE.test(key);
-    } else if (Array.isArray(s.choices)) {
-      const off = s.choices.find((c) => OFF_CHOICE_RE.test(String(c)));
-      if (off !== undefined) out[key] = off;
-    }
-  }
-  return out;
+export const DSN_EFFECTS_OFF = Object.freeze({
+  shadowQuality: 'none',
+  glow: false,
+  bumpMapping: false,
+  antialiasing: 'none',
+  sounds: false,
+  useHighDPI: false,
+  persistentDiceOutlines: false,
+  advancedGlass: false,
+});
+
+/**
+ * The DSN user flag a run needs, as `{exists, value?}` (the restore.json shape): the overrides for
+ * effects-off, unset for DSN defaults (the GM's own customisation must not bias it), null for Dicer.
+ */
+export function dsnFlagFor(entry) {
+  if (entry?.product !== 'dice-so-nice') return null;
+  return entry.variant === 'effectsOff'
+    ? { exists: true, value: { ...DSN_EFFECTS_OFF } }
+    : { exists: false };
+}
+
+const isEmptyObj = (v) => v == null || (typeof v === 'object' && Object.keys(v).length === 0);
+
+/** Whether the flag read back (`{exists, value}`) is what `want` asked for. */
+export function flagApplied(readBack, want) {
+  if (!readBack || !want) return false;
+  if (!want.exists) return !readBack.exists || isEmptyObj(readBack.value);
+  if (!readBack.exists || !readBack.value || typeof readBack.value !== 'object') return false;
+  return Object.entries(want.value ?? {}).every(([k, v]) => readBack.value[k] === v);
 }
 
 const PAIRINGS = Object.freeze([
@@ -185,6 +197,10 @@ export function verdicts(reports) {
       const c = compare(dr ?? { scenario: id }, sr ?? { scenario: id }, {
         requireClearlyLess: p.requireClearlyLess,
       });
+      const dicerFailures = dr?.failures ?? null;
+      const dsnFailures = sr?.failures ?? null;
+      // A side that dropped rolls did less work: never a valid win.
+      const failed = dicerFailures > 0 || dsnFailures > 0;
       rows.push({
         type: 'h2h',
         pairing: p.pairing,
@@ -192,9 +208,10 @@ export function verdicts(reports) {
         requireClearlyLess: p.requireClearlyLess,
         limit: p.requireClearlyLess ? TARGETS.clearlyLessRatio : 1,
         ...c,
+        pass: failed ? false : c.pass,
         scenario: id,
-        dicerFailures: dr?.failures ?? null,
-        dsnFailures: sr?.failures ?? null,
+        dicerFailures,
+        dsnFailures,
       });
     }
   }
@@ -232,30 +249,61 @@ export function startupDecision(text) {
       reason: `${RESTORE_FILE} has no moduleConfiguration; fix or delete it by hand`,
     };
   }
+  const bad = (what) => ({
+    action: 'abort',
+    reason: `${RESTORE_FILE} has a malformed ${what}; fix or delete it by hand`,
+  });
+  const finiteNum = (v) => typeof v === 'number' && Number.isFinite(v);
+  if ('maxDice' in restore && !finiteNum(restore.maxDice)) return bad('maxDice');
+  if ('dsnMaxDiceNumber' in restore && !finiteNum(restore.dsnMaxDiceNumber))
+    return bad('dsnMaxDiceNumber');
+  if ('dsnUserFlag' in restore) {
+    const f = restore.dsnUserFlag;
+    if (!f || typeof f !== 'object' || typeof f.exists !== 'boolean') return bad('dsnUserFlag');
+  }
   return { action: 'restore', restore };
 }
 
+/** Only the two product keys of a `core.moduleConfiguration` snapshot, as booleans. */
+export function pickProductModules(cfg) {
+  return { dicer: Boolean(cfg?.dicer), 'dice-so-nice': Boolean(cfg?.['dice-so-nice']) };
+}
+
 /**
- * Steps that put the world back. Dicer's world maxDice can only be written while Dicer is the
- * active module, so it comes first (switching to Dicer if needed); the module configuration last.
- * @param {{moduleConfiguration: object, maxDice?: number}} restore
+ * Steps that put the world back. A product's world settings can only be written while it is the
+ * active module (Dicer: maxDice; DSN: maxDiceNumber and its user flag), so each product's group
+ * runs with that product active, the currently active one first; the module configuration last,
+ * merging back only the dicer / dice-so-nice keys.
+ * @param {{moduleConfiguration: object, maxDice?: number, dsnMaxDiceNumber?: number,
+ *   dsnUserFlag?: {exists: boolean, value?: object}}} restore
  * @param {'dicer' | 'dice-so-nice' | null} active
  */
 export function restorePlan(restore, active) {
+  const groups = {
+    dicer: [],
+    'dice-so-nice': [],
+  };
+  if (restore?.maxDice !== undefined)
+    groups.dicer.push({ op: 'setMaxDice', value: restore.maxDice });
+  if (restore?.dsnMaxDiceNumber !== undefined)
+    groups['dice-so-nice'].push({ op: 'setDsnMaxDiceNumber', value: restore.dsnMaxDiceNumber });
+  if (restore?.dsnUserFlag !== undefined)
+    groups['dice-so-nice'].push({ op: 'setDsnUserFlag', value: restore.dsnUserFlag });
+  const order = active === 'dice-so-nice' ? ['dice-so-nice', 'dicer'] : ['dicer', 'dice-so-nice'];
   const steps = [];
-  if (restore?.maxDice !== undefined) {
-    if (active !== 'dicer') steps.push({ op: 'switch', product: 'dicer' });
-    steps.push({ op: 'setMaxDice', value: restore.maxDice });
+  let current = active;
+  for (const product of order) {
+    if (!groups[product].length) continue;
+    if (current !== product) steps.push({ op: 'switch', product });
+    current = product;
+    steps.push(...groups[product]);
   }
   if (restore?.moduleConfiguration)
-    steps.push({ op: 'setModuleConfiguration', value: restore.moduleConfiguration });
+    steps.push({
+      op: 'setModuleConfiguration',
+      value: pickProductModules(restore.moduleConfiguration),
+    });
   return steps;
-}
-
-/** `core.moduleConfiguration` with exactly one of dicer / dice-so-nice enabled. */
-export function moduleConfigFor(cfg, product) {
-  if (!PRODUCTS.includes(product)) throw new Error(`unknown product: ${product}`);
-  return { ...(cfg ?? {}), dicer: product === 'dicer', 'dice-so-nice': product === 'dice-so-nice' };
 }
 
 /** `artifacts/bench/<ISO date>`; colons are not allowed in Windows paths. */
@@ -275,7 +323,7 @@ const verdict = (p) => (p === null || p === undefined ? 'n/a' : p ? 'PASS' : 'FA
 const val = (v) => (typeof v === 'number' ? num(v) : typeof v === 'boolean' ? String(v) : 'n/a');
 
 /** summary.md: runs, G2 target checks, then the head-to-head table. */
-export function summaryMarkdown({ date, reports, rows, errors, dsnKeys }) {
+export function summaryMarkdown({ date, reports, rows, errors, dsnFlag }) {
   const out = [`# Dicer benchmark ${date}`, ''];
   out.push(
     '## Runs',
@@ -303,16 +351,17 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnKeys }) {
   }
   out.push('', '## Head-to-head (uncapped, frame p95)', '');
   out.push(
-    '| Pairing | Profile | Scenario | Dicer p95 (ms) | DSN p95 (ms) | Ratio | Limit | Result |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Pairing | Profile | Scenario | Dicer p95 (ms) | DSN p95 (ms) | Ratio | Limit | Dicer fail | DSN fail | Result |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   );
+  const count = (v) => (typeof v === 'number' ? String(v) : 'n/a');
   for (const r of (rows ?? []).filter((x) => x.type === 'h2h')) {
     out.push(
-      `| ${r.pairing} | ${r.profile} | ${r.scenario} | ${num(r.dicerP95)} | ${num(r.dsnP95)} | ${num(r.ratio)} | ${num(r.limit)} | ${verdict(r.pass)} |`,
+      `| ${r.pairing} | ${r.profile} | ${r.scenario} | ${num(r.dicerP95)} | ${num(r.dsnP95)} | ${num(r.ratio)} | ${num(r.limit)} | ${count(r.dicerFailures)} | ${count(r.dsnFailures)} | ${verdict(r.pass)} |`,
     );
   }
-  const keys = Object.entries(dsnKeys ?? {});
-  out.push('', '## DSN effects-off settings', '');
+  const keys = Object.entries(dsnFlag?.exists ? (dsnFlag.value ?? {}) : {});
+  out.push('', "## DSN effects-off user flag (flags['dice-so-nice'].settings, read back)", '');
   out.push(
     keys.length ? keys.map(([k, v]) => `- ${k} = ${JSON.stringify(v)}`).join('\n') : '- n/a',
   );
