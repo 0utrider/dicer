@@ -213,6 +213,54 @@ describe('DSN special effects', () => {
     await flush();
     expect(ctor).not.toHaveBeenCalled();
   });
+
+  test('releaseDie while play is pending stops it: destroy once, mesh restored, layer idle', async () => {
+    let inst;
+    class Pending {
+      static id = 'Pending';
+      constructor() {
+        inst = this;
+        this.destroy = vi.fn();
+      }
+      play() {
+        return new Promise(() => {});
+      }
+    }
+    const { layer } = setup([Pending]);
+    const die = makeDie();
+    layer.play(die, fx('Pending'));
+    await flush();
+    expect(die.outer.type).toBe('d20');
+    layer.releaseDie(die);
+    expect(inst.destroy).toHaveBeenCalledTimes(1);
+    expect(die.outer.type).toBe('Group');
+    expect('result' in die.outer).toBe(false);
+    expect(layer.running).toBe(0);
+    expect(layer.update(0)).toBe(false);
+    vi.advanceTimersByTime(SFX_TIMEOUT_MS);
+    expect(inst.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  test('clear() while play is pending destroys once', async () => {
+    let inst;
+    class Pending {
+      static id = 'Pending';
+      constructor() {
+        inst = this;
+        this.destroy = vi.fn();
+      }
+      play() {
+        return new Promise(() => {});
+      }
+    }
+    const { layer } = setup([Pending]);
+    const die = makeDie();
+    layer.play(die, fx('Pending'));
+    await flush();
+    layer.clear();
+    expect(inst.destroy).toHaveBeenCalledTimes(1);
+    expect(die.outer.type).toBe('Group');
+  });
 });
 
 describe('registry and module rules', () => {

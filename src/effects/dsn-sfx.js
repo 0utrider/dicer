@@ -168,7 +168,7 @@ export function createDsnSfx({ registry, getBox = () => ({}), warn = (...a) => c
       if (!registry?.sfxModes?.has(name)) return null;
       let mod = modules.get(name);
       if (!mod) {
-        mod = { id, cost: COST, defaults: {}, start: (ctx) => begin(name, ctx) };
+        mod = { id, cost: COST, defaults: {}, bindsDie: true, start: (ctx) => begin(name, ctx) };
         modules.set(name, mod);
       }
       return mod;
