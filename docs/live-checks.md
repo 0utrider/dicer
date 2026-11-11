@@ -182,3 +182,24 @@ The privacy of effects and sounds for blind rolls, and **Show other players' eff
 2. Pass: a **Dice look** control shows in the sheet's header controls (the menu) on current sheets, or as a header button on older sheets, and opens the theme browser pointed at that character. Turn the setting off and the button is gone the next time the sheet renders.
 
 The roll area rules (a player's area, the GM private corner) are also automated in `npm run test:live:areas`.
+
+## 29. The in-game benchmark, as a player
+
+1. As a player (not the GM), open Dicer's settings and press **Run the dice benchmark**, then **Run**.
+2. Pass: the four scenarios (d20, mixed10, pool30, burst20) run on your screen only, the table fills in, and no chat message appears on any client. If the world **Maximum dice per message** is below 30, the summary notes the cap on pool30.
+
+## 30. Copy summary
+
+1. After a benchmark run, press **Copy summary** and paste into a text editor.
+2. Pass: a notice says the summary was copied, and the pasted text is plain text with your browser, GPU and one block per scenario.
+
+## 31. The benchmark refuses during a roll
+
+1. Roll `/r 30d20`, and press **Run the dice benchmark** (or run `game.dice3d.benchmark()`) while the dice are still in the air.
+2. Pass: a notice says the dice are still rolling, and nothing runs. With Dicer's **Enable 3D dice** off, a notice says 3D dice are turned off.
+
+## 32. The bench harness restores the world on Ctrl+C
+
+1. Note the **Dicer** and **Dice So Nice** module enable states and Dicer's **Maximum dice per message**. Start `npm run test:live:bench` and wait until the first run has started.
+2. Press Ctrl+C once.
+3. Pass: the harness says it is restoring and exits; the module enable states and **Maximum dice per message** match step 1, and `artifacts/bench/restore.json` is gone. If you instead kill the process, the next `npm run test:live:bench` restores the saved state before running.
