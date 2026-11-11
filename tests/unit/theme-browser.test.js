@@ -480,6 +480,28 @@ describe('the browser actions', () => {
     expect(await mod.deleteWorld(res.id)).toBe(true);
     expect(store.worldThemes).toEqual([]);
   });
+  it('deleting the world default theme warns in the confirm and clears worldDefaultTheme (M-5)', async () => {
+    user.isGM = true;
+    store.worldThemes = [raw('world.w', 'W'), raw('world.v', 'V')];
+    store.worldDefaultTheme = 'world.w';
+    store.lockPlayerLooks = true;
+    const confirm = vi.fn(async () => true);
+    foundry.applications.api.DialogV2 = { confirm };
+    const app = new mod.ThemeBrowser();
+    app.render = vi.fn(async () => {});
+    const remove = mod.ThemeBrowser.DEFAULT_OPTIONS.actions.remove;
+    await remove.call(app, {}, { dataset: { theme: 'world.v' } }); // not the default: no warning, kept
+    expect(confirm.mock.calls[0][0].content).not.toContain('DICER.Themes.ConfirmDeleteWorldDefault');
+    expect(store.worldDefaultTheme).toBe('world.w');
+    await remove.call(app, {}, { dataset: { theme: 'world.w' } });
+    expect(confirm.mock.calls[1][0].content).toContain('DICER.Themes.ConfirmDeleteWorldDefault');
+    expect(store.worldThemes).toEqual([]);
+    expect(store.worldDefaultTheme).toBe('');
+    // the lock without a default has no effect: a player is not locked
+    user.isGM = false;
+    expect((await app._prepareContext()).locked).toBe(false);
+    delete foundry.applications.api.DialogV2;
+  });
   describe('GM controls (P7-D4)', () => {
     const player = (id, flag) => ({
       id,

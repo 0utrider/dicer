@@ -391,6 +391,7 @@
       "PushNotShared": "Only built-in and world themes can be pushed: players cannot see your own themes. Publish it to the world first.",
       "Delete": "Delete",
       "ConfirmDelete": "Delete this theme permanently?",
+      "ConfirmDeleteWorldDefault": "It is the world default theme: deleting it also clears the world default, and players go back to their own default dice.",
       "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:"
     },
     "Commands": {
@@ -475,7 +476,7 @@
         "FamilyPlaceholder": "A font name, e.g. Georgia",
         "File": "Font file (.ttf, .otf, .woff, .woff2)",
         "Browse": "Choose a font file",
-        "FontInvalid": "That is not a usable font name or file path, so the serif is used. Font names use letters, digits, spaces and dashes; files end in .ttf, .otf, .woff or .woff2.",
+        "FontInvalid": "That is not a usable font name or file path, so the serif is used. Font names use letters, digits, spaces and dashes; files end in .ttf, .otf, .woff or .woff2 and must be on this Foundry server (a path in its data folder, not a web address).",
         "FontFailed": "This font could not be loaded, so the serif is shown instead. Check the name or the file."
       },
       "Fill": {

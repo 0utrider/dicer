@@ -161,12 +161,26 @@ export async function deleteMine(id) {
   return true;
 }
 
-/** GM only: removes a world theme. */
+/** Whether `id` is the GM's world default theme (worldDefaultTheme). */
+export function isWorldDefault(id) {
+  try {
+    const current = settings()?.get(MODULE, 'worldDefaultTheme');
+    return typeof current === 'string' && current !== '' && current === id;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * GM only: removes a world theme. Deleting the world default also clears worldDefaultTheme
+ * (none): the lock then has no effect (it needs a default), and players use their own looks.
+ */
 export async function deleteWorld(id) {
   if (!me()?.isGM) return false;
   const list = worldList();
   if (!list) return false;
   await saveWorldList(removeTheme(list, id));
+  if (isWorldDefault(id)) await settings().set(MODULE, 'worldDefaultTheme', '');
   return true;
 }
 
@@ -707,9 +721,13 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #onRemove(event, target) {
     const theme = ThemeBrowser.#themeOf(this, target);
     if (!theme) return;
+    const warnDefault =
+      theme.source === 'world' && isWorldDefault(theme.id)
+        ? `<p><strong>${escapeHtml(loc('DICER.Themes.ConfirmDeleteWorldDefault'))}</strong></p>`
+        : '';
     const sure = await foundry.applications.api.DialogV2.confirm({
       window: { title: loc('DICER.Themes.Delete') },
-      content: `<p>${loc('DICER.Themes.ConfirmDelete')} ${escapeHtml(theme.name)}</p>`,
+      content: `<p>${loc('DICER.Themes.ConfirmDelete')} ${escapeHtml(theme.name)}</p>${warnDefault}`,
     });
     if (!sure) return;
     if (theme.source === 'user') await deleteMine(theme.id);
