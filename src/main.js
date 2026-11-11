@@ -74,6 +74,23 @@ function preloadEffects() {
   else setTimeout(run, 200);
 }
 
+/** Fetches the two editor chunks in an idle callback (they are small), so opening one is instant. */
+export function preloadEditors(
+  loaders = [() => import('./ui/trigger-editor.js'), () => import('./ui/damage-map-editor.js')],
+) {
+  const run = () => {
+    for (const load of loaders) {
+      try {
+        Promise.resolve(load()).catch(() => {}); // a failed prefetch only means a later cold open
+      } catch {
+        /* same */
+      }
+    }
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
+  else setTimeout(run, 200);
+}
+
 function onSoundChange(key, value) {
   if (key === 'sounds' && value) preloadSounds();
 }
@@ -480,4 +497,5 @@ Hooks.once('ready', async () => {
   announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady });
   preloadSounds();
   preloadEffects();
+  preloadEditors();
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { duplicateKeys, usedKeys, resolve } from './lang-check.js';
-import { DAMAGE_THEMES } from '../../src/effects/damage-themes.js';
+import { DAMAGE_THEMES, resolveDamageTheme } from '../../src/effects/damage-themes.js';
 
 let mod;
 beforeAll(async () => {
@@ -139,9 +139,150 @@ describe('previewSpec', () => {
   });
 });
 
+describe('stored entries that cannot be shown are kept', () => {
+  const stored = {
+    worldMap: { fire: 'cold', acid: 7, goo: { x: 1 } },
+    overrides: { cold: ['nope'], acid: 'none' },
+    sounds: {
+      fire: { src: 'a.ogg', volume: 0.5 },
+      cold: { src: 5 },
+      acid: { src: 'b.ogg', volume: '0.4' },
+      sonic: { src: 'c.ogg', loop: true },
+    },
+  };
+
+  it('formFromMap lists them and a save writes them back untouched next to the readable ones', () => {
+    const form = mod.formFromMap(stored, ['fire', 'cold', 'acid', 'sonic']);
+    expect(form.unreadable.sort()).toEqual(
+      ['world:acid', 'world:goo', 'mine:cold', 'sound:cold', 'sound:acid', 'sound:sonic'].sort(),
+    );
+    expect(mod.mapFromForm(form)).toEqual({
+      worldMap: { fire: 'cold', acid: 7, goo: { x: 1 } },
+      overrides: { acid: 'none', cold: ['nope'] },
+      sounds: { fire: { src: 'a.ogg', volume: 0.5 }, cold: { src: 5 }, acid: { src: 'b.ogg', volume: '0.4' }, sonic: { src: 'c.ogg', loop: true } },
+    });
+  });
+
+  it('a row the user edited for that type wins over the kept entry', () => {
+    const form = mod.formFromMap(stored, ['fire', 'cold', 'acid', 'sonic']);
+    form.rows.find((r) => r.type === 'acid').world = 'ice';
+    form.rows.find((r) => r.type === 'sonic').soundSrc = 'new.ogg';
+    const out = mod.mapFromForm(form);
+    expect(out.worldMap.acid).toBe('ice');
+    expect(out.sounds.sonic).toEqual({ src: 'new.ogg' });
+    expect(out.worldMap.goo).toEqual({ x: 1 });
+  });
+});
+
 describe('DamageMapEditor', () => {
   it('is the dicer-damage-map-editor application', () => {
     expect(mod.DamageMapEditor.DEFAULT_OPTIONS.id).toBe('dicer-damage-map-editor');
+  });
+
+  describe('behaviour', () => {
+    let store, game, ui, expand;
+    const stubs = () => {
+      expand = (flat) => {
+        const out = {};
+        for (const [k, v] of Object.entries(flat)) {
+          const parts = k.split('.');
+          let o = out;
+          parts.slice(0, -1).forEach((p) => (o = o[p] ??= {}));
+          o[parts.at(-1)] = v;
+        }
+        return out;
+      };
+      vi.stubGlobal('foundry', {
+        applications: {
+          api: { ApplicationV2: class {}, HandlebarsApplicationMixin: (B) => class extends B {} },
+          ux: { FormDataExtended: class { constructor() { this.object = globalThis.__form; } } },
+        },
+        utils: { expandObject: expand },
+      });
+      store = {
+        damageTypeMap: { fire: 'cold' },
+        damageThemeOverrides: {},
+        damageTypeSounds: { fire: { src: 'a.ogg' } },
+      };
+      game = {
+        user: { isGM: false },
+        system: { id: 'pf2e' },
+        settings: { get: vi.fn((ns, k) => store[k]), set: vi.fn(async () => {}) },
+        socket: { emit: vi.fn() },
+        dice3d: {
+          _preview: vi.fn(async () => {}),
+          _damageContext: () => ({
+            colorsets: [],
+            damageTypeDefaults: {},
+            resolveTheme: (type, { userOverrides, worldMap }) =>
+              resolveDamageTheme(type, { userOverrides, worldMap, warn: () => {} }),
+          }),
+        },
+      };
+      ui = { notifications: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } };
+      vi.stubGlobal('game', game);
+      vi.stubGlobal('ui', ui);
+    };
+    beforeEach(stubs);
+    afterEach(() => {
+      delete globalThis.__form;
+      vi.stubGlobal('foundry', { applications: { api: { ApplicationV2: class {}, HandlebarsApplicationMixin: (B) => class extends B {} } } });
+    });
+
+    const make = async () => {
+      const editor = new mod.DamageMapEditor();
+      editor.render = vi.fn(async () => {});
+      const ctx = await editor._prepareContext();
+      return { editor, ctx, i: ctx.rows.findIndex((r) => r.type === 'fire') };
+    };
+    const tampered = (i) => ({
+      [`rows.${i}.type`]: 'fire',
+      [`rows.${i}.world`]: 'acid',
+      [`rows.${i}.user`]: 'default',
+      [`rows.${i}.soundSrc`]: 'evil.ogg',
+      [`rows.${i}.soundVolume`]: '1',
+    });
+    const actions = new Proxy({}, { get: (_, k) => mod.DamageMapEditor.DEFAULT_OPTIONS.actions[k] });
+
+    it('a player draft ignores tampered world, sound and volume form values', async () => {
+      const { editor, i } = await make();
+      globalThis.__form = tampered(i);
+      await actions.preview.call(editor, {}, { dataset: { index: String(i) } });
+      const row = (await editor._prepareContext()).rows[i];
+      expect(row).toMatchObject({ world: 'cold', soundSrc: 'a.ogg', soundVolume: '' });
+    });
+
+    it('a player save writes only damageThemeOverrides, whatever the form carried', async () => {
+      const { editor, i } = await make();
+      await mod.DamageMapEditor.DEFAULT_OPTIONS.form.handler.call(editor, { preventDefault() {} }, null, { object: tampered(i) });
+      expect(game.settings.set.mock.calls.map((c) => c[1])).toEqual(['damageThemeOverrides']);
+    });
+
+    it('Preview throws one local die in the draft theme and never broadcasts', async () => {
+      const { editor, i } = await make();
+      globalThis.__form = { ...tampered(i), [`rows.${i}.user`]: 'acid' };
+      await actions.preview.call(editor, {}, { dataset: { index: String(i) } });
+      expect(game.dice3d._preview).toHaveBeenCalledTimes(1);
+      const [fx, options] = game.dice3d._preview.mock.calls[0];
+      expect(options).toMatchObject({ type: 'd6', appearance: DAMAGE_THEMES.acid.appearance, soundMaterial: 'glass' });
+      expect(fx).toMatchObject({ ruleId: 'damage:acid', macro: null, slowMotion: false, sound: { src: 'a.ogg' } });
+      expect(game.socket.emit).not.toHaveBeenCalled();
+      expect(game.settings.set).not.toHaveBeenCalled();
+    });
+
+    it('the GM draft takes the form values and warns once on open about unreadable entries', async () => {
+      game.user.isGM = true;
+      store.damageTypeMap = { fire: 'cold', acid: 7 };
+      const { editor, i } = await make();
+      expect(ui.notifications.warn).toHaveBeenCalledTimes(1);
+      expect(ui.notifications.warn.mock.calls[0][0]).toContain('world:acid');
+      globalThis.__form = tampered(i);
+      await mod.DamageMapEditor.DEFAULT_OPTIONS.form.handler.call(editor, { preventDefault() {} }, null, { object: tampered(i) });
+      expect(game.settings.set).toHaveBeenCalledWith('dicer', 'damageTypeMap', expect.objectContaining({ fire: 'acid', acid: 7 }));
+      expect(game.settings.set).toHaveBeenCalledWith('dicer', 'damageTypeSounds', { fire: { src: 'evil.ogg', volume: 1 } });
+      await editor._prepareContext();
+      expect(ui.notifications.warn).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

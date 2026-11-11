@@ -49,3 +49,38 @@ describe('soundSurface', () => {
     expect(soundSurface(get({}))).toBe('felt');
   });
 });
+
+describe('preloadEditors', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('schedules both editor imports in an idle callback, not immediately', async () => {
+    const { preloadEditors } = await import('../../src/main.js');
+    let idle;
+    vi.stubGlobal('requestIdleCallback', (cb) => (idle = cb));
+    const a = vi.fn(async () => ({}));
+    const b = vi.fn(async () => ({}));
+    preloadEditors([a, b]);
+    expect(a).not.toHaveBeenCalled();
+    idle();
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failing import is swallowed and the next one still loads', async () => {
+    const { preloadEditors } = await import('../../src/main.js');
+    let idle;
+    vi.stubGlobal('requestIdleCallback', (cb) => (idle = cb));
+    const b = vi.fn(async () => ({}));
+    preloadEditors([() => Promise.reject(new Error('x')), () => { throw new Error('y'); }, b]);
+    expect(() => idle()).not.toThrow();
+    expect(b).toHaveBeenCalled();
+  });
+
+  test('the ready hook schedules it, and the default loaders name both editor chunks', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('src/main.js', 'utf8');
+    expect(src).toMatch(/preloadEffects\(\);\s*preloadEditors\(\);/);
+    expect(src).toContain("import('./ui/trigger-editor.js')");
+    expect(src).toContain("import('./ui/damage-map-editor.js')");
+  });
+});

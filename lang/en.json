@@ -245,6 +245,7 @@
       "Preview": "Preview",
       "Save": "Save",
       "Saved": "Damage map saved.",
+      "Unreadable": "Some stored damage map entries cannot be shown here and are kept as they are:",
       "NoTheme": "This damage type has no theme here, so your own dice are used.",
       "PreviewUnavailable": "Preview needs the 3D dice to be running."
     },

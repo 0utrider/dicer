@@ -84,6 +84,7 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   #draft = null; // Row[]
+  #rest = null; // stored entries the form cannot represent, written back untouched
   #ctx = null;
 
   get #isGM() {
@@ -98,14 +99,18 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       systemId: globalThis.game.system?.id,
       extra: Object.keys(this.#ctx.damageTypeDefaults ?? {}),
     });
-    this.#draft = formFromMap(
+    const form = formFromMap(
       {
         worldMap: settings.get(MODULE, 'damageTypeMap'),
         overrides: settings.get(MODULE, 'damageThemeOverrides'),
         sounds: settings.get(MODULE, 'damageTypeSounds'),
       },
       types,
-    ).rows;
+    );
+    this.#draft = form.rows;
+    this.#rest = form.rest;
+    if (form.unreadable.length)
+      globalThis.ui?.notifications?.warn(`${loc('DICER.DamageMap.Unreadable')} ${form.unreadable.join(', ')}`);
   }
 
   /** Reads the visible form into the draft; a player changes only their own override column. */
@@ -148,7 +153,7 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#collect(object);
     const g = globalThis.game;
     await saveMaps(
-      { rows: this.#draft },
+      { rows: this.#draft, rest: this.#rest },
       {
         isGM: this.#isGM,
         setWorld: (map) => g.settings.set(MODULE, 'damageTypeMap', map),
@@ -176,7 +181,7 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
     const settings = globalThis.game.settings;
-    const { worldMap, overrides, sounds } = mapFromForm({ rows: this.#draft });
+    const { worldMap, overrides, sounds } = mapFromForm({ rows: this.#draft, rest: this.#rest });
     // A player previews with the stored world map and sounds, whatever their disabled columns showed.
     const world = this.#isGM ? worldMap : (settings.get(MODULE, 'damageTypeMap') ?? {});
     const theme = this.#ctx.resolveTheme(row.type, { userOverrides: overrides, worldMap: world });

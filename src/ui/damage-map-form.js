@@ -11,8 +11,15 @@ export const DEFAULT_CHOICE = 'default';
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const entries = (v) => (Array.isArray(v) ? v : isObj(v) ? Object.values(v) : []);
-const stringMap = (m) =>
-  Object.fromEntries(Object.entries(isObj(m) ? m : {}).filter(([, v]) => typeof v === 'string'));
+const own = (m) => (isObj(m) ? Object.entries(m) : []);
+const stringMap = (m) => Object.fromEntries(own(m).filter(([, v]) => typeof v === 'string'));
+/** A sound entry the form can represent exactly: a src, an optional numeric volume, nothing else. */
+const readableSound = (s) =>
+  isObj(s) &&
+  typeof s.src === 'string' &&
+  s.src !== '' &&
+  (s.volume === undefined || Number.isFinite(s.volume)) &&
+  Object.keys(s).every((k) => k === 'src' || k === 'volume');
 
 /**
  * The editor's row order: the active system's types first, then the other known types
@@ -38,13 +45,25 @@ export function damageTypeList({ systemId, extra = [] } = {}) {
 export function formFromMap({ worldMap, overrides, sounds } = {}, types = []) {
   const world = stringMap(worldMap);
   const user = stringMap(overrides);
-  const snd = isObj(sounds) ? sounds : {};
+  const snd = Object.fromEntries(own(sounds).filter(([, s]) => readableSound(s)));
+  // Entries the form cannot represent are carried through untouched (`rest`), never dropped by a
+  // save; a row the user edits for that type wins. `unreadable` names them for a warning.
+  const rest = {
+    worldMap: Object.fromEntries(own(worldMap).filter(([, v]) => typeof v !== 'string')),
+    overrides: Object.fromEntries(own(overrides).filter(([, v]) => typeof v !== 'string')),
+    sounds: Object.fromEntries(own(sounds).filter(([, s]) => !readableSound(s))),
+  };
+  const unreadable = [
+    ...Object.keys(rest.worldMap).map((k) => `world:${k}`),
+    ...Object.keys(rest.overrides).map((k) => `mine:${k}`),
+    ...Object.keys(rest.sounds).map((k) => `sound:${k}`),
+  ];
   const order = [...types];
   for (const k of [...Object.keys(world), ...Object.keys(user), ...Object.keys(snd)])
     if (!order.includes(k)) order.push(k);
   return {
     rows: order.map((type) => {
-      const s = isObj(snd[type]) ? snd[type] : {};
+      const s = snd[type] ?? {};
       return {
         type,
         world: world[type] ?? DEFAULT_CHOICE,
@@ -53,10 +72,15 @@ export function formFromMap({ worldMap, overrides, sounds } = {}, types = []) {
         soundVolume: Number.isFinite(s.volume) ? String(s.volume) : '',
       };
     }),
+    rest,
+    unreadable,
   };
 }
 
-/** A form (rows as an array or an index-keyed object) as `{ worldMap, overrides, sounds }`. */
+/**
+ * A form (rows as an array or an index-keyed object, plus the `rest` from formFromMap) as
+ * `{ worldMap, overrides, sounds }`.
+ */
 export function mapFromForm(form) {
   const worldMap = {};
   const overrides = {};
@@ -78,6 +102,14 @@ export function mapFromForm(form) {
       sounds[type] = sound;
     }
   }
+  // Unreadable stored entries survive unless this form set that type itself.
+  const rest = form?.rest;
+  for (const [out, kept] of [
+    [worldMap, rest?.worldMap],
+    [overrides, rest?.overrides],
+    [sounds, rest?.sounds],
+  ])
+    for (const [type, value] of own(kept)) if (!Object.hasOwn(out, type)) out[type] = value;
   return { worldMap, overrides, sounds };
 }
 
