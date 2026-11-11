@@ -86,3 +86,13 @@ test('summaryText caps at 40 lines', () => {
   const many = Array.from({ length: 80 }, () => base({ frame: sum(10) }));
   expect(summaryText(suite({ results: many })).split('\n').length).toBeLessThanOrEqual(40);
 });
+
+test('non-finite heap readings are n/a, not a spurious FAIL', () => {
+  for (const heap of [{ before: NaN, after: 5 }, { before: 5, after: undefined }, { before: Infinity, after: 1 }]) {
+    const c = get(checkTargets(base({ heap })), 'heapGrowth');
+    expect(c.pass).toBeNull();
+    expect(c.value).toBeNull();
+    const t = summaryText({ browser: 'Chrome', gpu: 'x', tier: 'a', version: '1', profile: 'vsync', results: [base({ heap })] });
+    expect(t).not.toMatch(/NaN|FAIL/);
+  }
+});

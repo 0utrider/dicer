@@ -18,7 +18,8 @@ export function checkTargets(r) {
     else out.push(check('firstFrameMs', TARGETS.firstFrameMs, ff, ff <= TARGETS.firstFrameMs));
   }
   if (r.heap) {
-    const growth = r.heap.after - r.heap.before;
+    const raw = r.heap.after - r.heap.before;
+    const growth = Number.isFinite(raw) ? raw : null;
     const ratio = r.heap.before > 0 ? growth / r.heap.before : growth > 0 ? Infinity : 0;
     out.push(check('heapGrowth', TARGETS.heapGrowthBytes, growth,
       growth <= TARGETS.heapGrowthBytes && ratio <= TARGETS.heapGrowthRatio));
