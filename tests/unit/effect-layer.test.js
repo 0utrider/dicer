@@ -207,7 +207,7 @@ describe('screen shake (dice canvas only)', () => {
       max = Math.max(max, Math.hypot(Number(m[1]), Number(m[2])));
     }
     expect(max).toBeGreaterThan(0);
-    expect(max).toBeLessThanOrEqual(3 + 1e-9);
+    expect(max).toBeLessThanOrEqual(3 + 0.01); // the transform is toFixed-rounded per axis
     expect(layer.update(400)).toBe(false);
     expect(canvas.style.transform).toBe('');
   });
