@@ -1,7 +1,9 @@
 /**
- * Generates the MSDF digit atlas: assets/fonts/digits.png + digits.json.
+ * Generates an MSDF digit atlas: <out dir>/<name>.png + <name>.json (by default
+ * assets/fonts/digits.png + digits.json, the bundled serif).
  *
- *   npm run build:sdf [-- <font file> <out dir>]
+ *   npm run build:sdf [-- <font file> <out dir> <name>]
+ *   npm run build:sdf -- assets/fonts/AtkinsonHyperlegible-Bold.ttf assets/fonts digits-sans
  *
  * Charset is 0-9 plus the font's "_" glyph, which is stored under the key "." (the
  * 6./9. underline mark). The outputs are committed, so the build never needs this script.
@@ -15,6 +17,8 @@ const generateBMFont = require('msdf-bmfont-xml');
 
 const FONT = resolve(process.argv[2] ?? 'assets/fonts/DMSerifDisplay-Regular.woff');
 const OUT = resolve(process.argv[3] ?? 'assets/fonts');
+const NAME = process.argv[4] ?? 'digits';
+if (!/^[A-Za-z0-9_-]+$/.test(NAME)) throw new Error(`bad output name "${NAME}"`);
 const FONT_SIZE = 64;
 const DISTANCE_RANGE = 8;
 const UNDERLINE_SRC = '_';
@@ -22,7 +26,7 @@ const UNDERLINE_KEY = '.';
 
 const opt = {
   outputType: 'json',
-  filename: join(OUT, 'digits'),
+  filename: join(OUT, NAME),
   charset: '0123456789' + UNDERLINE_SRC,
   fieldType: 'msdf',
   fontSize: FONT_SIZE,
@@ -37,7 +41,7 @@ mkdirSync(OUT, { recursive: true });
 generateBMFont(FONT, opt, (error, textures, font) => {
   if (error) throw error;
   if (textures.length !== 1) throw new Error(`expected 1 atlas page, got ${textures.length}`);
-  writeFileSync(join(OUT, 'digits.png'), textures[0].texture);
+  writeFileSync(join(OUT, `${NAME}.png`), textures[0].texture);
 
   const data = JSON.parse(font.data);
   const chars = data.chars.map((c) => {
@@ -66,8 +70,8 @@ generateBMFont(FONT, opt, (error, textures, font) => {
       xadvance,
     })),
   };
-  writeFileSync(join(OUT, 'digits.json'), JSON.stringify(out, null, 2) + '\n');
+  writeFileSync(join(OUT, `${NAME}.json`), JSON.stringify(out, null, 2) + '\n');
   console.log(
-    `dicer: wrote ${join(OUT, 'digits.png')} and digits.json (${out.chars.length} glyphs)`,
+    `dicer: wrote ${join(OUT, `${NAME}.png`)} and ${NAME}.json (${out.chars.length} glyphs)`,
   );
 });

@@ -102,3 +102,10 @@ test('the 6/9 mark is a clean rectangle: a box SDF slot, not a stretched serif "
   expect(cy + hh).toBeLessThan(y1);
   expect(ENGRAVE_PARS).toContain('if ( t.x < 0.0 )');
 });
+
+test('the bundled sans atlas (Atkinson Hyperlegible Bold, P7-D5) has 0-9 and the underline mark', () => {
+  const sans = parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8')));
+  for (const c of '0123456789.') expect(sans.glyphs.has(c)).toBe(true);
+  expect(sans.distanceRange).toBe(8);
+  expect(layoutLabel('6.', sans)[8 + 4]).toBe(-1);
+});

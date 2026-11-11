@@ -1,0 +1,139 @@
+{
+  "info": {
+    "face": "AtkinsonHyperlegible-Bold",
+    "size": 64
+  },
+  "common": {
+    "lineHeight": 79,
+    "base": 61,
+    "scaleW": 256,
+    "scaleH": 128
+  },
+  "distanceField": {
+    "fieldType": "msdf",
+    "distanceRange": 8
+  },
+  "chars": [
+    {
+      "id": 48,
+      "char": "0",
+      "x": 0,
+      "y": 0,
+      "width": 45,
+      "height": 52,
+      "xoffset": -1,
+      "yoffset": 13,
+      "xadvance": 42
+    },
+    {
+      "id": 50,
+      "char": "2",
+      "x": 47,
+      "y": 0,
+      "width": 41,
+      "height": 52,
+      "xoffset": -2,
+      "yoffset": 13,
+      "xadvance": 38
+    },
+    {
+      "id": 51,
+      "char": "3",
+      "x": 0,
+      "y": 54,
+      "width": 41,
+      "height": 52,
+      "xoffset": -2,
+      "yoffset": 13,
+      "xadvance": 39
+    },
+    {
+      "id": 53,
+      "char": "5",
+      "x": 43,
+      "y": 54,
+      "width": 42,
+      "height": 52,
+      "xoffset": -1,
+      "yoffset": 14,
+      "xadvance": 39
+    },
+    {
+      "id": 54,
+      "char": "6",
+      "x": 87,
+      "y": 54,
+      "width": 42,
+      "height": 52,
+      "xoffset": -1,
+      "yoffset": 13,
+      "xadvance": 40
+    },
+    {
+      "id": 56,
+      "char": "8",
+      "x": 90,
+      "y": 0,
+      "width": 43,
+      "height": 52,
+      "xoffset": -2,
+      "yoffset": 13,
+      "xadvance": 40
+    },
+    {
+      "id": 49,
+      "char": "1",
+      "x": 131,
+      "y": 54,
+      "width": 27,
+      "height": 51,
+      "xoffset": -1,
+      "yoffset": 14,
+      "xadvance": 29
+    },
+    {
+      "id": 52,
+      "char": "4",
+      "x": 135,
+      "y": 0,
+      "width": 44,
+      "height": 51,
+      "xoffset": -3,
+      "yoffset": 14,
+      "xadvance": 40
+    },
+    {
+      "id": 55,
+      "char": "7",
+      "x": 160,
+      "y": 53,
+      "width": 40,
+      "height": 51,
+      "xoffset": -3,
+      "yoffset": 14,
+      "xadvance": 35
+    },
+    {
+      "id": 57,
+      "char": "9",
+      "x": 181,
+      "y": 0,
+      "width": 39,
+      "height": 51,
+      "xoffset": -2,
+      "yoffset": 14,
+      "xadvance": 36
+    },
+    {
+      "id": 46,
+      "char": ".",
+      "x": 222,
+      "y": 0,
+      "width": 34,
+      "height": 16,
+      "xoffset": -3,
+      "yoffset": 57,
+      "xadvance": 28
+    }
+  ]
+}
