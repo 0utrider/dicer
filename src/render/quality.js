@@ -112,11 +112,13 @@ const GPU_WINDOW = 60;
  * so a real sustained slowdown cannot normalise itself away mid-streak; the ring keeps
  * learning, so a cadence change costs at most one drop. The baseline survives reset() (it
  * describes the display and host, not the tier). With a GPU time (timer query) the frame
- * time is max(cpu, gpu) instead of the interval-inflated ms: Dicer's own cost. That cost is
- * judged directly, with no baseline: the p95 of the last 60 post-grace frames (each capped at
- * 3 x the budget, like the EMA path) over
- * gpuBudgetMs (16.7) drops a tier, so a machine that is GPU-bound from its first roll (a
- * steady 20 ms GPU frame at a 60 Hz cadence the baseline would excuse) still drops.
+ * cost is judged directly, with no baseline, over the last 60 post-grace frames: the GPU p95
+ * (each sample capped at 3 x the budget, like the EMA path) over gpuBudgetMs (16.7) drops a
+ * tier, so a machine that is GPU-bound from its first roll (a steady 20 ms GPU frame at a
+ * 60 Hz cadence the baseline would excuse) still drops. The CPU time is judged on the window's
+ * median, not its p95 (P9-R1): CPU spikes (a roll spawning its dice, a garbage collection, a
+ * host hook) are one-off frames a lower tier would not remove, and counting them in the p95
+ * dropped an RTX 5070 Ti to low during the 500-roll soak. Only a sustained CPU cost drops.
  */
 export class AdaptiveQuality {
   #budget;
@@ -132,6 +134,7 @@ export class AdaptiveQuality {
   #frozen = null;
   #gpuBudget;
   #gpuFrames = [];
+  #cpuFrames = [];
 
   constructor({ budgetMs = 20, window = 30, gpuBudgetMs = GPU_BUDGET_MS, onDrop } = {}) {
     this.#budget = budgetMs;
@@ -164,16 +167,16 @@ export class AdaptiveQuality {
       this.#ringSize = Math.min(this.#ringSize + 1, BASELINE_FRAMES);
     }
     const timed = Number.isFinite(gpu) && gpu >= 0;
-    if (timed) ms = Math.max(gpu, Number.isFinite(cpu) ? cpu : 0);
     if (this.#grace > 0) {
       this.#grace--; // P2-R10: ignore the frames right after construction, reset() or a tier change
       return;
     }
     if (timed) {
-      this.#gpuFrame(ms);
+      this.#gpuFrame(gpu, Number.isFinite(cpu) ? cpu : 0);
       return;
     }
     this.#gpuFrames.length = 0;
+    this.#cpuFrames.length = 0;
     ms = Math.min(ms, 3 * this.#budget); // one hitch must not count as a sustained slowdown
     this.#ema = this.#ema === null ? ms : this.#ema + 0.1 * (ms - this.#ema);
     const base = this.#streak > 0 ? this.#frozen : this.baseline;
@@ -188,14 +191,19 @@ export class AdaptiveQuality {
     this.#dropNow();
   }
 
-  /** GPU-timer path: the p95 of the last 60 frames against the GPU budget. */
-  #gpuFrame(ms) {
-    this.#gpuFrames.push(Math.min(ms, 3 * this.#gpuBudget));
+  /** GPU-timer path: GPU p95 and CPU median of the last 60 frames against the budget. */
+  #gpuFrame(gpu, cpu) {
+    const cap = 3 * this.#gpuBudget;
+    this.#gpuFrames.push(Math.min(gpu, cap));
+    this.#cpuFrames.push(Math.min(cpu, cap));
     if (this.#gpuFrames.length > GPU_WINDOW) this.#gpuFrames.shift();
+    if (this.#cpuFrames.length > GPU_WINDOW) this.#cpuFrames.shift();
     if (this.#gpuFrames.length < GPU_WINDOW) return;
-    const sorted = [...this.#gpuFrames].sort((a, b) => a - b);
-    if (sorted[Math.ceil(0.95 * sorted.length) - 1] <= this.#gpuBudget) return;
-    this.#dropNow();
+    const g = [...this.#gpuFrames].sort((a, b) => a - b);
+    const c = [...this.#cpuFrames].sort((a, b) => a - b);
+    const gpuSlow = g[Math.ceil(0.95 * g.length) - 1] > this.#gpuBudget;
+    const cpuSlow = c[(c.length >> 1) - 1] > this.#gpuBudget;
+    if (gpuSlow || cpuSlow) this.#dropNow();
   }
 
   #dropNow() {
@@ -204,6 +212,7 @@ export class AdaptiveQuality {
     this.#streak = 0;
     this.#frozen = null;
     this.#gpuFrames.length = 0;
+    this.#cpuFrames.length = 0;
     this.#grace = GRACE_FRAMES;
     this.#onDrop?.(this.#dropped);
   }
@@ -215,6 +224,7 @@ export class AdaptiveQuality {
     this.#frozen = null;
     this.#dropped = 0;
     this.#gpuFrames.length = 0;
+    this.#cpuFrames.length = 0;
     this.#grace = GRACE_FRAMES;
   }
 }
