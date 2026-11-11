@@ -1002,3 +1002,100 @@ test('_debug.fxPlays and resultSounds read the injected counters (copies)', () =
   a._debug.fxPlays.celebrate = 99;
   expect(a._debug.fxPlays.celebrate).toBe(2);
 });
+
+describe('showForRoll uses the sender area (P5-D1) and the GM private corner (P5-D7)', () => {
+  const AREA = { left: 10, top: 20, width: 300, height: 200 };
+  let me, areaFor, handlers;
+  const socket = () => ({
+    on: vi.fn((event, fn) => handlers.set(event, fn)),
+    off: vi.fn(),
+    emit: vi.fn(),
+  });
+  const make = (extra = {}) =>
+    createDice3dApi({
+      diceBox,
+      gate,
+      planThrow,
+      getSetting: (k) => settings[k],
+      hooks: { callAll: vi.fn() },
+      currentUser: () => me,
+      gmIds: () => ['gm', 'gm2'],
+      areaFor,
+      fromData: (d) => d,
+      ...extra,
+    });
+  /** Delivers a payload as the server would, with its verified sender id. */
+  const deliver = (payload, sender = payload.userId) => [...handlers.values()][0]({ v: 1, kind: 'show', ...payload }, sender);
+
+  beforeEach(() => {
+    me = { id: 'p1', isGM: false };
+    handlers = new Map();
+    areaFor = vi.fn(() => AREA);
+  });
+
+  test('a local showForRoll throws in the local user area', async () => {
+    make().showForRoll(roll(20, 12));
+    await Promise.resolve();
+    expect(areaFor).toHaveBeenCalledWith({ rollerId: 'p1', gmPrivate: false });
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 12 }], { area: AREA });
+  });
+
+  test("the roller is the verified sender, never the caller's user argument", async () => {
+    make().showForRoll(roll(20, 12), { id: 'someoneElse' });
+    await Promise.resolve();
+    expect(areaFor).toHaveBeenCalledWith({ rollerId: 'p1', gmPrivate: false });
+  });
+
+  test("a received roll uses the sender's area on this screen", async () => {
+    me = { id: 'p2', isGM: false };
+    make({ socket: socket() });
+    deliver({ roll: roll(20, 7), userId: 'p1', authorId: 'claimed' });
+    await Promise.resolve();
+    expect(areaFor).toHaveBeenCalledWith({ rollerId: 'p1', gmPrivate: false });
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 7 }], { area: AREA });
+  });
+
+  test('no area: called exactly as before (the whole stage)', async () => {
+    areaFor = vi.fn(() => null);
+    make().showForRoll(roll(20, 12));
+    await Promise.resolve();
+    expect(diceBox.roll.mock.calls[0]).toEqual([[{ type: 'd20', value: 12 }]]);
+  });
+
+  test('a throwing areaFor still throws on the whole stage', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    areaFor = vi.fn(() => {
+      throw new Error('boom');
+    });
+    make().showForRoll(roll(20, 12));
+    await Promise.resolve();
+    expect(diceBox.roll.mock.calls[0]).toEqual([[{ type: 'd20', value: 12 }]]);
+    err.mockRestore();
+  });
+
+  test('a blind roll on the GM client asks for the private corner', async () => {
+    me = { id: 'gm', isGM: true };
+    make().showForRoll(roll(20, 12), me, false, null, true);
+    await Promise.resolve();
+    expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: true });
+  });
+
+  test('a roll whispered to GMs only is private; one including a player is not', async () => {
+    me = { id: 'gm', isGM: true };
+    const a = make();
+    a.showForRoll(roll(20, 12), me, false, ['gm', 'gm2']);
+    a.showForRoll(roll(20, 13), me, false, ['gm', 'p1']);
+    a.showForRoll(roll(20, 14), me, false, []);
+    await Promise.resolve();
+    expect(areaFor.mock.calls.map(([q]) => q.gmPrivate)).toEqual([true, false, false]);
+  });
+
+  test('a ghost view never asks for the corner (blind roll seen by a player)', async () => {
+    settings.showGhostDice = true;
+    make({ socket: socket() });
+    deliver({ roll: roll(20, 20), userId: 'gm', blind: true, users: ['gm', 'p1'], ghost: true });
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true }], { area: AREA });
+    expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: false });
+  });
+});

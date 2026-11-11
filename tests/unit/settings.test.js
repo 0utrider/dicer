@@ -262,3 +262,55 @@ test('the damage map menu is a lazy ApplicationV2 proxy and damageTypeSounds is 
   expect(menus.triggerEditor.type).not.toBe(menu.type);
   expect(registered.damageTypeSounds).toMatchObject({ scope: 'world', config: false, type: Object, default: {} });
 });
+
+describe('roll area settings (Plan 5 Task 3)', () => {
+  test('rollAreas is a hidden world Object defaulting to the full default and no users', () => {
+    const cfg = capture().rollAreas;
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: false, type: Object });
+    expect(cfg.default).toEqual({ default: { preset: 'full' }, users: {} });
+  });
+
+  test('areaScale is a client Number range 0.5..1.5 step 0.05, default 1', () => {
+    const cfg = capture().areaScale;
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Number, default: 1 });
+    expect(cfg.range).toEqual({ min: 0.5, max: 1.5, step: 0.05 });
+  });
+
+  test('gmPrivateCorner is a world Boolean, default off (P5-D7)', () => {
+    const cfg = capture().gmPrivateCorner;
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: Boolean, default: false });
+  });
+
+  test('gmPrivateArea is a hidden world Object defaulting to the corner preset', () => {
+    const cfg = capture().gmPrivateArea;
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: false, type: Object });
+    expect(cfg.default).toEqual({ preset: 'corner' });
+  });
+
+  test('perPlayerAreas is a world Boolean, default on', () => {
+    const cfg = capture().perPlayerAreas;
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: Boolean, default: true });
+  });
+
+  test('defaults are fresh objects on each registration', () => {
+    expect(capture().rollAreas.default).not.toBe(capture().rollAreas.default);
+  });
+
+  test('area settings change nothing on change (the resolver reads them per throw)', () => {
+    const r = capture();
+    for (const key of ['rollAreas', 'areaScale', 'gmPrivateCorner', 'gmPrivateArea', 'perPlayerAreas']) {
+      expect(r[key].onChange).toBeUndefined();
+    }
+  });
+
+  test('every visible area setting has its English name and hint', () => {
+    const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings;
+    const r = capture();
+    for (const key of ['areaScale', 'gmPrivateCorner', 'perPlayerAreas']) {
+      expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
+      expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
+      expect(typeof en[key]?.Name).toBe('string');
+      expect(typeof en[key]?.Hint).toBe('string');
+    }
+  });
+});

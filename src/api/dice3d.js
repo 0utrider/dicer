@@ -135,6 +135,7 @@ export function createDice3dApi({
   faceTextures = null,
   facesFor = () => undefined,
   getArea = () => measureArea(),
+  areaFor = () => null,
   importMigration = importMigrationModule,
   debugCounters = createDebugCounters(),
 }) {
@@ -273,6 +274,23 @@ export function createDice3dApi({
   }
 
   /**
+   * The area this throw lands in here: the verified sender's (P5-D1; the caller's `user` never
+   * chooses it), or the GM private corner for a real view of a roll only GMs can see (blind, or
+   * whispered to GMs only); the resolver also requires a GM client and the setting (P5-D7).
+   * A failing lookup throws on the whole stage.
+   */
+  function areaHere(s, view) {
+    try {
+      const gms = s.users?.length ? listGms() : [];
+      const gmOnly = s.blind || (s.users?.length > 0 && s.users.every((id) => gms.includes(id)));
+      return areaFor({ rollerId: s.senderId ?? undefined, gmPrivate: view === 'real' && Boolean(gmOnly) }) ?? null;
+    } catch (err) {
+      console.error('dicer: cannot resolve the roll area', err);
+      return null;
+    }
+  }
+
+  /**
    * The local throw (no awaits before the dice are planned). A local call naming a message fires
    * RollStart first (a listener may make it blind, narrow its users, flag it ghost/secret, or
    * replace the thrown roll through dsnRoll) and RollComplete exactly once at the end, whatever
@@ -317,7 +335,9 @@ export function createDice3dApi({
         decorate: ghost ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId, s.senderId),
       });
       if (!dice.length) return false;
-      await diceBox.roll(dice).landed;
+      const area = areaHere(s, view);
+      // No area: the whole stage, called exactly as before areas existed.
+      await (area ? diceBox.roll(dice, { area }) : diceBox.roll(dice)).landed;
       return true;
     } catch (err) {
       console.error('dicer: showForRoll failed', err);

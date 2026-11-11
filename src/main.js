@@ -11,6 +11,7 @@ import { createInitiativeHider } from './compat/initiative.js';
 import { registerChatCommands } from './compat/chat-commands.js';
 import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
+import { createAreaResolver } from './areas/area-resolver.js';
 import { startEngine, announceReady } from './foundry/startup.js';
 import { createDice3dApi, createDebugCounters, materialReadyNotifier } from './api/dice3d.js';
 import { createRegistry } from './compat/registry.js';
@@ -433,12 +434,15 @@ Hooks.once('ready', async () => {
       });
       // (message, roll, authorId?, rollerId?): looks from the author, rules from the roller.
       const decorateFor = composeDecorateFor({ looks: resolver, fx: fxResolver });
+      // Which area each throw lands in on this screen (the roller's; the GM private corner).
+      const areas = createAreaResolver({ getSetting, measureUsable: () => measureArea(), currentUser: () => game.user });
       gate = createMessageGate({
         diceBox: box,
         planThrow: plan,
         decorateFor,
         hooks: Hooks,
         getSetting,
+        areaFor: areas.rectFor,
       });
       initiative = createInitiativeHider({
         gate,
@@ -462,6 +466,7 @@ Hooks.once('ready', async () => {
         faceTextures,
         facesFor: presetFaces,
         getArea: () => measureArea(),
+        areaFor: areas.rectFor,
         debugCounters,
       });
       dice3d = api;

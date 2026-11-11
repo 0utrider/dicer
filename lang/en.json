@@ -134,6 +134,18 @@
         "Name": "Screen shake",
         "Hint": "Let effects shake the dice briefly. Only the dice move, never the map. Off when your system asks for reduced motion."
       },
+      "perPlayerAreas": {
+        "Name": "Per-player roll areas",
+        "Hint": "Throw each player's dice in the area the GM gave them, on every screen. Off throws everyone's dice in the default area."
+      },
+      "areaScale": {
+        "Name": "Roll area size",
+        "Hint": "Make every roll area bigger or smaller on this screen only, around its centre. Other players' screens are not affected."
+      },
+      "gmPrivateCorner": {
+        "Name": "GM private corner",
+        "Hint": "On the GM's screen, throw rolls only GMs can see (blind or GM-only whispers) in their own corner. Players' screens are never affected."
+      },
       "damagePresets": {
         "Name": "Damage dice themes",
         "Hint": "Give damage dice a look, impact sound and landing effect by damage type (fire, cold, acid and so on). Off shows your own dice. Never depends on the special effects setting."

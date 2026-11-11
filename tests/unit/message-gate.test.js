@@ -4,6 +4,8 @@ import { planThrow as realPlanThrow } from '../../src/throw/throw-planner.js';
 import { explodingD6, rerolledD20, dynamicCountD6, coin } from './foundry-roll.js';
 import { createFxResolver, composeDecorateFor } from '../../src/effects/fx-resolver.js';
 import { DEFAULT_RULES } from '../../src/effects/rules.js';
+import { createAreaResolver } from '../../src/areas/area-resolver.js';
+import { resolveArea } from '../../src/areas/area-model.js';
 
 const COMPLETE = 'diceSoNiceRollComplete';
 
@@ -1587,5 +1589,147 @@ describe('trigger effects are decided only for real views (privacy, Review Focus
     makeGate({ currentUser: () => player, decorateFor }).onCreate(blindMsg('m1'));
     expect(diceBox.rolls).toHaveLength(1);
     expect(fx.decorate).not.toHaveBeenCalled();
+  });
+});
+
+describe('roll areas follow the roller (P5-D1) and the GM private corner (P5-D7)', () => {
+  const STAGE = { left: 0, top: 0, width: 1000, height: 800 };
+  const p1 = { id: 'p1', isGM: false };
+  const p2 = { id: 'p2', isGM: false };
+  const gm = { id: 'gm', isGM: true };
+  const users = { p1, p2, gm, gm2: { id: 'gm2', isGM: true } };
+  const p1Area = resolveArea({ preset: 'bottom' }, STAGE);
+  const corner = resolveArea({ preset: 'corner' }, STAGE);
+  const gmArea = resolveArea({ preset: 'centre' }, STAGE);
+
+  beforeEach(() => {
+    settings.rollAreas = { default: { preset: 'full' }, users: { p1: { preset: 'bottom' }, gm: { preset: 'centre' } } };
+    settings.areaScale = 1;
+    settings.perPlayerAreas = true;
+    settings.gmPrivateCorner = false;
+    settings.gmPrivateArea = { preset: 'corner' };
+  });
+
+  /** A gate as one viewer's client: its own resolver, its own user. */
+  function viewerGate(viewer, extra = {}) {
+    const resolver = createAreaResolver({
+      getSetting: (k) => settings[k],
+      measureUsable: () => STAGE,
+      currentUser: () => viewer,
+    });
+    return makeGate({
+      currentUser: () => viewer,
+      areaFor: resolver.rectFor,
+      userIsGM: (id) => users[id]?.isGM === true,
+      ...extra,
+    });
+  }
+  const areaOf = (call) => call[1]?.area ?? null;
+  const nat20 = () => {
+    const term = { faces: 20, options: { flavor: 'fire' }, results: [{ result: 20, active: true }] };
+    return { formula: '1d20', dice: [term], terms: [term] };
+  };
+  const gmOf = (id) => users[id]?.isGM === true;
+
+  test("a player's roll is thrown in that player's area on every viewer", () => {
+    for (const viewer of [p1, p2, gm]) {
+      diceBox.roll.mockClear();
+      viewerGate(viewer).onCreate(message(`m-${viewer.id}`, { author: { id: 'p1' } }));
+      expect(diceBox.roll).toHaveBeenCalledTimes(1);
+      expect(areaOf(diceBox.roll.mock.calls[0])).toEqual(p1Area);
+    }
+  });
+
+  test('a roller without an area of their own throws on the whole stage (no area argument)', () => {
+    viewerGate(p1).onCreate(message('m1', { author: { id: 'p2' } }));
+    expect(diceBox.roll.mock.calls[0]).toHaveLength(1);
+  });
+
+  test('every roll of a multi-roll message uses the roller area', () => {
+    viewerGate(p2).onCreate(message('m1', { rolls: [d20Roll(3), d20Roll(4)], author: { id: 'p1' } }));
+    expect(diceBox.roll.mock.calls.map(areaOf)).toEqual([p1Area, p1Area]);
+  });
+
+  test("Review Focus 4: a player's blind nat 20 seen by another player as a ghost lands in the roller's area with no look or fx", () => {
+    settings.showGhostDice = true;
+    const fx = createFxResolver({
+      getWorldRules: () => DEFAULT_RULES,
+      getUserRules: () => undefined,
+      currentUser: () => p2,
+      getSetting: (k) => settings[k],
+    });
+    const looks = { decorate: vi.fn(() => () => ({ appearance: { tag: 'themed' } })) };
+    const decorateFor = composeDecorateFor({ looks, fx });
+    viewerGate(p2, { decorateFor }).onCreate(
+      message('m1', { rolls: [nat20()], isContentVisible: false, blind: true, whisper: ['gm'], author: { id: 'p1' } }),
+    );
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(diceBox.roll.mock.calls[0]).toEqual([[{ type: 'd20', value: 1, ghost: true }], { area: p1Area }]);
+    expect(looks.decorate).not.toHaveBeenCalled();
+  });
+
+  describe('the GM private corner', () => {
+    const gmBlind = (id, extra = {}) =>
+      message(id, { isContentVisible: true, blind: true, whisper: ['gm'], author: { id: 'gm' }, ...extra });
+
+    test("a GM's blind roll on the GM client uses the private corner when the setting is on", () => {
+      settings.gmPrivateCorner = true;
+      viewerGate(gm).onCreate(gmBlind('m1'));
+      expect(areaOf(diceBox.roll.mock.calls[0])).toEqual(corner);
+    });
+
+    test('off (the default): the GM client uses the GM roller area', () => {
+      viewerGate(gm).onCreate(gmBlind('m1'));
+      expect(areaOf(diceBox.roll.mock.calls[0])).toEqual(gmArea);
+    });
+
+    test('a whisper to GMs only counts as private; a whisper including a player does not', () => {
+      settings.gmPrivateCorner = true;
+      viewerGate(gm).onCreate(message('m1', { whisper: ['gm', 'gm2'], author: { id: 'gm' } }));
+      expect(areaOf(diceBox.roll.mock.calls[0])).toEqual(corner);
+      viewerGate(gm).onCreate(message('m2', { whisper: ['gm', 'p1'], author: { id: 'gm' } }));
+      expect(areaOf(diceBox.roll.mock.calls[1])).toEqual(gmArea);
+      viewerGate(gm).onCreate(message('m3', { author: { id: 'gm' } }));
+      expect(areaOf(diceBox.roll.mock.calls[2])).toEqual(gmArea);
+    });
+
+    test("a player's client never uses the corner for the GM's blind roll (ghost view)", () => {
+      settings.gmPrivateCorner = true;
+      settings.showGhostDice = true;
+      viewerGate(p1).onCreate(gmBlind('m1', { isContentVisible: false }));
+      expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
+      expect(areaOf(diceBox.roll.mock.calls[0])).toEqual(gmArea);
+    });
+
+    test('a ghost roll never asks for the corner, even on the GM client', () => {
+      const areaFor = vi.fn(() => null);
+      makeGate({ currentUser: () => gm, areaFor, userIsGM: gmOf }).onCreate(
+        gmBlind('m1', { rolls: [{ ...d20Roll(), ghost: true }] }),
+      );
+      expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: false });
+    });
+
+    test('a group mixing a real and a ghost roll is not private', () => {
+      const areaFor = vi.fn(() => null);
+      makeGate({ currentUser: () => gm, areaFor, userIsGM: gmOf }).onCreate(
+        gmBlind('m1', { rolls: [d20Roll(2), { ...d20Roll(), ghost: true }] }),
+      );
+      expect(areaFor).toHaveBeenCalled();
+      expect(areaFor.mock.calls.every(([a]) => a.gmPrivate === false)).toBe(true);
+    });
+
+    test('a real GM-only roll asks for the corner (the resolver decides by client)', () => {
+      const areaFor = vi.fn(() => null);
+      makeGate({ currentUser: () => gm, areaFor, userIsGM: gmOf }).onCreate(gmBlind('m1'));
+      expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: true });
+    });
+  });
+
+  test('a throwing areaFor still throws the dice, on the whole stage', () => {
+    const areaFor = () => {
+      throw new Error('boom');
+    };
+    makeGate({ areaFor }).onCreate(message('m1', { author: { id: 'p1' } }));
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 17 }]);
   });
 });

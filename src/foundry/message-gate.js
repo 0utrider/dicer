@@ -40,15 +40,18 @@ function rollOrderOf(roll) {
 
 /**
  * The planned dice grouped by ascending rollOrder, in roll order inside a group. Empty plans are
- * dropped, so every group throws something.
+ * dropped, so every group throws something. Each group is an array of per-roll specs carrying
+ * `allReal`: every roll in it is a real view here (a ghost never uses the GM private corner).
  */
-function groupsOf(rolls, plan) {
+function groupsOf(rolls, plan, views = []) {
   const byOrder = new Map();
   plan.forEach((specs, i) => {
     if (!specs.length) return;
     const order = rollOrderOf(rolls[i]);
-    if (!byOrder.has(order)) byOrder.set(order, []);
-    byOrder.get(order).push(specs);
+    if (!byOrder.has(order)) byOrder.set(order, Object.assign([], { allReal: true }));
+    const group = byOrder.get(order);
+    group.push(specs);
+    if (views[i] !== 'real') group.allReal = false;
   });
   return [...byOrder.keys()].sort((a, b) => a - b).map((order) => byOrder.get(order));
 }
@@ -90,6 +93,9 @@ const onlyFrom = (views, from) => views.map((v, i) => (i >= from ? v : 'none'));
  * @param {() => string | undefined} [deps.currentUserId]
  * @param {() => { id?: string, isGM?: boolean } | undefined} [deps.currentUser] the viewing user,
  *   for the privacy matrix (none known: not a GM, not an author)
+ * @param {(q: { rollerId?: string, gmPrivate: boolean }) => object | null} [deps.areaFor] the px
+ *   area a throw lands in on this screen (area-resolver rectFor); null throws on the whole stage
+ * @param {(id: string) => boolean} [deps.userIsGM] whether a whisper recipient is a GM
  */
 export function createMessageGate({
   diceBox,
@@ -100,6 +106,8 @@ export function createMessageGate({
   chatUi,
   currentUserId = () => globalThis.game?.user?.id,
   currentUser = () => globalThis.game?.user,
+  areaFor = () => null,
+  userIsGM = (id) => globalThis.game?.users?.get?.(id)?.isGM === true,
   setTimeoutFn = (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeoutFn = (h) => globalThis.clearTimeout(h),
   documentRef = globalThis.document,
@@ -208,6 +216,28 @@ export function createMessageGate({
   }
 
   const ghostDecorator = () => () => ({ ghost: true });
+
+  /** Only GMs can see the message: blind, or whispered to GMs only. */
+  function gmOnly(message) {
+    if (message.blind) return true;
+    const whisper = Array.isArray(message.whisper) ? message.whisper : [];
+    return whisper.length > 0 && whisper.every((w) => userIsGM(typeof w === 'string' ? w : w?.id));
+  }
+
+  /**
+   * The area of one throw group: the roller's (P5-D1), or the GM private corner when every roll
+   * in the group is real here and only GMs can see the message (the resolver also requires a GM
+   * client and the setting). A failing lookup throws on the whole stage.
+   */
+  function areaOf(message, group) {
+    try {
+      const gmPrivate = group.allReal === true && gmOnly(message);
+      return areaFor({ rollerId: message.author?.id, gmPrivate }) ?? null;
+    } catch (err) {
+      console.error('dicer: cannot resolve the roll area', err);
+      return null;
+    }
+  }
 
   /**
    * Plans every roll against one shared maxDice budget. `views` are decided from the message's own
@@ -356,7 +386,7 @@ export function createMessageGate({
    * gets its own watchdog. A watchdog, a failure or a delete reveals the message once, and the
    * remaining groups are never thrown.
    */
-  function throwGroups(id, entry, groups) {
+  function throwGroups(id, entry, groups, message) {
     const next = (i) => {
       if (animating.get(id) !== entry) return; // revealed meanwhile (watchdog, delete)
       if (i >= groups.length) {
@@ -367,7 +397,9 @@ export function createMessageGate({
       entry.timer = setTimeoutFn(() => reveal(id), WATCHDOG_MS);
       let landed;
       try {
-        landed = groups[i].map((specs) => diceBox.roll(specs).landed);
+        const area = areaOf(message, groups[i]);
+        // No area: the whole stage, called exactly as before areas existed.
+        landed = groups[i].map((specs) => (area ? diceBox.roll(specs, { area }) : diceBox.roll(specs)).landed);
       } catch (err) {
         console.error('dicer: roll failed', err);
         reveal(id);
@@ -465,7 +497,7 @@ export function createMessageGate({
       const unchanged = rolls[from] === first && views.every((v, i) => v === eligible.views[i]);
       const plan = unchanged ? eligible.plan : planAll(rolls, message, views);
       // The order is the message's own, like the views: a replacement cannot reorder.
-      throwGroups(id, entry, groupsOf(message.rolls, plan));
+      throwGroups(id, entry, groupsOf(message.rolls, plan, views), message);
     } catch (err) {
       console.error('dicer: chat message gate failed', err);
       reveal(id);

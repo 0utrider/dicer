@@ -300,6 +300,47 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     type: Array,
     default: [],
   });
+  // Roll areas (Plan 5): read per throw by the area resolver, so no onChange rebuilds anything.
+  // Edited by the area editor (GM only, P5-D3), never in the settings form.
+  game.settings.register(MODULE_ID, 'rollAreas', {
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: { default: { preset: 'full' }, users: {} },
+  });
+  game.settings.register(MODULE_ID, 'perPlayerAreas', {
+    name: t('perPlayerAreas.Name'),
+    hint: t('perPlayerAreas.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  // P5-D2: this screen's override is a scale around each area's centre, not a second area.
+  game.settings.register(MODULE_ID, 'areaScale', {
+    name: t('areaScale.Name'),
+    hint: t('areaScale.Hint'),
+    scope: 'client',
+    config: true,
+    type: Number,
+    range: { min: 0.5, max: 1.5, step: 0.05 },
+    default: 1,
+  });
+  // P5-D7: opt-in; only a GM's own client, only rolls only GMs can see.
+  game.settings.register(MODULE_ID, 'gmPrivateCorner', {
+    name: t('gmPrivateCorner.Name'),
+    hint: t('gmPrivateCorner.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false,
+  });
+  game.settings.register(MODULE_ID, 'gmPrivateArea', {
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: { preset: 'corner' },
+  });
   registerNoticeSetting();
 }
 
