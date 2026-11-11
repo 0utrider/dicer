@@ -3,7 +3,11 @@
  *   1. term.options.appearance   2. term.options.colorset   3. the term's flavor
  *   3b. the damage theme of the term's damage type (P4-D3; also sets soundMaterial)
  *   4. the actor's dicer.appearance (options.dsnActorId)   5. the roller's dicer.appearance
- *      (die type, then global)   6. DEFAULT_APPEARANCE.
+ *      (role:<role> when the message has one, die type, base shape, then global)
+ *   6. DEFAULT_APPEARANCE.
+ * Refs at steps 4-5 may name a theme (Plan 5): built-in, the world's (worldThemes) or the
+ * roller's own (user flag dicer.themes). The theme gives the die type's look, its id (themeId)
+ * and its sound material when no damage theme set one. A missing theme warns once per roller.
  * A registered preset for the ref's system replaces rules 5-6 (its colorset) and attaches its
  * model. Everything read here is third-party data: no step may throw.
  */
@@ -14,6 +18,8 @@ import {
   lookRefToAppearance,
   colorsetNameToAppearance,
 } from './user-looks.js';
+import { readThemeList } from '../themes/themes.js';
+import { roleOf } from '../effects/roll-context.js';
 
 const STANDARD = 'standard';
 
@@ -35,8 +41,9 @@ const systemOf = (v) => (isPlainObject(v) && typeof v.system === 'string' && v.s
  * @param {(id: string) => object | undefined} deps.getUser
  * @param {(id: string) => object | undefined} [deps.getActor]
  * @param {(preset: object) => object | undefined} [deps.facesFor] the Task 5 seam: a preset's FaceSet
- * @param {(roll: object) => (((term, index: number) => object | null) | null)} [deps.damageThemeFor]
+ * @param {(roll: object, authorId?: string) => (((term, index: number) => object | null) | null)} [deps.damageThemeFor]
  *   a roll's damage themer (createDamageThemer.forRoll); null when damagePresets is off
+ * @param {() => unknown} [deps.getWorldThemes] the raw worldThemes setting
  * @param {(msg: string, err?: unknown) => void} [deps.warn]
  */
 export function createLookResolver({
@@ -45,6 +52,7 @@ export function createLookResolver({
   getActor = () => undefined,
   facesFor = () => undefined,
   damageThemeFor = null,
+  getWorldThemes = () => [],
   warn = console.warn,
 }) {
   let warned = false;
@@ -58,6 +66,45 @@ export function createLookResolver({
     }
   };
 
+  const safeWarn = (msg) => {
+    try {
+      warn(msg);
+    } catch {
+      /* a throwing logger must not reach the roll */
+    }
+  };
+  const missingWarned = new Set();
+  /**
+   * Per roll and author: the user, the theme lists their refs may name, and the once-per-roller
+   * missing-theme warning.
+   */
+  function themeContext(authorId) {
+    const user = getUser(authorId);
+    let worldThemes = [];
+    let userThemes = [];
+    try {
+      worldThemes = readThemeList(getWorldThemes(), 'world', safeWarn);
+    } catch {
+      /* no world themes */
+    }
+    try {
+      const raw = typeof user?.getFlag === 'function' ? user.getFlag('dicer', 'themes') : user?.flags?.dicer?.themes;
+      userThemes = readThemeList(raw, 'user', safeWarn);
+    } catch {
+      /* no user themes */
+    }
+    return {
+      user,
+      themes: { worldThemes, userThemes },
+      onMissingTheme: (themeId) => {
+        const key = `${authorId}|${themeId}`;
+        if (missingWarned.has(key)) return;
+        missingWarned.add(key);
+        safeWarn(`Dicer: theme "${themeId}" no longer exists; using the next look`);
+      },
+    };
+  }
+
   /** A colorset from a preset (a name, or a list of names picked by index). */
   function presetAppearance(preset, index) {
     const cs = Array.isArray(preset.colorset)
@@ -66,7 +113,7 @@ export function createLookResolver({
     return colorsetNameToAppearance(cs, registry, index);
   }
 
-  function resolve(term, authorId, index, themeOf) {
+  function resolve(term, ctx, index, themeOf, role) {
     const type = dieTypeOf(term);
     const options = isPlainObject(term?.options) ? term.options : {};
     let appearance = null;
@@ -86,38 +133,54 @@ export function createLookResolver({
     }
     // The damage theme (P4-D3): after explicit colorsets and flavor, before actor/user looks.
     let soundMaterial;
+    let themed = null; // the Plan 5 theme the die resolved to: {themeId, soundMaterial?, ...}
     if (!appearance && themeOf) {
       const theme = themeOf(term, index);
       if (theme?.appearance) {
         appearance = theme.appearance;
         soundMaterial = theme.soundMaterial;
+        if (theme.themeId) themed = { themeId: theme.themeId };
       }
     }
+    const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
     if (!appearance && typeof options.dsnActorId === 'string') {
       const ref = getActor(options.dsnActorId)?.flags?.dicer?.appearance;
-      appearance = lookRefToAppearance(ref, registry, index);
-      if (appearance) system = systemOf(ref);
+      const got = lookRefToAppearance(ref, registry, index, refOpts);
+      if (got) {
+        appearance = got.appearance;
+        themed = got;
+        system = systemOf(ref);
+      }
     }
 
     // The author's refs, most specific first. They feed rule 5 and, for every rule, the system.
-    const looks = readUserLooks(getUser(authorId));
+    const looks = readUserLooks(ctx.user);
     const shape = type ? registry.baseShape?.(type) : null;
-    const refs = [type, shape, 'global'].map((key) => (key ? looks[key] : null)).filter(Boolean);
+    const keys = [role ? `role:${role}` : null, type, shape, 'global'];
+    const refs = keys.map((key) => (key && Object.hasOwn(looks, key) ? looks[key] : null)).filter(Boolean);
 
     if (system === null) system = refs.map(systemOf).find(Boolean) ?? null;
 
     const preset = type ? registry.presetFor?.(system ?? STANDARD, type) : null;
     if (!appearance) {
       // Rules 5-6: the preset's colorset replaces the author's look, then the default.
-      const authorRef = refs.find((ref) => lookRefToAppearance(ref, registry, index));
       const fromPreset = preset?.colorset ? presetAppearance(preset, index) : null;
-      appearance = fromPreset ?? lookRefToAppearance(authorRef, registry, index) ?? DEFAULT_APPEARANCE;
+      if (fromPreset) appearance = fromPreset;
+      else {
+        for (const ref of refs) {
+          themed = lookRefToAppearance(ref, registry, index, refOpts);
+          if (themed) break;
+        }
+        appearance = themed?.appearance ?? DEFAULT_APPEARANCE;
+      }
     }
 
     const out = { appearance };
     if (type) out.dsnType = type;
     // DiceBox finds the preset again by system + dsnType (diceSoNiceOnMaterialReady, P3-R3).
     out.system = preset?.system ?? system ?? STANDARD;
+    if (themed?.themeId) out.themeId = themed.themeId;
+    soundMaterial ??= themed?.soundMaterial;
     if (soundMaterial) out.soundMaterial = soundMaterial;
     if (preset) {
       // A bad preset loses its faces (the dice show numbers), never the look.
@@ -138,15 +201,23 @@ export function createLookResolver({
     /** @returns {(term, result, termIndex) => object} a decorator for planThrow */
     decorate(message, roll, authorId) {
       const author = authorId ?? message?.author?.id;
+      let role = null;
+      try {
+        role = roleOf(message); // null on the showForRoll path (no message)
+      } catch {
+        /* no role */
+      }
       let themeOf = null;
       try {
-        themeOf = damageThemeFor?.(roll) ?? null;
+        themeOf = damageThemeFor?.(roll, author) ?? null;
       } catch (err) {
         warnOnce(err);
       }
+      let ctx = null; // read on the first die, so a throwing user lookup fails per die
       return (term, result, termIndex = 0) => {
         try {
-          return resolve(term, author, termIndex, themeOf);
+          ctx ??= themeContext(author);
+          return resolve(term, ctx, termIndex, themeOf, role);
         } catch (err) {
           warnOnce(err);
           return { appearance: DEFAULT_APPEARANCE };

@@ -73,8 +73,9 @@ const dsnFlags = (user) => {
   return isPlainObject(flags) ? flags : null;
 };
 
-/** The bare `{look:'default'}` the ready-time mirror writes: not a choice the user made. */
-const isMirroredDefault = (ref) => Object.keys(ref).length === 1 && ref.look === 'default';
+/** The bare `{theme:'default'}` (before Plan 5 `{look:'default'}`) the ready-time mirror writes: not a choice the user made. */
+const isMirroredDefault = (ref) =>
+  Object.keys(ref).length === 1 && (ref.theme === 'default' || ref.look === 'default');
 
 /** The user's own `dicer.appearance` entries; no default is invented. */
 function ownLooks(user) {

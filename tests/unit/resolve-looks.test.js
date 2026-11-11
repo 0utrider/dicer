@@ -2,6 +2,7 @@ import { createLookResolver } from '../../src/compat/resolve-looks.js';
 import { facesFor } from '../../src/compat/faces.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { LOOKS } from '../../src/look/looks.js';
+import { findTheme } from '../../src/themes/themes.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { colorsetToAppearance, BUILTIN_COLORSETS } from '../../src/compat/colorset-map.js';
 
@@ -297,5 +298,91 @@ describe('damage theme (P4-D3)', () => {
       warn: () => {},
     });
     expect(look(r, term(6), 'u').appearance).toEqual(DEFAULT_APPEARANCE);
+  });
+});
+
+describe('themes in the look chain (Plan 5)', () => {
+  const hoard = findTheme('dragon-hoard');
+  const obsidian = findTheme('obsidian');
+  /** A user whose dicer.appearance and dicer.themes flags are given. */
+  const userT = (appearance, themes) => ({
+    getFlag: (s, k) => (s !== 'dicer' ? undefined : k === 'appearance' ? appearance : k === 'themes' ? themes : undefined),
+  });
+  const makeT = ({ users = {}, actors = {}, worldThemes = [] } = {}) => {
+    const warn = vi.fn();
+    const resolver = createLookResolver({
+      registry: createRegistry({ warn: () => {} }),
+      getUser: (id) => users[id],
+      getActor: (id) => actors[id],
+      getWorldThemes: () => worldThemes,
+      warn,
+    });
+    return { resolver, warn };
+  };
+  const msg = (pf2eType) => ({ flags: { pf2e: { context: { type: pf2eType } } } });
+  const lookOn = (resolver, message, t, authorId) => resolver.decorate(message, {}, authorId)(t, RES, 0);
+
+  test('a global theme ref resolves per die type, with its id and sound material', () => {
+    const { resolver } = makeT({ users: { u: userT({ global: { theme: 'dragon-hoard' } }) } });
+    const d20 = look(resolver, term(20), 'u');
+    expect(d20.appearance).toBe(hoard.perType.d20);
+    expect(d20.themeId).toBe('dragon-hoard');
+    expect(d20.soundMaterial).toBe('metal');
+    expect(look(resolver, term(6), 'u').appearance).toBe(hoard.appearance);
+  });
+  test('a role ref beats a type ref on an attack roll and is ignored on a damage roll', () => {
+    const flag = { 'role:attack': { theme: 'obsidian' }, d20: { look: 'ruby-classic' } };
+    const { resolver } = makeT({ users: { u: userT(flag) } });
+    const attack = lookOn(resolver, msg('attack-roll'), term(20), 'u');
+    expect(attack.appearance).toBe(obsidian.appearance);
+    expect(attack.themeId).toBe('obsidian');
+    expect(lookOn(resolver, msg('damage-roll'), term(20), 'u').appearance).toBe(RUBY);
+    expect(lookOn(resolver, null, term(20), 'u').appearance).toBe(RUBY); // showForRoll: no role
+  });
+  test("an actor's theme ref beats the user's", () => {
+    const actors = { a1: { flags: { dicer: { appearance: { theme: 'obsidian' } } } } };
+    const users = { u: userT({ global: { theme: 'dragon-hoard' } }) };
+    const { resolver } = makeT({ users, actors });
+    const out = look(resolver, term(20, { options: { dsnActorId: 'a1' } }), 'u');
+    expect(out.appearance).toBe(obsidian.appearance);
+    expect(out.themeId).toBe('obsidian');
+  });
+  test("a damage theme's sound material wins over the theme's", () => {
+    const users = { u: userT({ global: { theme: 'dragon-hoard' } }) };
+    const resolver = createLookResolver({
+      registry: createRegistry({ warn: () => {} }),
+      getUser: (id) => users[id],
+      damageThemeFor: () => () => ({ appearance: RUBY, soundMaterial: 'stone' }),
+      warn: () => {},
+    });
+    const out = look(resolver, term(6), 'u');
+    expect(out).toMatchObject({ appearance: RUBY, soundMaterial: 'stone' });
+    expect(out.themeId).toBeUndefined();
+  });
+  test("the roller's own and the world's themes resolve; bad stored entries are skipped", () => {
+    const mine = { id: 'user.mine', name: 'Mine', appearance: { body: { type: 'opaque', color: '#0000aa' } } };
+    const world = { id: 'world.ours', name: 'Ours', appearance: { body: { type: 'opaque', color: '#00aa00' } } };
+    const users = {
+      u: userT({ global: { theme: 'user.mine' } }, [5, mine]),
+      v: userT({ global: { theme: 'world.ours' } }),
+    };
+    const { resolver } = makeT({ users, worldThemes: [world, null] });
+    expect(look(resolver, term(6), 'u').appearance.body.color).toBe('#0000aa');
+    expect(look(resolver, term(6), 'v').appearance.body.color).toBe('#00aa00');
+    expect(look(resolver, term(6), 'v').themeId).toBe('world.ours');
+  });
+  test('a ref to a deleted user theme falls back to the default look, one warning per roller', () => {
+    const users = {
+      u: userT({ global: { theme: 'user.gone' } }, []),
+      v: userT({ global: { theme: 'user.gone' } }, []),
+    };
+    const { resolver, warn } = makeT({ users });
+    expect(look(resolver, term(20), 'u').appearance).toEqual(DEFAULT_APPEARANCE);
+    expect(look(resolver, term(6), 'u').appearance).toEqual(DEFAULT_APPEARANCE);
+    expect(look(resolver, term(20), 'u').themeId).toBeUndefined();
+    const missing = () => warn.mock.calls.filter((c) => String(c[0]).includes('user.gone'));
+    expect(missing()).toHaveLength(1);
+    look(resolver, term(20), 'v');
+    expect(missing()).toHaveLength(2);
   });
 });

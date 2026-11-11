@@ -1,11 +1,12 @@
 /**
  * The per-user look flag `dicer.appearance`: `{ global: LookRef, [dieType]: LookRef }` with
- * `LookRef = { look?, appearance?, colorset?, system? }`. Flags are shared data any client (or
+ * `LookRef = { look?, theme?, appearance?, colorset?, system? }`; keys may also be `role:<role>`. Flags are shared data any client (or
  * script) can write, so everything read here is validated and never throws.
  */
 import { LOOKS } from '../look/looks.js';
 import { normalizeAppearance } from '../look/appearance.js';
 import { colorsetToAppearance, BUILTIN_COLORSETS } from './colorset-map.js';
+import { findTheme } from '../themes/themes.js';
 
 export const FLAG_SCOPE = 'dicer';
 export const FLAG_KEY = 'appearance';
@@ -51,26 +52,45 @@ export function colorsetNameToAppearance(name, registry, index = 0) {
   return colorset ? colorsetToAppearance(colorset, { textures: registry?.textures, index }) : null;
 }
 
-/** appearance > colorset > look; null when the ref names nothing usable. */
-export function lookRefToAppearance(ref, registry, index = 0) {
+/** A theme as a resolved look: the die type's own look if it has one, its sound and its id. */
+export function themeLook(theme, dieType) {
+  const out = { appearance: theme.perType?.[dieType] ?? theme.appearance, themeId: theme.id };
+  if (theme.soundMaterial) out.soundMaterial = theme.soundMaterial;
+  return out;
+}
+
+/**
+ * appearance > colorset > theme > look; null when the ref names nothing usable.
+ * @param {object} [opts]
+ * @param {string} [opts.dieType] picks the theme's per-type look
+ * @param {{worldThemes?: object[], userThemes?: object[]}} [opts.themes] where non-built-in themes are found
+ * @param {(themeId: string) => void} [opts.onMissingTheme] a ref names a theme that does not exist
+ * @returns {{appearance: object, themeId?: string, soundMaterial?: string} | null}
+ */
+export function lookRefToAppearance(ref, registry, index = 0, { dieType, themes, onMissingTheme } = {}) {
   if (!isPlainObject(ref)) return null;
-  if (isPlainObject(ref.appearance)) return normalizeAppearance(ref.appearance);
+  if (isPlainObject(ref.appearance)) return { appearance: normalizeAppearance(ref.appearance) };
   const fromColorset = colorsetNameToAppearance(ref.colorset, registry, index);
-  if (fromColorset) return fromColorset;
-  if (typeof ref.look === 'string' && Object.hasOwn(LOOKS, ref.look)) return LOOKS[ref.look].appearance;
+  if (fromColorset) return { appearance: fromColorset };
+  if (typeof ref.theme === 'string' && ref.theme) {
+    const theme = findTheme(ref.theme, themes);
+    if (theme) return themeLook(theme, dieType);
+    onMissingTheme?.(ref.theme);
+  }
+  if (typeof ref.look === 'string' && Object.hasOwn(LOOKS, ref.look)) return { appearance: LOOKS[ref.look].appearance };
   return null;
 }
 
-/** Mirrors the client `look` setting into the user flag so other clients can see it. */
-export async function mirrorLookSetting(user, lookId) {
+/** Mirrors the client `theme` setting into the user flag so other clients can see it. */
+export async function mirrorLookSetting(user, themeId) {
   const looks = readUserLooks(user);
-  looks.global = { look: lookId };
+  looks.global = { theme: themeId };
   await user.setFlag(FLAG_SCOPE, FLAG_KEY, looks);
 }
 
 /** The once-at-ready mirror: only when this user has no flag yet. */
-export async function mirrorLookIfMissing(user, lookId) {
+export async function mirrorLookIfMissing(user, themeId) {
   const flag = rawFlag(user);
   if (isPlainObject(flag)) return;
-  await mirrorLookSetting(user, lookId);
+  await mirrorLookSetting(user, themeId);
 }

@@ -12,6 +12,7 @@ import { planThrow } from '../../src/throw/throw-planner.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { colorsetToAppearance, BUILTIN_COLORSETS } from '../../src/compat/colorset-map.js';
 import { RESULT_SOUNDS } from '../../src/audio/synth.js';
+import { findTheme } from '../../src/themes/themes.js';
 
 const IDS = [
   'fire', 'cold', 'acid', 'electricity', 'sonic', 'poison', 'force',
@@ -279,5 +280,52 @@ describe('PF2e damage roll through the resolvers', () => {
     s.damageTypeMap = { goo: 'acid' };
     const k = themer.knownTypes();
     expect(k.has('ichor') && k.has('goo') && k.has('thunder')).toBe(true);
+  });
+});
+
+describe('a damage-map value naming a Plan 5 theme', () => {
+  const hoard = findTheme('dragon-hoard');
+  test('gives its look for the die type, its sound material, no landing and its id', () => {
+    const d20 = resolveDamageTheme('fire', ctx({ worldMap: { fire: 'dragon-hoard' }, dieType: 'd20' }));
+    expect(d20).toEqual({ appearance: hoard.perType.d20, soundMaterial: 'metal', landing: null, themeId: 'dragon-hoard' });
+    const d6 = resolveDamageTheme('fire', ctx({ userOverrides: { fire: 'dragon-hoard' }, dieType: 'd6' }));
+    expect(d6.appearance).toBe(hoard.appearance);
+  });
+  test('a damage theme id still wins, and world themes are found', () => {
+    expect(idOf('fire', ctx({ worldMap: { fire: 'cold' } }))).toBe('cold');
+    const w = { id: 'world.w', name: 'W', appearance: { body: { type: 'opaque', color: '#0a0b0c' } } };
+    const out = resolveDamageTheme('fire', ctx({ worldMap: { fire: 'world.w' }, themes: { worldThemes: [w] } }));
+    expect(out.appearance.body.color).toBe('#0a0b0c');
+    expect(out.themeId).toBe('world.w');
+  });
+  test('through the resolvers: the d20 of a fire roll takes the theme look, no landing fx', () => {
+    const { plan } = setup({ settings: { damageTypeMap: { fire: 'dragon-hoard' } } });
+    const dice = plan(pf2e(new DamageInstance('fire', [die(20, [{ result: 7 }]), die(6, [{ result: 2 }])])));
+    expect(dice[0].appearance).toBe(hoard.perType.d20);
+    expect(dice[1].appearance).toBe(hoard.appearance);
+    expect(dice[0].soundMaterial).toBe('metal');
+    expect(dice[0].themeId).toBe('dragon-hoard');
+    expect(dice[0].fx).toBeUndefined();
+  });
+  test("a user override may name the roller's own theme", () => {
+    const mine = { id: 'user.mine', name: 'Mine', appearance: { body: { type: 'opaque', color: '#0c0b0a' } } };
+    const registry = createRegistry({ warn: () => {} });
+    const s = { damagePresets: true, damageThemeOverrides: { fire: 'user.mine' } };
+    const themer = createDamageThemer({
+      registry,
+      getSetting: (k) => s[k],
+      getUserThemes: (id) => (id === 'alice' ? [mine] : undefined),
+      warn: () => {},
+    });
+    const d6 = die(6, [{ result: 2 }]);
+    const roll = pf2e(new DamageInstance('fire', [d6]));
+    expect(themer.forRoll(roll, 'alice')(d6, 0).appearance.body.color).toBe('#0c0b0a');
+    expect(themer.forRoll(roll, 'bob')(d6, 0)).toBeNull();
+  });
+  test('a world theme named in the map is read from the worldThemes setting', () => {
+    const w = { id: 'world.w', name: 'W', appearance: { body: { type: 'opaque', color: '#0a0b0c' } } };
+    const { plan } = setup({ settings: { damageTypeMap: { fire: 'world.w' }, worldThemes: [w] } });
+    const [d] = plan(pf2e(new DamageInstance('fire', [die(6, [{ result: 2 }])])));
+    expect(d.appearance.body.color).toBe('#0a0b0c');
   });
 });

@@ -1,4 +1,4 @@
-import { BUILTIN_THEMES, normalizeTheme, findTheme } from '../../src/themes/themes.js';
+import { BUILTIN_THEMES, normalizeTheme, findTheme, readThemeList } from '../../src/themes/themes.js';
 import { normalizeAppearance, appearanceKey } from '../../src/look/appearance.js';
 import { normalizeRule } from '../../src/effects/rules.js';
 import { LOOKS } from '../../src/look/looks.js';
@@ -155,5 +155,17 @@ describe('findTheme', () => {
     expect(findTheme('user.u2.gone', lists)).toBeNull();
     expect(findTheme('nope')).toBeNull();
     expect(findTheme(undefined, lists)).toBeNull();
+  });
+});
+
+describe('readThemeList', () => {
+  test('valid themes only; a bad entry warns once per stored value, even across fresh copies', () => {
+    const warn = vi.fn();
+    const stored = () => [{ id: 'world.a', name: 'A', appearance: { body: { type: 'opaque', color: '#111111' } } }, 7];
+    const first = readThemeList(stored(), 'world', warn);
+    expect(first.map((t) => [t.id, t.source])).toEqual([['world.a', 'world']]);
+    expect(readThemeList(stored(), 'world', warn)).toBe(first);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(readThemeList('nope', 'world', warn)).toEqual([]);
   });
 });

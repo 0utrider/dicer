@@ -91,6 +91,14 @@ describe('migrateUser', () => {
     await expect(migrateUser(user)).resolves.toBe(true);
     expect(user.flags.appearance).toEqual({ global: { colorset: 'fire' }, d20: { look: 'default', system: 'x' } });
   });
+  test('the Plan 5 mirror {theme:default} is not a choice either', async () => {
+    const user = makeUser({
+      dsn: { appearance: { global: { colorset: 'fire' } } },
+      dicer: { appearance: { global: { theme: 'default' } } },
+    });
+    await expect(migrateUser(user)).resolves.toBe(true);
+    expect(user.flags.appearance).toEqual({ global: { colorset: 'fire' } });
+  });
   test('all scopes already chosen: flagged, nothing written to the appearance', async () => {
     const user = makeUser({
       dsn: { appearance: { global: { colorset: 'fire' } } },

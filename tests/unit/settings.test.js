@@ -1,4 +1,5 @@
-import { registerSettings } from '../../src/settings.js';
+import { registerSettings, migrateLookSetting } from '../../src/settings.js';
+import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { readFileSync } from 'node:fs';
 import { LOOKS } from '../../src/look/looks.js';
 import { DEFAULT_RULES } from '../../src/effects/rules.js';
@@ -50,20 +51,56 @@ test('hideInitiative is a world Boolean, default on', () => {
   expect(cfg.hint).toBe('DICER.Settings.hideInitiative.Hint');
 });
 
-test('look is a client String whose choices map every LOOKS id to its name (default "default")', () => {
-  const { look } = capture();
-  expect(look).toMatchObject({
+test('theme is a client String whose choices map every built-in theme id to its name (default "default")', () => {
+  const { theme } = capture();
+  expect(theme).toMatchObject({
     ns: 'dicer',
     scope: 'client',
     config: true,
     type: String,
     default: 'default',
   });
-  expect(look.choices).toEqual(
-    Object.fromEntries(Object.entries(LOOKS).map(([id, l]) => [id, l.name])),
-  );
-  expect(look.name).toBe('DICER.Settings.look.Name');
-  expect(look.hint).toBe('DICER.Settings.look.Hint');
+  expect(theme.choices).toEqual(Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name])));
+  expect(theme.name).toBe('DICER.Settings.theme.Name');
+  expect(theme.hint).toBe('DICER.Settings.theme.Hint');
+});
+
+test('the old look setting stays registered, hidden, only so its value can migrate; every LOOKS id is a theme', () => {
+  const { look } = capture();
+  expect(look).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'default' });
+  expect(look.onChange).toBeUndefined();
+  for (const id of Object.keys(LOOKS)) expect(BUILTIN_THEMES.some((t) => t.id === id)).toBe(true);
+});
+
+test('worldThemes is a hidden world Array, default []', () => {
+  expect(capture().worldThemes).toMatchObject({ ns: 'dicer', scope: 'world', config: false, type: Array, default: [] });
+});
+
+describe('migrateLookSetting', () => {
+  const store = (init) => {
+    const s = { ...init };
+    return { s, get: (k) => s[k], set: vi.fn(async (k, v) => (s[k] = v)) };
+  };
+  test("copies the user's look into theme once, then clears look", async () => {
+    const st = store({ look: 'ruby-classic', theme: 'default' });
+    expect(await migrateLookSetting(st)).toBe(true);
+    expect(st.s).toEqual({ look: 'default', theme: 'ruby-classic' });
+    expect(await migrateLookSetting(st)).toBe(false);
+    expect(st.s.theme).toBe('ruby-classic');
+  });
+  test('a theme already chosen wins; look is still cleared', async () => {
+    const st = store({ look: 'ruby-classic', theme: 'obsidian' });
+    expect(await migrateLookSetting(st)).toBe(false);
+    expect(st.s).toEqual({ look: 'default', theme: 'obsidian' });
+  });
+  test('a default or unknown look changes nothing it should not', async () => {
+    const def = store({ look: 'default', theme: 'default' });
+    expect(await migrateLookSetting(def)).toBe(false);
+    expect(def.set).not.toHaveBeenCalled();
+    const gone = store({ look: 'no-such-look', theme: 'default' });
+    expect(await migrateLookSetting(gone)).toBe(false);
+    expect(gone.s.theme).toBe('default');
+  });
 });
 
 test('quality is a client String auto/low/medium/high/ultra (default auto)', () => {
@@ -99,9 +136,9 @@ test('onChange routes look and feature toggles to onLookChange, quality and qual
   const onQualityChange = vi.fn();
   const onAreaChange = vi.fn();
   const r = capture({ onAreaChange, onLookChange, onQualityChange });
-  for (const key of ['look', 'interiors', 'engraving', 'shadows', 'glow']) r[key].onChange('x');
+  for (const key of ['theme', 'interiors', 'engraving', 'shadows', 'glow']) r[key].onChange('x');
   expect(onLookChange.mock.calls.map((c) => c[0])).toEqual([
-    'look',
+    'theme',
     'interiors',
     'engraving',
     'shadows',
@@ -118,7 +155,7 @@ test('onChange routes look and feature toggles to onLookChange, quality and qual
 test('onChange without callbacks does not throw', () => {
   const r = capture();
   for (const key of [
-    'look',
+    'theme',
     'quality',
     'qualityCap',
     'interiors',

@@ -21,7 +21,7 @@ import { facesFor, atlasGlyphTest } from './compat/faces.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from './render/face-textures.js';
 import { mirrorLookSetting, mirrorLookIfMissing } from './compat/user-looks.js';
 import { DEFAULT_APPEARANCE } from './look/appearance.js';
-import { LOOKS } from './look/looks.js';
+import { findTheme } from './themes/themes.js';
 import { createSoundEngine } from './audio/sound-engine.js';
 import {
   createFxResolver,
@@ -32,7 +32,7 @@ import {
 import { createDamageThemer } from './effects/damage-themes.js';
 import { createEffectLayer } from './effects/effect-layer.js';
 import { createDsnSfx } from './effects/dsn-sfx.js';
-import { registerNoticeSetting, registerSettings, getSetting } from './settings.js';
+import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting } from './settings.js';
 
 let dormant = false;
 let gate = null;
@@ -105,8 +105,11 @@ const NOOP_HANDLERS = { onCreate() {}, onUpdate() {}, onRender() {}, onDelete() 
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
 const handlers = () => gate ?? NOOP_HANDLERS;
 
-/** The chosen look; an unknown id (e.g. a removed look) falls back to the default. */
-const getAppearance = () => LOOKS[getSetting('look')]?.appearance ?? DEFAULT_APPEARANCE;
+/**
+ * The chosen theme's look (DiceBox's fallback and the warm-up); an unknown id (e.g. a removed
+ * theme) falls back to the default.
+ */
+const getAppearance = () => findTheme(getSetting('theme'))?.appearance ?? DEFAULT_APPEARANCE;
 
 /** A module-relative or absolute URL as the browser can fetch it. */
 const routeOf = (url) =>
@@ -253,10 +256,10 @@ async function migrateFromDsn() {
   }
 }
 
-/** Publishes the chosen look in the user flag so other clients draw this user's dice with it. */
-function mirrorLook(lookId) {
-  mirrorLookSetting(game.user, lookId).catch((err) =>
-    console.warn('dicer: cannot mirror the look setting to the user flag', err),
+/** Publishes the chosen theme in the user flag so other clients draw this user's dice with it. */
+function mirrorLook(themeId) {
+  mirrorLookSetting(game.user, themeId).catch((err) =>
+    console.warn('dicer: cannot mirror the theme setting to the user flag', err),
   );
 }
 
@@ -264,9 +267,9 @@ function mirrorLook(lookId) {
 const presetFaces = (preset) => facesFor(preset, atlasGlyphTest(digitAtlas));
 
 function onLookChange(key, value) {
-  if (key === 'look') {
+  if (key === 'theme') {
     mirrorLook(value);
-    dice3d?._releasePreloads(); // preloadPresets holds faces until the look changes
+    dice3d?._releasePreloads(); // preloadPresets holds faces until the theme changes
   }
   if (key === 'effects' && value) preloadEffects();
   // Read per roll; no cached material depends on them.
@@ -332,9 +335,14 @@ Hooks.once('ready', async () => {
     }
     return;
   }
-  migrateFromDsn()
-    .then(() => mirrorLookIfMissing(game.user, getSetting('look')))
-    .catch((err) => console.warn('dicer: cannot mirror the look setting to the user flag', err));
+  // The old client `look` setting moves to `theme` once (its onChange mirrors and refreshes).
+  const lookMigrated = migrateLookSetting({
+    get: getSetting,
+    set: (key, value) => game.settings.set('dicer', key, value),
+  }).catch((err) => console.warn('dicer: cannot move the look setting to theme', err));
+  Promise.all([migrateFromDsn(), lookMigrated])
+    .then(() => mirrorLookIfMissing(game.user, getSetting('theme')))
+    .catch((err) => console.warn('dicer: cannot mirror the theme setting to the user flag', err));
   let api = null;
   const started = await startEngine({
     // loadDigitAtlas appends /digits.json and /digits.png to this folder.
@@ -416,12 +424,14 @@ Hooks.once('ready', async () => {
       // types are shaped through the registry.
       // Model urls go through the same routeOf as face images: one url policy.
       registry = createRegistry({ hooks: Hooks, routeUrl: routeOf });
-      const damageThemer = createDamageThemer({ registry, getSetting });
+      const userThemes = (id) => game.users?.get(id)?.getFlag?.('dicer', 'themes');
+      const damageThemer = createDamageThemer({ registry, getSetting, getUserThemes: userThemes });
       const resolver = createLookResolver({
         registry,
         getUser: (id) => game.users?.get(id),
         getActor: (id) => game.actors?.get(id),
-        damageThemeFor: (roll) => damageThemer.forRoll(roll),
+        damageThemeFor: (roll, userId) => damageThemer.forRoll(roll, userId),
+        getWorldThemes: () => getSetting('worldThemes'),
         // Preset faces the digit atlas cannot draw become image / text face layers.
         facesFor: presetFaces,
       });

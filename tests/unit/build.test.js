@@ -70,8 +70,6 @@ describe('build', () => {
     const js = readFileSync('dist/dicer.js', 'utf8');
     const a = js.indexOf('@@dicer-themes-start');
     const b = js.indexOf('@@dicer-themes-end');
-    // Tree-shaken away until something in the bundle imports src/themes/themes.js (Task 7).
-    if (a < 0 && b < 0) return;
     expect(a).toBeGreaterThan(-1);
     expect(b).toBeGreaterThan(a);
     const bytes = Buffer.byteLength(js.slice(a, b + 20));

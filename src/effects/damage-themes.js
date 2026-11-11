@@ -2,12 +2,15 @@
  * Built-in damage themes (PF2e and dnd5e): a look, an impact sound material and a landing effect
  * per damage type, and the chain that picks one for a type:
  *   user override -> world map -> DSN addDamageTypeDefaults -> DEFAULT_DAMAGE_MAP.
- * A value naming a theme id gives the full theme; any other value is a colorset name (look only).
+ * A value naming a damage theme id gives the full damage theme; one naming a Plan 5 theme (built-in,
+ * world or the roller's) gives its look for the die type and its sound material (no landing);
+ * any other value is a colorset name (look only).
  * The look lands between flavor colorsets and actor/user looks (P4-D3). Nothing here depends on a
  * roll's result, so none of it leaks a hidden roll; callers still reach it for real views only.
  */
 import { normalizeAppearance } from '../look/appearance.js';
-import { isPlainObject, colorsetNameToAppearance } from '../compat/user-looks.js';
+import { isPlainObject, colorsetNameToAppearance, themeLook } from '../compat/user-looks.js';
+import { findTheme, readThemeList } from '../themes/themes.js';
 import { damageTypesByTerm, KNOWN_DAMAGE_TYPES } from './roll-context.js';
 
 // [id, body, interior, numbers, glow, soundMaterial, landing effect, landing sound]
@@ -97,13 +100,15 @@ export const DEFAULT_DAMAGE_MAP = Object.freeze({
 const own = (obj, key) => isPlainObject(obj) && Object.hasOwn(obj, key) && typeof obj[key] === 'string';
 
 /**
- * @returns {{id?: string, appearance: object, soundMaterial?: string, landing?: object|null}|null}
+ * @param {string} [opts.dieType] the die type, for a theme's per-type look
+ * @param {{worldThemes?: object[], userThemes?: object[]}} [opts.themes] non-built-in themes
+ * @returns {{id?: string, appearance: object, soundMaterial?: string, landing?: object|null, themeId?: string}|null}
  *   null: no theme (no mapping at any level, the type is switched off, or the mapping is unusable).
  *   A mapping VALUE naming neither a theme nor a known colorset warns (once per `warned` set).
  */
 export function resolveDamageTheme(
   type,
-  { userOverrides, worldMap, moduleDefaults, registry, index = 0, warn = console.warn, warned } = {},
+  { userOverrides, worldMap, moduleDefaults, registry, index = 0, warn = console.warn, warned, dieType, themes } = {},
 ) {
   if (typeof type !== 'string' || !type) return null;
   const levels = [userOverrides, worldMap, moduleDefaults ?? registry?.damageTypeDefaults, DEFAULT_DAMAGE_MAP];
@@ -112,6 +117,11 @@ export function resolveDamageTheme(
   const value = level[type];
   if (value === 'none') return null;
   if (Object.hasOwn(DAMAGE_THEMES, value)) return DAMAGE_THEMES[value];
+  const theme = findTheme(value, themes);
+  if (theme) {
+    const look = themeLook(theme, dieType);
+    return { appearance: look.appearance, soundMaterial: theme.soundMaterial, landing: null, themeId: theme.id };
+  }
   const appearance = colorsetNameToAppearance(value, registry, index);
   if (appearance) return { appearance };
   const key = `${type}=${value}`;
@@ -135,11 +145,11 @@ const safe = (fn, fallback) => {
 };
 
 /**
- * Binds the settings and the registry: `forRoll(roll)` gives `(term, index) => theme | null` (null
+ * Binds the settings, the registry and the roller's own themes (getUserThemes(userId)): `forRoll(roll)` gives `(term, index) => theme | null` (null
  * with damagePresets off); `knownTypes()` is the set damage detection recognises (the systems'
  * types, the DSN defaults' and the world map's keys).
  */
-export function createDamageThemer({ registry, getSetting, warn = console.warn }) {
+export function createDamageThemer({ registry, getSetting, getUserThemes = () => undefined, warn = console.warn }) {
   const warned = new Set();
   const get = (k) => safe(() => getSetting(k), undefined);
   let key = null;
@@ -158,15 +168,24 @@ export function createDamageThemer({ registry, getSetting, warn = console.warn }
 
   return {
     knownTypes,
-    forRoll(roll) {
+    /** @param {string} [userId] the roller, whose own themes a map value may name */
+    forRoll(roll, userId) {
       if (get('damagePresets') === false) return null;
       const types = safe(() => damageTypesByTerm(roll, knownTypes()), new WeakMap());
       const worldMap = get('damageTypeMap');
       const userOverrides = get('damageThemeOverrides');
+      const themes = {
+        worldThemes: safe(() => readThemeList(get('worldThemes'), 'world', warn), []),
+        userThemes: userId ? safe(() => readThemeList(getUserThemes(userId), 'user', warn), []) : [],
+      };
       return (term, index = 0) => {
         const type = term !== null && typeof term === 'object' ? types.get(term) : undefined;
         if (typeof type !== 'string') return null;
-        return safe(() => resolveDamageTheme(type, { userOverrides, worldMap, registry, index, warn, warned }), null);
+        const dieType = Number.isInteger(term.faces) && term.faces > 0 ? `d${term.faces}` : undefined;
+        return safe(
+          () => resolveDamageTheme(type, { userOverrides, worldMap, registry, index, warn, warned, dieType, themes }),
+          null,
+        );
       };
     },
   };

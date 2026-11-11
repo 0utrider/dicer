@@ -5,6 +5,7 @@ import {
   mirrorLookIfMissing,
 } from '../../src/compat/user-looks.js';
 import { createRegistry } from '../../src/compat/registry.js';
+import { findTheme, normalizeTheme } from '../../src/themes/themes.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { colorsetToAppearance, BUILTIN_COLORSETS } from '../../src/compat/colorset-map.js';
@@ -35,24 +36,59 @@ describe('readUserLooks', () => {
 
 describe('lookRefToAppearance', () => {
   const reg = createRegistry({ warn: () => {} });
+  const app = (ref, r = reg, i = 0, o) => lookRefToAppearance(ref, r, i, o)?.appearance;
   test('appearance beats colorset beats look', () => {
     const a = { body: { type: 'opaque', color: '#123456' } };
     const all = { appearance: a, colorset: 'fire', look: 'ruby-classic' };
-    expect(lookRefToAppearance(all, reg).body.color).toBe('#123456');
-    expect(lookRefToAppearance({ colorset: 'fire', look: 'ruby-classic' }, reg)).toEqual(
+    expect(app(all).body.color).toBe('#123456');
+    expect(app({ colorset: 'fire', look: 'ruby-classic' })).toEqual(
       colorsetToAppearance(BUILTIN_COLORSETS.fire, { textures: reg.textures }),
     );
-    expect(lookRefToAppearance({ look: 'ruby-classic' }, reg)).toBe(LOOKS['ruby-classic'].appearance);
+    expect(app({ look: 'ruby-classic' })).toBe(LOOKS['ruby-classic'].appearance);
   });
   test('a registry colorset beats the built-in of the same name', async () => {
     const r = createRegistry({ warn: () => {} });
     await r.addColorset({ name: 'fire', background: '#00ff00', foreground: '#000000' });
-    expect(lookRefToAppearance({ colorset: 'fire' }, r).body.color).toBe('#00ff00');
+    expect(app({ colorset: 'fire' }, r).body.color).toBe('#00ff00');
   });
   test('unusable refs give null', () => {
-    const bad = [null, 'x', {}, { look: 'nope' }, { look: '__proto__' }, { colorset: 'nope' }, { appearance: 'nope' }];
+    const bad = [null, 'x', {}, { look: 'nope' }, { look: '__proto__' }, { colorset: 'nope' }, { appearance: 'nope' }, { theme: 5 }];
     for (const ref of bad) expect(lookRefToAppearance(ref, reg)).toBeNull();
-    expect(lookRefToAppearance({ look: 'default' }, reg)).toBe(DEFAULT_APPEARANCE);
+    expect(app({ look: 'default' })).toBe(DEFAULT_APPEARANCE);
+  });
+});
+
+describe('lookRefToAppearance with themes', () => {
+  const reg = createRegistry({ warn: () => {} });
+  const hoard = findTheme('dragon-hoard');
+  test('a theme ref gives the die type look, its sound material and its id', () => {
+    const d20 = lookRefToAppearance({ theme: 'dragon-hoard' }, reg, 0, { dieType: 'd20' });
+    expect(d20).toEqual({ appearance: hoard.perType.d20, themeId: 'dragon-hoard', soundMaterial: 'metal' });
+    const d6 = lookRefToAppearance({ theme: 'dragon-hoard' }, reg, 0, { dieType: 'd6' });
+    expect(d6.appearance).toBe(hoard.appearance);
+    expect(lookRefToAppearance({ theme: 'dragon-hoard' }, reg).appearance).toBe(hoard.appearance);
+  });
+  test('precedence: appearance > colorset > theme > look', () => {
+    const fire = colorsetToAppearance(BUILTIN_COLORSETS.fire, { textures: reg.textures });
+    const out = lookRefToAppearance({ colorset: 'fire', theme: 'dragon-hoard' }, reg);
+    expect(out.appearance).toEqual(fire);
+    expect(out.themeId).toBeUndefined();
+    const t = lookRefToAppearance({ theme: 'obsidian', look: 'ruby-classic' }, reg);
+    expect(t.themeId).toBe('obsidian');
+  });
+  test('world and user themes are found through opts.themes', () => {
+    const w = normalizeTheme({ id: 'world.w', name: 'W', appearance: { body: { type: 'opaque', color: '#010203' } } }, 'world');
+    const out = lookRefToAppearance({ theme: 'world.w' }, reg, 0, { themes: { worldThemes: [w] } });
+    expect(out.appearance.body.color).toBe('#010203');
+    expect(out.themeId).toBe('world.w');
+    expect('soundMaterial' in out).toBe(false);
+  });
+  test('a missing theme reports itself and falls through to look, else null', () => {
+    const onMissingTheme = vi.fn();
+    expect(lookRefToAppearance({ theme: 'user.gone' }, reg, 0, { onMissingTheme })).toBeNull();
+    const fallback = lookRefToAppearance({ theme: 'user.gone', look: 'ruby-classic' }, reg, 0, { onMissingTheme });
+    expect(fallback).toEqual({ appearance: LOOKS['ruby-classic'].appearance });
+    expect(onMissingTheme.mock.calls).toEqual([['user.gone'], ['user.gone']]);
   });
 });
 
@@ -63,7 +99,7 @@ describe('mirrorLookSetting', () => {
     await mirrorLookSetting({ ...userWith(flag), setFlag }, 'ruby-classic');
     expect(setFlag).toHaveBeenCalledWith('dicer', 'appearance', {
       d20: { look: 'sharp-crystal' },
-      global: { look: 'ruby-classic' },
+      global: { theme: 'ruby-classic' },
     });
   });
   test('mirrorLookIfMissing writes only when the flag is absent', async () => {

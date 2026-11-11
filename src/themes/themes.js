@@ -102,9 +102,9 @@ const build = (id, name, appearance, soundMaterial, perType, rules) =>
 /** A theme from an existing look: [look id, sound material, celebration?]. */
 const L = ([id, mat, rule]) => build(id, LOOKS[id].name, A(id), mat, null, rule ? [rule] : []);
 
-const D = {
-  m: '@@dicer-themes-start',
-  looks: [
+const D = [
+  '@@dicer-themes-start',
+  [
     ['default', 'glass'],
     ['ruby-classic', 'plastic'],
     ['abyss-liquid', 'glass'],
@@ -122,7 +122,7 @@ const D = {
     ['void-star', 'glass', nat(20, 'shockwave', 'boom')],
     ['smoke-swirl', 'plastic', nat(20, 'smoke', 'whoosh')],
   ],
-  n: [
+  [
     build(
       'dragon-hoard',
       'Dragon Hoard',
@@ -198,12 +198,53 @@ const D = {
     ),
     build('verdant', 'Verdant', A('jade-marble'), 'wood', null, []),
   ],
-  e: '@@dicer-themes-end',
-};
+  '@@dicer-themes-end',
+];
 
-export const BUILTIN_THEMES = Object.freeze([...D.looks.map(L), ...D.n]);
+export const BUILTIN_THEMES = Object.freeze([...D[1].map(L), ...D[2]]);
 /** Markers around the table in the bundle; build.test.js measures the span. */
-export const THEME_TABLE_MARKS = Object.freeze([D.m, D.e]);
+export const THEME_TABLE_MARKS = Object.freeze([D[0], D[3]]);
+
+const listCache = new WeakMap();
+const textCache = new Map(); // settings may hand out a fresh copy per read: also cache by content
+/**
+ * A stored theme list (world setting or user flag) as valid frozen themes. Cached per array and
+ * per content, so a bad entry warns once per stored value, not once per roll; unreadable entries
+ * are skipped here, never removed from storage.
+ */
+export function readThemeList(list, source, warn = console.warn) {
+  if (!Array.isArray(list)) return [];
+  let out = listCache.get(list);
+  let text = null;
+  if (!out) {
+    try {
+      text = `${source}:${JSON.stringify(list)}`;
+    } catch {
+      /* uncacheable by content */
+    }
+    out = text === null ? undefined : textCache.get(text);
+    if (out) listCache.set(list, out);
+  }
+  if (!out) {
+    out = [];
+    for (const raw of list) {
+      const theme = normalizeTheme(raw, source, (msg) => {
+        try {
+          warn(msg);
+        } catch {
+          /* a throwing logger must not reach the roll */
+        }
+      });
+      if (theme) out.push(theme);
+    }
+    listCache.set(list, out);
+    if (text !== null) {
+      if (textCache.size >= 16) textCache.delete(textCache.keys().next().value);
+      textCache.set(text, out);
+    }
+  }
+  return out;
+}
 
 /** Built-in, else the world list, else the roller's own list. */
 export function findTheme(id, { worldThemes, userThemes } = {}) {

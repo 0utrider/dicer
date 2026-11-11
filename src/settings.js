@@ -1,4 +1,4 @@
-import { LOOKS } from './look/looks.js';
+import { BUILTIN_THEMES, findTheme } from './themes/themes.js';
 import { DEFAULT_RULES } from './effects/rules.js';
 
 export const MODULE_ID = 'dicer';
@@ -37,11 +37,27 @@ function registerEditorMenu(t, key, icon, open) {
 }
 
 /**
+ * The client `look` setting became `theme` (Plan 5; the ids are the same). Copies a chosen look
+ * into `theme` when no theme was chosen yet, then resets `look`, so it runs once.
+ * @param {{get: (key: string) => unknown, set: (key: string, value: unknown) => Promise<unknown>}} store
+ * @returns {Promise<boolean>} true if the look was copied
+ */
+export async function migrateLookSetting({ get, set }) {
+  const look = get('look');
+  if (typeof look !== 'string' || !look || look === 'default') return false;
+  const theme = get('theme');
+  const copy = (!theme || theme === 'default') && findTheme(look) !== null;
+  if (copy) await set('theme', look);
+  await set('look', 'default');
+  return copy;
+}
+
+/**
  * Registers every Dicer setting.
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
  * @param {() => void} [callbacks.onRollAreasChange] runs when rollAreas or gmPrivateArea changes
- * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when look,
+ * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when theme,
  *   interiors, engraving, shadows, glow, presetFaces, presetModels or effects changes
  * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
  *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
@@ -148,15 +164,29 @@ export function registerSettings({
     type: Number,
     default: 0,
   });
-  game.settings.register(MODULE_ID, 'look', {
-    name: t('look.Name'),
-    hint: t('look.Hint'),
+  game.settings.register(MODULE_ID, 'theme', {
+    name: t('theme.Name'),
+    hint: t('theme.Hint'),
     scope: 'client',
     config: true,
     type: String,
-    choices: Object.fromEntries(Object.entries(LOOKS).map(([id, look]) => [id, look.name])),
+    choices: Object.fromEntries(BUILTIN_THEMES.map((theme) => [theme.id, theme.name])),
     default: 'default',
-    onChange: (value) => onLookChange?.('look', value),
+    onChange: (value) => onLookChange?.('theme', value),
+  });
+  // The pre-Plan-5 look choice: hidden, read once by migrateLookSetting.
+  game.settings.register(MODULE_ID, 'look', {
+    scope: 'client',
+    config: false,
+    type: String,
+    default: 'default',
+  });
+  // GM-published themes (Plan 5); validated when read, unreadable entries are kept.
+  game.settings.register(MODULE_ID, 'worldThemes', {
+    scope: 'world',
+    config: false,
+    type: Array,
+    default: [],
   });
   const tiers = ['low', 'medium', 'high', 'ultra'];
   const tierChoices = (keys) => Object.fromEntries(keys.map((k) => [k, t(`quality.Choices.${k}`)]));

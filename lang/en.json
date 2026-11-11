@@ -24,9 +24,9 @@
         "Name": "Maximum dice per message",
         "Hint": "Dice beyond this number are not thrown."
       },
-      "look": {
-        "Name": "Dice look",
-        "Hint": "The material and colours of your dice on this client."
+      "theme": {
+        "Name": "Dice theme",
+        "Hint": "The look and impact sound of your dice. Other players see your dice in this theme too."
       },
       "quality": {
         "Name": "Graphics quality",
