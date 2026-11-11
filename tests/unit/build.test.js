@@ -66,6 +66,18 @@ describe('build', () => {
       [chunk, migration, synth, effects, editor, damageEditor, areaEditor, soundNames, points, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
     );
   });
+  it('keeps the built-in theme table under 6 KiB minified (P5-R1)', () => {
+    const js = readFileSync('dist/dicer.js', 'utf8');
+    const a = js.indexOf('@@dicer-themes-start');
+    const b = js.indexOf('@@dicer-themes-end');
+    // Tree-shaken away until something in the bundle imports src/themes/themes.js (Task 7).
+    if (a < 0 && b < 0) return;
+    expect(a).toBeGreaterThan(-1);
+    expect(b).toBeGreaterThan(a);
+    const bytes = Buffer.byteLength(js.slice(a, b + 20));
+    console.info(`dicer theme table: ${bytes} bytes minified`);
+    expect(bytes).toBeLessThanOrEqual(6 * 1024);
+  });
   it('leaves api.js out of the bundle: it ships beside module.json, imported at runtime', () => {
     expect(statSync('api.js').isFile()).toBe(true);
     for (const p of distFiles().filter((f) => f.endsWith('.js'))) {
