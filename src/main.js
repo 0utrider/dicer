@@ -12,7 +12,7 @@ import { registerChatCommands } from './compat/chat-commands.js';
 import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
 import { startEngine, announceReady } from './foundry/startup.js';
-import { createDice3dApi, materialReadyNotifier } from './api/dice3d.js';
+import { createDice3dApi, createDebugCounters, materialReadyNotifier } from './api/dice3d.js';
 import { createRegistry } from './compat/registry.js';
 import { createLookResolver } from './compat/resolve-looks.js';
 import { facesFor, atlasGlyphTest } from './compat/faces.js';
@@ -52,9 +52,13 @@ export function soundSurface(get) {
   return own && own !== 'world' ? own : get('soundSurface') || 'felt';
 }
 
+/** game.dice3d._debug.fxPlays / resultSounds: counted where effects start and sounds are requested. */
+const debugCounters = createDebugCounters();
+
 /** Result sounds (never awaited) and trigger macros, once per landed die carrying fx. */
 const landedFx = createLandedFx({
   playSound: (sound) => soundEngine?.result(sound),
+  onSound: debugCounters.countSound,
   fromUuid: (uuid) => globalThis.fromUuid(uuid),
 });
 
@@ -355,6 +359,7 @@ Hooks.once('ready', async () => {
         canvas: renderer.canvas, // screen shake moves the dice canvas only
         getTier: () => quality.config,
         getSetting,
+        onPlay: debugCounters.countFx,
         isolate: (die) => box?.isolate(die) ?? null,
         // Dice So Nice special effects: `registry` is made later (activate), so read it lazily.
         dsnSfx: createDsnSfx({
@@ -456,6 +461,7 @@ Hooks.once('ready', async () => {
         faceTextures,
         facesFor: presetFaces,
         getArea: () => measureArea(),
+        debugCounters,
       });
       dice3d = api;
       game.dice3d = api;

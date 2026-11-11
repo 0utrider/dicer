@@ -28,6 +28,7 @@ export const SHAKE_PX = 6;
  * @param {() => {effectBudget: number, particleScale: number}} o.getTier quality TIERS entry
  * @param {(key: string) => unknown} [o.getSetting]
  * @param {() => Promise<{EFFECTS: Record<string, object>}>} [o.loadLibrary]
+ * @param {(id: string) => void} [o.onPlay] called once per effect that actually started (debug counters)
  * @param {(die: object) => object|null} [o.isolate] DiceBox.isolate: the die's own uniforms
  * @param {{effectFor(id: string): object|null}} [o.dsnSfx] resolves `dsn:` ids (Dice So Nice
  *   special effects, third-party code that is not in the library chunk)
@@ -43,6 +44,7 @@ export function createEffectLayer({
   dsnSfx = null,
   particles = null,
   matchMedia = (q) => globalThis.matchMedia?.(q),
+  onPlay = () => {},
   warn = (...a) => console.warn(...a),
   debug = (...a) => console.debug(...a),
 }) {
@@ -221,6 +223,11 @@ export function createEffectLayer({
     const c = costOf(mod);
     cost += c;
     running.push({ handle, die, cost: c, bound, id: mod.id });
+    try {
+      onPlay(typeof e.id === 'string' ? e.id : mod.id);
+    } catch {
+      /* a debug counter never affects a roll */
+    }
   }
 
   function stopAt(i) {

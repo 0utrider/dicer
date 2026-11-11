@@ -79,6 +79,20 @@ function legacyRoll(data) {
   return { dice };
 }
 
+/**
+ * Debug counters (P4-R4): effect id -> times a landed effect started, and result sound name ->
+ * times one was requested, on this client. Names only, never values: the privacy live test
+ * (tests/live/effects.mjs) reads them through game.dice3d._debug.
+ */
+export function createDebugCounters() {
+  const counters = { fxPlays: {}, resultSounds: {} };
+  const bump = (table) => (name) => {
+    if (typeof name !== 'string' || !name) return;
+    table[name] = (table[name] ?? 0) + 1;
+  };
+  return { ...counters, countFx: bump(counters.fxPlays), countSound: bump(counters.resultSounds) };
+}
+
 const ghostDecorator = () => ({ ghost: true });
 
 /**
@@ -122,6 +136,7 @@ export function createDice3dApi({
   facesFor = () => undefined,
   getArea = () => measureArea(),
   importMigration = importMigrationModule,
+  debugCounters = createDebugCounters(),
 }) {
   const warned = new Set();
   /** A malformed third-party call logs one warning per member, never throws. */
@@ -676,6 +691,14 @@ export function createDice3dApi({
 
     _debug: {
       verbose: false,
+      /** effect id -> times a landed effect started on this client. */
+      get fxPlays() {
+        return { ...debugCounters.fxPlays };
+      },
+      /** result sound name -> times one was requested on this client. */
+      get resultSounds() {
+        return { ...debugCounters.resultSounds };
+      },
       get isLooping() {
         return Boolean(renderer?.isLooping);
       },

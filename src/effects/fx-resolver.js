@@ -306,7 +306,7 @@ export function composeDecorateFor({ looks, fx, warn = console.warn }) {
  * leaves `macro` set on the roller's client with triggerMacros on. Failures warn once per
  * source and never throw.
  */
-export function createLandedFx({ playSound, fromUuid, warn = console.warn }) {
+export function createLandedFx({ playSound, fromUuid, onSound = () => {}, warn = console.warn }) {
   const ran = new WeakMap(); // rollKey -> Set<ruleId>
   const warned = new Set();
   const warnOnce = (key, ...args) => {
@@ -331,6 +331,7 @@ export function createLandedFx({ playSound, fromUuid, warn = console.warn }) {
       if (!isObj(f)) continue;
       if (f.sound) {
         try {
+          onSound(f.sound.builtin ?? (f.sound.src !== undefined ? String(f.sound.src) : undefined));
           const p = playSound(f.sound);
           if (p && typeof p.catch === 'function')
             p.catch((err) => warnOnce(`sound:${f.ruleId}`, 'Dicer: result sound failed', err));

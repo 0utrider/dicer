@@ -407,3 +407,17 @@ describe('damageTypeSounds (world custom landing sounds)', () => {
     expect(plan(make(themed(FIRE)), fire, msg)[0].fx).toBeUndefined();
   });
 });
+
+describe('createLandedFx onSound', () => {
+  test('is called with the sound name for each requested result sound, builtin or file', () => {
+    const onSound = vi.fn();
+    const landed = createLandedFx({ playSound: vi.fn(), fromUuid: vi.fn(), onSound, warn: vi.fn() });
+    const base = { ruleId: 'r', effect: null, macro: null };
+    landed({}, [
+      { ...base, sound: { builtin: 'fanfare' } },
+      { ...base, sound: { src: 'sounds/x.ogg' } },
+      { ...base, sound: null },
+    ], {});
+    expect(onSound.mock.calls.map((c) => c[0])).toEqual(['fanfare', 'sounds/x.ogg']);
+  });
+});

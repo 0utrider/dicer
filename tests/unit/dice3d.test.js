@@ -1,4 +1,4 @@
-import { createDice3dApi, materialReadyNotifier } from '../../src/api/dice3d.js';
+import { createDice3dApi, createDebugCounters, materialReadyNotifier } from '../../src/api/dice3d.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { buildScene } from '../../src/render/scene.js';
@@ -986,4 +986,19 @@ describe('damage map editor helpers (Task 13)', () => {
     expect(ctx.resolveTheme('fire', { userOverrides: { fire: 'cold' } }).id).toBe('cold');
     expect(ctx.resolveTheme('fire', { userOverrides: { fire: 'none' } })).toBeNull();
   });
+});
+
+test('_debug.fxPlays and resultSounds read the injected counters (copies)', () => {
+  const counters = createDebugCounters();
+  const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: () => true, debugCounters: counters });
+  expect(a._debug.fxPlays).toEqual({});
+  expect(a._debug.resultSounds).toEqual({});
+  counters.countFx('celebrate');
+  counters.countFx('celebrate');
+  counters.countSound('fanfare');
+  counters.countFx(undefined);
+  expect(a._debug.fxPlays).toEqual({ celebrate: 2 });
+  expect(a._debug.resultSounds).toEqual({ fanfare: 1 });
+  a._debug.fxPlays.celebrate = 99;
+  expect(a._debug.fxPlays.celebrate).toBe(2);
 });
