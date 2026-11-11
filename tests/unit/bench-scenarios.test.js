@@ -105,10 +105,89 @@ test('SCENARIOS is the frozen spec list', () => {
     ['burst100', 'burst', '1d20+2d6', 100],
     ['burst20', 'burst', '1d20+2d6', 20],
     ['soak500', 'soak', '1d20+2d6', 500],
-    ['resize', 'typical', mixed, 1],
-    ['contextLoss', 'typical', mixed, 1],
-    ['hidden', 'typical', mixed, 1],
+    ['resize', 'perturb', mixed, 1],
+    ['contextLoss', 'perturb', mixed, 2],
+    ['hidden', 'perturb', mixed, 1],
   ]);
+  expect(by('contextLoss').recover).toBe(true);
+  expect(by('resize').recover).toBeFalsy();
+});
+
+test('contextLoss: perturb on roll 1 only, roll 2 after the restore, then verifyRecovered', async () => {
+  const hooks = fakeHooks();
+  const log = [];
+  let restore;
+  const a = adapterFor(hooks, { startAfter: 10, completeAfter: 600 });
+  const roll = a.roll;
+  a.roll = async (f) => {
+    log.push('roll');
+    return roll(f);
+  };
+  a.perturb = vi.fn(() => {
+    log.push('perturb');
+    return new Promise((r) => (restore = () => {
+      log.push('restored');
+      r();
+    }));
+  });
+  a.verifyRecovered = vi.fn((ctx) => {
+    log.push(`verify ${ctx?.messageId}`);
+    return true;
+  });
+  const p = runScenario(by('contextLoss'), a, { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(log).toEqual(['roll', 'perturb']); // roll 1 done, roll 2 waits for the restore
+  restore();
+  await vi.advanceTimersByTimeAsync(2000);
+  const r = await p;
+  expect(log).toEqual(['roll', 'perturb', 'restored', 'roll', 'verify m2']);
+  expect(a.perturb).toHaveBeenCalledTimes(1);
+  expect(r).toMatchObject({ scenario: 'contextLoss', kind: 'perturb', rolls: 2, failures: 0, recovered: true });
+});
+
+test('recovered: null without verifyRecovered, null plus a note when it throws; absent for other perturbs', async () => {
+  const run = async (sc, extra) => {
+    const hooks = fakeHooks();
+    const p = runScenario(sc, adapterFor(hooks, { startAfter: 10, completeAfter: 500, extra }), { hooks, win: fakeWin(), now });
+    await vi.advanceTimersByTimeAsync(3000);
+    return p;
+  };
+  expect((await run(by('contextLoss'), {})).recovered).toBeNull();
+  const thrown = await run(by('contextLoss'), { verifyRecovered: () => { throw new Error('gl gone'); } });
+  expect(thrown.recovered).toBeNull();
+  expect(thrown.notes.join(' ')).toMatch(/verifyRecovered failed: gl gone/);
+  expect(await run(by('contextLoss'), { verifyRecovered: () => false })).toMatchObject({ recovered: false });
+  expect('recovered' in (await run(by('resize'), { verifyRecovered: () => true }))).toBe(false);
+});
+
+test('a perturb that never fired (the roll ended first) is noted', async () => {
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks, { startAfter: 5, completeAfter: 50 });
+  const p = runScenario(by('resize'), a, { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(1000);
+  const r = await p;
+  expect(a.perturb).not.toHaveBeenCalled();
+  expect(r.notes.join(' ')).toMatch(/perturb did not fire/);
+});
+
+test('tier is recorded before and after each scenario; a change is noted (adaptive drop)', async () => {
+  const hooks = fakeHooks();
+  const tiers = ['high', 'medium'];
+  const a = adapterFor(hooks, { extra: { info: vi.fn(() => ({ tier: tiers.shift() ?? 'medium' })) } });
+  const p = runScenario(by('d20'), a, { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(500);
+  const r = await p;
+  expect(r.tier).toEqual({ before: 'high', after: 'medium' });
+  expect(r.notes).toContain('tier changed high -> medium (adaptive drop)');
+  const b = adapterFor(hooks, { extra: { info: async () => ({ tier: 'high' }) } });
+  const q = runScenario(by('d20'), b, { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(500);
+  const s = await q;
+  expect(s.tier).toEqual({ before: 'high', after: 'high' });
+  expect(s.notes.join(' ')).not.toMatch(/tier changed/);
+  const c = runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(500);
+  expect((await c).tier).toEqual({ before: null, after: null });
 });
 
 test('d20 firstFrame is roll call to first rAF after RollStart', async () => {
@@ -221,7 +300,7 @@ test('perturb kind, duration and timing per scenario', async () => {
     const a = adapterFor(hooks, { startAfter: 10, completeAfter: 800 });
     const t0 = now();
     const p = runScenario(by(id), a, { hooks, win: fakeWin(), now });
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(3000);
     await p;
     got[id] = { ...a.perturbs[0], dt: a.perturbs[0].at - t0 };
   }
@@ -318,7 +397,8 @@ test('no-message started gives a firstFrame, absent started gives null', async (
   const a = noMsgAdapter({ startAfter: 20 });
   let p = runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, a, { hooks: fakeHooks(), win: fakeWin(), now });
   await vi.advanceTimersByTimeAsync(500);
-  expect((await p).firstFrame.p50).toBe(36);
+  // started already resolves at the roll's first drawn frame: no extra rAF on top (I1).
+  expect((await p).firstFrame.p50).toBe(20);
   const b = noMsgAdapter({ withStarted: false });
   p = runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, b, { hooks: fakeHooks(), win: fakeWin(), now });
   await vi.advanceTimersByTimeAsync(500);

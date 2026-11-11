@@ -11,9 +11,11 @@ export const SCENARIOS = Object.freeze(
     { id: 'burst100', kind: 'burst', formula: '1d20+2d6', rolls: 100 },
     { id: 'burst20', kind: 'burst', formula: '1d20+2d6', rolls: 20 },
     { id: 'soak500', kind: 'soak', formula: '1d20+2d6', rolls: 500 },
-    { id: 'resize', kind: 'typical', formula: MIXED, rolls: 1 },
-    { id: 'contextLoss', kind: 'typical', formula: MIXED, rolls: 1 },
-    { id: 'hidden', kind: 'typical', formula: MIXED, rolls: 1 },
+    // kind 'perturb': judged on failures, noRebuild and recovered, never on frame or first-frame times.
+    { id: 'resize', kind: 'perturb', formula: MIXED, rolls: 1 },
+    // Roll 1 loses the context mid-roll; roll 2, after the restore, must draw (adapter.verifyRecovered).
+    { id: 'contextLoss', kind: 'perturb', formula: MIXED, rolls: 2, recover: true },
+    { id: 'hidden', kind: 'perturb', formula: MIXED, rolls: 1 },
   ].map((s) => Object.freeze(s)),
 );
 
@@ -40,7 +42,13 @@ const finite = (v) => typeof v === 'number' && Number.isFinite(v);
  * @property {() => Promise<number | null>} heap
  * @property {(messageId: string) => number | null} dicerFirstFrame
  * @property {(kind: 'resize'|'contextLoss'|'hidden', ms: number) => Promise<void>} perturb
+ *   Fired once, on a scenario's first roll. A scenario with more rolls waits for it to settle
+ *   (bounded by timeoutMs) before the next roll: for contextLoss, settle once the context is back.
+ * @property {(ctx: {messageId: string | null}) => boolean | null} [verifyRecovered]
+ *   Called after the last roll of a `recover` scenario: did that roll draw on a live context?
+ *   null when the adapter cannot tell. Absent: recovered is null.
  * @property {() => ({browser: string, gpu: string, tier: string, version: string} | Promise<object>)} [info]
+ *   Also read before and after each scenario for the tier (an adaptive drop is noted).
  */
 
 /** Run one scenario against a product adapter. Never throws on a failed roll. */
@@ -60,6 +68,10 @@ export async function runScenario(scenario, adapter, opts = {}) {
   let heapAfter = null;
   let resBefore = null;
   let resAfter = null;
+  // The scenario's one perturbation (first roll only) and what the last roll returned.
+  let perturbPromise = null;
+  let perturbFired = false;
+  let lastId = null;
 
   // Hook state, only for tracked message ids (or any id while a roll() call is still pending).
   const state = new Map();
@@ -122,7 +134,13 @@ export async function runScenario(scenario, adapter, opts = {}) {
     if (adapter.isBusy?.()) notes.push('adapter still busy before roll');
   }
 
-  async function oneRoll() {
+  async function oneRoll(index) {
+    if (perturbPromise) {
+      // Roll 2+ of a perturb scenario starts once the disturbance is over (a context restored).
+      const p = perturbPromise;
+      perturbPromise = null;
+      if ((await raced(() => p, timeoutMs)) === TIMEOUT) notes.push(`perturb still running after ${timeoutMs} ms`);
+    }
     await waitIdle();
     const t0 = now();
     // One deadline for the whole roll: covers roll() itself and the wait for completion.
@@ -160,16 +178,19 @@ export async function runScenario(scenario, adapter, opts = {}) {
       }
       for (const k of [...state.keys()]) if (k !== id) state.delete(k);
       if (id != null) tracked.add(id);
+      lastId = id;
       const s = id != null ? get(id) : { started: false, frameAt: null, done: false };
-      const kind = PERTURB[scenario.id] != null ? scenario.id : null;
+      const kind = index === 1 && PERTURB[scenario.id] != null ? scenario.id : null;
       const schedulePerturb = () => {
         if (!kind || perturbed || settled) return;
         perturbed = true;
         perturbTimer = setTimeout(() => {
+          perturbFired = true;
+          const failed = (e) => notes.push(`perturb failed: ${e?.message ?? e}`);
           try {
-            Promise.resolve(adapter.perturb(kind, PERTURB[kind])).catch((e) => notes.push(`perturb failed: ${e?.message ?? e}`));
+            perturbPromise = Promise.resolve(adapter.perturb(kind, PERTURB[kind])).catch(failed);
           } catch (e) {
-            notes.push(`perturb failed: ${e?.message ?? e}`);
+            failed(e);
           }
         }, PERTURB_DELAY_MS);
       };
@@ -180,9 +201,9 @@ export async function runScenario(scenario, adapter, opts = {}) {
             res.started.then(() => {
               if (s.started || settled) return;
               s.started = true;
-              win.requestAnimationFrame(() => {
-                s.frameAt = now();
-              });
+              // started already resolves at this roll's first drawn frame (the adapter waits for
+              // it): stamp now, no extra rAF (that was a frame late). The hook path keeps its rAF.
+              s.frameAt = now();
               schedulePerturb();
             }, () => {});
           }
@@ -217,14 +238,23 @@ export async function runScenario(scenario, adapter, opts = {}) {
     }
   }
 
+  const readTier = async () => {
+    if (typeof adapter.info !== 'function') return null;
+    const i = await guarded('info', () => adapter.info());
+    return i?.tier ?? null;
+  };
+
   let rec = null;
+  let recovered = null;
+  const tierBefore = await readTier();
   try {
     hooks?.on('diceSoNiceRollStart', onStart);
     hooks?.on('diceSoNiceRollComplete', onComplete);
     recorder.start();
     for (let i = 1; i <= scenario.rolls; i++) {
-      await oneRoll();
+      await oneRoll(i);
       completed = i;
+      if (i === 1 && PERTURB[scenario.id] != null && !perturbFired) notes.push('perturb did not fire (the roll ended first)');
       if (scenario.kind === 'soak' && (i === SOAK_MARKS[0] || i === SOAK_MARKS[1])) {
         const h = await guarded('heap', () => adapter.heap?.());
         const r = await guarded('resources', () => adapter.resources?.());
@@ -236,6 +266,10 @@ export async function runScenario(scenario, adapter, opts = {}) {
           resAfter = r;
         }
       }
+    }
+    if (scenario.recover && typeof adapter.verifyRecovered === 'function') {
+      const v = await guarded('verifyRecovered', () => adapter.verifyRecovered({ messageId: lastId }));
+      recovered = v === true ? true : v === false ? false : null;
     }
   } finally {
     try {
@@ -255,6 +289,11 @@ export async function runScenario(scenario, adapter, opts = {}) {
     }
   }
 
+  const tierAfter = await readTier();
+  if (tierBefore != null && tierAfter != null && tierBefore !== tierAfter) {
+    notes.push(`tier changed ${tierBefore} -> ${tierAfter} (adaptive drop)`);
+  }
+
   const lt = rec?.longTasks;
   return {
     scenario: scenario.id,
@@ -269,6 +308,8 @@ export async function runScenario(scenario, adapter, opts = {}) {
     dicerFirstFrame: summarize(dicerFrames.filter(finite)),
     heap: finite(heapBefore) && finite(heapAfter) ? { before: heapBefore, after: heapAfter } : null,
     resources: resBefore && resAfter ? { before: resBefore, after: resAfter } : null,
+    tier: { before: tierBefore, after: tierAfter },
+    ...(scenario.recover ? { recovered } : {}),
     notes,
   };
 }
