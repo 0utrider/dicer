@@ -28,18 +28,24 @@ const idOrNull = (v) => (typeof v === 'string' && v !== '' ? v : null);
 /**
  * The roll as JSON for the socket. A Foundry Roll serializes itself; a Roll-like object
  * `{dice: [{faces, results, options}]}` (the legacy show() shape) becomes Roll data of Die terms.
+ * Such a die keeps its own `number` when it has one (a live DiceTerm does), so a ghost built
+ * from this data never counts explosions or rerolls; a dynamic number or faces (a live term's
+ * `_number` / `_faces` inner Roll) is marked as JSON marks it, so the ghost drops it (P3-R19).
  */
 export function rollToData(roll) {
   if (typeof roll?.toJSON === 'function') return roll.toJSON();
   const dice = Array.isArray(roll?.dice) ? roll.dice : [];
+  const dynamic = (v) => v != null && typeof v === 'object';
   const terms = dice.map((d) => ({
     class: 'Die',
-    number: d.results?.length ?? 0,
-    faces: d.faces,
+    number: Number.isInteger(d?.number) ? d.number : (d?.results?.length ?? 0),
+    faces: d?.faces,
     modifiers: [],
-    results: (d.results ?? []).map((r) => ({ result: r.result, active: r.active !== false })),
-    options: d.options ?? {},
+    results: (d?.results ?? []).map((r) => ({ result: r.result, active: r.active !== false })),
+    options: d?.options ?? {},
     evaluated: true,
+    ...(dynamic(d?._number) && { _number: true }),
+    ...(dynamic(d?._faces) && { _faces: true }),
   }));
   return {
     class: 'Roll',

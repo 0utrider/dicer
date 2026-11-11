@@ -816,3 +816,40 @@ describe('ghostRoll (P3-R20: every ghost render uses the wire ghost shape)', () 
     expect(JSON.stringify(ghostRoll(r))).not.toMatch(/secret|colorset|exploded|"6",|result":6/);
   });
 });
+
+describe('rollToData on a Roll-like object without toJSON', () => {
+  it('keeps the die number, so a ghost never counts explosions', () => {
+    const exploded = {
+      dice: [
+        {
+          faces: 6,
+          number: 1,
+          results: [{ result: 6 }, { result: 6 }, { result: 3 }],
+        },
+      ],
+    };
+    const ghost = ghostRollData(rollToData(exploded));
+    expect(ghost.terms).toHaveLength(1);
+    expect(ghost.terms[0].number).toBe(1);
+    expect(ghost.terms[0].results).toEqual([{ result: 1, active: true }]);
+  });
+
+  it('marks a dynamic number or faces, so the ghost drops it', () => {
+    const inner = { total: 4 };
+    const data = rollToData({
+      dice: [
+        { faces: 6, number: 4, _number: inner, results: [1, 2, 3, 4].map((result) => ({ result })) },
+        { faces: 12, number: 1, _faces: inner, results: [{ result: 9 }] },
+      ],
+    });
+    const ghost = ghostRollData(data);
+    expect(ghost.terms).toHaveLength(1);
+    expect(ghost.terms[0].number).toBe(0);
+    expect(ghost.terms[0].results).toEqual([]);
+  });
+
+  it('falls back to the result count when no number is given (legacy show shape)', () => {
+    const data = rollToData({ dice: [{ faces: 20, results: [{ result: 7 }, { result: 13 }] }] });
+    expect(data.terms[0].number).toBe(2);
+  });
+});
