@@ -300,6 +300,10 @@ export function registerSettings({
   registerEditorMenu(t, 'triggerEditor', 'fa-solid fa-bolt', () =>
     import('./ui/trigger-editor.js').then((m) => m.openTriggerEditor),
   );
+  // Opens for everyone: the GM edits, a player gets a read-only preview of their own area (P5-D3).
+  registerEditorMenu(t, 'rollAreaEditor', 'fa-solid fa-vector-square', () =>
+    import('./ui/area-editor.js').then((m) => m.openAreaEditor),
+  );
   // Ids of module (Dice So Nice default) rules the GM switched off in the trigger editor.
   game.settings.register(MODULE_ID, 'disabledModuleTriggers', {
     scope: 'world',

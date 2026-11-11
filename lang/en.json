@@ -146,6 +146,11 @@
         "Name": "GM private corner",
         "Hint": "On the GM's screen, throw rolls only GMs can see (blind or GM-only whispers) in their own corner. Players' screens are never affected."
       },
+      "rollAreaEditor": {
+        "Name": "Roll areas",
+        "Label": "Edit roll areas",
+        "Hint": "Choose where dice land: a default area, one for each player and an optional GM private corner. Players can only preview their own area."
+      },
       "damagePresets": {
         "Name": "Damage dice themes",
         "Hint": "Give damage dice a look, impact sound and landing effect by damage type (fire, cold, acid and so on). Off shows your own dice. Never depends on the special effects setting."
@@ -238,6 +243,25 @@
         "builtin": "Built-in",
         "file": "Sound file"
       }
+    },
+    "AreaEditor": {
+      "Title": "Dicer roll areas",
+      "GMHint": "Drag the rectangle to move it and its handles to resize it. Each area keeps a minimum size and stays on screen. Save writes only the areas you changed.",
+      "PlayerHint": "This is where your dice land on this screen. Only the GM can change it; the Roll area size setting scales it for you.",
+      "Target": "Area to edit",
+      "Default": "Default (everyone)",
+      "GmCorner": "GM private corner",
+      "Preset": {
+        "full": "Full",
+        "centre": "Centre",
+        "bottom": "Bottom",
+        "corner": "Corner"
+      },
+      "Reset": "Reset",
+      "Save": "Save",
+      "Cancel": "Cancel",
+      "Close": "Close",
+      "SaveFailed": "Dicer: the roll area could not be saved."
     },
     "DamageMap": {
       "Title": "Dicer damage type map",
