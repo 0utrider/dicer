@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, expect, test } from 'vitest';
 import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
+import { fitDieCapacity } from '../../src/areas/area-model.js';
 import { FLOATS_PER_DIE, IMPACT_FLOATS, MAX_STEPS } from '../../src/physics/protocol.js';
 
 const area = { halfWidth: 12, halfDepth: 7 };
@@ -192,7 +193,7 @@ function runEv(dice, seed, stage, throwArea) {
   const sim = createSim(stage, hulls);
   const chunks = [];
   const req = { dice: dice.map((type) => ({ type })), seed };
-  if (throwArea) req.area = throwArea;
+  if (throwArea !== undefined) req.area = throwArea;
   const res = sim.throw(req, (c) =>
     chunks.push({ ...c, data: c.data.slice(), events: c.events.slice() }),
   );
@@ -229,7 +230,7 @@ test('dice settle inside an offset area', () => {
   }
 });
 
-test('an offset throw starts outside its own area and lands away from the stage centre', () => {
+test('an offset throw starts outside its own area; its settled die is not left short of it', () => {
   const { chunks } = runEv(['d20'], 11, area, offset);
   const [x, , z] = chunks[0].data;
   expect(Math.abs(x - offset.cx) > offset.halfWidth || Math.abs(z - offset.cz) > offset.halfDepth).toBe(
@@ -263,7 +264,7 @@ test('a per-throw area does not change the stage area of later throws', () => {
 
 test('a malformed area falls back to the stage', () => {
   for (const bad of [{ cx: NaN, cz: 0, halfWidth: 4, halfDepth: 3 }, { halfWidth: 0 }, 'x', null]) {
-    expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area, bad ?? undefined).chunks)).toBe('1118cbd0');
+    expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area, bad).chunks)).toBe('1118cbd0');
   }
 });
 
@@ -314,5 +315,26 @@ test('P5-R5: far corner areas settle inside the area within MAX_STEPS (20 seeds)
         expect(Math.abs(p.z - c.cz), tag).toBeLessThan(c.halfDepth + 1);
       }
     }
+  }
+});
+
+test('P5-R6: 12 d6 in a minimum-size area (grown for capacity) settle inside it on >= 19/20 seeds', () => {
+  // MIN_AREA_PX (240 x 180) at 48 px per die, centred and in the top-right corner.
+  const min = { halfWidth: 2.5, halfDepth: 1.875 };
+  const places = [
+    { cx: 0, cz: 0, ...min },
+    { cx: area.halfWidth - min.halfWidth, cz: -(area.halfDepth - min.halfDepth), ...min },
+  ];
+  for (const raw of places) {
+    const a = fitDieCapacity(raw, 12, area);
+    let ok = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const { res, chunks } = runEv(Array(12).fill('d6'), seed, area, a);
+      const inside = firstAndLast(chunks, 12).every(
+        (p) => Math.abs(p.x - a.cx) < a.halfWidth + 1 && Math.abs(p.z - a.cz) < a.halfDepth + 1,
+      );
+      if (res.settledStep < MAX_STEPS && inside) ok++;
+    }
+    expect(ok, `area at ${raw.cx}, ${raw.cz}`).toBeGreaterThanOrEqual(19);
   }
 });

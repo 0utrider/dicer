@@ -4,6 +4,9 @@ import {
   normalizeAreaDef,
   resolveArea,
   toDieArea,
+  fitDieCapacity,
+  CAPACITY_PER_DIE,
+  ONE_DIE_HALF,
 } from '../../src/areas/area-model.js';
 
 const U = { left: 0, top: 0, width: 1920, height: 1080 };
@@ -151,5 +154,36 @@ describe('toDieArea', () => {
     const a = toDieArea({ left: 100, top: 50, width: 200, height: 150 }, s, 10);
     expect(a.cx).toBeCloseTo(-10);
     expect(a.cz).toBeCloseTo(-7.5);
+  });
+});
+
+describe('fitDieCapacity (P5-R6)', () => {
+  const stage = { halfWidth: 12, halfDepth: 7 };
+
+  test('a large enough area is returned unchanged', () => {
+    const a = { cx: 3, cz: -1, halfWidth: 6, halfDepth: 4 };
+    expect(fitDieCapacity(a, 5, stage)).toEqual(a);
+  });
+
+  test('grows around the centre keeping the aspect until it holds n dice', () => {
+    const a = fitDieCapacity({ cx: 0, cz: 0, halfWidth: 2.5, halfDepth: 1.875 }, 12, stage);
+    expect(4 * a.halfWidth * a.halfDepth).toBeCloseTo(12 * CAPACITY_PER_DIE, 9);
+    expect(a.halfWidth / a.halfDepth).toBeCloseTo(2.5 / 1.875, 9);
+    expect(a.cx).toBe(0);
+    expect(a.cz).toBe(0);
+  });
+
+  test('each half is at least one die, and the result stays inside the stage', () => {
+    const one = fitDieCapacity({ cx: 0, cz: 0, halfWidth: 0.1, halfDepth: 0.1 }, 1, stage);
+    expect(one.halfWidth).toBeGreaterThanOrEqual(ONE_DIE_HALF);
+    expect(one.halfDepth).toBeGreaterThanOrEqual(ONE_DIE_HALF);
+    const corner = fitDieCapacity({ cx: 11.9, cz: 6.9, halfWidth: 0.1, halfDepth: 0.1 }, 12, stage);
+    expect(corner.cx + corner.halfWidth).toBeCloseTo(12, 9);
+    expect(corner.cz + corner.halfDepth).toBeCloseTo(7, 9);
+    const wide = fitDieCapacity({ cx: 0, cz: 0, halfWidth: 12, halfDepth: 0.5 }, 30, stage);
+    expect(wide.halfWidth).toBe(12);
+    expect(4 * wide.halfWidth * wide.halfDepth).toBeGreaterThanOrEqual(30 * CAPACITY_PER_DIE - 1e-9);
+    const huge = fitDieCapacity({ cx: 0, cz: 0, halfWidth: 1, halfDepth: 1 }, 1000, stage);
+    expect(huge).toEqual({ cx: 0, cz: 0, halfWidth: 12, halfDepth: 7 });
   });
 });

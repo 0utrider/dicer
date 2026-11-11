@@ -65,3 +65,38 @@ export function toDieArea(rect, stage, diePx) {
     halfDepth: rect.height / 2 / diePx,
   };
 }
+
+/** Floor area (die units squared) a throw's own area keeps per die (P5-R6, measured). */
+export const CAPACITY_PER_DIE = 4;
+/** Smallest half-extent of a throw's own area: always room for one die (circumradius 1). */
+export const ONE_DIE_HALF = 1.5;
+
+/**
+ * Grows a die-unit area {cx, cz, halfWidth, halfDepth} around its centre (keeping its aspect
+ * where possible) until it holds `n` dice (2hw x 2hd >= n x CAPACITY_PER_DIE, each half >=
+ * ONE_DIE_HALF), then keeps it inside `stage` {halfWidth, halfDepth} (centred at 0).
+ */
+export function fitDieCapacity(a, n, stage, capacity = CAPACITY_PER_DIE) {
+  const sw = stage.halfWidth;
+  const sd = stage.halfDepth;
+  let hw = Math.max(a.halfWidth, ONE_DIE_HALF);
+  let hd = Math.max(a.halfDepth, ONE_DIE_HALF);
+  const need = (Math.max(1, n) * capacity) / 4; // hw x hd
+  if (hw * hd < need) {
+    const k = Math.sqrt(need / (hw * hd));
+    hw *= k;
+    hd *= k;
+  }
+  if (hw > sw) {
+    hw = sw;
+    hd = Math.max(hd, need / hw);
+  }
+  if (hd > sd) {
+    hd = sd;
+    hw = Math.min(sw, Math.max(hw, need / hd));
+  }
+  hw = Math.min(hw, sw);
+  const cx = Math.min(Math.max(a.cx, -(sw - hw)), sw - hw);
+  const cz = Math.min(Math.max(a.cz, -(sd - hd)), sd - hd);
+  return { cx, cz, halfWidth: hw, halfDepth: hd };
+}

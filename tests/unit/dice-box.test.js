@@ -13,6 +13,7 @@ import { createFaceTextures } from '../../src/render/face-textures.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
+import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -1850,4 +1851,21 @@ describe('per-throw areas', () => {
     expect(corner.x).toBeCloseTo(right.left, 3);
     expect(corner.y).toBeCloseTo(right.top, 3);
   });
+});
+
+test('P5-R6: a tiny per-throw area is grown to hold its dice, around its centre, inside the stage', () => {
+  const { physics, box } = setup();
+  box.roll([{ type: 'd6', value: 2 }], { area: { left: 475, top: 235, width: 10, height: 10 } });
+  const one = physics.streams[0].req.area;
+  expect(one.cx).toBeCloseTo(0, 9);
+  expect(one.cz).toBeCloseTo(0, 9);
+  expect(one.halfWidth).toBeGreaterThanOrEqual(ONE_DIE_HALF);
+  expect(one.halfDepth).toBeGreaterThanOrEqual(ONE_DIE_HALF);
+  // 12 dice from a 10 x 10 px rect in the top-left corner: grown, then kept inside the stage.
+  const specs = Array.from({ length: 12 }, () => ({ type: 'd6', value: 1 }));
+  box.roll(specs, { area: { left: 0, top: 0, width: 10, height: 10 } });
+  const many = physics.streams[1].req.area;
+  expect(4 * many.halfWidth * many.halfDepth).toBeGreaterThanOrEqual(12 * CAPACITY_PER_DIE - 1e-9);
+  expect(many.cx - many.halfWidth).toBeCloseTo(-10, 9);
+  expect(many.cz - many.halfDepth).toBeCloseTo(-5, 9);
 });

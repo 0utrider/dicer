@@ -18,7 +18,7 @@ import { modelRotationFor } from '../compat/dsn-orientation.js';
 import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
-import { toDieArea } from '../areas/area-model.js';
+import { fitDieCapacity, toDieArea } from '../areas/area-model.js';
 
 /** Die edge size on screen, in CSS px, at diceScale 1. One world unit is one die size. */
 export const DIE_SIZE_PX = 48;
@@ -203,9 +203,10 @@ export class DiceBox {
 
   /**
    * A per-throw area (px rect {left, top, width, height}) clamped inside the stage, in die units
-   * relative to the stage centre; null for none or a malformed rect (the stage is used).
+   * relative to the stage centre, grown around its centre until it holds `n` dice (P5-R6:
+   * fitDieCapacity); null for none or a malformed rect (the stage is used).
    */
-  #throwArea(rect) {
+  #throwArea(rect, n) {
     const stage = this._stageRect;
     if (!rect || typeof rect !== 'object' || !stage) return null;
     const { left, top, width, height } = rect;
@@ -219,7 +220,7 @@ export class DiceBox {
       width: w,
       height: h,
     };
-    return toDieArea(clamped, stage, this._diePx);
+    return fitDieCapacity(toDieArea(clamped, stage, this._diePx), n, this._area);
   }
 
   /**
@@ -256,7 +257,7 @@ export class DiceBox {
       roll.slowMotion = roll.dice.some((d) => d.fx?.some((f) => f?.slowMotion === true));
       this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
-      const throwArea = this.#throwArea(area);
+      const throwArea = this.#throwArea(area, specs.length);
       roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
       roll.received = 0;
       const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
