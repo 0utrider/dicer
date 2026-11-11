@@ -204,3 +204,35 @@ test('d100 draws as a d10', async () => {
   expect(rig.renderer.render).toHaveBeenCalledTimes(1);
   t.dispose();
 });
+
+test('dispose while the blob is pending: null, no warn, everything still disposed', async () => {
+  const mat = vi.spyOn(THREE.MeshPhysicalMaterial.prototype, 'dispose');
+  const geo = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
+  const labelTex = vi.spyOn(THREE.Texture.prototype, 'dispose');
+  const rig = fakeRig({ blobKind: 'convertToBlob' });
+  let release;
+  rig.canvas.convertToBlob = () => new Promise((r) => (release = () => r({})));
+  const { t, warn } = make({ rig });
+  const p = t.thumbnail(theme(), 'd20');
+  while (!release) await new Promise((r) => setTimeout(r, 0));
+  t.dispose();
+  release();
+  expect(await p).toBeNull();
+  expect(warn).not.toHaveBeenCalled();
+  expect(mat).toHaveBeenCalledTimes(1);
+  expect(geo).toHaveBeenCalled();
+  expect(labelTex).toHaveBeenCalled();
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+  mat.mockRestore();
+  geo.mockRestore();
+  labelTex.mockRestore();
+});
+
+test('context loss releases the renderer immediately', async () => {
+  const { t, rig } = make();
+  await t.thumbnail(theme(0), 'd20');
+  rig.listeners.webglcontextlost({ preventDefault() {} });
+  expect(rig.renderer.dispose).toHaveBeenCalledTimes(1);
+  t.dispose();
+  expect(rig.renderer.dispose).toHaveBeenCalledTimes(1);
+});

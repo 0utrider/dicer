@@ -77,6 +77,7 @@ export function createThumbnailer({
     if (broken) return;
     broken = true;
     warn(`dicer: theme thumbnails unavailable (${message})`);
+    teardown(); // release the broken renderer, scene and PMREM now (no idle GPU)
   };
 
   function init() {
@@ -119,23 +120,27 @@ export function createThumbnailer({
     const geometry = buildDieGeometry(shape, { style: appearance.edges?.style });
     geometry.computeBoundingSphere();
     const labels = shape.values.map((v) => labelFor(shapeType, v));
+    const api = sceneApi; // dispose() may null the module state while the blob is pending
+    const cam = camera;
+    const cvs = canvas;
+    const rnd = renderer;
     const material = createDiceMaterial(appearance, atlas, shape, labels, flags);
     const mesh = new THREE.Mesh(geometry, material);
     const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
     mesh.quaternion.copy(restingQuaternion(shape, Math.max(0, face)));
     mesh.position.y = -minY(geometry, mesh.quaternion);
-    const shadow = sceneApi.shadowFor({ position: mesh.position, geometry });
-    sceneApi.scene.add(mesh);
+    const shadow = api.shadowFor({ position: mesh.position, geometry });
+    api.scene.add(mesh);
     try {
       const target = new THREE.Vector3(0, mesh.position.y * 0.85, 0);
       const dir = new THREE.Vector3(0, Math.sin(VIEW_ANGLE), Math.cos(VIEW_ANGLE));
-      camera.position.copy(target).addScaledVector(dir, VIEW_DISTANCE);
-      camera.lookAt(target);
-      renderer.render(sceneApi.scene, camera);
-      return await canvasToBlob(canvas);
+      cam.position.copy(target).addScaledVector(dir, VIEW_DISTANCE);
+      cam.lookAt(target);
+      rnd.render(api.scene, cam);
+      return await canvasToBlob(cvs);
     } finally {
-      sceneApi.scene.remove(mesh);
-      sceneApi.releaseShadow(shadow);
+      api.scene.remove(mesh);
+      api.releaseShadow(shadow);
       material.userData?.uniforms?.uLabels?.value?.dispose();
       material.dispose();
       geometry.dispose();
@@ -155,6 +160,7 @@ export function createThumbnailer({
       cache.set(key, url);
       return url;
     } catch (err) {
+      if (disposed) return null;
       warn(`dicer: theme thumbnail failed (${err?.message ?? err})`);
       return null;
     }
@@ -170,7 +176,8 @@ export function createThumbnailer({
     const p = chain.then(() => job(theme, dieType, key));
     chain = p.catch(() => null);
     inflight.set(key, p);
-    p.finally(() => inflight.delete(key));
+    const done = () => inflight.delete(key);
+    p.then(done, done);
     return p;
   }
 
