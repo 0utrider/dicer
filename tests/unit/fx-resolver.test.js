@@ -632,13 +632,75 @@ describe('theme sounds and celebrations (P5-D4)', () => {
     expect(decor(make())(term(), res(20), 0, themed('gone')).fx[0].effect.id).toBe('celebrate');
   });
 
-  test('effects off: a theme replaces the world rule in macro-only mode too', () => {
+  const worldMacro = () => [
+    { id: 'dicer.nat20', die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'celebrate' }, sound: { builtin: 'fanfare' }, macro: 'Macro.w' },
+  ];
+
+  test('a themed nat 20: the theme effect plays and the world macro still runs (P5-R9)', () => {
+    const out = decor(make({ getWorldRules: worldMacro }))(term(), res(20), 0, themed('dragon-hoard'));
+    expect(out.fx.map((f) => [f.ruleId, f.effect?.id ?? null, f.macro])).toEqual([
+      ['dicer.nat20', null, 'Macro.w'],
+      ['dicer.nat20', 'embers', null],
+    ]);
+    // once per rule per roll: createLandedFx runs the shared ruleId's macro once
+    const execute = vi.fn();
+    const landed = createLandedFx({ playSound: vi.fn(), fromUuid: async () => ({ execute }) });
+    landed({}, out.fx, {});
+    return new Promise((r) => setTimeout(r, 0)).then(() => expect(execute).toHaveBeenCalledTimes(1));
+  });
+
+  test("another roller's themed nat 20: theme effect, no macro (macros are roller-only)", () => {
+    const out = decor(make({ getWorldRules: worldMacro }), 'bob')(term(), res(20), 0, themed('dragon-hoard'));
+    expect(out.fx).toHaveLength(1);
+    expect(out.fx[0]).toMatchObject({ effect: { id: 'embers' }, macro: null });
+  });
+
+  test('triggerMacros off: the theme effect only', () => {
+    settings.triggerMacros = false;
+    const out = decor(make({ getWorldRules: worldMacro }))(term(), res(20), 0, themed('dragon-hoard'));
+    expect(out.fx).toHaveLength(1);
+    expect(out.fx[0].effect.id).toBe('embers');
+  });
+
+  test('effects off, themed die: the world macro still runs, no theme effect', () => {
     settings.effects = false;
-    const world = [
-      { id: 'dicer.nat20', die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'celebrate' }, macro: 'Macro.w' },
-    ];
-    const out = decor(make({ getWorldRules: () => world }))(term(), res(20), 0, {});
+    const out = decor(make({ getWorldRules: worldMacro }))(term(), res(20), 0, themed('dragon-hoard'));
+    expect(out.fx).toHaveLength(1);
     expect(out.fx[0]).toMatchObject({ macro: 'Macro.w', effect: null, sound: null });
+  });
+
+  test("the roller's theme list decides, never the viewer's (P4-D2)", () => {
+    const mk = (fx) => ({
+      id: 'user.same',
+      name: 'S',
+      appearance: { body: { type: 'opaque', color: '#101010' } },
+      rules: [{ id: 'dicer.nat20', die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: fx } }],
+    });
+    const lists = { alice: [mk('shake')], bob: [mk('sparkles')] };
+    const r = make({ getUserThemes: (id) => lists[id] });
+    expect(decor(r, 'bob')(term(), res(20), 0, themed('user.same')).fx[0].effect.id).toBe('sparkles');
+    expect(decor(r, 'carol')(term(), res(20), 0, themed('user.same')).fx[0].effect.id).toBe('celebrate');
+  });
+
+  test('end to end: the real look resolver carries themeId into the fx decorator (as in main.js)', async () => {
+    const { createRegistry } = await import('../../src/compat/registry.js');
+    const { createLookResolver } = await import('../../src/compat/resolve-looks.js');
+    const users = { bob: { flags: { dicer: { appearance: { global: { theme: 'dragon-hoard' } } } } } };
+    const looks = createLookResolver({
+      registry: createRegistry({ warn: () => {} }),
+      getUser: (id) => users[id],
+      warn,
+    });
+    const fx = make({ getWorldRules: worldMacro });
+    const decorateFor = composeDecorateFor({ looks, fx });
+    const roll = d20(20);
+    const msg = { author: { id: 'bob' } };
+    const [die] = planThrow(roll, { decorate: decorateFor(msg, roll) }).dice;
+    expect(die.themeId).toBe('dragon-hoard');
+    expect(die.fx.map((f) => f.effect?.id ?? null)).toEqual(['embers']);
+    const [plain] = planThrow(roll, { decorate: decorateFor(msg, roll, 'nobody') }).dice;
+    expect(plain.themeId).toBeUndefined();
+    expect(plain.fx[0].effect.id).toBe('celebrate');
   });
 
   test('the damage themer is asked with the roller id (P5-R8)', () => {

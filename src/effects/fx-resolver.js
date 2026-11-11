@@ -120,23 +120,20 @@ export function createFxResolver({
     return sound;
   }
 
-  /** The theme a die resolved to (P5-D4): built-in/world, else the viewer's or the roller's own list. */
-  function themeById(themeId, rollerId, me) {
+  /** The theme a die resolved to: built-in/world, else the roller's own list (the roller's rules decide, P4-D2). */
+  function themeById(themeId, rollerId) {
     const list = (raw, source) => safe(() => readThemeList(raw, source, warn), []);
     return safe(
       () =>
         findTheme(themeId, {
           worldThemes: list(safe(getWorldThemes, []), 'world'),
-          userThemes: [
-            ...(me ? list(safe(() => getUserThemes(me), undefined), 'user') : []),
-            ...(rollerId && rollerId !== me ? list(safe(() => getUserThemes(rollerId), undefined), 'user') : []),
-          ],
+          userThemes: rollerId ? list(safe(() => getUserThemes(rollerId), undefined), 'user') : [],
         }),
       null,
     );
   }
 
-  function rulesFor(rollerId, themeRules) {
+  function rulesFor(rollerId, themeRules, keepMacros = false) {
     const world = normalized('world', 'world', safe(getWorldRules, null));
     const roller = rollerId
       ? normalized(
@@ -154,9 +151,16 @@ export function createFxResolver({
       : [];
     if (!themeRules?.length) return effectiveRules({ world, roller, module });
     // P5-D4: a theme rule replaces the world rule with the same id, for this theme's dice only.
+    // P5-R9: the replaced rule's macro still runs (roller-only): the theme replaces effect and sound.
     const ids = new Set(themeRules.map((r) => r.id));
+    const kept = world.flatMap((r) => {
+      if (!ids.has(r.id)) return [r];
+      return keepMacros && typeof r.macro === 'string' && r.macro
+        ? [{ ...r, effect: null, sound: null }]
+        : [];
+    });
     return effectiveRules({
-      world: world.filter((r) => !ids.has(r.id)),
+      world: kept,
       roller,
       module,
       theme: themeRules,
@@ -188,8 +192,8 @@ export function createFxResolver({
       const rulesOf = (themeId) => {
         if (!(fxOn || macros) || typeof themeId !== 'string') return rules;
         if (!themed.has(themeId)) {
-          const themeRules = themeById(themeId, rollerId, me)?.rules;
-          themed.set(themeId, themeRules?.length ? rulesFor(rollerId, themeRules) : rules);
+          const themeRules = themeById(themeId, rollerId)?.rules;
+          themed.set(themeId, themeRules?.length ? rulesFor(rollerId, themeRules, macros) : rules);
         }
         return themed.get(themeId);
       };

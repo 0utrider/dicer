@@ -28,7 +28,6 @@ const STANDARD = 'standard';
  * The Dice So Nice die type of a term: 'd20', or 'd' + the bare-letter DENOMINATION of a custom
  * die ('c' gives 'dc', 'f' gives 'df'), which is how DSN presets name them.
  */
-const dieTypeOf = dsnTypeOf;
 
 const systemOf = (v) => (isPlainObject(v) && typeof v.system === 'string' && v.system ? v.system : null);
 
@@ -111,7 +110,7 @@ export function createLookResolver({
   }
 
   function resolve(term, ctx, index, themeOf, role) {
-    const type = dieTypeOf(term);
+    const type = dsnTypeOf(term);
     const options = isPlainObject(term?.options) ? term.options : {};
     let appearance = null;
     let system = null;
@@ -225,7 +224,7 @@ export function createLookResolver({
     /** The base shape of the term's die type, or null (d100 and unknown shapes are not handled here). */
     shapeFor(term) {
       try {
-        const type = dieTypeOf(term);
+        const type = dsnTypeOf(term);
         return type ? registry.baseShape(type) : null;
       } catch {
         return null;
