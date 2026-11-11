@@ -1,14 +1,23 @@
 // Live roll-area test: a GM and a player (B) against a running local Foundry. Owner-run (needs
-// Foundry), same environment variables as compat.mjs. It reads no roll values: it compares the px
-// rect of each client's latest roll (game.dice3d._debug.lastRollArea) with the area it should use.
+// Foundry), same environment variables as compat.mjs. It reads no roll values. It reads each
+// client's latest roll from game.dice3d._debug.lastRollArea: the settled die centres (die units
+// from the stage centre, x right, z down), the area the throw used, and the stage.
+//
+// What is compared (this is the landing check, not just the area choice):
+//   expected = the area the module should use, resolved independently on that client
+//              (game.dice3d.rollAreas.rect(B), or resolveArea(gmPrivate def, stage) for the GM corner);
+//   effective = lastRollArea.area in px: the expected rect grown around its centre to hold the dice
+//              (CAPACITY_PER_DIE, so a throw's area can exceed the drawn rectangle), inside the stage.
+//   Checks: effective contains expected; effective lies inside the stage; and EVERY settled die
+//   centre lies inside effective.
 //
 // Scenarios:
 //   1. The GM gives player B the `corner` area (game.dice3d.rollAreas.set). B rolls publicly. On
-//      both clients the latest roll's px rect lies inside B's resolved rect on that screen
-//      (game.dice3d.rollAreas.rect(B)), and that rect is smaller than the whole stage.
-//   2. With gmPrivateCorner on and a distinct GM private area, a GM blind roll lands in that area
+//      both clients the dice settle inside B's area as above, and B's rect is smaller than the stage.
+//   2. With gmPrivateCorner on and a distinct GM private area, a GM blind roll settles in that area
 //      on the GM client, and the player's client draws nothing (its latest roll is unchanged).
-// Settings (rollAreas, gmPrivateArea, gmPrivateCorner, perPlayerAreas) are restored in finally.
+// Each client's areaScale is set to 1 for the run. Settings (rollAreas, gmPrivateArea,
+// gmPrivateCorner, perPlayerAreas, areaScale) are restored in finally.
 import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 
@@ -77,12 +86,55 @@ const inside = (inner, outer) =>
   inner.top + inner.height <= outer.top + outer.height + TOL;
 const sameRoll = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Polls until the client's latest roll area differs from `before`; null if it never does. */
+/** The area a roll actually used, in px: lastRollArea.area (die units from the stage centre). */
+function effectiveRect(r) {
+  if (!r) return null;
+  const { area, stage, diePx } = r;
+  const sx = stage.left + stage.width / 2;
+  const sy = stage.top + stage.height / 2;
+  return {
+    left: sx + (area.cx - area.halfWidth) * diePx,
+    top: sy + (area.cz - area.halfDepth) * diePx,
+    width: area.halfWidth * 2 * diePx,
+    height: area.halfDepth * 2 * diePx,
+  };
+}
+
+/** True when every settled die centre of the roll lies inside its effective area. */
+function diceInside(r) {
+  const eff = effectiveRect(r);
+  if (!eff || !Array.isArray(r.dice) || r.dice.length === 0) return false;
+  const sx = r.stage.left + r.stage.width / 2;
+  const sy = r.stage.top + r.stage.height / 2;
+  return r.dice.every((d) => {
+    const x = sx + d.x * r.diePx;
+    const y = sy + d.z * r.diePx;
+    return (
+      x >= eff.left - TOL &&
+      x <= eff.left + eff.width + TOL &&
+      y >= eff.top - TOL &&
+      y <= eff.top + eff.height + TOL
+    );
+  });
+}
+
+/** The landing check for one client: the dice settled inside the area grown from `expected`. */
+function landedIn(r, expected) {
+  const eff = effectiveRect(r);
+  return {
+    'the dice settled': Array.isArray(r?.dice) && r.dice.length > 0,
+    'the effective area contains the expected area': inside(expected, eff),
+    'the effective area is inside the stage': inside(eff, r?.stage),
+    'every die centre is inside the effective area': diceInside(r),
+  };
+}
+
+/** Polls until the client has a roll that differs from `before` and has settled; null if never. */
 async function changed(page, before) {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const now = await rpc(page, 'lastRollArea');
-    if (!sameRoll(now, before)) return now;
+    if (now?.dice && !sameRoll(now, before)) return now;
     await page.waitForTimeout(250);
   }
   return null;
@@ -95,31 +147,44 @@ async function run(gm, player) {
     gmPrivateArea: await rpc(gm, 'getDicerSetting', 'gmPrivateArea'),
     gmPrivateCorner: await rpc(gm, 'getDicerSetting', 'gmPrivateCorner'),
     perPlayerAreas: await rpc(gm, 'getDicerSetting', 'perPlayerAreas'),
+    gmScale: await rpc(gm, 'getDicerSetting', 'areaScale'),
+    playerScale: await rpc(player, 'getDicerSetting', 'areaScale'),
   };
   try {
+    await rpc(gm, 'setDicerSetting', { key: 'areaScale', value: 1 });
+    await rpc(player, 'setDicerSetting', { key: 'areaScale', value: 1 });
     await rpc(gm, 'setDicerSetting', { key: 'perPlayerAreas', value: true });
     await rpc(gm, 'setDicerSetting', { key: 'gmPrivateCorner', value: false });
     if (!(await rpc(gm, 'setRollArea', { userId: null, def: { preset: 'full' } })))
-      die('the GM could not set the default area.');
+      throw new Error('the GM could not set the default area.');
     if (!(await rpc(gm, 'setRollArea', { userId: playerId, def: { preset: 'corner' } })))
-      die('the GM could not set the player area.');
+      throw new Error('the GM could not set the player area.');
     await gm.waitForTimeout(500); // the world setting reaches the player client
 
     const [g0, p0] = await Promise.all([rpc(gm, 'lastRollArea'), rpc(player, 'lastRollArea')]);
     await rpc(player, 'rollNat20', { rollMode: 'publicroll' });
     const [g1, p1] = await Promise.all([changed(gm, g0), changed(player, p0)]);
-    const [gStage, pStage] = await Promise.all([rpc(gm, 'rollAreaRect', null), rpc(player, 'rollAreaRect', null)]);
+    const [gStage, pStage] = await Promise.all([
+      rpc(gm, 'rollAreaRect', null),
+      rpc(player, 'rollAreaRect', null),
+    ]);
     const [gB, pB] = await Promise.all([
       rpc(gm, 'rollAreaRect', playerId),
       rpc(player, 'rollAreaRect', playerId),
     ]);
-    scenario('1 a roll by player B with the corner area lands inside B resolved rect on both clients', {
+    const prefix = (who, checks) =>
+      Object.fromEntries(Object.entries(checks).map(([k, v]) => [`${who}: ${k}`, v]));
+    scenario('1 a roll by player B with the corner area settles inside B area on both clients', {
       'GM: the roll was recorded': g1 !== null,
       'player: the roll was recorded': p1 !== null,
-      'GM: B resolved rect is smaller than the stage': Boolean(gB && gStage && gB.width < gStage.width),
-      'player: B resolved rect is smaller than the stage': Boolean(pB && pStage && pB.width < pStage.width),
-      'GM: the roll rect is inside B rect': inside(g1?.rect, gB),
-      'player: the roll rect is inside B rect': inside(p1?.rect, pB),
+      ...prefix('GM', landedIn(g1, gB)),
+      ...prefix('player', landedIn(p1, pB)),
+      'GM: B resolved rect is smaller than the stage': Boolean(
+        gB && gStage && gB.width < gStage.width,
+      ),
+      'player: B resolved rect is smaller than the stage': Boolean(
+        pB && pStage && pB.width < pStage.width,
+      ),
     });
 
     await rpc(gm, 'setGmPrivateArea', GM_PRIVATE);
@@ -131,17 +196,36 @@ async function run(gm, player) {
     await player.waitForTimeout(GRACE_MS);
     const p3 = await rpc(player, 'lastRollArea');
     const corner = await rpc(gm, 'resolveHere', GM_PRIVATE);
-    scenario('2 a GM blind roll with gmPrivateCorner on lands in the GM corner on the GM client only', {
-      'GM: the roll was recorded': g3 !== null,
-      'GM: the roll rect is inside the GM corner': inside(g3?.rect, corner),
-      'GM: the GM corner is not the whole stage': Boolean(corner && gStage && corner.width < gStage.width),
-      'player: nothing was thrown (view none)': sameRoll(p3, p2),
-    });
+    scenario(
+      '2 a GM blind roll with gmPrivateCorner on settles in the GM corner on the GM client only',
+      {
+        'GM: the roll was recorded': g3 !== null,
+        ...prefix('GM', landedIn(g3, corner)),
+        'GM: the GM corner is not the whole stage': Boolean(
+          corner && gStage && corner.width < gStage.width,
+        ),
+        'player: nothing was thrown (view none)': sameRoll(p3, p2),
+      },
+    );
   } finally {
-    await rpc(gm, 'setDicerSetting', { key: 'rollAreas', value: original.rollAreas }).catch(() => {});
-    await rpc(gm, 'setDicerSetting', { key: 'gmPrivateArea', value: original.gmPrivateArea }).catch(() => {});
-    await rpc(gm, 'setDicerSetting', { key: 'gmPrivateCorner', value: original.gmPrivateCorner }).catch(() => {});
-    await rpc(gm, 'setDicerSetting', { key: 'perPlayerAreas', value: original.perPlayerAreas }).catch(() => {});
+    await rpc(gm, 'setDicerSetting', { key: 'rollAreas', value: original.rollAreas }).catch(
+      () => {},
+    );
+    await rpc(gm, 'setDicerSetting', { key: 'gmPrivateArea', value: original.gmPrivateArea }).catch(
+      () => {},
+    );
+    await rpc(gm, 'setDicerSetting', {
+      key: 'gmPrivateCorner',
+      value: original.gmPrivateCorner,
+    }).catch(() => {});
+    await rpc(gm, 'setDicerSetting', {
+      key: 'perPlayerAreas',
+      value: original.perPlayerAreas,
+    }).catch(() => {});
+    await rpc(gm, 'setDicerSetting', { key: 'areaScale', value: original.gmScale }).catch(() => {});
+    await rpc(player, 'setDicerSetting', { key: 'areaScale', value: original.playerScale }).catch(
+      () => {},
+    );
   }
 }
 
@@ -196,7 +280,9 @@ async function main() {
       if (state.isGM !== wantGM) die(`the ${label} user is ${wantGM ? 'not a GM' : 'a GM'}.`);
       if (state.dsn) die('Dice So Nice is active; disable it (Dicer stays dormant beside it).');
       if (!state.areas || !state.debug) {
-        die('game.dice3d.rollAreas or _debug.lastRollArea is missing; enable Dicer and run "npm run build".');
+        die(
+          'game.dice3d.rollAreas or _debug.lastRollArea is missing; enable Dicer and run "npm run build".',
+        );
       }
     }
     await run(gm, player);
@@ -208,7 +294,8 @@ async function main() {
       OUT,
       JSON.stringify({ at: new Date().toISOString(), scenarios, pageErrors }, null, 2),
     );
-    for (const s of scenarios) for (const f of s.failures) console.error(`areas: FAIL ${s.name}: ${f}`);
+    for (const s of scenarios)
+      for (const f of s.failures) console.error(`areas: FAIL ${s.name}: ${f}`);
     for (const e of pageErrors) console.error(`areas: pageerror: ${e}`);
     console.log(`areas: ${passed}/${scenarios.length} passed`);
     process.exitCode = ok ? 0 : 1;

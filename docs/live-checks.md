@@ -104,7 +104,7 @@ The privacy of effects and sounds for blind rolls, and **Show other players' eff
 
 ## 16. Roll area editor on a real screen
 
-1. As the GM, open **Roll area editor**. Pick the default area and drag the rectangle, then resize it by each edge and corner.
+1. As the GM, open **Roll areas** (the button "Edit roll areas"). Pick the default area and drag the rectangle, then resize it by each edge and corner.
 2. Try to shrink it to nothing and to drag it off the screen.
 3. Pass: it never gets smaller than about 240 by 180 pixels and never leaves the window. **Reset** brings back the default area. Roll a die: it lands inside the rectangle.
 4. Check that the editor sits above Foundry's own windows (a character sheet, the settings window) and can be reached, and that a window left open does not hide its buttons.

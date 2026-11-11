@@ -169,8 +169,7 @@ export class DiceBox {
     this._idle = new Set(); // cached materials with refs 0, least recently used first
     this._rolls = new Set();
     this._area = null; // the stage in die units: {halfWidth, halfDepth}
-    this._lastRoll = null; // {area, rect} of the most recent roll (lastRollArea)
-    this._lastClampedRect = null;
+    this._lastRoll = null; // {area, rect, stage, diePx, dice} of the latest roll (lastRollArea)
     this._stageRect = null; // the stage in px, as getArea() gave it at the last onResize
     this._diePx = DIE_SIZE_PX;
     this._tick = (now) => this.#frame(now);
@@ -222,19 +221,30 @@ export class DiceBox {
       width: w,
       height: h,
     };
-    this._lastClampedRect = clamped;
-    return fitDieCapacity(toDieArea(clamped, stage, this._diePx), n, this._area);
+    return {
+      rect: clamped,
+      area: fitDieCapacity(toDieArea(clamped, stage, this._diePx), n, this._area),
+    };
   }
 
   /**
    * The area the most recent roll used (P5-R4, read by the owner live test through
    * game.dice3d._debug.lastRollArea): `area` is the die-unit area it threw in (after growing to
    * hold the dice; the whole stage when no area was given) and `rect` the px rect asked for,
-   * clamped inside the stage (the stage rect when none). A copy; null before any roll.
+   * clamped inside the stage (the stage rect when none). `stage` is the stage px rect, `diePx` the px
+   * per die unit and `dice` the settled die centres in die units from the stage centre, x right and
+   * z down (null until the roll lands). A copy; null before any roll.
    */
   get lastRollArea() {
     const l = this._lastRoll;
-    return l ? { area: { ...l.area }, rect: { ...l.rect } } : null;
+    if (!l) return null;
+    return {
+      area: { ...l.area },
+      rect: { ...l.rect },
+      stage: { ...l.stage },
+      diePx: l.diePx,
+      dice: l.dice ? l.dice.map((d) => ({ ...d })) : null,
+    };
   }
 
   /**
@@ -271,11 +281,14 @@ export class DiceBox {
       roll.slowMotion = roll.dice.some((d) => d.fx?.some((f) => f?.slowMotion === true));
       this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
-      this._lastClampedRect = null;
-      const throwArea = this.#throwArea(area, specs.length);
-      this._lastRoll = {
+      const thrown = this.#throwArea(area, specs.length);
+      const throwArea = thrown?.area ?? null;
+      this._lastRoll = roll.record = {
         area: throwArea ?? { cx: 0, cz: 0, ...this._area },
-        rect: throwArea && this._lastClampedRect ? this._lastClampedRect : { ...this._stageRect },
+        rect: thrown?.rect ?? { ...this._stageRect },
+        stage: { ...this._stageRect },
+        diePx: this._diePx,
+        dice: null, // the settled die centres, filled when the roll lands
       };
       roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
       roll.received = 0;
@@ -941,6 +954,9 @@ export class DiceBox {
   #land(roll) {
     clearTimeout(roll.landingTimer);
     roll.phase = 'lingering';
+    if (roll.record) {
+      roll.record.dice = roll.dice.map((d) => ({ x: d.outer.position.x, z: d.outer.position.z }));
+    }
     this.#fireResults(roll);
     this.#fireFx(roll);
     roll.resolveLanded();

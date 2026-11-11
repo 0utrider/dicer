@@ -1484,7 +1484,10 @@ describe('impact sounds', () => {
       },
     });
     physics.events = events;
-    const { landed } = box.roll([{ type: 'd6', value: 3 }, { type: 'd6', value: 4 }]);
+    const { landed } = box.roll([
+      { type: 'd6', value: 3 },
+      { type: 'd6', value: 4 },
+    ]);
     physics.flush();
     renderer.tick(0);
     expect(() => renderer.tick(1000)).not.toThrow();
@@ -1495,7 +1498,13 @@ describe('impact sounds', () => {
 
 describe('trigger effects at landing (onLandedFx)', () => {
   const nat20fx = [
-    { ruleId: 'dicer.nat20', effect: { id: 'celebrate' }, sound: { builtin: 'fanfare' }, macro: null, slowMotion: true },
+    {
+      ruleId: 'dicer.nat20',
+      effect: { id: 'celebrate' },
+      sound: { builtin: 'fanfare' },
+      macro: null,
+      slowMotion: true,
+    },
   ];
   // nat20fx slows the landing down (Task 8): give playback the extra time.
   const land = (renderer, physics) => {
@@ -1818,18 +1827,44 @@ describe('per-throw areas', () => {
   test('lastRollArea records the latest roll area (die units and clamped px rect), as copies', () => {
     const { box } = setup();
     expect(box.lastRollArea).toBeNull();
-    box.roll([{ type: 'd6', value: 2 }], { area: { left: 720, top: -120, width: 480, height: 240 } });
+    box.roll([{ type: 'd6', value: 2 }], {
+      area: { left: 720, top: -120, width: 480, height: 240 },
+    });
     expect(box.lastRollArea).toEqual({
       area: { cx: 5, cz: -2.5, halfWidth: 5, halfDepth: 2.5 },
       rect: { left: 480, top: 0, width: 480, height: 240 },
+      stage: { left: 0, top: 0, width: 960, height: 480 },
+      diePx: 48,
+      dice: null,
     });
     box.lastRollArea.rect.left = 1;
     expect(box.lastRollArea.rect.left).toBe(480);
     box.roll([{ type: 'd6', value: 2 }]);
-    expect(box.lastRollArea).toEqual({
+    expect(box.lastRollArea).toMatchObject({
       area: { cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 },
       rect: { left: 0, top: 0, width: 960, height: 480 },
     });
+  });
+
+  test('lastRollArea gets the settled die centres (die units) once the roll lands', async () => {
+    const { renderer, physics, box } = setup();
+    const r = box.roll(
+      [
+        { type: 'd6', value: 2 },
+        { type: 'd6', value: 3 },
+      ],
+      { area: { left: 480, top: 240, width: 480, height: 240 } },
+    );
+    expect(box.lastRollArea.dice).toBeNull();
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(3000);
+    await r.landed;
+    const { dice } = box.lastRollArea;
+    expect(dice).toHaveLength(2);
+    for (const d of dice) expect(Number.isFinite(d.x) && Number.isFinite(d.z)).toBe(true);
+    dice[0].x = 999;
+    expect(box.lastRollArea.dice[0].x).not.toBe(999);
   });
 
   test('without an area the request is unchanged and playback uses the stage', () => {
@@ -1841,7 +1876,9 @@ describe('per-throw areas', () => {
 
   test('an area is clamped inside the stage; a malformed one falls back to the stage', () => {
     const { physics, box } = setup();
-    box.roll([{ type: 'd6', value: 2 }], { area: { left: 720, top: -120, width: 480, height: 240 } });
+    box.roll([{ type: 'd6', value: 2 }], {
+      area: { left: 720, top: -120, width: 480, height: 240 },
+    });
     // Shifted to left 480, top 0.
     expect(physics.streams[0].req.area).toEqual({ cx: 5, cz: -2.5, halfWidth: 5, halfDepth: 2.5 });
     box.roll([{ type: 'd6', value: 2 }], { area: { left: 0, top: 0, width: 4800, height: 2400 } });
@@ -1859,7 +1896,10 @@ describe('per-throw areas', () => {
     // Same projection as game.dice3d.getScreenPosition.
     const toScreen = (x, z) => {
       const v = new THREE.Vector3(x, 0, z).project(renderer.camera);
-      return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+      return {
+        x: rect.left + ((v.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - v.y) / 2) * rect.height,
+      };
     };
     const centre = toScreen(cx, cz);
     expect(centre.x).toBeCloseTo(right.left + right.width / 2, 3);

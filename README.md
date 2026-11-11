@@ -100,7 +100,7 @@ To look at all 22 themes and throw each one with its celebration, run `npm run d
 
 ## Roll areas
 
-A roll area is the part of the screen where dice land. By default they use the whole window. Open **Configure Settings, Dicer, Roll area editor** (the button "Edit roll areas") to drag and resize a rectangle on your screen, or pick a preset: full, centre, bottom or corner. The GM sets a default area, an area for each player and an optional GM private corner. Players can preview their own area but not change it. Reset always brings back the default.
+A roll area is the part of the screen where dice land. By default they use the whole window. Open **Configure Settings, Dicer, Roll areas** (the button "Edit roll areas") to drag and resize a rectangle on your screen, or pick a preset: full, centre, bottom or corner. The GM sets a default area, an area for each player and an optional GM private corner. Players can preview their own area but not change it. Reset always brings back the default.
 
 An area is stored as fractions of the window, so it survives resizing and different screen sizes. It can never shrink below 240 by 180 pixels (or the whole window if that is smaller) and can never go off-screen, so it cannot get lost (Dice So Nice #548). A throw's own area also grows beyond the drawn rectangle when many dice are rolled, so they always fit (about four square die sizes per die; `CAPACITY_PER_DIE` in `src/areas/area-model.js`).
 
@@ -229,7 +229,7 @@ It prints `effects: N/N passed`, writes `artifacts/live/effects.json`, and resto
 
 ## Live areas test
 
-`npm run test:live:areas` uses the same accounts and variables. The GM gives the player the `corner` area and the player rolls; it reads `game.dice3d._debug.lastRollArea` on both clients and checks that the roll's rectangle lies inside the player's resolved area (`game.dice3d.rollAreas.rect`). It then turns **GM private corner** on and checks that a GM blind roll lands in the GM corner on the GM client, and that the player's client threw nothing. It prints `areas: N/N passed`, writes `artifacts/live/areas.json`, and restores the settings it changed.
+`npm run test:live:areas` uses the same accounts and variables. The GM gives the player the `corner` area and the player rolls; it reads `game.dice3d._debug.lastRollArea` on both clients: the settled die centres, the area the throw used and the stage. The area a throw uses is the player's resolved rectangle (`game.dice3d.rollAreas.rect`) grown to hold the dice (`CAPACITY_PER_DIE`), so the test checks that this grown area contains the resolved rectangle and lies inside the stage, and that every settled die centre lies inside it. It then turns **GM private corner** on and runs the same check for a GM blind roll against the GM corner on the GM client, and checks that the player's client threw nothing. It sets each client's **Roll area size** to 1 while it runs, prints `areas: N/N passed`, writes `artifacts/live/areas.json`, and restores the settings it changed.
 
 Unit tests cannot check some things. The manual list is in `docs/live-checks.md`.
 

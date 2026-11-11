@@ -303,11 +303,11 @@ export function rollAreaRect(userId) {
 }
 
 /**
- * The px rect `def` resolves to on this screen (with this client's area scale) when the default
- * area is the full stage: the live-test's independent check of the GM private corner.
+ * The px rect `def` resolves to on this screen: an independent check of the GM private corner.
+ * It assumes the default area is the full stage and this client's areaScale is 1 (areas.mjs sets
+ * both), so rollAreas.rect(null) is the stage itself and no scale is applied again here.
  */
 export async function resolveHere(def) {
   const { resolveArea } = await import('/modules/dicer/src/areas/area-model.js');
-  const stage = game.dice3d.rollAreas.rect(null);
-  return resolveArea(def, stage, { scale: Number(game.settings.get('dicer', 'areaScale')) || 1 });
+  return resolveArea(def, game.dice3d.rollAreas.rect(null));
 }
