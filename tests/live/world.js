@@ -311,3 +311,263 @@ export async function resolveHere(def) {
   const { resolveArea } = await import('/modules/dicer/src/areas/area-model.js');
   return resolveArea(def, game.dice3d.rollAreas.rect(null));
 }
+
+/* ------------------------------------------------------------------------------------------ *
+ * Benchmark harness RPCs (tests/live/bench.mjs). The runner and the Dicer adapter load from
+ * /modules/dicer/src/bench/*.js, which works with Dicer disabled (DSN active).
+ * ------------------------------------------------------------------------------------------ */
+
+const BENCH = '/modules/dicer/src/bench/';
+const SCENARIO_SETTLE_MS = 4000;
+const IDLE_WAIT_MS = 16000;
+
+/** The active dice product: exactly one of Dicer / DSN active, else null. */
+export function benchProduct() {
+  const dicer = Boolean(game.modules.get('dicer')?.active);
+  const dsn = Boolean(game.modules.get('dice-so-nice')?.active);
+  if (dicer && !dsn) return 'dicer';
+  if (dsn && !dicer) return 'dice-so-nice';
+  return null;
+}
+
+/** Ready to roll: the world is up and the active product's game.dice3d exists. */
+export function benchReady() {
+  return Boolean(game.ready && game.dice3d);
+}
+
+export function isGM() {
+  return Boolean(game.user?.isGM);
+}
+
+const plain = (v) => {
+  try {
+    return v === undefined ? null : JSON.parse(JSON.stringify(v));
+  } catch {
+    return String(v);
+  }
+};
+
+/** Snapshot of the active product's world (and client) settings, for the report. */
+export function benchSettings() {
+  const product = benchProduct();
+  const world = {};
+  const client = {};
+  if (product) {
+    for (const s of game.settings.settings.values()) {
+      if (s.namespace !== product) continue;
+      const bucket = s.scope === 'world' ? world : s.scope === 'client' ? client : null;
+      if (!bucket) continue;
+      try {
+        bucket[s.key] = plain(game.settings.get(s.namespace, s.key));
+      } catch {
+        bucket[s.key] = null;
+      }
+    }
+  }
+  return { product, world, client };
+}
+
+export function getModuleConfiguration() {
+  return plain(game.settings.get('core', 'moduleConfiguration'));
+}
+
+export async function setModuleConfiguration(cfg) {
+  await game.settings.set('core', 'moduleConfiguration', cfg);
+  return true;
+}
+
+/** core.moduleConfiguration with exactly one of dicer / dice-so-nice enabled. The caller reloads. */
+export async function setDiceModule(id) {
+  if (id !== 'dicer' && id !== 'dice-so-nice') throw Error(`unknown dice module: ${id}`);
+  const cfg = { ...(game.settings.get('core', 'moduleConfiguration') ?? {}) };
+  cfg.dicer = id === 'dicer';
+  cfg['dice-so-nice'] = id === 'dice-so-nice';
+  await game.settings.set('core', 'moduleConfiguration', cfg);
+  return true;
+}
+
+/** DSN's registered settings as plain data (the runtime registry only, never DSN source). */
+export function dsnSettingsList() {
+  const out = [];
+  for (const s of game.settings.settings.values()) {
+    if (s.namespace !== 'dice-so-nice') continue;
+    const t =
+      typeof s.type === 'function' ? s.type.name : (s.type?.constructor?.name ?? String(s.type));
+    out.push({
+      namespace: s.namespace,
+      key: s.key,
+      scope: s.scope,
+      type: /^Boolean/.test(t) ? 'Boolean' : t,
+      choices: s.choices ? Object.keys(s.choices) : null,
+    });
+  }
+  return out;
+}
+
+/** Sets DSN client settings `{key: value}`; returns the ones that failed. */
+export async function setDsnSettings(map) {
+  const failed = [];
+  for (const [k, v] of Object.entries(map ?? {})) {
+    try {
+      await game.settings.set('dice-so-nice', k, v);
+    } catch (e) {
+      failed.push(`${k}: ${e?.message ?? e}`);
+    }
+  }
+  return failed;
+}
+
+function benchBrowser() {
+  const ua = navigator.userAgent;
+  for (const [re, name] of [
+    [/Edg\/(\d+)/, 'Edge'],
+    [/Firefox\/(\d+)/, 'Firefox'],
+    [/Chrome\/(\d+)/, 'Chrome'],
+  ]) {
+    const m = re.exec(ua);
+    if (m) return `${name} ${m[1]}`;
+  }
+  return ua.slice(0, 60);
+}
+
+function benchGpu() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER);
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return name ? String(name) : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** The product's dice canvas (Dicer _debug.canvas, DSN box.renderer.domElement). */
+function productCanvas(product) {
+  if (product === 'dicer') return game.dice3d?._debug?.canvas ?? null;
+  return game.dice3d?.box?.renderer?.domElement ?? null;
+}
+
+/** WEBGL_lose_context on the product's canvas, restored after `ms`. */
+async function loseContext(product, ms) {
+  const c = productCanvas(product);
+  if (!c) throw Error('no dice canvas');
+  const gl = c.getContext('webgl2') ?? c.getContext('webgl');
+  const ext = gl?.getExtension('WEBGL_lose_context');
+  if (!ext) throw Error('WEBGL_lose_context unavailable');
+  ext.loseContext();
+  await sleep(ms);
+  ext.restoreContext();
+}
+
+/** Renderer identity: a resize or context restore that swaps either one rebuilt the renderer. */
+function rendererIdentity(product) {
+  return {
+    canvas: productCanvas(product),
+    generation: product === 'dicer' ? (game.dice3d?._debug?.generation ?? null) : null,
+  };
+}
+
+function benchAdapter(product, createDicerAdapter) {
+  // H-R3/H-R6: the chat path ({messageId}) for both products.
+  const roll = (f) => new Roll(f).toMessage().then((m) => ({ messageId: m.id }));
+  // Node-side CDP: HeapProfiler.collectGarbage, then Runtime.getHeapUsage (bench.mjs binding).
+  const heap = async () =>
+    typeof globalThis.__benchHeap === 'function' ? globalThis.__benchHeap() : null;
+  const perturb = async (kind, ms) => {
+    if (kind === 'contextLoss') return loseContext(product, ms);
+    // resize: Playwright setViewportSize; hidden: another page in front for ms (bench.mjs binding).
+    if (typeof globalThis.__benchPerturb === 'function') return globalThis.__benchPerturb(kind, ms);
+    if (kind === 'resize') globalThis.dispatchEvent(new Event('resize'));
+  };
+  // H-D5: back to back, the next roll starts when the previous message completes (no idle wait).
+  const isBusy = () => false;
+  if (product === 'dicer') {
+    const api = game.dice3d;
+    const base = createDicerAdapter(api, {
+      roll,
+      gpu: benchGpu,
+      version: game.modules.get('dicer')?.version ?? null,
+    });
+    return {
+      ...base,
+      isBusy,
+      heap,
+      perturb,
+      idle: () => !base.isBusy(),
+      dicerFirstFrame: (id) => {
+        const v = api?._debug?.firstFrames?.[id];
+        return typeof v === 'number' && Number.isFinite(v) ? v : null;
+      },
+    };
+  }
+  return {
+    product: 'dice-so-nice',
+    roll,
+    isBusy,
+    heap,
+    perturb,
+    idle: () => true,
+    resources() {
+      const info = game.dice3d?.box?.renderer?.info;
+      if (!info) return null;
+      return {
+        geometries: info.memory?.geometries ?? 0,
+        textures: info.memory?.textures ?? 0,
+        programs: Array.isArray(info.programs) ? info.programs.length : 0,
+      };
+    },
+    dicerFirstFrame: () => null,
+    info: () => ({
+      browser: benchBrowser(),
+      gpu: benchGpu(),
+      tier: null,
+      version: game.modules.get('dice-so-nice')?.version ?? null,
+    }),
+  };
+}
+
+/** Between scenarios: a fixed settle, then Dicer waits until no dice and no loop (bounded). */
+async function settle(adapter) {
+  await sleep(SCENARIO_SETTLE_MS);
+  const until = performance.now() + IDLE_WAIT_MS;
+  while (!adapter.idle() && performance.now() < until) await sleep(100);
+}
+
+/**
+ * Runs scenarios `ids` against the active product with chat rolls; resolves a SuiteResult.
+ * resize/contextLoss results carry `rebuilt` (canvas or generation changed) and a note.
+ */
+export async function benchRun({ ids, profile }) {
+  const product = benchProduct();
+  if (!product) throw Error('exactly one of dicer / dice-so-nice must be active');
+  const { runSuite } = await import(`${BENCH}scenarios.js`);
+  const { createDicerAdapter } = await import(`${BENCH}dicer-adapter.js`);
+  const adapter = benchAdapter(product, createDicerAdapter);
+  const results = [];
+  let meta = null;
+  for (const id of ids) {
+    await settle(adapter);
+    const before = rendererIdentity(product);
+    const part = await runSuite([id], adapter, { profile, hooks: Hooks });
+    if (id === 'resize' || id === 'contextLoss') {
+      await sleep(1000); // a context restore lands asynchronously
+      const after = rendererIdentity(product);
+      const rebuilt = before.canvas !== after.canvas || before.generation !== after.generation;
+      for (const r of part.results) {
+        r.rebuilt = rebuilt;
+        r.notes.push(rebuilt ? 'renderer rebuilt' : 'renderer kept');
+      }
+    }
+    results.push(...part.results);
+    meta = part;
+  }
+  return {
+    browser: meta?.browser ?? null,
+    gpu: meta?.gpu ?? null,
+    tier: meta?.tier ?? null,
+    version: meta?.version ?? null,
+    profile,
+    results,
+  };
+}

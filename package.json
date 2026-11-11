@@ -12,6 +12,7 @@
     "test:live:compat": "node tests/live/compat.mjs",
     "test:live:areas": "node tests/live/areas.mjs",
     "test:live:effects": "node tests/live/effects.mjs",
+    "test:live:bench": "node tests/live/bench.mjs",
     "test:visual": "node tests/visual/looks.mjs",
     "test:visual:themes": "node tests/visual/themes.mjs",
     "test:visual:editors": "node tests/visual/editors.mjs",
