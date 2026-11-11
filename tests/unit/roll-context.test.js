@@ -125,6 +125,15 @@ describe('damageTypesByTerm', () => {
     expect(map.get(bleed)).toBe('bleed');
     expect(map.has(plain)).toBe(false);
   });
+  it('untyped instance ignores its default flavor and defers to ancestors', () => {
+    const a = d(1, 8);
+    const untyped = new DamageInstance('untyped', [a], { options: { flavor: 'damage,healing' } });
+    expect(damageTypesByTerm(pf2eDamage(untyped), known).has(a)).toBe(false);
+    const b = d(1, 8);
+    const inner = new DamageInstance('untyped', [b], { options: { flavor: 'damage,healing' } });
+    const outer = { options: { type: 'fire' }, terms: [], rolls: [inner] };
+    expect(damageTypesByTerm(outer, known).get(b)).toBe('fire');
+  });
   it('walks nested groupings and operands', () => {
     const a = d(1, 6);
     const b = d(1, 6);

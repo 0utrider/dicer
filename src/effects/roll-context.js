@@ -104,7 +104,11 @@ function flavorType(flavor, known) {
 function ownType(node, known) {
   const terms = get(node, 'terms');
   const type = get(node, 'type');
-  if (typeof type === 'string' && type !== 'untyped' && type && Array.isArray(terms)) return type;
+  if (typeof type === 'string' && type && Array.isArray(terms)) {
+    // Recognised PF2e instance: its type decides; never consult its flavor (PF2e defaults it to
+    // "damage,healing"), and 'untyped' defers to the nearest ancestor.
+    return type === 'untyped' ? null : type;
+  }
 
   const options = get(node, 'options');
   const optType = get(options, 'type');
