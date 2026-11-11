@@ -1,3 +1,4 @@
+import { dropCoreDiceSound } from './foundry/core-dice-sound.js';
 import { createPhysicsWorker, PhysicsClient } from './physics/physics-client.js';
 import { computeHulls } from './physics/hulls.js';
 import { DiceRenderer } from './render/renderer.js';
@@ -323,6 +324,13 @@ Hooks.once('init', () => {
     onSoundChange,
   });
   loadPublicApi();
+  // On the author's client, before the message is stored: everyone then skips Foundry's clatter.
+  Hooks.on('preCreateChatMessage', (message) =>
+    dropCoreDiceSound(message, {
+      enabled: getSetting('muteCoreDiceSound') !== false,
+      coreSound: globalThis.CONFIG?.sounds?.dice,
+    }),
+  );
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
     initiative?.onCreateMessage(message);

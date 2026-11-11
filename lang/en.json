@@ -118,6 +118,10 @@
         "Name": "My table surface",
         "Hint": "Hear a different surface than the world's setting."
       },
+      "muteCoreDiceSound": {
+        "Name": "Silence Foundry's dice sound",
+        "Hint": "Foundry plays its own dice clatter on every roll card. Dicer's dice make their own sounds, so turn this off only if you want both."
+      },
       "effects": {
         "Name": "Special effects",
         "Hint": "Play effects and result sounds when a die shows a triggering result, such as a natural 20. Effects never play for rolls you cannot see."

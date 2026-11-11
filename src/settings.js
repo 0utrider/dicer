@@ -295,6 +295,16 @@ export function registerSettings({
     choices: surfaceChoices(['world', ...surfaces]),
     default: 'world',
   });
+  // Foundry's own dice clatter plays on every roll card; with Dicer's sounds it is a second,
+  // unrelated one (src/foundry/core-dice-sound.js).
+  game.settings.register(MODULE_ID, 'muteCoreDiceSound', {
+    name: t('muteCoreDiceSound.Name'),
+    hint: t('muteCoreDiceSound.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
   // Trigger effects (P4-D2): the roller's rules decide; each viewer filters what they see.
   for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'screenShake']) {
     game.settings.register(MODULE_ID, key, {
