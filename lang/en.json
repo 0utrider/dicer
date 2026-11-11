@@ -32,6 +32,15 @@
         "Name": "Dice theme",
         "Hint": "The look and impact sound of your dice. Other players see your dice in this theme too."
       },
+      "worldDefaultTheme": {
+        "Name": "World default theme",
+        "Hint": "The theme players' dice use when they have not chosen one of their own. Players keep their own choices unless 'Lock player looks' is on; the theme browser can also push it to every player.",
+        "None": "None (Dicer's own default)"
+      },
+      "lockPlayerLooks": {
+        "Name": "Lock player looks",
+        "Hint": "Players' dice always use the world default theme, whatever they have chosen. Needs a world default theme. GMs are not affected, and a roll or damage type that names its own colorset or theme still does."
+      },
       "quality": {
         "Name": "Graphics quality",
         "Hint": "Auto measures your GPU once and picks a tier. Lower tiers are faster; the world cap still applies. If rolls stutter, Dicer lowers the tier for this session; choosing a quality here tries again at your choice.",
@@ -371,6 +380,13 @@
       "ImportFailed": "The theme file could not be imported.",
       "Publish": "Publish to the world (GM)",
       "Published": "Theme published to the world.",
+      "Locked": "Your GM has set everyone's dice.",
+      "Push": "Push to players",
+      "PushShort": "Push to players...",
+      "PushHint": "Make this every player's default theme (GM)",
+      "PushConfirm": "Make this every player's default theme:",
+      "PushReplaceAll": "Replace everything: also clear their per-die-type and per-roll-type choices",
+      "Pushed": "Players updated:",
       "Delete": "Delete",
       "ConfirmDelete": "Delete this theme permanently?",
       "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:"

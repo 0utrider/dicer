@@ -525,6 +525,8 @@ Hooks.once('ready', async () => {
         getActor: (id) => game.actors?.get(id),
         damageThemeFor: (roll, userId) => damageThemer.forRoll(roll, userId),
         getWorldThemes: () => getSetting('worldThemes'),
+        getWorldDefaultTheme: () => getSetting('worldDefaultTheme'),
+        getLockPlayerLooks: () => getSetting('lockPlayerLooks'),
         // Preset faces the digit atlas cannot draw become image / text face layers.
         facesFor: presetFaces,
       });

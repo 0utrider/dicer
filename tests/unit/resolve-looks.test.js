@@ -15,7 +15,7 @@ const RES = { result: 1 };
 const CRYSTAL = LOOKS['sharp-crystal'].appearance;
 const RUBY = LOOKS['ruby-classic'].appearance;
 
-function make({ users = {}, actors = {}, facesFor } = {}) {
+function make({ users = {}, actors = {}, facesFor, worldDefault = '', lock = false } = {}) {
   const registry = createRegistry({ warn: () => {} });
   const warn = vi.fn();
   const resolver = createLookResolver({
@@ -24,6 +24,8 @@ function make({ users = {}, actors = {}, facesFor } = {}) {
     getActor: (id) => actors[id],
     warn,
     facesFor,
+    getWorldDefaultTheme: () => worldDefault,
+    getLockPlayerLooks: () => lock,
   });
   return { registry, warn, resolver };
 }
@@ -418,5 +420,68 @@ describe('actor theme assignment (the theme browser write)', () => {
       damageThemeFor: () => () => ({ appearance: RUBY, themeId: 'dragon-hoard', themeSource: 'viewer' }),
     });
     expect(look(resolver, term(20), 'u')).toMatchObject({ themeId: 'dragon-hoard', themeSource: 'viewer' });
+  });
+});
+
+describe('GM controls: world default theme and the player lock (P7-D4)', () => {
+  const T = (id) => ({ global: { theme: id } });
+  const dieOf = (id) => findTheme(id).appearance;
+  const plain = term(20);
+  test('without the lock the world default is the fallback for a player with no choice of their own', () => {
+    const { resolver } = make({ users: { p: user(undefined) }, worldDefault: 'verdant' });
+    const got = look(resolver, plain, 'p');
+    expect(got.themeId).toBe('verdant');
+    expect(got.appearance).toBe(dieOf('verdant'));
+  });
+  test('without the lock a player choice (global, per-type) beats the world default; the default beats DEFAULT_APPEARANCE only when unset', () => {
+    const users = { p: user({ ...T('ruby-classic'), d6: T('obsidian').global }) };
+    const { resolver } = make({ users, worldDefault: 'verdant' });
+    expect(look(resolver, plain, 'p').themeId).toBe('ruby-classic');
+    expect(look(resolver, term(6), 'p').themeId).toBe('obsidian');
+    const none = make({ users: { p: user(undefined) } });
+    expect(look(none.resolver, plain, 'p').appearance).toEqual(DEFAULT_APPEARANCE);
+  });
+  test('an unset or missing world default falls through to the next look; a missing theme warns once', () => {
+    const { resolver, warn } = make({ users: { p: user(undefined) }, worldDefault: 'world.gone' });
+    expect(look(resolver, plain, 'p').appearance).toEqual(DEFAULT_APPEARANCE);
+    look(resolver, plain, 'p');
+    expect(warn.mock.calls.filter((c) => /world\.gone/.test(c[0]))).toHaveLength(1);
+  });
+  test('the lock makes the world default win over a player own refs (global, type, role) and actor flags', () => {
+    const users = { p: user({ ...T('ruby-classic'), d20: T('obsidian').global, 'role:attack': T('obsidian').global }) };
+    const actors = { a1: { flags: { dicer: { appearance: T('obsidian') } } } };
+    const { resolver } = make({ users, actors, worldDefault: 'verdant', lock: true });
+    const t = term(20, { options: { dsnActorId: 'a1' } });
+    const got = resolver.decorate({ flags: { dicer: { role: 'attack' } } }, {}, 'p')(t, RES, 0);
+    expect(got.themeId).toBe('verdant');
+    expect(look(resolver, term(6), 'p').themeId).toBe('verdant');
+  });
+  test('the lock never applies to a GM, and does nothing without a world default', () => {
+    const users = { g: { isGM: true, ...user(T('ruby-classic')) }, p: user(T('ruby-classic')) };
+    const locked = make({ users, worldDefault: 'verdant', lock: true });
+    expect(look(locked.resolver, plain, 'g').themeId).toBe('ruby-classic');
+    const noDefault = make({ users, worldDefault: '', lock: true });
+    expect(look(noDefault.resolver, plain, 'p').themeId).toBe('ruby-classic');
+  });
+  test('explicit roll colorsets and appearances and damage themes keep their precedence under the lock', () => {
+    const damageThemeFor = () => (t) => ({ appearance: CRYSTAL, themeId: 'obsidian', soundMaterial: 'metal' });
+    const registry = createRegistry({ warn: () => {} });
+    const resolver = createLookResolver({
+      registry,
+      getUser: () => user(T('ruby-classic')),
+      damageThemeFor,
+      warn: () => {},
+      getWorldDefaultTheme: () => 'verdant',
+      getLockPlayerLooks: () => true,
+    });
+    const via = (t) => resolver.decorate(null, {}, 'p')(t, RES, 0);
+    expect(via(plain).themeId).toBe('obsidian'); // the damage theme
+    expect(via(term(20, { options: { colorset: 'fire' } })).appearance).toEqual(fire);
+    const explicit = { appearance: { body: { type: 'opaque', color: '#123456' } } };
+    expect(via(term(20, { options: explicit })).appearance.body.color).toBe('#123456');
+  });
+  test('a locked player with a throwing user lookup still gets a look', () => {
+    const { resolver } = make({ users: {}, worldDefault: 'verdant', lock: true });
+    expect(look(resolver, plain, 'nobody').themeId).toBe('verdant');
   });
 });

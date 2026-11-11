@@ -8,6 +8,9 @@
  * Refs at steps 4-5 may name a theme (Plan 5): built-in, the world's (worldThemes) or the
  * roller's own (user flag dicer.themes). The theme gives the die type's look, its id (themeId)
  * and its sound material when no damage theme set one. A missing theme warns once per roller.
+ * The GM's world default theme (worldDefaultTheme) is the fallback after the roller's own refs
+ * and before DEFAULT_APPEARANCE; with lockPlayerLooks on, a non-GM roller's refs and actor flags
+ * are skipped and the world default is used instead (P7-D4).
  * A registered preset for the ref's system replaces rules 5-6 (its colorset) and attaches its
  * model. Everything read here is third-party data: no step may throw.
  */
@@ -23,6 +26,7 @@ import { roleOf } from '../effects/roll-context.js';
 import { dsnTypeOf } from '../core/dice-shapes.js';
 
 const STANDARD = 'standard';
+const FALLBACK_REF = { look: 'default' }; // what readUserLooks supplies when a user has no global
 
 /**
  * The Dice So Nice die type of a term: 'd20', or 'd' + the bare-letter DENOMINATION of a custom
@@ -40,6 +44,8 @@ const systemOf = (v) => (isPlainObject(v) && typeof v.system === 'string' && v.s
  * @param {(roll: object, authorId?: string) => (((term, index: number) => object | null) | null)} [deps.damageThemeFor]
  *   a roll's damage themer (createDamageThemer.forRoll); null when damagePresets is off
  * @param {() => unknown} [deps.getWorldThemes] the raw worldThemes setting
+ * @param {() => string} [deps.getWorldDefaultTheme] the worldDefaultTheme setting ('' = none)
+ * @param {() => boolean} [deps.getLockPlayerLooks] the lockPlayerLooks setting
  * @param {(msg: string, err?: unknown) => void} [deps.warn]
  */
 export function createLookResolver({
@@ -49,6 +55,8 @@ export function createLookResolver({
   facesFor = () => undefined,
   damageThemeFor = null,
   getWorldThemes = () => [],
+  getWorldDefaultTheme = () => '',
+  getLockPlayerLooks = () => false,
   warn = console.warn,
 }) {
   let warned = false;
@@ -89,8 +97,21 @@ export function createLookResolver({
     } catch {
       /* no user themes */
     }
+    let worldDefault = null;
+    let locked = false;
+    try {
+      const id = getWorldDefaultTheme();
+      if (typeof id === 'string' && id) {
+        worldDefault = { theme: id };
+        locked = Boolean(getLockPlayerLooks()) && user?.isGM !== true;
+      }
+    } catch {
+      /* no world default */
+    }
     return {
       user,
+      worldDefault,
+      locked,
       themes: { worldThemes, userThemes },
       onMissingTheme: (themeId) => {
         const key = `${authorId}|${themeId}`;
@@ -139,7 +160,7 @@ export function createLookResolver({
       }
     }
     const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
-    if (!appearance && typeof options.dsnActorId === 'string') {
+    if (!appearance && !ctx.locked && typeof options.dsnActorId === 'string') {
       // The theme browser writes {global: {theme}}; DSN-migrated flags are a flat LookRef. A
       // global slot takes precedence over flat keys left on the same actor.
       const stored = getActor(options.dsnActorId)?.flags?.dicer?.appearance;
@@ -153,10 +174,14 @@ export function createLookResolver({
     }
 
     // The author's refs, most specific first. They feed rule 5 and, for every rule, the system.
-    const looks = readUserLooks(ctx.user);
+    // Under the lock the world default replaces every ref of the author's; otherwise it follows
+    // them, ahead of the built-in default that readUserLooks supplies for a user with no global.
+    const looks = ctx.locked ? {} : readUserLooks(ctx.user, { fill: false });
     const shape = type ? registry.baseShape?.(type) : null;
     const keys = [role ? `role:${role}` : null, type, shape, 'global'];
     const refs = keys.map((key) => (key && Object.hasOwn(looks, key) ? looks[key] : null)).filter(Boolean);
+    if (ctx.worldDefault) refs.push(ctx.worldDefault);
+    if (!ctx.locked && !Object.hasOwn(looks, 'global')) refs.push(FALLBACK_REF);
 
     if (system === null) system = refs.map(systemOf).find(Boolean) ?? null;
 

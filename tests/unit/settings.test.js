@@ -366,3 +366,46 @@ test('diceLookButton is a client Boolean, default on', () => {
   expect(registered.diceLookButton).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
   expect(registered.diceLookButton.name).toBe('DICER.Settings.diceLookButton.Name');
 });
+
+describe('GM controls settings (P7-D4)', () => {
+  test('lockPlayerLooks is a world Boolean, default off, shown in the form', () => {
+    const cfg = capture().lockPlayerLooks;
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: Boolean, default: false });
+    expect(cfg.name).toBe('DICER.Settings.lockPlayerLooks.Name');
+    expect(cfg.hint).toBe('DICER.Settings.lockPlayerLooks.Hint');
+  });
+  test("worldDefaultTheme is a world String, '' = none, starting with built-in choices", () => {
+    const cfg = capture().worldDefaultTheme;
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: String, default: '' });
+    expect(Object.keys(cfg.choices)[0]).toBe('');
+    expect(cfg.choices['']).toBe('DICER.Settings.worldDefaultTheme.None');
+    for (const t of BUILTIN_THEMES) expect(cfg.choices[t.id]).toBe(t.name);
+  });
+  test('its choices follow the stored world themes live (and never the current user themes)', async () => {
+    const registered = {};
+    const entries = new Map();
+    let worlds = [];
+    globalThis.game = {
+      user: { getFlag: () => [{ id: 'user.u1.m', name: 'M', appearance: BUILTIN_THEMES[0].appearance }] },
+      settings: {
+        settings: entries,
+        get: (_ns, k) => (k === 'worldThemes' ? worlds : undefined),
+        register: (ns, key, cfg) => {
+          registered[key] = { ns, ...cfg };
+          entries.set(`${ns}.${key}`, registered[key]);
+        },
+      },
+    };
+    try {
+      registerSettings();
+      const entry = entries.get('dicer.worldDefaultTheme');
+      expect(Object.keys(entry.choices)).not.toContain('world.w');
+      worlds = [{ id: 'world.w', name: 'W', appearance: BUILTIN_THEMES[0].appearance }];
+      expect(entry.choices['world.w']).toBe('W (world)');
+      expect(entry.choices['']).toBe('DICER.Settings.worldDefaultTheme.None');
+      expect(Object.keys(entry.choices)).not.toContain('user.u1.m');
+    } finally {
+      delete globalThis.game;
+    }
+  });
+});

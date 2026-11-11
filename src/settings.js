@@ -58,6 +58,20 @@ export function themeChoices(get = (key) => game.settings.get(MODULE_ID, key), u
 }
 
 /**
+ * The `worldDefaultTheme` choices: none (''), built-ins and the world's themes. Read live, for the
+ * same reason as themeChoices. Not the user's own themes: the GM's default must exist for everyone.
+ */
+export function worldDefaultChoices(none, get = (key) => game.settings.get(MODULE_ID, key)) {
+  const out = { '': none, ...Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name])) };
+  try {
+    for (const t of readThemeList(get('worldThemes'), 'world', () => {})) if (!(t.id in out)) out[t.id] = `${t.name} (world)`;
+  } catch {
+    /* settings not ready: built-ins only */
+  }
+  return out;
+}
+
+/**
  * The client `look` setting became `theme` (Plan 5; the ids are the same). Copies a chosen look
  * into `theme` when no theme was chosen yet, then resets `look`, so it runs once.
  * @param {{get: (key: string) => unknown, set: (key: string, value: unknown) => Promise<unknown>}} store
@@ -210,6 +224,33 @@ export function registerSettings({
   } catch {
     /* the fixed built-in choices stay */
   }
+  // GM controls (P7-D4): a world default theme, and a lock that makes it win for players.
+  game.settings.register(MODULE_ID, 'worldDefaultTheme', {
+    name: t('worldDefaultTheme.Name'),
+    hint: t('worldDefaultTheme.Hint'),
+    scope: 'world',
+    config: true,
+    type: String,
+    choices: worldDefaultChoices(t('worldDefaultTheme.None'), () => []),
+    default: '',
+  });
+  try {
+    const entry = game.settings.settings?.get?.(`${MODULE_ID}.worldDefaultTheme`);
+    if (entry) {
+      const none = t('worldDefaultTheme.None');
+      Object.defineProperty(entry, 'choices', { get: () => worldDefaultChoices(none), configurable: true, enumerable: true });
+    }
+  } catch {
+    /* the fixed built-in choices stay */
+  }
+  game.settings.register(MODULE_ID, 'lockPlayerLooks', {
+    name: t('lockPlayerLooks.Name'),
+    hint: t('lockPlayerLooks.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false,
+  });
   // The pre-Plan-5 look choice: hidden, read once by migrateLookSetting.
   game.settings.register(MODULE_ID, 'look', {
     scope: 'client',

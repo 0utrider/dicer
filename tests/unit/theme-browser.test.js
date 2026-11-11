@@ -389,6 +389,122 @@ describe('the browser actions', () => {
     expect(await mod.deleteWorld(res.id)).toBe(true);
     expect(store.worldThemes).toEqual([]);
   });
+  describe('GM controls (P7-D4)', () => {
+    const player = (id, flag) => ({
+      id,
+      isGM: false,
+      getFlag: (s, k) => (k === 'appearance' ? flag : undefined),
+      setFlag: vi.fn(async () => {}),
+    });
+    let players;
+    let gmOther;
+    beforeEach(() => {
+      players = [
+        player('p1', { global: { colorset: 'fire' }, d20: { theme: 'obsidian' }, 'role:save': { theme: 'verdant' } }),
+        player('p2', undefined),
+      ];
+      gmOther = { ...player('g2', { global: { theme: 'x' } }), isGM: true };
+      class Collection extends Map {
+        [Symbol.iterator]() {
+          return this.values();
+        }
+      }
+      game.users = new Collection([[user.id, user], ...players.map((p) => [p.id, p]), [gmOther.id, gmOther]]);
+    });
+    it('pushThemeToPlayers writes every player global slot, never a GM, and keeps their other choices', async () => {
+      user.isGM = true;
+      expect(await mod.pushThemeToPlayers('verdant')).toEqual({ updated: 2 });
+      for (const p of players) expect(p.setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: themeRef('verdant') });
+      expect(gmOther.setFlag).not.toHaveBeenCalled();
+      expect(user.setFlag).not.toHaveBeenCalled();
+    });
+    it('replaceAll also clears their per-type and per-role slots', async () => {
+      user.isGM = true;
+      await mod.pushThemeToPlayers('verdant', { replaceAll: true });
+      expect(players[0].setFlag).toHaveBeenCalledWith('dicer', 'appearance', {
+        global: themeRef('verdant'),
+        d20: 'DELETE',
+        'role:save': 'DELETE',
+      });
+      expect(players[1].setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: themeRef('verdant') });
+    });
+    it('a player cannot push, and an empty theme id pushes nothing', async () => {
+      expect(await mod.pushThemeToPlayers('verdant')).toMatchObject({ updated: 0, refused: true });
+      user.isGM = true;
+      expect(await mod.pushThemeToPlayers('')).toMatchObject({ updated: 0 });
+      for (const p of players) expect(p.setFlag).not.toHaveBeenCalled();
+    });
+    it('one player failing to save does not stop the rest, and is not counted', async () => {
+      user.isGM = true;
+      players[0].setFlag = vi.fn(async () => {
+        throw new Error('no');
+      });
+      expect(await mod.pushThemeToPlayers('verdant')).toEqual({ updated: 1 });
+      expect(players[1].setFlag).toHaveBeenCalled();
+    });
+    const make = () => {
+      const app = new mod.ThemeBrowser();
+      app.render = vi.fn(async () => {});
+      return app;
+    };
+    const actions = new Proxy({}, { get: (_, k) => mod.ThemeBrowser.DEFAULT_OPTIONS.actions[k] });
+    it('the lock hides the use actions for a player and shows the notice; the editor actions stay', async () => {
+      store.worldDefaultTheme = 'verdant';
+      store.lockPlayerLooks = true;
+      const ctx = await make()._prepareContext();
+      expect(ctx.locked).toBe(true);
+      expect(ctx.lockedNotice).toBe('DICER.Themes.Locked');
+      expect(ctx.canPush).toBe(false);
+      const html = readFileSync('templates/theme-browser.hbs', 'utf8');
+      expect(html).toMatch(/\{\{#if locked\}\}[\s\S]*\{\{else\}\}[\s\S]*data-action="useDefault"/);
+      expect(html).toMatch(/\{\{#unless locked\}\}[\s\S]*data-action="apply"/);
+      expect(html).toContain('data-action="duplicate"');
+    });
+    it('no lock notice for a GM, without a world default, or with the lock off', async () => {
+      store.worldDefaultTheme = 'verdant';
+      store.lockPlayerLooks = true;
+      user.isGM = true;
+      expect((await make()._prepareContext()).locked).toBe(false);
+      expect((await make()._prepareContext()).canPush).toBe(true);
+      user.isGM = false;
+      store.worldDefaultTheme = '';
+      expect((await make()._prepareContext()).locked).toBe(false);
+      store.worldDefaultTheme = 'verdant';
+      store.lockPlayerLooks = false;
+      expect((await make()._prepareContext()).locked).toBe(false);
+    });
+    it('a locked player cannot use a theme even by calling the actions', async () => {
+      store.worldDefaultTheme = 'verdant';
+      store.lockPlayerLooks = true;
+      const app = make();
+      await actions.useDefault.call(app, {}, { dataset: { theme: 'ruby-classic' } });
+      await actions.apply.call(app, {}, { dataset: { theme: 'ruby-classic', target: 'die:d20' } });
+      expect(store.theme).toBe('default');
+      expect(user.setFlag).not.toHaveBeenCalled();
+    });
+    it('Push asks first (with the replace choice) and then pushes; cancel pushes nothing', async () => {
+      user.isGM = true;
+      const confirm = vi.fn(async () => false);
+      foundry.applications.api.DialogV2 = { confirm };
+      const app = make();
+      await actions.push.call(app, {}, { dataset: { theme: 'verdant' } });
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(confirm.mock.calls[0][0].content).toContain('name="replaceAll"');
+      for (const p of players) expect(p.setFlag).not.toHaveBeenCalled();
+      confirm.mockImplementationOnce(async (cfg) =>
+        cfg.yes.callback({}, { form: { elements: { replaceAll: { checked: true } } } }),
+      );
+      await actions.push.call(app, {}, { dataset: { theme: 'verdant' } });
+      expect(players[0].setFlag.mock.calls[0][2]).toMatchObject({ d20: 'DELETE' });
+      expect(ui.notifications.info).toHaveBeenCalled();
+      user.isGM = false;
+      players[0].setFlag.mockClear();
+      confirm.mockClear();
+      await actions.push.call(app, {}, { dataset: { theme: 'verdant' } });
+      expect(confirm).not.toHaveBeenCalled();
+      expect(players[0].setFlag).not.toHaveBeenCalled();
+    });
+  });
   it('exportToFile hands JSON to saveDataToFile', () => {
     mod.exportToFile([BUILTIN_THEMES[0]], 'f.json');
     const [json, type, name] = foundry.utils.saveDataToFile.mock.calls[0];

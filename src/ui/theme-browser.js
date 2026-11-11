@@ -176,6 +176,41 @@ export async function duplicate(theme) {
   return copy;
 }
 
+/**
+ * GM only: sets `themeId` as the default (global slot) of every non-GM user, by writing their look
+ * flag. Their per-type and per-role choices stay unless `replaceAll`, which also clears them.
+ * A player whose flag cannot be written is skipped and not counted.
+ * @returns {Promise<{updated: number, refused?: boolean}>}
+ */
+export async function pushThemeToPlayers(themeId, { replaceAll = false } = {}) {
+  if (!me()?.isGM) return { updated: 0, refused: true };
+  if (typeof themeId !== 'string' || !themeId) return { updated: 0 };
+  const users = globalThis.game?.users;
+  let updated = 0;
+  for (const player of users ? [...users] : []) {
+    if (!player || player.isGM) continue;
+    const patch = slotPatch('global', themeId);
+    if (replaceAll) {
+      let flag = null;
+      try {
+        flag = player.getFlag?.(MODULE, FLAG);
+      } catch {
+        flag = null;
+      }
+      if (flag && typeof flag === 'object' && !Array.isArray(flag)) {
+        for (const key of Object.keys(flag)) if (key !== 'global') Object.assign(patch, slotPatch(key, null));
+      }
+    }
+    try {
+      await player.setFlag(MODULE, FLAG, patch);
+      updated++;
+    } catch {
+      /* this player is skipped */
+    }
+  }
+  return { updated };
+}
+
 /** Writes one theme, or all of My themes, to a .json file. */
 export function exportToFile(themes, filename) {
   foundry.utils.saveDataToFile(exportJson(themes), 'application/json', filename);
@@ -261,6 +296,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       exportMine: ThemeBrowser.#onExportMine,
       importThemes: ThemeBrowser.#onImport,
       publish: ThemeBrowser.#onPublish,
+      push: ThemeBrowser.#onPush,
       remove: ThemeBrowser.#onRemove,
     },
   };
@@ -279,6 +315,16 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   get #isGM() {
     return Boolean(me()?.isGM);
+  }
+
+  /** The GM has set everyone's dice (a world default with the lock on); never true for a GM. */
+  get #locked() {
+    if (this.#isGM) return false;
+    try {
+      return Boolean(settings()?.get(MODULE, 'lockPlayerLooks')) && Boolean(settings()?.get(MODULE, 'worldDefaultTheme'));
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -378,6 +424,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     };
     const cards = visible.map(view);
     return {
+      locked: this.#locked,
+      lockedNotice: loc('DICER.Themes.Locked'),
+      canPush: isGM,
       filter,
       filters: Object.entries(FILTER_KEYS).map(([id, key]) => ({
         id,
@@ -522,18 +571,21 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   static async #onUseDefault(event, target) {
+    if (this.#locked) return;
     if (!(await assignTarget('default', target.dataset.theme))) return;
     notify('info', loc('DICER.Themes.Applied'));
     await this.render();
   }
 
   static async #onApply(event, target) {
+    if (this.#locked) return;
     const ok = await assignTarget(ThemeBrowser.#targetOf(target), target.dataset.theme);
     notify(ok ? 'info' : 'warn', loc(ok ? 'DICER.Themes.Applied' : 'DICER.Themes.NotAllowed'));
     if (ok) await this.render();
   }
 
   static async #onClear(event, target) {
+    if (this.#locked) return;
     const ok = await clearTarget(ThemeBrowser.#targetOf(target));
     notify(ok ? 'info' : 'warn', loc(ok ? 'DICER.Themes.Cleared' : 'DICER.Themes.NotAllowed'));
     if (ok) await this.render();
@@ -587,6 +639,21 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const res = await publish(theme);
     notify(res.ok ? 'info' : 'warn', loc(res.ok ? 'DICER.Themes.Published' : 'DICER.Themes.NotAllowed'));
     if (res.ok) await this.render();
+  }
+
+  /** GM: "Push to players..." asks first, with the choice to replace every player's own choices. */
+  static async #onPush(event, target) {
+    const theme = ThemeBrowser.#themeOf(this, target);
+    if (!theme || !this.#isGM) return;
+    const choice = await foundry.applications.api.DialogV2.confirm({
+      window: { title: loc('DICER.Themes.Push') },
+      content: `<p>${escapeHtml(loc('DICER.Themes.PushConfirm'))} <strong>${escapeHtml(theme.name)}</strong></p>
+<label class="checkbox"><input type="checkbox" name="replaceAll"> ${escapeHtml(loc('DICER.Themes.PushReplaceAll'))}</label>`,
+      yes: { callback: (event, button) => ({ replaceAll: Boolean(button?.form?.elements?.replaceAll?.checked) }) },
+    });
+    if (!choice) return;
+    const res = await pushThemeToPlayers(theme.id, { replaceAll: choice.replaceAll === true });
+    notify(res.refused ? 'warn' : 'info', res.refused ? loc('DICER.Themes.NotAllowed') : `${loc('DICER.Themes.Pushed')} ${res.updated}`);
   }
 
   static async #onRemove(event, target) {

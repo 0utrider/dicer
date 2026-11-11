@@ -98,6 +98,13 @@ Themes follow the same privacy rule as looks and effects. Someone who cannot see
 
 To look at all 22 themes and throw each one with its celebration, run `npm run dev` and open `/dev/themes.html`.
 
+## GM controls
+
+- **World default theme** (a setting): the theme players' dice use until they choose one of their own.
+- **Push to players**: in the theme browser, select a theme and click "Push to players...". It becomes every player's default theme. Their choices for a die type or a kind of roll are kept, unless you tick "Replace everything".
+- **Lock player looks** (a setting, needs a world default theme): every player's dice use the world default, whatever they chose, and the browser hides their "use" actions ("Your GM has set everyone's dice"). Players can still design and save themes. GMs are not affected, and a roll, colorset or damage type that names its own look still does.
+- The existing world caps stay as they were: **Graphics quality** (the world cap) and **Maximum dice**. No new caps.
+
 ## Roll areas
 
 A roll area is the part of the screen where dice land. By default they use the whole window. Open **Configure Settings, Dicer, Roll areas** (the button "Edit roll areas") to drag and resize a rectangle on your screen, or pick a preset: full, centre, bottom or corner. The GM sets a default area, an area for each player and an optional GM private corner. Players can preview their own area but not change it. Reset always brings back the default.

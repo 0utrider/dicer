@@ -23,14 +23,17 @@ function rawFlag(user) {
   }
 }
 
-/** @returns {Record<string, object>} entries that are objects, always including `global`. */
-export function readUserLooks(user) {
+/**
+ * @param {{fill?: boolean}} [opts] fill (default true): always include a `global`
+ * @returns {Record<string, object>} entries that are objects, including `global` unless fill is false.
+ */
+export function readUserLooks(user, { fill = true } = {}) {
   const out = {};
   const flag = rawFlag(user);
   if (isPlainObject(flag)) {
     for (const [key, ref] of Object.entries(flag)) if (isPlainObject(ref)) out[key] = ref;
   }
-  if (!out.global) out.global = { look: 'default' };
+  if (fill && !out.global) out.global = { look: 'default' };
   return out;
 }
 
