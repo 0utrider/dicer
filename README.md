@@ -81,6 +81,57 @@ With **Damage dice themes** on, damage dice take on the look of their damage typ
 
 Open **Configure Settings, Dicer, Damage type map** (the damage map editor) to point a damage type at a different theme, at one of your colorsets, or at `none` to switch it off for that type. A damage theme beats a player's personal dice on damage dice; an explicit colorset from a system or module beats the theme. Turn **Damage dice themes** off to restore personal dice everywhere.
 
+## Themes
+
+A theme is a look for your dice with an impact sound and, optionally, a celebration for a natural 20 or natural 1. Dicer comes with 22 built-in themes.
+
+Open **Configure Settings, Dicer, Theme browser** (the button "Browse dice themes"). You see every built-in, world and personal theme as a picture of a die. From there you can:
+
+- use a theme as your default, for one die type, for a kind of roll, for one of your characters or for a damage type;
+- duplicate a theme into **My themes** and edit it (a base look, a look per die type, the impact sound and the celebrations);
+- import or export your own themes as a file, to share them or keep a backup;
+- as a GM, publish a theme to the world so every player can use it.
+
+The setting **Dice theme** sets your default theme. Other players see your dice in your theme. A theme's celebration replaces the world rule with the same id (`dicer.nat20` or `dicer.nat1`) for that roller's dice only; other rules in the theme are added.
+
+Themes follow the same privacy rule as looks and effects. Someone who cannot see a roll's result (a blind roll, a whisper, or a ghost die) sees a neutral die, never your theme.
+
+To look at all 22 themes and throw each one with its celebration, run `npm run dev` and open `/dev/themes.html`.
+
+## Roll areas
+
+A roll area is the part of the screen where dice land. By default they use the whole window. Open **Configure Settings, Dicer, Roll area editor** (the button "Edit roll areas") to drag and resize a rectangle on your screen, or pick a preset: full, centre, bottom or corner. The GM sets a default area, an area for each player and an optional GM private corner. Players can preview their own area but not change it. Reset always brings back the default.
+
+An area is stored as fractions of the window, so it survives resizing and different screen sizes. It can never shrink below 240 by 180 pixels (or the whole window if that is smaller) and can never go off-screen, so it cannot get lost (Dice So Nice #548). A throw's own area also grows beyond the drawn rectangle when many dice are rolled, so they always fit (about four square die sizes per die; `CAPACITY_PER_DIE` in `src/areas/area-model.js`).
+
+Settings:
+
+- **Per-player roll areas** (world, on by default): throw each player's dice in the area the GM gave them, on every screen. Off throws everyone's dice in the default area.
+- **Roll area size** (this client): make every area bigger or smaller on your own screen, around its centre. Other screens are not affected.
+- **GM private corner** (world, off by default): on the GM's own screen, throw rolls only GMs can see (blind rolls and GM-only whispers) in the GM's own corner, so they stay out of the way of the scene (Dice So Nice #272). Players never see this.
+
+Areas reveal nothing beyond who rolled.
+
+### Roll area API
+
+Other modules can read and set areas through `game.dice3d.rollAreas` (Dice So Nice has no equivalent, #287). Only a GM can write.
+
+```js
+game.dice3d.rollAreas.presets; // ['full', 'centre', 'bottom', 'corner']
+game.dice3d.rollAreas.get(userId); // the stored area: { preset: 'corner' } (no id: the default)
+game.dice3d.rollAreas.rect(userId); // the pixel rect on this screen: { left, top, width, height }
+await game.dice3d.rollAreas.set(userId, { preset: 'bottom' }); // null as id sets the default
+await game.dice3d.rollAreas.set(userId, { preset: 'custom', x: 0.1, y: 0.5, w: 0.4, h: 0.4 }); // fractions of the window
+await game.dice3d.rollAreas.setGmPrivateArea({ preset: 'corner' });
+Hooks.on('dicerRollAreasChanged', (areas) => {
+  // areas: { default, users: { [userId]: area }, gmPrivate }, a copy
+});
+```
+
+`set` and `setGmPrivateArea` resolve to `true` when saved and `false` otherwise (not a GM, or the stored data is unreadable). A malformed area becomes the full window. `dicerRollAreasChanged` fires on every client when an area changes.
+
+To see the presets and two throws into different areas at once, run `npm run dev` and open `/dev/areas.html`.
+
 ## Chat commands
 
 With the chat-commands module installed, `/dice3d`, `/d3d` and `/dsn` open the Foundry settings on the Dicer tab. Dicer's own settings dialog comes in a later plan, so for now this is the generic settings window. Without the chat-commands module the commands are not registered.
@@ -175,6 +226,10 @@ It prints `compat: N/N passed`, writes `artifacts/live/compat.json` and exits 0 
 4. with that setting off, the player gets neither.
 
 It prints `effects: N/N passed`, writes `artifacts/live/effects.json`, and restores the settings it changed. It leaves its chat messages in the world.
+
+## Live areas test
+
+`npm run test:live:areas` uses the same accounts and variables. The GM gives the player the `corner` area and the player rolls; it reads `game.dice3d._debug.lastRollArea` on both clients and checks that the roll's rectangle lies inside the player's resolved area (`game.dice3d.rollAreas.rect`). It then turns **GM private corner** on and checks that a GM blind roll lands in the GM corner on the GM client, and that the player's client threw nothing. It prints `areas: N/N passed`, writes `artifacts/live/areas.json`, and restores the settings it changed.
 
 Unit tests cannot check some things. The manual list is in `docs/live-checks.md`.
 

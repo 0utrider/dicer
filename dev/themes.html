@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dicer themes review</title>
+    <link rel="stylesheet" href="/styles/dicer.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #2b2f36;
+        color: #e8e8e8;
+        font:
+          13px system-ui,
+          sans-serif;
+        overflow: hidden;
+      }
+      #panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 100;
+        width: 720px;
+        overflow-y: auto;
+        box-sizing: border-box;
+        padding: 8px 12px 16px;
+        background: rgba(0, 0, 0, 0.55);
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 15px;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 8px;
+      }
+      .card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 6px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        text-align: center;
+      }
+      .card img,
+      .card .blank {
+        width: 128px;
+        height: 128px;
+        object-fit: contain;
+      }
+      .card .blank {
+        display: grid;
+        place-items: center;
+        color: #a8aebb;
+      }
+      .card b {
+        font-size: 12px;
+      }
+      .card small {
+        color: #a8aebb;
+      }
+      button {
+        padding: 3px 8px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 8px;
+        color: #a8aebb;
+        white-space: pre-wrap;
+      }
+      #status.bad {
+        color: #ff6b6b;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="panel">
+      <h1>Dicer themes review</h1>
+      <div id="grid"></div>
+      <div id="status">loading...</div>
+    </div>
+    <script type="module" src="./themes.js"></script>
+  </body>
+</html>

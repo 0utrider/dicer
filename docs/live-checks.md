@@ -101,3 +101,46 @@ Dicer listens for `chatCommandsReady` from module load, not from its `init` hook
 3. Pass: the dice canvas does not shake. With the OS setting off and **Screen shake** on, it does.
 
 The privacy of effects and sounds for blind rolls, and **Show other players' effects**, are also automated in `npm run test:live:effects`.
+
+## 16. Roll area editor on a real screen
+
+1. As the GM, open **Roll area editor**. Pick the default area and drag the rectangle, then resize it by each edge and corner.
+2. Try to shrink it to nothing and to drag it off the screen.
+3. Pass: it never gets smaller than about 240 by 180 pixels and never leaves the window. **Reset** brings back the default area. Roll a die: it lands inside the rectangle.
+4. Check that the editor sits above Foundry's own windows (a character sheet, the settings window) and can be reached, and that a window left open does not hide its buttons.
+
+## 17. Sidebar collapse with an area set
+
+1. Set a custom area that reaches the right edge. Collapse the sidebar, then expand it again.
+2. Roll a die each time.
+3. Pass: the dice land inside the area as it looks after each change, and nothing is left behind when the sidebar moves. No console error.
+
+## 18. A theme from the browser shows on another player's screen
+
+1. As player A, open **Theme browser** and use "Ruby Classic" (or any distinct theme) as your default.
+2. As player B (another client), watch A roll a public d20.
+3. Pass: A's die looks like the theme on B's screen, and the theme's celebration plays when B has **Show other players' effects** on.
+
+## 19. Import and export a theme file
+
+1. In **Theme browser**, duplicate a theme into **My themes**, change its name, then choose **Export my themes**. A file downloads.
+2. Delete the theme, then **Import** the file.
+3. Pass: the theme comes back with the same look. Importing a damaged file (edit it by hand) shows a warning and changes nothing.
+
+## 20. A themed blind roll stays neutral for others
+
+1. With a themed default (see check 18), roll `/blindroll 1d20` as player A.
+2. On player B's screen, with **Show ghost dice** on, see a neutral ghost die. With it off, see nothing.
+3. Pass: B never sees A's theme, celebration or sound. The GM sees the real themed die.
+
+## 21. Configure Settings, Save keeps a custom default theme
+
+1. Make a theme in **My themes** and use it as your default. Open **Configure Settings**, change any other Dicer setting and press **Save Changes**.
+2. Pass: **Dice theme** still shows your custom theme afterwards and your dice still use it. The settings list shows it too (it is not replaced by a built-in).
+
+## 22. Theme thumbnails render on real WebGL
+
+1. Open **Theme browser** on a real GPU (not a remote desktop or software rendering).
+2. Pass: all themes show a lit die picture within a few seconds, the pictures match what the dice look like when rolled, and the dice canvas does not flicker. Close the browser: `game.dice3d._debug.isLooping` stays false and no extra WebGL context remains in the browser's task manager or `chrome://gpu`.
+
+The roll area rules (a player's area, the GM private corner) are also automated in `npm run test:live:areas`.

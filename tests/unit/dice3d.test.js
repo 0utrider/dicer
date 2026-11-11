@@ -126,6 +126,18 @@ test('_debug exposes isLooping and activeRolls', () => {
   expect(api._debug.activeRolls).toBe(1);
 });
 
+test('_debug.lastRollArea reads the dice box last roll area as a copy, null when absent', () => {
+  expect(api._debug.lastRollArea).toBeNull();
+  const last = {
+    area: { cx: 1, cz: 2, halfWidth: 3, halfDepth: 4 },
+    rect: { left: 5, top: 6, width: 7, height: 8 },
+  };
+  Object.defineProperty(diceBox, 'lastRollArea', { get: () => structuredClone(last), configurable: true });
+  expect(api._debug.lastRollArea).toEqual(last);
+  api._debug.lastRollArea.rect.left = 99;
+  expect(api._debug.lastRollArea.rect.left).toBe(5);
+});
+
 test('showForRoll resolves false without rolling when the enabled setting is off', async () => {
   settings.enabled = false;
   await expect(api.showForRoll(roll(20, 12))).resolves.toBe(false);

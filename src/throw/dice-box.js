@@ -169,6 +169,8 @@ export class DiceBox {
     this._idle = new Set(); // cached materials with refs 0, least recently used first
     this._rolls = new Set();
     this._area = null; // the stage in die units: {halfWidth, halfDepth}
+    this._lastRoll = null; // {area, rect} of the most recent roll (lastRollArea)
+    this._lastClampedRect = null;
     this._stageRect = null; // the stage in px, as getArea() gave it at the last onResize
     this._diePx = DIE_SIZE_PX;
     this._tick = (now) => this.#frame(now);
@@ -220,7 +222,19 @@ export class DiceBox {
       width: w,
       height: h,
     };
+    this._lastClampedRect = clamped;
     return fitDieCapacity(toDieArea(clamped, stage, this._diePx), n, this._area);
+  }
+
+  /**
+   * The area the most recent roll used (P5-R4, read by the owner live test through
+   * game.dice3d._debug.lastRollArea): `area` is the die-unit area it threw in (after growing to
+   * hold the dice; the whole stage when no area was given) and `rect` the px rect asked for,
+   * clamped inside the stage (the stage rect when none). A copy; null before any roll.
+   */
+  get lastRollArea() {
+    const l = this._lastRoll;
+    return l ? { area: { ...l.area }, rect: { ...l.rect } } : null;
   }
 
   /**
@@ -257,7 +271,12 @@ export class DiceBox {
       roll.slowMotion = roll.dice.some((d) => d.fx?.some((f) => f?.slowMotion === true));
       this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
+      this._lastClampedRect = null;
       const throwArea = this.#throwArea(area, specs.length);
+      this._lastRoll = {
+        area: throwArea ?? { cx: 0, cz: 0, ...this._area },
+        rect: throwArea && this._lastClampedRect ? this._lastClampedRect : { ...this._stageRect },
+      };
       roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
       roll.received = 0;
       const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];

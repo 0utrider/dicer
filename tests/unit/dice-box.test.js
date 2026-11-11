@@ -1815,6 +1815,23 @@ describe('per-throw areas', () => {
     expect(fit).toHaveBeenCalledTimes(1);
   });
 
+  test('lastRollArea records the latest roll area (die units and clamped px rect), as copies', () => {
+    const { box } = setup();
+    expect(box.lastRollArea).toBeNull();
+    box.roll([{ type: 'd6', value: 2 }], { area: { left: 720, top: -120, width: 480, height: 240 } });
+    expect(box.lastRollArea).toEqual({
+      area: { cx: 5, cz: -2.5, halfWidth: 5, halfDepth: 2.5 },
+      rect: { left: 480, top: 0, width: 480, height: 240 },
+    });
+    box.lastRollArea.rect.left = 1;
+    expect(box.lastRollArea.rect.left).toBe(480);
+    box.roll([{ type: 'd6', value: 2 }]);
+    expect(box.lastRollArea).toEqual({
+      area: { cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 },
+      rect: { left: 0, top: 0, width: 960, height: 480 },
+    });
+  });
+
   test('without an area the request is unchanged and playback uses the stage', () => {
     const { physics, box } = setup();
     box.roll([{ type: 'd6', value: 2 }]);

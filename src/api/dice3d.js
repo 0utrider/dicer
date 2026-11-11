@@ -790,6 +790,17 @@ export function createDice3dApi({
         return diceBox.activeRolls;
       },
       /**
+       * The most recent roll's area on this client (P5-R4): `{area: {cx, cz, halfWidth, halfDepth}
+       * in die units, rect: {left, top, width, height} in px}`, or null. Copies. Owner live test.
+       */
+      get lastRollArea() {
+        try {
+          return diceBox.lastRollArea ?? null;
+        } catch {
+          return null;
+        }
+      },
+      /**
        * message id -> view kinds ('real' | 'ghost' | 'none') per roll for the last messages
        * this client handled. Kinds only, never values: the privacy live test reads it.
        */

@@ -275,3 +275,39 @@ export async function rollNat20({ rollMode }) {
 export function viewKinds(id) {
   return game.dice3d._debug.lastRollViews[id] ?? null;
 }
+
+// --- roll areas (tests/live/areas.mjs) ---------------------------------------------------------
+
+/** This client's user id. */
+export function myUserId() {
+  return game.user.id;
+}
+
+/** game.dice3d._debug.lastRollArea as plain data: {area, rect} of the latest roll here, or null. */
+export function lastRollArea() {
+  return game.dice3d._debug.lastRollArea;
+}
+
+/** game.dice3d.rollAreas.set(userId, def); userId null sets the default area. Resolves true on success. */
+export function setRollArea({ userId, def }) {
+  return game.dice3d.rollAreas.set(userId ?? null, def);
+}
+
+export function setGmPrivateArea(def) {
+  return game.dice3d.rollAreas.setGmPrivateArea(def);
+}
+
+/** The px rect the area of `userId` (null: the default) resolves to on this screen. */
+export function rollAreaRect(userId) {
+  return game.dice3d.rollAreas.rect(userId ?? null);
+}
+
+/**
+ * The px rect `def` resolves to on this screen (with this client's area scale) when the default
+ * area is the full stage: the live-test's independent check of the GM private corner.
+ */
+export async function resolveHere(def) {
+  const { resolveArea } = await import('/modules/dicer/src/areas/area-model.js');
+  const stage = game.dice3d.rollAreas.rect(null);
+  return resolveArea(def, stage, { scale: Number(game.settings.get('dicer', 'areaScale')) || 1 });
+}
