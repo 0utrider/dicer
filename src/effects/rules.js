@@ -73,10 +73,39 @@ function normalizeContext(raw) {
   return out;
 }
 
+/** Deep copy of JSON-safe data; functions, symbols, non-finite numbers and cycles/deep nesting become undefined. */
+function jsonSafe(v, depth) {
+  if (v === null || typeof v === 'string' || typeof v === 'boolean') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (depth > 8) return undefined;
+  if (Array.isArray(v)) return v.map((x) => jsonSafe(x, depth + 1)).filter((x) => x !== undefined);
+  if (isObj(v)) {
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) return undefined;
+    const out = {};
+    for (const k of Object.keys(v)) {
+      if (k === '__proto__') continue;
+      const x = jsonSafe(v[k], depth + 1);
+      if (x !== undefined) out[k] = x;
+    }
+    return out;
+  }
+  return undefined;
+}
+
 function normalizeEffect(raw) {
   if (raw === undefined || raw === null) return null;
   if (!isObj(raw) || !isStr(raw.id)) return null;
-  const out = { id: raw.id };
+  const out = {};
+  for (const k of Object.keys(raw)) {
+    if (k === '__proto__') continue;
+    const v = jsonSafe(raw[k], 0);
+    if (v !== undefined) out[k] = v;
+  }
+  delete out.color;
+  delete out.intensity;
+  delete out.duration;
+  out.id = raw.id;
   if (isStr(raw.color)) out.color = raw.color;
   if (Number.isFinite(raw.intensity)) out.intensity = clamp(raw.intensity, 0, 2);
   if (Number.isFinite(raw.duration)) out.duration = clamp(raw.duration, 100, 5000);
@@ -235,7 +264,14 @@ export function dsnDefaultsToRules(list, triggers, warn = console.warn) {
   const warned = new Set();
   const out = [];
   list.forEach((entry, i) => {
-    if (!isObj(entry) || !isStr(entry.diceType) || !isStr(entry.specialEffect) || !Array.isArray(entry.onResult)) return;
+    if (!isObj(entry) || !isStr(entry.diceType) || !isStr(entry.specialEffect) || !Array.isArray(entry.onResult)) {
+      const key = `entry:${isObj(entry) && isStr(entry.diceType) ? entry.diceType : i}`;
+      if (!warned.has(key)) {
+        warned.add(key);
+        warn(`Dicer: ignoring malformed Dice So Nice default at index ${i}`);
+      }
+      return;
+    }
     const stored = triggers && typeof triggers.get === 'function' ? triggers.get(entry.diceType) : undefined;
     const labels = Array.isArray(stored?.results)
       ? stored.results.filter((r) => typeof r === 'string' || typeof r === 'number').map(String)

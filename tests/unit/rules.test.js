@@ -213,7 +213,21 @@ describe('dsnDefaultsToRules', () => {
     expect(a.map((r) => r.id)).toEqual(b.map((r) => r.id));
     expect(new Set(a.map((r) => r.id)).size).toBe(3);
     expect(dsnDefaultsToRules(null, null, vi.fn())).toEqual([]);
-    expect(dsnDefaultsToRules([null, { diceType: 'd6' }], undefined, vi.fn())).toEqual([]);
+  });
+
+  it('warns once per malformed entry', () => {
+    const warn = vi.fn();
+    expect(dsnDefaultsToRules([null, { diceType: 'd6' }, 'x'], undefined, warn)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps extra option keys and drops non-JSON values', () => {
+    const [r] = dsnDefaultsToRules(
+      [{ diceType: 'd20', onResult: ['20'], specialEffect: 'X', options: { foo: 1, color: '#f00', fn: () => 1, nest: { a: [1, 'b'] } } }],
+      new Map(),
+      vi.fn(),
+    );
+    expect(r.effect).toEqual({ id: 'dsn:X', foo: 1, color: '#f00', nest: { a: [1, 'b'] } });
   });
 });
 
