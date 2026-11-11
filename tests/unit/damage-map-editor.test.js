@@ -244,6 +244,26 @@ describe('DamageMapEditor', () => {
     });
     const actions = new Proxy({}, { get: (_, k) => mod.DamageMapEditor.DEFAULT_OPTIONS.actions[k] });
 
+    it('the table groups the system types first, shows the resolved colour and the sound chip', async () => {
+      game.system.title = 'Pathfinder Second Edition';
+      const { ctx } = await make();
+      const groups = ctx.rows.filter((r) => r.group).map((r) => [r.type, r.group]);
+      expect(groups[0]).toEqual(['acid', 'Pathfinder Second Edition']);
+      expect(groups[1][1]).toBe('DICER.DamageMap.GroupOther');
+      expect(ctx.rows.findIndex((r) => r.type === groups[1][0])).toBe(mod.systemTypes('pf2e').length);
+      const fire = ctx.rows.find((r) => r.type === 'fire');
+      expect(fire.swatch).toBe(DAMAGE_THEMES.cold.appearance.body.color); // the world map sends fire to the cold theme
+      expect(fire).toMatchObject({ soundName: 'a.ogg', worldLabel: expect.stringContaining('Cold'), canEditWorld: false, canEditVolume: false });
+      expect(mod.systemTypes('swade')).toEqual([]);
+    });
+
+    it('the GM edits the volume only of a type with a custom sound', async () => {
+      game.user.isGM = true;
+      const { ctx } = await make();
+      expect(ctx.rows.find((r) => r.type === 'fire').canEditVolume).toBe(true);
+      expect(ctx.rows.find((r) => r.type === 'cold').canEditVolume).toBe(false);
+    });
+
     it('a player draft ignores tampered world, sound and volume form values', async () => {
       const { editor, i } = await make();
       globalThis.__form = tampered(i);

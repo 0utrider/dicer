@@ -1,96 +1,152 @@
 <div class="dicer-theme-browser-body">
 {{#if editing}}
   <form class="dicer-theme-edit">
-    <p class="notes">{{localize "DICER.Themes.EditHint"}}</p>
-    <div class="dicer-row">
-      <label class="dicer-grow">{{localize "DICER.Themes.Name"}}
+    <p class="dicer-hint">{{localize "DICER.Themes.EditHint"}}</p>
+    <div class="dicer-edit-grid dicer-edit-main">
+      <label class="dicer-field dicer-span-2">
+        <span>{{localize "DICER.Themes.Name"}}</span>
         <input type="text" name="name" value="{{edit.name}}">
       </label>
-      <label>{{localize "DICER.Themes.BaseLook"}}
+      <label class="dicer-field">
+        <span>{{localize "DICER.Themes.BaseLook"}}</span>
         <select name="base">{{selectOptions lookChoices selected=edit.base}}</select>
       </label>
-      <label>{{localize "DICER.Themes.SoundMaterial"}}
+      <label class="dicer-field">
+        <span>{{localize "DICER.Themes.SoundMaterial"}}</span>
         <select name="soundMaterial">{{selectOptions materialChoices selected=edit.soundMaterial}}</select>
       </label>
     </div>
-    <fieldset>
+    <fieldset class="dicer-section">
       <legend>{{localize "DICER.Themes.PerType"}}</legend>
-      <div class="dicer-row">
+      <div class="dicer-edit-grid dicer-edit-dice">
         {{#each dieRows}}
-          <label>{{label}}
+          <label class="dicer-field">
+            <span>{{label}}</span>
             <select name="perType.{{type}}">{{selectOptions ../perTypeChoices selected=value}}</select>
           </label>
         {{/each}}
       </div>
     </fieldset>
-    {{#each celebrations}}
-      <fieldset>
-        <legend>{{label}}</legend>
-        <div class="dicer-row">
-          <label>{{localize "DICER.Themes.Effect"}}
-            <select name="{{key}}.effect">{{selectOptions ../effectChoices selected=effect}}</select>
-          </label>
-          <label>{{localize "DICER.Themes.Sound"}}
-            <select name="{{key}}.sound">{{selectOptions ../soundChoices selected=sound}}</select>
-          </label>
-        </div>
-      </fieldset>
-    {{/each}}
-    <footer class="form-footer">
-      <button type="button" data-action="saveEdit"><i class="fa-solid fa-floppy-disk"></i> {{localize "DICER.Themes.Save"}}</button>
+    <div class="dicer-edit-celebrations">
+      {{#each celebrations}}
+        <fieldset class="dicer-section">
+          <legend>{{label}}</legend>
+          <div class="dicer-edit-grid">
+            <label class="dicer-field">
+              <span>{{localize "DICER.Themes.Effect"}}</span>
+              <select name="{{key}}.effect">{{selectOptions ../effectChoices selected=effect}}</select>
+            </label>
+            <label class="dicer-field">
+              <span>{{localize "DICER.Themes.Sound"}}</span>
+              <select name="{{key}}.sound">{{selectOptions ../soundChoices selected=sound}}</select>
+            </label>
+          </div>
+        </fieldset>
+      {{/each}}
+    </div>
+    <footer class="dicer-footer">
       <button type="button" data-action="cancelEdit"><i class="fa-solid fa-xmark"></i> {{localize "DICER.Themes.Cancel"}}</button>
+      <button type="button" class="bright" data-action="saveEdit"><i class="fa-solid fa-floppy-disk"></i> {{localize "DICER.Themes.Save"}}</button>
     </footer>
   </form>
 {{else}}
-  <div class="dicer-theme-toolbar">
-    <label>{{localize "DICER.Themes.Filter"}}
-      <select class="dicer-theme-filter">{{selectOptions filterChoices selected=filter}}</select>
-    </label>
-    <button type="button" data-action="importThemes"><i class="fa-solid fa-file-import"></i> {{localize "DICER.Themes.Import"}}</button>
-    <button type="button" data-action="exportMine"><i class="fa-solid fa-file-export"></i> {{localize "DICER.Themes.ExportMine"}}</button>
+  <div class="dicer-toolbar">
+    <nav class="dicer-segmented" aria-label="{{localize "DICER.Themes.Filter"}}">
+      {{#each filters}}
+        <button type="button" class="{{#if active}}active{{/if}}" data-action="filter" data-filter="{{id}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}">
+          {{label}} <span class="dicer-count">{{count}}</span>
+        </button>
+      {{/each}}
+    </nav>
+    <div class="dicer-toolbar-actions">
+      <button type="button" data-action="importThemes"><i class="fa-solid fa-file-import"></i> {{localize "DICER.Themes.Import"}}</button>
+      <button type="button" data-action="exportMine"><i class="fa-solid fa-file-export"></i> {{localize "DICER.Themes.ExportMine"}}</button>
+    </div>
     <input type="file" class="dicer-theme-file" accept=".json,application/json" hidden>
   </div>
 
-  <div class="dicer-theme-grid">
-    {{#each cards}}
-      <section class="dicer-theme-card" data-theme="{{id}}">
-        <div class="dicer-swatch" style="background: {{swatch}}">
-          <img class="dicer-thumb" alt="{{name}}" hidden>
+  <div class="dicer-theme-main">
+    <div class="dicer-theme-grid" role="listbox" aria-label="{{localize "DICER.Themes.Title"}}">
+      {{#unless hasCards}}<p class="dicer-empty">{{localize "DICER.Themes.Empty"}}</p>{{/unless}}
+      {{#each cards}}
+        <div class="dicer-theme-card {{#if selected}}is-selected{{/if}}" data-theme="{{id}}" data-action="select" role="option" tabindex="0" aria-selected="{{#if selected}}true{{else}}false{{/if}}">
+          <div class="dicer-stage" style="--dicer-swatch: {{swatch}}">
+            <i class="dicer-fallback fa-solid fa-dice-d20" aria-hidden="true"></i>
+            <img class="dicer-thumb" data-theme="{{id}}" alt="" hidden>
+            {{#if isDefault}}<span class="dicer-mark dicer-mark-default" data-tooltip="DICER.Themes.YourDefault" aria-label="{{localize "DICER.Themes.YourDefault"}}"><i class="fa-solid fa-star"></i></span>{{/if}}
+            {{#if slotCount}}<span class="dicer-mark dicer-mark-slots" data-tooltip="{{slotTooltip}}" aria-label="{{slotTooltip}}"><i class="fa-solid fa-link"></i> {{slotCount}}</span>{{/if}}
+          </div>
+          <div class="dicer-card-name" title="{{name}}">{{name}}</div>
+          {{#if showBadge}}<div class="dicer-card-meta"><span class="dicer-badge dicer-badge-{{source}}">{{sourceLabel}}</span></div>{{/if}}
         </div>
-        <header>
-          <strong>{{name}}</strong>
-          <span class="dicer-badge dicer-badge-{{source}}">{{sourceLabel}}</span>
-        </header>
-        <div class="dicer-row">
-          <button type="button" data-action="useDefault" data-theme="{{id}}"><i class="fa-solid fa-star"></i> {{localize "DICER.Themes.UseDefault"}}</button>
+      {{/each}}
+      {{#if unreadable.length}}
+        <div class="dicer-unreadable">
+          <p>{{localize "DICER.Themes.Unreadable"}}</p>
+          <ul>{{#each unreadable}}<li>{{label}} ({{sourceLabel}})</li>{{/each}}</ul>
         </div>
-        <div class="dicer-row">
-          <select class="dicer-target" aria-label="{{localize "DICER.Themes.UseFor"}}">
-            {{#each ../targetGroups}}
-              <optgroup label="{{label}}">
-                {{#each options}}<option value="{{value}}">{{label}}</option>{{/each}}
-              </optgroup>
-            {{/each}}
-          </select>
-          <button type="button" data-action="apply" data-theme="{{id}}">{{localize "DICER.Themes.Use"}}</button>
-          <button type="button" data-action="clear" data-theme="{{id}}">{{localize "DICER.Themes.Clear"}}</button>
-        </div>
-        <div class="dicer-row dicer-card-actions">
-          <button type="button" data-action="duplicate" data-theme="{{id}}" data-tooltip="DICER.Themes.Duplicate"><i class="fa-solid fa-clone"></i></button>
-          {{#if canEdit}}<button type="button" data-action="edit" data-theme="{{id}}" data-tooltip="DICER.Themes.Edit"><i class="fa-solid fa-pen"></i></button>{{/if}}
-          <button type="button" data-action="exportOne" data-theme="{{id}}" data-tooltip="DICER.Themes.Export"><i class="fa-solid fa-download"></i></button>
-          {{#if canPublish}}<button type="button" data-action="publish" data-theme="{{id}}" data-tooltip="DICER.Themes.Publish"><i class="fa-solid fa-globe"></i></button>{{/if}}
-          {{#if canDelete}}<button type="button" data-action="remove" data-theme="{{id}}" data-tooltip="DICER.Themes.Delete"><i class="fa-solid fa-trash"></i></button>{{/if}}
-        </div>
-      </section>
-    {{/each}}
-  </div>
+      {{/if}}
+    </div>
 
-  {{#if unreadable.length}}
-    <p class="notes">{{localize "DICER.Themes.Unreadable"}}</p>
-    <ul class="dicer-unreadable">
-      {{#each unreadable}}<li>{{label}} ({{sourceLabel}})</li>{{/each}}
-    </ul>
-  {{/if}}
+    {{#if detail}}
+      <aside class="dicer-theme-detail" data-theme="{{detail.id}}">
+        <div class="dicer-stage dicer-stage-large" style="--dicer-swatch: {{detail.swatch}}">
+          <i class="dicer-fallback fa-solid fa-dice-d20" aria-hidden="true"></i>
+          <img class="dicer-thumb" data-theme="{{detail.id}}" alt="{{detail.name}}" hidden>
+        </div>
+        <header class="dicer-detail-head">
+          <h3>{{detail.name}}</h3>
+          <span class="dicer-badge dicer-badge-{{detail.source}}">{{detail.sourceLabel}}</span>
+        </header>
+
+        {{#if detail.isDefault}}
+          <p class="dicer-is-default"><i class="fa-solid fa-star"></i> {{localize "DICER.Themes.YourDefault"}}</p>
+        {{else}}
+          <button type="button" class="bright dicer-primary" data-action="useDefault" data-theme="{{detail.id}}"><i class="fa-solid fa-star"></i> {{localize "DICER.Themes.UseAsDefault"}}</button>
+        {{/if}}
+
+        <div class="dicer-detail-section">
+          <label class="dicer-field">
+            <span>{{localize "DICER.Themes.UseFor"}}</span>
+            <select class="dicer-target">
+              {{#each targetGroups}}
+                <optgroup label="{{label}}">
+                  {{#each options}}<option value="{{value}}">{{label}}</option>{{/each}}
+                </optgroup>
+              {{/each}}
+            </select>
+          </label>
+          <div class="dicer-button-row">
+            <button type="button" data-action="apply" data-theme="{{detail.id}}"><i class="fa-solid fa-check"></i> {{localize "DICER.Themes.Apply"}}</button>
+            <button type="button" data-action="clear" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.ClearHint"><i class="fa-solid fa-eraser"></i> {{localize "DICER.Themes.Clear"}}</button>
+          </div>
+        </div>
+
+        <div class="dicer-detail-section">
+          <h4>{{localize "DICER.Themes.AssignedTo"}}</h4>
+          {{#if detail.assigned.length}}
+            <ul class="dicer-chips">
+              {{#each detail.assigned}}
+                <li class="dicer-chip {{#if isDefault}}is-default{{/if}}">
+                  <span>{{label}}</span>
+                  {{#unless isDefault}}<button type="button" class="dicer-chip-x" data-action="clear" data-target="{{target}}" data-tooltip="DICER.Themes.ClearSlot" aria-label="{{localize "DICER.Themes.ClearSlot"}}"><i class="fa-solid fa-xmark"></i></button>{{/unless}}
+                </li>
+              {{/each}}
+            </ul>
+          {{else}}
+            <p class="dicer-muted">{{localize "DICER.Themes.NotAssigned"}}</p>
+          {{/if}}
+        </div>
+
+        <div class="dicer-detail-section dicer-detail-actions">
+          <button type="button" data-action="duplicate" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.Duplicate"><i class="fa-solid fa-clone"></i> {{localize "DICER.Themes.DuplicateShort"}}</button>
+          {{#if detail.canEdit}}<button type="button" data-action="edit" data-theme="{{detail.id}}"><i class="fa-solid fa-pen"></i> {{localize "DICER.Themes.Edit"}}</button>{{/if}}
+          <button type="button" data-action="exportOne" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.Export"><i class="fa-solid fa-download"></i> {{localize "DICER.Themes.ExportShort"}}</button>
+          {{#if detail.canPublish}}<button type="button" data-action="publish" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.Publish"><i class="fa-solid fa-globe"></i> {{localize "DICER.Themes.PublishShort"}}</button>{{/if}}
+          {{#if detail.canDelete}}<button type="button" class="dicer-danger" data-action="remove" data-theme="{{detail.id}}"><i class="fa-solid fa-trash"></i> {{localize "DICER.Themes.Delete"}}</button>{{/if}}
+        </div>
+      </aside>
+    {{/if}}
+  </div>
 {{/if}}
 </div>

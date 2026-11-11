@@ -78,6 +78,31 @@ export function assignDamage(map, type, themeId) {
   return out;
 }
 
+/**
+ * Where the user uses each theme, as `themeId -> target[]` (targets in the browser's select
+ * format: 'default', 'die:d20', 'role:attack', 'actor:<id>', 'damage:fire'). The default is the
+ * `theme` setting; the look flag's `global` slot mirrors it and is not listed again. Odd stored
+ * values are skipped.
+ * @param {{defaultId?: string, looks?: object, actors?: {id: string, theme?: string}[], damageOverrides?: object}} o
+ */
+export function themeAssignments({ defaultId, looks, actors = [], damageOverrides } = {}) {
+  const out = new Map();
+  const add = (id, target) => {
+    if (typeof id !== 'string' || !id) return;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id).push(target);
+  };
+  add(typeof defaultId === 'string' && defaultId ? defaultId : 'default', 'default');
+  for (const [slot, ref] of isObj(looks) ? Object.entries(looks) : []) {
+    const id = isObj(ref) ? ref.theme : null;
+    if (DIE_TYPES.includes(slot)) add(id, `die:${slot}`);
+    else if (slot.startsWith('role:') && ROLL_ROLES.includes(slot.slice(5))) add(id, slot);
+  }
+  for (const a of Array.isArray(actors) ? actors : []) if (a?.id) add(a.theme, `actor:${a.id}`);
+  for (const [type, id] of isObj(damageOverrides) ? Object.entries(damageOverrides) : []) add(id, `damage:${type}`);
+  return out;
+}
+
 // --- stored lists --------------------------------------------------------------------------
 const stripSource = (theme) => {
   const { source, ...rest } = plain(theme);

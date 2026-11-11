@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Dicer editor windows</title>
+    <!-- Foundry's own stylesheet and Font Awesome: tests/visual/editors.mjs serves /__foundry/ from
+         the local Foundry install (DICER_FOUNDRY_APP), so the windows render with the real styles. -->
+    <link rel="stylesheet" href="/__foundry/fonts/fontawesome/css/all.min.css" />
+    <link rel="stylesheet" href="/__foundry/css/foundry2.css" />
+    <link rel="stylesheet" href="/styles/dicer.css" />
+    <script src="/node_modules/handlebars/dist/handlebars.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        background:
+          radial-gradient(ellipse at 30% 20%, #3b3f46 0%, transparent 60%),
+          radial-gradient(ellipse at 80% 90%, #2c2a33 0%, transparent 55%),
+          #1d1f23;
+      }
+      #stage .application {
+        position: absolute;
+      }
+    </style>
+  </head>
+  <body class="vtt game theme-dark">
+    <div id="stage"></div>
+    <script type="module" src="./editors.js"></script>
+  </body>
+</html>

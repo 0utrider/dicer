@@ -164,6 +164,125 @@ describe('TriggerEditor', () => {
   });
 });
 
+describe('the rule list', () => {
+  const labels = {
+    dice: { any: 'Any die', d20: 'd20' },
+    effects: { celebrate: 'Celebrate' },
+    kinds: { max: 'Maximum', min: 'Minimum (1)' },
+    outcomes: { 'critical-failure': 'Critical failure' },
+    sounds: { fanfare: 'Fanfare' },
+  };
+  const entry = (over) => ({ ...blank(), ...over });
+  const blank = () => mod.formFromRules([normalizeRule({ id: 'x', effect: { id: 'shake' } }, 'user', warn)]).rules[0];
+
+  it('ruleSummary reads like "d20 · 20 → Celebrate + Fanfare"', () => {
+    const nat20 = entry({ die: 'd20', resultKind: 'value', resultValue: 20, effectId: 'celebrate', soundKind: 'builtin', soundBuiltin: 'fanfare' });
+    expect(mod.ruleSummary(nat20, labels)).toBe('d20 · 20 → Celebrate + Fanfare');
+    const range = entry({ die: 'd8', resultKind: 'range', resultFrom: 2, resultTo: 5, damageType: 'fire', effectId: '', soundKind: 'file', soundSrc: 'a/b/whoosh.ogg', macro: 'Macro.x' });
+    expect(mod.ruleSummary(range, labels)).toBe('d8 · 2–5 · fire → whoosh.ogg + DICER.Triggers.MacroShort');
+    const fail = entry({ die: 'any', resultKind: 'max', outcome: 'critical-failure', effectId: 'shake' });
+    expect(mod.ruleSummary(fail, labels)).toBe('Any die · Maximum · Critical failure → Shake');
+    expect(mod.ruleSummary(entry({ effectId: '', die: 'any' }), labels)).toBe('Any die → —');
+  });
+
+  it('clampIndex keeps the selection inside the list', () => {
+    expect(mod.clampIndex(5, 3)).toBe(2);
+    expect(mod.clampIndex(-1, 3)).toBe(0);
+    expect(mod.clampIndex(undefined, 3)).toBe(0);
+    expect(mod.clampIndex(0, 0)).toBeNull();
+  });
+
+  it('uses its own tab action name: "tab" is reserved by ApplicationV2 (it never reaches the handler)', () => {
+    const { actions } = mod.TriggerEditor.DEFAULT_OPTIONS;
+    expect(actions).toHaveProperty('switchTab');
+    expect(actions).not.toHaveProperty('tab');
+    expect(actions).toHaveProperty('selectRule');
+  });
+
+  describe('the editor view', () => {
+    let store;
+    const flatten = (rules) => {
+      const out = {};
+      rules.forEach((r, i) => {
+        for (const k of Object.keys(blank())) if (r[k] !== undefined) out[`rules.${i}.${k}`] = r[k];
+      });
+      return out;
+    };
+    beforeEach(() => {
+      store = { worldTriggers: DEFAULT_RULES, disabledModuleTriggers: ['dsn:a'] };
+      vi.stubGlobal('foundry', {
+        applications: {
+          api: { ApplicationV2: class {}, HandlebarsApplicationMixin: (B) => class extends B {} },
+          ux: { FormDataExtended: class { constructor() { this.object = globalThis.__form; } } },
+        },
+        utils: {
+          randomID: () => 'new1',
+          expandObject: (flat) => {
+            const out = {};
+            for (const [k, v] of Object.entries(flat)) {
+              const parts = k.split('.');
+              let o = out;
+              parts.slice(0, -1).forEach((p) => (o = o[p] ??= {}));
+              o[parts.at(-1)] = v;
+            }
+            return out;
+          },
+        },
+      });
+      vi.stubGlobal('game', {
+        user: { isGM: true, getFlag: () => [] },
+        i18n: { localize: (k) => k },
+        settings: { get: (_n, k) => store[k], set: vi.fn() },
+        dice3d: { _triggerContext: () => ({ moduleRules: [modRule('dsn:a')], triggers: [], modes: {}, diceTypes: [] }) },
+      });
+    });
+    afterEach(() => {
+      delete globalThis.__form;
+      vi.stubGlobal('foundry', { applications: { api: { ApplicationV2: class {}, HandlebarsApplicationMixin: (B) => class extends B {} } }, utils: { randomID: () => 'abcd1234' } });
+    });
+    const make = async () => {
+      const editor = new mod.TriggerEditor();
+      editor.render = vi.fn(async () => {});
+      return { editor, ctx: await editor._prepareContext() };
+    };
+    const actions = new Proxy({}, { get: (_, k) => mod.TriggerEditor.DEFAULT_OPTIONS.actions[k] });
+
+    it('lists the rules with summaries, selects the first and marks module rules read-only', async () => {
+      const { ctx } = await make();
+      expect(ctx.rules.map((r) => r.id)).toEqual(['dicer.nat20', 'dicer.nat1', 'dsn:a']);
+      expect(ctx.current.index).toBe(0);
+      expect(ctx.rules.map((r) => r.selected)).toEqual([true, false, false]);
+      expect(ctx.rules[0].summary).toMatch(/^d20 · 20 → /);
+      expect(ctx.rules[2]).toMatchObject({ isModule: true, readonly: true, enabled: false });
+      expect(ctx.rules[0].durationPlaceholder).toBeGreaterThan(0);
+      expect(ctx.canMove).toBe(true);
+    });
+
+    it('selecting, adding, moving and deleting keep the selection on the rule acted on', async () => {
+      const { editor, ctx } = await make();
+      globalThis.__form = flatten(ctx.rules);
+      await actions.selectRule.call(editor, {}, { dataset: { index: '1' } });
+      let next = await editor._prepareContext();
+      expect(next.current.id).toBe('dicer.nat1');
+      globalThis.__form = flatten(next.rules);
+      await actions.add.call(editor);
+      next = await editor._prepareContext();
+      expect(next.rules.map((r) => r.id)).toEqual(['dicer.nat20', 'dicer.nat1', 'rule-new1', 'dsn:a']);
+      expect(next.current.id).toBe('rule-new1');
+      expect(next.current.canMoveDown).toBe(false); // module rules stay last
+      globalThis.__form = flatten(next.rules);
+      await actions.up.call(editor, {}, { dataset: { index: '2' } });
+      next = await editor._prepareContext();
+      expect(next.current).toMatchObject({ id: 'rule-new1', index: 1 });
+      globalThis.__form = flatten(next.rules);
+      await actions.delete.call(editor, {}, { dataset: { index: '1' } });
+      next = await editor._prepareContext();
+      expect(next.rules.map((r) => r.id)).toEqual(['dicer.nat20', 'dicer.nat1', 'dsn:a']);
+      expect(next.current.id).toBe('dicer.nat1');
+    });
+  });
+});
+
 describe('stored rules that cannot be read are kept', () => {
   it('loadEntries turns them into raw entries and counts them', () => {
     const bad = { id: 'old', effect: { id: 'x' }, result: { kind: 'bogus' } };

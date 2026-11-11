@@ -6,6 +6,7 @@
  */
 import { DAMAGE_THEMES } from '../effects/damage-themes.js';
 import { BUILTIN_COLORSETS } from '../compat/colorset-map.js';
+import { DND5E_TYPES, PF2E_TYPES } from '../effects/roll-context.js';
 import {
   DEFAULT_CHOICE,
   damageTypeList,
@@ -55,6 +56,15 @@ export function buildChoices(ctx) {
   };
 }
 
+const basename = (path) => String(path ?? '').split(/[\\/]/).pop();
+
+/** The active system's own damage types (listed first, under their own heading), or none. */
+export function systemTypes(systemId) {
+  if (systemId === 'pf2e') return PF2E_TYPES;
+  if (systemId === 'dnd5e') return DND5E_TYPES;
+  return [];
+}
+
 let instance = null;
 
 export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
@@ -63,7 +73,7 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     tag: 'form',
     classes: ['dicer-damage-map-editor'],
     window: { title: 'DICER.DamageMap.Title', icon: 'fa-solid fa-fire', resizable: true },
-    position: { width: 760, height: 620 },
+    position: { width: 860, height: 640 },
     form: {
       handler: DamageMapEditor.#onSubmit,
       submitOnChange: false,
@@ -79,7 +89,7 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
   static PARTS = {
     form: {
       template: 'modules/dicer/templates/damage-map-editor.hbs',
-      scrollable: ['.dicer-damage-rows'],
+      scrollable: ['.dicer-dm-scroll'],
     },
   };
 
@@ -129,23 +139,57 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  /** The resolved theme colour per type (a small swatch), from the draft; null when nothing resolves. */
+  #swatches() {
+    const resolve = this.#ctx.resolveTheme;
+    if (typeof resolve !== 'function') return () => null;
+    const { worldMap, overrides } = mapFromForm({ rows: this.#draft, rest: this.#rest });
+    const world = this.#isGM ? worldMap : (globalThis.game.settings.get(MODULE, 'damageTypeMap') ?? {});
+    return (type) => {
+      try {
+        const color = resolve(type, { userOverrides: overrides, worldMap: world })?.appearance?.body?.color;
+        return typeof color === 'string' ? color : null;
+      } catch {
+        return null;
+      }
+    };
+  }
+
   async _prepareContext() {
     this.#load();
     const choices = buildChoices(this.#ctx);
     const options = (map, current) =>
       current && !(current in map) ? { ...map, [current]: String(current) } : map;
     const isGM = this.#isGM;
+    const swatch = this.#swatches();
+    const system = globalThis.game.system;
+    const own = new Set(systemTypes(system?.id));
+    const ownLabel = system?.title ?? loc('DICER.DamageMap.GroupSystem');
     return {
       isGM,
       note: isGM ? loc('DICER.DamageMap.GMHint') : loc('DICER.DamageMap.PlayerHint'),
-      rows: this.#draft.map((row, index) => ({
-        ...row,
-        index,
-        label: humanize(row.type),
-        worldChoices: options(choices.world, row.world),
-        userChoices: options(choices.user, row.user),
-        canEditWorld: isGM,
-      })),
+      rows: this.#draft.map((row, index, all) => {
+        const mine = own.has(row.type);
+        const prevMine = index > 0 && own.has(all[index - 1].type);
+        let group = null;
+        if (own.size && index === 0 && mine) group = ownLabel;
+        else if (own.size && !mine && (index === 0 || prevMine)) group = loc('DICER.DamageMap.GroupOther');
+        const worldChoices = options(choices.world, row.world);
+        return {
+          ...row,
+          index,
+          group,
+          label: humanize(row.type),
+          swatch: swatch(row.type),
+          worldChoices,
+          worldLabel: worldChoices[row.world] ?? row.world,
+          userChoices: options(choices.user, row.user),
+          soundName: basename(row.soundSrc),
+          canEditWorld: isGM,
+          // The volume belongs to a custom sound: shown (and editable by the GM) only with one.
+          canEditVolume: isGM && Boolean(row.soundSrc),
+        };
+      }),
     };
   }
 
@@ -204,14 +248,19 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       current: input.value,
       callback: (path) => {
         input.value = path;
+        this.#collect();
+        this.render();
       },
     }).render({ force: true });
   }
 
-  static #onClearFile(event, target) {
+  static async #onClearFile(event, target) {
     if (!this.#isGM) return;
     const input = this.element.querySelector(`input[name="rows.${target.dataset.index}.soundSrc"]`);
-    if (input) input.value = '';
+    if (!input) return;
+    input.value = '';
+    this.#collect();
+    await this.render();
   }
 
   async close(options) {

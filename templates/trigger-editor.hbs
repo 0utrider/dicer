@@ -1,172 +1,222 @@
 <div class="dicer-trigger-body">
-<nav class="dicer-tabs tabs">
-  {{#each tabs}}
-    <a class="{{#if active}}active{{/if}}" data-action="tab" data-tab="{{id}}">{{label}}</a>
-  {{/each}}
-</nav>
-
-{{#if readonlyNote}}
-  <p class="notes">{{localize "DICER.Triggers.ReadOnly"}}</p>
-{{else}}
-  {{#if isWorld}}<p class="notes">{{localize "DICER.Triggers.WorldHint"}}</p>{{else}}<p class="notes">{{localize "DICER.Triggers.MineHint"}}</p>{{/if}}
-{{/if}}
-
-<div class="dicer-rules">
-  {{#unless hasRules}}<p class="dicer-empty">{{localize "DICER.Triggers.Empty"}}</p>{{/unless}}
-  {{#each rules}}
-    {{#if isRaw}}
-    <fieldset class="dicer-rule invalid">
-      <input type="hidden" name="rules.{{index}}.id" value="{{id}}">
-      <input type="hidden" name="rules.{{index}}.source" value="raw">
-      <input type="hidden" name="rules.{{index}}.rawJson" value="{{rawJson}}">
-      <p class="dicer-error">{{error}}</p>
-      <code>{{rawJson}}</code>
-      <div class="dicer-actions">
-        {{#if canDelete}}<button type="button" data-action="delete" data-index="{{index}}" data-tooltip="DICER.Triggers.Delete"><i class="fa-solid fa-trash"></i></button>{{/if}}
-      </div>
-    </fieldset>
-    {{else}}
-    <fieldset class="dicer-rule {{#if isModule}}is-module{{/if}} {{#if error}}invalid{{/if}}">
-      <input type="hidden" name="rules.{{index}}.id" value="{{id}}">
-      <input type="hidden" name="rules.{{index}}.source" value="{{source}}">
-      <input type="hidden" name="rules.{{index}}.effectExtra" value="{{effectExtra}}">
-      <legend>
-        <label class="dicer-enabled">
-          <input type="checkbox" name="rules.{{index}}.enabled" {{#if enabled}}checked{{/if}} {{#if enabledLocked}}disabled{{/if}}>
-          {{localize "DICER.Triggers.Enabled"}}
-        </label>
-        {{#if isModule}}<span class="dicer-badge">{{localize "DICER.Triggers.ModuleRule"}}</span>{{/if}}
-      </legend>
-      {{#if error}}<p class="dicer-error">{{error}}</p>{{/if}}
-
-      <div class="dicer-row">
-        <label>{{localize "DICER.Triggers.Name"}}
-          <input type="text" name="rules.{{index}}.name" value="{{name}}" {{#if readonly}}disabled{{/if}}>
-        </label>
-        <label>{{localize "DICER.Triggers.Die"}}
-          <select name="rules.{{index}}.die" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions dieChoices selected=die}}</select>
-        </label>
-        <label>{{localize "DICER.Triggers.Outcome"}}
-          <select name="rules.{{index}}.outcome" {{#if readonly}}disabled{{/if}}>{{selectOptions outcomeChoices selected=outcome}}</select>
-        </label>
-      </div>
-
-      <div class="dicer-row">
-        <label>{{localize "DICER.Triggers.Result"}}
-          <select name="rules.{{index}}.resultKind" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions kindChoices selected=resultKind}}</select>
-        </label>
-        {{#if showValue}}
-          <label>{{localize "DICER.Triggers.Value"}}
-            <input type="number" step="1" name="rules.{{index}}.resultValue" value="{{resultValue}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-        {{/if}}
-        {{#if showRange}}
-          <label>{{localize "DICER.Triggers.From"}}
-            <input type="number" step="1" name="rules.{{index}}.resultFrom" value="{{resultFrom}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-          <label>{{localize "DICER.Triggers.To"}}
-            <input type="number" step="1" name="rules.{{index}}.resultTo" value="{{resultTo}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-        {{/if}}
-        {{#if showLabel}}
-          <label>{{localize "DICER.Triggers.Label"}}
-            {{#if labelChoices}}
-              <select name="rules.{{index}}.resultLabel" {{#if readonly}}disabled{{/if}}>{{selectOptions labelChoices selected=resultLabel}}</select>
-            {{else}}
-              <input type="text" name="rules.{{index}}.resultLabel" value="{{resultLabel}}" {{#if readonly}}disabled{{/if}}>
-            {{/if}}
-          </label>
-        {{/if}}
-      </div>
-
-      <details class="dicer-context" {{#if formula}}open{{else}}{{#if role}}open{{else}}{{#if damageType}}open{{/if}}{{/if}}{{/if}}>
-        <summary>{{localize "DICER.Triggers.Context"}}</summary>
-        <div class="dicer-row">
-          <label>{{localize "DICER.Triggers.Formula"}}
-            <input type="text" name="rules.{{index}}.formula" value="{{formula}}" placeholder="2d6 or /^1d20/i" {{#if readonly}}disabled{{/if}}>
-          </label>
-          <label>{{localize "DICER.Triggers.Role"}}
-            <input type="text" name="rules.{{index}}.role" value="{{role}}" placeholder="attack-roll" {{#if readonly}}disabled{{/if}}>
-          </label>
-          <label>{{localize "DICER.Triggers.DamageType"}}
-            <input type="text" name="rules.{{index}}.damageType" value="{{damageType}}" placeholder="fire" {{#if readonly}}disabled{{/if}}>
-          </label>
-          <label>{{localize "DICER.Triggers.ActorId"}}
-            <input type="text" name="rules.{{index}}.actorId" value="{{actorId}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-          <label>{{localize "DICER.Triggers.UserId"}}
-            <input type="text" name="rules.{{index}}.userId" value="{{userId}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-        </div>
-      </details>
-
-      <div class="dicer-row">
-        <label>{{localize "DICER.Triggers.Effect"}}
-          <select name="rules.{{index}}.effectId" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions effectChoices selected=effectId}}</select>
-        </label>
-        {{#if hasEffect}}
-          <label>{{localize "DICER.Triggers.Color"}}
-            <span class="dicer-color">
-              <input type="text" name="rules.{{index}}.effectColor" value="{{effectColor}}" placeholder="#ffffff" {{#if readonly}}disabled{{/if}}>
-              <input type="color" data-color-for="rules.{{index}}.effectColor" value="{{#if effectColor}}{{effectColor}}{{else}}#ffffff{{/if}}" {{#if readonly}}disabled{{/if}}>
-            </span>
-          </label>
-          <label>{{localize "DICER.Triggers.Intensity"}}
-            <input type="number" min="0" max="2" step="0.1" name="rules.{{index}}.effectIntensity" value="{{effectIntensity}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-          <label>{{localize "DICER.Triggers.Duration"}}
-            <input type="number" min="100" max="5000" step="50" name="rules.{{index}}.effectDuration" value="{{effectDuration}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-        {{/if}}
-      </div>
-
-      <div class="dicer-row">
-        <label>{{localize "DICER.Triggers.SoundLabel"}}
-          <select name="rules.{{index}}.soundKind" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions soundKindChoices selected=soundKind}}</select>
-        </label>
-        {{#if soundIsBuiltin}}
-          <label>{{localize "DICER.Triggers.BuiltinSound"}}
-            <select name="rules.{{index}}.soundBuiltin" {{#if readonly}}disabled{{/if}}>{{selectOptions soundChoices selected=soundBuiltin}}</select>
-          </label>
-        {{/if}}
-        {{#if soundIsFile}}
-          <label>{{localize "DICER.Triggers.SoundFile"}}
-            <span class="dicer-file">
-              <input type="text" name="rules.{{index}}.soundSrc" value="{{soundSrc}}" {{#if readonly}}disabled{{/if}}>
-              {{#unless readonly}}<button type="button" data-action="pickFile" data-index="{{index}}" data-tooltip="DICER.Triggers.Browse"><i class="fa-solid fa-file-audio"></i></button>{{/unless}}
-            </span>
-          </label>
-          <label>{{localize "DICER.Triggers.Volume"}}
-            <input type="number" min="0" max="1" step="0.05" name="rules.{{index}}.soundVolume" value="{{soundVolume}}" {{#if readonly}}disabled{{/if}}>
-          </label>
-        {{/if}}
-      </div>
-
-      <div class="dicer-row">
-        <label class="dicer-grow">{{localize "DICER.Triggers.Macro"}}
-          <input type="text" name="rules.{{index}}.macro" value="{{macro}}" data-macro placeholder="Macro.xxxxxxxx" {{#if readonly}}disabled{{/if}}>
-        </label>
-      </div>
-
-      <div class="dicer-actions">
-        <button type="button" data-action="preview" data-index="{{index}}"><i class="fa-solid fa-play"></i> {{localize "DICER.Triggers.Preview"}}</button>
-        {{#unless readonly}}
-          <button type="button" data-action="up" data-index="{{index}}" {{#unless canMoveUp}}disabled{{/unless}} data-tooltip="DICER.Triggers.MoveUp"><i class="fa-solid fa-arrow-up"></i></button>
-          <button type="button" data-action="down" data-index="{{index}}" {{#unless canMoveDown}}disabled{{/unless}} data-tooltip="DICER.Triggers.MoveDown"><i class="fa-solid fa-arrow-down"></i></button>
-          <button type="button" data-action="duplicate" data-index="{{index}}" data-tooltip="DICER.Triggers.Duplicate"><i class="fa-solid fa-copy"></i></button>
-          <button type="button" data-action="delete" data-index="{{index}}" data-tooltip="DICER.Triggers.Delete"><i class="fa-solid fa-trash"></i></button>
-        {{/unless}}
-      </div>
-    </fieldset>
-    {{/if}}
-  {{/each}}
+<div class="dicer-toolbar">
+  <nav class="dicer-segmented" aria-label="{{localize "DICER.Triggers.Title"}}">
+    {{#each tabs}}
+      <button type="button" class="{{#if active}}active{{/if}}" data-action="switchTab" data-tab="{{id}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}">{{label}}</button>
+    {{/each}}
+  </nav>
+  <p class="dicer-hint">
+    {{#if readonlyNote}}{{localize "DICER.Triggers.ReadOnly"}}{{else}}{{#if isWorld}}{{localize "DICER.Triggers.WorldHint"}}{{else}}{{localize "DICER.Triggers.MineHint"}}{{/if}}{{/if}}
+  </p>
 </div>
 
-<footer class="form-footer">
+<div class="dicer-trigger-main">
+  <div class="dicer-rule-pane">
+    <ol class="dicer-rule-list" aria-label="{{localize "DICER.Triggers.Title"}}">
+      {{#each rules}}
+        <li class="dicer-rule-item {{#if selected}}is-selected{{/if}} {{#if hasError}}invalid{{/if}} {{#unless enabled}}is-off{{/unless}} {{#if isModule}}is-module{{/if}}" data-action="selectRule" data-index="{{index}}" aria-current="{{#if selected}}true{{else}}false{{/if}}">
+          {{#if isRaw}}
+            <i class="dicer-rule-state fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          {{else}}
+            <input type="checkbox" class="dicer-rule-toggle" name="rules.{{index}}.enabled" {{#if enabled}}checked{{/if}} {{#if enabledLocked}}disabled{{/if}} data-tooltip="DICER.Triggers.Enabled" aria-label="{{localize "DICER.Triggers.Enabled"}}">
+          {{/if}}
+          <span class="dicer-rule-text">
+            <span class="dicer-rule-name">{{displayName}}</span>
+            <span class="dicer-rule-summary">{{summary}}</span>
+          </span>
+          {{#if isModule}}<i class="dicer-rule-flag fa-solid fa-puzzle-piece" data-tooltip="DICER.Triggers.ModuleRuleHint" aria-label="{{localize "DICER.Triggers.ModuleRule"}}"></i>{{/if}}
+          {{#if hasError}}<i class="dicer-rule-flag dicer-error-icon fa-solid fa-circle-exclamation" data-tooltip="{{error}}" aria-label="{{error}}"></i>{{/if}}
+        </li>
+      {{/each}}
+    </ol>
+    {{#unless hasRules}}<p class="dicer-empty">{{localize "DICER.Triggers.Empty"}}</p>{{/unless}}
+    {{#if canEdit}}
+      <div class="dicer-rule-list-footer">
+        <button type="button" data-action="add"><i class="fa-solid fa-plus"></i> {{localize "DICER.Triggers.Add"}}</button>
+        <button type="button" class="dicer-icon" data-action="up" data-index="{{current.index}}" {{#unless current.canMoveUp}}disabled{{/unless}} data-tooltip="DICER.Triggers.MoveUp" aria-label="{{localize "DICER.Triggers.MoveUp"}}"><i class="fa-solid fa-arrow-up"></i></button>
+        <button type="button" class="dicer-icon" data-action="down" data-index="{{current.index}}" {{#unless current.canMoveDown}}disabled{{/unless}} data-tooltip="DICER.Triggers.MoveDown" aria-label="{{localize "DICER.Triggers.MoveDown"}}"><i class="fa-solid fa-arrow-down"></i></button>
+      </div>
+    {{/if}}
+  </div>
+
+  <div class="dicer-rule-editors">
+    {{#unless hasRules}}
+      <div class="dicer-empty-editor"><i class="fa-solid fa-bolt"></i><p>{{localize "DICER.Triggers.NoneSelected"}}</p></div>
+    {{/unless}}
+    {{#each rules}}
+      {{#if isRaw}}
+      <fieldset class="dicer-rule-editor invalid" {{#unless selected}}hidden{{/unless}}>
+        <input type="hidden" name="rules.{{index}}.id" value="{{id}}">
+        <input type="hidden" name="rules.{{index}}.source" value="raw">
+        <input type="hidden" name="rules.{{index}}.rawJson" value="{{rawJson}}">
+        <header class="dicer-editor-head">
+          <h3>{{displayName}}</h3>
+          <div class="dicer-editor-actions">
+            {{#if canDelete}}<button type="button" class="dicer-danger" data-action="delete" data-index="{{index}}"><i class="fa-solid fa-trash"></i> {{localize "DICER.Triggers.Delete"}}</button>{{/if}}
+          </div>
+        </header>
+        <p class="dicer-error">{{error}}</p>
+        <pre class="dicer-raw">{{rawJson}}</pre>
+      </fieldset>
+      {{else}}
+      <fieldset class="dicer-rule-editor {{#if hasError}}invalid{{/if}}" {{#unless selected}}hidden{{/unless}}>
+        <input type="hidden" name="rules.{{index}}.id" value="{{id}}">
+        <input type="hidden" name="rules.{{index}}.source" value="{{source}}">
+        <input type="hidden" name="rules.{{index}}.effectExtra" value="{{effectExtra}}">
+
+        <header class="dicer-editor-head">
+          <label class="dicer-field dicer-grow">
+            <span>{{localize "DICER.Triggers.Name"}}</span>
+            <input type="text" name="rules.{{index}}.name" value="{{name}}" {{#if readonly}}disabled{{/if}}>
+          </label>
+          <div class="dicer-editor-actions">
+            <button type="button" data-action="preview" data-index="{{index}}"><i class="fa-solid fa-play"></i> {{localize "DICER.Triggers.Preview"}}</button>
+            {{#unless readonly}}
+              <button type="button" class="dicer-icon" data-action="duplicate" data-index="{{index}}" data-tooltip="DICER.Triggers.Duplicate" aria-label="{{localize "DICER.Triggers.Duplicate"}}"><i class="fa-solid fa-copy"></i></button>
+              <button type="button" class="dicer-icon dicer-danger" data-action="delete" data-index="{{index}}" data-tooltip="DICER.Triggers.Delete" aria-label="{{localize "DICER.Triggers.Delete"}}"><i class="fa-solid fa-trash"></i></button>
+            {{/unless}}
+          </div>
+        </header>
+        {{#if isModule}}<p class="dicer-note"><i class="fa-solid fa-puzzle-piece"></i> {{localize "DICER.Triggers.ModuleRuleHint"}}</p>{{/if}}
+        {{#if error}}<p class="dicer-error"><i class="fa-solid fa-circle-exclamation"></i> {{error}}</p>{{/if}}
+
+        <section class="dicer-section">
+          <h4>{{localize "DICER.Triggers.When"}}</h4>
+          <div class="dicer-grid">
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.Die"}}</span>
+              <select name="rules.{{index}}.die" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions dieChoices selected=die}}</select>
+            </label>
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.Outcome"}}</span>
+              <select name="rules.{{index}}.outcome" {{#if readonly}}disabled{{/if}}>{{selectOptions outcomeChoices selected=outcome}}</select>
+            </label>
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.Result"}}</span>
+              <select name="rules.{{index}}.resultKind" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions kindChoices selected=resultKind}}</select>
+            </label>
+            {{#if showValue}}
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.Value"}}</span>
+                <input type="number" step="1" name="rules.{{index}}.resultValue" value="{{resultValue}}" placeholder="20" {{#if readonly}}disabled{{/if}}>
+              </label>
+            {{/if}}
+            {{#if showRange}}
+              <div class="dicer-field">
+                <span>{{localize "DICER.Triggers.From"}} – {{localize "DICER.Triggers.To"}}</span>
+                <span class="dicer-pair">
+                  <input type="number" step="1" name="rules.{{index}}.resultFrom" value="{{resultFrom}}" placeholder="1" aria-label="{{localize "DICER.Triggers.From"}}" {{#if readonly}}disabled{{/if}}>
+                  <span class="dicer-dash">–</span>
+                  <input type="number" step="1" name="rules.{{index}}.resultTo" value="{{resultTo}}" placeholder="20" aria-label="{{localize "DICER.Triggers.To"}}" {{#if readonly}}disabled{{/if}}>
+                </span>
+              </div>
+            {{/if}}
+            {{#if showLabel}}
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.Label"}}</span>
+                {{#if labelChoices}}
+                  <select name="rules.{{index}}.resultLabel" {{#if readonly}}disabled{{/if}}>{{selectOptions labelChoices selected=resultLabel}}</select>
+                {{else}}
+                  <input type="text" name="rules.{{index}}.resultLabel" value="{{resultLabel}}" {{#if readonly}}disabled{{/if}}>
+                {{/if}}
+              </label>
+            {{/if}}
+          </div>
+          <details class="dicer-context" {{#if hasContext}}open{{/if}}>
+            <summary>{{localize "DICER.Triggers.Context"}}</summary>
+            <div class="dicer-grid dicer-grid-3">
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.Formula"}}</span>
+                <input type="text" name="rules.{{index}}.formula" value="{{formula}}" placeholder="2d6 or /^1d20/i" {{#if readonly}}disabled{{/if}}>
+              </label>
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.Role"}}</span>
+                <input type="text" name="rules.{{index}}.role" value="{{role}}" placeholder="attack-roll" {{#if readonly}}disabled{{/if}}>
+              </label>
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.DamageType"}}</span>
+                <input type="text" name="rules.{{index}}.damageType" value="{{damageType}}" placeholder="fire" {{#if readonly}}disabled{{/if}}>
+              </label>
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.ActorId"}}</span>
+                <input type="text" name="rules.{{index}}.actorId" value="{{actorId}}" {{#if readonly}}disabled{{/if}}>
+              </label>
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.UserId"}}</span>
+                <input type="text" name="rules.{{index}}.userId" value="{{userId}}" {{#if readonly}}disabled{{/if}}>
+              </label>
+            </div>
+          </details>
+        </section>
+
+        <section class="dicer-section">
+          <h4>{{localize "DICER.Triggers.Then"}}</h4>
+          <div class="dicer-grid">
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.Effect"}}</span>
+              <select name="rules.{{index}}.effectId" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions effectChoices selected=effectId}}</select>
+            </label>
+            {{#if hasEffect}}
+              <div class="dicer-field">
+                <span>{{localize "DICER.Triggers.Color"}}</span>
+                <span class="dicer-color">
+                  <input type="color" data-color-for="rules.{{index}}.effectColor" value="{{#if effectColor}}{{effectColor}}{{else}}{{colorPlaceholder}}{{/if}}" aria-label="{{localize "DICER.Triggers.Color"}}" {{#if readonly}}disabled{{/if}}>
+                  <input type="text" name="rules.{{index}}.effectColor" value="{{effectColor}}" placeholder="{{colorPlaceholder}}" aria-label="{{localize "DICER.Triggers.Color"}}" {{#if readonly}}disabled{{/if}}>
+                </span>
+              </div>
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.Intensity"}}</span>
+                <input type="number" min="0" max="2" step="0.1" name="rules.{{index}}.effectIntensity" value="{{effectIntensity}}" placeholder="{{intensityPlaceholder}}" {{#if readonly}}disabled{{/if}}>
+              </label>
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.Duration"}}</span>
+                <input type="number" min="100" max="5000" step="50" name="rules.{{index}}.effectDuration" value="{{effectDuration}}" placeholder="{{durationPlaceholder}}" {{#if readonly}}disabled{{/if}}>
+              </label>
+            {{/if}}
+          </div>
+          <div class="dicer-grid">
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.SoundLabel"}}</span>
+              <select name="rules.{{index}}.soundKind" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions soundKindChoices selected=soundKind}}</select>
+            </label>
+            {{#if soundIsBuiltin}}
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.BuiltinSound"}}</span>
+                <select name="rules.{{index}}.soundBuiltin" {{#if readonly}}disabled{{/if}}>{{selectOptions soundChoices selected=soundBuiltin}}</select>
+              </label>
+            {{/if}}
+            {{#if soundIsFile}}
+              <div class="dicer-field dicer-span-2">
+                <span>{{localize "DICER.Triggers.SoundFile"}}</span>
+                <span class="dicer-file">
+                  <input type="text" name="rules.{{index}}.soundSrc" value="{{soundSrc}}" placeholder="sounds/…" aria-label="{{localize "DICER.Triggers.SoundFile"}}" {{#if readonly}}disabled{{/if}}>
+                  {{#unless readonly}}<button type="button" class="dicer-icon" data-action="pickFile" data-index="{{index}}" data-tooltip="DICER.Triggers.Browse" aria-label="{{localize "DICER.Triggers.Browse"}}"><i class="fa-solid fa-file-audio"></i></button>{{/unless}}
+                </span>
+              </div>
+              <label class="dicer-field">
+                <span>{{localize "DICER.Triggers.Volume"}}</span>
+                <input type="number" min="0" max="1" step="0.05" name="rules.{{index}}.soundVolume" value="{{soundVolume}}" placeholder="1" {{#if readonly}}disabled{{/if}}>
+              </label>
+            {{/if}}
+          </div>
+          <label class="dicer-field">
+            <span>{{localize "DICER.Triggers.MacroShort"}}</span>
+            <span class="dicer-dropzone">
+              <i class="fa-solid fa-terminal" aria-hidden="true"></i>
+              <input type="text" name="rules.{{index}}.macro" value="{{macro}}" data-macro placeholder="{{localize "DICER.Triggers.Macro"}}" {{#if readonly}}disabled{{/if}}>
+            </span>
+          </label>
+        </section>
+      </fieldset>
+      {{/if}}
+    {{/each}}
+  </div>
+</div>
+
+<footer class="dicer-footer">
   {{#if canEdit}}
-    <button type="button" data-action="add"><i class="fa-solid fa-plus"></i> {{localize "DICER.Triggers.Add"}}</button>
     {{#if isWorld}}<button type="button" data-action="reset"><i class="fa-solid fa-rotate-left"></i> {{localize "DICER.Triggers.Reset"}}</button>{{/if}}
-    <button type="submit"><i class="fa-solid fa-floppy-disk"></i> {{localize "DICER.Triggers.Save"}}</button>
+    <button type="submit" class="bright"><i class="fa-solid fa-floppy-disk"></i> {{localize "DICER.Triggers.Save"}}</button>
   {{/if}}
 </footer>
 </div>

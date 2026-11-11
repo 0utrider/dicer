@@ -27,6 +27,7 @@ import {
   formFromTheme,
   themeFromForm,
   mergeEdited,
+  themeAssignments,
 } from './theme-form.js';
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -229,6 +230,21 @@ export function targetGroups({ actors = [], damageTypes = [], isGM = false } = {
   return groups;
 }
 
+/** target value -> a short readable label ("Die type: d20"); unknown targets show as they are. */
+export function targetLabeller(groups) {
+  const labels = new Map();
+  for (const g of groups)
+    for (const o of g.options) labels.set(o.value, o.value === 'default' ? o.label : `${g.label}: ${o.label}`);
+  return (target) => labels.get(target) ?? String(target);
+}
+
+/** The card to show in the detail panel: the current one if still visible, else the default theme, else the first. */
+export function pickSelected(visible, current, defaultId) {
+  if (visible.some((t) => t.id === current)) return current;
+  if (visible.some((t) => t.id === defaultId)) return defaultId;
+  return visible[0]?.id ?? null;
+}
+
 const choiceMap = (ids, nameOf, none, keep) => ({
   ...(none === undefined ? {} : { '': none }),
   ...(keep ? { [KEEP]: keep } : {}),
@@ -243,8 +259,10 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     tag: 'div',
     classes: ['dicer-theme-browser'],
     window: { title: 'DICER.Themes.Title', icon: 'fa-solid fa-dice-d20', resizable: true },
-    position: { width: 820, height: 640 },
+    position: { width: 900, height: 680 },
     actions: {
+      filter: ThemeBrowser.#onFilter,
+      select: ThemeBrowser.#onSelect,
       useDefault: ThemeBrowser.#onUseDefault,
       apply: ThemeBrowser.#onApply,
       clear: ThemeBrowser.#onClear,
@@ -265,6 +283,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   #filter = 'all';
+  #selected = null; // the theme id shown in the detail panel
+  #urls = new Map(); // theme id -> thumbnail URL already made (re-renders show it at once)
   #editing = null; // { base: theme (raw, stored), form }
   #thumbs = null;
   #token = 0;
@@ -286,8 +306,35 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const all = list ? [...list] : [];
     return all
       .filter((a) => a?.isOwner === true)
-      .map((a) => ({ id: a.id, name: String(a.name ?? a.id) }))
+      .map((a) => {
+        let theme = null;
+        try {
+          theme = a.getFlag?.(MODULE, FLAG)?.global?.theme ?? null;
+        } catch {
+          theme = null;
+        }
+        return { id: a.id, name: String(a.name ?? a.id), theme };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** The user's current assignments (default, look slots, owned actors, damage overrides) by theme id. */
+  #assignments() {
+    const user = me();
+    let looks = null;
+    let damage = null;
+    try {
+      looks = user?.getFlag?.(MODULE, FLAG) ?? null;
+      damage = settings()?.get(MODULE, 'damageThemeOverrides') ?? null;
+    } catch {
+      /* settings not ready */
+    }
+    return themeAssignments({
+      defaultId: settings()?.get(MODULE, 'theme'),
+      looks,
+      actors: this.#actors(),
+      damageOverrides: damage,
+    });
   }
 
   async _prepareContext() {
@@ -300,23 +347,45 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       damageTypes: damageTypeList({ systemId: globalThis.game?.system?.id }),
       isGM,
     });
+    const assignments = this.#assignments();
+    const labelOf = targetLabeller(groups);
+    const visible = themes.filter((t) => filter === 'all' || t.source === filter);
+    const defaultId = [...assignments].find(([, list]) => list.includes('default'))?.[0] ?? 'default';
+    this.#selected = pickSelected(visible, this.#selected, defaultId);
+    const view = (t) => {
+      const targets = assignments.get(t.id) ?? [];
+      const others = targets.filter((x) => x !== 'default');
+      return {
+        id: t.id,
+        name: t.name,
+        source: t.source,
+        sourceLabel: loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
+        showBadge: t.source !== 'builtin', // cards name only world and own themes; the detail panel always does
+        swatch: t.appearance?.body?.color ?? '#444',
+        selected: t.id === this.#selected,
+        isDefault: targets.includes('default'),
+        slotCount: others.length,
+        slotTooltip: others.map(labelOf).join(', '),
+        assigned: targets.map((target) => ({ target, label: labelOf(target), isDefault: target === 'default' })),
+        canEdit: t.source === 'user',
+        canPublish: isGM && t.source !== 'world',
+        canDelete: t.source === 'user' || (t.source === 'world' && isGM),
+      };
+    };
+    const cards = visible.map(view);
     return {
       editing: false,
       filter,
-      filterChoices: Object.fromEntries(Object.entries(FILTER_KEYS).map(([k, v]) => [k, loc(v)])),
+      filters: Object.entries(FILTER_KEYS).map(([id, key]) => ({
+        id,
+        label: loc(key),
+        active: id === filter,
+        count: id === 'all' ? themes.length : themes.filter((t) => t.source === id).length,
+      })),
       targetGroups: groups,
-      cards: themes
-        .filter((t) => filter === 'all' || t.source === filter)
-        .map((t) => ({
-          id: t.id,
-          name: t.name,
-          source: t.source,
-          sourceLabel: loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
-          swatch: t.appearance?.body?.color ?? '#444',
-          canEdit: t.source === 'user',
-          canPublish: isGM && t.source !== 'world',
-          canDelete: t.source === 'user' || (t.source === 'world' && isGM),
-        })),
+      cards,
+      hasCards: cards.length > 0,
+      detail: cards.find((c) => c.selected) ?? null,
       unreadable: unreadable.map((u) => ({ label: label(u.raw), sourceLabel: loc(SOURCE_LABEL[u.source]) })),
     };
   }
@@ -346,10 +415,6 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /** Thumbnails: one theme at a time through the offscreen renderer; the swatch stays until one arrives. */
   _onRender() {
-    this.element.querySelector('.dicer-theme-filter')?.addEventListener('change', (e) => {
-      this.#filter = e.target.value;
-      this.render();
-    });
     const file = this.element.querySelector('.dicer-theme-file');
     file?.addEventListener('change', async () => {
       const f = file.files?.[0];
@@ -365,10 +430,24 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#loadThumbnails();
   }
 
+  /** Shows a thumbnail on every image of that theme (its card and the detail preview). */
+  #show(id, url) {
+    for (const img of this.element.querySelectorAll('img.dicer-thumb')) {
+      if (img.dataset.theme !== id) continue;
+      img.src = url;
+      img.hidden = false;
+      img.closest('.dicer-stage')?.classList.add('has-thumb');
+    }
+  }
+
   async #loadThumbnails() {
     const token = ++this.#token;
     const cards = [...this.element.querySelectorAll('.dicer-theme-card')];
     if (!cards.length) return;
+    for (const card of cards) {
+      const url = this.#urls.get(card.dataset.theme);
+      if (url) this.#show(card.dataset.theme, url);
+    }
     if (!this.#thumbs) {
       let atlas = null;
       try {
@@ -381,16 +460,18 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     const thumbs = this.#thumbs;
     const themes = new Map(this.#entries().themes.map((t) => [t.id, t]));
-    for (const card of cards) {
-      const theme = themes.get(card.dataset.theme);
-      if (!theme) continue;
+    // The selected theme first, so the detail preview fills in at once.
+    const first = (card) => (card.dataset.theme === this.#selected ? 0 : 1);
+    const order = [...cards].sort((x, y) => first(x) - first(y));
+    for (const card of order) {
+      const id = card.dataset.theme;
+      const theme = themes.get(id);
+      if (!theme || this.#urls.has(id)) continue;
       const url = await thumbs.thumbnail(theme, 'd20').catch(() => null);
       if (token !== this.#token || this.#thumbs !== thumbs) return;
-      const img = card.querySelector('.dicer-thumb');
-      if (url && img) {
-        img.src = url;
-        img.hidden = false;
-      }
+      if (!url) continue;
+      this.#urls.set(id, url);
+      this.#show(id, url);
     }
   }
 
@@ -398,29 +479,49 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     return app.#find(target.dataset.theme);
   }
 
+  /** The place an Apply / Clear button acts on: its own data-target (an assignment chip), else the detail panel's select. */
   static #targetOf(target) {
-    return target.closest('.dicer-theme-card')?.querySelector('.dicer-target')?.value;
+    return target.dataset.target ?? target.closest('.dicer-theme-detail')?.querySelector('.dicer-target')?.value;
+  }
+
+  static async #onFilter(event, target) {
+    const next = target.dataset.filter;
+    if (!Object.hasOwn(FILTER_KEYS, next) || next === this.#filter) return;
+    this.#filter = next;
+    await this.render();
+  }
+
+  static async #onSelect(event, target) {
+    const id = target.closest('[data-theme]')?.dataset.theme;
+    if (!id || id === this.#selected) return;
+    this.#selected = id;
+    await this.render();
   }
 
   static async #onUseDefault(event, target) {
-    if (await assignTarget('default', target.dataset.theme)) notify('info', loc('DICER.Themes.Applied'));
+    if (!(await assignTarget('default', target.dataset.theme))) return;
+    notify('info', loc('DICER.Themes.Applied'));
+    await this.render();
   }
 
   static async #onApply(event, target) {
     const ok = await assignTarget(ThemeBrowser.#targetOf(target), target.dataset.theme);
     notify(ok ? 'info' : 'warn', loc(ok ? 'DICER.Themes.Applied' : 'DICER.Themes.NotAllowed'));
+    if (ok) await this.render();
   }
 
   static async #onClear(event, target) {
     const ok = await clearTarget(ThemeBrowser.#targetOf(target));
     notify(ok ? 'info' : 'warn', loc(ok ? 'DICER.Themes.Cleared' : 'DICER.Themes.NotAllowed'));
+    if (ok) await this.render();
   }
 
   static async #onDuplicate(event, target) {
     const theme = ThemeBrowser.#themeOf(this, target);
     if (!theme) return;
-    await duplicate(theme);
+    const copy = await duplicate(theme);
     this.#filter = 'user';
+    if (copy) this.#selected = copy.id;
     await this.render();
   }
 
@@ -488,6 +589,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#token++;
     this.#thumbs?.dispose();
     this.#thumbs = null;
+    this.#urls.clear(); // the thumbnailer revoked its URLs
     return super.close(options);
   }
 }

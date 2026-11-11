@@ -255,7 +255,13 @@ describe('the browser actions', () => {
   beforeEach(() => {
     flags = {};
     store = { theme: 'default', damageThemeOverrides: { acid: 'x' }, damageTypeMap: {}, worldThemes: [] };
-    actors = new Map([
+    // Like Foundry's Collection: a Map that iterates its values.
+    class Collection extends Map {
+      [Symbol.iterator]() {
+        return this.values();
+      }
+    }
+    actors = new Collection([
       ['mine', { id: 'mine', isOwner: true, setFlag: vi.fn(async () => {}) }],
       ['theirs', { id: 'theirs', isOwner: false, setFlag: vi.fn(async () => {}) }],
     ]);
@@ -387,6 +393,90 @@ describe('the browser actions', () => {
     expect([type, name]).toEqual(['application/json', 'f.json']);
     expect(JSON.parse(json).themes[0].id).toBe(BUILTIN_THEMES[0].id);
   });
+  describe('the gallery view', () => {
+    const make = () => {
+      const app = new mod.ThemeBrowser();
+      app.render = vi.fn(async () => {});
+      return app;
+    };
+    const actions = new Proxy({}, { get: (_, k) => mod.ThemeBrowser.DEFAULT_OPTIONS.actions[k] });
+    beforeEach(() => {
+      store.theme = 'ruby-classic';
+      store.damageThemeOverrides = { fire: 'verdant' };
+      flags.appearance = {
+        global: { theme: 'ruby-classic' }, // mirrors the default: not listed twice
+        d20: { theme: 'ruby-classic' },
+        'role:save': { theme: 'verdant' },
+      };
+      actors.get('mine').name = 'Mine';
+      actors.get('mine').getFlag = () => ({ global: { theme: 'verdant' } });
+    });
+
+    it('marks only the default theme, counts its other uses and opens on it', async () => {
+      const ctx = await make()._prepareContext();
+      expect(ctx.cards).toHaveLength(BUILTIN_THEMES.length);
+      expect(ctx.cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['ruby-classic']);
+      const ruby = ctx.cards.find((c) => c.id === 'ruby-classic');
+      expect(ruby).toMatchObject({ selected: true, slotCount: 1, showBadge: false });
+      expect(ruby.assigned.map((a) => a.target)).toEqual(['default', 'die:d20']);
+      expect(ctx.cards.find((c) => c.id === 'verdant').slotCount).toBe(3);
+      expect(ctx.detail.id).toBe('ruby-classic');
+      expect(ctx.filters.map((f) => [f.id, f.active, f.count])).toEqual([
+        ['all', true, BUILTIN_THEMES.length],
+        ['builtin', false, BUILTIN_THEMES.length],
+        ['world', false, 0],
+        ['user', false, 0],
+      ]);
+    });
+
+    it('select shows another theme; a filter that hides it falls back to the first card', async () => {
+      const app = make();
+      await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: 'verdant' } }) });
+      expect((await app._prepareContext()).detail.id).toBe('verdant');
+      flags.themes = [raw('user.u1.mine', 'Mine')];
+      await actions.filter.call(app, {}, { dataset: { filter: 'user' } });
+      const ctx = await app._prepareContext();
+      expect(ctx.cards.map((c) => c.id)).toEqual(['user.u1.mine']);
+      expect(ctx.cards[0].showBadge).toBe(true);
+      expect(ctx.detail.id).toBe('user.u1.mine');
+      expect(app.render).toHaveBeenCalledTimes(2);
+    });
+
+    it('an assignment chip clears its own slot', async () => {
+      const app = make();
+      await actions.clear.call(app, {}, { dataset: { target: 'die:d20' } });
+      expect(user.setFlag).toHaveBeenCalledWith('dicer', 'appearance', { d20: 'DELETE' });
+      expect(app.render).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('themeAssignments, targetLabeller and pickSelected', async () => {
+    const { themeAssignments } = await import('../../src/ui/theme-form.js');
+    const map = themeAssignments({
+      defaultId: undefined,
+      looks: { d6: { theme: 'a' }, 'role:attack': { theme: 'a' }, global: { theme: 'x' }, 'role:bogus': { theme: 'a' }, d20: 'odd' },
+      actors: [{ id: 'act', theme: 'b' }, { id: 'none' }],
+      damageOverrides: { fire: 'b', cold: 7 },
+    });
+    expect([...map]).toEqual([
+      ['default', ['default']],
+      ['a', ['die:d6', 'role:attack']],
+      ['b', ['actor:act', 'damage:fire']],
+    ]);
+    const label = mod.targetLabeller(mod.targetGroups({ damageTypes: ['fire'] }));
+    expect([label('default'), label('die:d6'), label('damage:fire'), label('odd')]).toEqual([
+      'DICER.Themes.MyDefault',
+      'DICER.Themes.Group.die: d6',
+      'DICER.Themes.Group.damage: Fire',
+      'odd',
+    ]);
+    const list = [{ id: 'a' }, { id: 'b' }];
+    expect(mod.pickSelected(list, 'b', 'a')).toBe('b');
+    expect(mod.pickSelected(list, 'gone', 'a')).toBe('a');
+    expect(mod.pickSelected(list, 'gone', 'gone')).toBe('a');
+    expect(mod.pickSelected([], 'a', 'a')).toBeNull();
+  });
+
   it('targetGroups offers actors and world damage types only as allowed', () => {
     const player = mod.targetGroups({ actors: [{ id: 'a', name: 'A' }], damageTypes: ['fire'], isGM: false });
     expect(player.map((g) => g.label)).not.toContain('DICER.Themes.Group.worldDamage');

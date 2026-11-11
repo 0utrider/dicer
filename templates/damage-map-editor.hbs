@@ -1,39 +1,64 @@
 <div class="dicer-damage-map-body">
-<p class="notes">{{note}}</p>
+<p class="dicer-hint">{{note}}</p>
 
-<div class="dicer-damage-rows">
-  {{#each rows}}
-    <fieldset class="dicer-damage-row">
-      <input type="hidden" name="rows.{{index}}.type" value="{{type}}">
-      <legend>{{label}}</legend>
-      <div class="dicer-row">
-        <label>{{localize "DICER.DamageMap.World"}}
-          <select name="rows.{{index}}.world" {{#unless canEditWorld}}disabled{{/unless}}>{{selectOptions worldChoices selected=world}}</select>
-        </label>
-        <label>{{localize "DICER.DamageMap.Mine"}}
-          <select name="rows.{{index}}.user">{{selectOptions userChoices selected=user}}</select>
-        </label>
+<div class="dicer-dm-scroll">
+  <div class="dicer-dm-table" role="table" aria-label="{{localize "DICER.DamageMap.Title"}}">
+    <div class="dicer-dm-row dicer-dm-head" role="row">
+      <span role="columnheader">{{localize "DICER.DamageMap.Type"}}</span>
+      <span role="columnheader">{{localize "DICER.DamageMap.World"}}</span>
+      <span role="columnheader">{{localize "DICER.DamageMap.Mine"}}</span>
+      <span role="columnheader">{{localize "DICER.DamageMap.LandingSound"}}</span>
+      <span role="columnheader" class="dicer-dm-num">{{localize "DICER.DamageMap.Volume"}}</span>
+      <span role="columnheader"><span class="dicer-sr">{{localize "DICER.DamageMap.Preview"}}</span></span>
+    </div>
+    {{#each rows}}
+      {{#if group}}<div class="dicer-dm-group" role="row"><span role="cell">{{group}}</span></div>{{/if}}
+      <div class="dicer-dm-row" role="row">
+        <input type="hidden" name="rows.{{index}}.type" value="{{type}}">
+        <span class="dicer-dm-type" role="rowheader">
+          <span class="dicer-dm-swatch {{#unless swatch}}is-empty{{/unless}}" {{#if swatch}}style="background: {{swatch}}"{{/if}} aria-hidden="true"></span>
+          {{label}}
+        </span>
+        <span role="cell">
+          {{#if canEditWorld}}
+            <select name="rows.{{index}}.world" aria-label="{{label}}: {{localize "DICER.DamageMap.World"}}">{{selectOptions worldChoices selected=world}}</select>
+          {{else}}
+            <span class="dicer-dm-readonly">{{worldLabel}}</span>
+          {{/if}}
+        </span>
+        <span role="cell">
+          <select name="rows.{{index}}.user" aria-label="{{label}}: {{localize "DICER.DamageMap.Mine"}}">{{selectOptions userChoices selected=user}}</select>
+        </span>
+        <span class="dicer-dm-sound" role="cell">
+          {{#if canEditWorld}}
+            <input type="hidden" name="rows.{{index}}.soundSrc" value="{{soundSrc}}">
+            <button type="button" class="dicer-icon dicer-ghost" data-action="pickFile" data-index="{{index}}" data-tooltip="DICER.DamageMap.Browse" aria-label="{{localize "DICER.DamageMap.Browse"}}"><i class="fa-solid fa-file-audio"></i></button>
+          {{/if}}
+          {{#if soundSrc}}
+            <span class="dicer-chip" data-tooltip="{{soundSrc}}">
+              <span class="dicer-chip-label">{{soundName}}</span>
+              {{#if canEditWorld}}<button type="button" class="dicer-chip-x" data-action="clearFile" data-index="{{index}}" data-tooltip="DICER.DamageMap.ClearSound" aria-label="{{localize "DICER.DamageMap.ClearSound"}}"><i class="fa-solid fa-xmark"></i></button>{{/if}}
+            </span>
+          {{else}}
+            <span class="dicer-muted">{{localize "DICER.DamageMap.BuiltinShort"}}</span>
+          {{/if}}
+        </span>
+        <span class="dicer-dm-num" role="cell">
+          {{#if canEditVolume}}
+            <input type="number" min="0" max="1" step="0.05" name="rows.{{index}}.soundVolume" value="{{soundVolume}}" placeholder="1" aria-label="{{label}}: {{localize "DICER.DamageMap.Volume"}}">
+          {{else}}
+            <span class="dicer-dm-readonly">{{#if soundVolume}}{{soundVolume}}{{else}}–{{/if}}</span>
+          {{/if}}
+        </span>
+        <span role="cell">
+          <button type="button" class="dicer-icon dicer-ghost" data-action="preview" data-index="{{index}}" data-tooltip="DICER.DamageMap.Preview" aria-label="{{localize "DICER.DamageMap.Preview"}}: {{label}}"><i class="fa-solid fa-play"></i></button>
+        </span>
       </div>
-      <div class="dicer-row">
-        <label class="dicer-grow">{{localize "DICER.DamageMap.LandingSound"}}
-          <span class="dicer-file">
-            <input type="text" name="rows.{{index}}.soundSrc" value="{{soundSrc}}" placeholder="{{localize "DICER.DamageMap.BuiltinSound"}}" {{#unless canEditWorld}}disabled{{/unless}}>
-            {{#if canEditWorld}}
-              <button type="button" data-action="pickFile" data-index="{{index}}" data-tooltip="DICER.DamageMap.Browse"><i class="fa-solid fa-file-audio"></i></button>
-              <button type="button" data-action="clearFile" data-index="{{index}}" data-tooltip="DICER.DamageMap.ClearSound"><i class="fa-solid fa-xmark"></i></button>
-            {{/if}}
-          </span>
-        </label>
-        <label>{{localize "DICER.DamageMap.Volume"}}
-          <input type="number" min="0" max="1" step="0.05" name="rows.{{index}}.soundVolume" value="{{soundVolume}}" {{#unless canEditWorld}}disabled{{/unless}}>
-        </label>
-        <button type="button" data-action="preview" data-index="{{index}}"><i class="fa-solid fa-play"></i> {{localize "DICER.DamageMap.Preview"}}</button>
-      </div>
-    </fieldset>
-  {{/each}}
+    {{/each}}
+  </div>
 </div>
 
-<footer class="form-footer">
-  <button type="submit"><i class="fa-solid fa-floppy-disk"></i> {{localize "DICER.DamageMap.Save"}}</button>
+<footer class="dicer-footer">
+  <button type="submit" class="bright"><i class="fa-solid fa-floppy-disk"></i> {{localize "DICER.DamageMap.Save"}}</button>
 </footer>
 </div>

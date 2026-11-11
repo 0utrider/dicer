@@ -72,6 +72,38 @@ export function previewTarget(rule) {
   return { type, value };
 }
 
+const basename = (path) => String(path ?? '').split(/[\\/]/).pop();
+
+/**
+ * The one-line summary of a rule in the list: "d20 · 20 → Light burst + Fanfare".
+ * @param {object} e a form entry
+ * @param {{dice?: object, effects?: object, kinds?: object, outcomes?: object, sounds?: object}} labels choice maps
+ */
+export function ruleSummary(e, { dice = {}, effects = {}, kinds = {}, outcomes = {}, sounds = {} } = {}) {
+  const when = [];
+  when.push(dice[e.die] ?? e.die ?? '');
+  const kind = e.resultKind;
+  if (kind === 'value' && String(e.resultValue ?? '') !== '') when.push(String(e.resultValue));
+  else if (kind === 'range') when.push(`${e.resultFrom ?? ''}–${e.resultTo ?? ''}`);
+  else if (kind === 'label' && e.resultLabel) when.push(`“${e.resultLabel}”`);
+  else if (kind && kind !== 'any' && kinds[kind]) when.push(kinds[kind]);
+  if (e.outcome && e.outcome !== 'any') when.push(outcomes[e.outcome] ?? e.outcome);
+  for (const k of ['role', 'damageType']) if (e[k]) when.push(String(e[k]));
+  const then = [];
+  if (e.effectId) then.push(effects[e.effectId] ?? humanize(e.effectId));
+  if (e.soundKind === 'builtin' && e.soundBuiltin) then.push(sounds[e.soundBuiltin] ?? humanize(e.soundBuiltin));
+  if (e.soundKind === 'file' && e.soundSrc) then.push(basename(e.soundSrc));
+  if (e.macro) then.push(loc('DICER.Triggers.MacroShort'));
+  return `${when.filter(Boolean).join(' · ')} → ${then.join(' + ') || '—'}`;
+}
+
+/** The selected index kept inside the list (null for an empty list). */
+export function clampIndex(index, length) {
+  if (!length) return null;
+  const i = Number.isInteger(index) ? index : 0;
+  return Math.max(0, Math.min(length - 1, i));
+}
+
 let instance = null;
 
 export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
@@ -80,14 +112,15 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     tag: 'form',
     classes: ['dicer-trigger-editor'],
     window: { title: 'DICER.Triggers.Title', icon: 'fa-solid fa-bolt', resizable: true },
-    position: { width: 780, height: 680 },
+    position: { width: 940, height: 640 },
     form: {
       handler: TriggerEditor.#onSubmit,
       submitOnChange: false,
       closeOnSubmit: false,
     },
     actions: {
-      tab: TriggerEditor.#onTab,
+      switchTab: TriggerEditor.#onTab,
+      selectRule: TriggerEditor.#onSelectRule,
       add: TriggerEditor.#onAdd,
       duplicate: TriggerEditor.#onDuplicate,
       delete: TriggerEditor.#onDelete,
@@ -100,10 +133,14 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   static PARTS = {
-    form: { template: 'modules/dicer/templates/trigger-editor.hbs', scrollable: ['.dicer-rules'] },
+    form: {
+      template: 'modules/dicer/templates/trigger-editor.hbs',
+      scrollable: ['.dicer-rule-list', '.dicer-rule-editors'],
+    },
   };
 
   #tab = 'mine';
+  #selected = { world: 0, mine: 0 }; // the rule shown in the editor pane, per tab
   #drafts = null; // { world: Entry[], mine: Entry[] }
   #errors = { world: new Map(), mine: new Map() };
   #moduleRules = [];
@@ -168,7 +205,15 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       if (current !== '' && current !== undefined && !(current in out)) out[current] = String(current);
       return out;
     };
-    const rules = this.#drafts[this.#tab].map((e, index) => {
+    const list = this.#drafts[this.#tab];
+    const selected = clampIndex(this.#selected[this.#tab], list.length);
+    this.#selected[this.#tab] = selected ?? 0;
+    const outcomeChoices = Object.fromEntries(OUTCOMES.map((o) => [o, loc(`DICER.Triggers.Outcomes.${o}`)]));
+    const allKinds = Object.fromEntries([...RESULT_KINDS, 'label'].map((k) => [k, loc(`DICER.Triggers.ResultKinds.${k}`)]));
+    const dieLabels = { ...choices.dice };
+    for (const t of this.#ctx.triggers ?? []) dieLabels[t.id] = t.name;
+    const summaryLabels = { dice: dieLabels, effects: choices.effects, kinds: allKinds, outcomes: outcomeChoices, sounds: choices.sounds };
+    const rules = list.map((e, index) => {
       const isModule = e.source === 'module';
       const isRaw = e.source === 'raw';
       const trigger = triggers.get(e.die);
@@ -177,19 +222,29 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       for (const k of [...RESULT_KINDS, ...(trigger || e.resultKind === 'label' ? ['label'] : [])])
         kinds[k] = loc(`DICER.Triggers.ResultKinds.${k}`);
       const readonly = isModule || isRaw || !canEdit;
+      const defaults = EFFECTS[e.effectId]?.defaults ?? {};
+      const error = isRaw ? loc('DICER.Triggers.UnreadableRule') : (errors.get(index) ?? '');
       return {
         ...e,
         index,
+        selected: index === selected,
+        displayName: e.name || (isRaw ? loc('DICER.Triggers.UnreadableShort') : loc('DICER.Triggers.Untitled')),
+        summary: isRaw ? loc('DICER.Triggers.UnreadableShort') : ruleSummary(e, summaryLabels),
+        hasError: Boolean(error),
+        colorPlaceholder: defaults.color ?? '#ffffff',
+        intensityPlaceholder: defaults.intensity ?? 1,
+        durationPlaceholder: defaults.duration ?? 1000,
+        soundFileName: basename(e.soundSrc),
         isModule,
         isRaw,
         readonly,
         canDelete: isRaw && canEdit,
         enabledLocked: !canEdit,
-        error: isRaw ? loc('DICER.Triggers.UnreadableRule') : (errors.get(index) ?? ''),
+        error,
         dieChoices: options(choices.dice, e.die),
         kindChoices: kinds,
         labelChoices: labels.length ? options(Object.fromEntries(labels.map((l) => [l, l])), e.resultLabel) : null,
-        outcomeChoices: Object.fromEntries(OUTCOMES.map((o) => [o, loc(`DICER.Triggers.Outcomes.${o}`)])),
+        outcomeChoices,
         effectChoices: options(choices.effects, e.effectId),
         soundKindChoices: {
           none: loc('DICER.Triggers.Sound.none'),
@@ -203,13 +258,12 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         soundIsBuiltin: e.soundKind === 'builtin',
         soundIsFile: e.soundKind === 'file',
         hasEffect: Boolean(e.effectId),
-        canMoveUp: !readonly && index > 0 && this.#drafts[this.#tab][index - 1].source !== 'module',
-        canMoveDown:
-          !readonly &&
-          index < this.#drafts[this.#tab].length - 1 &&
-          this.#drafts[this.#tab][index + 1].source !== 'module',
+        hasContext: Boolean(e.formula || e.role || e.damageType || e.actorId || e.userId),
+        canMoveUp: !readonly && index > 0 && list[index - 1].source !== 'module',
+        canMoveDown: !readonly && index < list.length - 1 && list[index + 1].source !== 'module',
       };
     });
+    const current = selected === null ? null : rules[selected];
     return {
       isGM: this.#isGM,
       canEdit,
@@ -222,6 +276,8 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       readonlyNote: !canEdit,
       rules,
       hasRules: rules.length > 0,
+      current,
+      canMove: Boolean(current && !current.readonly),
     };
   }
 
@@ -274,6 +330,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       },
     );
     this.#errors[tab] = new Map((res.errors ?? []).map((e) => [e.index, e.message]));
+    if (res.errors?.length) this.#selected[tab] = res.errors[0].index; // show the first invalid rule
     if (res.ok) {
       globalThis.ui?.notifications?.info(loc('DICER.Triggers.Saved'));
     } else if (res.reason === 'not-gm') {
@@ -297,6 +354,18 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.render();
   }
 
+  static async #onSelectRule(event, target) {
+    const i = Number(target.dataset.index);
+    if (!Number.isInteger(i) || i === this.#selected[this.#tab]) {
+      // A click on the enable toggle of the shown rule: keep the draft in step, nothing to re-render.
+      this.#collect();
+      return;
+    }
+    this.#collect();
+    this.#selected[this.#tab] = i;
+    await this.render();
+  }
+
   #insertAt() {
     const list = this.#drafts[this.#tab];
     const firstModule = list.findIndex((e) => e.source === 'module');
@@ -313,7 +382,9 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const e = blankEntry(this.#newId(), this.#tab === 'world' ? 'world' : 'user');
     e.name = loc('DICER.Triggers.NewRule');
     e.effectId = 'light-burst';
-    this.#drafts[this.#tab].splice(this.#insertAt(), 0, e);
+    const at = this.#insertAt();
+    this.#drafts[this.#tab].splice(at, 0, e);
+    this.#selected[this.#tab] = at;
     this.#errors[this.#tab].clear();
     await this.render();
   }
@@ -326,6 +397,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!list[i] || list[i].source === 'module' || list[i].source === 'raw') return;
     const copy = { ...list[i], id: this.#newId(), name: `${list[i].name} ${loc('DICER.Triggers.Copy')}`.trim() };
     list.splice(i + 1, 0, copy);
+    this.#selected[this.#tab] = i + 1;
     this.#errors[this.#tab].clear();
     await this.render();
   }
@@ -337,6 +409,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const i = Number(target.dataset.index);
     if (!list[i] || list[i].source === 'module') return;
     list.splice(i, 1);
+    this.#selected[this.#tab] = clampIndex(i, list.length) ?? 0;
     this.#errors[this.#tab].clear();
     await this.render();
   }
@@ -349,6 +422,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const j = i + delta;
     if (!list[i] || !list[j] || list[i].source === 'module' || list[j].source === 'module') return;
     [list[i], list[j]] = [list[j], list[i]];
+    this.#selected[this.#tab] = j;
     this.#errors[this.#tab].clear();
     await this.render();
   }
