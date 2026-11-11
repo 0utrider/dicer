@@ -1,27 +1,17 @@
 import { execSync } from 'node:child_process';
-import { readdirSync, statSync, readFileSync } from 'node:fs';
-import { sep } from 'node:path';
+import { statSync, readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
+import {
+  BUDGET,
+  WORLD_START_ASSETS,
+  distFiles,
+  isLazy,
+  worldStartFiles,
+} from '../../build/world-start.js';
 
-const BUDGET = 4 * 1024 * 1024;
-/**
- * Loaded at world start besides dist/ (loadDigitAtlas; main.js imports api.js at init). The sans
- * atlas (digits-sans.*) is not: the font layer loads it only when a look uses it.
- */
-const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json', 'api.js'];
-
-/** Fetched on demand: a die model (dynamic import / DRACOLoader), or the DSN migration at ready. */
-const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|appearance-editor-[^/]+\.js|theme-form-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|font-builder-[^/]+\.js|dicer-adapter-[^/]+\.js|benchmark-app-[^/]+\.js|report-[^/]+\.js|assets\/font-worker-[^/]+\.js|draco\/)/.test(p);
-
-/** Every file under dist/, as forward-slash paths. */
-const distFiles = () =>
-  readdirSync('dist', { recursive: true })
-    .map((f) => `dist/${f.split(sep).join('/')}`)
-    .filter((p) => statSync(p).isFile());
-
-function worldStartBytes() {
-  const files = distFiles().filter((p) => !isLazy(p));
-  return [...files, ...WORLD_START_ASSETS].reduce((sum, p) => sum + statSync(p).size, 0);
-}
+// The world-start set (non-lazy dist/ plus the digit atlas and api.js), the lazy chunk list and
+// the budget live in build/world-start.js, shared with scripts/bundle-report.mjs.
+const worldStartBytes = () => worldStartFiles().reduce((sum, p) => sum + statSync(p).size, 0);
 
 describe('build', () => {
   beforeAll(() => execSync('node node_modules/vite/bin/vite.js build', { stdio: 'pipe' }), 120000);
@@ -31,7 +21,7 @@ describe('build', () => {
     expect(statSync('dist/dicer.js').isFile()).toBe(true);
   });
   it('emits the GLTF loader, the DSN migration, the audio synth, the effects library and the trigger editor as their own chunks, out of the world-start bundle', () => {
-    const lazy = distFiles().filter(isLazy);
+    const lazy = distFiles().filter((p) => isLazy(p));
     const chunk = lazy.find((p) => /model-loader-/.test(p));
     const migration = lazy.find((p) => /migration-/.test(p));
     const synth = lazy.find((p) => /synth-/.test(p));
@@ -96,7 +86,28 @@ describe('build', () => {
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('has no Dicer counterpart yet');
     expect(readFileSync(migration, 'utf8')).toContain('has no Dicer counterpart yet');
     expect(lazy.sort()).toEqual(
-      [chunk, migration, synth, effects, editor, damageEditor, areaEditor, themeBrowser, appearanceEditor, themeForm, damageForm, soundNames, points, fontBuilder, fontWorker, benchAdapter, benchApp, benchReport, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
+      [
+        chunk,
+        migration,
+        synth,
+        effects,
+        editor,
+        damageEditor,
+        areaEditor,
+        themeBrowser,
+        appearanceEditor,
+        themeForm,
+        damageForm,
+        soundNames,
+        points,
+        fontBuilder,
+        fontWorker,
+        benchAdapter,
+        benchApp,
+        benchReport,
+        'dist/draco/draco_decoder.wasm',
+        'dist/draco/draco_wasm_wrapper.js',
+      ].sort(),
     );
   });
   it('keeps the built-in theme table under 6 KiB minified (P5-R1)', () => {
@@ -115,19 +126,28 @@ describe('build', () => {
       expect(readFileSync(p, 'utf8')).not.toContain('SETTING_FORMATING');
     }
   });
-  it('grows the world-start download by under 2 KB for the in-game benchmark (Plan 8 Task 4)', () => {
-    // 4_118_314 bytes just before the benchmark (the settings menu and game.dice3d.benchmark proxy are
-    // all that ships at world start). Task 6's size work replaces this reference.
-    const growth = worldStartBytes() - 4_118_314;
-    console.info(`dicer benchmark world-start growth: ${growth} bytes`);
+  it('strips comments and indentation from the shaders in the world-start bundle (Plan 8 Task 6)', () => {
+    const js = readFileSync('dist/dicer.js', 'utf8');
+    // A comment in three's alphahash_pars_fragment chunk, and one in Dicer's noise library.
+    expect(js).not.toContain('Derived from trials only');
+    expect(js).not.toContain('Rotate-ish and scale between octaves');
+    expect(js).toContain('#include <lights_physical_pars_fragment>');
+  });
+  it('does not grow the world-start download by more than 2 KB (ratchet, Plan 8 Task 6)', () => {
+    // 4_086_989 bytes after Task 6 (GLSL stripping), still over BUDGET: no change may widen the gap
+    // unnoticed. Lower this reference whenever world start shrinks.
+    const growth = worldStartBytes() - 4_086_989;
+    console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });
-  it('keeps the world-start download (dist/ minus lazy chunks, plus the font atlas and api.js) under 4 MB', () => {
+  it('keeps the world-start download (dist/ minus lazy chunks, plus the font atlas and api.js) within BUDGET (build/world-start.js; H-D1)', () => {
+    const files = worldStartFiles();
     const total = worldStartBytes();
-    const kib = (n) => `${(n / 1024).toFixed(1)} KiB`;
+    // Gzip is for information only (H-D1): Foundry serves these files as they are.
+    const gzip = files.reduce((sum, p) => sum + gzipSync(readFileSync(p), { level: 9 }).length, 0);
     console.info(
-      `dicer size guard: ${kib(total)} of ${kib(BUDGET)} (world-start dist/ + digits.png + digits.json + api.js); ` +
-        `headroom ${kib(BUDGET - total)}`,
+      `dicer size guard: ${total} of ${BUDGET} bytes (world-start dist/ + ${WORLD_START_ASSETS.join(' + ')}); ` +
+        `headroom ${BUDGET - total} bytes; gzip -9 total ${gzip} bytes (information only)`,
     );
     expect(total).toBeLessThanOrEqual(BUDGET);
   });
