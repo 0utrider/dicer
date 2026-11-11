@@ -1,18 +1,5 @@
-import { PRESETS, normalizeAreaDef, resolveArea } from './area-model.js';
-
-const DEFAULT_AREA = Object.freeze({ preset: 'full' });
-const GM_PRIVATE_DEFAULT = Object.freeze({ preset: 'corner' });
-
-const isPlainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
-
-/** A stored def is usable when normalizing keeps its preset (unknown or empty custom is not). */
-function isValidDef(raw) {
-  if (!isPlainObject(raw)) return false;
-  return (
-    (Object.hasOwn(PRESETS, raw.preset) || raw.preset === 'custom') &&
-    normalizeAreaDef(raw).preset === raw.preset
-  );
-}
+import { resolveArea } from './area-model.js';
+import { storedDefFor, gmPrivateDef } from './area-store.js';
 
 const EPS = 0.5;
 const sameRect = (a, b) =>
@@ -39,13 +26,6 @@ export function createAreaResolver({ getSetting, measureUsable, currentUser }) {
     console.warn(`dicer: the stored roll area ${key} is unreadable; using the default`, detail);
   };
 
-  /** A stored def, or `fallback` (warning once under `key`) when it is malformed. */
-  const checked = (raw, key, fallback) => {
-    if (isValidDef(raw)) return raw;
-    warnOnce(key, raw);
-    return fallback;
-  };
-
   function isGM() {
     try {
       return currentUser()?.isGM === true;
@@ -57,27 +37,9 @@ export function createAreaResolver({ getSetting, measureUsable, currentUser }) {
   /** The stored def for this throw: GM corner, else the roller's own, else the default. */
   function defFor({ rollerId, gmPrivate }) {
     if (gmPrivate === true && isGM() && getSetting('gmPrivateCorner') === true) {
-      return checked(getSetting('gmPrivateArea'), 'gmPrivateArea', GM_PRIVATE_DEFAULT);
+      return gmPrivateDef(getSetting, warnOnce);
     }
-    const stored = getSetting('rollAreas');
-    if (stored === undefined) return DEFAULT_AREA;
-    if (!isPlainObject(stored)) {
-      warnOnce('rollAreas', stored);
-      return DEFAULT_AREA;
-    }
-    const fallback =
-      'default' in stored
-        ? checked(stored.default, 'rollAreas.default', DEFAULT_AREA)
-        : DEFAULT_AREA;
-    if (getSetting('perPlayerAreas') === false || rollerId == null) return fallback;
-    const { users } = stored;
-    if (users === undefined) return fallback;
-    if (!isPlainObject(users)) {
-      warnOnce('rollAreas.users', users);
-      return fallback;
-    }
-    if (!Object.hasOwn(users, rollerId)) return fallback;
-    return checked(users[rollerId], `rollAreas.users.${rollerId}`, fallback);
+    return storedDefFor(getSetting, rollerId, warnOnce);
   }
 
   const stage = () => measureUsable();

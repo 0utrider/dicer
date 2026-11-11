@@ -8,7 +8,7 @@ import { moduleRulesOf } from '../effects/fx-resolver.js';
 import { getShape } from '../core/dice-shapes.js';
 import { resolveDamageTheme } from '../effects/damage-themes.js';
 import { PRESETS, normalizeAreaDef } from '../areas/area-model.js';
-import { snapshotAreas, withArea } from '../areas/area-store.js';
+import { areaDefFor, withArea } from '../areas/area-store.js';
 import { isGmOnly } from '../areas/gm-only.js';
 
 const STANDARD_SYSTEM = 'standard';
@@ -488,12 +488,18 @@ export function createDice3dApi({
 
   const isGmHere = () => me()?.isGM === true;
   /** GM-only write: a player's call writes nothing, warns once and resolves false. */
-  async function writeAreas(name, key, value) {
+  async function writeAreas(name, key, build) {
     if (!isGmHere()) {
       warnOnce('rollAreas (GM only)', name);
       return false;
     }
     try {
+      const value = build();
+      if (value === null) {
+        // Never overwrite stored data we cannot read (or a "__proto__" id).
+        warnOnce('rollAreas (unreadable data)', name);
+        return false;
+      }
       await writeSetting(key, value);
       return true;
     } catch (err) {
@@ -504,8 +510,13 @@ export function createDice3dApi({
   const rollAreas = Object.freeze({
     presets: Object.freeze(Object.keys(PRESETS)),
     get(userId = null) {
-      const snap = snapshotAreas(getSetting);
-      return userId != null && Object.hasOwn(snap.users, userId) ? snap.users[userId] : snap.default;
+      // Exactly what the dice use (the resolver's rule), as a copy.
+      try {
+        return areaDefFor(getSetting, userId);
+      } catch (err) {
+        warnOnce('rollAreas.get', err);
+        return { preset: 'full' };
+      }
     },
     rect(userId = null) {
       try {
@@ -519,10 +530,10 @@ export function createDice3dApi({
       }
     },
     set(userId, def) {
-      return writeAreas('set', 'rollAreas', withArea(getSetting('rollAreas'), userId ?? null, def));
+      return writeAreas('set', 'rollAreas', () => withArea(getSetting('rollAreas'), userId ?? null, def));
     },
     setGmPrivateArea(def) {
-      return writeAreas('setGmPrivateArea', 'gmPrivateArea', normalizeAreaDef(def));
+      return writeAreas('setGmPrivateArea', 'gmPrivateArea', () => normalizeAreaDef(def));
     },
   });
 

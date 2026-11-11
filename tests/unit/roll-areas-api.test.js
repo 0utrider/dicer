@@ -105,6 +105,44 @@ test('entries for other users are kept, even unreadable ones', async () => {
   expect(store.rollAreas.users).toEqual({ p2: { preset: 'garbage' }, p3: 7 });
 });
 
+test('get reports what the dice use: unreadable entry = the default; perPlayerAreas off = the default', () => {
+  store.rollAreas = { default: { preset: 'centre' }, users: { p1: { preset: 'bad' }, p2: { preset: 'corner' } } };
+  expect(areas.get('p1')).toEqual({ preset: 'centre' });
+  expect(areas.get('p2')).toEqual({ preset: 'corner' });
+  store.perPlayerAreas = false;
+  expect(areas.get('p2')).toEqual({ preset: 'centre' });
+});
+
+test('set refuses to overwrite unreadable stored data (false + warning, nothing written)', async () => {
+  store.rollAreas = { default: { preset: 'centre' }, users: 'junk' };
+  const before = structuredClone(store);
+  await expect(areas.set('p1', { preset: 'corner' })).resolves.toBe(false);
+  expect(store).toEqual(before);
+  expect(warn).toHaveBeenCalledTimes(1);
+  store.rollAreas = 'junk';
+  await expect(areas.set(null, { preset: 'corner' })).resolves.toBe(false);
+  expect(store.rollAreas).toBe('junk');
+});
+
+test('set always returns a promise, even when reading the setting throws', async () => {
+  const a = make({
+    getSetting: () => {
+      throw new Error('unreadable');
+    },
+  });
+  let p;
+  expect(() => {
+    p = a.set('p1', { preset: 'corner' });
+  }).not.toThrow();
+  await expect(p).resolves.toBe(false);
+});
+
+test('a "__proto__" user id is refused', async () => {
+  await expect(areas.set('__proto__', { preset: 'corner' })).resolves.toBe(false);
+  expect({}.preset).toBeUndefined();
+  expect(Object.keys(store.rollAreas.users)).toEqual([]);
+});
+
 test('get returns a copy', async () => {
   await areas.set('p1', { preset: 'custom', x: 0.1, y: 0.1, w: 0.5, h: 0.5 });
   const got = areas.get('p1');
