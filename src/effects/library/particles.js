@@ -229,13 +229,27 @@ export function createParticlePool(scene, capacity) {
       deathMs = Math.max(deathMs, nowMs + l * 1000);
     }
     mark(layer, first, run);
+    layer.dirty = true;
     layer.points.visible = true;
   }
 
+  /** Makes every slot of a layer dead for any future epoch (once: skipped if already dead). */
+  function kill(layer) {
+    if (!layer.dirty) return;
+    layer.dirty = false;
+    layer.attrs.aLife.array.fill(0);
+    layer.attrs.aLife.addUpdateRange(0, layer.capacity);
+    layer.attrs.aLife.needsUpdate = true;
+  }
+
+  // A new epoch restarts the shader clock at 0, so stale births would otherwise come alive again.
   function idle() {
     epoch = null;
     deathMs = -Infinity;
-    for (const l of layers) l.points.visible = false;
+    for (const l of layers) {
+      kill(l);
+      l.points.visible = false;
+    }
   }
 
   return {
@@ -255,8 +269,6 @@ export function createParticlePool(scene, capacity) {
     },
     /** Kills every particle at once (the layer's clear()). */
     clear() {
-      for (const l of layers) l.attrs.aLife.array.fill(0);
-      for (const l of layers) mark(l, 0, l.capacity);
       idle();
     },
     dispose() {

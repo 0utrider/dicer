@@ -79,3 +79,25 @@ test('normal-blend particles go to the second layer; clear kills everything', ()
   expect(pool.update(1)).toBe(false);
   expect(pool.layers[1].points.visible).toBe(false);
 });
+
+test('regression: after the pool goes idle, no stale slot is live in the next epoch', () => {
+  const pool = createParticlePool(new THREE.Scene(), 64);
+  const live = (layer, uTime) => {
+    const { aBirth, aLife } = layer.attrs;
+    let n = 0;
+    for (let i = 0; i < layer.capacity; i++) {
+      const t = uTime - aBirth.getX(i);
+      if (t >= 0 && t < aLife.getX(i)) n++;
+    }
+    return n;
+  };
+  pool.emit(spec({ count: 40, life: 1, now: 5000 }));
+  pool.emit(spec({ count: 5, life: 1, now: 5000, blend: 'normal' }));
+  expect(pool.update(5100)).toBe(true);
+  expect(live(pool.layers[0], pool.layers[0].material.uniforms.uTime.value)).toBe(40);
+  expect(pool.update(9000)).toBe(false); // idle: the epoch is dropped
+  pool.emit(spec({ count: 3, life: 1, now: 20000 })); // new epoch: birth 0
+  pool.update(20200);
+  expect(live(pool.layers[0], pool.layers[0].material.uniforms.uTime.value)).toBe(3);
+  expect(live(pool.layers[1], pool.layers[1].material.uniforms.uTime.value)).toBe(0);
+});
