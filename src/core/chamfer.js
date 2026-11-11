@@ -49,6 +49,20 @@ export const EDGE_STYLES = Object.freeze({
   sharp: Object.freeze({ chamfer: 0.012, bevelSegments: 1 }),
 });
 
+/**
+ * Edge sharpness steps (appearance edges.radius): chamfer and bevel segments per step. Step 0 is
+ * the 'sharp' style and step 0.5 the 'rounded' style, so the geometry of those two is unchanged;
+ * 1 is about 1.6x the rounded chamfer (a pebble, face labels still inside the flat part). The
+ * d20 hits the in-plane inset cap (MAX_INSET_FRACTION) a little above 0.15, so 0.11 stays clear.
+ */
+export const EDGE_RADIUS_STEPS = Object.freeze({
+  0: Object.freeze({ chamfer: 0.012, bevelSegments: 1 }),
+  0.25: Object.freeze({ chamfer: 0.04, bevelSegments: 2 }),
+  0.5: Object.freeze({ chamfer: 0.07, bevelSegments: 3 }),
+  0.75: Object.freeze({ chamfer: 0.09, bevelSegments: 4 }),
+  1: Object.freeze({ chamfer: 0.11, bevelSegments: 4 }),
+});
+
 const COIN_HALF_HEIGHT = 0.125;
 const COIN_SEGMENTS = 48;
 /** The in-plane bevel inset is capped at this fraction of the smallest face inradius. */
@@ -325,6 +339,18 @@ function buildCoin(chamfer, segs, b) {
 }
 
 function resolveOptions(opts) {
+  if (opts.radius !== undefined) {
+    // The nearest step; a radius wins over style.
+    const keys = Object.keys(EDGE_RADIUS_STEPS).map(Number);
+    const r = Number(opts.radius);
+    const step = keys.reduce((a, k) => (Math.abs(k - r) < Math.abs(a - r) ? k : a), keys[0]);
+    const def = EDGE_RADIUS_STEPS[step];
+    return {
+      style: step === 0 ? 'sharp' : 'rounded',
+      chamfer: Math.max(0, opts.chamfer ?? def.chamfer),
+      segs: Math.max(1, Math.floor(opts.bevelSegments ?? def.bevelSegments)),
+    };
+  }
   const style = opts.style ?? 'rounded';
   const def = Object.hasOwn(EDGE_STYLES, style) ? EDGE_STYLES[style] : null;
   if (!def) throw new Error(`Dicer: unknown edge style "${style}"`);
@@ -345,7 +371,7 @@ function resolveOptions(opts) {
  */
 export function minkowskiHull(shape, opts = {}) {
   if (shape.kind === 'coin') throw new Error('Dicer: minkowskiHull is for polyhedra only');
-  const { chamfer } = resolveOptions(opts);
+  const { chamfer } = resolveOptions({ ...opts, radius: undefined }); // the collider never follows the look
   const { V, rho, s } = polyhedronFrame(shape, chamfer);
   return { points: V.map((v) => [v.x * s, v.y * s, v.z * s]), radius: rho };
 }

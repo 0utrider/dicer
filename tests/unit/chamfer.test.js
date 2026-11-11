@@ -241,3 +241,63 @@ test.each(POLY)('%s centroid aEdgeDist matches every inset edge distance within 
     expect(Math.abs(dist / ed.getX(i) - 1)).toBeLessThan(0.005);
   }
 });
+
+// ---- five edge sharpness steps (Plan 7, P7-D2) ----
+const STEPS = [0, 0.25, 0.5, 0.75, 1];
+const faceIds = (g) => [...g.getAttribute('aFaceId').array].filter((f) => f >= 0);
+
+describe.each(ALL)('edge radius steps on %s', (t) => {
+  const shape = getShape(t);
+  const n = faceNormals(shape).length;
+
+  test.each(STEPS)('radius %s: valid geometry, every face id present, inside the unit sphere', (r) => {
+    const g = buildDieGeometry(shape, { radius: r });
+    g.computeBoundingSphere();
+    expect(g.boundingSphere.radius).toBeLessThanOrEqual(1.0001);
+    expect(g.userData.faceCount).toBe(n);
+    expect(new Set(faceIds(g)).size).toBe(n);
+    expect(g.userData.style).toBe(r === 0 ? 'sharp' : 'rounded');
+  });
+
+  test('face triangle count is the same for every step', () => {
+    const counts = STEPS.map((r) => faceIds(buildDieGeometry(shape, { radius: r })).length);
+    expect(new Set(counts).size).toBe(1);
+  });
+
+  test('radius 0 is today\'s sharp and 0.5 today\'s rounded, vertex for vertex', () => {
+    const same = (a, b) => {
+      expect(a.getAttribute('position').array).toEqual(b.getAttribute('position').array);
+      expect(a.getAttribute('aFaceId').array).toEqual(b.getAttribute('aFaceId').array);
+    };
+    same(buildDieGeometry(shape, { radius: 0 }), buildDieGeometry(shape, { style: 'sharp' }));
+    same(buildDieGeometry(shape, { radius: 0.5 }), buildDieGeometry(shape, { style: 'rounded' }));
+    same(buildDieGeometry(shape, { radius: 0.5 }), buildDieGeometry(shape));
+  });
+
+  test('the steps get monotonically rounder (the flat face shrinks) and 1 is rounder than 0.5', () => {
+    const flat = (r) => {
+      const g = buildDieGeometry(shape, { radius: r });
+      const ids = g.getAttribute('aFaceId');
+      const p = g.getAttribute('position');
+      let sum = 0;
+      for (let i = 0; i < ids.count; i += 3) {
+        if (ids.getX(i) < 0) continue;
+        const [a, b, c] = [0, 1, 2].map((k) => [p.getX(i + k), p.getY(i + k), p.getZ(i + k)]);
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        sum += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
+      }
+      return sum;
+    };
+    const areas = STEPS.map(flat);
+    for (let i = 1; i < areas.length; i++) expect(areas[i]).toBeLessThan(areas[i - 1]);
+  });
+});
+
+test('an unknown radius snaps to the nearest step; the physics hull ignores radius', () => {
+  const s = getShape('d6');
+  const a = buildDieGeometry(s, { radius: 0.6 }).getAttribute('position').array;
+  expect(a).toEqual(buildDieGeometry(s, { radius: 0.5 }).getAttribute('position').array);
+  expect(minkowskiHull(s, { radius: 1 })).toEqual(minkowskiHull(s));
+  expect(minkowskiHull(s, { radius: 0 })).toEqual(minkowskiHull(s));
+});

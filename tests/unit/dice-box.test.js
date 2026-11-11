@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { DiceBox, ASSET_WAIT_MS } from '../../src/throw/dice-box.js';
+import { DiceBox, ASSET_WAIT_MS, IDLE_GEOMETRY_CAP } from '../../src/throw/dice-box.js';
 import { MODEL_ROTATIONS } from '../../src/compat/dsn-orientation.js';
 import { rotationToShow, readTopFace, faceForValue } from '../../src/core/face-reader.js';
 import { buildScene } from '../../src/render/scene.js';
@@ -319,10 +319,10 @@ test('geometry is built once per die type across rolls', async () => {
   box.clear();
 });
 
-test('geometry cache is keyed by type|edge style and passes the style (P2-R5)', () => {
+test('geometry cache is keyed by type|edge radius and passes the radius (P2-R5, P7-D2)', () => {
   buildDieGeometry.mockClear();
   const { physics, box } = setup({
-    appearance: { body: { type: 'resin' }, edges: { style: 'sharp' } },
+    appearance: { body: { type: 'resin' }, edges: { radius: 0 } },
   });
   box.roll([
     { type: 'd6', value: 1 },
@@ -330,13 +330,13 @@ test('geometry cache is keyed by type|edge style and passes the style (P2-R5)', 
   ]);
   physics.flush();
   expect(buildDieGeometry).toHaveBeenCalledTimes(1);
-  expect(buildDieGeometry.mock.calls[0][1]).toEqual({ style: 'sharp' });
+  expect(buildDieGeometry.mock.calls[0][1]).toEqual({ radius: 0 });
   box.clear();
   buildDieGeometry.mockClear();
   const legacy = setup();
   legacy.box.roll([{ type: 'd6', value: 1 }]);
   legacy.physics.flush();
-  expect(buildDieGeometry.mock.calls[0][1]).toEqual({ style: 'rounded' });
+  expect(buildDieGeometry.mock.calls[0][1]).toEqual({ radius: 0.5 });
   legacy.box.clear();
 });
 
@@ -594,18 +594,107 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     box.clear();
   });
 
-  test('the geometry edge style follows the look of each roll', () => {
+  test('the geometry edge radius follows the look of each roll', () => {
     buildDieGeometry.mockClear();
     let look = ruby;
     const { box } = setup({ appearance: undefined, getAppearance: () => look });
     box.roll([{ type: 'd6', value: 1 }]);
-    look = { ...ruby, edges: { style: 'sharp' } };
+    look = { ...ruby, edges: { radius: 0 } };
     box.roll([{ type: 'd6', value: 1 }]);
     expect(buildDieGeometry.mock.calls.map((c) => c[1])).toEqual([
-      { style: 'rounded' },
-      { style: 'sharp' },
+      { radius: 0.5 },
+      { radius: 0 },
     ]);
     box.clear();
+  });
+
+  describe('geometry per edge step (P7-D2)', () => {
+    const STEPS = [0, 0.25, 0.5, 0.75, 1];
+    const TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+    const withRadius = (r) => ({ ...ruby, edges: { radius: r } });
+
+    test('two dice of one type and step share one geometry; another step gets its own', () => {
+      buildDieGeometry.mockClear();
+      let look = withRadius(1);
+      const { renderer, box } = setup({ appearance: undefined, getAppearance: () => look });
+      box.roll([
+        { type: 'd6', value: 1 },
+        { type: 'd6', value: 2 },
+      ]);
+      expect(meshOf(renderer, 0).geometry).toBe(meshOf(renderer, 1).geometry);
+      expect(buildDieGeometry).toHaveBeenCalledTimes(1);
+      look = withRadius(0.25);
+      box.roll([{ type: 'd6', value: 3 }]);
+      expect(meshOf(renderer, 2).geometry).not.toBe(meshOf(renderer, 0).geometry);
+      expect(buildDieGeometry).toHaveBeenCalledTimes(2);
+      box.clear();
+    });
+
+    test('changing the look mid-roll leaves in-flight dice on their geometry and frees nothing early', () => {
+      let look = withRadius(1);
+      const { renderer, box } = setup({ appearance: undefined, getAppearance: () => look });
+      box.roll([{ type: 'd6', value: 1 }]);
+      const mesh = meshOf(renderer, 0);
+      const held = mesh.geometry;
+      const dispose = vi.spyOn(held, 'dispose');
+      // Churn every other type and step through the cache while the first roll is in flight.
+      for (const r of STEPS)
+        for (const type of TYPES) {
+          look = withRadius(r);
+          box.roll([{ type, value: 1 }]);
+        }
+      look = withRadius(0);
+      box.roll([{ type: 'd6', value: 2 }]);
+      expect(mesh.geometry).toBe(held);
+      expect(dispose).not.toHaveBeenCalled();
+      box.clear();
+    });
+
+    test('200 rolls cycling every step and type keep the geometry count within 5 x types', () => {
+      let look = withRadius(0);
+      const { box } = setup({ appearance: undefined, getAppearance: () => look });
+      let peak = 0;
+      for (let i = 0; i < 200; i++) {
+        look = withRadius(STEPS[i % STEPS.length]);
+        box.roll([{ type: TYPES[i % TYPES.length], value: 1 }]);
+        peak = Math.max(peak, box._geometries.size);
+        box.clear();
+        expect(box._geometries.size).toBeLessThanOrEqual(5 * TYPES.length);
+      }
+      expect(peak).toBeLessThanOrEqual(5 * TYPES.length);
+      // Nothing is held after clear(): only the idle LRU remains, and every cached one is live.
+      expect(box._geometries.size).toBeLessThanOrEqual(IDLE_GEOMETRY_CAP);
+      for (const g of box._geometries.values()) expect(box._geoRefs.get(g).refs).toBe(0);
+    });
+
+    test('a geometry evicted from the idle LRU is disposed once, and a rebuild works', () => {
+      let look = withRadius(0);
+      const { renderer, box } = setup({ appearance: undefined, getAppearance: () => look });
+      box.roll([{ type: 'd4', value: 1 }]);
+      const first = meshOf(renderer, 0).geometry;
+      const dispose = vi.spyOn(first, 'dispose');
+      box.clear();
+      for (const r of STEPS)
+        for (const type of TYPES.slice(1)) {
+          look = withRadius(r);
+          box.roll([{ type, value: 1 }]);
+          box.clear();
+        }
+      expect(dispose).toHaveBeenCalledTimes(1);
+      look = withRadius(0);
+      box.roll([{ type: 'd4', value: 1 }]);
+      expect(meshOf(renderer, 0).geometry).not.toBe(first);
+      box.clear();
+    });
+
+    test('dispose() frees every cached geometry', () => {
+      const { renderer, box } = setup({ appearance: ruby });
+      box.roll([{ type: 'd6', value: 1 }]);
+      const dispose = vi.spyOn(meshOf(renderer, 0).geometry, 'dispose');
+      box.dispose();
+      expect(dispose).toHaveBeenCalled();
+      expect(box._geometries.size).toBe(0);
+    });
   });
 
   test('invalidateMaterials during a roll keeps the rolling dice rendering with their material, disposes it after finished', async () => {

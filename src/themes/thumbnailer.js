@@ -99,6 +99,26 @@ export function createThumbnailer({
   let onLost = null;
   let broken = false;
   let disposed = false;
+  // Geometry per die type and edge step (type|radius), shared by every thumbnail and preview
+  // that uses it and freed when the last one lets go (the same keys as DiceBox's cache).
+  const geometries = new Map(); // key -> { geometry, refs }
+  function acquireGeometry(shape, shapeType, appearance) {
+    const key = `${shapeType}|${appearance.edges?.radius ?? 0.5}`;
+    let entry = geometries.get(key);
+    if (!entry) {
+      const geometry = buildDieGeometry(shape, { radius: appearance.edges?.radius });
+      geometry.computeBoundingSphere();
+      entry = { geometry, refs: 0 };
+      geometries.set(key, entry);
+    }
+    entry.refs++;
+    return { geometry: entry.geometry, release: () => releaseGeometry(key, entry) };
+  }
+  function releaseGeometry(key, entry) {
+    if (--entry.refs > 0) return;
+    entry.geometry.dispose();
+    if (geometries.get(key) === entry) geometries.delete(key);
+  }
   let flags = null;
   let curSize = 0; // the renderer's current square size (a preview frame may change it)
   let busy = false; // a thumbnail render + capture is in flight: no preview frame may touch the canvas
@@ -151,8 +171,8 @@ export function createThumbnailer({
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
     const shapeType = dieType === 'd100' ? 'd10' : dieType;
     const shape = getShape(shapeType);
-    const geometry = buildDieGeometry(shape, { style: appearance.edges?.style });
-    geometry.computeBoundingSphere();
+    const held = acquireGeometry(shape, shapeType, appearance);
+    const geometry = held.geometry;
     const labels = shape.values.map((v) => labelFor(shapeType, v));
     const api = sceneApi; // dispose() may null the module state while the blob is pending
     const cam = camera;
@@ -180,7 +200,7 @@ export function createThumbnailer({
       api.releaseShadow(shadow);
       material.userData?.uniforms?.uLabels?.value?.dispose();
       material.dispose();
-      geometry.dispose();
+      held.release();
     }
   }
 
@@ -248,7 +268,7 @@ export function createThumbnailer({
       if (!res) return;
       res.material.userData?.uniforms?.uLabels?.value?.dispose();
       res.material.dispose();
-      res.geometry.dispose();
+      res.release();
       res = null;
     };
     const cancel = () => {
@@ -262,15 +282,15 @@ export function createThumbnailer({
       if (!renderer || broken) return false;
       const shapeType = dieType === 'd100' ? 'd10' : dieType;
       const shape = getShape(shapeType);
-      const geometry = buildDieGeometry(shape, { style: appearance.edges?.style });
-      geometry.computeBoundingSphere();
+      const held = acquireGeometry(shape, shapeType, appearance);
+      const geometry = held.geometry;
       const labels = shape.values.map((v) => labelFor(shapeType, v));
       const material = createDiceMaterial(appearance, atlas, shape, labels, flags);
       const mesh = new THREE.Mesh(geometry, material);
       const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
       const baseQ = restingQuaternion(shape, Math.max(0, face)).clone();
       mesh.position.y = -minY(geometry, baseQ);
-      res = { mesh, material, geometry, baseQ, y: mesh.position.y };
+      res = { mesh, material, geometry, release: held.release, baseQ, y: mesh.position.y };
       return true;
     }
 
@@ -402,6 +422,8 @@ export function createThumbnailer({
     for (const p of [...previews]) p.stop();
     disposed = true;
     for (const url of cache.values()) URL.revokeObjectURL(url);
+    for (const e of geometries.values()) e.geometry.dispose();
+    geometries.clear();
     cache.clear();
     teardown();
   }

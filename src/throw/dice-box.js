@@ -101,6 +101,12 @@ function faceTexId(faceTex) {
  */
 /** How many cached materials no roll or warm-up holds are kept (least recently used evicted). */
 export const IDLE_MATERIAL_CAP = 64;
+/**
+ * Geometries are cached per die type and edge step (five steps, so at most 5 x types exist) and
+ * refcounted per roll like materials; this many held by nothing are kept, the least recently
+ * used disposed beyond it.
+ */
+export const IDLE_GEOMETRY_CAP = 16;
 
 export class DiceBox {
   constructor({
@@ -163,7 +169,9 @@ export class DiceBox {
     this._effectsWarned = false;
     this._rollSeq = 0;
     this._systemWarned = new Set(); // system id|kind: one warning each
-    this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
+    this._geometries = new Map(); // type|edge radius -> BufferGeometry (P2-R5, P7-D2)
+    this._geoRefs = new Map(); // geometry -> { refs, key }
+    this._idleGeo = new Set(); // cached geometries with refs 0, least recently used first
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
     this._refs = new Map(); // material -> { refs, stale, key }, cached and stale materials alike
     this._idle = new Set(); // cached materials with refs 0, least recently used first
@@ -259,6 +267,7 @@ export class DiceBox {
       shadows: [],
       fades: null,
       materials: new Set(),
+      geometries: new Set(),
       phase: 'playing',
       removed: false,
     };
@@ -394,6 +403,8 @@ export class DiceBox {
     this._visibility?.removeEventListener?.('visibilitychange', this._onVisibility);
     this.clear();
     for (const g of this._geometries.values()) g.dispose();
+    this._geoRefs.clear();
+    this._idleGeo.clear();
     for (const m of [...this._refs.keys()]) this.#disposeMaterial(m);
     this._idle.clear();
     this._geometries.clear();
@@ -429,14 +440,17 @@ export class DiceBox {
     const flags = this.#flags();
     const materials = [...new Set(types.map((t) => this.#material(appearance, flags, t)))];
     for (const m of materials) this.#retain(m);
+    const geometry = this.#geometry('d20', appearance.edges.radius);
+    this.#retainGeometry(geometry);
     let released = false;
     return {
       materials,
-      geometry: this.#geometry('d20', appearance.edges.style),
+      geometry,
       release: () => {
         if (released) return;
         released = true;
         for (const m of materials) this.#release(m);
+        this.#releaseGeometry(geometry);
       },
     };
   }
@@ -532,15 +546,48 @@ export class DiceBox {
     return iso;
   }
 
-  #geometry(type, style) {
-    const key = `${type}|${style}`;
+  #geometry(type, radius) {
+    const key = `${type}|${radius}`;
     let geo = this._geometries.get(key);
     if (!geo) {
-      geo = buildDieGeometry(getShape(type), { style });
+      geo = buildDieGeometry(getShape(type), { radius });
       geo.computeBoundingSphere(); // the blob shadow scales by it
       this._geometries.set(key, geo);
+      this._geoRefs.set(geo, { refs: 0, key });
+      this._idleGeo.add(geo);
+      this.#trimIdleGeometry(geo);
     }
     return geo;
+  }
+
+  #retainGeometry(geo) {
+    const entry = this._geoRefs.get(geo);
+    if (!entry) return;
+    entry.refs++;
+    this._idleGeo.delete(geo);
+  }
+
+  #releaseGeometry(geo) {
+    const entry = this._geoRefs.get(geo);
+    if (!entry) return;
+    entry.refs--;
+    if (entry.refs > 0) return;
+    this._idleGeo.delete(geo);
+    this._idleGeo.add(geo); // newest last
+    this.#trimIdleGeometry();
+  }
+
+  /** Disposes the least recently used idle geometries beyond IDLE_GEOMETRY_CAP (never `keep`). */
+  #trimIdleGeometry(keep) {
+    for (const geo of this._idleGeo) {
+      if (this._idleGeo.size <= IDLE_GEOMETRY_CAP) return;
+      if (geo === keep) continue;
+      const entry = this._geoRefs.get(geo);
+      this._idleGeo.delete(geo);
+      this._geoRefs.delete(geo);
+      if (entry) this._geometries.delete(entry.key);
+      geo.dispose();
+    }
   }
 
   /**
@@ -701,7 +748,11 @@ export class DiceBox {
         ? normalizeAppearance(spec.appearance)
         : rollLook;
     const faces = ghost ? undefined : spec.faces;
-    const geometry = this.#geometry(spec.type, appearance.edges.style);
+    const geometry = this.#geometry(spec.type, appearance.edges.radius);
+    if (!roll.geometries.has(geometry)) {
+      roll.geometries.add(geometry);
+      this.#retainGeometry(geometry);
+    }
     // A ghost has no preset: nothing about its real look is announced.
     const system = ghost || typeof spec.system !== 'string' ? null : spec.system;
     const dsnType = typeof spec.dsnType === 'string' ? spec.dsnType : null;
@@ -1095,6 +1146,8 @@ export class DiceBox {
     for (const m of roll.fades ?? []) m.dispose();
     roll.fades = null;
     for (const m of roll.materials) this.#release(m);
+    for (const g of roll.geometries) this.#releaseGeometry(g);
+    roll.geometries.clear();
     roll.materials.clear();
     for (const faces of roll.faceSets ?? []) {
       try {
