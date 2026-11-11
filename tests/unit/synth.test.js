@@ -139,18 +139,45 @@ describe('renderSurface / renderResult', () => {
 });
 
 describe('renderAll', () => {
-  it('renders every sound and yields at least once per sound', async () => {
-    let calls = 0;
-    const idle = (cb) => {
-      calls++;
-      Promise.resolve().then(cb);
-    };
+  const total = SOUND_MATERIALS.length * VARIANTS + SURFACES.length + RESULT_SOUNDS.length;
+
+  it('renders every sound under a real clock', async () => {
+    const idle = (cb) => Promise.resolve().then(cb);
     const map = await renderAll(SR, { idle });
-    const total = SOUND_MATERIALS.length * VARIANTS + SURFACES.length + RESULT_SOUNDS.length;
     expect(map.size).toBe(total);
     expect(map.has('impact:metal:3')).toBe(true);
     expect(map.has('surface:felt')).toBe(true);
     expect(map.has('result:boom')).toBe(true);
-    expect(calls).toBeGreaterThanOrEqual(total);
+  });
+
+  it('never works more than budgetMs of blocks per slice (fake clock, 1 ms per block)', async () => {
+    let clock = 0;
+    let nowCalls = 0;
+    const now = () => {
+      nowCalls++;
+      return clock++;
+    };
+    const slices = [];
+    const idle = (cb) => {
+      slices.push(nowCalls);
+      nowCalls = 0;
+      Promise.resolve().then(cb);
+    };
+    const budgetMs = 8;
+    const map = await renderAll(SR, { budgetMs, idle, now });
+    expect(map.size).toBe(total);
+    // each slice calls now() once for t0 and once per block pumped
+    for (const calls of slices.slice(1)) expect(calls).toBeLessThanOrEqual(budgetMs + 1);
+    expect(slices.length).toBeGreaterThan(10);
+    // short sounds share slices, so there are fewer slices than sounds plus long-sound spill
+    expect(Math.max(...slices.slice(1))).toBeGreaterThan(1);
+  });
+
+  it('matches the direct render functions exactly', async () => {
+    const map = await renderAll(SR, { idle: (cb) => Promise.resolve().then(cb) });
+    const same = (a, b) => expect(Array.from(a)).toEqual(Array.from(b));
+    same(map.get('impact:glass:2'), renderImpact('glass', 2, SR));
+    same(map.get('surface:metal'), renderSurface('metal', SR));
+    for (const n of RESULT_SOUNDS) same(map.get('result:' + n), renderResult(n, SR));
   });
 });
