@@ -194,6 +194,13 @@ export class DiceBox {
     this._tick = (now) => this.#frame(now);
     this.onResize();
     renderer.onContextLost?.(() => this.clear());
+    // Rolls waiting for their first rendered frame (armFirstFrame); empty almost always, so the
+    // per-frame check is one length test and allocates nothing.
+    this._firstFrameWaiters = [];
+    this._armedFirstFrame = null;
+    renderer.onFrameTime?.(() => {
+      if (this._firstFrameWaiters.length) this.#flushFirstFrames();
+    });
     // A hidden tab gets no animation frames, so nothing could land: drop every roll.
     this._visibility = visibility ?? null;
     this._onVisibility = () => {
@@ -267,6 +274,32 @@ export class DiceBox {
   }
 
   /**
+   * cb() once, when the next roll() call's dice are first drawn (the benchmark's first-frame
+   * mark; the message gate arms it just before throwing). Dropped when that roll never draws.
+   */
+  armFirstFrame(cb) {
+    this._armedFirstFrame = typeof cb === 'function' ? cb : null;
+  }
+
+  #waitFirstFrame(roll) {
+    if (roll.onFirstFrame) this._firstFrameWaiters.push(roll);
+  }
+
+  #flushFirstFrames() {
+    const waiters = this._firstFrameWaiters.splice(0);
+    for (const roll of waiters) {
+      const cb = roll.onFirstFrame;
+      roll.onFirstFrame = null;
+      if (roll.removed || !cb) continue;
+      try {
+        cb();
+      } catch (err) {
+        console.warn('dicer: a first-frame listener threw', err);
+      }
+    }
+  }
+
+  /**
    * @param {import('./throw-planner.js').DieSpec[]} specs
    * @param {{ area?: {left:number, top:number, width:number, height:number}, capacityDice?: number }} [options]
    *   `area`: this throw's roll area in page px (clamped inside the stage); absent, the whole stage.
@@ -282,6 +315,8 @@ export class DiceBox {
       phase: 'playing',
       removed: false,
     };
+    roll.onFirstFrame = this._armedFirstFrame;
+    this._armedFirstFrame = null;
     roll.landed = new Promise((r) => (roll.resolveLanded = r));
     roll.finished = new Promise((r) => (roll.resolveFinished = r));
     const result = { landed: roll.landed, finished: roll.finished };
@@ -347,7 +382,10 @@ export class DiceBox {
           if (roll.received === 1) {
             clearTimeout(roll.firstChunkTimer);
             // The loop starts only once there is a frame to draw (zero idle GPU work).
-            if (!roll.assetsPending) this._renderer.startLoop(this._tick);
+            if (!roll.assetsPending) {
+              this.#waitFirstFrame(roll);
+              this._renderer.startLoop(this._tick);
+            }
           }
         } catch (err) {
           if (!pushed) this._physics.recycle(chunk.data);
@@ -939,7 +977,10 @@ export class DiceBox {
       clearTimeout(roll.assetTimer);
       if (roll.removed || !roll.assetsPending) return;
       roll.assetsPending = false;
-      if (roll.received > 0) this._renderer.startLoop(this._tick);
+      if (roll.received > 0) {
+        this.#waitFirstFrame(roll);
+        this._renderer.startLoop(this._tick);
+      }
       if (roll.settled) this.#armLandingTimer(roll, roll.settled.step);
     });
   }

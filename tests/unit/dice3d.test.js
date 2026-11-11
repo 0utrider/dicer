@@ -1118,3 +1118,34 @@ describe('showForRoll uses the sender area (P5-D1) and the GM private corner (P5
     expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: false });
   });
 });
+
+test('_debug probes: frameCount, generation, resources, tier, canvas, firstFrames', () => {
+  const canvas = { id: 'c' };
+  const renderer = {
+    isLooping: false,
+    frameCount: 4,
+    generation: 2,
+    resourceCounts: () => ({ geometries: 1, textures: 2, programs: 3 }),
+    canvas,
+  };
+  const a = createDice3dApi({
+    diceBox,
+    gate: { disabled: false, firstFrames: () => ({ m1: 12 }) },
+    planThrow,
+    getSetting: (k) => settings[k],
+    renderer,
+    getTier: () => 'medium',
+  });
+  expect(a._debug.frameCount).toBe(4);
+  expect(a._debug.generation).toBe(2);
+  expect(a._debug.resources).toEqual({ geometries: 1, textures: 2, programs: 3 });
+  expect(a._debug.tier).toBe('medium');
+  expect(a._debug.canvas).toBe(canvas);
+  expect(a._debug.firstFrames).toEqual({ m1: 12 });
+  // Missing pieces never throw.
+  expect(api._debug.frameCount).toBe(0);
+  expect(api._debug.resources).toEqual({ geometries: 0, textures: 0, programs: 0 });
+  expect(api._debug.tier).toBeNull();
+  expect(api._debug.canvas).toBeNull();
+  expect(api._debug.firstFrames).toEqual({});
+});

@@ -1798,3 +1798,62 @@ describe('roll areas follow the roller (P5-D1) and the GM private corner (P5-D7)
     expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 17 }]);
   });
 });
+
+describe('first-frame marks (Plan 8 Task 2)', () => {
+  function withClock() {
+    let t = 0;
+    const armed = [];
+    diceBox.armFirstFrame = vi.fn((cb) => armed.push(cb));
+    gate = makeGate({ now: () => t });
+    return {
+      set: (v) => (t = v),
+      fire: () => armed.shift()?.(),
+    };
+  }
+
+  test('intercept at t=100, first frame at t=130 records 30 ms for the message id', () => {
+    const clock = withClock();
+    clock.set(100);
+    gate.onCreate(message('m1'));
+    expect(gate.firstFrames()).toEqual({});
+    clock.set(130);
+    clock.fire();
+    expect(gate.firstFrames()).toEqual({ m1: 30 });
+  });
+
+  test('keeps only the newest 50 entries', () => {
+    const clock = withClock();
+    for (let i = 0; i < 55; i++) {
+      clock.set(i * 10);
+      gate.onCreate(message(`m${i}`));
+      clock.set(i * 10 + 5);
+      clock.fire();
+    }
+    const marks = gate.firstFrames();
+    expect(Object.keys(marks)).toHaveLength(50);
+    expect(marks.m0).toBeUndefined();
+    expect(marks.m4).toBeUndefined();
+    expect(marks.m5).toBe(5);
+    expect(marks.m54).toBe(5);
+  });
+
+  test('a diceBox without armFirstFrame still throws and records nothing', () => {
+    gate.onCreate(message('m1'));
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(gate.firstFrames()).toEqual({});
+  });
+
+  test('construction schedules nothing and creates no PerformanceObserver', () => {
+    const po = vi.fn();
+    vi.stubGlobal('PerformanceObserver', po);
+    const raf = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', raf);
+    try {
+      makeGate();
+      expect(po).not.toHaveBeenCalled();
+      expect(raf).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

@@ -355,3 +355,48 @@ describe('GPU frame time (P2-R13)', () => {
     expect(fake.render).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('probes (Plan 8 Task 2)', () => {
+  test('frameCount increments once per rendered frame', () => {
+    const { r, step } = setup();
+    expect(r.frameCount).toBe(0);
+    let n = 3;
+    r.startLoop(() => --n > 0);
+    step();
+    step();
+    step();
+    expect(r.frameCount).toBe(3);
+  });
+
+  test('generation is unchanged by a resize', () => {
+    const { r } = setup();
+    const g = r.generation;
+    r.setArea({ left: 0, top: 0, width: 1000, height: 700 });
+    r.setArea({ left: 0, top: 0, width: 640, height: 480 });
+    expect(r.generation).toBe(g);
+  });
+
+  test('resourceCounts reads the renderer info', () => {
+    const { r, fake } = setup();
+    fake.info = { memory: { geometries: 7, textures: 12 }, programs: [{}, {}, {}] };
+    expect(r.resourceCounts()).toEqual({ geometries: 7, textures: 12, programs: 3 });
+    fake.info = { memory: { geometries: 0, textures: 0 }, programs: null };
+    expect(r.resourceCounts()).toEqual({ geometries: 0, textures: 0, programs: 0 });
+  });
+
+  test('idle cost: no rAF, no PerformanceObserver, frameCount stays 0 for 1 s', () => {
+    vi.useFakeTimers();
+    const po = vi.fn();
+    vi.stubGlobal('PerformanceObserver', po);
+    try {
+      const { r, frames } = setup();
+      vi.advanceTimersByTime(1000);
+      expect(frames.length).toBe(0);
+      expect(po).not.toHaveBeenCalled();
+      expect(r.frameCount).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+});

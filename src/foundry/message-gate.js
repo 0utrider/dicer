@@ -12,6 +12,7 @@ export const WATCHDOG_MS = 15000;
 /** How many message ids the gate remembers a roll count for (to spot appended rolls). */
 export const ROLL_COUNT_LIMIT = 200;
 const VIEW_LOG_LIMIT = 50;
+const FIRST_FRAME_LIMIT = 50;
 
 const DSN_SCOPE = 'dice-so-nice';
 const MODULE_SCOPE = 'dicer';
@@ -113,7 +114,27 @@ export function createMessageGate({
   setTimeoutFn = (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeoutFn = (h) => globalThis.clearTimeout(h),
   documentRef = globalThis.document,
+  now = () => globalThis.performance.now(),
 }) {
+  /** Fixed ring of the last FIRST_FRAME_LIMIT marks: ids[i] -> ms[i]; no allocation per mark. */
+  const markIds = new Array(FIRST_FRAME_LIMIT).fill(null);
+  const markMs = new Array(FIRST_FRAME_LIMIT).fill(0);
+  let markHead = 0;
+  function recordFirstFrame(id, ms) {
+    markIds[markHead] = id;
+    markMs[markHead] = ms;
+    markHead = (markHead + 1) % FIRST_FRAME_LIMIT;
+  }
+  /** message id -> ms from interception to the first rendered frame of its throw, oldest first. */
+  function firstFrames() {
+    const out = {};
+    for (let k = 0; k < FIRST_FRAME_LIMIT; k++) {
+      const i = (markHead + k) % FIRST_FRAME_LIMIT;
+      if (markIds[i] !== null) out[markIds[i]] = markMs[i];
+    }
+    return out;
+  }
+
   /**
    * id -> { elements: Set<HTMLElement>, companions: Map<id, { elements }>, timer, resolve,
    * promise, own, hide, selector: string | null, pending: { message, from, count } | undefined }
@@ -406,7 +427,11 @@ export function createMessageGate({
         // No area: the whole stage, called exactly as before areas existed.
         // The rolls of a group share one area, so size it for the group's dice, not each roll's (DiceBox grows it).
         const total = groups[i].reduce((n, specs) => n + specs.length, 0);
-        landed = groups[i].map((specs) => {
+        landed = groups[i].map((specs, j) => {
+          if (i === 0 && j === 0 && entry.t0 !== undefined) {
+            const t0 = entry.t0;
+            diceBox.armFirstFrame?.(() => recordFirstFrame(id, now() - t0));
+          }
           const opts = area ? (total > specs.length ? { area, capacityDice: total } : { area }) : null;
           return (opts ? diceBox.roll(specs, opts) : diceBox.roll(specs)).landed;
         });
@@ -435,6 +460,7 @@ export function createMessageGate({
    */
   function animate(message, from, selector) {
     const id = message.id;
+    const t0 = now();
     try {
       const interception = { willTrigger3DRoll: true };
       try {
@@ -470,6 +496,7 @@ export function createMessageGate({
         hide,
         selector: hide ? selector : null,
         pending: undefined,
+        t0,
       };
       animating.set(id, entry);
       if (hide) for (const el of elementsFor(id)) hideIn(entry, el, entry.selector);
@@ -616,7 +643,8 @@ export function createMessageGate({
     /** Whether the message's chat card is hidden while its dice fly (immediate display off). */
     isHiding: (id) => animating.get(id)?.hide === true,
     /** Debug only: the view kinds of the last messages, by id (never values). */
-    recentViews: () => Object.fromEntries([...viewLog].map(([id, v]) => [id, v.slice()])),
+    firstFrames,
+    recentViews:() => Object.fromEntries([...viewLog].map(([id, v]) => [id, v.slice()])),
     waitFor: (id) => animating.get(id)?.promise ?? Promise.resolve(true),
     get disabled() {
       return disabled;

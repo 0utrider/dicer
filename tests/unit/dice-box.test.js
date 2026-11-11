@@ -2193,3 +2193,62 @@ describe('per-look fonts (font layer)', () => {
     box.dispose();
   });
 });
+
+describe('armFirstFrame (Plan 8 Task 2)', () => {
+  function withFrames() {
+    const s = setup();
+    let frame = null;
+    s.renderer.onFrameTime = vi.fn((cb) => (frame = cb));
+    // setup() built the box before onFrameTime existed: rebuild it with the probe present.
+    const box = new DiceBox({
+      renderer: s.renderer,
+      physics: s.physics,
+      atlas,
+      appearance,
+      getArea: () => rect,
+      diceScale: () => 1,
+      timeBeforeHide: () => 2000,
+    });
+    return { ...s, box, frame: () => frame?.(16, {}) };
+  }
+
+  test('fires once, on the first rendered frame after the roll starts drawing', () => {
+    const { physics, box, frame } = withFrames();
+    const cb = vi.fn();
+    box.armFirstFrame(cb);
+    box.roll([{ type: 'd6', value: 2 }]);
+    frame();
+    expect(cb).not.toHaveBeenCalled(); // no chunk yet: nothing drawn for this roll
+    physics.emitFirst(0);
+    expect(cb).not.toHaveBeenCalled(); // the loop only started; no frame rendered yet
+    frame();
+    expect(cb).toHaveBeenCalledTimes(1);
+    frame();
+    expect(cb).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
+  test('applies to the next roll only', () => {
+    const { physics, box, frame } = withFrames();
+    const cb = vi.fn();
+    box.armFirstFrame(cb);
+    box.roll([{ type: 'd6', value: 2 }]);
+    box.roll([{ type: 'd6', value: 3 }]);
+    physics.emitFirst(0);
+    physics.emitFirst(1);
+    frame();
+    expect(cb).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
+  test('a roll cleared before it draws never fires', () => {
+    const { physics, box, frame } = withFrames();
+    const cb = vi.fn();
+    box.armFirstFrame(cb);
+    box.roll([{ type: 'd6', value: 2 }]);
+    physics.emitFirst(0);
+    box.clear();
+    frame();
+    expect(cb).not.toHaveBeenCalled();
+  });
+});

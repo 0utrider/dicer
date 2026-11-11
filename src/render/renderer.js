@@ -39,6 +39,8 @@ export class DiceRenderer {
   #queries = [];
   #gpuMs = null;
   #compileTimeoutMs;
+  #frameCount = 0;
+  #generation = 0;
 
   constructor({
     container,
@@ -104,6 +106,27 @@ export class DiceRenderer {
   }
   get isLooping() {
     return this.#tick !== null;
+  }
+  /** Rendered frames since construction (benchmark probe; one integer add per frame). */
+  get frameCount() {
+    return this.#frameCount;
+  }
+  /**
+   * Bumped only when the WebGLRenderer or the canvas is replaced. Nothing replaces them today (a
+   * restored context reuses both, a resize only calls setSize), so it stays 0: a benchmark that
+   * sees it change has caught a rebuild.
+   */
+  get generation() {
+    return this.#generation;
+  }
+  /** GPU resources three holds right now: { geometries, textures, programs }. */
+  resourceCounts() {
+    const info = this.#renderer.info;
+    return {
+      geometries: info?.memory?.geometries ?? 0,
+      textures: info?.memory?.textures ?? 0,
+      programs: info?.programs?.length ?? 0,
+    };
   }
   /** The underlying THREE.WebGLRenderer (for the GPU probe). */
   get glRenderer() {
@@ -221,6 +244,7 @@ export class DiceRenderer {
       try {
         this.#sceneApi.updateShadows();
         this.#timedRender();
+        this.#frameCount += 1;
         // CPU submit time alone misses GPU-bound frames: also take the rAF interval (capped).
         const cpu = performance.now() - t0;
         const interval = prev !== null && Number.isFinite(now - prev) ? Math.min(now - prev, 100) : undefined;

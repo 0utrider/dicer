@@ -144,6 +144,7 @@ export function createDice3dApi({
   debugCounters = createDebugCounters(),
   getAtlas = () => null,
   getFonts = () => null,
+  getTier = () => null,
 }) {
   const warned = new Set();
   /** A malformed third-party call logs one warning per member, never throws. */
@@ -789,6 +790,34 @@ export function createDice3dApi({
       },
       get activeRolls() {
         return diceBox.activeRolls;
+      },
+      /** Benchmark probes (Plan 8): all free while idle, none ever throws. */
+      get frameCount() {
+        return renderer?.frameCount ?? 0;
+      },
+      get generation() {
+        return renderer?.generation ?? 0;
+      },
+      get resources() {
+        return renderer?.resourceCounts?.() ?? { geometries: 0, textures: 0, programs: 0 };
+      },
+      get tier() {
+        try {
+          return getTier() ?? null;
+        } catch {
+          return null;
+        }
+      },
+      get canvas() {
+        return renderer?.canvas ?? null;
+      },
+      /** message id -> ms from the gate intercepting it to the first drawn frame (last 50). */
+      get firstFrames() {
+        try {
+          return gate.firstFrames?.() ?? {};
+        } catch {
+          return {};
+        }
       },
       /**
        * The most recent roll's area on this client (P5-R4): `{area: {cx, cz, halfWidth, halfDepth}
