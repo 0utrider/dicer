@@ -11,6 +11,7 @@ import {
 import { GHOST_APPEARANCE } from '../compat/colorset-map.js';
 import { modelRotationFor } from '../compat/dsn-orientation.js';
 import { Playback } from './playback.js';
+import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 
 /** Die edge size on screen, in CSS px, at diceScale 1. One world unit is one die size. */
@@ -116,6 +117,8 @@ export class DiceBox {
     presetFor = () => null,
     onMaterial = () => {},
     systemFor = () => null,
+    onImpact = () => {},
+    getSurface = () => 'felt',
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -139,6 +142,10 @@ export class DiceBox {
     // (systemId) -> the DiceSystem instance it was registered with, or null (api.js): its
     // material callbacks and dice events apply to that system's dice.
     this._systemFor = systemFor;
+    // ({ material, surface, speed, other, dieKey }) per impact the playhead crosses (sound engine)
+    this._onImpact = onImpact;
+    this._getSurface = getSurface;
+    this._rollSeq = 0;
     this._systemWarned = new Set(); // system id|kind: one warning each
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
     this._materials = new Map(); // appearanceKey|programKey|type|variant|faces.key|ghost -> material
@@ -195,6 +202,7 @@ export class DiceBox {
       const rollLook = normalizeAppearance(this._getAppearance());
       const flags = this.#flags();
       roll.flags = flags;
+      roll.id = ++this._rollSeq;
       for (const spec of specs) roll.dice.push(this.#makeDie(spec, roll, flags, rollLook));
       this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
@@ -588,6 +596,11 @@ export class DiceBox {
       appearance,
       faces,
       ghost,
+      // A spec's own sound material wins; else the look's (a DSN preset's hint counts).
+      soundMaterial:
+        typeof spec.soundMaterial === 'string' && spec.soundMaterial
+          ? spec.soundMaterial
+          : soundMaterialOf(appearance, ghost ? null : this.#presetOf(source, spec.type)?.preset),
       system,
       dsnType,
       // The system's DiceSystem instance (api.js), if any: it gets this die's dice events.
@@ -827,6 +840,7 @@ export class DiceBox {
           const hadFrames = roll.received > 0;
           const state = roll.playback.update(now);
           if (hadFrames && !roll.revealed) this.#reveal(roll);
+          if (state === 'playing') this.#impacts(roll);
           if (state === 'landed') this.#land(roll);
         } else if (roll.phase === 'fading') {
           roll.fadeStart ??= now;
@@ -841,6 +855,29 @@ export class DiceBox {
     // A roll still waiting for its assets draws nothing: it restarts the loop when they are in.
     for (const roll of this._rolls) if (!roll.assetsPending) return true;
     return false;
+  }
+
+  /** Hands the impacts the playhead just crossed to onImpact; a sound never fails a roll. */
+  #impacts(roll) {
+    let events;
+    try {
+      events = roll.playback.takeEvents();
+      if (!events.length) return;
+      const surface = this._getSurface();
+      for (const { die, other, speed } of events) {
+        const d = roll.dice[die];
+        if (!d) continue;
+        this._onImpact({
+          material: d.soundMaterial,
+          surface,
+          speed,
+          other,
+          dieKey: `${roll.id}:${die}`,
+        });
+      }
+    } catch (err) {
+      console.warn('dicer: impact sound failed', err);
+    }
   }
 
   #fail(roll, err) {

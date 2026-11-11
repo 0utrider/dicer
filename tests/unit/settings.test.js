@@ -134,3 +134,35 @@ test('migrateFromDsn is a world Boolean, default on; dsnWorldMigrated is hidden'
   expect(registered.migrateFromDsn.name).toBe('DICER.Settings.migrateFromDsn.Name');
   expect(registered.dsnWorldMigrated).toMatchObject({ scope: 'world', config: false, type: Number, default: 0 });
 });
+
+describe('sound settings', () => {
+  const surfaces = ['felt', 'wood', 'stone', 'metal'];
+  test('sounds and quietWhenUnfocused are client Booleans, default on', () => {
+    const r = capture();
+    for (const key of ['sounds', 'quietWhenUnfocused']) {
+      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+      expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
+      expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
+    }
+  });
+  test('soundVolume (0.6) and effectsVolume (0.8) are client 0..1 ranges in steps of 0.05', () => {
+    const r = capture();
+    expect(r.soundVolume).toMatchObject({ scope: 'client', type: Number, default: 0.6 });
+    expect(r.soundVolume.range).toEqual({ min: 0, max: 1, step: 0.05 });
+    expect(r.effectsVolume).toMatchObject({ scope: 'client', type: Number, default: 0.8 });
+    expect(r.effectsVolume.range).toEqual({ min: 0, max: 1, step: 0.05 });
+  });
+  test('soundSurface is a world String (default felt); the override is a client String (default world)', () => {
+    const r = capture();
+    expect(r.soundSurface).toMatchObject({ scope: 'world', type: String, default: 'felt', config: true });
+    expect(Object.keys(r.soundSurface.choices)).toEqual(surfaces);
+    expect(r.soundSurfaceOverride).toMatchObject({ scope: 'client', type: String, default: 'world', config: true });
+    expect(Object.keys(r.soundSurfaceOverride.choices)).toEqual(['world', ...surfaces]);
+  });
+  test('turning sounds on or off reports it through onSoundChange', () => {
+    const onSoundChange = vi.fn();
+    const r = capture({ onSoundChange });
+    r.sounds.onChange(false);
+    expect(onSoundChange).toHaveBeenCalledWith('sounds', false);
+  });
+});

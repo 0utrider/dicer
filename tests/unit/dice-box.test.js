@@ -32,7 +32,7 @@ const appearance = { body: 'opaque', bodyColor: '#fff', fillColor: '#000', fillM
 const rect = { left: 0, top: 0, width: 960, height: 480 };
 
 /** Two 30-step chunks per throw: the dice roll in from x = -30 and stop at x = 0. */
-function chunksFor(n) {
+function chunksFor(n, evs) {
   const out = [];
   for (let c = 0; c < 2; c++) {
     const data = new Float32Array(30 * 7 * n);
@@ -40,7 +40,7 @@ function chunksFor(n) {
       const x = -30 + (30 * (c * 30 + s)) / 59;
       for (let d = 0; d < n; d++) data.set([x, 0.5, d * 1.5, 0, 0, 0, 1], (s * n + d) * 7);
     }
-    out.push({ index: c, steps: 30, data, done: c === 1 });
+    out.push({ index: c, steps: 30, data, done: c === 1, events: evs?.[c] ?? new Float32Array(0) });
   }
   return out;
 }
@@ -52,6 +52,7 @@ function fakePhysics() {
     resize: vi.fn(),
     recycle: vi.fn(),
     emitted: 0,
+    events: null, // per-chunk Float32Array of [step, die, other, speed]*
     throw(req) {
       const s = { req, cb: null, flushed: false };
       s.done = new Promise((resolve, reject) => {
@@ -68,7 +69,7 @@ function fakePhysics() {
       for (const s of list) {
         if (s.flushed) continue;
         s.flushed = true;
-        for (const c of chunksFor(s.req.dice.length)) {
+        for (const c of chunksFor(s.req.dice.length, this.events)) {
           this.emitted += 1;
           s.cb(c);
         }
@@ -80,7 +81,7 @@ function fakePhysics() {
       const s = streams[i];
       s.flushed = true;
       this.emitted += 1;
-      s.cb(chunksFor(s.req.dice.length)[0]);
+      s.cb(chunksFor(s.req.dice.length, this.events)[0]);
     },
     fail(i, err = new Error('boom')) {
       streams[i].reject(err);
@@ -1419,5 +1420,62 @@ describe('material cache cap', () => {
     expect(secondDispose).toHaveBeenCalledTimes(1);
     expect(firstDispose).not.toHaveBeenCalled();
     expect(idle(box)).toBe(64);
+  });
+});
+
+describe('impact sounds', () => {
+  // Frames are absolute; the dice are first inside the area at frame 40.
+  const events = [new Float32Array([5, 0, -1, 9]), new Float32Array([45, 1, 0, 12, 55, 0, -2, 20])];
+
+  test('impacts reach onImpact while playing, in step order, none before the dice enter', () => {
+    const onImpact = vi.fn();
+    const { renderer, physics, box } = setup({ onImpact, getSurface: () => 'wood' });
+    physics.events = events;
+    box.roll([
+      { type: 'd6', value: 3, soundMaterial: 'metal' },
+      { type: 'd6', value: 4 },
+    ]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(800);
+    renderer.tick(950); // playhead ~57, still playing
+    expect(onImpact).toHaveBeenCalledTimes(2);
+    const [a, b] = onImpact.mock.calls.map((c) => c[0]);
+    expect(a).toMatchObject({ material: 'plastic', surface: 'wood', speed: 12, other: 0 });
+    expect(b).toMatchObject({ material: 'metal', surface: 'wood', speed: 20, other: -2 });
+    expect(a.dieKey).not.toBe(b.dieKey);
+  });
+
+  test('a ghost die still clacks; a cleared roll stops', () => {
+    const onImpact = vi.fn();
+    const { renderer, physics, box } = setup({ onImpact });
+    physics.events = events;
+    box.roll([
+      { type: 'd6', value: 3, ghost: true },
+      { type: 'd6', value: 4 },
+    ]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(800); // playhead ~48: only the frame-45 impact
+    expect(onImpact).toHaveBeenCalledTimes(1);
+    expect(onImpact.mock.calls[0][0].surface).toBe('felt');
+    box.clear();
+    renderer.tick(1000);
+    expect(onImpact).toHaveBeenCalledTimes(1);
+  });
+
+  test('a throwing onImpact never fails the roll', () => {
+    const { renderer, physics, box } = setup({
+      onImpact: () => {
+        throw new Error('x');
+      },
+    });
+    physics.events = events;
+    const { landed } = box.roll([{ type: 'd6', value: 3 }, { type: 'd6', value: 4 }]);
+    physics.flush();
+    renderer.tick(0);
+    expect(() => renderer.tick(1000)).not.toThrow();
+    expect(box.activeRolls).toBe(1);
+    expect(landed).toBeTruthy();
   });
 });

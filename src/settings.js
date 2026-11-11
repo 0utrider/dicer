@@ -20,8 +20,9 @@ export function registerNoticeSetting() {
  *   interiors, engraving, shadows, glow, presetFaces or presetModels changes
  * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
  *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
+ * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
  */
-export function registerSettings({ onAreaChange, onLookChange, onQualityChange } = {}) {
+export function registerSettings({ onAreaChange, onLookChange, onQualityChange, onSoundChange } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   game.settings.register(MODULE_ID, 'enabled', {
     name: t('enabled.Name'),
@@ -159,6 +160,52 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange }
       onChange: (value) => onLookChange?.(key, value),
     });
   }
+  for (const key of ['sounds', 'quietWhenUnfocused']) {
+    game.settings.register(MODULE_ID, key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope: 'client',
+      config: true,
+      type: Boolean,
+      default: true,
+      onChange: (value) => onSoundChange?.(key, value),
+    });
+  }
+  for (const [key, def] of [
+    ['soundVolume', 0.6],
+    ['effectsVolume', 0.8],
+  ]) {
+    game.settings.register(MODULE_ID, key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope: 'client',
+      config: true,
+      type: Number,
+      range: { min: 0, max: 1, step: 0.05 },
+      default: def,
+    });
+  }
+  const surfaceChoices = (keys) =>
+    Object.fromEntries(keys.map((k) => [k, t(`soundSurface.Choices.${k}`)]));
+  const surfaces = ['felt', 'wood', 'stone', 'metal'];
+  game.settings.register(MODULE_ID, 'soundSurface', {
+    name: t('soundSurface.Name'),
+    hint: t('soundSurface.Hint'),
+    scope: 'world',
+    config: true,
+    type: String,
+    choices: surfaceChoices(surfaces),
+    default: 'felt',
+  });
+  game.settings.register(MODULE_ID, 'soundSurfaceOverride', {
+    name: t('soundSurfaceOverride.Name'),
+    hint: t('soundSurfaceOverride.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: surfaceChoices(['world', ...surfaces]),
+    default: 'world',
+  });
   registerNoticeSetting();
 }
 

@@ -20,6 +20,7 @@ import { createFaceTextures, FACE_FONT_FAMILY } from './render/face-textures.js'
 import { mirrorLookSetting, mirrorLookIfMissing } from './compat/user-looks.js';
 import { DEFAULT_APPEARANCE } from './look/appearance.js';
 import { LOOKS } from './look/looks.js';
+import { createSoundEngine } from './audio/sound-engine.js';
 import { registerNoticeSetting, registerSettings, getSetting } from './settings.js';
 
 let dormant = false;
@@ -33,6 +34,25 @@ let digitAtlas = null;
 let registry = null; // the DSN registry, once activate() made it
 let faceTextures = null; // shared by DiceBox and preloadPresets (one cache)
 let dice3d = null; // game.dice3d, once activate() made it
+let soundEngine = null; // impact and result sounds; its synth is a lazy chunk
+
+/** The table surface the dice sound on: the client's override unless it is 'world'. */
+export function soundSurface(get) {
+  const own = get('soundSurfaceOverride');
+  return own && own !== 'world' ? own : get('soundSurface') || 'felt';
+}
+
+/** Renders the sounds in an idle callback (never on a roll's frames). */
+function preloadSounds() {
+  if (!soundEngine || getSetting('sounds') === false) return;
+  const run = () => soundEngine?.preload();
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
+  else setTimeout(run, 200);
+}
+
+function onSoundChange(key, value) {
+  if (key === 'sounds' && value) preloadSounds();
+}
 
 const NOOP_HANDLERS = { onCreate() {}, onUpdate() {}, onRender() {}, onDelete() {} };
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
@@ -237,7 +257,7 @@ Hooks.once('init', () => {
     registerNoticeSetting();
     return;
   }
-  registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange });
+  registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange, onSoundChange });
   loadPublicApi();
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
@@ -283,6 +303,8 @@ Hooks.once('ready', async () => {
         localize: (key) => game.i18n.localize(key),
       });
       faceTextures = createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont });
+      soundEngine?.dispose();
+      soundEngine = createSoundEngine({ getSetting: (k) => getSetting(k) });
       return new DiceBox({
         renderer,
         physics,
@@ -301,6 +323,8 @@ Hooks.once('ready', async () => {
         onMaterial: materialReadyNotifier(Hooks),
         // addSystem(DiceSystem instance): its material callbacks and dice events (api.js).
         systemFor: (id) => registry?.systems.get(id)?.instance ?? null,
+        onImpact: (e) => soundEngine?.impact(e),
+        getSurface: () => soundSurface(getSetting),
       });
     },
     activate: ({ renderer, diceBox: box }) => {
@@ -375,6 +399,8 @@ Hooks.once('ready', async () => {
     registry = null;
     faceTextures = null;
     dice3d = null;
+    soundEngine?.dispose();
+    soundEngine = null;
     stopWatchingArea?.();
     stopWatchingArea = null;
     api?._dispose();
@@ -384,4 +410,5 @@ Hooks.once('ready', async () => {
   // After api.js has loaded, so game.dice3d.DiceSystem is set inside both hooks. Not awaited:
   // the engine is already up, and announceReady never rejects.
   announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady });
+  preloadSounds();
 });

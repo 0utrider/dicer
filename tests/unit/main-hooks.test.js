@@ -39,3 +39,13 @@ test('it registers nothing while Dice So Nice is active (dormant), even before i
   chatCommandsListener()({ register });
   expect(register).not.toHaveBeenCalled();
 });
+
+describe('soundSurface', () => {
+  test("the client's override wins over the world surface; 'world' falls back to it", async () => {
+    const { soundSurface } = await import('../../src/main.js');
+    const get = (o) => (k) => o[k];
+    expect(soundSurface(get({ soundSurface: 'stone', soundSurfaceOverride: 'wood' }))).toBe('wood');
+    expect(soundSurface(get({ soundSurface: 'stone', soundSurfaceOverride: 'world' }))).toBe('stone');
+    expect(soundSurface(get({}))).toBe('felt');
+  });
+});

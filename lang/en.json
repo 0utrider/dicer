@@ -86,6 +86,37 @@
       "presetModels": {
         "Name": "3D model dice",
         "Hint": "Show the 3D dice models that dice presets from other modules provide, for the die types whose face layout Dicer has verified. Off shows Dicer's own dice instead."
+      },
+      "sounds": {
+        "Name": "Dice sounds",
+        "Hint": "Play impact sounds as the dice hit the table, the walls and each other."
+      },
+      "soundVolume": {
+        "Name": "Dice sound volume",
+        "Hint": "How loud the impact sounds are."
+      },
+      "effectsVolume": {
+        "Name": "Effects volume",
+        "Hint": "How loud the sounds of special effects and results are."
+      },
+      "quietWhenUnfocused": {
+        "Name": "Quieter when the window is unfocused",
+        "Hint": "Lower the dice sounds while this browser tab or window is not focused."
+      },
+      "soundSurface": {
+        "Name": "Table surface",
+        "Hint": "What the dice land on, for every player in this world. Players can override it for themselves.",
+        "Choices": {
+          "world": "Same as the world",
+          "felt": "Felt",
+          "wood": "Wood",
+          "stone": "Stone",
+          "metal": "Metal"
+        }
+      },
+      "soundSurfaceOverride": {
+        "Name": "My table surface",
+        "Hint": "Hear a different surface than the world's setting."
       }
     },
     "Commands": {
