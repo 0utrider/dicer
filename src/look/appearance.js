@@ -5,7 +5,10 @@ const FINISHES = ['polished', 'brushed', 'antique'];
 const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
 const SHAPES = ['star', 'heart', 'skull', 'sphere'];
 const FILLS = ['paint', 'gold', 'silver', 'enamel'];
-const EDGE_STYLES = ['rounded', 'sharp'];
+/** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
+export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
+/** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
+export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans']);
 
 function deepFreeze(o) {
   for (const v of Object.values(o)) if (v && typeof v === 'object') deepFreeze(v);
@@ -15,8 +18,8 @@ function deepFreeze(o) {
 export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05 },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star' },
-  numbers: { fill: 'gold', color: '#e2b04a', depth: 0.5 },
-  edges: { style: 'rounded' },
+  numbers: { fill: 'gold', color: '#e2b04a', depth: 0.5, font: 'serif' },
+  edges: { radius: 0.5, style: 'rounded' },
   glow: { color: '#ffffff', intensity: 0 },
 });
 
@@ -32,6 +35,29 @@ function color(v, fallback) {
 const num = (v, min, max, fallback) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : fallback;
 const pick = (v, list, fallback) => (list.includes(v) ? v : fallback);
+
+const snapEdge = (v) => EDGE_STEPS.reduce((best, s) => (Math.abs(s - v) < Math.abs(best - v) ? s : best), EDGE_STEPS[0]);
+
+// radius wins; a legacy edges.style 'sharp' means radius 0
+function edgeRadius(e, fallback) {
+  if (typeof e.radius === 'number' && Number.isFinite(e.radius)) return snapEdge(e.radius);
+  if (e.radius !== undefined) return fallback;
+  return e.style === 'sharp' ? 0 : fallback;
+}
+
+const FONT_FILE = /^[A-Za-z0-9 _.\-/%()+,@]+\.(woff2?|ttf|otf)$/i;
+function font(v, fallback) {
+  if (typeof v !== 'string') return fallback;
+  if (FONT_IDS_BUILTIN.includes(v)) return v;
+  if (v.startsWith('css:')) return /^css:[A-Za-z0-9 -]{1,64}$/.test(v) ? v : fallback;
+  if (v.startsWith('file:')) {
+    const p = v.slice(5);
+    if (!FONT_FILE.test(p) || p.startsWith('/')) return fallback;
+    if (p.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')) return fallback;
+    return v;
+  }
+  return fallback;
+}
 
 // Plan 1 flat shape: { body: 'opaque'|'metal'|'resin', bodyColor, fillColor, fillMetallic, engraveDepth }
 function fromLegacy(i) {
@@ -69,6 +95,7 @@ export function normalizeAppearance(input) {
       shape: pick(it.shape, SHAPES, D.interior.shape),
     };
     if (body.type !== 'resin') interior.type = 'none';
+    const radius = edgeRadius(e, D.edges.radius);
     return {
       body,
       interior,
@@ -76,8 +103,9 @@ export function normalizeAppearance(input) {
         fill: pick(n.fill, FILLS, D.numbers.fill),
         color: color(n.color, D.numbers.color),
         depth: num(n.depth, 0, 1, D.numbers.depth),
+        font: font(n.font, D.numbers.font),
       },
-      edges: { style: pick(e.style, EDGE_STYLES, D.edges.style) },
+      edges: { radius, style: radius === 0 ? 'sharp' : 'rounded' },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
     };
   } catch {

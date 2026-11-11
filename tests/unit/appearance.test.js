@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_APPEARANCE, appearanceKey, normalizeAppearance, programKey } from '../../src/look/appearance.js';
+import {
+  DEFAULT_APPEARANCE,
+  EDGE_STEPS,
+  FONT_IDS_BUILTIN,
+  appearanceKey,
+  normalizeAppearance,
+  programKey,
+} from '../../src/look/appearance.js';
+import { LOOKS } from '../../src/look/looks.js';
+import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 
 test('default is resin with an interior', () => {
   expect(DEFAULT_APPEARANCE.body.type).toBe('resin');
@@ -113,5 +122,101 @@ describe('programKey', () => {
     );
     expect(keys.size).toBe(1);
     expect([...keys][0]).toMatch(/\|safe1$/);
+  });
+});
+
+describe('Plan 7: edge sharpness and font', () => {
+  test('defaults: radius 0.5, style rounded, font serif', () => {
+    expect(DEFAULT_APPEARANCE.edges).toEqual({ radius: 0.5, style: 'rounded' });
+    expect(DEFAULT_APPEARANCE.numbers.font).toBe('serif');
+    expect(Object.isFrozen(DEFAULT_APPEARANCE.edges)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_APPEARANCE.numbers)).toBe(true);
+    expect(normalizeAppearance({}).edges).toEqual({ radius: 0.5, style: 'rounded' });
+    expect(normalizeAppearance({}).numbers.font).toBe('serif');
+    expect(EDGE_STEPS).toEqual([0, 0.25, 0.5, 0.75, 1]);
+    expect(FONT_IDS_BUILTIN).toEqual(['serif', 'sans']);
+  });
+  test.each([
+    [0, 0], [0.25, 0.25], [0.5, 0.5], [0.75, 0.75], [1, 1],
+    [0.1, 0], [0.13, 0.25], [0.4, 0.5], [0.9, 1], [2, 1], [-3, 0],
+  ])('radius %s snaps to %s', (input, want) => {
+    expect(normalizeAppearance({ edges: { radius: input } }).edges.radius).toBe(want);
+  });
+  test.each([NaN, Infinity, '0.5', null, {}])('non-numeric radius %j falls back to the default', (v) => {
+    expect(normalizeAppearance({ edges: { radius: v } }).edges.radius).toBe(0.5);
+  });
+  test('style is derived from radius', () => {
+    expect(normalizeAppearance({ edges: { radius: 0 } }).edges.style).toBe('sharp');
+    expect(normalizeAppearance({ edges: { radius: 0.25 } }).edges.style).toBe('rounded');
+    expect(normalizeAppearance({ edges: { radius: 1 } }).edges.style).toBe('rounded');
+  });
+  test('legacy edges.style maps to a radius; radius wins when both are given', () => {
+    expect(normalizeAppearance({ edges: { style: 'sharp' } }).edges).toEqual({ radius: 0, style: 'sharp' });
+    expect(normalizeAppearance({ edges: { style: 'rounded' } }).edges).toEqual({ radius: 0.5, style: 'rounded' });
+    expect(normalizeAppearance({ edges: { style: 'bogus' } }).edges).toEqual({ radius: 0.5, style: 'rounded' });
+    expect(normalizeAppearance({ edges: { style: 'sharp', radius: 0.75 } }).edges).toEqual({ radius: 0.75, style: 'rounded' });
+  });
+  test('a normalized appearance normalizes to itself', () => {
+    const a = normalizeAppearance({ edges: { radius: 0.25 }, numbers: { font: 'sans' } });
+    expect(normalizeAppearance(a)).toEqual(a);
+  });
+  test.each([
+    ['serif', 'serif'],
+    ['sans', 'sans'],
+    ['css:Comic Neue', 'css:Comic Neue'],
+    ['css:Fira-Sans 2', 'css:Fira-Sans 2'],
+    ['css:' + 'a'.repeat(64), 'css:' + 'a'.repeat(64)],
+    ['css:' + 'a'.repeat(65), 'serif'],
+    ['css:', 'serif'],
+    ['css:Bad;Family', 'serif'],
+    ['css:a"b', 'serif'],
+    ['css:a(b)', 'serif'],
+    ['file:worlds/w/fonts/a.woff2', 'file:worlds/w/fonts/a.woff2'],
+    ['file:modules/x/F.TTF', 'file:modules/x/F.TTF'],
+    ['file:a.woff', 'file:a.woff'],
+    ['file:a.otf', 'file:a.otf'],
+    ['file:a.exe', 'serif'],
+    ['file:.woff2', 'serif'],
+    ['file:', 'serif'],
+    ['file:../a.woff2', 'serif'],
+    ['file:a/../b.woff2', 'serif'],
+    ['file:/etc/a.woff2', 'serif'],
+    ['file:http://evil/a.woff2', 'serif'],
+    ['file:a\b.woff2', 'serif'],
+    ['comic', 'serif'],
+    ['', 'serif'],
+    [42, 'serif'],
+    [null, 'serif'],
+  ])('font %j -> %j', (input, want) => {
+    expect(normalizeAppearance({ numbers: { font: input } }).numbers.font).toBe(want);
+  });
+  test('appearanceKey differs when radius or font differ', () => {
+    const base = normalizeAppearance({});
+    const k = appearanceKey(base);
+    expect(appearanceKey(normalizeAppearance({ edges: { radius: 0.25 } }))).not.toBe(k);
+    expect(appearanceKey(normalizeAppearance({ edges: { radius: 0 } }))).not.toBe(k);
+    expect(appearanceKey(normalizeAppearance({ numbers: { font: 'sans' } }))).not.toBe(k);
+    expect(appearanceKey(normalizeAppearance({ numbers: { font: 'css:Arial' } }))).not.toBe(k);
+  });
+  test('programKey ignores radius and font (geometry and atlas texture, not the program)', () => {
+    const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
+    const k = programKey(normalizeAppearance({}), flags);
+    expect(programKey(normalizeAppearance({ edges: { radius: 0 }, numbers: { font: 'sans' } }), flags)).toBe(k);
+  });
+  test('every LOOK and builtin theme appearance normalizes to itself plus the new defaults', () => {
+    const all = [];
+    for (const l of Object.values(LOOKS)) all.push(l.appearance ?? l);
+    for (const t of BUILTIN_THEMES) {
+      if (t.look?.appearance) all.push(t.look.appearance);
+      for (const v of Object.values(t.perType ?? t.looks ?? {})) all.push(v?.appearance ?? v);
+    }
+    expect(all.length).toBeGreaterThan(5);
+    for (const raw of all) {
+      const n = normalizeAppearance(raw);
+      expect(n.numbers.font).toBe('serif');
+      expect(n.edges.radius).toBe(raw?.edges?.style === 'sharp' ? 0 : 0.5);
+      expect(n.edges.style).toBe(n.edges.radius === 0 ? 'sharp' : 'rounded');
+      expect(normalizeAppearance(n)).toEqual(n);
+    }
   });
 });
