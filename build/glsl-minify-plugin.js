@@ -5,8 +5,9 @@
  * three from its sources, see vite.config.js, which skips three's own build step that strips
  * them) and Dicer's src/render/shaders ship with their comments and indentation: about 35 kB of
  * the world-start bundle. This pass removes, inside each template marked `/* glsl *\/` only:
- * comments, leading and trailing blanks on each line, and blank lines. Every line break between
- * two code lines stays, so preprocessor lines (#include, #define, #if) keep their own lines, and
+ * comments (a block comment becomes one space, as GLSL reads it), leading and trailing blanks on
+ * each line, and blank lines. Every other line break between two code lines stays, so
+ * preprocessor lines (#include, #define, #if) keep their own lines, and
  * `${...}` interpolations are left as they are. The shader each template yields is the same
  * token stream (tests/unit/glsl-minify.test.js checks every shader in the build).
  */
@@ -36,10 +37,13 @@ function dropComments(text) {
     } else if (text[i] === '/' && text[i + 1] === '*') {
       const close = text.indexOf('*/', i + 2);
       if (close < 0) return null; // unterminated: leave the template alone
-      const holes = holesIn(text.slice(i, close));
-      // A block comment between two tokens on one line still separates them.
-      const gap = text.slice(i, close).includes('\n') ? '\n' : ' ';
-      out += holes ? `/*${holes}*/${gap}` : gap;
+      const body = text.slice(i, close);
+      // GLSL reads a block comment as one space, line breaks inside it included, so a directive
+      // continues past a multi-line comment. Keeping that shape on a # line is not worth it.
+      const lineStart = text.lastIndexOf('\n', i - 1) + 1;
+      if (body.includes('\n') && /^[ \t]*#/.test(text.slice(lineStart, i))) return null;
+      const holes = holesIn(body);
+      out += holes ? `/*${holes}*/ ` : ' ';
       i = close + 2;
     } else {
       out += text[i];
@@ -52,7 +56,7 @@ function dropComments(text) {
 /**
  * The stripped raw text of one template, given its raw parts (the text between interpolations),
  * or null when it cannot be stripped safely (a line ending in a backslash, an unterminated
- * comment).
+ * comment, a multi-line block comment on a preprocessor line).
  */
 export function stripGlslParts(parts) {
   const joined = parts.map((p, i) => (i === 0 ? p : HOLE(i - 1) + p)).join('');

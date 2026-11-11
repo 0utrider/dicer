@@ -6,9 +6,11 @@ import { minifyGlslTemplates, stripGlslParts } from '../../build/glsl-minify-plu
 const glslFiles = (dir) =>
   readdirSync(dir, { recursive: true })
     .map((f) => `${dir}/${String(f).split('\\').join('/')}`)
-    .filter((p) => p.endsWith('.js') && /\/\*\s*glsl\s*\*\//.test(readFileSync(p, 'utf8')));
+    .filter((p) => p.endsWith('.js') && /\/\*\s*glsl\s*\*\/\s*`/.test(readFileSync(p, 'utf8')));
 
-const THREE_FILES = glslFiles('node_modules/three/src/renderers/shaders');
+// All of three/src: the shader chunks, and inline shaders such as PMREMGenerator, WebGLOutput and
+// WebGLCubeRenderTarget.
+const THREE_FILES = glslFiles('node_modules/three/src');
 const OWN_FILES = glslFiles('src');
 
 /** The marked templates of a file, as their raw parts. */
@@ -43,9 +45,16 @@ function glslTokens(parts) {
     .filter(Boolean);
 }
 
-describe('GLSL minify (Plan 8 Task 6: world start under 4,000,000 bytes)', () => {
+describe('GLSL minify (Plan 8 Task 6: world-start bytes)', () => {
   it('finds the shader sources it is meant for', () => {
     expect(THREE_FILES.length).toBeGreaterThan(100);
+    expect(THREE_FILES).toEqual(
+      expect.arrayContaining([
+        'node_modules/three/src/extras/PMREMGenerator.js',
+        'node_modules/three/src/renderers/webgl/WebGLOutput.js',
+        'node_modules/three/src/renderers/WebGLCubeRenderTarget.js',
+      ]),
+    );
     expect(OWN_FILES).toEqual(
       expect.arrayContaining(['src/render/shaders/bodies.js', 'src/render/shaders/interior.js']),
     );
@@ -94,6 +103,18 @@ describe('GLSL minify (Plan 8 Task 6: world start under 4,000,000 bytes)', () =>
   it('leaves a template alone when stripping could change it', () => {
     expect(stripGlslParts(['#define A 1 \\\n  + 2'])).toBeNull(); // a raw backslash-newline
     expect(stripGlslParts(['float a; /* open'])).toBeNull(); // unterminated comment
+    // A multi-line block comment on a preprocessor line: GLSL reads it as one space, so the
+    // directive continues after it; keeping that exact shape is not worth the risk.
+    expect(stripGlslParts(['\n#define A 1 /* x\n y */ + 2\n'])).toBeNull();
+    expect(stripGlslParts(['\n  #if X /* a\n b */ || Y\n#endif\n'])).toBeNull();
+  });
+
+  it('replaces a block comment by one space, as GLSL does, even when it spans lines', () => {
+    expect(stripGlslParts(['\nfloat a = 1.0 /* x\n y */ + 2.0;\n'])).toEqual([
+      '\nfloat a = 1.0   + 2.0;\n',
+    ]);
+    // On a #define line a one-line block comment is a space too, so the macro stays whole.
+    expect(stripGlslParts(['\n#define A 1 /* x */ + 2\n'])).toEqual(['\n#define A 1   + 2\n']);
   });
 
   it('only rewrites templates marked /* glsl */', () => {

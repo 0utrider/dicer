@@ -10,6 +10,15 @@
 //
 // Env: DICER_VISUAL_PORT (default 5179), DICER_VISUAL_HEADED=1 to watch, DICER_VISUAL_ARGS to
 // replace the Chromium flags (e.g. "--use-angle=swiftshader" to force the software path).
+//
+// Stripped shaders (build/glsl-minify-plugin.js, Plan 8 Task 6) run only in builds; this check
+// runs the dev server, so by default it sees the shaders as written. To run it on the stripped
+// shaders, edit two lines for one run and then revert them:
+//   1. build/glsl-minify-plugin.js: delete `apply: 'build',` (the pass then runs in dev too);
+//   2. vite.config.js: add 'three' to optimizeDeps.exclude (else three is pre-bundled by esbuild
+//      and skips the plugin), and delete node_modules/.vite.
+// Then `node tests/visual/looks.mjs` (and tests/visual/themes.mjs). Expect 0 shader errors and the
+// same centre-RGB ranges and program counts as an unstripped run.
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';

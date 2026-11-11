@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { sep } from 'node:path';
 
-/** The world-start download budget: 4 MiB (P3-R7). */
+/** The world-start download budget: 4 MiB (P3-R7; H-R9 keeps it, withdrawing the 4,000,000 B target of H-D1). */
 export const BUDGET = 4 * 1024 * 1024;
 
 /**

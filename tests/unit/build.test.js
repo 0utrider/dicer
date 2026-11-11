@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { statSync, readFileSync } from 'node:fs';
+import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import {
   BUDGET,
@@ -134,16 +134,24 @@ describe('build', () => {
     expect(js).toContain('#include <lights_physical_pars_fragment>');
   });
   it('does not grow the world-start download by more than 2 KB (ratchet, Plan 8 Task 6)', () => {
-    // 4_086_989 bytes after Task 6 (GLSL stripping), still over BUDGET: no change may widen the gap
-    // unnoticed. Lower this reference whenever world start shrinks.
+    // 4_086_989 bytes after Task 6 (GLSL stripping), 107 KB under the 4 MiB budget (H-R9 keeps
+    // 4 MiB): the headroom must not be spent unnoticed. Lower this reference whenever world start
+    // shrinks.
     const growth = worldStartBytes() - 4_086_989;
     console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });
-  it('keeps the world-start download (dist/ minus lazy chunks, plus the font atlas and api.js) within BUDGET (build/world-start.js; H-D1)', () => {
+  it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
+    const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
+    expect(maps).toEqual([]);
+    for (const p of distFiles().filter((f) => f.endsWith('.js'))) {
+      expect(readFileSync(p, 'utf8')).not.toContain('sourceMappingURL');
+    }
+  });
+  it('keeps the world-start download (dist/ minus lazy chunks, plus the font atlas and api.js) under 4 MiB (H-R9)', () => {
     const files = worldStartFiles();
     const total = worldStartBytes();
-    // Gzip is for information only (H-D1): Foundry serves these files as they are.
+    // Gzip is for information only: Foundry serves these files as they are.
     const gzip = files.reduce((sum, p) => sum + gzipSync(readFileSync(p), { level: 9 }).length, 0);
     console.info(
       `dicer size guard: ${total} of ${BUDGET} bytes (world-start dist/ + ${WORLD_START_ASSETS.join(' + ')}); ` +
