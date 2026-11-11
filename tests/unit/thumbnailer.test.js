@@ -7,6 +7,7 @@ import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
+import { createFontAtlases } from '../../src/fonts/font-atlas.js';
 
 vi.mock('../../src/core/chamfer.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -434,4 +435,38 @@ describe('per-look fonts: chain, cache and atlas holds', () => {
     expect(release).toHaveBeenCalledTimes(1);
     t.dispose();
   });
+});
+
+test('an atlas evicted and disposed while its thumbnail waits in the chain is disposed again after the render', async () => {
+  const fontAtlas = parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8')));
+  const textures = {};
+  const fonts = createFontAtlases({
+    serif: atlas,
+    loadBundled: async () => null,
+    build: async (src) => ({ json: { family: src.family }, width: 1, height: 1, field: new Uint8Array(1) }),
+    store: { get: async () => undefined, set: async () => {} },
+    getRoute: (p) => `/${p}`,
+    origin: 'https://vtt.example',
+    toAtlas: (b) => (textures[b.json.family] = { ...fontAtlas, texture: new THREE.Texture() }),
+    cacheSize: 1,
+    warn: () => {},
+  });
+  const slices = [];
+  const { t } = make({ opts: { fonts, idle: (cb) => slices.push(cb) } });
+  const withFont = (font) => ({ ...theme(), appearance: { ...theme().appearance, numbers: { ...theme().appearance.numbers, font } } });
+  const first = t.thumbnail(theme(1), 'd20'); // a pending render ahead in the chain
+  const pa = t.thumbnail(withFont('css:A'), 'd20');
+  await vi.waitFor(() => expect(textures.A).toBeTruthy());
+  const disposeA = vi.spyOn(textures.A.texture, 'dispose');
+  await fonts.request('css:B'); // evicts A while its thumbnail waits: unheld, so disposed now
+  expect(disposeA).toHaveBeenCalledTimes(1);
+  slices.shift()();
+  await first;
+  await vi.waitFor(() => expect(slices.length).toBe(1));
+  slices.shift()(); // A's render: three re-uploads the disposed texture
+  await pa;
+  expect(createDiceMaterial.mock.calls.at(-1)[1].texture).toBe(textures.A.texture);
+  expect(disposeA).toHaveBeenCalledTimes(2); // freed again once the render let go
+  t.dispose();
+  expect(disposeA).toHaveBeenCalledTimes(2);
 });

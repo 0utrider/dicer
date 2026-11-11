@@ -195,6 +195,7 @@ export function createFontAtlases({
   const failed = new Set();
   const holds = new Map(); // runtime atlas -> materials binding it
   const retired = new Set(); // evicted atlases still held: disposed on their last release
+  const evictedDisposed = new WeakSet(); // evicted atlases whose texture is already disposed
   let storeDead = false;
   const listeners = new Set();
   let disposed = false;
@@ -251,7 +252,7 @@ export function createFontAtlases({
       lru.delete(old);
       // a material may still bind it: dispose when the last hold is released
       if ((holds.get(a) ?? 0) > 0) retired.add(a);
-      else a.texture?.dispose?.();
+      else disposeEvicted(a);
     }
   }
 
@@ -260,8 +261,17 @@ export function createFontAtlases({
    * An evicted atlas keeps its texture while held and is disposed on the last release.
    * The serif and sans atlases are never disposed by eviction: their holds are no-ops.
    */
+  /** Disposes an evicted atlas's texture and remembers it, in case something binds it later. */
+  function disposeEvicted(a) {
+    a.texture?.dispose?.();
+    evictedDisposed.add(a);
+  }
+
   function hold(atlas) {
     if (!atlas || atlas === serif || [...pinned.values()].includes(atlas)) return () => {};
+    // Already evicted and disposed (unheld at eviction, e.g. a thumbnail still waiting to render):
+    // binding it makes three re-upload it, so it is retired again and freed on the last release.
+    if (evictedDisposed.delete(atlas)) retired.add(atlas);
     holds.set(atlas, (holds.get(atlas) ?? 0) + 1);
     let released = false;
     return () => {
@@ -270,7 +280,7 @@ export function createFontAtlases({
       const n = (holds.get(atlas) ?? 1) - 1;
       if (n > 0) return void holds.set(atlas, n);
       holds.delete(atlas);
-      if (retired.delete(atlas)) atlas.texture?.dispose?.();
+      if (retired.delete(atlas)) disposeEvicted(atlas);
     };
   }
 

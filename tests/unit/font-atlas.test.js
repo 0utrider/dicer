@@ -526,6 +526,22 @@ describe('createFontAtlases', () => {
     expect(disposeA).toHaveBeenCalledTimes(1);
   });
 
+  test('holding an atlas that was already evicted and disposed disposes it again on the last release', async () => {
+    const { fonts, textures } = make({ opts: { cacheSize: 1 } });
+    const a = await fonts.request('css:A');
+    const disposeA = vi.spyOn(textures[0], 'dispose');
+    await fonts.request('css:B'); // A unheld: disposed at eviction
+    expect(disposeA).toHaveBeenCalledTimes(1);
+    const r1 = fonts.hold(a); // a material binds it anyway: three re-uploads it
+    const r2 = fonts.hold(a);
+    r1();
+    expect(disposeA).toHaveBeenCalledTimes(1);
+    r2();
+    expect(disposeA).toHaveBeenCalledTimes(2);
+    fonts.hold(a)(); // and again for a later binder
+    expect(disposeA).toHaveBeenCalledTimes(3);
+  });
+
   test('a held atlas that is still cached is not disposed on release; a later eviction disposes it at once', async () => {
     const { fonts, textures } = make({ opts: { cacheSize: 1 } });
     const a = await fonts.request('css:A');
