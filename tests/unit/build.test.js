@@ -7,7 +7,7 @@ const BUDGET = 4 * 1024 * 1024;
 const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json', 'api.js'];
 
 /** Fetched on demand: a die model (dynamic import / DRACOLoader), or the DSN migration at ready. */
-const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|draco\/)/.test(p);
+const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|Points-[^/]+\.js|draco\/)/.test(p);
 
 /** Every file under dist/, as forward-slash paths. */
 const distFiles = () =>
@@ -33,10 +33,13 @@ describe('build', () => {
     const migration = lazy.find((p) => /migration-/.test(p));
     const synth = lazy.find((p) => /synth-/.test(p));
     const effects = lazy.find((p) => /effects-/.test(p));
+    const points = lazy.find((p) => /Points-/.test(p)); // three's Points, shared by the effects and model-loader chunks
     expect(synth).toBeTruthy();
     expect(effects).toBeTruthy();
     expect(readFileSync(effects, 'utf8')).toContain('glow-pulse');
+    expect(readFileSync(effects, 'utf8')).toContain('shockwave');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('glow-pulse');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('shockwave');
     expect(migration).toBeTruthy();
     expect(chunk).toBeTruthy();
     expect(readFileSync(chunk, 'utf8')).toContain('KHR_draco_mesh_compression');
@@ -44,7 +47,7 @@ describe('build', () => {
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('has no Dicer counterpart yet');
     expect(readFileSync(migration, 'utf8')).toContain('has no Dicer counterpart yet');
     expect(lazy.sort()).toEqual(
-      [chunk, migration, synth, effects, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
+      [chunk, migration, synth, effects, points, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
     );
   });
   it('leaves api.js out of the bundle: it ships beside module.json, imported at runtime', () => {

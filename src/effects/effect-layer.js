@@ -44,6 +44,8 @@ export function createEffectLayer({
   debug = (...a) => console.debug(...a),
 }) {
   let library = null; // id -> module, once loaded
+  let createPool = null; // the library's createParticlePool, once loaded
+  let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
   let loadFailed = false;
   let disposed = false;
@@ -80,7 +82,10 @@ export function createEffectLayer({
       .then((mod) => {
         const effects = mod?.EFFECTS;
         if (!effects || typeof effects !== 'object') throw new Error('no EFFECTS export');
-        if (!disposed) library = effects;
+        if (!disposed) {
+          library = effects;
+          createPool = typeof mod.createParticlePool === 'function' ? mod.createParticlePool : null;
+        }
       })
       .catch((err) => {
         loadFailed = true;
@@ -141,6 +146,19 @@ export function createEffectLayer({
     return true;
   }
 
+  /** One pool per scene, capacity round(2048 x particleScale), created when an effect asks. */
+  function getPool() {
+    if (pool || !createPool || disposed) return pool;
+    const scale = Number(getTier()?.particleScale);
+    try {
+      pool = createPool(scene, Math.round(2048 * (scale > 0 ? scale : 1)));
+    } catch (err) {
+      createPool = null;
+      warnOnce('pool', 'cannot create the particle pool; particle effects are off', err);
+    }
+    return pool;
+  }
+
   function moduleFor(f) {
     const id = f?.effect?.id;
     if (typeof id !== 'string' || !library) return null;
@@ -169,7 +187,9 @@ export function createEffectLayer({
       intensity: num(e.intensity, num(d.intensity, 1)),
       duration: Math.max(0, num(e.duration, num(d.duration, 1000))),
       options: { ...e }, // a copy: fx objects are shared with the cached rules
-      particles,
+      get particles() {
+        return getPool();
+      },
       tier: getTier(),
       isolate: (target) => {
         if (target === die) bound = true;
@@ -199,6 +219,16 @@ export function createEffectLayer({
     } catch (err) {
       warnOnce(`stop:${r.id}`, `effect "${r.id}" failed to stop`, err);
     }
+  }
+
+  function disposePool() {
+    try {
+      pool?.dispose?.();
+    } catch (err) {
+      warnOnce('pool-dispose', 'the particle pool failed to dispose', err);
+    }
+    pool = null;
+    createPool = null;
   }
 
   return {
@@ -256,7 +286,16 @@ export function createEffectLayer({
         else stopAt(i);
       }
       const shaking = updateShake(nowMs);
-      return running.length > 0 || shaking;
+      let live = false;
+      if (pool) {
+        try {
+          live = pool.update(nowMs) === true;
+        } catch (err) {
+          warnOnce('pool-update', 'the particle pool failed; disabled', err);
+          disposePool();
+        }
+      }
+      return running.length > 0 || shaking || live;
     },
 
     /** Stops the effects bound to a die being removed (its material or its mesh). */
@@ -270,10 +309,12 @@ export function createEffectLayer({
       for (let i = running.length - 1; i >= 0; i--) stopAt(i);
       cost = 0;
       stopShake();
+      pool?.clear?.();
     },
 
     dispose() {
       this.clear();
+      disposePool();
       disposed = true;
       library = null;
     },

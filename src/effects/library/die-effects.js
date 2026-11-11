@@ -24,10 +24,10 @@ export function envelope(elapsed, duration) {
   return 1;
 }
 
-const NOOP = Object.freeze({ update: () => false, stop() {} });
+export const NOOP = Object.freeze({ update: () => false, stop() {} });
 
-/** Runs `frame(elapsed)` from the first update until `duration`, then `end()`. */
-function timed(duration, frame, end) {
+/** Runs `frame(elapsed, nowMs)` from the first update until `duration`, then `end()`. */
+export function timed(duration, frame, end) {
   let t0 = null;
   let done = false;
   const finish = () => {
@@ -44,7 +44,7 @@ function timed(duration, frame, end) {
         finish();
         return false;
       }
-      frame(e);
+      frame(e, now);
       return true;
     },
     stop: finish,
