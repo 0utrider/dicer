@@ -312,6 +312,51 @@ Hooks.on('chatCommandsReady', (commands) => {
   });
 });
 
+// "Dice look" on actor sheets the user owns: opens the theme browser (lazy chunk) on that actor.
+// ApplicationV2 sheets (v14 core, PF2e's new sheets) use getHeaderControls; legacy v1 sheets (PF2e's
+// character sheet today) use getActorSheetHeaderButtons. One shared handler. Module load, like the
+// chat commands, so the first render of a sheet already has it.
+const DICE_LOOK_LABEL = 'DICER.ThemeBrowser.DiceLook';
+const DICE_LOOK_ICON = 'fa-solid fa-dice-d20';
+
+/** The actor of a sheet when the user owns it (GMs own everything); else null. Never while Dicer is dormant. */
+function ownedActorOf(app) {
+  if (dormant || dsnIsActive(game)) return null;
+  const doc = app?.document ?? app?.actor;
+  return doc?.documentName === 'Actor' && doc.isOwner === true && doc.id ? doc : null;
+}
+
+function openDiceLook(actor) {
+  return import('./ui/theme-browser.js')
+    .then((m) => m.openThemeBrowser({ target: `actor:${actor.id}` }))
+    .catch((err) => console.warn('dicer: cannot open the theme browser', err));
+}
+
+export function addDiceLookControl(app, controls) {
+  const actor = ownedActorOf(app);
+  if (!actor || !Array.isArray(controls) || controls.some((c) => c?.action === 'dicerDiceLook')) return;
+  controls.push({
+    action: 'dicerDiceLook',
+    icon: DICE_LOOK_ICON,
+    label: DICE_LOOK_LABEL,
+    onClick: () => openDiceLook(actor),
+  });
+}
+
+export function addDiceLookButton(app, buttons) {
+  const actor = ownedActorOf(app);
+  if (!actor || !Array.isArray(buttons) || buttons.some((b) => b?.class === 'dicer-dice-look')) return;
+  buttons.unshift({
+    class: 'dicer-dice-look',
+    icon: DICE_LOOK_ICON,
+    label: DICE_LOOK_LABEL,
+    onclick: () => openDiceLook(actor),
+  });
+}
+
+Hooks.on('getHeaderControlsApplicationV2', addDiceLookControl);
+Hooks.on('getActorSheetHeaderButtons', addDiceLookButton);
+
 Hooks.once('init', () => {
   if (dsnIsActive(game)) {
     dormant = true;

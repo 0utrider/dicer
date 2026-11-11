@@ -271,6 +271,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   #filter = 'all';
   #selected = null; // the theme id shown in the detail panel
+  #target = null; // the "Use this theme for" value the select starts on (an actor's Dice look button sets it)
   #urls = new Map(); // theme id -> thumbnail URL already made (re-renders show it at once)
   #thumbs = null;
   #preview = null; // the live turning die of the detail panel (thumbnailer.preview)
@@ -278,6 +279,22 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   get #isGM() {
     return Boolean(me()?.isGM);
+  }
+
+  /**
+   * Points the "Use this theme for" select at a target (e.g. 'actor:<id>'). For an actor it also
+   * shows that actor's current theme in the detail panel (on all filters, so it is not hidden).
+   * Call before render; a target that is not on offer (not owned) just selects nothing.
+   */
+  focusTarget(target, { select = true } = {}) {
+    this.#target = typeof target === 'string' && target ? target : null;
+    if (!select) return;
+    const parsed = parseTarget(this.#target);
+    const actor = parsed?.kind === 'actor' ? this.#actors().find((a) => a.id === parsed.key) : null;
+    if (actor?.theme && this.#find(actor.theme)) {
+      this.#filter = 'all';
+      this.#selected = actor.theme;
+    }
   }
 
   #entries() {
@@ -334,6 +351,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       isGM,
     });
     const assignments = this.#assignments();
+    for (const g of groups) for (const o of g.options) if (o.value === this.#target) o.selected = true;
     const labelOf = targetLabeller(groups);
     const visible = themes.filter((t) => filter === 'all' || t.source === filter);
     const defaultId = [...assignments].find(([, list]) => list.includes('default'))?.[0] ?? 'default';
@@ -389,6 +407,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       }
       this.render();
     });
+    // The select resets on every render; remember its value so a re-render keeps the chosen place.
+    const target = this.element.querySelector('.dicer-target');
+    target?.addEventListener('change', () => this.focusTarget(target.value, { select: false }));
     this.#loadThumbnails();
     this.#startPreview();
   }
@@ -593,7 +614,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 }
 
 /** Opens (or brings to front) the browser: what the settings menu's proxy class calls. */
-export function openThemeBrowser() {
+export function openThemeBrowser({ target } = {}) {
   instance ??= new ThemeBrowser();
+  if (target) instance.focusTarget(target);
   return instance.render({ force: true });
 }

@@ -84,3 +84,67 @@ describe('preloadEditors', () => {
     expect(src).toContain("import('./ui/damage-map-editor.js')");
   });
 });
+
+describe('the Dice look header control on actor sheets', () => {
+  const sheet = (isOwner, documentName = 'Actor') => ({ document: { documentName, id: 'a1', isOwner }, actor: { id: 'a1', isOwner } });
+  const listener = (name) => hooks.on.find(([n]) => n === name)?.[1];
+  const openThemeBrowser = vi.fn();
+
+  beforeAll(() => {
+    vi.doMock('../../src/ui/theme-browser.js', () => ({ openThemeBrowser }));
+  });
+  beforeEach(() => {
+    openThemeBrowser.mockClear();
+    globalThis.game = { modules: new Map(), i18n: { localize: (k) => k } };
+  });
+
+  test('both header hooks are registered at module load (v14 ApplicationV2 sheets and legacy v1 sheets)', () => {
+    expect(listener('getHeaderControlsApplicationV2')).toBeTypeOf('function');
+    expect(listener('getActorSheetHeaderButtons')).toBeTypeOf('function');
+  });
+
+  test('an owned actor sheet gets a Dice look control, labelled and with the d20 icon', () => {
+    const controls = [{ action: 'configure' }];
+    listener('getHeaderControlsApplicationV2')(sheet(true), controls);
+    expect(controls).toHaveLength(2);
+    expect(controls[1]).toMatchObject({ icon: 'fa-solid fa-dice-d20', label: 'DICER.ThemeBrowser.DiceLook' });
+  });
+
+  test('an unowned actor sheet, and a sheet of another document type, get nothing', () => {
+    const a = [];
+    listener('getHeaderControlsApplicationV2')(sheet(false), a);
+    listener('getHeaderControlsApplicationV2')(sheet(true, 'Item'), a);
+    listener('getHeaderControlsApplicationV2')({}, a);
+    expect(a).toEqual([]);
+    const b = [];
+    listener('getActorSheetHeaderButtons')(sheet(false), b);
+    expect(b).toEqual([]);
+  });
+
+  test('clicking it opens the theme browser on that actor (lazy import)', async () => {
+    const controls = [];
+    listener('getHeaderControlsApplicationV2')(sheet(true), controls);
+    await controls[0].onClick();
+    await vi.waitFor(() => expect(openThemeBrowser).toHaveBeenCalledWith({ target: 'actor:a1' }));
+  });
+
+  test('the legacy v1 hook adds the same control as a header button', async () => {
+    const buttons = [];
+    listener('getActorSheetHeaderButtons')(sheet(true), buttons);
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toMatchObject({ class: 'dicer-dice-look', icon: 'fa-solid fa-dice-d20', label: 'DICER.ThemeBrowser.DiceLook' });
+    await buttons[0].onclick();
+    await vi.waitFor(() => expect(openThemeBrowser).toHaveBeenCalledWith({ target: 'actor:a1' }));
+  });
+
+  test('it is added once even if the hook fires twice, and not while Dice So Nice is active', () => {
+    const controls = [];
+    listener('getHeaderControlsApplicationV2')(sheet(true), controls);
+    listener('getHeaderControlsApplicationV2')(sheet(true), controls);
+    expect(controls).toHaveLength(1);
+    globalThis.game.modules = new Map([['dice-so-nice', { active: true }]]);
+    const other = [];
+    listener('getHeaderControlsApplicationV2')(sheet(true), other);
+    expect(other).toEqual([]);
+  });
+});

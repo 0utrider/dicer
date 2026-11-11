@@ -444,6 +444,53 @@ describe('the browser actions', () => {
       expect(app.render).toHaveBeenCalledTimes(2);
     });
 
+    it('opened on an actor: the Use for select starts on it and the detail shows its current theme', async () => {
+      const app = make();
+      app.focusTarget('actor:mine');
+      const ctx = await app._prepareContext();
+      const options = ctx.targetGroups.flatMap((g) => g.options);
+      expect(options.filter((o) => o.selected).map((o) => o.value)).toEqual(['actor:mine']);
+      expect(ctx.detail.id).toBe('verdant'); // the actor's theme, not the default (ruby-classic)
+      expect(ctx.detail.assigned.map((a) => a.target)).toContain('actor:mine');
+    });
+    it('an actor target is shown even when a filter would hide its theme, and a target not on offer selects nothing', async () => {
+      const app = make();
+      await actions.filter.call(app, {}, { dataset: { filter: 'user' } });
+      app.focusTarget('actor:mine');
+      const ctx = await app._prepareContext();
+      expect(ctx.filter).toBe('all');
+      expect(ctx.detail.id).toBe('verdant');
+      const other = make();
+      other.focusTarget('actor:theirs'); // not owned: not in the list
+      const c2 = await other._prepareContext();
+      expect(c2.targetGroups.flatMap((g) => g.options).some((o) => o.selected)).toBe(false);
+      expect(c2.detail.id).toBe('ruby-classic');
+    });
+    it('without a target nothing is pre-selected; a change of the select is remembered across renders', async () => {
+      const app = make();
+      expect((await app._prepareContext()).targetGroups.flatMap((g) => g.options).some((o) => o.selected)).toBe(false);
+      app.focusTarget('actor:mine', { select: false });
+      app.focusTarget('die:d6', { select: false });
+      const ctx = await app._prepareContext();
+      expect(ctx.targetGroups.flatMap((g) => g.options).filter((o) => o.selected).map((o) => o.value)).toEqual(['die:d6']);
+      expect(ctx.detail.id).toBe('ruby-classic'); // select:false leaves the card alone
+    });
+    it('openThemeBrowser({ target }) reuses the one window and points it at the target', async () => {
+      const render = vi.fn(async () => {});
+      mod.ThemeBrowser.prototype.render = render; // the test base class has none
+      try {
+        await mod.openThemeBrowser({ target: 'actor:mine' });
+        await mod.openThemeBrowser();
+        expect(render).toHaveBeenCalledTimes(2);
+        expect(render.mock.contexts[0]).toBe(render.mock.contexts[1]);
+        const ctx = await render.mock.contexts[0]._prepareContext();
+        expect(ctx.targetGroups.flatMap((g) => g.options).filter((o) => o.selected).map((o) => o.value)).toEqual(['actor:mine']);
+        expect(render).toHaveBeenCalledWith({ force: true });
+      } finally {
+        delete mod.ThemeBrowser.prototype.render;
+      }
+    });
+
     it('Create, Duplicate and Edit open the appearance editor (no simple form); Edit only where the user may write', async () => {
       const { openAppearanceEditor } = await import('../../src/ui/appearance-editor.js');
       openAppearanceEditor.mockClear();

@@ -62,7 +62,7 @@
             <select class="dicer-target">
               {{#each targetGroups}}
                 <optgroup label="{{label}}">
-                  {{#each options}}<option value="{{value}}">{{label}}</option>{{/each}}
+                  {{#each options}}<option value="{{value}}"{{#if selected}} selected{{/if}}>{{label}}</option>{{/each}}
                 </optgroup>
               {{/each}}
             </select>
