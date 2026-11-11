@@ -8,6 +8,10 @@
         "Name": "Enable 3D dice",
         "Hint": "Throw 3D dice for chat rolls on this client."
       },
+      "diceLookButton": {
+        "Name": "Dice look button on actor sheets",
+        "Hint": "Show a Dice look button in the header of the sheets of actors you own; it opens the theme browser for that actor."
+      },
       "pixelRatioCap": {
         "Name": "Pixel ratio cap",
         "Hint": "Upper limit for the dice canvas pixel ratio. Lower is faster. Requires a reload."

@@ -322,6 +322,7 @@ const DICE_LOOK_ICON = 'fa-solid fa-dice-d20';
 /** The actor of a sheet when the user owns it (GMs own everything); else null. Never while Dicer is dormant. */
 function ownedActorOf(app) {
   if (dormant || dsnIsActive(game)) return null;
+  if (game.settings?.get?.('dicer', 'diceLookButton') === false) return null; // read at hook time: applies on the next render
   const doc = app?.document ?? app?.actor;
   return doc?.documentName === 'Actor' && doc.isOwner === true && doc.id ? doc : null;
 }
@@ -332,7 +333,22 @@ function openDiceLook(actor) {
     .catch((err) => console.warn('dicer: cannot open the theme browser', err));
 }
 
-export function addDiceLookControl(app, controls) {
+let warnedHeader = false;
+/** A header hook must never throw into Foundry's sheet render: warn once and add nothing. */
+function guarded(fn) {
+  return (app, list) => {
+    try {
+      fn(app, list);
+    } catch (err) {
+      if (!warnedHeader) {
+        warnedHeader = true;
+        console.warn('dicer: cannot add the Dice look control', err);
+      }
+    }
+  };
+}
+
+export const addDiceLookControl = guarded((app, controls) => {
   const actor = ownedActorOf(app);
   if (!actor || !Array.isArray(controls) || controls.some((c) => c?.action === 'dicerDiceLook')) return;
   controls.push({
@@ -341,9 +357,9 @@ export function addDiceLookControl(app, controls) {
     label: DICE_LOOK_LABEL,
     onClick: () => openDiceLook(actor),
   });
-}
+});
 
-export function addDiceLookButton(app, buttons) {
+export const addDiceLookButton = guarded((app, buttons) => {
   const actor = ownedActorOf(app);
   if (!actor || !Array.isArray(buttons) || buttons.some((b) => b?.class === 'dicer-dice-look')) return;
   buttons.unshift({
@@ -352,7 +368,7 @@ export function addDiceLookButton(app, buttons) {
     label: DICE_LOOK_LABEL,
     onclick: () => openDiceLook(actor),
   });
-}
+});
 
 Hooks.on('getHeaderControlsApplicationV2', addDiceLookControl);
 Hooks.on('getActorSheetHeaderButtons', addDiceLookButton);

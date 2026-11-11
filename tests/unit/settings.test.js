@@ -360,3 +360,9 @@ describe('roll area settings (Plan 5 Task 3)', () => {
     }
   });
 });
+
+test('diceLookButton is a client Boolean, default on', () => {
+  const registered = capture();
+  expect(registered.diceLookButton).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(registered.diceLookButton.name).toBe('DICER.Settings.diceLookButton.Name');
+});

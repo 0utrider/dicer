@@ -148,3 +148,48 @@ describe('the Dice look header control on actor sheets', () => {
     expect(other).toEqual([]);
   });
 });
+
+describe('the Dice look button setting, guards and v1 dedupe', () => {
+  const sheet = () => ({ document: { documentName: 'Actor', id: 'a1', isOwner: true } });
+  const listener = (name) => hooks.on.find(([n]) => n === name)?.[1];
+  const withSetting = (value) => {
+    globalThis.game = { modules: new Map(), i18n: { localize: (k) => k }, settings: { get: (ns, k) => (k === 'diceLookButton' ? value : undefined) } };
+  };
+
+  test('present when the setting is on, absent when off (both hooks)', () => {
+    withSetting(true);
+    const on = [];
+    const onV1 = [];
+    listener('getHeaderControlsApplicationV2')(sheet(), on);
+    listener('getActorSheetHeaderButtons')(sheet(), onV1);
+    expect([on.length, onV1.length]).toEqual([1, 1]);
+    withSetting(false);
+    const off = [];
+    const offV1 = [];
+    listener('getHeaderControlsApplicationV2')(sheet(), off);
+    listener('getActorSheetHeaderButtons')(sheet(), offV1);
+    expect([off.length, offV1.length]).toEqual([0, 0]);
+  });
+
+  test('the v1 button is added once, and not while Dice So Nice is active', () => {
+    withSetting(true);
+    const buttons = [];
+    listener('getActorSheetHeaderButtons')(sheet(), buttons);
+    listener('getActorSheetHeaderButtons')(sheet(), buttons);
+    expect(buttons).toHaveLength(1);
+    globalThis.game.modules = new Map([['dice-so-nice', { active: true }]]);
+    const other = [];
+    listener('getActorSheetHeaderButtons')(sheet(), other);
+    expect(other).toEqual([]);
+  });
+
+  test('a failure inside the handlers is swallowed (warned once), never thrown into Foundry', () => {
+    withSetting(true);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bad = { get document() { throw new Error('boom'); } };
+    expect(() => listener('getHeaderControlsApplicationV2')(bad, [])).not.toThrow();
+    expect(() => listener('getActorSheetHeaderButtons')(bad, [])).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});

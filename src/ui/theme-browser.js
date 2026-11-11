@@ -617,5 +617,6 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 export function openThemeBrowser({ target } = {}) {
   instance ??= new ThemeBrowser();
   if (target) instance.focusTarget(target);
+  else if (!instance.rendered) instance.focusTarget(null, { select: false }); // not open: forget an old actor target
   return instance.render({ force: true });
 }

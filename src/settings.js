@@ -100,6 +100,14 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
+  game.settings.register(MODULE_ID, 'diceLookButton', {
+    name: t('diceLookButton.Name'),
+    hint: t('diceLookButton.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
   game.settings.register(MODULE_ID, 'pixelRatioCap', {
     name: t('pixelRatioCap.Name'),
     hint: t('pixelRatioCap.Hint'),

@@ -475,12 +475,26 @@ describe('the browser actions', () => {
       expect(ctx.targetGroups.flatMap((g) => g.options).filter((o) => o.selected).map((o) => o.value)).toEqual(['die:d6']);
       expect(ctx.detail.id).toBe('ruby-classic'); // select:false leaves the card alone
     });
-    it('openThemeBrowser({ target }) reuses the one window and points it at the target', async () => {
+    it('opened without a target while not open, it forgets an old actor target', async () => {
       const render = vi.fn(async () => {});
+      mod.ThemeBrowser.prototype.render = render;
+      try {
+        await mod.openThemeBrowser({ target: 'actor:mine' });
+        await mod.openThemeBrowser(); // test base class has no `rendered`: counts as not open
+        const ctx = await render.mock.contexts[1]._prepareContext();
+        expect(ctx.targetGroups.flatMap((g) => g.options).some((o) => o.selected)).toBe(false);
+      } finally {
+        delete mod.ThemeBrowser.prototype.render;
+      }
+    });
+    it('openThemeBrowser({ target }) reuses the one window and points it at the target', async () => {
+      const render = vi.fn(async function () {
+        this.rendered = true; // like ApplicationV2: open after the first render
+      });
       mod.ThemeBrowser.prototype.render = render; // the test base class has none
       try {
         await mod.openThemeBrowser({ target: 'actor:mine' });
-        await mod.openThemeBrowser();
+        await mod.openThemeBrowser(); // already open: keeps its target
         expect(render).toHaveBeenCalledTimes(2);
         expect(render.mock.contexts[0]).toBe(render.mock.contexts[1]);
         const ctx = await render.mock.contexts[0]._prepareContext();
