@@ -55,6 +55,8 @@ const pct = (v, scale = 1) => `${Math.round((Number(v) || 0) * 100 * scale) / sc
 const INSIDE_ICONS = { none: 'fa-ban', liquid: 'fa-droplet', glitter: 'fa-wand-sparkles', swirl: 'fa-hurricane', nebula: 'fa-cloud', shape: 'fa-shapes' };
 const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sphere: 'fa-circle' };
 const EDGE_NAMES = ['sharp', 'crisp', 'soft', 'round', 'veryRound'];
+/** px radius of the one rounded corner each edge-step icon draws (22 px box): clearly apart. */
+const EDGE_ICON_RADIUS = [0, 5, 10, 15, 22];
 const SECTIONS = ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras'];
 
 // Stored data of the wrong shape is never written: refused and warned once per kind.
@@ -174,6 +176,19 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     this.#extras = { soundMaterial: simple.soundMaterial, nat20: simple.nat20, nat1: simple.nat1 };
     this.#onSave = typeof onSave === 'function' ? onSave : null;
     this.#scheduler = createPreviewScheduler((theme) => this.#renderPreview(theme), { delay: 80 });
+    this.#clean = this.#snapshot();
+  }
+
+  #clean = '';
+
+  #snapshot() {
+    return JSON.stringify([this.#name, this.#forms, this.#extras]);
+  }
+
+  /** True when the window holds edits that are not saved. */
+  get dirty() {
+    this.#syncName();
+    return this.#snapshot() !== this.#clean;
   }
 
   get #isGM() {
@@ -193,7 +208,8 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     const keepAll = Object.fromEntries(DIE_TYPES.map((t) => [t, '']));
     const raw = themeFromForm({ name: this.#name, base: KEEP, perType: keepAll, ...this.#extras }, this.#base);
     const { appearance, perType } = looksFromForms(this.#forms);
-    return { ...raw, name: this.#name.trim() || raw.name, appearance, perType };
+    // An empty name stays empty, so the save refuses it (NeedName) instead of reusing the base's.
+    return { ...raw, name: this.#name.trim(), appearance, perType };
   }
 
   /** The theme the preview draws (normalized looks; no id rules needed). */
@@ -244,7 +260,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         value,
         label: loc(`DICER.Appearance.Edge.${EDGE_NAMES[i]}`),
         active: i === edgeIndex,
-        radius: Math.round(value * 7),
+        radius: EDGE_ICON_RADIUS[i],
       })),
       pct: {
         roughness: pct(form.body.roughness),
@@ -359,7 +375,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   /** One debounced preview pass: the die shows the working theme. */
   #renderPreview(theme) {
     this.#preview?.update?.(theme, this.#dieType);
-    return this.#checkFont(theme);
+    // Fire and forget: a slow or failing font (up to the layer's timeout) must not hold the
+    // scheduler's one in-flight slot, or the preview would freeze meanwhile.
+    void this.#checkFont(theme);
   }
 
   /** A computer / file font that cannot be made shows a message in the font field (the serif stands in). */
@@ -467,8 +485,11 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onEditType(event, target) {
     const type = target.dataset.type;
-    if (type === 'default') this.#editing = 'default';
-    else if (DIE_TYPES.includes(type)) {
+    if (type === 'default') {
+      this.#editing = 'default';
+      // Show a die that wears the default look (d20 unless it has its own).
+      if (this.#forms[this.#dieType]) this.#dieType = this.#forms.d20 ? (DIE_TYPES.find((t) => !this.#forms[t]) ?? 'd20') : 'd20';
+    } else if (DIE_TYPES.includes(type)) {
       this.#forms = addOverride(this.#forms, type);
       this.#editing = type;
       this.#dieType = type; // the preview shows the look being edited
@@ -561,6 +582,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     else await user.setFlag(MODULE, 'themes', plan.list);
     this.#originalId = plan.id;
     this.#base = normalizeTheme(plan.list.find((t) => t && t.id === plan.id), plan.scope, () => {}) ?? this.#base;
+    this.#clean = this.#snapshot();
     notify('info', loc(mode === 'update' ? 'DICER.Appearance.Updated' : 'DICER.Appearance.Saved'));
     try {
       this.#onSave?.(plan.id);
@@ -604,6 +626,13 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
 
 /** Opens the editor (one at a time): on a theme ({themeId}) or new from a base theme / look ({base}). */
 export async function openAppearanceEditor(options = {}) {
+  if (instance?.dirty) {
+    const discard = await foundry.applications.api.DialogV2.confirm({
+      window: { title: loc('DICER.Appearance.Title') },
+      content: `<p>${loc('DICER.Appearance.DiscardChanges')}</p>`,
+    });
+    if (!discard) return instance.render({ force: true }); // keep editing the current look
+  }
   if (instance) await instance.close();
   instance = new AppearanceEditor(options);
   return instance.render({ force: true });

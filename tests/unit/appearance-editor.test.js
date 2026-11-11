@@ -214,6 +214,7 @@ describe('the appearance editor', () => {
   let thumbs;
   let handles;
   let fonts;
+  let foundryStub;
   const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
   const localize = (k) => {
     const v = resolve(lang, k);
@@ -251,10 +252,13 @@ describe('the appearance editor', () => {
         this._el?.remove();
       }
     }
-    vi.stubGlobal('foundry', {
-      applications: { api: { ApplicationV2: FakeApp, HandlebarsApplicationMixin: (B) => class extends B {} } },
+    foundryStub = {
+      applications: {
+        api: { ApplicationV2: FakeApp, HandlebarsApplicationMixin: (B) => class extends B {}, DialogV2: { confirm: vi.fn(async () => true) } },
+      },
       utils: { saveDataToFile: vi.fn(), readTextFromFile: vi.fn() },
-    });
+    };
+    vi.stubGlobal('foundry', foundryStub);
     mod = await import('../../src/ui/appearance-editor.js');
   });
 
@@ -262,6 +266,7 @@ describe('the appearance editor', () => {
     flags = { themes: [{ id: 'user.u1.mine', name: 'Mine', appearance: resinNebula, future: 'kept' }, 'junk'] };
     store = { worldThemes: [{ id: 'world.table', name: 'Table', appearance: metal }] };
     user = { id: 'u1', isGM: false, getFlag: (s, k) => flags[k], setFlag: vi.fn(async (s, k, v) => (flags[k] = v)) };
+    vi.stubGlobal('foundry', foundryStub);
     handles = [];
     fonts = { request: vi.fn(async () => ({})), get: vi.fn() };
     thumbs = {
@@ -488,7 +493,7 @@ describe('the appearance editor', () => {
     expect(parseLook(json).appearance).toEqual(normalizeAppearance(metal));
     expect(ui.notifications.warn).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
-    vi.stubGlobal('foundry', globalThis.foundry);
+    vi.stubGlobal('foundry', foundryStub);
     await app.close();
   });
 
@@ -503,6 +508,70 @@ describe('the appearance editor', () => {
     await click(app, '[data-field="numbers.fontFamily"][data-value="Georgia"]');
     await vi.waitFor(() => expect(q(app, '.dicer-ae-font-msg').hidden).toBe(true));
     await app.close();
+  });
+
+  it('a font that never loads does not hold up the preview: a later edit still updates within ~100 ms', async () => {
+    vi.useFakeTimers();
+    fonts.request = vi.fn(() => new Promise(() => {})); // never resolves (a hung font)
+    const app = await open({ themeId: 'user.u1.mine' });
+    await click(app, '[data-field="numbers.fontKind"][data-value="css"]');
+    type(app, 'numbers.fontFamily', 'Slow Font', 'change');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fonts.request).toHaveBeenCalledWith('css:Slow Font');
+    const n = handles[0].update.mock.calls.length;
+    type(app, 'body.color', '#123456');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(handles[0].update.mock.calls.length).toBe(n + 1);
+    expect(handles[0].update.mock.calls.at(-1)[0].appearance.body.color).toBe('#123456');
+    await app.close();
+  });
+
+  it('"Default look" moves the preview off a die type that has its own look', async () => {
+    const app = await open({ themeId: 'user.u1.mine' });
+    await click(app, '[data-action="editType"][data-type="d20"]');
+    expect(q(app, '.dicer-ae-dice button.active').dataset.type).toBe('d20');
+    await click(app, '[data-action="editType"][data-type="default"]');
+    expect(q(app, '.dicer-ae-dice button.active').dataset.type).toBe('d4'); // d20 has its own look
+    await click(app, '[data-action="sameAsDefault"][data-type="d20"]');
+    await click(app, '[data-action="editType"][data-type="d8"]');
+    await click(app, '[data-action="editType"][data-type="default"]');
+    expect(q(app, '.dicer-ae-dice button.active').dataset.type).toBe('d20');
+    await app.close();
+  });
+
+  it('a cleared name is refused (no save under the base theme name)', async () => {
+    const app = await open({ themeId: 'user.u1.mine' });
+    type(app, 'name', '   ');
+    await click(app, '[data-action="saveMine"]');
+    await click(app, '[data-action="update"]');
+    expect(user.setFlag).not.toHaveBeenCalled();
+    expect(ui.notifications.warn).toHaveBeenCalledTimes(2);
+    expect(ui.notifications.warn.mock.calls[0][0]).toBe(localize('DICER.Appearance.NeedName'));
+    await app.close();
+  });
+
+  it('opening another look asks first only when the current editor has unsaved changes', async () => {
+    const confirm = foundry.applications.api.DialogV2.confirm;
+    confirm.mockClear();
+    const first = await mod.openAppearanceEditor({ themeId: 'user.u1.mine' });
+    await mod.openAppearanceEditor({ themeId: 'world.table' }); // clean: no prompt
+    expect(confirm).not.toHaveBeenCalled();
+    const current = await mod.openAppearanceEditor({ themeId: 'user.u1.mine' });
+    expect(current).not.toBe(first);
+    await click(current, '[data-field="body.type"][data-value="pearl"]');
+    expect(current.dirty).toBe(true);
+    confirm.mockResolvedValueOnce(false); // keep editing
+    expect(await mod.openAppearanceEditor({ themeId: 'world.table' })).toBe(current);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(current.theme().appearance.body.type).toBe('pearl');
+    confirm.mockResolvedValueOnce(true); // discard
+    const next = await mod.openAppearanceEditor({ themeId: 'world.table' });
+    expect(next).not.toBe(current);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    // saving makes it clean again
+    await click(next, '[data-action="saveMine"]');
+    expect(next.dirty).toBe(false);
+    await next.close();
   });
 
   it('a duplicate of a built-in theme starts as an unsaved copy named "(copy)"', async () => {

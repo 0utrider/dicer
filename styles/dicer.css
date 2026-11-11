@@ -912,6 +912,9 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   gap: 12px;
 }
 .dicer-appearance-editor .dicer-ae-preview {
+  align-self: start; /* the panel ends after its tools: no empty box below */
+  max-height: 100%;
+  overflow-y: auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -972,7 +975,6 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--dicer-line);
 }
@@ -1221,12 +1223,18 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   flex: 1 1 auto;
   padding: 0 10px;
 }
+.dicer-appearance-editor .dicer-ae-edges button {
+  height: 34px;
+}
+/* one corner of a die edge, drawn at its rounding: sharp .. very round */
 .dicer-appearance-editor .dicer-ae-edge {
   display: block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid currentColor;
-  border-radius: var(--r);
+  width: 22px;
+  height: 22px;
+  margin: 6px 0 0 6px;
+  border-top: 2.5px solid currentColor;
+  border-left: 2.5px solid currentColor;
+  border-top-left-radius: var(--r);
 }
 .dicer-appearance-editor .dicer-ae-scale {
   display: flex;

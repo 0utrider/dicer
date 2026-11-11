@@ -510,6 +510,7 @@
       "Saved": "Theme saved.",
       "Updated": "Theme updated.",
       "NeedName": "Give the theme a name first.",
+      "DiscardChanges": "The appearance editor has unsaved changes. Discard them and open the other look?",
       "NotAllowed": "Only a GM can save world themes, and only your own themes can be updated.",
       "StoredUnusable": "Dicer could not read the stored themes, so nothing was saved. Fix or reset them in the settings first.",
       "Copied": "Look copied.",
