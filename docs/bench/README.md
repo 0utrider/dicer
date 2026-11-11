@@ -11,7 +11,8 @@
   - `DICER_GM_USER`
   - `DICER_GM_PASSWORD`
 - A headed browser on a real GPU. The hidden-tab scenario needs a visible window. `DICER_BENCH_HEADLESS=1` runs headless, but the GPU may fall back to software and the numbers are then not representative.
-- Nobody else playing in the world while it runs. The harness changes world settings and restores them afterwards (see Recovery).
+- Nobody else playing in the world while it runs, and the GM typing no chat messages. The harness changes world settings and restores them afterwards, and deletes the chat messages it rolls (see Recovery).
+- A scene loaded in the world. G2 measures with a Foundry scene on screen; `summary.md` warns when a run had none.
 
 ## Running
 
@@ -24,7 +25,7 @@ A full run goes through 8 runs, including a 500-roll soak, a context-loss check 
 
 What each run covers:
 
-- Dicer, `pc` `vsync`: every scenario, including the 500-roll soak, resize, context loss and hidden tab.
+- Dicer, `pc` `vsync`: every scenario, including the 500-roll soak, resize, context loss and hidden tab. Context loss rolls twice: the first roll loses the WebGL context mid-roll, and once the context is restored (at most 3 s) a second roll must draw.
 - Dicer, `throttled` `vsync`: `d20`, `mixed10`, `pool30`.
 - Each product in `pc` and `throttled` `uncapped`, and the effects-off pairing: `d20`, `mixed10`, `pool30`, `burst100`.
 
@@ -60,7 +61,9 @@ Everything goes to `artifacts/bench/<timestamp>/`, for example `artifacts/bench/
 ### Reading summary.md
 
 - **Runs**: the browser, GPU, tier and Dicer version of each run. Check the GPU column first: a software renderer means the numbers are not representative.
-- **G2 target checks**: one row per run, scenario and check, with the target, the measured value and Pass or Fail. Each failing row is something to tune. The checks include frame p95 (16.7 ms), longest task (50 ms), first frame (50 ms), big pool visible (100 ms), heap growth (at most 2 MiB and at most 5%), GPU geometries, textures and programs unchanged over the soak, no failed rolls, and no renderer rebuild on resize.
+- **G2 target checks**: one row per run, scenario and check, with the target, the measured value, Pass or Fail, and a note. Each failing row is something to tune. The checks include frame p95 (16.7 ms), longest task (50 ms), first frame (50 ms), big pool visible (100 ms), heap growth (at most 2 MiB and at most 5%), GPU geometries, textures and programs unchanged over the soak, and no failed rolls.
+  - First frame and big pool visible are judged on `dicerFirstFrame`: from Dicer's message gate catching the chat message to the first drawn frame (G2's "message arriving"). The note names that measure and shows the other one, `firstFrame` (from the roll call to the first frame), which is the measure the head-to-head with DSN can share. When a run has no gate timing, `firstFrame` is judged and the note says so.
+  - Resize, context loss and hidden tab are disturbances, not frame measurements: they are checked for failed rolls only, plus no renderer rebuild (resize and context loss) and `recovered` (context loss: after the restore the second roll drew on a live context).
 - **Head-to-head**: the frame p95 of Dicer and DSN per scenario, their ratio, the limit, and the failed rolls of each. For the pc defaults pairing, Dicer must be clearly less than DSN (ratio at most 0.9).
 - **DSN effects-off user flag**: the DSN settings the harness wrote, read back. If an effect setting is missing here, DSN ran with that effect on and the pairing is less fair.
 - The last line counts failed rows, n/a rows and run errors.
@@ -74,6 +77,9 @@ Before it changes anything the harness saves the world state to `artifacts/bench
 - the enable state of the `dicer` and `dice-so-nice` modules;
 - Dicer **Maximum dice per message** (`maxDice`, set to 30 during runs, so the 30-dice pool is not capped);
 - DSN `maxDiceNumber` (set to 35 during runs);
-- the GM's DSN user flag `dice-so-nice.settings` (rewritten for the effects-off run, unset for the DSN defaults runs).
+- the GM's DSN user flag `dice-so-nice.settings` (rewritten for the effects-off run, unset for the DSN defaults runs);
+- `runStartedAt`, the time the run started, before its first roll.
+
+Each scenario, and the warm-up roll, deletes the chat messages it created when it ends. The restore also deletes every chat message the GM wrote since `runStartedAt`: what a crashed run left behind. A message the GM typed in that world during the run is deleted too, which is why nobody should play during a run.
 
 The state is restored when the run ends, on the first Ctrl+C, and again at the next start if a run crashed and left `restore.json` behind. The file is deleted only after a successful restore. A second Ctrl+C exits at once and keeps `restore.json`; start the harness again to restore. If `restore.json` is damaged the harness stops and says so; check the module list in Foundry's setup screen and remove the file by hand.

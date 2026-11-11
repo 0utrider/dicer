@@ -266,7 +266,7 @@ Dicer stays cheap: no render loop while no dice are on screen, and the heavy cod
 
 - **World start download:** 4,086,989 B raw, 1,451,693 B gzipped. The budget is 4 MiB (4,194,304 B) and a test fails if world start grows past it. Most of it is the 3.1 MB physics WASM, which has no smaller build.
 - **In-game benchmark:** press **Run the dice benchmark** in Dicer's settings, or run `game.dice3d.benchmark()` in the console. It throws four test scenarios on your screen only: `d20`, `mixed10`, `pool30` and `burst20`. `pool30` is capped by the world **Maximum dice per message** setting (`maxDice`), and the summary notes when it was.
-- **What it reports:** per scenario, the 95th percentile frame time, the longest task, the first-frame time, heap growth and failed rolls, with a pass or fail against the targets, plus your browser and GPU. **Copy summary** puts it on the clipboard as plain text.
+- **What it reports:** per scenario, the 95th percentile frame time, the longest task, the first-frame time, heap growth and failed rolls, with a pass or fail against the targets, plus your browser and GPU. On a display that refreshes below 60 Hz the frame checks show n/a and the summary says so. When Dicer lowers its quality tier during a scenario, the summary notes it. **Copy summary** puts it on the clipboard as plain text.
 - **Privacy:** it creates no chat messages and uploads nothing. The summary leaves your machine only if you paste it somewhere.
 - **Limits:** it refuses while dice are rolling or another run is going, and shows a notice when Dicer is disabled. Firefox and Safari are best effort.
 - **Testers wanted:** if you have an Intel Iris Xe laptop or an iPad, please run the benchmark and paste the summary into an issue.

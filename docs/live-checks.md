@@ -202,4 +202,4 @@ The roll area rules (a player's area, the GM private corner) are also automated 
 
 1. Note the **Dicer** and **Dice So Nice** module enable states and Dicer's **Maximum dice per message**. Start `npm run test:live:bench` and wait until the first run has started.
 2. Press Ctrl+C once.
-3. Pass: the harness says it is restoring and exits; the module enable states and **Maximum dice per message** match step 1, and `artifacts/bench/restore.json` is gone. If you instead kill the process, the next `npm run test:live:bench` restores the saved state before running.
+3. Pass: the harness says it is restoring and exits; the module enable states and **Maximum dice per message** match step 1, none of the run's chat rolls are left in the chat log, and `artifacts/bench/restore.json` is gone. If you instead kill the process, the next `npm run test:live:bench` restores the saved state, and deletes the GM chat messages written since the run started, before running.
