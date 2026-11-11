@@ -64,7 +64,6 @@ describe('resizeTo', () => {
   it('stops at the minimum size for every handle, the opposite edge stays put', () => {
     const base = rectOf(def);
     for (const h of HANDLES) {
-      const out = resizeTo(def, h, h.includes('w') ? 9000 : -9000, h.includes('n') ? 9000 : -9000, usable);
       // push each handle towards (and past) the opposite edge
       const dx = h.includes('e') ? -9000 : h.includes('w') ? 9000 : 0;
       const dy = h.includes('s') ? -9000 : h.includes('n') ? 9000 : 0;
@@ -78,7 +77,6 @@ describe('resizeTo', () => {
       if (h.includes('w')) expect(r.left + r.width).toBeCloseTo(base.left + base.width);
       if (h.includes('s')) expect(r.top).toBeCloseTo(base.top);
       if (h.includes('n')) expect(r.top + r.height).toBeCloseTo(base.top + base.height);
-      expect(out).toBeTruthy();
     }
   });
   it('never leaves the usable region', () => {
@@ -109,7 +107,7 @@ describe('the overlay', () => {
   let editor;
   let me;
   const ptr = (el, type, x, y) =>
-    el.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+    el.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, buttons: type === 'pointerup' ? 0 : 1, bubbles: true }));
   const q = (sel) => document.querySelector(sel);
   const click = (sel) => q(sel).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -156,8 +154,36 @@ describe('the overlay', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.querySelectorAll('.dicer-area-editor').length).toBe(0);
     expect(calls).toEqual([]);
-    // closed: its listeners are gone
-    expect(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))).not.toThrow();
+    expect(q('.dicer-area-editor')).toBeNull();
+  });
+
+  it('removes every listener it added on close (no leak)', () => {
+    setup();
+    const add = vi.spyOn(EventTarget.prototype, 'addEventListener');
+    const rem = vi.spyOn(EventTarget.prototype, 'removeEventListener');
+    editor = openAreaEditor();
+    const added = add.mock.calls.map(([t]) => t).sort();
+    editor.close();
+    const removed = rem.mock.calls.map(([t]) => t).sort();
+    add.mockRestore();
+    rem.mockRestore();
+    expect(added.length).toBeGreaterThan(5);
+    expect(removed).toEqual(added);
+  });
+
+  it('a lost pointerup does not leave a sticky drag', () => {
+    setup({ stored: { default: { preset: 'centre' }, users: {} } });
+    editor = openAreaEditor();
+    ptr(q('.dicer-area-rect'), 'pointerdown', 500, 400);
+    document.dispatchEvent(new MouseEvent('pointermove', { clientX: 600, clientY: 400, buttons: 0 }));
+    expect(editor.currentDef()).toEqual({ preset: 'centre' });
+  });
+
+  it('shows what the dice use when per-player areas are off', () => {
+    setup({ perPlayer: false, stored: { default: { preset: 'centre' }, users: { p1: { preset: 'bottom' } } } });
+    editor = openAreaEditor();
+    editor.select('user:p1');
+    expect(editor.currentDef()).toEqual({ preset: 'centre' });
   });
 
   it('Esc and Cancel discard the draft: nothing is written, stored value untouched', () => {

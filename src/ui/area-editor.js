@@ -10,7 +10,7 @@
  * stored entry is kept unless that user's area is edited (Plan 4 precedent).
  */
 import { MIN_AREA_PX, PRESETS, normalizeAreaDef, resolveArea } from '../areas/area-model.js';
-import { isPlainObject, isValidDef } from '../areas/area-store.js';
+import { areaDefFor, gmPrivateDef } from '../areas/area-store.js';
 import { measureUsable, watchArea } from '../foundry/area.js';
 
 const MODULE = 'dicer';
@@ -69,21 +69,10 @@ const readSetting = (key) => {
   }
 };
 
-/** What the editor shows for a target before it is edited: the raw stored entry, else the default's. */
-function storedDefFor(target) {
-  const stored = readSetting('rollAreas');
-  const base = isPlainObject(stored) && isValidDef(stored.default) ? stored.default : FULL;
-  if (target === 'gm') {
-    const raw = readSetting('gmPrivateArea');
-    return normalizeAreaDef(isValidDef(raw) ? raw : GM_RESET);
-  }
-  if (target.startsWith('user:') && readSetting('perPlayerAreas') !== false) {
-    const id = target.slice(5);
-    const users = isPlainObject(stored) ? stored.users : undefined;
-    if (isPlainObject(users) && Object.hasOwn(users, id) && isValidDef(users[id]))
-      return normalizeAreaDef(users[id]);
-  }
-  return normalizeAreaDef(base);
+/** What the editor shows for a target before it is edited: exactly what the dice use (area-store's rule). */
+function shownDefFor(target) {
+  if (target === 'gm') return normalizeAreaDef(gmPrivateDef(readSetting));
+  return areaDefFor(readSetting, target.startsWith('user:') ? target.slice(5) : null);
 }
 
 let current = null;
@@ -105,7 +94,7 @@ export function openAreaEditor() {
     cleanups.push(() => el.removeEventListener(type, fn, opts));
   };
 
-  const defOf = (t) => drafts.get(t) ?? storedDefFor(t);
+  const defOf = (t) => drafts.get(t) ?? shownDefFor(t);
   const currentDef = () => defOf(target);
 
   // --- DOM -------------------------------------------------------------------------------
@@ -205,6 +194,7 @@ export function openAreaEditor() {
     drag = { kind: handle ?? 'move', ...point(e), def: currentDef() };
   }
   function onMove(e) {
+    if (drag && e.buttons === 0) drag = null; // pointerup was lost (released off-window)
     if (!drag) return;
     const dx = e.clientX - drag.x;
     const dy = e.clientY - drag.y;
