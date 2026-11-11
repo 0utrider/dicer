@@ -88,6 +88,32 @@ function randomQuaternion(u1, u2, u3) {
   };
 }
 
+const finitePositive = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+const finiteOr0 = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
+/**
+ * The rectangle a throw uses: `req.area` ({cx, cz, halfWidth, halfDepth}, die units relative to
+ * the stage centre) when it is well formed, else the stage area centred at the origin.
+ */
+function throwArea(reqArea, stage) {
+  if (
+    reqArea &&
+    typeof reqArea === 'object' &&
+    finitePositive(reqArea.halfWidth) &&
+    finitePositive(reqArea.halfDepth) &&
+    (reqArea.cx === undefined || Number.isFinite(reqArea.cx)) &&
+    (reqArea.cz === undefined || Number.isFinite(reqArea.cz))
+  ) {
+    return {
+      cx: finiteOr0(reqArea.cx),
+      cz: finiteOr0(reqArea.cz),
+      halfWidth: reqArea.halfWidth,
+      halfDepth: reqArea.halfDepth,
+    };
+  }
+  return { cx: 0, cz: 0, halfWidth: stage.halfWidth, halfDepth: stage.halfDepth };
+}
+
 /** Run one 1-die throw per type and discard it: warms colliders, hulls and the wasm paths. */
 export function prewarm(sim, types) {
   for (const type of types) {
@@ -98,6 +124,9 @@ export function prewarm(sim, types) {
 /**
  * Create a simulation. World units: 1 = a die's circumradius, floor at y = 0.
  * Each throw builds a fresh Rapier world, so a throw depends only on (area, request).
+ * `throw({dice, seed, area?})`: `area` = {cx, cz, halfWidth, halfDepth} puts this throw's walls,
+ * spawn edge and aim around (cx, cz); without it the throw uses the resized stage area at the
+ * origin (bit-identical to before per-throw areas). The floor is shared and covers both.
  */
 export function createSim(initialArea, hulls) {
   let area = { ...initialArea };
@@ -126,11 +155,12 @@ export function createSim(initialArea, hulls) {
   }
 
   /**
-   * Four walls in fixed order: +x, -x, +z, -z. The walls running along the travel direction are
-   * extended outwards on the spawn side so thrown dice cannot leave sideways before it closes.
+   * Four walls in fixed order: +x, -x, +z, -z, around the throw's area `a`. The walls running
+   * along the travel direction are extended outwards on the spawn side so thrown dice cannot
+   * leave sideways before it closes.
    */
-  function addWalls(world, edge) {
-    const { halfWidth: hw, halfDepth: hd } = area;
+  function addWalls(world, edge, a) {
+    const { cx, cz, halfWidth: hw, halfDepth: hd } = a;
     const t = WALL_HALF_THICKNESS;
     const h = WALL_HALF_HEIGHT;
     const alongX = edge < 2;
@@ -155,10 +185,10 @@ export function createSim(initialArea, hulls) {
     const [zLo, zHi] = span(hd, !alongX); // extent of the +x/-x walls along z
     const [xLo, xHi] = span(hw, alongX); // extent of the +z/-z walls along x
     return [
-      wall(t, (zHi - zLo) / 2, hw + t, (zHi + zLo) / 2),
-      wall(t, (zHi - zLo) / 2, -hw - t, (zHi + zLo) / 2),
-      wall((xHi - xLo) / 2, t, (xHi + xLo) / 2, hd + t),
-      wall((xHi - xLo) / 2, t, (xHi + xLo) / 2, -hd - t),
+      wall(t, (zHi - zLo) / 2, cx + hw + t, cz + (zHi + zLo) / 2),
+      wall(t, (zHi - zLo) / 2, cx - hw - t, cz + (zHi + zLo) / 2),
+      wall((xHi - xLo) / 2, t, cx + (xHi + xLo) / 2, cz + hd + t),
+      wall((xHi - xLo) / 2, t, cx + (xHi + xLo) / 2, cz - hd - t),
     ];
   }
 
@@ -181,7 +211,12 @@ export function createSim(initialArea, hulls) {
 
     throw(req, onChunk) {
       if (disposed) throw new Error('dicer: sim disposed');
-      const { halfWidth: hw, halfDepth: hd } = area;
+      const a = throwArea(req.area, area);
+      const { cx, cz, halfWidth: hw, halfDepth: hd } = a;
+      // The shared floor covers the stage and this throw's area (identical to the stage's floor
+      // when the area lies inside it, which is the default).
+      const floorHw = Math.max(area.halfWidth, Math.abs(cx) + hw);
+      const floorHd = Math.max(area.halfDepth, Math.abs(cz) + hd);
       const rand = mulberry32(req.seed);
       const n = req.dice.length;
       const world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
@@ -193,7 +228,7 @@ export function createSim(initialArea, hulls) {
       try {
         const floor = world.createCollider(
           withEvents(
-            RAPIER.ColliderDesc.cuboid(hw + FLOOR_MARGIN, 0.5, hd + FLOOR_MARGIN)
+            RAPIER.ColliderDesc.cuboid(floorHw + FLOOR_MARGIN, 0.5, floorHd + FLOOR_MARGIN)
               .setTranslation(0, -0.5, 0)
               .setFriction(FLOOR_FRICTION)
               .setRestitution(DIE_RESTITUTION),
@@ -203,7 +238,7 @@ export function createSim(initialArea, hulls) {
 
         // Seeded spawn edge: 0 = +x, 1 = -x, 2 = +z, 3 = -z. Its wall starts disabled ("open").
         const edge = Math.floor(rand() * 4);
-        const walls = addWalls(world, edge);
+        const walls = addWalls(world, edge, a);
         const alongX = edge < 2;
         const sign = edge % 2 === 0 ? 1 : -1;
         for (const w of walls) owner.set(w.handle, -2);
@@ -219,11 +254,11 @@ export function createSim(initialArea, hulls) {
           const lateral = (col - (columns - 1) / 2) * DIE_SPACING + (rand() - 0.5) * 0.3;
           const out = (alongX ? hw : hd) + SPAWN_GAP + 0.5 + row * DIE_SPACING + rand() * 0.3;
           const y = 2 + rand() * 3;
-          const px = alongX ? sign * out : lateral;
-          const pz = alongX ? lateral : sign * out;
+          const px = cx + (alongX ? sign * out : lateral);
+          const pz = cz + (alongX ? lateral : sign * out);
           // Aim at a seeded point inside the inner 60% of the area.
-          const tx = (rand() * 2 - 1) * INNER_FRACTION * hw;
-          const tz = (rand() * 2 - 1) * INNER_FRACTION * hd;
+          const tx = cx + (rand() * 2 - 1) * INNER_FRACTION * hw;
+          const tz = cz + (rand() * 2 - 1) * INNER_FRACTION * hd;
           const flight = 0.7 + row * 0.1 + rand() * 0.3;
           const vx = (tx - px) / flight;
           const vz = (tz - pz) / flight;
@@ -318,7 +353,7 @@ export function createSim(initialArea, hulls) {
             buf[o + 6] = r.w;
             if (!wallClosed) {
               // Distance beyond the spawn-side wall plane (positive = outside the area).
-              const beyond = alongX ? sign * p.x - hw : sign * p.z - hd;
+              const beyond = alongX ? sign * (p.x - cx) - hw : sign * (p.z - cz) - hd;
               if (beyond > -CLOSE_EPSILON) allInside = false;
               if (beyond > 0 && step >= HERD_AFTER_STEP) {
                 // Only dice whose centre is outside (knocked back out, or slow to arrive).

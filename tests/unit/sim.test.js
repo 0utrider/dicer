@@ -174,3 +174,95 @@ test('impacts fade out', () => {
   const first = floor.find((e) => e.other === -1);
   expect(first.speed).toBeGreaterThan(4 * floor.at(-1).speed);
 });
+
+/** FNV-1a over the raw bytes of every chunk's frames and events. */
+function framesHash(chunks) {
+  let h = 0x811c9dc5;
+  for (const c of chunks) {
+    for (const arr of [c.data, c.events ?? new Float32Array(0)]) {
+      const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+      for (let i = 0; i < bytes.length; i++) h = Math.imul(h ^ bytes[i], 0x01000193) >>> 0;
+    }
+  }
+  return h.toString(16);
+}
+
+/** Runs one throw (optionally with a per-throw area) keeping copies of frames and events. */
+function runEv(dice, seed, stage, throwArea) {
+  const sim = createSim(stage, hulls);
+  const chunks = [];
+  const req = { dice: dice.map((type) => ({ type })), seed };
+  if (throwArea) req.area = throwArea;
+  const res = sim.throw(req, (c) =>
+    chunks.push({ ...c, data: c.data.slice(), events: c.events.slice() }),
+  );
+  sim.dispose();
+  return { res, chunks };
+}
+
+// Recorded from the code before per-throw areas existed (commit 19b15a5).
+test('no area: frames and events are identical to before per-throw areas', () => {
+  expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area).chunks)).toBe('1118cbd0');
+  const small = { halfWidth: 9, halfDepth: 5 };
+  expect(framesHash(runEv(['d8', 'd10', 'd12', 'd4', 'd2'], 42, small).chunks)).toBe('1662dbb4');
+});
+
+const offset = { cx: 6, cz: 3, halfWidth: 4, halfDepth: 3 };
+
+test('dice settle inside an offset area', () => {
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const n = 6;
+    const { res, chunks } = runEv(Array(n).fill('d6'), seed, area, offset);
+    expect(res.settledStep).toBeLessThan(MAX_STEPS);
+    const last = chunks.at(-1);
+    const base = (last.steps - 1) * n * FLOATS_PER_DIE;
+    for (let d = 0; d < n; d++) {
+      const o = base + d * FLOATS_PER_DIE;
+      // A die's centre stays at least ~its inradius from the walls; allow its full radius.
+      expect(Math.abs(last.data[o] - offset.cx), `seed ${seed} die ${d} x`).toBeLessThan(
+        offset.halfWidth + 1,
+      );
+      expect(Math.abs(last.data[o + 2] - offset.cz), `seed ${seed} die ${d} z`).toBeLessThan(
+        offset.halfDepth + 1,
+      );
+    }
+  }
+});
+
+test('an offset throw starts outside its own area and lands away from the stage centre', () => {
+  const { chunks } = runEv(['d20'], 11, area, offset);
+  const [x, , z] = chunks[0].data;
+  expect(Math.abs(x - offset.cx) > offset.halfWidth || Math.abs(z - offset.cz) > offset.halfDepth).toBe(
+    true,
+  );
+  const last = chunks.at(-1);
+  const o = (last.steps - 1) * FLOATS_PER_DIE;
+  expect(last.data[o]).toBeGreaterThan(offset.cx - offset.halfWidth - 1);
+  expect(last.data[o + 2]).toBeGreaterThan(offset.cz - offset.halfDepth - 1);
+});
+
+test('same seed + same area gives identical frames and events', () => {
+  const a = runEv(['d20', 'd6', 'd6'], 7, area, offset);
+  const b = runEv(['d20', 'd6', 'd6'], 7, area, offset);
+  expect(framesHash(a.chunks)).toBe(framesHash(b.chunks));
+  // ... and a different area changes the throw.
+  expect(framesHash(a.chunks)).not.toBe(framesHash(runEv(['d20', 'd6', 'd6'], 7, area).chunks));
+});
+
+test('a per-throw area does not change the stage area of later throws', () => {
+  const sim = createSim(area, hulls);
+  const req = { dice: [{ type: 'd6' }], seed: 7 };
+  sim.throw({ ...req, area: offset }, (c) => sim.recycle(c.data));
+  const chunks = [];
+  sim.throw({ dice: [{ type: 'd20' }, { type: 'd6' }, { type: 'd6' }], seed: 7 }, (c) =>
+    chunks.push({ ...c, data: c.data.slice(), events: c.events.slice() }),
+  );
+  sim.dispose();
+  expect(framesHash(chunks)).toBe('1118cbd0');
+});
+
+test('a malformed area falls back to the stage', () => {
+  for (const bad of [{ cx: NaN, cz: 0, halfWidth: 4, halfDepth: 3 }, { halfWidth: 0 }, 'x', null]) {
+    expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area, bad ?? undefined).chunks)).toBe('1118cbd0');
+  }
+});

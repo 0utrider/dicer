@@ -141,3 +141,15 @@ test('chunk keeps events', async () => {
   expect(got[1].events).toBeInstanceOf(Float32Array);
   expect(got[1].events.length).toBe(0);
 });
+
+test('throw passes a per-throw area through, and omits it when absent', () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  w.emit({ type: 'ready' });
+  const area = { cx: 6, cz: 3, halfWidth: 4, halfDepth: 3 };
+  client.throw({ dice: [{ type: 'd6' }], seed: 1, area });
+  client.throw({ dice: [{ type: 'd6' }], seed: 2 });
+  const throws = w.sent.filter((s) => s.m.type === 'throw').map((s) => s.m);
+  expect(throws[0]).toMatchObject({ type: 'throw', seed: 1, area });
+  expect('area' in throws[1]).toBe(false);
+});

@@ -18,6 +18,7 @@ import { modelRotationFor } from '../compat/dsn-orientation.js';
 import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
+import { toDieArea } from '../areas/area-model.js';
 
 /** Die edge size on screen, in CSS px, at diceScale 1. One world unit is one die size. */
 export const DIE_SIZE_PX = 48;
@@ -167,7 +168,9 @@ export class DiceBox {
     this._refs = new Map(); // material -> { refs, stale, key }, cached and stale materials alike
     this._idle = new Set(); // cached materials with refs 0, least recently used first
     this._rolls = new Set();
-    this._area = null;
+    this._area = null; // the stage in die units: {halfWidth, halfDepth}
+    this._stageRect = null; // the stage in px, as getArea() gave it at the last onResize
+    this._diePx = DIE_SIZE_PX;
     this._tick = (now) => this.#frame(now);
     this.onResize();
     renderer.onContextLost?.(() => this.clear());
@@ -183,18 +186,48 @@ export class DiceBox {
     return this._rolls.size;
   }
 
-  /** Refit the camera, physics walls and canvas to getArea(), in die units. */
+  /**
+   * Refit the camera, physics walls and canvas to getArea(), in die units. The only caller of
+   * fitArea: a per-throw area never moves the camera or the canvas.
+   */
   onResize() {
     const rect = this._getArea();
     const px = DIE_SIZE_PX * this._diceScale();
+    this._stageRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    this._diePx = px;
     this._area = { halfWidth: rect.width / 2 / px, halfDepth: rect.height / 2 / px };
     this._renderer.sceneApi.fitArea(this._area);
     this._physics.resize(this._area);
     this._renderer.setArea(rect);
   }
 
-  /** @param {import('./throw-planner.js').DieSpec[]} specs */
-  roll(specs) {
+  /**
+   * A per-throw area (px rect {left, top, width, height}) clamped inside the stage, in die units
+   * relative to the stage centre; null for none or a malformed rect (the stage is used).
+   */
+  #throwArea(rect) {
+    const stage = this._stageRect;
+    if (!rect || typeof rect !== 'object' || !stage) return null;
+    const { left, top, width, height } = rect;
+    if (![left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+    if (!(this._diePx > 0) || !(stage.width > 0) || !(stage.height > 0)) return null;
+    const w = Math.min(width, stage.width);
+    const h = Math.min(height, stage.height);
+    const clamped = {
+      left: Math.min(Math.max(left, stage.left), stage.left + stage.width - w),
+      top: Math.min(Math.max(top, stage.top), stage.top + stage.height - h),
+      width: w,
+      height: h,
+    };
+    return toDieArea(clamped, stage, this._diePx);
+  }
+
+  /**
+   * @param {import('./throw-planner.js').DieSpec[]} specs
+   * @param {{ area?: {left:number, top:number, width:number, height:number} }} [options] `area`:
+   *   this throw's roll area in page px (clamped inside the stage); absent, the whole stage.
+   */
+  roll(specs, { area } = {}) {
     const roll = {
       dice: [],
       shadows: [],
@@ -223,10 +256,13 @@ export class DiceBox {
       roll.slowMotion = roll.dice.some((d) => d.fx?.some((f) => f?.slowMotion === true));
       this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
-      roll.playback = new Playback({ dice: roll.dice, area: this._area });
+      const throwArea = this.#throwArea(area);
+      roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
       roll.received = 0;
       const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
-      const stream = this._physics.throw({ dice: specs.map((s) => ({ type: s.type })), seed });
+      const req = { dice: specs.map((s) => ({ type: s.type })), seed };
+      if (throwArea) req.area = throwArea;
+      const stream = this._physics.throw(req);
       // Stall guards (R12): a worker that never answers must not keep a roll alive.
       roll.firstChunkTimer = setTimeout(
         () => this.#fail(roll, new Error(`no physics chunk within ${FIRST_CHUNK_TIMEOUT_MS} ms`)),

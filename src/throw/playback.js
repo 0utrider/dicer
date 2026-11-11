@@ -10,6 +10,7 @@ export const SLOW_SPEED = 0.35;
 /**
  * Consumes streamed frame chunks and moves the dice. No die is drawn inside the roll area
  * until the final chunk has arrived and the result rotation has been applied.
+ * `area` = {halfWidth, halfDepth, cx?, cz?}: the throw's rectangle, centred at (cx, cz) (default 0).
  */
 export class Playback {
   constructor({ dice, area, speed = 1 }) {
@@ -119,10 +120,10 @@ export class Playback {
   }
 
   _anyInside(data, offset) {
-    const { halfWidth, halfDepth } = this.area;
+    const { halfWidth, halfDepth, cx = 0, cz = 0 } = this.area;
     for (let d = 0; d < this.dice.length; d++) {
       const o = offset + d * FLOATS_PER_DIE;
-      if (Math.abs(data[o]) < halfWidth && Math.abs(data[o + 2]) < halfDepth) return true;
+      if (Math.abs(data[o] - cx) < halfWidth && Math.abs(data[o + 2] - cz) < halfDepth) return true;
     }
     return false;
   }

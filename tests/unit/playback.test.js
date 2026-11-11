@@ -185,3 +185,24 @@ describe('slow-motion speed ramp (Plan 4 Task 8)', () => {
     expect(p.speedAt(100)).toBe(1);
   });
 });
+
+test('"inside" uses an offset area (cx, cz)', () => {
+  // The die rolls from x = -14 to 0 at z = 0. An area centred at x = -10 (half width 2) is
+  // entered at x = -12, long before the stage-centred check (|x| < 2) would see it.
+  const offsetArea = { cx: -10, cz: 0, halfWidth: 2, halfDepth: 7 };
+  const d = die();
+  const p = new Playback({ dice: [d], area: offsetArea });
+  p.push(chunk(0, 30, 60, false));
+  p.update(0);
+  expect(p.update(1000)).toBe('waiting');
+  expect(d.outer.position.x).toBeLessThanOrEqual(-12);
+  // A z offset excludes a die whose x is inside but whose z is not.
+  // (A centred check, |x| < 12, would hold at x = -12; never inside, it plays the whole chunk.)
+  const far = { cx: -10, cz: 20, halfWidth: 12, halfDepth: 3 };
+  const d2 = die();
+  const p2 = new Playback({ dice: [d2], area: far });
+  p2.push(chunk(0, 30, 60, false));
+  p2.update(0);
+  p2.update(1000);
+  expect(d2.outer.position.x).toBeGreaterThan(-8);
+});

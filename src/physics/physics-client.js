@@ -46,7 +46,11 @@ export class PhysicsClient {
     this._send({ type: MSG.RESIZE, area });
   }
 
-  /** @returns {{ onChunk(cb): void, done: Promise<{settledStep:number}> }} */
+  /**
+   * @param {{ dice: {type: string}[], seed: number, area?: {cx:number, cz:number, halfWidth:number, halfDepth:number} }} req
+   *   `area`: this throw's own rectangle (die units, relative to the stage centre); absent: the stage.
+   * @returns {{ onChunk(cb): void, done: Promise<{settledStep:number}> }}
+   */
   throw(req) {
     const s = { cb: null, pending: [], resolve: null, reject: null };
     const done = new Promise((resolve, reject) => {
@@ -67,7 +71,9 @@ export class PhysicsClient {
     }
     const id = this._nextId++;
     this._streams.set(id, s);
-    this._send({ type: MSG.THROW, id, dice: req.dice, seed: req.seed });
+    const msg = { type: MSG.THROW, id, dice: req.dice, seed: req.seed };
+    if (req.area) msg.area = req.area;
+    this._send(msg);
     return stream;
   }
 

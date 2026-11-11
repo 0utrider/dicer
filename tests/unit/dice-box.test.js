@@ -1785,3 +1785,69 @@ describe('effect runtime (Task 8)', () => {
     });
   });
 });
+
+describe('per-throw areas', () => {
+  // Stage 960 x 480 px at 48 px per die: halfWidth 10, halfDepth 5, centre (480, 240).
+  const left = { left: 0, top: 0, width: 480, height: 240 }; // top-left quarter
+  const right = { left: 480, top: 240, width: 480, height: 240 }; // bottom-right quarter
+
+  test('two rolls started together with different areas each carry their own area and both land; only onResize fits', async () => {
+    const { renderer, physics, box } = setup();
+    const fit = vi.spyOn(renderer.sceneApi, 'fitArea');
+    const resizes = physics.resize.mock.calls.length;
+    const a = box.roll([{ type: 'd20', value: 17 }], { area: left });
+    const b = box.roll([{ type: 'd6', value: 2 }], { area: right });
+    expect(physics.streams[0].req.area).toEqual({ cx: -5, cz: -2.5, halfWidth: 5, halfDepth: 2.5 });
+    expect(physics.streams[1].req.area).toEqual({ cx: 5, cz: 2.5, halfWidth: 5, halfDepth: 2.5 });
+    const aLanded = settled(a.landed);
+    const bLanded = settled(b.landed);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(3000);
+    await flushMicrotasks();
+    expect(aLanded()).toBe(true);
+    expect(bLanded()).toBe(true);
+    expect(fit).not.toHaveBeenCalled();
+    expect(physics.resize.mock.calls.length).toBe(resizes);
+    expect(renderer.setArea).toHaveBeenCalledTimes(1); // the canvas stays on the stage
+    box.onResize();
+    expect(fit).toHaveBeenCalledTimes(1);
+  });
+
+  test('without an area the request is unchanged and playback uses the stage', () => {
+    const { physics, box } = setup();
+    box.roll([{ type: 'd6', value: 2 }]);
+    box.roll([{ type: 'd6', value: 2 }], {});
+    for (const s of physics.streams) expect('area' in s.req).toBe(false);
+  });
+
+  test('an area is clamped inside the stage; a malformed one falls back to the stage', () => {
+    const { physics, box } = setup();
+    box.roll([{ type: 'd6', value: 2 }], { area: { left: 720, top: -120, width: 480, height: 240 } });
+    // Shifted to left 480, top 0.
+    expect(physics.streams[0].req.area).toEqual({ cx: 5, cz: -2.5, halfWidth: 5, halfDepth: 2.5 });
+    box.roll([{ type: 'd6', value: 2 }], { area: { left: 0, top: 0, width: 4800, height: 2400 } });
+    expect(physics.streams[1].req.area).toEqual({ cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 });
+    box.roll([{ type: 'd6', value: 2 }], { area: { left: NaN, top: 0, width: 100, height: 100 } });
+    box.roll([{ type: 'd6', value: 2 }], { area: { left: 0, top: 0, width: 0, height: 100 } });
+    expect('area' in physics.streams[2].req).toBe(false);
+    expect('area' in physics.streams[3].req).toBe(false);
+  });
+
+  test('an area lands where its pixel rect is, through the real camera (x right, z down)', () => {
+    const { renderer, physics, box } = setup();
+    box.roll([{ type: 'd6', value: 2 }], { area: right });
+    const { cx, cz, halfWidth, halfDepth } = physics.streams[0].req.area;
+    // Same projection as game.dice3d.getScreenPosition.
+    const toScreen = (x, z) => {
+      const v = new THREE.Vector3(x, 0, z).project(renderer.camera);
+      return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+    };
+    const centre = toScreen(cx, cz);
+    expect(centre.x).toBeCloseTo(right.left + right.width / 2, 3);
+    expect(centre.y).toBeCloseTo(right.top + right.height / 2, 3);
+    const corner = toScreen(cx - halfWidth, cz - halfDepth);
+    expect(corner.x).toBeCloseTo(right.left, 3);
+    expect(corner.y).toBeCloseTo(right.top, 3);
+  });
+});

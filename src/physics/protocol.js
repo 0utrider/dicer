@@ -12,6 +12,10 @@ export const CHUNK_STEPS = 30;
 export const MAX_STEPS = 600;
 export const STEP_SECONDS = 1 / 60;
 
+/**
+ * THROW: {id, dice, seed, area?}; `area` = {cx, cz, halfWidth, halfDepth} (die units relative to
+ * the stage centre) is that throw's own walls/spawn/aim rectangle; absent, the stage (RESIZE).
+ */
 export const MSG = Object.freeze({
   INIT: 'init',
   RESIZE: 'resize',
