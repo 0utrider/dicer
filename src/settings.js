@@ -1,4 +1,4 @@
-import { BUILTIN_THEMES, findTheme } from './themes/themes.js';
+import { BUILTIN_THEMES, findTheme, readThemeList } from './themes/themes.js';
 import { DEFAULT_RULES } from './effects/rules.js';
 
 export const MODULE_ID = 'dicer';
@@ -34,6 +34,27 @@ function registerEditorMenu(t, key, icon, open) {
     type: EditorMenu,
     restricted: false,
   });
+}
+
+/**
+ * The `theme` setting's choices: built-ins, the world's themes and the current user's own (name +
+ * source). Read live, so a theme chosen in the theme browser stays a valid choice in Foundry's
+ * settings form (which would otherwise replace it with the first built-in on save).
+ */
+export function themeChoices(get = (key) => game.settings.get(MODULE_ID, key), user = () => game.user) {
+  const quiet = () => {};
+  const label = (t, src) => (src ? `${t.name} (${src})` : t.name);
+  const out = Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name]));
+  const add = (list, src) => {
+    for (const t of list) if (!(t.id in out)) out[t.id] = label(t, src);
+  };
+  try {
+    add(readThemeList(get('worldThemes'), 'world', quiet), 'world');
+    add(readThemeList(user()?.getFlag?.(MODULE_ID, 'themes'), 'user', quiet), 'mine');
+  } catch {
+    /* settings not ready: built-ins only */
+  }
+  return out;
 }
 
 /**
@@ -174,6 +195,13 @@ export function registerSettings({
     default: 'default',
     onChange: (value) => onLookChange?.('theme', value),
   });
+  // P5-R10: the choices follow the stored themes (read each time the settings form renders).
+  try {
+    const entry = game.settings.settings?.get?.(`${MODULE_ID}.theme`);
+    if (entry) Object.defineProperty(entry, 'choices', { get: () => themeChoices(), configurable: true, enumerable: true });
+  } catch {
+    /* the fixed built-in choices stay */
+  }
   // The pre-Plan-5 look choice: hidden, read once by migrateLookSetting.
   game.settings.register(MODULE_ID, 'look', {
     scope: 'client',

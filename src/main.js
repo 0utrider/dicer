@@ -21,7 +21,7 @@ import { facesFor, atlasGlyphTest } from './compat/faces.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from './render/face-textures.js';
 import { mirrorLookSetting, mirrorLookIfMissing } from './compat/user-looks.js';
 import { DEFAULT_APPEARANCE } from './look/appearance.js';
-import { findTheme } from './themes/themes.js';
+import { findTheme, readThemeList } from './themes/themes.js';
 import { createSoundEngine } from './audio/sound-engine.js';
 import {
   createFxResolver,
@@ -80,7 +80,7 @@ function preloadEffects() {
   else setTimeout(run, 200);
 }
 
-/** Fetches the two editor chunks in an idle callback (they are small), so opening one is instant. */
+/** Fetches the editor chunks (triggers, damage map, roll areas, themes) in an idle callback (they are small), so opening one is instant. */
 export function preloadEditors(
   loaders = [() => import('./ui/trigger-editor.js'), () => import('./ui/damage-map-editor.js'), () => import('./ui/area-editor.js'), () => import('./ui/theme-browser.js')],
 ) {
@@ -109,7 +109,14 @@ const handlers = () => gate ?? NOOP_HANDLERS;
  * The chosen theme's look (DiceBox's fallback and the warm-up); an unknown id (e.g. a removed
  * theme) falls back to the default.
  */
-const getAppearance = () => findTheme(getSetting('theme'))?.appearance ?? DEFAULT_APPEARANCE;
+export const getAppearance = () => {
+  const quiet = () => {};
+  const themes = {
+    worldThemes: readThemeList(getSetting('worldThemes'), 'world', quiet),
+    userThemes: readThemeList(game.user?.getFlag?.('dicer', 'themes'), 'user', quiet),
+  };
+  return findTheme(getSetting('theme'), themes)?.appearance ?? DEFAULT_APPEARANCE;
+};
 
 /** A module-relative or absolute URL as the browser can fetch it. */
 const routeOf = (url) =>

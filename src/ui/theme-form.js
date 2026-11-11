@@ -60,9 +60,12 @@ export function assignTheme(looks, slot, themeId) {
   return out;
 }
 
-/** The flag update for one slot: setFlag merges nested keys, so a removal needs the `-=` syntax. */
-export const slotPatch = (slot, themeId) =>
-  typeof themeId === 'string' && themeId ? { [slot]: { theme: themeId } } : { [`-=${slot}`]: null };
+/**
+ * The flag update for one slot: setFlag merges nested keys, so a removal needs a deletion
+ * operator (`foundry.data.operators.ForcedDeletion.create()`, injected; the `-=` key is deprecated).
+ */
+export const slotPatch = (slot, themeId, deletion = () => globalThis.foundry?.data?.operators?.ForcedDeletion?.create?.()) =>
+  typeof themeId === 'string' && themeId ? { [slot]: { theme: themeId } } : { [slot]: deletion() };
 
 /** A damage-type map (setting value) with one type set to a theme id or removed; other entries kept. */
 export function assignDamage(map, type, themeId) {
@@ -167,6 +170,12 @@ export function importThemes(json, userId, { existingIds = [] } = {}) {
     themes.push(out);
   });
   return { themes, warnings };
+}
+
+/** The edited theme laid over the stored raw entry: unknown fields of the stored entry survive. */
+export function mergeEdited(storedRaw, edited) {
+  const base = isObj(storedRaw) ? plain(storedRaw) : {};
+  return { ...base, ...edited };
 }
 
 // --- the simple edit form ------------------------------------------------------------------

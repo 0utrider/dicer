@@ -26,6 +26,7 @@ import {
   slugify,
   formFromTheme,
   themeFromForm,
+  mergeEdited,
 } from './theme-form.js';
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -400,7 +401,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!this.#editing) return;
     const form = this.element.querySelector('.dicer-theme-edit');
     const data = foundry.utils.expandObject(new foundry.applications.ux.FormDataExtended(form).object);
-    await saveMine(themeFromForm(data, this.#editing.base));
+    const stored = userList().find((t) => t && t.id === this.#editing.base.id);
+    await saveMine(mergeEdited(stored, themeFromForm(data, this.#editing.base)));
     this.#editing = null;
     notify('info', loc('DICER.Themes.Saved'));
     await this.render();
@@ -437,6 +439,11 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #onRemove(event, target) {
     const theme = ThemeBrowser.#themeOf(this, target);
     if (!theme) return;
+    const sure = await foundry.applications.api.DialogV2.confirm({
+      window: { title: loc('DICER.Themes.Delete') },
+      content: `<p>${loc('DICER.Themes.ConfirmDelete')} ${foundry.utils.escapeHTML?.(theme.name) ?? theme.name}</p>`,
+    });
+    if (!sure) return;
     if (theme.source === 'user') await deleteMine(theme.id);
     else if (theme.source === 'world' && !(await deleteWorld(theme.id))) return notify('warn', loc('DICER.Themes.NotAllowed'));
     await this.render();

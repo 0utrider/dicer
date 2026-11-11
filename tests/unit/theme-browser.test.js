@@ -15,6 +15,7 @@ import {
   removeTheme,
   galleryEntries,
   duplicateTheme,
+  mergeEdited,
   KEEP,
 } from '../../src/ui/theme-form.js';
 import { BUILTIN_THEMES, normalizeTheme } from '../../src/themes/themes.js';
@@ -44,7 +45,7 @@ describe('assignTheme / slotPatch / assignDamage', () => {
   });
   it('the flag patch sets one slot or uses the -= unset syntax', () => {
     expect(slotPatch('d20', 'x')).toEqual({ d20: { theme: 'x' } });
-    expect(slotPatch('role:save', null)).toEqual({ '-=role:save': null });
+    expect(slotPatch('role:save', null, () => 'DEL')).toEqual({ 'role:save': 'DEL' });
   });
   it('a damage map keeps other (even odd) entries', () => {
     expect(assignDamage({ fire: 'a', odd: { x: 1 } }, 'cold', 't')).toEqual({ fire: 'a', odd: { x: 1 }, cold: 't' });
@@ -175,6 +176,36 @@ describe('stored lists', () => {
   });
 });
 
+describe('mergeEdited', () => {
+  it('keeps stored fields the edit does not know', () => {
+    const out = mergeEdited({ id: 'a', name: 'Old', future: { x: 1 } }, { id: 'a', name: 'New' });
+    expect(out).toEqual({ id: 'a', name: 'New', future: { x: 1 } });
+  });
+});
+
+describe('theme setting choices (P5-R10)', () => {
+  it('offers built-ins, world and my themes, so a chosen default stays valid', async () => {
+    const { themeChoices } = await import('../../src/settings.js');
+    const get = (k) => (k === 'worldThemes' ? [raw('world.w', 'W')] : []);
+    const user = () => ({ getFlag: () => [raw('user.u1.m', 'M')] });
+    const c = themeChoices(get, user);
+    expect(Object.keys(c)).toContain('default');
+    expect(c['world.w']).toBe('W (world)');
+    expect(c['user.u1.m']).toBe('M (mine)');
+  });
+  it('getAppearance resolves a user theme', async () => {
+    vi.stubGlobal('Hooks', { on: () => {}, once: () => {}, callAll: () => {} });
+    const { getAppearance } = await import('../../src/main.js');
+    const appearance = { body: { type: 'opaque', color: '#123456' } };
+    vi.stubGlobal('game', {
+      user: { getFlag: () => [{ id: 'user.u1.m', name: 'M', appearance }] },
+      settings: { get: (_n, k) => (k === 'theme' ? 'user.u1.m' : []) },
+    });
+    expect(getAppearance().body.color).toBe('#123456');
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('publishToWorld', () => {
   it('a player cannot publish', async () => {
     const setWorld = vi.fn();
@@ -210,6 +241,7 @@ describe('the browser actions', () => {
     vi.stubGlobal('foundry', {
       applications: { api: { ApplicationV2: FakeApp, HandlebarsApplicationMixin: (B) => class extends B {} } },
       utils: { saveDataToFile: vi.fn() },
+      data: { operators: { ForcedDeletion: { create: () => 'DELETE' } } },
     });
     mod = await import('../../src/ui/theme-browser.js');
   });
@@ -257,7 +289,7 @@ describe('the browser actions', () => {
     expect(user.setFlag.mock.calls.map((c) => c.slice(0, 3))).toEqual([
       ['dicer', 'appearance', { d20: { theme: 'ruby-classic' } }],
       ['dicer', 'appearance', { 'role:attack': { theme: 'verdant' } }],
-      ['dicer', 'appearance', { '-=role:attack': null }],
+      ['dicer', 'appearance', { 'role:attack': 'DELETE' }],
     ]);
     expect(await mod.assignTarget('die:d3', 'x')).toBe(false);
     expect(await mod.assignTarget('role:nope', 'x')).toBe(false);

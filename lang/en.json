@@ -335,6 +335,7 @@
       "Publish": "Publish to the world (GM)",
       "Published": "Theme published to the world.",
       "Delete": "Delete",
+      "ConfirmDelete": "Delete this theme permanently?",
       "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:",
       "EditHint": "A simple editor: pick a base look, a look per die type, the impact sound and the celebration for a natural 20 and a natural 1.",
       "Name": "Name",
