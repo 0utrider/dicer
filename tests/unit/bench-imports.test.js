@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 
-const FILES = ['stats', 'recorder', 'scenarios', 'report'];
-const EXPECTED_COUNT = { stats: 0, recorder: 0, scenarios: 2, report: 1 };
+const FILES = ['stats', 'recorder', 'scenarios', 'report', 'dicer-adapter'];
+const EXPECTED_COUNT = { stats: 0, recorder: 0, scenarios: 2, report: 1, 'dicer-adapter': 2 };
 const read = (n) => readFileSync(new URL(`../../src/bench/${n}.js`, import.meta.url), 'utf8');
 
 /** Blank comments and string/template contents so only code remains. */
@@ -47,7 +47,7 @@ function importSpecs(src) {
 }
 
 const badSpecs = (specs) => specs.filter((s) => {
-  const m = /^\.\/(\w+)\.js$/.exec(s);
+  const m = /^\.\/([\w-]+)\.js$/.exec(s);
   return !(m && FILES.includes(m[1]));
 });
 

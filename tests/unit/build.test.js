@@ -10,7 +10,7 @@ const BUDGET = 4 * 1024 * 1024;
 const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json', 'api.js'];
 
 /** Fetched on demand: a die model (dynamic import / DRACOLoader), or the DSN migration at ready. */
-const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|appearance-editor-[^/]+\.js|theme-form-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|font-builder-[^/]+\.js|assets\/font-worker-[^/]+\.js|draco\/)/.test(p);
+const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|appearance-editor-[^/]+\.js|theme-form-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|font-builder-[^/]+\.js|dicer-adapter-[^/]+\.js|benchmark-app-[^/]+\.js|report-[^/]+\.js|assets\/font-worker-[^/]+\.js|draco\/)/.test(p);
 
 /** Every file under dist/, as forward-slash paths. */
 const distFiles = () =>
@@ -47,6 +47,16 @@ describe('build', () => {
     const points = lazy.find((p) => /Points-/.test(p)); // three's Points, shared by the effects and model-loader chunks
     const fontBuilder = lazy.find((p) => /font-builder-/.test(p)); // runtime font atlases (P7-D3)
     const fontWorker = lazy.find((p) => /font-worker-/.test(p));
+    const benchAdapter = lazy.find((p) => /dicer-adapter-/.test(p)); // game.dice3d.benchmark(): adapter + runner
+    const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
+    const benchReport = lazy.find((p) => /report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
+    expect(benchAdapter).toBeTruthy();
+    expect(benchApp).toBeTruthy();
+    expect(benchReport).toBeTruthy();
+    expect(readFileSync(benchApp, 'utf8')).toContain('dicer-benchmark');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-benchmark');
+    expect(readFileSync(benchReport, 'utf8')).toContain('Dicer benchmark');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Dicer benchmark');
     expect(fontBuilder).toBeTruthy();
     expect(fontWorker).toBeTruthy();
     // The SDF builder lives in the lazy chunks only; dicer.js just names the worker's URL.
@@ -86,7 +96,7 @@ describe('build', () => {
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('has no Dicer counterpart yet');
     expect(readFileSync(migration, 'utf8')).toContain('has no Dicer counterpart yet');
     expect(lazy.sort()).toEqual(
-      [chunk, migration, synth, effects, editor, damageEditor, areaEditor, themeBrowser, appearanceEditor, themeForm, damageForm, soundNames, points, fontBuilder, fontWorker, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
+      [chunk, migration, synth, effects, editor, damageEditor, areaEditor, themeBrowser, appearanceEditor, themeForm, damageForm, soundNames, points, fontBuilder, fontWorker, benchAdapter, benchApp, benchReport, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
     );
   });
   it('keeps the built-in theme table under 6 KiB minified (P5-R1)', () => {
@@ -104,6 +114,13 @@ describe('build', () => {
     for (const p of distFiles().filter((f) => f.endsWith('.js'))) {
       expect(readFileSync(p, 'utf8')).not.toContain('SETTING_FORMATING');
     }
+  });
+  it('grows the world-start download by under 2 KB for the in-game benchmark (Plan 8 Task 4)', () => {
+    // 4_118_314 bytes just before the benchmark (the settings menu and game.dice3d.benchmark proxy are
+    // all that ships at world start). Task 6's size work replaces this reference.
+    const growth = worldStartBytes() - 4_118_314;
+    console.info(`dicer benchmark world-start growth: ${growth} bytes`);
+    expect(growth).toBeLessThanOrEqual(2048);
   });
   it('keeps the world-start download (dist/ minus lazy chunks, plus the font atlas and api.js) under 4 MB', () => {
     const total = worldStartBytes();

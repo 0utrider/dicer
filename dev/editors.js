@@ -3,7 +3,7 @@
 // _prepareContext builds the context, the real .hbs templates render it (Handlebars + the Foundry
 // helpers they use), their action handlers answer clicks and the theme browser's _onRender makes
 // real thumbnails through the thumbnailer. tests/visual/editors.mjs drives it and screenshots it.
-// Query: ?app=themes|appearance|triggers|damage  &player=1 (a player instead of the GM)
+// Query: ?app=themes|appearance|triggers|damage|benchmark  &player=1 (a player instead of the GM)
 //        &theme=<id> (appearance: the theme to edit), &locked=1 (with player=1: a world default with the lock on).
 import { loadDigitAtlas } from '../src/render/sdf-atlas.js';
 import { createFontAtlases, createFontWorker } from '../src/fonts/font-atlas.js';
@@ -309,6 +309,24 @@ if (which === 'themes') {
 } else if (which === 'triggers') {
   const { TriggerEditor } = await import('../src/ui/trigger-editor.js');
   app = new TriggerEditor();
+} else if (which === 'benchmark') {
+  // A finished in-game run (fake numbers): one scenario passes, the big pool misses two targets.
+  const stat = (p95) => ({ count: 20, mean: p95 * 0.8, p50: p95 * 0.75, p95, p99: p95 * 1.1, max: p95 * 1.2 });
+  const suite = {
+    browser: 'Chrome 131',
+    gpu: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)',
+    tier: 'high',
+    version: '1.0.0',
+    profile: 'in-game',
+    results: [
+      { scenario: 'd20', kind: 'typical', product: 'dicer', frame: stat(8.4), longTasks: { count: 0, maxMs: 0 }, firstFrame: stat(22), heap: null, resources: null, rolls: 1, failures: 0 },
+      { scenario: 'mixed10', kind: 'typical', product: 'dicer', frame: stat(12.9), longTasks: { count: 1, maxMs: 31 }, firstFrame: stat(38), heap: null, resources: null, rolls: 1, failures: 0 },
+      { scenario: 'pool30', kind: 'bigPool', product: 'dicer', frame: stat(21.5), longTasks: { count: 2, maxMs: 74 }, firstFrame: stat(131), heap: null, resources: null, rolls: 1, failures: 0 },
+      { scenario: 'burst20', kind: 'burst', product: 'dicer', frame: stat(14.2), longTasks: { count: 0, maxMs: 0 }, firstFrame: stat(30), heap: null, resources: null, rolls: 20, failures: 0 },
+    ],
+  };
+  const { BenchmarkApp } = await import('../src/bench/benchmark-app.js');
+  app = new BenchmarkApp({ suite, text: 'Dicer benchmark (fake)' });
 } else {
   const { DamageMapEditor } = await import('../src/ui/damage-map-editor.js');
   app = new DamageMapEditor();

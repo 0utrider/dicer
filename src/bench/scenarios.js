@@ -9,6 +9,7 @@ export const SCENARIOS = Object.freeze(
     { id: 'mixed10', kind: 'typical', formula: MIXED, rolls: 1 },
     { id: 'pool30', kind: 'bigPool', formula: '30d6', rolls: 1 },
     { id: 'burst100', kind: 'burst', formula: '1d20+2d6', rolls: 100 },
+    { id: 'burst20', kind: 'burst', formula: '1d20+2d6', rolls: 20 },
     { id: 'soak500', kind: 'soak', formula: '1d20+2d6', rolls: 500 },
     { id: 'resize', kind: 'typical', formula: MIXED, rolls: 1 },
     { id: 'contextLoss', kind: 'typical', formula: MIXED, rolls: 1 },

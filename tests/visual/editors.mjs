@@ -5,7 +5,7 @@
 // appearance-editor.png (clear resin with a nebula inside, gold numbers), appearance-editor-metal.png
 // (edited in the window to antique metal, sharp edges, sans font; also checks the live preview follows
 // an edit), trigger-rules.png,
-// trigger-rules-selected.png (a rule clicked), damage-map.png, damage-map-player.png.
+// trigger-rules-selected.png (a rule clicked), damage-map.png, damage-map-player.png, benchmark.png (a finished run).
 // Fails on any page error. Env: DICER_VISUAL_PORT (default 5182), DICER_VISUAL_HEADED=1,
 // DICER_VISUAL_ONLY (a substring of the screenshot names to take, e.g. appearance),
 // DICER_FOUNDRY_APP (default C:/Program Files/Foundry Virtual Tabletop/resources/app).
@@ -203,6 +203,7 @@ async function main() {
     );
     problems.push(...(await shoot(browser, 'app=damage', 'damage-map.png')));
     problems.push(...(await shoot(browser, 'app=damage&player=1', 'damage-map-player.png')));
+    problems.push(...(await shoot(browser, 'app=benchmark', 'benchmark.png')));
   } finally {
     await browser.close();
   }

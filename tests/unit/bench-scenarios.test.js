@@ -103,6 +103,7 @@ test('SCENARIOS is the frozen spec list', () => {
     ['mixed10', 'typical', mixed, 1],
     ['pool30', 'bigPool', '30d6', 1],
     ['burst100', 'burst', '1d20+2d6', 100],
+    ['burst20', 'burst', '1d20+2d6', 20],
     ['soak500', 'soak', '1d20+2d6', 500],
     ['resize', 'typical', mixed, 1],
     ['contextLoss', 'typical', mixed, 1],

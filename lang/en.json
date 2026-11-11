@@ -169,6 +169,11 @@
         "Label": "Edit roll areas",
         "Hint": "Choose where dice land: a default area, one for each player and an optional GM private corner. Players can only preview their own area."
       },
+      "benchmark": {
+        "Name": "Dice benchmark",
+        "Label": "Run the dice benchmark",
+        "Hint": "Throws a few test rolls on this screen only and shows how smoothly they run. Nothing is posted to chat or sent anywhere."
+      },
       "damagePresets": {
         "Name": "Damage dice themes",
         "Hint": "Give damage dice a look, impact sound and landing effect by damage type (fire, cold, acid and so on). Off shows your own dice. Never depends on the special effects setting."
@@ -297,6 +302,32 @@
       "Cancel": "Cancel",
       "Close": "Close",
       "SaveFailed": "Dicer: the roll area could not be saved."
+    },
+    "Bench": {
+      "Title": "Dicer benchmark",
+      "Intro": "Throws a few test rolls on this screen and measures how smoothly they animate. Wait for the dice to clear first. It takes under a minute.",
+      "Run": "Run",
+      "Running": "Running",
+      "Progress": "Scenario",
+      "Idle": "Not run yet.",
+      "Done": "Finished.",
+      "Failed": "The benchmark stopped",
+      "Copy": "Copy summary",
+      "Copied": "Dicer: benchmark summary copied.",
+      "CopyFailed": "Dicer: could not copy the summary.",
+      "Busy": "Dicer: dice are still rolling or a benchmark is running. Try again when the table is clear.",
+      "Private": "Nothing is posted to chat or sent anywhere. The summary is only copied if you press Copy summary.",
+      "Scenario": "Scenario",
+      "Frame": "Frame p95 (ms)",
+      "LongTask": "Longest task (ms)",
+      "FirstFrame": "First frame (ms)",
+      "Heap": "Heap",
+      "Rolls": "Rolls",
+      "Result": "Result",
+      "Pass": "Pass",
+      "Fail": "Fail",
+      "NA": "n/a",
+      "Unavailable": "The dice engine is not running, so there is nothing to benchmark."
     },
     "DamageMap": {
       "Title": "Dicer damage type map",

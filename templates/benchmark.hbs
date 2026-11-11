@@ -1,0 +1,44 @@
+<div class="dicer-benchmark-body">
+<p class="dicer-hint">{{localize "DICER.Bench.Intro"}}</p>
+
+<div class="dicer-toolbar">
+  <button type="button" class="bright" data-action="run" {{#if running}}disabled{{/if}}><i class="fa-solid fa-play"></i> {{localize "DICER.Bench.Run"}}</button>
+  <button type="button" data-action="copy" {{#unless canCopy}}disabled{{/unless}}><i class="fa-solid fa-copy"></i> {{localize "DICER.Bench.Copy"}}</button>
+</div>
+
+<p class="dicer-bench-progress" role="status" aria-live="polite">{{progress}}</p>
+{{#if meta}}<p class="dicer-bench-meta">{{meta}}</p>{{/if}}
+
+<div class="dicer-bench-scroll">
+  <table class="dicer-bench-table" aria-label="{{localize "DICER.Bench.Title"}}">
+    <thead>
+      <tr>
+        <th scope="col">{{localize "DICER.Bench.Scenario"}}</th>
+        <th scope="col">{{localize "DICER.Bench.Frame"}}</th>
+        <th scope="col">{{localize "DICER.Bench.LongTask"}}</th>
+        <th scope="col">{{localize "DICER.Bench.FirstFrame"}}</th>
+        <th scope="col">{{localize "DICER.Bench.Heap"}}</th>
+        <th scope="col">{{localize "DICER.Bench.Rolls"}}</th>
+        <th scope="col">{{localize "DICER.Bench.Result"}}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each rows}}
+        <tr>
+          <td class="dicer-bench-name">{{scenario}}</td>
+          <td>{{frame}}</td>
+          <td>{{longTask}}</td>
+          <td>{{firstFrame}}</td>
+          <td>{{heap}}</td>
+          <td>{{rolls}}</td>
+          <td class="dicer-bench-verdict is-{{verdict}}">{{verdictLabel}}{{#if failed}}<small>{{failed}}</small>{{/if}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="7" class="dicer-muted">{{localize "DICER.Bench.Idle"}}</td></tr>
+      {{/each}}
+    </tbody>
+  </table>
+</div>
+
+<p class="dicer-hint dicer-bench-private"><i class="fa-solid fa-lock"></i> {{localize "DICER.Bench.Private"}}</p>
+</div>

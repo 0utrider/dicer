@@ -441,6 +441,10 @@ export function registerSettings({
   registerEditorMenu(t, 'rollAreaEditor', 'fa-solid fa-vector-square', () =>
     import('./ui/area-editor.js').then((m) => m.openAreaEditor),
   );
+  // The in-game benchmark window: a few local test rolls and a shareable summary. For everyone.
+  registerEditorMenu(t, 'benchmark', 'fa-solid fa-gauge-high', () =>
+    import('./bench/benchmark-app.js').then((m) => m.openBenchmarkApp),
+  );
   // Ids of module (Dice So Nice default) rules the GM switched off in the trigger editor.
   game.settings.register(MODULE_ID, 'disabledModuleTriggers', {
     scope: 'world',

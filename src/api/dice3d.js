@@ -98,6 +98,17 @@ export function createDebugCounters() {
 
 const ghostDecorator = () => ({ ghost: true });
 
+/** The GPU renderer string of the dice canvas (the unmasked one when the browser allows), or 'unknown'. */
+function readGpu(renderer) {
+  try {
+    const gl = renderer?.glRenderer?.getContext?.();
+    const info = gl?.getExtension?.('WEBGL_debug_renderer_info');
+    return String((info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || gl?.getParameter?.(gl.RENDERER) || 'unknown');
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * The users a RollStart listener left, as a narrowing only: a non-array keeps the original, an
  * array is intersected with the original (null -> array narrows from everyone to that list).
@@ -145,6 +156,8 @@ export function createDice3dApi({
   getAtlas = () => null,
   getFonts = () => null,
   getTier = () => null,
+  getGpu = () => readGpu(renderer),
+  importBench = () => import('../bench/dicer-adapter.js'),
 }) {
   const warned = new Set();
   /** A malformed third-party call logs one warning per member, never throws. */
@@ -845,7 +858,36 @@ export function createDice3dApi({
   };
   // Trigger editor support (Task 12): non-enumerable so they are not part of the DSN surface.
   const moduleRules = moduleRulesOf(registry);
+  let benchmarking = false;
   Object.defineProperties(api, {
+    /**
+     * The in-game benchmark (Plan 8): rolls a few scenarios locally (showForRoll, no synchronize, no
+     * chat message, nothing sent) and resolves `{suite, text}`, text being a shareable summary.
+     * Refuses (a notice, null) while dice are in the air or another run is going. The code loads
+     * lazily, so it costs nothing at world start.
+     */
+    benchmark: {
+      async value({ scenarios, onProgress } = {}) {
+        const loc = (k) => globalThis.game?.i18n?.localize?.(k) ?? k;
+        if (benchmarking || api._debug.activeRolls > 0) {
+          globalThis.ui?.notifications?.warn(loc('DICER.Bench.Busy'));
+          return null;
+        }
+        benchmarking = true;
+        try {
+          const bench = await importBench();
+          return await bench.runDicerBenchmark(api, {
+            scenarios: scenarios ?? bench.DEFAULT_SCENARIOS,
+            onProgress,
+            hooks,
+            gpu: getGpu,
+            version: globalThis.game?.modules?.get?.('dicer')?.version ?? null,
+          });
+        } finally {
+          benchmarking = false;
+        }
+      },
+    },
     /** Local only: throws one die whose spec carries `fx`. Never broadcast, no chat message, no hooks. */
     _preview: {
       value(fx, { type = 'd20', value, appearance, soundMaterial } = {}) {
