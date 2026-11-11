@@ -133,6 +133,12 @@ describe('mirrorLookSetting', () => {
     expect(looks['role:attack']).toEqual({ theme: 'celestial' });
     expect(lookRefToAppearance(looks.global, null)).toMatchObject({ themeId: 'ruby-classic' });
   });
+  test('mirrorLookIfMissing does not write while the theme is still the registered default', async () => {
+    const setFlag = vi.fn();
+    await mirrorLookIfMissing({ ...userWith(undefined), setFlag }, 'default');
+    await mirrorLookIfMissing({ ...userWith(undefined), setFlag }, '');
+    expect(setFlag).not.toHaveBeenCalled();
+  });
   test('mirrorLookIfMissing writes only when the flag is absent', async () => {
     const setFlag = vi.fn(async () => {});
     await mirrorLookIfMissing({ ...userWith({ global: { look: 'x' } }), setFlag }, 'ruby-classic');

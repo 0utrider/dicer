@@ -381,6 +381,12 @@ describe('GM controls settings (P7-D4)', () => {
     expect(cfg.choices['']).toBe('DICER.Settings.worldDefaultTheme.None');
     for (const t of BUILTIN_THEMES) expect(cfg.choices[t.id]).toBe(t.name);
   });
+  test('a stored world default that no longer exists stays a (missing) choice', async () => {
+    const { worldDefaultChoices } = await import('../../src/settings.js');
+    const get = (k) => (k === 'worldDefaultTheme' ? 'world.gone' : []);
+    expect(worldDefaultChoices('none', get, '(missing)')['world.gone']).toBe('world.gone (missing)');
+    expect(Object.keys(worldDefaultChoices('none', () => 'ruby-classic'))).not.toContain('(missing)');
+  });
   test('its choices follow the stored world themes live (and never the current user themes)', async () => {
     const registered = {};
     const entries = new Map();

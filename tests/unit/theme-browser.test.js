@@ -428,6 +428,34 @@ describe('the browser actions', () => {
       });
       expect(players[1].setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: themeRef('verdant') });
     });
+    it('push is offered and allowed only for built-in and world themes', async () => {
+      user.isGM = true;
+      flags.themes = [raw('user.u1.mine', 'Mine')];
+      store.worldThemes = [raw('world.w', 'W')];
+      const app = make();
+      const detailOf = async (id) => {
+        await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: id } }) });
+        return (await app._prepareContext()).detail;
+      };
+      expect((await detailOf('verdant')).canPush).toBe(true);
+      expect((await detailOf('world.w')).canPush).toBe(true);
+      expect((await detailOf('user.u1.mine')).canPush).toBe(false);
+      expect(await mod.pushThemeToPlayers('user.u1.mine')).toMatchObject({ updated: 0, refused: true });
+      expect(await mod.pushThemeToPlayers('nope')).toMatchObject({ updated: 0, refused: true });
+      expect(ui.notifications.warn).toHaveBeenCalledTimes(2);
+      expect((await mod.pushThemeToPlayers('world.w')).updated).toBe(2);
+      for (const p of players) expect(p.setFlag).toHaveBeenCalledTimes(1);
+    });
+    it('Your default follows the stored global slot (a push), else the client setting', async () => {
+      store.theme = 'ruby-classic';
+      flags.appearance = undefined;
+      const app = make();
+      expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['ruby-classic']);
+      flags.appearance = { global: themeRef('verdant') }; // what a push writes
+      expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['verdant']);
+      flags.appearance = { global: { colorset: 'fire' } }; // not a theme ref: the setting
+      expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['ruby-classic']);
+    });
     it('a player cannot push, and an empty theme id pushes nothing', async () => {
       expect(await mod.pushThemeToPlayers('verdant')).toMatchObject({ updated: 0, refused: true });
       user.isGM = true;
@@ -454,7 +482,7 @@ describe('the browser actions', () => {
       const ctx = await make()._prepareContext();
       expect(ctx.locked).toBe(true);
       expect(ctx.lockedNotice).toBe('DICER.Themes.Locked');
-      expect(ctx.canPush).toBe(false);
+      expect(ctx.detail.canPush).toBe(false);
       const html = readFileSync('templates/theme-browser.hbs', 'utf8');
       expect(html).toMatch(/\{\{#if locked\}\}[\s\S]*\{\{else\}\}[\s\S]*data-action="useDefault"/);
       expect(html).toMatch(/\{\{#unless locked\}\}[\s\S]*data-action="apply"/);
@@ -465,7 +493,7 @@ describe('the browser actions', () => {
       store.lockPlayerLooks = true;
       user.isGM = true;
       expect((await make()._prepareContext()).locked).toBe(false);
-      expect((await make()._prepareContext()).canPush).toBe(true);
+      expect((await make()._prepareContext()).detail.canPush).toBe(true);
       user.isGM = false;
       store.worldDefaultTheme = '';
       expect((await make()._prepareContext()).locked).toBe(false);

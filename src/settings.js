@@ -61,12 +61,19 @@ export function themeChoices(get = (key) => game.settings.get(MODULE_ID, key), u
  * The `worldDefaultTheme` choices: none (''), built-ins and the world's themes. Read live, for the
  * same reason as themeChoices. Not the user's own themes: the GM's default must exist for everyone.
  */
-export function worldDefaultChoices(none, get = (key) => game.settings.get(MODULE_ID, key)) {
+export function worldDefaultChoices(none, get = (key) => game.settings.get(MODULE_ID, key), missing = '(missing)') {
   const out = { '': none, ...Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name])) };
   try {
     for (const t of readThemeList(get('worldThemes'), 'world', () => {})) if (!(t.id in out)) out[t.id] = `${t.name} (world)`;
   } catch {
     /* settings not ready: built-ins only */
+  }
+  // A stored id that no longer exists stays a choice, so the settings form does not clear it.
+  try {
+    const current = get('worldDefaultTheme');
+    if (typeof current === 'string' && current && !(current in out)) out[current] = `${current} ${missing}`;
+  } catch {
+    /* none */
   }
   return out;
 }
@@ -238,7 +245,12 @@ export function registerSettings({
     const entry = game.settings.settings?.get?.(`${MODULE_ID}.worldDefaultTheme`);
     if (entry) {
       const none = t('worldDefaultTheme.None');
-      Object.defineProperty(entry, 'choices', { get: () => worldDefaultChoices(none), configurable: true, enumerable: true });
+      const missing = t('worldDefaultTheme.Missing');
+      Object.defineProperty(entry, 'choices', {
+        get: () => worldDefaultChoices(none, undefined, missing),
+        configurable: true,
+        enumerable: true,
+      });
     }
   } catch {
     /* the fixed built-in choices stay */

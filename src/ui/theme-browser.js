@@ -5,7 +5,7 @@
  * editor, its own lazy chunk), export / import files and the GM's publish. The pure logic is in ./theme-form.js; the data actions below
  * (assign, clear, save, import, export, publish) are exported so they can be tested without a DOM.
  */
-import { DIE_TYPES } from '../themes/themes.js';
+import { DIE_TYPES, findTheme, readThemeList } from '../themes/themes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { damageTypeList } from './damage-map-form.js';
 import {
@@ -52,6 +52,7 @@ const ROLE_LABEL = {
   check: 'DICER.Themes.Role.check',
 };
 
+const isPlainObjectLike = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const me = () => globalThis.game?.user;
 const settings = () => globalThis.game?.settings;
 
@@ -185,6 +186,17 @@ export async function duplicate(theme) {
 export async function pushThemeToPlayers(themeId, { replaceAll = false } = {}) {
   if (!me()?.isGM) return { updated: 0, refused: true };
   if (typeof themeId !== 'string' || !themeId) return { updated: 0 };
+  // Only themes every player can resolve: built-in or world. A GM's own theme is not shared.
+  let world = [];
+  try {
+    world = readThemeList(settings()?.get(MODULE, 'worldThemes'), 'world', () => {});
+  } catch {
+    world = [];
+  }
+  if (!findTheme(themeId, { worldThemes: world })) {
+    notify('warn', loc('DICER.Themes.PushNotShared'));
+    return { updated: 0, refused: true };
+  }
   const users = globalThis.game?.users;
   let updated = 0;
   for (const player of users ? [...users] : []) {
@@ -379,8 +391,10 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     } catch {
       /* settings not ready */
     }
+    // The default is the stored global theme (a push writes it); the client setting only when none is stored.
+    const stored = isPlainObjectLike(looks?.global) && typeof looks.global.theme === 'string' ? looks.global.theme : '';
     return themeAssignments({
-      defaultId: settings()?.get(MODULE, 'theme'),
+      defaultId: stored || settings()?.get(MODULE, 'theme'),
       looks,
       actors: this.#actors(),
       damageOverrides: damage,
@@ -419,6 +433,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         assigned: targets.map((target) => ({ target, label: labelOf(target), isDefault: target === 'default' })),
         canEdit: t.source === 'user' || (t.source === 'world' && isGM),
         canPublish: isGM && t.source !== 'world',
+        canPush: isGM && t.source !== 'user',
         canDelete: t.source === 'user' || (t.source === 'world' && isGM),
       };
     };
@@ -426,7 +441,6 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     return {
       locked: this.#locked,
       lockedNotice: loc('DICER.Themes.Locked'),
-      canPush: isGM,
       filter,
       filters: Object.entries(FILTER_KEYS).map(([id, key]) => ({
         id,

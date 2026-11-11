@@ -17,6 +17,7 @@
 import { DEFAULT_APPEARANCE, normalizeAppearance } from '../look/appearance.js';
 import {
   isPlainObject,
+  isNeverChose,
   readUserLooks,
   lookRefToAppearance,
   colorsetNameToAppearance,
@@ -177,6 +178,8 @@ export function createLookResolver({
     // Under the lock the world default replaces every ref of the author's; otherwise it follows
     // them, ahead of the built-in default that readUserLooks supplies for a user with no global.
     const looks = ctx.locked ? {} : readUserLooks(ctx.user, { fill: false });
+    // A mirrored "never chose" default is no choice: the world default may apply.
+    if (isNeverChose(looks.global)) delete looks.global;
     const shape = type ? registry.baseShape?.(type) : null;
     const keys = [role ? `role:${role}` : null, type, shape, 'global'];
     const refs = keys.map((key) => (key && Object.hasOwn(looks, key) ? looks[key] : null)).filter(Boolean);

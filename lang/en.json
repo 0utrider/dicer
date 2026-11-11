@@ -35,7 +35,8 @@
       "worldDefaultTheme": {
         "Name": "World default theme",
         "Hint": "The theme players' dice use when they have not chosen one of their own. Players keep their own choices unless 'Lock player looks' is on; the theme browser can also push it to every player.",
-        "None": "None (Dicer's own default)"
+        "None": "None (Dicer's own default)",
+        "Missing": "(missing)"
       },
       "lockPlayerLooks": {
         "Name": "Lock player looks",
@@ -387,6 +388,7 @@
       "PushConfirm": "Make this every player's default theme:",
       "PushReplaceAll": "Replace everything: also clear their per-die-type and per-roll-type choices",
       "Pushed": "Players updated:",
+      "PushNotShared": "Only built-in and world themes can be pushed: players cannot see your own themes. Publish it to the world first.",
       "Delete": "Delete",
       "ConfirmDelete": "Delete this theme permanently?",
       "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:"

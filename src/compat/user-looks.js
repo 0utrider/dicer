@@ -107,8 +107,20 @@ export async function mirrorLookSetting(user, themeId) {
   await user.setFlag(FLAG_SCOPE, FLAG_KEY, patch);
 }
 
-/** The once-at-ready mirror: only when this user has no flag yet. */
+/**
+ * A stored global that only records "never chose" (the built-in default, plus the competing
+ * nulls themeRef adds): the GM's world default may replace it.
+ */
+export function isNeverChose(ref) {
+  if (!isPlainObject(ref)) return false;
+  const named = ['theme', 'look'].filter((k) => ref[k] !== undefined && ref[k] !== null);
+  if (named.length !== 1 || ref[named[0]] !== 'default') return false;
+  return ['appearance', 'colorset', 'system'].every((k) => ref[k] === undefined || ref[k] === null);
+}
+
+/** The once-at-ready mirror: only when this user has no flag yet and has chosen a theme (not the registered default). */
 export async function mirrorLookIfMissing(user, themeId) {
+  if (!themeId || themeId === 'default') return;
   const flag = rawFlag(user);
   if (isPlainObject(flag)) return;
   await mirrorLookSetting(user, themeId);
