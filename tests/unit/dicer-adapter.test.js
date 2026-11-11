@@ -101,3 +101,49 @@ test('heap is null without performance.memory', async () => {
   const win = { performance: {}, requestAnimationFrame: () => 0, dispatchEvent: () => {} };
   expect(await createDicerAdapter({ _debug: debug() }, { win }).heap()).toBeNull();
 });
+
+test('started is this roll own first frame (armFirstFrame), not the renderer global frame counter', async () => {
+  let armed = null;
+  const calls = [];
+  const d = debug({ frameCount: 5, isLooping: true });
+  const api = {
+    _debug: d,
+    _benchArmFirstFrame: vi.fn((cb) => {
+      calls.push(cb ? 'arm' : 'disarm');
+      armed = cb;
+    }),
+    showForRoll: vi.fn(async () => {
+      calls.push('show');
+      return true;
+    }),
+  };
+  const ad = createDicerAdapter(api, { startTimeoutMs: 500 });
+  const res = await ad.roll('1d20');
+  expect(calls).toEqual(['arm', 'show', 'disarm']);
+  let started = false;
+  res.started.then(() => (started = true));
+  d.frameCount = 50; // a looping renderer keeps counting frames: not this roll's first frame
+  await new Promise((r) => setTimeout(r, 30));
+  expect(started).toBe(false);
+  armed?.call?.(null);
+  api._benchArmFirstFrame.mock.calls[0][0]();
+  await res.started;
+  expect(started).toBe(true);
+});
+
+test('a looping renderer is busy, so each roll starts from an idle one', () => {
+  const ad = createDicerAdapter({ _debug: debug({ isLooping: true }) });
+  expect(ad.isBusy()).toBe(true);
+  expect(createDicerAdapter({ _debug: debug({ isLooping: false }) }).isBusy()).toBe(false);
+});
+
+test('a dice cap below a scenario pool adds a note to its result', async () => {
+  const sc = await import('../../src/bench/scenarios.js');
+  vi.spyOn(sc, 'runSuite');
+  const api = { _debug: debug(), _benchArmFirstFrame: (cb) => cb?.(), showForRoll: vi.fn(async () => true) };
+  const { runDicerBenchmark } = await import('../../src/bench/dicer-adapter.js');
+  const out = await runDicerBenchmark(api, { scenarios: ['pool30', 'd20'], hooks: { on() {}, off() {} }, maxDice: () => 20, win: { ...globalThis, requestAnimationFrame: (cb) => setTimeout(() => cb(performance.now()), 1), cancelAnimationFrame: clearTimeout, dispatchEvent() {}, performance, navigator: {} } });
+  expect(out.suite.results[0].notes).toContain('pool30 threw 20 of 30 dice (maxDice)');
+  expect(out.suite.results[1].notes.some((n) => /maxDice/.test(n))).toBe(false);
+  expect(out.text).toContain('pool30 threw 20 of 30 dice (maxDice)');
+});

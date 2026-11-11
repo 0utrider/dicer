@@ -96,3 +96,13 @@ test('non-finite heap readings are n/a, not a spurious FAIL', () => {
     expect(t).not.toMatch(/NaN|FAIL/);
   }
 });
+
+test('summaryText prints each scenario note on its own line, within the 40-line cap', () => {
+  const r = (scenario, notes) => ({ scenario, kind: 'typical', product: 'dicer', frame: { p95: 5 }, rolls: 1, failures: 0, notes });
+  const text = summaryText({ results: [r('pool30', ['pool30 threw 20 of 30 dice (maxDice)', 'second'])] });
+  const lines = text.split(String.fromCharCode(10));
+  expect(lines).toContain('  note: pool30 threw 20 of 30 dice (maxDice)');
+  expect(lines).toContain('  note: second');
+  const many = summaryText({ results: Array.from({ length: 60 }, (_, i) => r(`s${i}`, ['n'])) });
+  expect(many.split(String.fromCharCode(10)).length).toBeLessThanOrEqual(40);
+});

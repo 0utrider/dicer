@@ -316,6 +316,7 @@
       "Copied": "Dicer: benchmark summary copied.",
       "CopyFailed": "Dicer: could not copy the summary.",
       "Busy": "Dicer: dice are still rolling or a benchmark is running. Try again when the table is clear.",
+      "Disabled": "Dicer: 3D dice are turned off, so there is nothing to benchmark. Enable them first.",
       "Private": "Nothing is posted to chat or sent anywhere. The summary is only copied if you press Copy summary.",
       "Scenario": "Scenario",
       "Frame": "Frame p95 (ms)",

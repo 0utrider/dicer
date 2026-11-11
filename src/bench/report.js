@@ -68,6 +68,7 @@ export function summaryText(suite) {
     ];
     const v = failed.length ? `FAIL (${failed.join(', ')})` : verdict(checks.some((c) => c.pass === true) ? true : null);
     lines.push(`${r.scenario} [${r.product}]: ${bits.join(', ')} -> ${v}`);
+    for (const n of r.notes ?? []) lines.push(`  note: ${n}`);
   }
   if (lines.length > 40) {
     const extra = lines.length - 39;

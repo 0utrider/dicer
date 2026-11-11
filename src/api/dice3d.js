@@ -860,6 +860,12 @@ export function createDice3dApi({
   const moduleRules = moduleRulesOf(registry);
   let benchmarking = false;
   Object.defineProperties(api, {
+    /** The benchmark's seam: cb() when the next roll's dice are first drawn (null disarms). */
+    _benchArmFirstFrame: {
+      value(cb) {
+        diceBox.armFirstFrame?.(cb);
+      },
+    },
     /**
      * The in-game benchmark (Plan 8): rolls a few scenarios locally (showForRoll, no synchronize, no
      * chat message, nothing sent) and resolves `{suite, text}`, text being a shareable summary.
@@ -869,6 +875,10 @@ export function createDice3dApi({
     benchmark: {
       async value({ scenarios, onProgress } = {}) {
         const loc = (k) => globalThis.game?.i18n?.localize?.(k) ?? k;
+        if (!getSetting('enabled')) {
+          globalThis.ui?.notifications?.warn(loc('DICER.Bench.Disabled'));
+          return null;
+        }
         if (benchmarking || api._debug.activeRolls > 0) {
           globalThis.ui?.notifications?.warn(loc('DICER.Bench.Busy'));
           return null;
@@ -881,6 +891,7 @@ export function createDice3dApi({
             onProgress,
             hooks,
             gpu: getGpu,
+            maxDice: () => Number(getSetting('maxDice')) || 20,
             version: globalThis.game?.modules?.get?.('dicer')?.version ?? null,
           });
         } finally {

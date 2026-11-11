@@ -3,7 +3,7 @@
  * Bench import rule: only ./ bench files, no top-level Hooks/game/Roll. Everything host-specific
  * (the Roll class, the user, the clock) is read inside functions, so the file loads anywhere.
  */
-import { runSuite } from './scenarios.js';
+import { SCENARIOS, runSuite } from './scenarios.js';
 import { summaryText, checkTargets } from './report.js';
 
 export { summaryText, checkTargets };
@@ -28,6 +28,13 @@ function browserName(ua) {
   return s.slice(0, 60) || 'unknown';
 }
 
+/** Dice in a plain formula such as 1d20+2d6 (the sum of the counts). */
+function diceIn(formula) {
+  let n = 0;
+  for (const m of String(formula ?? '').matchAll(/(\d+)d\d+/g)) n += Number(m[1]);
+  return n;
+}
+
 /**
  * @param {object} api `game.dice3d` (showForRoll and the `_debug` probes).
  * @param {object} [opts]
@@ -43,37 +50,57 @@ export function createDicerAdapter(api, { roll, gpu, version, win = globalThis, 
   const debug = () => api?._debug ?? {};
 
   /**
-   * Resolves at the first rendered frame after the call: `_debug.frameCount` (the renderer's own
-   * counter) is watched from a requestAnimationFrame loop. `showForRoll` without a message fires
-   * no diceSoNiceRollStart, so there is no hook to wait for. Bounded: a frame that never comes
-   * resolves anyway (the runner then times the first frame as a late one, never hangs).
+   * Resolves at THIS roll's first drawn frame: diceBox.armFirstFrame (through api._benchArmFirstFrame)
+   * is armed right before showForRoll, whose dice are thrown synchronously, so a renderer still
+   * looping for an earlier roll cannot resolve it. `showForRoll` without a message fires no
+   * diceSoNiceRollStart, so there is no hook. Bounded: a roll that never draws resolves anyway
+   * (the runner then times the first frame late, never hangs). Without the seam (an api that
+   * lacks it) the renderer's global frame counter stands in.
    */
-  function firstFrameAfter(frames0) {
-    return new Promise((resolve) => {
-      const end = Date.now() + startTimeoutMs;
-      const step = () => {
-        if ((debug().frameCount ?? 0) > frames0 || Date.now() >= end) resolve();
-        else win.requestAnimationFrame(step);
+  function armStarted() {
+    let resolveStarted;
+    let timer = null;
+    const started = new Promise((resolve) => {
+      resolveStarted = () => {
+        clearTimeout(timer);
+        resolve();
       };
-      win.requestAnimationFrame(step);
     });
+    timer = setTimeout(resolveStarted, startTimeoutMs);
+    const arm = typeof api?._benchArmFirstFrame === 'function' ? (cb) => api._benchArmFirstFrame(cb) : null;
+    if (arm) {
+      arm(resolveStarted);
+      return { started, disarm: () => arm(null) };
+    }
+    const frames0 = debug().frameCount ?? 0;
+    const step = () => {
+      if ((debug().frameCount ?? 0) > frames0) resolveStarted();
+      else if (win.requestAnimationFrame) win.requestAnimationFrame(step);
+    };
+    win.requestAnimationFrame?.(step);
+    return { started, disarm() {} };
   }
 
   async function defaultRoll(formula) {
-    const frames0 = debug().frameCount ?? 0;
     const r = new globalThis.Roll(formula);
     await r.evaluate();
-    const shown = api.showForRoll(r, globalThis.game.user, false);
+    const { started, disarm } = armStarted();
+    let shown;
+    try {
+      shown = api.showForRoll(r, globalThis.game.user, false);
+    } finally {
+      disarm(); // a roll that threw no dice must not leave the next one armed
+    }
     const done = Promise.resolve(shown).then((ok) => {
       if (ok === false) throw new Error('showForRoll showed nothing');
     });
-    return { done, started: firstFrameAfter(frames0) };
+    return { done, started };
   }
 
   return {
     product: 'dicer',
     roll: roll ?? defaultRoll,
-    isBusy: () => (debug().activeRolls ?? 0) > 0,
+    isBusy: () => (debug().activeRolls ?? 0) > 0 || debug().isLooping === true,
     resources: () => debug().resources ?? null,
     async heap() {
       const used = win.performance?.memory?.usedJSHeapSize;
@@ -105,7 +132,7 @@ export function createDicerAdapter(api, { roll, gpu, version, win = globalThis, 
  * Runs scenarios against `api` and returns `{suite, text}`. `onProgress({index, total, id})` is
  * called before each scenario. Used by `game.dice3d.benchmark()` and the benchmark window.
  */
-export async function runDicerBenchmark(api, { scenarios = DEFAULT_SCENARIOS, onProgress, hooks, win = globalThis, ...adapterOpts } = {}) {
+export async function runDicerBenchmark(api, { scenarios = DEFAULT_SCENARIOS, onProgress, hooks, win = globalThis, maxDice, ...adapterOpts } = {}) {
   const adapter = createDicerAdapter(api, { win, ...adapterOpts });
   const ids = [...scenarios];
   const results = [];
@@ -117,6 +144,11 @@ export async function runDicerBenchmark(api, { scenarios = DEFAULT_SCENARIOS, on
       /* a progress listener never stops the run */
     }
     const part = await runSuite([id], adapter, { hooks, win, profile: 'in-game' });
+    const cap = Number(typeof maxDice === 'function' ? maxDice() : maxDice);
+    const dice = diceIn(SCENARIOS.find((sc) => sc.id === id)?.formula);
+    if (Number.isFinite(cap) && cap > 0 && dice > cap) {
+      for (const r of part.results) (r.notes ??= []).push(`${id} threw ${cap} of ${dice} dice (maxDice)`);
+    }
     results.push(...part.results);
     meta = part;
   }

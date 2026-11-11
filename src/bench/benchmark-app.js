@@ -90,7 +90,7 @@ export class BenchmarkApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const out = await bench.call(globalThis.game.dice3d, {
         onProgress: ({ index, total, id }) => {
           this.#progress = `${loc('DICER.Bench.Progress')} ${index + 1}/${total}: ${id}`;
-          this.render();
+          void this.render().catch(() => {});
         },
       });
       // null: the engine refused (dice in the air); it already told the user.

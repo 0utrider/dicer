@@ -108,6 +108,20 @@ test('Copy summary writes the summary text to the clipboard', async () => {
   expect(globalThis.ui.notifications.info).toHaveBeenCalled();
 });
 
+test('Copy falls back to game.clipboard when navigator.clipboard is missing', async () => {
+  Object.defineProperty(globalThis.navigator, 'clipboard', { value: undefined, configurable: true });
+  const copyPlainText = vi.fn(async () => {});
+  globalThis.game.clipboard = { copyPlainText };
+  await App.DEFAULT_OPTIONS.actions.copy.call(new App({ suite, text: 'SUMMARY' }));
+  expect(copyPlainText).toHaveBeenCalledWith('SUMMARY');
+});
+
+test('Copy that fails warns instead of throwing', async () => {
+  Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText: vi.fn(async () => { throw new Error('denied'); }) }, configurable: true });
+  await App.DEFAULT_OPTIONS.actions.copy.call(new App({ suite, text: 'SUMMARY' }));
+  expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith('DICER.Bench.CopyFailed');
+});
+
 test('the template has the controls, the table and the privacy note', () => {
   const html = readFileSync('templates/benchmark.hbs', 'utf8');
   expect(html).toContain('data-action="run"');

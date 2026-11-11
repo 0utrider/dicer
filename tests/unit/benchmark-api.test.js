@@ -21,7 +21,7 @@ function fakes() {
       return { landed, finished: landed };
     }),
   };
-  const renderer = { isLooping: true, frameCount: 0, canvas: {}, glRenderer: null };
+  const renderer = { isLooping: false, frameCount: 0, canvas: {}, glRenderer: null };
   const timer = setInterval(() => renderer.frameCount++, 4);
   return { state, diceBox, renderer, stop: () => clearInterval(timer) };
 }
@@ -37,9 +37,10 @@ class FakeRoll {
   }
 }
 
-let f, api, warn, create;
+let f, api, warn, create, settings;
 beforeEach(() => {
   f = fakes();
+  settings = { enabled: true, maxDice: 20 };
   warn = vi.fn();
   create = vi.fn();
   globalThis.Roll = FakeRoll;
@@ -54,7 +55,7 @@ beforeEach(() => {
     diceBox: f.diceBox,
     gate: { disabled: false, waitFor: async () => true },
     planThrow,
-    getSetting: (k) => ({ enabled: true, maxDice: 20 })[k],
+    getSetting: (k) => settings[k],
     renderer: f.renderer,
     hooks: { on: () => {}, off: () => {}, callAll: () => {} },
     getTier: () => 'high',
@@ -109,4 +110,17 @@ test('benchmark reports progress and refuses a second concurrent run', async () 
   await first;
   expect(progress.mock.calls.map((c) => c[0].id)).toEqual(['d20', 'mixed10']);
   expect(progress.mock.calls[1][0]).toMatchObject({ index: 1, total: 2 });
+});
+
+test('benchmark gives an early localized notice and runs nothing when 3D dice are disabled', async () => {
+  settings.enabled = false;
+  expect(await api.benchmark({ scenarios: ['d20'] })).toBeNull();
+  expect(warn).toHaveBeenCalledWith('L:DICER.Bench.Disabled');
+  expect(f.diceBox.roll).not.toHaveBeenCalled();
+});
+
+test('a pool above the maxDice setting is noted in the result and the text', async () => {
+  const out = await api.benchmark({ scenarios: ['pool30'] });
+  expect(out.suite.results[0].notes).toContain('pool30 threw 20 of 30 dice (maxDice)');
+  expect(out.text).toContain('(maxDice)');
 });
