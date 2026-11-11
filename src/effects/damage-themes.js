@@ -115,6 +115,7 @@ export function resolveDamageTheme(
   const levels = [userOverrides, worldMap, moduleDefaults ?? registry?.damageTypeDefaults, DEFAULT_DAMAGE_MAP];
   const level = levels.find((m) => own(m, type));
   if (!level) return null;
+  const fromViewer = isPlainObject(userOverrides) && level === userOverrides;
   const value = level[type];
   if (value === 'none') return null;
   if (Object.hasOwn(DAMAGE_THEMES, value)) return DAMAGE_THEMES[value];
@@ -124,7 +125,10 @@ export function resolveDamageTheme(
     own1(themes?.viewerThemes) ?? own1(themes?.userThemes) ?? findTheme(value, { worldThemes: themes?.worldThemes });
   if (theme) {
     const look = themeLook(theme, dieType);
-    return { appearance: look.appearance, soundMaterial: theme.soundMaterial, landing: null, themeId: theme.id };
+    // A viewer's own override only styles the die; its rules are the roller's to decide (themeSource).
+    const out = { appearance: look.appearance, soundMaterial: theme.soundMaterial, landing: null, themeId: theme.id };
+    if (fromViewer) out.themeSource = 'viewer';
+    return out;
   }
   const appearance = colorsetNameToAppearance(value, registry, index);
   if (appearance) return { appearance };

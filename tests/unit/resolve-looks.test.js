@@ -3,6 +3,7 @@ import { facesFor } from '../../src/compat/faces.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { findTheme } from '../../src/themes/themes.js';
+import { slotPatch } from '../../src/ui/theme-form.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { colorsetToAppearance, BUILTIN_COLORSETS } from '../../src/compat/colorset-map.js';
 
@@ -384,5 +385,38 @@ describe('themes in the look chain (Plan 5)', () => {
     expect(missing()).toHaveLength(1);
     look(resolver, term(20), 'v');
     expect(missing()).toHaveLength(2);
+  });
+});
+
+describe('actor theme assignment (the theme browser write)', () => {
+  const actorWith = (appearance) => ({ a1: { flags: { dicer: { appearance } } } });
+  const t20 = { options: { dsnActorId: 'a1' } };
+
+  test("{global: {theme}} as written by the browser's slotPatch resolves to the theme", () => {
+    const { resolver } = make({ actors: actorWith(slotPatch('global', 'dragon-hoard')) });
+    const out = look(resolver, term(20, t20), 'u');
+    expect(out.themeId).toBe('dragon-hoard');
+    expect(out.appearance).toBe(findTheme('dragon-hoard').perType.d20);
+  });
+  test('assigning a theme via global beats an old flat look on the same actor; the flat form still works alone', () => {
+    const merged = { look: 'ruby-classic', ...slotPatch('global', 'dragon-hoard') };
+    const { resolver } = make({ actors: actorWith(merged) });
+    expect(look(resolver, term(20, t20), 'u').themeId).toBe('dragon-hoard');
+    const flat = make({ actors: actorWith({ look: 'ruby-classic' }) }).resolver;
+    expect(look(flat, term(20, t20), 'u').appearance).toBe(RUBY);
+  });
+  test('Clear removes only the global slot (what remains is the flat flag)', () => {
+    const { resolver } = make({ actors: actorWith({ look: 'ruby-classic' }) });
+    expect(look(resolver, term(20, t20), 'u').appearance).toBe(RUBY);
+  });
+  test("a viewer-sourced damage theme's source is carried on the partial", () => {
+    const registry = createRegistry({ warn: () => {} });
+    const resolver = createLookResolver({
+      registry,
+      getUser: () => undefined,
+      warn: () => {},
+      damageThemeFor: () => () => ({ appearance: RUBY, themeId: 'dragon-hoard', themeSource: 'viewer' }),
+    });
+    expect(look(resolver, term(20), 'u')).toMatchObject({ themeId: 'dragon-hoard', themeSource: 'viewer' });
   });
 });

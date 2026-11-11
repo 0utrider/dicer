@@ -135,12 +135,15 @@ export function createLookResolver({
       if (theme?.appearance) {
         appearance = theme.appearance;
         soundMaterial = theme.soundMaterial;
-        if (theme.themeId) themed = { themeId: theme.themeId };
+        if (theme.themeId) themed = { themeId: theme.themeId, ...(theme.themeSource ? { themeSource: theme.themeSource } : {}) };
       }
     }
     const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
     if (!appearance && typeof options.dsnActorId === 'string') {
-      const ref = getActor(options.dsnActorId)?.flags?.dicer?.appearance;
+      // The theme browser writes {global: {theme}}; DSN-migrated flags are a flat LookRef. A
+      // global slot takes precedence over flat keys left on the same actor.
+      const stored = getActor(options.dsnActorId)?.flags?.dicer?.appearance;
+      const ref = isPlainObject(stored) && isPlainObject(stored.global) ? stored.global : stored;
       const got = lookRefToAppearance(ref, registry, index, refOpts);
       if (got) {
         appearance = got.appearance;
@@ -176,6 +179,7 @@ export function createLookResolver({
     // DiceBox finds the preset again by system + dsnType (diceSoNiceOnMaterialReady, P3-R3).
     out.system = preset?.system ?? system ?? STANDARD;
     if (themed?.themeId) out.themeId = themed.themeId;
+    if (themed?.themeId && themed.themeSource) out.themeSource = themed.themeSource;
     soundMaterial ??= themed?.soundMaterial;
     if (soundMaterial) out.soundMaterial = soundMaterial;
     if (preset) {

@@ -215,7 +215,8 @@ export function createFxResolver({
         const landing = theme?.landing ?? null;
         // A discarded or inactive result (dropped, rerolled away) never triggers anything.
         if (result?.active === false || result?.discarded === true) return out;
-        const dieRules = rulesOf(look?.themeId);
+        // A theme chosen by the viewer's own damage override never brings its rules (the roller's decide).
+        const dieRules = rulesOf(look?.themeSource === 'viewer' ? undefined : look?.themeId);
         if (!dieRules.length && !landing && !custom) return out;
         const value = result?.result;
         const faces = term?.faces;

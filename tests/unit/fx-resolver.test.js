@@ -682,6 +682,12 @@ describe('theme sounds and celebrations (P5-D4)', () => {
     expect(decor(r, 'carol')(term(), res(20), 0, themed('user.same')).fx[0].effect.id).toBe('celebrate');
   });
 
+  test("a theme that came from the viewer's own damage override never applies its rules to the roller's dice", () => {
+    const viewer = { themeId: 'dragon-hoard', themeSource: 'viewer' };
+    expect(decor(make(), 'bob')(term(), res(20), 0, viewer).fx[0].effect.id).toBe('celebrate');
+    expect(decor(make(), 'bob')(term(), res(20), 0, { themeId: 'dragon-hoard', themeSource: 'world' }).fx[0].effect.id).toBe('embers');
+  });
+
   test('end to end: the real look resolver carries themeId into the fx decorator (as in main.js)', async () => {
     const { createRegistry } = await import('../../src/compat/registry.js');
     const { createLookResolver } = await import('../../src/compat/resolve-looks.js');

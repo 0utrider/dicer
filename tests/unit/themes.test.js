@@ -1,4 +1,5 @@
-import { BUILTIN_THEMES, normalizeTheme, findTheme, readThemeList } from '../../src/themes/themes.js';
+import { EFFECTS } from '../../src/effects/library/index.js';
+import { KNOWN_EFFECTS, BUILTIN_THEMES, normalizeTheme, findTheme, readThemeList } from '../../src/themes/themes.js';
 import { normalizeAppearance, appearanceKey } from '../../src/look/appearance.js';
 import { normalizeRule } from '../../src/effects/rules.js';
 import { LOOKS } from '../../src/look/looks.js';
@@ -167,5 +168,13 @@ describe('readThemeList', () => {
     expect(readThemeList(stored(), 'world', warn)).toBe(first);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(readThemeList('nope', 'world', warn)).toEqual([]);
+  });
+});
+
+describe('KNOWN_EFFECTS', () => {
+  // The library chunk is lazy, so themes.js repeats the ids; this keeps the copy honest.
+  const NON_CATALOGUE = []; // ids KNOWN_EFFECTS intentionally has beyond the catalogue
+  test('lists the effects catalogue ids (plus the documented extras), no more', () => {
+    expect([...KNOWN_EFFECTS].sort()).toEqual([...Object.keys(EFFECTS), ...NON_CATALOGUE].sort());
   });
 });

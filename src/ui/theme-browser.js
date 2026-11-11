@@ -35,6 +35,8 @@ const MODULE = 'dicer';
 const FLAG = 'appearance';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const notify = (kind, message) => globalThis.ui?.notifications?.[kind]?.(message);
+const escapeHtml = (v) =>
+  String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const humanize = (id) => {
   const s = String(id).replace(/[-_]+/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -100,12 +102,10 @@ export async function assignTarget(target, themeId) {
       return true;
     }
     case 'damage':
-      await settings().set(MODULE, 'damageThemeOverrides', assignDamage(settings().get(MODULE, 'damageThemeOverrides'), t.key, id));
-      return true;
+      return writeDamageMap('damageThemeOverrides', t.key, id);
     case 'worlddamage':
       if (!user.isGM) return false;
-      await settings().set(MODULE, 'damageTypeMap', assignDamage(settings().get(MODULE, 'damageTypeMap'), t.key, id));
-      return true;
+      return writeDamageMap('damageTypeMap', t.key, id);
     default:
       return false;
   }
@@ -113,37 +113,70 @@ export async function assignTarget(target, themeId) {
 
 export const clearTarget = (target) => assignTarget(target, null);
 
-const userList = () => {
-  const v = me()?.getFlag?.(MODULE, 'themes');
-  return Array.isArray(v) ? v : [];
+// Stored data of the wrong shape is never overwritten: the write is refused and warned once.
+const warnedShapes = new Set();
+const refuse = (what) => {
+  if (!warnedShapes.has(what)) {
+    warnedShapes.add(what);
+    notify('warn', `${loc('DICER.Themes.StoredUnusable')} (${what})`);
+  }
+  return null;
 };
-const worldList = () => {
-  const v = settings()?.get(MODULE, 'worldThemes');
-  return Array.isArray(v) ? v : [];
-};
+/** The stored list; [] when never set; null (refused, warned once) when it is not an array. */
+const listOf = (v, what) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : refuse(what));
+const userList = () => listOf(me()?.getFlag?.(MODULE, 'themes'), 'themes');
+const worldList = () => listOf(settings()?.get(MODULE, 'worldThemes'), 'worldThemes');
 const saveUserList = (list) => me().setFlag(MODULE, 'themes', list);
 const saveWorldList = (list) => settings().set(MODULE, 'worldThemes', list);
 
-/** Saves one raw theme into My themes (replacing the entry of the same id); all other entries are kept. */
-export const saveMine = (raw) => saveUserList(upsertTheme(userList(), raw));
+async function writeDamageMap(setting, type, id) {
+  const next = assignDamage(settings().get(MODULE, setting), type, id);
+  if (next === null) {
+    refuse(setting);
+    return false;
+  }
+  await settings().set(MODULE, setting, next);
+  return true;
+}
 
-/** Removes one of My themes (only that entry; unreadable entries stay). */
-export const deleteMine = (id) => saveUserList(removeTheme(userList(), id));
+/** Saves one raw theme into My themes (replacing the entry of the same id); all other entries are kept. False when refused. */
+export async function saveMine(raw) {
+  const list = userList();
+  if (!list) return false;
+  await saveUserList(upsertTheme(list, raw));
+  return true;
+}
+
+/** Removes one of My themes (only that entry; unreadable entries stay). False when refused. */
+export async function deleteMine(id) {
+  const list = userList();
+  if (!list) return false;
+  await saveUserList(removeTheme(list, id));
+  return true;
+}
 
 /** GM only: removes a world theme. */
 export async function deleteWorld(id) {
   if (!me()?.isGM) return false;
-  await saveWorldList(removeTheme(worldList(), id));
+  const list = worldList();
+  if (!list) return false;
+  await saveWorldList(removeTheme(list, id));
   return true;
 }
 
 /** GM only: copies the theme into the world themes. */
-export const publish = (theme) =>
-  publishToWorld(theme, { isGM: Boolean(me()?.isGM), worldList: worldList(), setWorld: saveWorldList });
+export function publish(theme) {
+  const isGM = Boolean(me()?.isGM);
+  const list = isGM ? worldList() : [];
+  if (!list) return Promise.resolve({ ok: false, reason: 'unreadable' });
+  return publishToWorld(theme, { isGM, worldList: list, setWorld: saveWorldList });
+}
 
-/** A copy of the theme in My themes; returns the new raw theme. */
+/** A copy of the theme in My themes; returns the new raw theme (null when refused). */
 export async function duplicate(theme) {
-  const copy = duplicateTheme(theme, me().id, userList(), loc('DICER.Themes.Copy'));
+  const list = userList();
+  if (!list) return null;
+  const copy = duplicateTheme(theme, me().id, list, loc('DICER.Themes.Copy'));
   await saveMine(copy);
   return copy;
 }
@@ -159,6 +192,7 @@ export function exportToFile(themes, filename) {
  */
 export async function importFromText(text) {
   const existing = userList();
+  if (!existing) return { themes: [], warnings: [] };
   const { themes, warnings } = importThemes(text, me().id, {
     existingIds: existing.map((t) => t?.id).filter(Boolean),
   });
@@ -441,7 +475,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!theme) return;
     const sure = await foundry.applications.api.DialogV2.confirm({
       window: { title: loc('DICER.Themes.Delete') },
-      content: `<p>${loc('DICER.Themes.ConfirmDelete')} ${foundry.utils.escapeHTML?.(theme.name) ?? theme.name}</p>`,
+      content: `<p>${loc('DICER.Themes.ConfirmDelete')} ${escapeHtml(theme.name)}</p>`,
     });
     if (!sure) return;
     if (theme.source === 'user') await deleteMine(theme.id);

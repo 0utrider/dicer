@@ -1824,6 +1824,19 @@ describe('per-throw areas', () => {
     expect(fit).toHaveBeenCalledTimes(1);
   });
 
+  test('capacityDice sizes the area for the whole throw group, not just this roll', () => {
+    const { physics, box } = setup();
+    box.roll([{ type: 'd20', value: 17 }], { area: left });
+    box.roll([{ type: 'd20', value: 17 }], { area: left, capacityDice: 40 });
+    const [small, big] = physics.streams.map((s) => s.req.area);
+    expect(small.halfWidth * small.halfDepth).toBeCloseTo(12.5); // 1 die: no growth
+    expect(big.halfWidth * big.halfDepth).toBeGreaterThanOrEqual(40);
+    // never smaller than the roll's own dice need
+    box.roll(Array.from({ length: 30 }, () => ({ type: 'd6', value: 2 })), { area: left, capacityDice: 2 });
+    const own = physics.streams[2].req.area;
+    expect(own.halfWidth * own.halfDepth).toBeGreaterThanOrEqual(30);
+  });
+
   test('lastRollArea records the latest roll area (die units and clamped px rect), as copies', () => {
     const { box } = setup();
     expect(box.lastRollArea).toBeNull();

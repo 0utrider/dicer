@@ -50,6 +50,9 @@ describe('assignTheme / slotPatch / assignDamage', () => {
   it('a damage map keeps other (even odd) entries', () => {
     expect(assignDamage({ fire: 'a', odd: { x: 1 } }, 'cold', 't')).toEqual({ fire: 'a', odd: { x: 1 }, cold: 't' });
     expect(assignDamage({ fire: 'a' }, 'fire', null)).toEqual({});
+    expect(assignDamage(undefined, 'fire', 't')).toEqual({ fire: 't' });
+    expect(assignDamage('junk', 'fire', 't')).toBeNull(); // never replace unreadable data
+    expect(assignDamage([1], 'fire', 't')).toBeNull();
   });
 });
 
@@ -324,6 +327,44 @@ describe('the browser actions', () => {
     expect(ui.notifications.warn).toHaveBeenCalledTimes(1);
     await mod.deleteMine('user.u1.ok');
     expect(flags.themes.map((t) => t.id)).toEqual(['user.u1.broken', 'user.u1.ok-2']);
+  });
+  it('an owned actor theme written by the browser is read by the look resolver (global slot)', async () => {
+    const { createLookResolver } = await import('../../src/compat/resolve-looks.js');
+    const { createRegistry } = await import('../../src/compat/registry.js');
+    const fake = { id: 'mine', flags: { dicer: {} } };
+    actors.get('mine').setFlag = vi.fn(async (s, k, v) => {
+      fake.flags[s][k] = { ...(fake.flags[s][k] ?? {}), ...v }; // setFlag merges
+    });
+    await mod.assignTarget('actor:mine', 'dragon-hoard');
+    const resolver = createLookResolver({
+      registry: createRegistry({ warn: () => {} }),
+      getUser: () => undefined,
+      getActor: () => fake,
+      warn: () => {},
+    });
+    const t = { faces: 20, options: { dsnActorId: 'mine' }, results: [{ result: 1 }] };
+    expect(resolver.decorate(null, {}, 'u')(t, { result: 1 }, 0).themeId).toBe('dragon-hoard');
+  });
+  it('a stored theme list or damage map of the wrong shape refuses the write and warns once', async () => {
+    flags.themes = 'junk';
+    expect(await mod.saveMine(raw('user.u1.a', 'A'))).toBe(false);
+    expect(await mod.deleteMine('x')).toBe(false);
+    expect((await mod.importFromText(JSON.stringify([raw('a', 'A')]))).themes).toEqual([]);
+    expect(user.setFlag).not.toHaveBeenCalled();
+    expect(flags.themes).toBe('junk');
+    store.worldThemes = { not: 'a list' };
+    user.isGM = true;
+    expect((await mod.publish(BUILTIN_THEMES[0])).ok).toBe(false);
+    expect(await mod.deleteWorld('x')).toBe(false);
+    expect(store.worldThemes).toEqual({ not: 'a list' });
+    store.damageThemeOverrides = 'junk';
+    expect(await mod.assignTarget('damage:fire', 'ember-core')).toBe(false);
+    expect(store.damageThemeOverrides).toBe('junk');
+    store.damageTypeMap = [1];
+    expect(await mod.assignTarget('worlddamage:fire', 'ember-core')).toBe(false);
+    expect(store.damageTypeMap).toEqual([1]);
+    // one warning per stored value kind, however often it is hit
+    expect(ui.notifications.warn.mock.calls.length).toBe(4);
   });
   it('publish and delete-world are GM only', async () => {
     expect((await mod.publish(BUILTIN_THEMES[0])).ok).toBe(false);

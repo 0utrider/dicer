@@ -67,8 +67,10 @@ export function assignTheme(looks, slot, themeId) {
 export const slotPatch = (slot, themeId, deletion = () => globalThis.foundry?.data?.operators?.ForcedDeletion?.create?.()) =>
   typeof themeId === 'string' && themeId ? { [slot]: { theme: themeId } } : { [slot]: deletion() };
 
-/** A damage-type map (setting value) with one type set to a theme id or removed; other entries kept. */
+/** A damage-type map (setting value) with one type set to a theme id or removed; other entries kept. A non-object map gives null. */
 export function assignDamage(map, type, themeId) {
+  // Stored data of the wrong shape is never replaced: null means the write is refused.
+  if (map !== undefined && map !== null && !isObj(map)) return null;
   const out = isObj(map) ? { ...map } : {};
   if (typeof themeId === 'string' && themeId) out[type] = themeId;
   else delete out[type];

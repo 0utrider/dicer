@@ -322,6 +322,12 @@ describe('a damage-map value naming a Plan 5 theme', () => {
     expect(themer.forRoll(roll, 'alice')(d6, 0).appearance.body.color).toBe('#0c0b0a');
     expect(themer.forRoll(roll, 'bob')(d6, 0)).toBeNull();
   });
+  test("a theme named by the viewer's own override is marked themeSource 'viewer'; the world map's is not", () => {
+    const viaViewer = resolveDamageTheme('fire', ctx({ userOverrides: { fire: 'dragon-hoard' }, worldMap: { fire: 'cold' } }));
+    expect(viaViewer.themeSource).toBe('viewer');
+    const viaWorld = resolveDamageTheme('fire', ctx({ worldMap: { fire: 'dragon-hoard' } }));
+    expect(viaWorld.themeSource).toBeUndefined();
+  });
   test('a world theme named in the map is read from the worldThemes setting', () => {
     const w = { id: 'world.w', name: 'W', appearance: { body: { type: 'opaque', color: '#0a0b0c' } } };
     const { plan } = setup({ settings: { damageTypeMap: { fire: 'world.w' }, worldThemes: [w] } });

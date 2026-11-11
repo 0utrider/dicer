@@ -322,6 +322,7 @@
       "Clear": "Clear",
       "Applied": "Theme applied.",
       "Cleared": "Theme choice cleared.",
+      "StoredUnusable": "Dicer could not read the stored data, so it was left unchanged. Fix or reset it in the settings first.",
       "NotAllowed": "That is not possible here (you may not own that character, or only a GM can do it).",
       "Duplicate": "Duplicate into My themes",
       "Copy": "copy",

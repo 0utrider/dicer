@@ -404,7 +404,12 @@ export function createMessageGate({
       try {
         const area = areaOf(message, groups[i]);
         // No area: the whole stage, called exactly as before areas existed.
-        landed = groups[i].map((specs) => (area ? diceBox.roll(specs, { area }) : diceBox.roll(specs)).landed);
+        // The rolls of a group share one area, so size it for the group's dice, not each roll's (DiceBox grows it).
+        const total = groups[i].reduce((n, specs) => n + specs.length, 0);
+        landed = groups[i].map((specs) => {
+          const opts = area ? (total > specs.length ? { area, capacityDice: total } : { area }) : null;
+          return (opts ? diceBox.roll(specs, opts) : diceBox.roll(specs)).landed;
+        });
       } catch (err) {
         console.error('dicer: roll failed', err);
         reveal(id);

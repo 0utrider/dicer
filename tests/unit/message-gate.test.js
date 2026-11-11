@@ -1678,6 +1678,14 @@ describe('roll areas follow the roller (P5-D1) and the GM private corner (P5-D7)
     expect(diceBox.roll.mock.calls.map(areaOf)).toEqual([p1Area, p1Area]);
   });
 
+  test('the rolls of one throw group share an area sized for the whole group (capacityDice)', () => {
+    viewerGate(p2).onCreate(message('m1', { rolls: [d20Roll(3), d20Roll(4)], author: { id: 'p1' } }));
+    expect(diceBox.roll.mock.calls.map((c) => c[1]?.capacityDice)).toEqual([2, 2]);
+    diceBox.roll.mockClear();
+    viewerGate(p2).onCreate(message('m2', { rolls: [d20Roll(3)], author: { id: 'p1' } }));
+    expect(diceBox.roll.mock.calls[0][1]).toEqual({ area: p1Area }); // single roll: unchanged call
+  });
+
   test("Review Focus 4: a player's blind nat 20 seen by another player as a ghost lands in the roller's area with no look or fx", () => {
     settings.showGhostDice = true;
     const fx = createFxResolver({

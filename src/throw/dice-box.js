@@ -249,10 +249,11 @@ export class DiceBox {
 
   /**
    * @param {import('./throw-planner.js').DieSpec[]} specs
-   * @param {{ area?: {left:number, top:number, width:number, height:number} }} [options] `area`:
-   *   this throw's roll area in page px (clamped inside the stage); absent, the whole stage.
+   * @param {{ area?: {left:number, top:number, width:number, height:number}, capacityDice?: number }} [options]
+   *   `area`: this throw's roll area in page px (clamped inside the stage); absent, the whole stage.
+   *   `capacityDice`: the dice that share this area (a throw group's total), when more than this roll's.
    */
-  roll(specs, { area } = {}) {
+  roll(specs, { area, capacityDice } = {}) {
     const roll = {
       dice: [],
       shadows: [],
@@ -281,7 +282,7 @@ export class DiceBox {
       roll.slowMotion = roll.dice.some((d) => d.fx?.some((f) => f?.slowMotion === true));
       this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
-      const thrown = this.#throwArea(area, specs.length);
+      const thrown = this.#throwArea(area, Math.max(specs.length, Number.isFinite(capacityDice) ? capacityDice : 0));
       const throwArea = thrown?.area ?? null;
       this._lastRoll = roll.record = {
         area: throwArea ?? { cx: 0, cz: 0, ...this._area },
