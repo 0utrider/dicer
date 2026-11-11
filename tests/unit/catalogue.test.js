@@ -317,3 +317,16 @@ describe('through the effect layer', () => {
     expect(layer.running).toBe(1);
   });
 });
+
+test('shader quads add colour and alpha with alpha = brightness, so no black box is left on the canvas', () => {
+  for (const id of ['light-burst', 'shockwave']) {
+    const ctx = ctxFor(EFFECTS[id]);
+    const handle = EFFECTS[id].start(ctx);
+    const quad = ctx.scene.children.find((c) => c.isMesh && c.material?.fragmentShader);
+    expect(quad.material.blending).toBe(THREE.CustomBlending);
+    expect(quad.material.blendSrcAlpha).toBe(THREE.OneFactor);
+    expect(quad.material.blendDstAlpha).toBe(THREE.OneFactor);
+    expect(quad.material.fragmentShader).toContain('max( max( c.r, c.g ), c.b )');
+    handle.stop();
+  }
+});

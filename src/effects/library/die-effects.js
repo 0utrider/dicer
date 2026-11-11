@@ -119,7 +119,8 @@ varying vec3 vDcN;
 varying vec3 vDcV;
 void main() {
 	float f = 1.0 - abs( dot( normalize( vDcN ), normalize( vDcV ) ) );
-	gl_FragColor = vec4( uColor * ( uStrength * f * f ), 1.0 );
+	vec3 c = uColor * ( uStrength * f * f );
+	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 }
 `;
 
@@ -137,7 +138,12 @@ export const glowPulse = Object.freeze({
       vertexShader: GLOW_VERTEX,
       fragmentShader: GLOW_FRAGMENT,
       side: THREE.BackSide,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.CustomBlending, // additive colour and alpha: see ADDITIVE_PREMULTIPLIED
+      blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+      blendSrcAlpha: THREE.OneFactor,
+      blendDstAlpha: THREE.OneFactor,
       transparent: true,
       depthWrite: false,
     });

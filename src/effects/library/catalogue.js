@@ -63,6 +63,20 @@ void main() {
 }
 `;
 
+/**
+ * Additive blending for shader quads on the (premultiplied-alpha) dice canvas: colour and alpha
+ * both add, and the shaders write alpha = their brightest channel, so a transparent corner adds
+ * nothing. THREE.AdditiveBlending with alpha 1 would leave an opaque black rectangle over the board.
+ */
+export const ADDITIVE_PREMULTIPLIED = Object.freeze({
+  blending: THREE.CustomBlending,
+  blendEquation: THREE.AddEquation,
+  blendSrc: THREE.OneFactor,
+  blendDst: THREE.OneFactor,
+  blendSrcAlpha: THREE.OneFactor,
+  blendDstAlpha: THREE.OneFactor,
+});
+
 function quadMaterial(fragment, color) {
   return new THREE.ShaderMaterial({
     uniforms: { uColor: { value: color.clone() }, uAlpha: { value: 0 }, uR: { value: 0 } },
@@ -70,7 +84,7 @@ function quadMaterial(fragment, color) {
     fragmentShader: fragment,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    ...ADDITIVE_PREMULTIPLIED,
   });
 }
 
@@ -82,7 +96,8 @@ void main() {
 	float r = length( vUv * 2.0 - 1.0 );
 	float glow = pow( max( 0.0, 1.0 - r ), 2.0 );
 	float core = pow( max( 0.0, 1.0 - r * 2.5 ), 2.0 );
-	gl_FragColor = vec4( ( uColor * glow + vec3( core ) ) * uAlpha, 1.0 );
+	vec3 c = ( uColor * glow + vec3( core ) ) * uAlpha;
+	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 }
 `;
 const RING_FRAGMENT = /* glsl */ `
@@ -93,7 +108,8 @@ varying vec2 vUv;
 void main() {
 	float r = length( vUv * 2.0 - 1.0 );
 	float band = smoothstep( uR - 0.22, uR, r ) * ( 1.0 - smoothstep( uR, uR + 0.035, r ) );
-	gl_FragColor = vec4( uColor * ( band * uAlpha ), 1.0 );
+	vec3 c = uColor * ( band * uAlpha );
+	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 }
 `;
 

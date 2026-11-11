@@ -279,7 +279,10 @@ describe('die effects (library)', () => {
     expect(shell).toBeTruthy();
     expect(shell.scale.x).toBeCloseTo(1.08);
     expect(shell.material.side).toBe(THREE.BackSide);
-    expect(shell.material.blending).toBe(THREE.AdditiveBlending);
+    // additive colour AND alpha: THREE.AdditiveBlending with alpha 1 left black boxes on the canvas
+    expect(shell.material.blending).toBe(THREE.CustomBlending);
+    expect(shell.material.blendSrcAlpha).toBe(THREE.OneFactor);
+    expect(shell.material.blendDstAlpha).toBe(THREE.OneFactor);
     expect(shell.material.depthWrite).toBe(false);
     const dispose = vi.spyOn(shell.material, 'dispose');
     layer.update(0);
@@ -295,4 +298,23 @@ describe('die effects (library)', () => {
     layer.play(makeDie(), fxOf('color-shift', 'number-flare'));
     expect(layer.update(0)).toBe(false);
   });
+});
+
+test('onPlay is called once per effect that actually started, by effect id', async () => {
+  const onPlay = vi.fn();
+  const { layer } = setup({ onPlay });
+  await layer.prefetch();
+  layer.play(makeDie(), fxOf('a', 'nope', 'b'));
+  expect(onPlay.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+});
+
+test('a throwing onPlay never stops an effect', async () => {
+  const { layer } = setup({
+    onPlay: () => {
+      throw new Error('x');
+    },
+  });
+  await layer.prefetch();
+  layer.play(makeDie(), fxOf('a'));
+  expect(layer.running).toBe(1);
 });
