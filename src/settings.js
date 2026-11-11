@@ -18,7 +18,7 @@ export function registerNoticeSetting() {
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
  * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when look,
- *   interiors, engraving, shadows, glow, presetFaces or presetModels changes
+ *   interiors, engraving, shadows, glow, presetFaces, presetModels or effects changes
  * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
  *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
  * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
@@ -208,7 +208,7 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     default: 'world',
   });
   // Trigger effects (P4-D2): the roller's rules decide; each viewer filters what they see.
-  for (const key of ['effects', 'showOthersEffects', 'slowMotion']) {
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'screenShake']) {
     game.settings.register(MODULE_ID, key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
@@ -216,6 +216,8 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
       config: true,
       type: Boolean,
       default: true,
+      // effects also selects the die programs (the fx uniform block): rebuild the materials.
+      ...(key === 'effects' ? { onChange: (value) => onLookChange?.(key, value) } : {}),
     });
   }
   game.settings.register(MODULE_ID, 'triggerMacros', {

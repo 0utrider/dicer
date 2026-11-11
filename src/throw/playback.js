@@ -3,6 +3,9 @@ import { FLOATS_PER_DIE, IMPACT_FLOATS, STEP_SECONDS } from '../physics/protocol
 import { readTopFace, rotationToShow, faceForValue } from '../core/face-reader.js';
 
 const _q = [0, 0, 0, 1];
+/** Slow motion: playhead steps over which the speed eases down to the held slow speed. */
+export const RAMP_STEPS = 30;
+export const SLOW_SPEED = 0.35;
 
 /**
  * Consumes streamed frame chunks and moves the dice. No die is drawn inside the roll area
@@ -24,10 +27,72 @@ export class Playback {
     this._playing = false; // last update() returned 'playing'
     this._lastMs = undefined;
     this._landed = false;
+    this._ramp = null; // { start, from, to }: slow motion (setSpeedRamp)
+  }
+
+  /**
+   * Slow motion for this client only: the speed eases (smoothstep) from 1 to `toSpeed` over the
+   * RAMP_STEPS playhead steps before `fromStep`, then holds until landing. Multiplies `speed`.
+   */
+  setSpeedRamp({ fromStep, toSpeed = SLOW_SPEED }) {
+    if (!Number.isFinite(fromStep) || !(toSpeed > 0)) return;
+    this._ramp = { start: fromStep - RAMP_STEPS, from: fromStep, to: Math.min(1, toSpeed) };
+  }
+
+  /** The ramp's speed factor at playhead `ph` (1 without a ramp). */
+  speedAt(ph) {
+    const r = this._ramp;
+    if (!r || ph <= r.start) return 1;
+    if (ph >= r.from) return r.to;
+    const t = (ph - r.start) / RAMP_STEPS;
+    return 1 + (r.to - 1) * t * t * (3 - 2 * t);
+  }
+
+  /**
+   * Playback time (ms) to reach playhead `steps`, at `speed` and through the ramp. The eased
+   * part is counted at the held speed, so this never undershoots (the landing watchdog).
+   */
+  durationMs(steps) {
+    const r = this._ramp;
+    let t = steps;
+    if (r) {
+      const fast = Math.min(steps, Math.max(0, r.start));
+      t = fast + (steps - fast) / r.to;
+    }
+    return (t * STEP_SECONDS * 1000) / (this.speed || 1);
+  }
+
+  /** The playhead after `t` steps of time at speed 1 from `ph`, through the ramp. */
+  _advance(ph, t) {
+    const r = this._ramp;
+    if (!r) return ph + t;
+    // Bounded: at most one playhead step per pass inside the ramp (RAMP_STEPS + 2 passes).
+    while (t > 1e-9) {
+      if (ph < r.start) {
+        const left = r.start - ph;
+        const d = Math.min(left, t);
+        ph = d === left ? r.start : ph + d;
+        t -= d;
+      } else if (ph >= r.from) {
+        return ph + t * r.to;
+      } else {
+        const v = this.speedAt(ph);
+        const left = r.from - ph;
+        const d = Math.min(t * v, 1, left);
+        ph = d === left ? r.from : ph + d; // exact, so the next pass is the held range
+        t -= d / v;
+      }
+    }
+    return ph;
   }
 
   get landed() {
     return this._landed;
+  }
+
+  /** Frames pushed so far (the last one is the settled frame once the final chunk is in). */
+  get frames() {
+    return this._frames;
   }
 
   push(chunk) {
@@ -114,7 +179,7 @@ export class Playback {
     if (!this.resultsApplied && this._firstInside >= 0) {
       limit = Math.max(0, this._firstInside - 1);
     }
-    let ph = this._playhead + (dt * this.speed) / STEP_SECONDS;
+    let ph = this._advance(this._playhead, (dt * this.speed) / STEP_SECONDS);
     let state = 'playing';
     if (ph >= limit) {
       ph = limit;

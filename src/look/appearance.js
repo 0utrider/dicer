@@ -109,7 +109,7 @@ export function appearanceKey(a) {
  * (it only selects the geometry).
  */
 export function programKey(a, flags) {
-  if (flags.safe) return ['opaque', '-', 'none', 'eng0', 'glow0', 'safe1'].join('|');
+  if (flags.safe) return ['opaque', '-', 'none', 'eng0', 'glow0', 'fx0', 'safe1'].join('|');
   const steps = flags.interiorSteps;
   const active =
     a.body.type === 'resin' && !!flags.interiors && steps > 0 && a.interior.type !== 'none';
@@ -118,5 +118,6 @@ export function programKey(a, flags) {
     : 'none';
   const finish = a.body.type === 'metal' ? a.body.finish : '-';
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
-  return [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, 'safe0'].join('|');
+  const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
+  return [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'].join('|');
 }

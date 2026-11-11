@@ -17,8 +17,19 @@ test('tier table: exactly four tiers, interiorSteps 0 only at low', () => {
     transmissionScale: 1,
     envResolution: 256,
     anisotropy: true,
+    particleScale: 1,
+    effectBudget: 8,
   });
   expect(TIERS.low.anisotropy).toBe(false);
+});
+
+test('effect tiers: particleScale and effectBudget per tier (Plan 4 Task 8)', () => {
+  const pick = (t) => [TIERS[t].particleScale, TIERS[t].effectBudget];
+  expect(pick('low')).toEqual([0.25, 2]);
+  expect(pick('medium')).toEqual([0.5, 4]);
+  expect(pick('high')).toEqual([1, 8]);
+  expect(pick('ultra')).toEqual([1.5, 12]);
+  for (const t of TIER_ORDER) expect(Object.isFrozen(TIERS[t])).toBe(true);
 });
 
 test('effectiveTier: min(choice or auto, cap); the adaptive drop lives in the controller', () => {
@@ -134,6 +145,7 @@ describe('flagsFor (one source for production, gallery and preview)', () => {
       interiors: true,
       engraving: true,
       glow: true,
+      effects: true,
       interiorSteps: 0,
       safe: false,
     });
@@ -144,15 +156,22 @@ describe('flagsFor (one source for production, gallery and preview)', () => {
       interiors: false,
       engraving: false,
       glow: true,
+      effects: true,
       interiorSteps: 16,
       safe: false,
     });
+  });
+  test('effects: on unless the setting is false; never under safe flags', () => {
+    expect(flagsFor(TIERS.low, { effects: false }).effects).toBe(false);
+    expect(flagsFor(TIERS.low, { effects: undefined }).effects).toBe(true);
+    expect(flagsFor(TIERS.low, { effects: true }, { safe: true }).effects).toBe(false);
   });
   test('safe: every feature off (P2-R12)', () => {
     expect(flagsFor(TIERS.ultra, on, { safe: true })).toEqual({
       interiors: false,
       engraving: false,
       glow: false,
+      effects: false,
       interiorSteps: 0,
       safe: true,
     });

@@ -178,6 +178,16 @@ describe('effects settings', () => {
       expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
     }
   });
+  test('screenShake is a client Boolean, default on (Task 8)', () => {
+    const r = capture();
+    expect(r.screenShake).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r.screenShake.name).toBe('DICER.Settings.screenShake.Name');
+  });
+  test('turning effects on or off refreshes materials through onLookChange (the fx program key)', () => {
+    const onLookChange = vi.fn();
+    capture({ onLookChange }).effects.onChange(false);
+    expect(onLookChange).toHaveBeenCalledWith('effects', false);
+  });
   test('triggerMacros is a world Boolean, default on', () => {
     expect(capture().triggerMacros).toMatchObject({ scope: 'world', config: true, type: Boolean, default: true });
   });
@@ -192,7 +202,7 @@ describe('effects settings', () => {
 
 test('every effects setting has its English name and hint', () => {
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings;
-  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros']) {
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake']) {
     expect(typeof en[key]?.Name).toBe('string');
     expect(typeof en[key]?.Hint).toBe('string');
   }

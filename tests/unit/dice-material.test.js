@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
-import { createDiceMaterial, updateLabels } from '../../src/render/dice-material.js';
+import { createDiceMaterial, updateLabels, isolateMaterial } from '../../src/render/dice-material.js';
 import { ENGRAVE_PARS, ENGRAVE_NORMAL, ENGRAVE_COLOR } from '../../src/render/shaders/engrave.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
@@ -14,7 +14,7 @@ const atlas = {
 };
 const s = getShape('d20');
 const labels = s.values.map((v) => labelFor('d20', v));
-const FLAGS = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
+const FLAGS = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32 };
 
 const look = (partial) => normalizeAppearance(partial);
 const opaque = (extra = {}) =>
@@ -699,5 +699,59 @@ describe('face layers (image and text faces)', () => {
     expect(v[3].toArray()).toEqual([1, 1]);
     expect(v[0].x).toBe(-1);
     expect(v[19].x).toBe(-1); // unused slots draw nothing
+  });
+});
+
+describe('fx uniform block (Plan 4 Task 8)', () => {
+  const build = (flags) => createDiceMaterial(opaque(), atlas, s, labels, flags);
+  test('flags.effects false: no fx GLSL and key segment fx0', () => {
+    const m = build({ ...FLAGS, effects: false });
+    expect(m.userData.programKey.split('|')).toContain('fx0');
+    expect(patched(m).fragmentShader).not.toContain('uFxTint');
+    expect(patched(m).fragmentShader).not.toContain('uFxFlare');
+  });
+  test('flags.effects true: uFxTint / uFxFlare in the shader, key fx1, defaults zero', () => {
+    const m = build({ ...FLAGS, effects: true });
+    expect(m.userData.programKey.split('|')).toContain('fx1');
+    const sh = patched(m);
+    expect(sh.fragmentShader).toContain('uniform vec4 uFxTint');
+    expect(sh.fragmentShader).toContain('uniform vec3 uFxFlare');
+    expect(sh.fragmentShader).toMatch(/uFxFlare \* dcMask/);
+    const u = m.userData.uniforms;
+    expect(u.uFxTint.value.toArray()).toEqual([0, 0, 0, 0]);
+    expect(u.uFxFlare.value.toArray()).toEqual([0, 0, 0]);
+    expect(sh.uniforms.uFxTint).toBe(u.uFxTint);
+    expect(build({ ...FLAGS, effects: false }).customProgramCacheKey()).not.toBe(
+      m.customProgramCacheKey(),
+    );
+  });
+  test('safe flags drop the fx block', () => {
+    const m = build({ ...FLAGS, effects: true, safe: true });
+    expect(m.userData.programKey.split('|')).toContain('fx0');
+    expect(patched(m).fragmentShader).not.toContain('uFxTint');
+  });
+  test('isolateMaterial: own uniform copies, shared textures, same program, original untouched', () => {
+    const m = build({ ...FLAGS, effects: true });
+    const iso = isolateMaterial(m);
+    expect(iso).not.toBe(m);
+    const a = m.userData.uniforms;
+    const b = iso.userData.uniforms;
+    expect(b).not.toBe(a);
+    expect(b.uFxTint).not.toBe(a.uFxTint);
+    expect(b.uFxTint.value).not.toBe(a.uFxTint.value);
+    expect(b.uGlowColor.value).not.toBe(a.uGlowColor.value);
+    expect(b.uGlowColor.value.equals(a.uGlowColor.value)).toBe(true);
+    expect(b.uLabels.value).toBe(a.uLabels.value); // textures are shared, never copied
+    expect(b.uAtlas.value).toBe(a.uAtlas.value);
+    b.uFxTint.value.set(1, 0, 0, 1);
+    expect(a.uFxTint.value.w).toBe(0);
+    expect(iso.customProgramCacheKey()).toBe(m.customProgramCacheKey());
+    expect(iso.defines).toEqual(m.defines);
+    expect(iso.defines).not.toBe(m.defines);
+    expect(iso.userData.programKey).toBe(m.userData.programKey);
+    // its compile patch binds its own uniforms, the original keeps its own
+    expect(patched(iso).uniforms.uFxTint).toBe(b.uFxTint);
+    expect(patched(m).uniforms.uFxTint).toBe(a.uFxTint);
+    expect(m.userData.uniforms).toBe(a);
   });
 });

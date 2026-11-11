@@ -10,6 +10,9 @@ import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
+import { createEffectLayer } from '../../src/effects/effect-layer.js';
+import { EFFECTS } from '../../src/effects/library/index.js';
+import { TIERS } from '../../src/render/quality.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -94,6 +97,8 @@ function fakeRenderer() {
   const r = {
     sceneApi,
     scene: sceneApi.scene,
+    camera: sceneApi.camera,
+    canvas: { style: { transform: '' } },
     setArea: vi.fn(),
     onContextLost: vi.fn(),
     startLoop: vi.fn((t) => (r.tickFn = t)),
@@ -1491,10 +1496,12 @@ describe('trigger effects at landing (onLandedFx)', () => {
   const nat20fx = [
     { ruleId: 'dicer.nat20', effect: { id: 'celebrate' }, sound: { builtin: 'fanfare' }, macro: null, slowMotion: true },
   ];
+  // nat20fx slows the landing down (Task 8): give playback the extra time.
   const land = (renderer, physics) => {
     physics.flush();
     renderer.tick(0);
     renderer.tick(2000);
+    renderer.tick(8000);
   };
 
   test('a landed die with fx calls onLandedFx(die, fx, rollKey) once; the sound plays once', async () => {
@@ -1567,5 +1574,214 @@ describe('trigger effects at landing (onLandedFx)', () => {
     expect(onLandedFx).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+});
+
+describe('effect runtime (Task 8)', () => {
+  /** A long, die-independent effect (a stand-in for a particle burst) and the three die effects. */
+  function longEffect(log) {
+    return {
+      id: 'long',
+      cost: 1,
+      defaults: { color: '#fff', intensity: 1, duration: 5000 },
+      start(ctx) {
+        log.push('start');
+        let t0 = null;
+        return {
+          update(now) {
+            t0 ??= now;
+            return now - t0 < ctx.duration;
+          },
+          stop: () => log.push('stop'),
+        };
+      },
+    };
+  }
+  async function withEffects(opts = {}) {
+    const log = [];
+    let box = null;
+    const effects = createEffectLayer({
+      scene: new THREE.Scene(),
+      camera: new THREE.PerspectiveCamera(),
+      canvas: { style: { transform: '' } },
+      getTier: () => TIERS.ultra,
+      getSetting: () => undefined,
+      loadLibrary: async () => ({ EFFECTS: { ...EFFECTS, long: longEffect(log) } }),
+      isolate: (die) => box.isolate(die),
+      matchMedia: () => ({ matches: false }),
+      debug: () => {},
+    });
+    await effects.prefetch();
+    const made = setup({ effects, getFlags: () => ({ effects: true }), ...opts });
+    box = made.box;
+    return { ...made, effects, log };
+  }
+  const fx = (id, extra = {}) => [
+    { ruleId: 'r', effect: { id, ...extra }, sound: null, macro: null, slowMotion: false },
+  ];
+
+  test('the loop outlives the roll while an effect runs, then stops (hide); landing timing is unchanged', async () => {
+    const { renderer, physics, box, log } = await withEffects();
+    const { landed, finished } = box.roll([{ type: 'd20', value: 20, fx: fx('long') }]);
+    const isLanded = settled(landed);
+    const isFinished = settled(finished);
+    physics.flush();
+    renderer.tick(16);
+    renderer.tick(500);
+    await flushMicrotasks();
+    expect(isLanded()).toBe(false);
+    expect(renderer.tick(2000)).toBe(true);
+    await flushMicrotasks();
+    expect(isLanded()).toBe(true); // same frame as without effects
+    expect(log).toEqual(['start']);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2100); // fade starts
+    expect(renderer.tick(2600)).toBe(true); // roll finished, the effect still runs
+    await flushMicrotasks();
+    expect(isFinished()).toBe(true);
+    expect(box.activeRolls).toBe(0);
+    expect(renderer.isLooping).toBe(true);
+    expect(renderer.hide).not.toHaveBeenCalled();
+    expect(renderer.tick(6000)).toBe(true);
+    expect(renderer.tick(7100)).toBe(false);
+    expect(renderer.hide).toHaveBeenCalled();
+    expect(renderer.isLooping).toBe(false);
+    expect(log).toEqual(['start', 'stop']);
+  });
+
+  test('clear() mid-effect stops the effects and the loop', async () => {
+    const { renderer, physics, box, log, effects } = await withEffects();
+    box.roll([{ type: 'd20', value: 20, fx: fx('long') }]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+    expect(log).toEqual(['start']);
+    box.clear();
+    expect(log).toEqual(['start', 'stop']);
+    expect(effects.running).toBe(0);
+    expect(renderer.isLooping).toBe(false);
+    expect(renderer.tick(2100)).toBe(false);
+  });
+
+  test('a die effect isolates its die: own material and uniforms, faded from the isolated one, freed at finish', async () => {
+    const { renderer, physics, box } = await withEffects();
+    box.roll([
+      { type: 'd20', value: 20, fx: fx('color-shift', { duration: 10000 }) },
+      { type: 'd20', value: 5 },
+    ]);
+    const [hot, plain] = box._rolls.values().next().value.dice;
+    expect(hot.inner.material).toBe(plain.inner.material); // one cached material before landing
+    const shared = plain.inner.material;
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+    renderer.tick(2100);
+    const iso = hot.inner.material;
+    expect(iso).not.toBe(shared);
+    expect(iso.userData.uniforms).not.toBe(shared.userData.uniforms);
+    expect(iso.userData.uniforms.uFxTint.value.w).toBeGreaterThan(0);
+    expect(shared.userData.uniforms.uFxTint.value.w).toBe(0);
+    const isoDispose = vi.spyOn(iso, 'dispose');
+    const sharedDispose = vi.spyOn(shared, 'dispose');
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2200); // fade starts: the fade clone shares the isolated uniforms
+    expect(hot.inner.material).not.toBe(iso);
+    expect(hot.inner.material.userData.uniforms).toBe(iso.userData.uniforms);
+    renderer.tick(2700); // finished: the die effect is released with its die
+    expect(isoDispose).toHaveBeenCalled();
+    expect(sharedDispose).not.toHaveBeenCalled(); // cached, idle
+    expect(renderer.tick(2800)).toBe(false);
+  });
+
+  test('isolate() returns null for a model die, a ghost, or a die of no live roll', async () => {
+    const { box } = await withEffects();
+    box.roll([{ type: 'd20', value: 20 }]);
+    const die = box._rolls.values().next().value.dice[0];
+    expect(box.isolate({ ...die, model: {} })).toBeNull();
+    expect(box.isolate({ ...die, ghost: true })).toBeNull();
+    expect(box.isolate({ outer: {}, inner: {} })).toBeNull();
+    const u = box.isolate(die);
+    expect(u.uFxTint).toBeTruthy();
+    expect(box.isolate(die)).toBe(u); // once per die
+  });
+
+  test('replaceInFlight moves an isolated die onto a rebuilt isolated material, keeping its fx uniforms', async () => {
+    const { renderer, physics, box } = await withEffects();
+    box.roll([{ type: 'd20', value: 20, fx: fx('color-shift', { duration: 10000 }) }]);
+    const die = box._rolls.values().next().value.dice[0];
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+    const iso = die.inner.material;
+    const tint = iso.userData.uniforms.uFxTint;
+    const dispose = vi.spyOn(iso, 'dispose');
+    box.invalidateMaterials({ replaceInFlight: true });
+    expect(die.inner.material).not.toBe(iso);
+    expect(die.inner.material.userData.uniforms).not.toBe(iso.userData.uniforms);
+    expect(die.inner.material.userData.uniforms.uFxTint).toBe(tint);
+    expect(dispose).toHaveBeenCalled();
+  });
+
+  test('a throwing effect layer warns and never blocks landing; onLandedFx still runs', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onLandedFx = vi.fn();
+    const effects = {
+      play: vi.fn(() => {
+        throw new Error('x');
+      }),
+      update: () => false,
+      releaseDie() {},
+      clear() {},
+    };
+    const { renderer, physics, box } = setup({ effects, onLandedFx });
+    const a = settled(box.roll([{ type: 'd20', value: 20, fx: fx('long') }]).landed);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+    await flushMicrotasks();
+    expect(a()).toBe(true);
+    expect(onLandedFx).toHaveBeenCalledTimes(1);
+    expect(effects.play).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  describe('slow motion', () => {
+    const slow = [{ ruleId: 'r', effect: null, sound: null, macro: null, slowMotion: true }];
+    test('a slow-motion roll ramps its playback when the final chunk arrives; others do not', () => {
+      const { physics, box } = setup();
+      box.roll([{ type: 'd20', value: 20, fx: slow }]);
+      box.roll([{ type: 'd20', value: 20 }]);
+      physics.flush();
+      const [a, b] = [...box._rolls];
+      expect(a.playback.speedAt(59)).toBeCloseTo(0.35);
+      expect(b.playback.speedAt(59)).toBe(1);
+    });
+    test('the landing watchdog allows for the slower playback', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { physics, box } = setup();
+      box.roll([{ type: 'd20', value: 20, fx: slow }]);
+      box.roll([{ type: 'd20', value: 20 }]);
+      physics.flush();
+      await flushMicrotasks();
+      vi.advanceTimersByTime(4500); // past the plain roll's 59 steps + grace
+      expect(box.activeRolls).toBe(1);
+      expect([...box._rolls][0].slowMotion).toBe(true);
+      vi.advanceTimersByTime(10000);
+      expect(box.activeRolls).toBe(0);
+      err.mockRestore();
+    });
+    test('the slow-motion roll still lands', async () => {
+      const { renderer, physics, box } = setup();
+      const isLanded = settled(box.roll([{ type: 'd20', value: 20, fx: slow }]).landed);
+      physics.flush();
+      renderer.tick(0);
+      renderer.tick(2000);
+      await flushMicrotasks();
+      expect(isLanded()).toBe(false);
+      renderer.tick(4000);
+      await flushMicrotasks();
+      expect(isLanded()).toBe(true);
+    });
   });
 });

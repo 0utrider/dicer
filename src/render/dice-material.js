@@ -20,6 +20,9 @@ import {
   RESIN,
   INTERIOR_HOOK,
   VEIN_SCALE,
+  FX_PARS,
+  FX_COLOR,
+  FX_EMISSIVE,
   bodyChunks,
   bodyDefines,
 } from './shaders/bodies.js';
@@ -40,6 +43,7 @@ export const DEFAULT_FLAGS = Object.freeze({
   interiors: true,
   engraving: true,
   glow: true,
+  effects: true,
   interiorSteps: 32,
   safe: false,
 });
@@ -242,7 +246,15 @@ export function createDiceMaterial(
     // Dicer body chunk (resin refraction, border, marble, pearl, brushed/antique), no
     // interior, glow or engraving recess. The label colour mask stays so numbers read.
     a = { ...a, body: { ...a.body, type: 'opaque' }, interior: { ...a.interior, type: 'none' } };
-    f = { ...f, interiors: false, engraving: false, glow: false, interiorSteps: 0, safe: true };
+    f = {
+      ...f,
+      interiors: false,
+      engraving: false,
+      glow: false,
+      effects: false,
+      interiorSteps: 0,
+      safe: true,
+    };
   }
   const key = programKey(a, f);
 
@@ -287,12 +299,24 @@ export function createDiceMaterial(
     uShapeRot: {
       value: new THREE.Matrix3().fromArray(shape?.kind === 'coin' ? SHAPE_ROT.coin : SHAPE_ROT.die),
     },
+    // Trigger effects (die-effects.js) write these on an isolated material; read only in fx1
+    // programs, always present so an effect never needs to check.
+    uFxTint: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uFxFlare: { value: new THREE.Vector3(0, 0, 0) },
   };
 
   // Keep three's own STANDARD/PHYSICAL defines.
   if (f.engraving) material.defines.DICER_ENGRAVE = '';
   Object.assign(material.defines, bodyDefines(a, f));
   const chunks = { ...bodyChunks(body, a.body.finish) };
+  if (f.effects) {
+    chunks.pars = `${chunks.pars}
+${FX_PARS}`;
+    chunks.colorPost = `${chunks.colorPost}
+${FX_COLOR}`;
+    chunks.emissive = `${chunks.emissive}
+${FX_EMISSIVE}`;
+  }
   if (mode === 'march') {
     material.defines.DICER_INTERIOR = '';
     material.defines.DICER_STEPS = f.interiorSteps;
@@ -317,9 +341,44 @@ ${interior.pars}`;
   }
   material.userData.uniforms = uniforms;
   material.userData.programKey = cacheKey;
-  material.onBeforeCompile = (shader) => patchShader(shader, uniforms, chunks);
+  // The material's own uniforms: an isolated clone (isolateMaterial) binds its copies.
+  material.onBeforeCompile = function (shader) {
+    patchShader(shader, this?.userData?.uniforms ?? uniforms, chunks);
+  };
   material.customProgramCacheKey = () => `dicer-${cacheKey}`;
   return material;
+}
+
+/** A uniform value copy: textures are shared (never copied), vectors/colours/matrices cloned. */
+function copyValue(v) {
+  if (Array.isArray(v)) return v.map(copyValue);
+  if (v && typeof v === 'object' && !v.isTexture && typeof v.clone === 'function') return v.clone();
+  return v;
+}
+
+/**
+ * A clone of a die material with its own copies of userData.uniforms, for one die whose
+ * uniforms an effect writes (DiceBox.isolate). Unlike cloneForFade (which shares userData),
+ * nothing it writes reaches the dice sharing the original. Same program (cache key, defines,
+ * compile patch, which binds the clone's uniforms through `this`). Textures stay shared: dispose
+ * the clone with material.dispose() only, never its label texture.
+ */
+export function isolateMaterial(material) {
+  const userData = material.userData;
+  material.userData = {};
+  let clone;
+  try {
+    clone = material.clone();
+  } finally {
+    material.userData = userData;
+  }
+  const uniforms = {};
+  for (const [k, u] of Object.entries(userData.uniforms ?? {})) uniforms[k] = { value: copyValue(u.value) };
+  clone.userData = { ...userData, uniforms, isolated: true };
+  clone.onBeforeCompile = material.onBeforeCompile;
+  clone.customProgramCacheKey = material.customProgramCacheKey;
+  clone.defines = { ...material.defines };
+  return clone;
 }
 
 /**

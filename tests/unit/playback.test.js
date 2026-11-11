@@ -134,3 +134,54 @@ test('takeEvents hands each event once, in playhead order, none while waiting', 
   expect(p.update(9000)).toBe('landed');
   expect(p.takeEvents()).toEqual([]);
 });
+
+describe('slow-motion speed ramp (Plan 4 Task 8)', () => {
+  // 120 frames; the ramp eases over frames 60..90 and holds 0.35 from 90 to landing (119).
+  const make = () => {
+    const d = die();
+    const p = new Playback({ dice: [d], area });
+    for (let c = 0; c < 4; c++) p.push(chunk(c * 30, 30, 120, c === 3));
+    return p;
+  };
+  const STEP_MS = 1000 / 60;
+  test('full speed before the ramp, ~0.35x in the held range, and the landing frame is still reached', () => {
+    const p = make();
+    p.setSpeedRamp({ fromStep: 90 });
+    p.update(0);
+    p.update(30 * STEP_MS); // 30 steps at speed 1
+    expect(p._playhead).toBeCloseTo(30, 5);
+    // through the ramp, into the held range
+    let t = 30 * STEP_MS;
+    while (p._playhead < 95) p.update((t += STEP_MS));
+    const ph0 = p._playhead;
+    p.update((t += 10 * STEP_MS));
+    expect((p._playhead - ph0) / 10).toBeCloseTo(0.35, 2);
+    let state = 'playing';
+    for (let i = 0; i < 2000 && state !== 'landed'; i++) state = p.update((t += STEP_MS));
+    expect(state).toBe('landed');
+    expect(p.landed).toBe(true);
+  });
+  test('the ramp eases (speed strictly between 1 and toSpeed mid-ramp)', () => {
+    const p = make();
+    p.setSpeedRamp({ fromStep: 90, toSpeed: 0.5 });
+    expect(p.speedAt(10)).toBe(1);
+    expect(p.speedAt(60)).toBe(1);
+    expect(p.speedAt(75)).toBeGreaterThan(0.5);
+    expect(p.speedAt(75)).toBeLessThan(1);
+    expect(p.speedAt(90)).toBe(0.5);
+    expect(p.speedAt(119)).toBe(0.5);
+  });
+  test('durationMs accounts for the slower range (used by the landing watchdog)', () => {
+    const p = make();
+    const plain = p.durationMs(119);
+    expect(plain).toBeCloseTo(119 * STEP_MS, 5);
+    p.setSpeedRamp({ fromStep: 90 });
+    const slow = p.durationMs(119);
+    // at least the true time: 60 steps at 1, a 30-step ease, 29 held steps at 0.35
+    expect(slow).toBeGreaterThanOrEqual((60 + 30 / 0.675 + 29 / 0.35) * STEP_MS * 0.99);
+  });
+  test('without a ramp nothing changes', () => {
+    const p = make();
+    expect(p.speedAt(100)).toBe(1);
+  });
+});

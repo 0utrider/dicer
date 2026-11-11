@@ -280,6 +280,26 @@ export const GLOW_EMISSIVE = /* glsl */ `
 `;
 
 /**
+ * Die fx uniform block (trigger effects, Plan 4), injected only when flags.effects (program key
+ * fx1). Both default to zero, so a die with no running effect looks unchanged.
+ * uFxTint: rgb target, a its share; leans the body (not the numbers) towards the colour, plus
+ * a quarter of it as emission so the shift reads on metal and resin too (whose look does not
+ * come from diffuseColor). uFxFlare: colour x strength, added to the numbers' emission.
+ */
+export const FX_PARS = /* glsl */ `
+uniform vec4 uFxTint;
+uniform vec3 uFxFlare;
+`;
+/** Fragment shader: after the colour chunks (dcMask is set). */
+export const FX_COLOR = /* glsl */ `
+	diffuseColor.rgb = mix( diffuseColor.rgb, uFxTint.rgb, uFxTint.a * ( 1.0 - dcMask ) );
+`;
+/** Fragment shader: after `#include <emissivemap_fragment>`. */
+export const FX_EMISSIVE = /* glsl */ `
+	totalEmissiveRadiance += uFxFlare * dcMask + uFxTint.rgb * ( 0.25 * uFxTint.a * ( 1.0 - dcMask ) );
+`;
+
+/**
  * Fragment shader: after `#include <transmission_fragment>` (empty: resin has transmission 0),
  * i.e. after totalDiffuse/totalSpecular and before outgoingLight, so the reflection
  * (totalSpecular, sheen, clearcoat Fresnel) stays on top.

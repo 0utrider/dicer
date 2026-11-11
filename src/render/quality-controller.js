@@ -192,6 +192,7 @@ export function createQualityController({
         interiors: getSetting('interiors'),
         engraving: getSetting('engraving'),
         glow: getSetting('glow'),
+        effects: getSetting('effects'),
       };
       return flagsFor(TIERS[tier], settings, { safe });
     },

@@ -247,6 +247,7 @@ test('flags(): interiorSteps comes from the tier; interiors is the client settin
     interiors: true,
     engraving: true,
     glow: true,
+    effects: true,
     interiorSteps: 32,
     safe: false,
   });
@@ -257,9 +258,13 @@ test('flags(): interiorSteps comes from the tier; interiors is the client settin
     interiors: false,
     engraving: false,
     glow: false,
+    effects: true,
     interiorSteps: 32,
     safe: false,
   });
+  values.effects = false;
+  expect(qc.flags().effects).toBe(false);
+  values.effects = true;
   values.interiors = true;
   values.qualityCap = 'low';
   qc.refresh();

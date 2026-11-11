@@ -2,6 +2,10 @@
 
 export const TIER_ORDER = Object.freeze(['low', 'medium', 'high', 'ultra']);
 
+/**
+ * particleScale scales particle counts (Task 9); effectBudget caps the summed `cost` of the
+ * effects running at once (effect-layer.js).
+ */
 export const TIERS = Object.freeze({
   low: Object.freeze({
     pixelRatio: 1,
@@ -9,6 +13,8 @@ export const TIERS = Object.freeze({
     transmissionScale: 0.5,
     envResolution: 128,
     anisotropy: false,
+    particleScale: 0.25,
+    effectBudget: 2,
   }),
   medium: Object.freeze({
     pixelRatio: 1.25,
@@ -16,6 +22,8 @@ export const TIERS = Object.freeze({
     transmissionScale: 0.5,
     envResolution: 256,
     anisotropy: true,
+    particleScale: 0.5,
+    effectBudget: 4,
   }),
   high: Object.freeze({
     pixelRatio: 1.5,
@@ -23,6 +31,8 @@ export const TIERS = Object.freeze({
     transmissionScale: 1,
     envResolution: 256,
     anisotropy: true,
+    particleScale: 1,
+    effectBudget: 8,
   }),
   ultra: Object.freeze({
     pixelRatio: 2,
@@ -30,6 +40,8 @@ export const TIERS = Object.freeze({
     transmissionScale: 1,
     envResolution: 512,
     anisotropy: true,
+    particleScale: 1.5,
+    effectBudget: 12,
   }),
 });
 
@@ -60,15 +72,19 @@ export function tierFromProbe({ msPerFrame }) {
  * draws the interior fake (a body tint) and programKey maps it to the 'none' program.
  * P2-R12 `safe`: every feature off and the body drawn as plain opaque physical material.
  * @param {{interiorSteps: number}} tierConfig a TIERS entry
- * @param {{interiors?: unknown, engraving?: unknown, glow?: unknown}} settings
+ * @param {{interiors?: unknown, engraving?: unknown, glow?: unknown, effects?: unknown}} settings
  * @param {{safe?: boolean}} [o]
  */
 export function flagsFor(tierConfig, settings, { safe = false } = {}) {
-  if (safe) return { interiors: false, engraving: false, glow: false, interiorSteps: 0, safe: true };
+  if (safe) {
+    return { interiors: false, engraving: false, glow: false, effects: false, interiorSteps: 0, safe: true };
+  }
   return {
     interiors: !!settings.interiors,
     engraving: !!settings.engraving,
     glow: !!settings.glow,
+    // Trigger effects (the die fx uniform block): on unless the client setting is off.
+    effects: settings.effects !== false,
     interiorSteps: tierConfig.interiorSteps,
     safe: false,
   };

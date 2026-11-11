@@ -130,6 +130,10 @@
         "Name": "Slow motion",
         "Hint": "Slow the landing down on this screen when a die celebrates or fumbles. Other players' timing is never affected."
       },
+      "screenShake": {
+        "Name": "Screen shake",
+        "Hint": "Let effects shake the dice briefly. Only the dice move, never the map. Off when your system asks for reduced motion."
+      },
       "triggerMacros": {
         "Name": "Trigger macros",
         "Hint": "Let trigger rules run a macro when they fire. The macro runs once, on the roller's client."

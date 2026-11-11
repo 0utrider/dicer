@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
-import { createDiceMaterial, chainShaderHook, DEFAULT_FLAGS } from '../render/dice-material.js';
+import {
+  createDiceMaterial,
+  chainShaderHook,
+  isolateMaterial,
+  DEFAULT_FLAGS,
+} from '../render/dice-material.js';
 import {
   DEFAULT_APPEARANCE,
   appearanceKey,
@@ -10,7 +15,7 @@ import {
 } from '../look/appearance.js';
 import { GHOST_APPEARANCE } from '../compat/colorset-map.js';
 import { modelRotationFor } from '../compat/dsn-orientation.js';
-import { Playback } from './playback.js';
+import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 
@@ -120,6 +125,7 @@ export class DiceBox {
     onImpact = () => {},
     getSurface = () => 'felt',
     onLandedFx = () => {},
+    effects = null,
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -150,6 +156,10 @@ export class DiceBox {
     // die): plays the result sound and macro (main.js). rollKey is one object per roll.
     this._onLandedFx = onLandedFx;
     this._fxWarned = false;
+    // The effect layer (effect-layer.js), or null: plays each landed die's effects and keeps
+    // the loop alive while they run.
+    this._effects = effects;
+    this._effectsWarned = false;
     this._rollSeq = 0;
     this._systemWarned = new Set(); // system id|kind: one warning each
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
@@ -236,7 +246,14 @@ export class DiceBox {
           roll.playback.push(chunk);
           pushed = true;
           roll.received += 1;
-          if (chunk.done) clearTimeout(roll.doneTimer);
+          if (chunk.done) {
+            clearTimeout(roll.doneTimer);
+            // Only this client's playback: eases down over the last 60 steps before landing.
+            if (roll.slowMotion) {
+              const settledStep = roll.playback.frames - 1;
+              roll.playback.setSpeedRamp({ fromStep: settledStep - RAMP_STEPS });
+            }
+          }
           if (roll.received === 1) {
             clearTimeout(roll.firstChunkTimer);
             // The loop starts only once there is a frame to draw (zero idle GPU work).
@@ -260,7 +277,46 @@ export class DiceBox {
   /** Remove every die now and resolve every pending promise. */
   clear() {
     for (const roll of [...this._rolls]) this.#finish(roll);
+    this.#effectsCall((e) => e.clear());
     this._renderer.hide?.();
+  }
+
+  /**
+   * Gives a die of a live roll its own material (isolateMaterial: its own uniform copies), so a
+   * die effect can write its fx uniforms without touching the dice that share its look.
+   * Returns the die's uniforms, or null (a ghost, a model die, a fading or finished roll). The
+   * isolated material is freed with the die at #finish; the fade clones it.
+   */
+  isolate(die) {
+    if (!die || die.ghost || die.model) return null;
+    if (die.isolated) return die.isolated.userData.uniforms;
+    const roll = this.#rollOf(die);
+    if (!roll || roll.phase === 'fading') return null;
+    const base = die.inner?.material;
+    if (!base?.userData?.uniforms) return null;
+    const iso = isolateMaterial(base);
+    die.isolated = iso;
+    die.inner.material = iso;
+    return iso.userData.uniforms;
+  }
+
+  #rollOf(die) {
+    for (const roll of this._rolls) if (roll.dice.includes(die)) return roll;
+    return null;
+  }
+
+  /** Calls the effect layer; a throwing layer warns once and never fails a roll. */
+  #effectsCall(fn) {
+    if (!this._effects) return undefined;
+    try {
+      return fn(this._effects);
+    } catch (err) {
+      if (!this._effectsWarned) {
+        this._effectsWarned = true;
+        console.warn('dicer: the effect layer threw', err);
+      }
+      return undefined;
+    }
   }
 
   /** Clear, stop listening, then free the cached geometries and every live material. */
@@ -379,18 +435,31 @@ export class DiceBox {
         roll.materials.add(mat);
         this.#retain(mat);
       }
+      const own = die.isolated ? this.#reisolate(die, mat) : mat;
       if (roll.fades) {
         const prev = roll.fades[i];
-        const fade = cloneForFade(mat);
+        const fade = cloneForFade(own);
         fade.opacity = prev.opacity;
         roll.fades[i] = fade;
         die.inner.material = fade;
         prev.dispose();
       } else {
-        die.inner.material = mat;
+        die.inner.material = own;
       }
     });
     for (const m of old) this.#release(m);
+  }
+
+  /** A new isolated clone of `mat` for an isolated die, keeping the fx uniforms its effects hold. */
+  #reisolate(die, mat) {
+    const prev = die.isolated;
+    const iso = isolateMaterial(mat);
+    const was = prev.userData.uniforms;
+    const now = iso.userData.uniforms;
+    for (const k of ['uFxTint', 'uFxFlare']) if (was[k]) now[k] = was[k];
+    prev.dispose();
+    die.isolated = iso;
+    return iso;
   }
 
   #geometry(type, style) {
@@ -804,8 +873,9 @@ export class DiceBox {
       return;
     }
     const steps = Number.isFinite(settledStep) ? settledStep : MAX_STEPS;
-    const speed = roll.playback?.speed || 1;
-    const ms = Math.ceil((steps * STEP_SECONDS * 1000) / speed) + LANDING_GRACE_MS;
+    // durationMs includes a slow-motion ramp (it never undershoots one).
+    const play = roll.playback ? roll.playback.durationMs(steps) : steps * STEP_SECONDS * 1000;
+    const ms = Math.ceil(play) + LANDING_GRACE_MS;
     roll.landingTimer = setTimeout(
       () => this.#fail(roll, new Error(`dice did not land within ${ms} ms of physics done`)),
       ms,
@@ -831,7 +901,10 @@ export class DiceBox {
     }, this._timeBeforeHide() ?? DEFAULT_LINGER_MS);
   }
 
-  /** onLandedFx per landed die with fx; a throwing listener warns once and never blocks landing. */
+  /**
+   * onLandedFx (sound, macro) and the effect layer per landed die with fx; a throwing listener
+   * or layer warns once and never blocks landing.
+   */
   #fireFx(roll) {
     for (const die of roll.dice) {
       if (!die.fx || die.ghost) continue;
@@ -839,10 +912,12 @@ export class DiceBox {
       try {
         this._onLandedFx(die, die.fx, roll.fxKey);
       } catch (err) {
-        if (this._fxWarned) continue;
-        this._fxWarned = true;
-        console.warn('dicer: a landed-effect listener threw', err);
+        if (!this._fxWarned) {
+          this._fxWarned = true;
+          console.warn('dicer: a landed-effect listener threw', err);
+        }
       }
+      this.#effectsCall((e) => e.play(die, die.fx));
     }
   }
 
@@ -881,9 +956,11 @@ export class DiceBox {
         this.#fail(roll, err);
       }
     }
+    // Effects outlive their roll (a burst may still be settling): the loop runs while they do.
+    const effects = this.#effectsCall((e) => e.update(now)) === true;
     // A roll still waiting for its assets draws nothing: it restarts the loop when they are in.
     for (const roll of this._rolls) if (!roll.assetsPending) return true;
-    return false;
+    return effects;
   }
 
   /** Hands the impacts the playhead just crossed to onImpact; a sound never fails a roll. */
@@ -928,6 +1005,11 @@ export class DiceBox {
     const scene = this._renderer.scene;
     for (const die of roll.dice) {
       scene.remove(die.outer);
+      this.#effectsCall((e) => e.releaseDie(die));
+      if (die.isolated) {
+        die.isolated.dispose(); // its textures are the shared material's: not disposed here
+        die.isolated = null;
+      }
       if (!die.spawned) continue;
       die.spawned = false;
       this.#fireEvent(die, DICE_EVENT.DESPAWN, {

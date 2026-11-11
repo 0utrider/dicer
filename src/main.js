@@ -28,6 +28,7 @@ import {
   moduleRulesOf,
 } from './effects/fx-resolver.js';
 import { KNOWN_DAMAGE_TYPES } from './effects/roll-context.js';
+import { createEffectLayer } from './effects/effect-layer.js';
 import { registerNoticeSetting, registerSettings, getSetting } from './settings.js';
 
 let dormant = false;
@@ -42,6 +43,7 @@ let registry = null; // the DSN registry, once activate() made it
 let faceTextures = null; // shared by DiceBox and preloadPresets (one cache)
 let dice3d = null; // game.dice3d, once activate() made it
 let soundEngine = null; // impact and result sounds; its synth is a lazy chunk
+let effectLayer = null; // trigger effects; its library is a lazy chunk
 
 /** The table surface the dice sound on: the client's override unless it is 'world'. */
 export function soundSurface(get) {
@@ -74,6 +76,14 @@ function knownDamageTypesOf(reg) {
 function preloadSounds() {
   if (!soundEngine || getSetting('sounds') === false) return;
   const run = () => soundEngine?.preload();
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
+  else setTimeout(run, 200);
+}
+
+/** Fetches the effects library in an idle callback, so it is in before the first effect. */
+function preloadEffects() {
+  if (!effectLayer || getSetting('effects') === false) return;
+  const run = () => effectLayer?.prefetch();
   if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
   else setTimeout(run, 200);
 }
@@ -249,6 +259,7 @@ function onLookChange(key, value) {
     mirrorLook(value);
     dice3d?._releasePreloads(); // preloadPresets holds faces until the look changes
   }
+  if (key === 'effects' && value) preloadEffects();
   // Read per roll; no cached material depends on them.
   if (key === 'shadows' || key === 'presetFaces' || key === 'presetModels') return;
   refreshMaterials();
@@ -333,7 +344,17 @@ Hooks.once('ready', async () => {
       faceTextures = createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont });
       soundEngine?.dispose();
       soundEngine = createSoundEngine({ getSetting: (k) => getSetting(k) });
-      return new DiceBox({
+      let box = null;
+      effectLayer?.dispose();
+      effectLayer = createEffectLayer({
+        scene: renderer.scene,
+        camera: renderer.camera,
+        canvas: renderer.canvas, // screen shake moves the dice canvas only
+        getTier: () => quality.config,
+        getSetting,
+        isolate: (die) => box?.isolate(die) ?? null,
+      });
+      box = new DiceBox({
         renderer,
         physics,
         atlas,
@@ -354,7 +375,9 @@ Hooks.once('ready', async () => {
         onImpact: (e) => soundEngine?.impact(e),
         getSurface: () => soundSurface(getSetting),
         onLandedFx: (die, fx, rollKey) => landedFx(die, fx, rollKey),
+        effects: effectLayer,
       });
+      return box;
     },
     activate: ({ renderer, diceBox: box }) => {
       diceBox = box;
@@ -441,6 +464,8 @@ Hooks.once('ready', async () => {
     dice3d = null;
     soundEngine?.dispose();
     soundEngine = null;
+    effectLayer?.dispose();
+    effectLayer = null;
     stopWatchingArea?.();
     stopWatchingArea = null;
     api?._dispose();
@@ -451,4 +476,5 @@ Hooks.once('ready', async () => {
   // the engine is already up, and announceReady never rejects.
   announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady });
   preloadSounds();
+  preloadEffects();
 });
