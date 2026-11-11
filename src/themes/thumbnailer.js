@@ -6,7 +6,7 @@ import { buildScene } from '../render/scene.js';
 import { configureRenderer } from '../render/renderer.js';
 import { createDiceMaterial } from '../render/dice-material.js';
 import { TIERS, flagsFor } from '../render/quality.js';
-import { buildDieGeometry } from '../core/chamfer.js';
+import { buildDieGeometry, snapEdgeRadius } from '../core/chamfer.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { restingQuaternion, minY } from '../core/resting.js';
 import { appearanceKey } from '../look/appearance.js';
@@ -103,10 +103,11 @@ export function createThumbnailer({
   // that uses it and freed when the last one lets go (the same keys as DiceBox's cache).
   const geometries = new Map(); // key -> { geometry, refs }
   function acquireGeometry(shape, shapeType, appearance) {
-    const key = `${shapeType}|${appearance.edges?.radius ?? 0.5}`;
+    const radius = snapEdgeRadius(appearance.edges?.radius);
+    const key = `${shapeType}|${radius}`;
     let entry = geometries.get(key);
     if (!entry) {
-      const geometry = buildDieGeometry(shape, { radius: appearance.edges?.radius });
+      const geometry = buildDieGeometry(shape, { radius });
       geometry.computeBoundingSphere();
       entry = { geometry, refs: 0 };
       geometries.set(key, entry);
@@ -171,19 +172,30 @@ export function createThumbnailer({
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
     const shapeType = dieType === 'd100' ? 'd10' : dieType;
     const shape = getShape(shapeType);
-    const held = acquireGeometry(shape, shapeType, appearance);
-    const geometry = held.geometry;
     const labels = shape.values.map((v) => labelFor(shapeType, v));
     const api = sceneApi; // dispose() may null the module state while the blob is pending
     const cam = camera;
     const cvs = canvas;
     const rnd = renderer;
     const material = createDiceMaterial(appearance, atlas, shape, labels, flags);
-    const mesh = new THREE.Mesh(geometry, material);
-    const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
-    mesh.quaternion.copy(restingQuaternion(shape, Math.max(0, face)));
-    mesh.position.y = -minY(geometry, mesh.quaternion);
-    const shadow = api.shadowFor({ position: mesh.position, geometry });
+    // The geometry is acquired only once the material exists; anything after it that throws
+    // gives it back.
+    const held = acquireGeometry(shape, shapeType, appearance);
+    const geometry = held.geometry;
+    let mesh;
+    let shadow;
+    try {
+      mesh = new THREE.Mesh(geometry, material);
+      const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
+      mesh.quaternion.copy(restingQuaternion(shape, Math.max(0, face)));
+      mesh.position.y = -minY(geometry, mesh.quaternion);
+      shadow = api.shadowFor({ position: mesh.position, geometry });
+    } catch (err) {
+      material.userData?.uniforms?.uLabels?.value?.dispose();
+      material.dispose();
+      held.release();
+      throw err;
+    }
     api.scene.add(mesh);
     busy = true;
     try {
@@ -282,14 +294,23 @@ export function createThumbnailer({
       if (!renderer || broken) return false;
       const shapeType = dieType === 'd100' ? 'd10' : dieType;
       const shape = getShape(shapeType);
-      const held = acquireGeometry(shape, shapeType, appearance);
-      const geometry = held.geometry;
       const labels = shape.values.map((v) => labelFor(shapeType, v));
       const material = createDiceMaterial(appearance, atlas, shape, labels, flags);
-      const mesh = new THREE.Mesh(geometry, material);
-      const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
-      const baseQ = restingQuaternion(shape, Math.max(0, face)).clone();
-      mesh.position.y = -minY(geometry, baseQ);
+      const held = acquireGeometry(shape, shapeType, appearance);
+      const geometry = held.geometry;
+      let mesh;
+      let baseQ;
+      try {
+        mesh = new THREE.Mesh(geometry, material);
+        const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
+        baseQ = restingQuaternion(shape, Math.max(0, face)).clone();
+        mesh.position.y = -minY(geometry, baseQ);
+      } catch (err) {
+        material.userData?.uniforms?.uLabels?.value?.dispose();
+        material.dispose();
+        held.release();
+        throw err;
+      }
       res = { mesh, material, geometry, release: held.release, baseQ, y: mesh.position.y };
       return true;
     }

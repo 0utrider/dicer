@@ -1,6 +1,6 @@
 import { getShape } from '../../src/core/dice-shapes.js';
 import { faceNormals } from '../../src/core/face-reader.js';
-import { buildDieGeometry, minkowskiHull } from '../../src/core/chamfer.js';
+import { buildDieGeometry, minkowskiHull, snapEdgeRadius } from '../../src/core/chamfer.js';
 
 const ALL = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 
@@ -300,4 +300,14 @@ test('an unknown radius snaps to the nearest step; the physics hull ignores radi
   expect(a).toEqual(buildDieGeometry(s, { radius: 0.5 }).getAttribute('position').array);
   expect(minkowskiHull(s, { radius: 1 })).toEqual(minkowskiHull(s));
   expect(minkowskiHull(s, { radius: 0 })).toEqual(minkowskiHull(s));
+});
+
+test('a non-numeric radius falls back to the default 0.5, not sharp', () => {
+  const s = getShape('d6');
+  const rounded = buildDieGeometry(s, { radius: 0.5 }).getAttribute('position').array;
+  for (const bad of [null, 'abc', NaN, Infinity, {}, true])
+    expect(buildDieGeometry(s, { radius: bad }).getAttribute('position').array).toEqual(rounded);
+  expect(snapEdgeRadius(undefined)).toBe(0.5);
+  expect(snapEdgeRadius(0.6)).toBe(0.5);
+  expect(snapEdgeRadius(0.9)).toBe(1);
 });

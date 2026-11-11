@@ -338,12 +338,18 @@ function buildCoin(chamfer, segs, b) {
   }
 }
 
+/** The nearest edge step of a radius; anything that is not a finite number is the default 0.5. */
+export function snapEdgeRadius(radius) {
+  const r = Number(radius);
+  if (radius === null || typeof radius === 'boolean' || !Number.isFinite(r)) return 0.5;
+  const keys = Object.keys(EDGE_RADIUS_STEPS).map(Number);
+  return keys.reduce((a, k) => (Math.abs(k - r) < Math.abs(a - r) ? k : a), keys[0]);
+}
+
 function resolveOptions(opts) {
   if (opts.radius !== undefined) {
     // The nearest step; a radius wins over style.
-    const keys = Object.keys(EDGE_RADIUS_STEPS).map(Number);
-    const r = Number(opts.radius);
-    const step = keys.reduce((a, k) => (Math.abs(k - r) < Math.abs(a - r) ? k : a), keys[0]);
+    const step = snapEdgeRadius(opts.radius);
     const def = EDGE_RADIUS_STEPS[step];
     return {
       style: step === 0 ? 'sharp' : 'rounded',
