@@ -1456,12 +1456,19 @@ describe('impact sounds', () => {
     ]);
     physics.flush();
     renderer.tick(0);
-    renderer.tick(800); // playhead ~48: only the frame-45 impact
+    renderer.tick(800); // playhead ~48: only die 1's frame-45 impact
     expect(onImpact).toHaveBeenCalledTimes(1);
     expect(onImpact.mock.calls[0][0].surface).toBe('felt');
+    renderer.tick(950); // playhead ~57: the ghost die 0's frame-55 impact
+    expect(onImpact).toHaveBeenCalledTimes(2);
+    const ghostHit = onImpact.mock.calls[1][0];
+    expect(ghostHit).toMatchObject({ other: -2, speed: 20 });
+    expect(ghostHit.dieKey.endsWith(':0')).toBe(true);
+    expect(ghostHit.material).toBe(box._rolls.values().next().value.dice[0].soundMaterial);
+    expect(ghostHit.dieKey).not.toBe(onImpact.mock.calls[0][0].dieKey);
     box.clear();
     renderer.tick(1000);
-    expect(onImpact).toHaveBeenCalledTimes(1);
+    expect(onImpact).toHaveBeenCalledTimes(2);
   });
 
   test('a throwing onImpact never fails the roll', () => {
