@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import * as THREE from 'three';
-import { createWarmup } from '../../src/render/warmup.js';
+import { createWarmup, createAppearanceRewarm } from '../../src/render/warmup.js';
 import { DiceRenderer } from '../../src/render/renderer.js';
 
 function setup() {
@@ -69,4 +69,56 @@ test('calls during a pass coalesce into one more pass', async () => {
 test('no box or renderer yet: nothing is acquired', async () => {
   const warmUp = createWarmup({ getBox: () => null, getRenderer: () => null });
   await expect(warmUp()).resolves.toBeUndefined();
+});
+
+describe('re-warm after a GM push (M-2 debt)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const rig = () => {
+    const { fake, box, released, warmUp } = setup();
+    fake.compileAsync = vi.fn(async () => {});
+    const rewarm = vi.fn(() => warmUp());
+    const rw = createAppearanceRewarm({ rewarm, getUserId: () => 'me' });
+    return { rw, rewarm, box, released };
+  };
+  const push = { flags: { dicer: { appearance: { x: 1 } } } };
+
+  test('two flag updates within 500 ms give one warm-up, acquired and released once', async () => {
+    const { rw, box, released } = rig();
+    rw.onUpdateUser({ id: 'me' }, push);
+    await vi.advanceTimersByTimeAsync(300);
+    rw.onUpdateUser({ id: 'me' }, push);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(box.acquireWarmup).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(box.acquireWarmup).toHaveBeenCalledTimes(1);
+    expect(released).toEqual([0]);
+  });
+
+  test("another user's flag update, or another flag, does nothing", async () => {
+    const { rw, rewarm } = rig();
+    rw.onUpdateUser({ id: 'other' }, push);
+    rw.onUpdateUser({ id: 'me' }, { flags: { dicer: { themes: [] } } });
+    rw.onUpdateUser({ id: 'me' }, { name: 'x' });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(rewarm).not.toHaveBeenCalled();
+  });
+
+  test('clearing the flag counts, and worldDefaultTheme / lockPlayerLooks changes are debounced with it', async () => {
+    const { rw, rewarm } = rig();
+    rw.onUpdateUser({ id: 'me' }, { flags: { dicer: { '-=appearance': null } } });
+    rw.onSettingChange();
+    rw.onSettingChange();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(rewarm).toHaveBeenCalledTimes(1);
+  });
+
+  test('dispose cancels a pending re-warm', async () => {
+    const { rw, rewarm } = rig();
+    rw.onSettingChange();
+    rw.dispose();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(rewarm).not.toHaveBeenCalled();
+  });
 });

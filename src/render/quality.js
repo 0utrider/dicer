@@ -96,6 +96,8 @@ const BASELINE_FRAMES = 60;
 /** P2-R13: a frame is slow only above this multiple of the baseline (and above the budget). */
 const BASELINE_FACTOR = 1.3;
 const MAX_INTERVAL_MS = 100;
+/** P2-R13 debt: the frame budget a GPU timer is judged against (TARGETS.frameP95Ms, 60 Hz). */
+const GPU_BUDGET_MS = 16.7;
 
 /**
  * Drops a tier (session only) when frame time stays over budget. Call frame(ms, sample) once
@@ -108,7 +110,10 @@ const MAX_INTERVAL_MS = 100;
  * so a real sustained slowdown cannot normalise itself away mid-streak; the ring keeps
  * learning, so a cadence change costs at most one drop. The baseline survives reset() (it
  * describes the display and host, not the tier). With a GPU time (timer query) the frame
- * time is max(cpu, gpu) instead of the interval-inflated ms: Dicer's own cost.
+ * time is max(cpu, gpu) instead of the interval-inflated ms: Dicer's own cost. That cost is
+ * judged directly, with no baseline: the p95 of the last `window` post-grace frames over
+ * gpuBudgetMs (16.7) drops a tier, so a machine that is GPU-bound from its first roll (a
+ * steady 20 ms GPU frame at a 60 Hz cadence the baseline would excuse) still drops.
  */
 export class AdaptiveQuality {
   #budget;
@@ -122,9 +127,12 @@ export class AdaptiveQuality {
   #ringSize = 0;
   #ringNext = 0;
   #frozen = null;
+  #gpuBudget;
+  #gpuFrames = [];
 
-  constructor({ budgetMs = 20, window = 30, onDrop } = {}) {
+  constructor({ budgetMs = 20, window = 30, gpuBudgetMs = GPU_BUDGET_MS, onDrop } = {}) {
     this.#budget = budgetMs;
+    this.#gpuBudget = gpuBudgetMs;
     this.#window = window;
     this.#onDrop = onDrop;
   }
@@ -152,11 +160,17 @@ export class AdaptiveQuality {
       this.#ringNext = (this.#ringNext + 1) % BASELINE_FRAMES;
       this.#ringSize = Math.min(this.#ringSize + 1, BASELINE_FRAMES);
     }
-    if (Number.isFinite(gpu) && gpu >= 0) ms = Math.max(gpu, Number.isFinite(cpu) ? cpu : 0);
+    const timed = Number.isFinite(gpu) && gpu >= 0;
+    if (timed) ms = Math.max(gpu, Number.isFinite(cpu) ? cpu : 0);
     if (this.#grace > 0) {
       this.#grace--; // P2-R10: ignore the frames right after construction, reset() or a tier change
       return;
     }
+    if (timed) {
+      this.#gpuFrame(ms);
+      return;
+    }
+    this.#gpuFrames.length = 0;
     ms = Math.min(ms, 3 * this.#budget); // one hitch must not count as a sustained slowdown
     this.#ema = this.#ema === null ? ms : this.#ema + 0.1 * (ms - this.#ema);
     const base = this.#streak > 0 ? this.#frozen : this.baseline;
@@ -168,10 +182,25 @@ export class AdaptiveQuality {
     }
     if (this.#streak === 0) this.#frozen = base;
     if (++this.#streak < this.#window) return;
+    this.#dropNow();
+  }
+
+  /** GPU-timer path: the p95 of the last `window` frames against the GPU budget. */
+  #gpuFrame(ms) {
+    this.#gpuFrames.push(ms);
+    if (this.#gpuFrames.length > this.#window) this.#gpuFrames.shift();
+    if (this.#gpuFrames.length < this.#window) return;
+    const sorted = [...this.#gpuFrames].sort((a, b) => a - b);
+    if (sorted[Math.ceil(0.95 * sorted.length) - 1] <= this.#gpuBudget) return;
+    this.#dropNow();
+  }
+
+  #dropNow() {
     this.#dropped++;
     this.#ema = null;
     this.#streak = 0;
     this.#frozen = null;
+    this.#gpuFrames.length = 0;
     this.#grace = GRACE_FRAMES;
     this.#onDrop?.(this.#dropped);
   }
@@ -182,6 +211,7 @@ export class AdaptiveQuality {
     this.#streak = 0;
     this.#frozen = null;
     this.#dropped = 0;
+    this.#gpuFrames.length = 0;
     this.#grace = GRACE_FRAMES;
   }
 }

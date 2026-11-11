@@ -240,6 +240,7 @@ export function registerSettings({
     type: String,
     choices: worldDefaultChoices(t('worldDefaultTheme.None'), () => []),
     default: '',
+    onChange: (value) => onLookChange?.('worldDefaultTheme', value),
   });
   try {
     const entry = game.settings.settings?.get?.(`${MODULE_ID}.worldDefaultTheme`);
@@ -262,6 +263,7 @@ export function registerSettings({
     config: true,
     type: Boolean,
     default: false,
+    onChange: (value) => onLookChange?.('lockPlayerLooks', value),
   });
   // The pre-Plan-5 look choice: hidden, read once by migrateLookSetting.
   game.settings.register(MODULE_ID, 'look', {

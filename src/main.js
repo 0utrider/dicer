@@ -5,7 +5,7 @@ import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
-import { createWarmup } from './render/warmup.js';
+import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
 import { DiceBox } from './throw/dice-box.js';
 import { planThrow } from './throw/throw-planner.js';
 import { createMessageGate } from './foundry/message-gate.js';
@@ -294,7 +294,20 @@ function mirrorLook(themeId) {
 /** Preset face sets the digit atlas cannot draw, as image / text face layers. */
 const presetFaces = (preset) => facesFor(preset, atlasGlyphTest(digitAtlas));
 
+/**
+ * M-2: a GM push (the user's appearance flag) or a change of the world default / lock changes
+ * what getAppearance resolves to, so the materials and warm-up are redone, debounced to 500 ms.
+ */
+const appearanceRewarm = createAppearanceRewarm({
+  rewarm: () => refreshMaterials(),
+  getUserId: () => game.user?.id,
+});
+
 function onLookChange(key, value) {
+  if (key === 'worldDefaultTheme' || key === 'lockPlayerLooks') {
+    appearanceRewarm.onSettingChange();
+    return;
+  }
   if (key === 'theme') {
     mirrorLook(value);
     dice3d?._releasePreloads(); // preloadPresets holds faces until the theme changes
@@ -417,6 +430,7 @@ Hooks.once('init', () => {
     initiative?.onCreateMessage(message);
   });
   Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
+  Hooks.on('updateUser', (user, changes) => appearanceRewarm.onUpdateUser(user, changes));
   Hooks.on('updateChatMessage', (message, changes) => handlers().onUpdate(message, changes));
   Hooks.on('renderChatMessageHTML', (message, html) => handlers().onRender(message, html));
   Hooks.on('deleteChatMessage', (message) => handlers().onDelete(message));

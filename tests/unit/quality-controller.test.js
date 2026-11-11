@@ -15,8 +15,8 @@ function fakeRenderer() {
     shaderCbs: [],
     onFrameTime: (cb) => r.frameCbs.push(cb),
     onShaderError: (cb) => r.shaderCbs.push(cb),
-    frames(n, ms) {
-      for (let i = 0; i < n; i++) for (const cb of r.frameCbs) cb(ms);
+    frames(n, ms, sample) {
+      for (let i = 0; i < n; i++) for (const cb of r.frameCbs) cb(ms, sample);
     },
     shaderError() {
       for (const cb of r.shaderCbs) cb({ log: 'boom' });
@@ -378,6 +378,35 @@ test('frame samples reach the adaptive judge: a steady 30 Hz cap never drops (P2
   await qc.ready;
   for (let i = 0; i < 500; i++) for (const cb of renderer.frameCbs) cb(33.3, { interval: 33.3, cpu: 2 });
   expect(qc.tier).toBe('ultra');
+});
+
+describe('P2-R13 debt: GPU-bound from the first roll', () => {
+  test('a GPU p95 of 20 ms over a 16.7 ms budget drops a tier, notifying once', async () => {
+    const { qc, renderer, notify } = setup({ ms: 5 }); // high
+    await qc.ready;
+    // rAF interval 16.7 (60 Hz), CPU cheap, GPU 20 ms: the interval baseline never sees it as slow
+    renderer.frames(DROP_FRAMES, 20, { interval: 16.7, cpu: 2, gpu: 20 });
+    expect(qc.tier).toBe('medium');
+    renderer.frames(DROP_FRAMES, 20, { interval: 16.7, cpu: 2, gpu: 20 });
+    expect(qc.tier).toBe('low');
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  test('a GPU time under budget does not drop', async () => {
+    const { qc, renderer } = setup({ ms: 5 });
+    await qc.ready;
+    renderer.frames(300, 16, { interval: 16.7, cpu: 2, gpu: 12 });
+    expect(qc.tier).toBe('high');
+  });
+
+  test('without a timer (no gpu in the sample) the interval-baseline behaviour is unchanged', async () => {
+    const { qc, renderer } = setup({ ms: 5 });
+    await qc.ready;
+    renderer.frames(300, 20, { interval: 16.7, cpu: 2, gpu: null });
+    expect(qc.tier).toBe('high'); // 20 ms is not 1.3x a 16.7 ms baseline
+    renderer.frames(DROP_FRAMES, 100); // no sample at all: the plain EMA path still drops
+    expect(qc.tier).toBe('medium');
+  });
 });
 
 test('a probe that rejects falls back to medium and ready still resolves', async () => {

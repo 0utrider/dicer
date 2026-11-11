@@ -47,3 +47,43 @@ export function createWarmup({
     return warming;
   };
 }
+
+/**
+ * Re-runs the warm-up after a GM push (M-2): when the current user's `dicer.appearance` flag
+ * changes (updateUser, own user only) or the world default / lock settings change. Calls are
+ * debounced (500 ms), so a burst gives one pass; each pass is createWarmup's own acquire and
+ * release pair, so nothing is acquired here and the reference counting stays balanced.
+ *
+ * @param {object} o
+ * @param {() => unknown} o.rewarm what to run once the burst settles (main: refreshMaterials)
+ * @param {() => string|undefined} o.getUserId the current user's id
+ * @param {number} [o.delay]
+ * @returns {{onUpdateUser: Function, onSettingChange: Function, dispose: Function}}
+ */
+export function createAppearanceRewarm({ rewarm, getUserId, delay = 500 }) {
+  let timer = null;
+  const schedule = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      try {
+        rewarm();
+      } catch (err) {
+        console.warn('dicer: re-warm after an appearance change failed', err);
+      }
+    }, delay);
+  };
+  return {
+    onUpdateUser(user, changes) {
+      const id = getUserId();
+      if (!id || user?.id !== id) return;
+      const dicer = changes?.flags?.dicer;
+      if (dicer && ('appearance' in dicer || '-=appearance' in dicer)) schedule();
+    },
+    onSettingChange: schedule,
+    dispose() {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+    },
+  };
+}

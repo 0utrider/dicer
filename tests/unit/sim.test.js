@@ -133,6 +133,21 @@ test('30 d20 whole throw stays cheap after pre-warm (relative to a same-process 
   expect(d20).toBeLessThan(120);
 });
 
+test('30 d6 simulate to rest within the absolute 250 ms budget (best of 7)', () => {
+  // Plan 8 H-D: the absolute budget the relative d20/d6 guard cannot give. Best of 7 so a GC
+  // pause or a busy parallel worker does not fail it; measured medians are in the Task 7 report.
+  const sim = createSim(area, hulls);
+  let best = Infinity;
+  for (const seed of [3, 4, 5, 6, 7, 8, 9]) {
+    const t0 = performance.now();
+    const res = sim.throw({ dice: Array(30).fill({ type: 'd6' }), seed }, (c) => sim.recycle(c.data));
+    best = Math.min(best, performance.now() - t0);
+    expect(res.settledStep).toBeLessThan(MAX_STEPS);
+  }
+  sim.dispose();
+  expect(best).toBeLessThanOrEqual(250);
+});
+
 test('a missing hull is an error, not a silent fallback', () => {
   const sim = createSim(area, {});
   expect(() => sim.throw({ dice: [{ type: 'd6' }], seed: 1 }, () => {})).toThrow(/no hull/);
