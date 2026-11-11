@@ -13,6 +13,7 @@ import {
   exitCode,
   startupDecision,
   restorePlan,
+  trackMessageId,
   pickProductModules,
   outDirName,
   parseArgs,
@@ -468,15 +469,51 @@ test('restore: runStartedAt round-trips; a malformed one aborts (H-R11)', () => 
     );
 });
 
-test('restorePlan: deletes the run\'s GM chat messages last before the module configuration (H-R11)', () => {
-  const since = '2026-11-11T09:05:07.123Z';
-  const r = { moduleConfiguration: CFG, maxDice: 20, dsnUserFlag: FLAG, runStartedAt: since };
-  const steps = restorePlan(r, 'dicer');
-  expect(steps.slice(-2)).toEqual([
-    { op: 'deleteMessagesSince', since },
+test('restore: persisted messageIds round-trip; a malformed list aborts (H-R11)', () => {
+  const cfg = { dicer: true, 'dice-so-nice': false };
+  const ok = { moduleConfiguration: cfg, messageIds: ['a', 'b'] };
+  expect(startupDecision(JSON.stringify(ok))).toEqual({ action: 'restore', restore: ok });
+  for (const messageIds of ['a', [1], null, ['a', null]])
+    expect(startupDecision(JSON.stringify({ moduleConfiguration: cfg, messageIds })).action).toBe(
+      'abort',
+    );
+});
+
+const SINCE = '2026-11-11T09:05:07.123Z';
+const TRACKED = { moduleConfiguration: CFG, maxDice: 20, dsnUserFlag: FLAG, runStartedAt: SINCE, messageIds: ['m1', 'm2'] };
+
+test('restorePlan, normal end: deletes only the tracked ids, never the time sweep (H-R11)', () => {
+  for (const opts of [undefined, { crashed: false }]) {
+    const steps = restorePlan(TRACKED, 'dicer', opts);
+    expect(steps.slice(-2)).toEqual([
+      { op: 'deleteMessages', ids: ['m1', 'm2'] },
+      { op: 'setModuleConfiguration', value: PICKED },
+    ]);
+    expect(steps.some((s) => s.op === 'deleteMessagesSince')).toBe(false);
+  }
+  const none = restorePlan({ ...TRACKED, messageIds: [] }, 'dicer');
+  expect(none.some((s) => s.op.startsWith('deleteMessages'))).toBe(false);
+});
+
+test('restorePlan, crash restore: the persisted ids, then the time sweep, then the module configuration (H-R11)', () => {
+  expect(restorePlan(TRACKED, 'dicer', { crashed: true }).slice(-3)).toEqual([
+    { op: 'deleteMessages', ids: ['m1', 'm2'] },
+    { op: 'deleteMessagesSince', since: SINCE },
     { op: 'setModuleConfiguration', value: PICKED },
   ]);
-  expect(restorePlan({ moduleConfiguration: CFG }, 'dicer').some((s) => s.op === 'deleteMessagesSince')).toBe(false);
+  // No runStartedAt (an older restore.json): no sweep, even after a crash.
+  const old = { ...TRACKED, runStartedAt: undefined };
+  expect(restorePlan(old, 'dicer', { crashed: true }).some((s) => s.op === 'deleteMessagesSince')).toBe(false);
+});
+
+test('trackMessageId: adds a new id once, in order (persisted into restore.json as it grows)', () => {
+  const r = {};
+  expect(trackMessageId(r, 'a')).toBe(true);
+  expect(trackMessageId(r, 'b')).toBe(true);
+  expect(trackMessageId(r, 'a')).toBe(false);
+  expect(trackMessageId(r, '')).toBe(false);
+  expect(trackMessageId(r, 5)).toBe(false);
+  expect(r.messageIds).toEqual(['a', 'b']);
 });
 
 test('world.js messageIdsSince: only the GM\'s own messages at or after the run start (H-R11)', async () => {

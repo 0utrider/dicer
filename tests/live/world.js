@@ -358,7 +358,25 @@ async function deleteMessages(ids) {
   return live.length;
 }
 
-/** H-R11 restore step: deletes this user's chat messages from `since` (ISO) on. */
+/** H-R11 restore step: deletes the tracked message ids that still exist. */
+export function deleteMessageIds({ ids }) {
+  return deleteMessages(Array.isArray(ids) ? ids : []);
+}
+
+/**
+ * Records a created message: in `created` (benchRun deletes it after the scenario) and node-side
+ * through the bench.mjs binding, which persists it into restore.json (fire and forget).
+ */
+function track(created, id) {
+  created.push(id);
+  try {
+    Promise.resolve(globalThis.__benchTrackMessage?.(id)).catch(() => {});
+  } catch {
+    /* no binding: nothing persisted */
+  }
+}
+
+/** H-R11 crash-restore fallback only: deletes this user's chat messages from `since` (ISO) on. */
 export async function deleteMessagesSince({ since }) {
   const ids = messageIdsSince(game.messages?.contents ?? [], game.user.id, Date.parse(since));
   return deleteMessages(ids);
@@ -540,7 +558,7 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
   const roll = async (f) => {
     framesAtRoll = productFrames(product);
     const m = await new Roll(f).toMessage();
-    created.push(m.id);
+    track(created, m.id);
     return { messageId: m.id };
   };
   const firstFrameOf = (id) => {
@@ -689,7 +707,7 @@ async function warmupRoll(created) {
   });
   try {
     id = (await new Roll('1d20').toMessage()).id;
-    created.push(id);
+    track(created, id);
     if (seen.has(id)) resolveDone(true);
     const completed = await Promise.race([done, sleep(IDLE_WAIT_MS).then(() => false)]);
     return { completed };

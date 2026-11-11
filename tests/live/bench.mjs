@@ -104,6 +104,7 @@ function createHarness(chromium) {
   let interrupted = false;
   let restoring = false;
   let knownProduct = null; // verified active product; runEntry re-checks it on every run
+  let onMessage = null; // H-R11: node-side tracker for every chat message id a page creates
 
   async function browserFor(mode) {
     if (!browsers[mode]) {
@@ -148,6 +149,7 @@ function createHarness(chromium) {
         const { usedSize } = await cdp.send('Runtime.getHeapUsage');
         return usedSize;
       });
+      await page.exposeFunction('__benchTrackMessage', (id) => onMessage?.(id));
       await page.exposeFunction('__benchPerturb', async (kind, ms) => {
         if (kind === 'resize') {
           const v = page.viewportSize() ?? p.viewport;
@@ -285,15 +287,18 @@ function createHarness(chromium) {
     }
   }
 
-  /** Puts the world back (bench-lib restorePlan), then deletes restore.json. */
-  async function performRestore(restore) {
+  /**
+   * Puts the world back (bench-lib restorePlan), then deletes restore.json. `crashed`: the file was
+   * found at startup, so the time sweep of the GM's messages may run (H-R11); never otherwise.
+   */
+  async function performRestore(restore, { crashed = false } = {}) {
     knownProduct = null;
     restoring = true;
     try {
       let s = await openSession('pc', 'vsync');
       try {
         const active = await rpc(s.page, 'benchProduct');
-        for (const step of lib.restorePlan(restore, active)) {
+        for (const step of lib.restorePlan(restore, active, { crashed })) {
           if (step.op === 'switch') {
             await rpc(s.page, 'setDiceModule', step.product);
             await s.close();
@@ -313,8 +318,11 @@ function createHarness(chromium) {
             const back = await rpc(s.page, 'setDsnUserFlag', step.value);
             if (!lib.flagApplied(back, step.value))
               throw Error('restore: DSN user flag not restored');
+          } else if (step.op === 'deleteMessages') {
+            const n = await rpc(s.page, 'deleteMessageIds', { ids: step.ids });
+            if (n) console.log(`bench: deleted ${n} chat messages the run created`);
           } else if (step.op === 'deleteMessagesSince') {
-            // H-R11: the GM's chat messages since the run started (a crash left them).
+            // H-R11, crash restore only: the GM's chat messages since the run started.
             const n = await rpc(s.page, 'deleteMessagesSince', { since: step.since });
             if (n) console.log(`bench: deleted ${n} chat messages left by the run`);
           } else if (step.op === 'setModuleConfiguration') {
@@ -331,6 +339,10 @@ function createHarness(chromium) {
   }
 
   return {
+    /** Sets the callback for each chat message id a bench page creates. */
+    trackMessages(fn) {
+      onMessage = fn;
+    },
     openSession,
     ensureProduct,
     runEntry,
@@ -395,21 +407,30 @@ async function main() {
   const errors = [];
   let dsnFlag = null;
   let restore = null;
+  let writes = Promise.resolve(); // pending restore.json writes from the message tracker
   try {
     if (decision.action === 'restore') {
       console.log(`bench: ${lib.RESTORE_FILE} found from an earlier run, restoring it first`);
-      await h.performRestore(decision.restore);
+      await h.performRestore(decision.restore, { crashed: true });
     }
     const s = await h.openSession('pc', 'vsync');
     try {
       const at = new Date().toISOString();
       restore = {
         at,
-        // H-R11: before the first roll; a restore deletes the GM's chat messages from here on.
+        // H-R11: before the first roll. Only a crash restore sweeps the GM's messages from here on.
         runStartedAt: at,
+        // H-R11: every chat message id the run creates, persisted as it grows.
+        messageIds: [],
         moduleConfiguration: await rpc(s.page, 'getModuleConfiguration'),
       };
       await writeRestore(restore);
+      const saved = restore;
+      h.trackMessages((id) => {
+        if (!lib.trackMessageId(saved, id)) return;
+        // Serialized: one restore.json write at a time, each with the whole list so far.
+        writes = writes.then(() => writeRestore(saved)).catch(() => {});
+      });
     } finally {
       await s.close();
     }
@@ -431,8 +452,12 @@ async function main() {
     }
   } finally {
     if (restore) {
+      // No tracker write may land after the restore deletes restore.json.
+      h.trackMessages(null);
+      await writes;
       try {
-        await h.performRestore(restore);
+        // Normal end or Ctrl+C in this process: only the tracked ids, never the time sweep (H-R11).
+        await h.performRestore(restore, { crashed: false });
         console.log(
           'bench: world restored (module configuration, maxDice, maxDiceNumber, DSN user flag, run chat messages)',
         );

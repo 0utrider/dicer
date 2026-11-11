@@ -78,8 +78,11 @@ Before it changes anything the harness saves the world state to `artifacts/bench
 - Dicer **Maximum dice per message** (`maxDice`, set to 30 during runs, so the 30-dice pool is not capped);
 - DSN `maxDiceNumber` (set to 35 during runs);
 - the GM's DSN user flag `dice-so-nice.settings` (rewritten for the effects-off run, unset for the DSN defaults runs);
-- `runStartedAt`, the time the run started, before its first roll.
+- `runStartedAt`, the time the run started, before its first roll;
+- `messageIds`, the id of every chat message the run creates, written to the file as each roll is made.
 
-Each scenario, and the warm-up roll, deletes the chat messages it created when it ends. The restore also deletes every chat message the GM wrote since `runStartedAt`: what a crashed run left behind. A message the GM typed in that world during the run is deleted too, which is why nobody should play during a run.
+Each scenario, and the warm-up roll, deletes the chat messages it created when it ends. When the run ends normally, or on the first Ctrl+C, the restore deletes the tracked `messageIds` that are still there, and nothing else: chat the GM types during a normal run is safe.
+
+Only when a crashed run left `restore.json` behind does the restore at the next start go further. It deletes the saved `messageIds` first. Then, as a fallback for ids the crash kept from being saved, it deletes every chat message the GM wrote since `runStartedAt`. That fallback also deletes a message the GM typed in that world during the crashed run, which is one more reason nobody should play during a run.
 
 The state is restored when the run ends, on the first Ctrl+C, and again at the next start if a run crashed and left `restore.json` behind. The file is deleted only after a successful restore. A second Ctrl+C exits at once and keeps `restore.json`; start the harness again to restore. If `restore.json` is damaged the harness stops and says so; check the module list in Foundry's setup screen and remove the file by hand.

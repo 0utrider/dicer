@@ -279,7 +279,27 @@ export function startupDecision(text) {
     !(typeof restore.runStartedAt === 'string' && Number.isFinite(Date.parse(restore.runStartedAt)))
   )
     return bad('runStartedAt');
+  if (
+    'messageIds' in restore &&
+    !(
+      Array.isArray(restore.messageIds) &&
+      restore.messageIds.every((id) => typeof id === 'string' && id !== '')
+    )
+  )
+    return bad('messageIds');
   return { action: 'restore', restore };
+}
+
+/**
+ * H-R11: records a chat message id the harness created in `restore.messageIds` (the caller then
+ * persists restore.json). True when the id was new.
+ */
+export function trackMessageId(restore, id) {
+  if (typeof id !== 'string' || id === '') return false;
+  restore.messageIds ??= [];
+  if (restore.messageIds.includes(id)) return false;
+  restore.messageIds.push(id);
+  return true;
 }
 
 /** Only the two product keys of a `core.moduleConfiguration` snapshot, as booleans. */
@@ -290,14 +310,19 @@ export function pickProductModules(cfg) {
 /**
  * Steps that put the world back. A product's world settings can only be written while it is the
  * active module (Dicer: maxDice; DSN: maxDiceNumber and its user flag), so each product's group
- * runs with that product active, the currently active one first. Then (H-R11) the chat messages
- * the GM authored since `runStartedAt` are deleted: what a crashed run left (a finished scenario
- * deletes its own). The module configuration last, merging back only the dicer / dice-so-nice keys.
+ * runs with that product active, the currently active one first. Then (H-R11) the chat messages:
+ * always the ids the harness tracked (`messageIds`); only when restoring after a crash
+ * (`crashed`, restore.json found at startup) also every message the GM authored since
+ * `runStartedAt`, the fallback for ids the crash kept from being persisted. A normal end or a
+ * Ctrl+C in the same process never sweeps, so the GM's own chat is safe. The module configuration
+ * last, merging back only the dicer / dice-so-nice keys.
  * @param {{moduleConfiguration: object, maxDice?: number, dsnMaxDiceNumber?: number,
- *   dsnUserFlag?: {exists: boolean, value?: object}, runStartedAt?: string}} restore
+ *   dsnUserFlag?: {exists: boolean, value?: object}, runStartedAt?: string,
+ *   messageIds?: string[]}} restore
  * @param {'dicer' | 'dice-so-nice' | null} active
+ * @param {{crashed?: boolean}} [opts]
  */
-export function restorePlan(restore, active) {
+export function restorePlan(restore, active, { crashed = false } = {}) {
   const groups = {
     dicer: [],
     'dice-so-nice': [],
@@ -317,7 +342,9 @@ export function restorePlan(restore, active) {
     current = product;
     steps.push(...groups[product]);
   }
-  if (typeof restore?.runStartedAt === 'string')
+  if (Array.isArray(restore?.messageIds) && restore.messageIds.length)
+    steps.push({ op: 'deleteMessages', ids: [...restore.messageIds] });
+  if (crashed && typeof restore?.runStartedAt === 'string')
     steps.push({ op: 'deleteMessagesSince', since: restore.runStartedAt });
   if (restore?.moduleConfiguration)
     steps.push({
