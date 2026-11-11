@@ -188,6 +188,17 @@ export function dieTypeForFaces(faces) {
   return [2, 4, 6, 8, 10, 12, 20].includes(faces) ? `d${faces}` : null;
 }
 
+/**
+ * The Dice So Nice die type of a term: 'd' + a custom DENOMINATION ('c' gives 'dc'), else 'd' +
+ * faces. The one helper behind look, fx and damage-theme lookups, so a theme's perType key
+ * matches on every path.
+ */
+export function dsnTypeOf(term) {
+  const denom = term?.constructor?.DENOMINATION;
+  if (typeof denom === 'string' && denom && denom !== 'd') return `d${denom}`;
+  return Number.isInteger(term?.faces) && term.faces > 0 ? `d${term.faces}` : null;
+}
+
 /** Text drawn on a face. 6 and 9 carry a "." suffix (rendered as an underline mark). */
 export function labelFor(type, value, variant) {
   if (variant === 'd100tens') return value === 100 || value === 0 ? '00' : String(value);

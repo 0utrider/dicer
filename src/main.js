@@ -425,7 +425,12 @@ Hooks.once('ready', async () => {
       // Model urls go through the same routeOf as face images: one url policy.
       registry = createRegistry({ hooks: Hooks, routeUrl: routeOf });
       const userThemes = (id) => game.users?.get(id)?.getFlag?.('dicer', 'themes');
-      const damageThemer = createDamageThemer({ registry, getSetting, getUserThemes: userThemes });
+      const damageThemer = createDamageThemer({
+        registry,
+        getSetting,
+        getUserThemes: userThemes,
+        getViewerId: () => game.user?.id,
+      });
       const resolver = createLookResolver({
         registry,
         getUser: (id) => game.users?.get(id),
@@ -447,7 +452,10 @@ Hooks.once('ready', async () => {
         getSetting,
         shapeFor: resolver.shapeFor,
         getKnownDamageTypes: damageThemer.knownTypes,
-        damageThemeFor: (roll) => damageThemer.forRoll(roll),
+        // The roller's id, so a theme named in the damage map resolves here as on the look path.
+        damageThemeFor: (roll, rollerId) => damageThemer.forRoll(roll, rollerId),
+        getWorldThemes: () => getSetting('worldThemes'),
+        getUserThemes: userThemes,
       });
       // (message, roll, authorId?, rollerId?): looks from the author, rules from the roller.
       const decorateFor = composeDecorateFor({ looks: resolver, fx: fxResolver });

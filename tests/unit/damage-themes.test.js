@@ -329,3 +329,63 @@ describe('a damage-map value naming a Plan 5 theme', () => {
     expect(d.appearance.body.color).toBe('#0a0b0c');
   });
 });
+
+describe('viewer-first theme lookup and one die type helper (P5-R8)', () => {
+  const mk = (id, color) => ({ id, name: id, appearance: { body: { type: 'opaque', color } } });
+  const themerFor = (lists, viewer, extra = {}) => {
+    const registry = createRegistry({ warn: () => {} });
+    const s = { damagePresets: true, damageThemeOverrides: { fire: 'user.mine' }, ...extra };
+    const warn = vi.fn();
+    return {
+      warn,
+      themer: createDamageThemer({
+        registry,
+        getSetting: (k) => s[k],
+        getUserThemes: (id) => lists[id],
+        getViewerId: () => viewer,
+        warn,
+      }),
+    };
+  };
+  const d6 = die(6, [{ result: 2 }]);
+  const roll = () => pf2e(new DamageInstance('fire', [d6]));
+
+  test("the viewer's own theme named in their override resolves on another roller's roll, no warning", () => {
+    const { themer, warn } = themerFor({ bob: [mk('user.mine', '#0c0b0a')] }, 'bob');
+    const out = themer.forRoll(roll(), 'alice')(d6, 0);
+    expect(out.appearance.body.color).toBe('#0c0b0a');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  test("the viewer's list wins over the roller's", () => {
+    const lists = { bob: [mk('user.mine', '#111111')], alice: [mk('user.mine', '#222222')] };
+    expect(themerFor(lists, 'bob').themer.forRoll(roll(), 'alice')(d6, 0).appearance.body.color).toBe('#111111');
+    expect(themerFor(lists, 'carol').themer.forRoll(roll(), 'alice')(d6, 0).appearance.body.color).toBe('#222222');
+  });
+
+  test('a theme nobody has still warns once and is no theme', () => {
+    const { themer, warn } = themerFor({}, 'bob');
+    expect(themer.forRoll(roll(), 'alice')(d6, 0)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  test("a custom die takes the DENOMINATION type ('dc') as the look resolver does, so no d20 perType applies", () => {
+    class CustomD20 {
+      static DENOMINATION = 'c';
+    }
+    const term = Object.assign(new CustomD20(), { faces: 20, options: {}, results: [{ result: 3 }] });
+    const registry = createRegistry({ warn: () => {} });
+    const s = { damagePresets: true, damageTypeMap: { fire: 'dragon-hoard' } };
+    const themer = createDamageThemer({ registry, getSetting: (k) => s[k], warn: () => {} });
+    const r = pf2e(new DamageInstance('fire', [term]));
+    const hoard = findTheme('dragon-hoard');
+    expect(themer.forRoll(r)(term, 0).appearance).toBe(hoard.appearance);
+  });
+
+  test('dsnTypeOf is one shared helper', async () => {
+    const { dsnTypeOf } = await import('../../src/core/dice-shapes.js');
+    expect(dsnTypeOf({ faces: 20 })).toBe('d20');
+    expect(dsnTypeOf({ faces: 6, constructor: { DENOMINATION: 'f' } })).toBe('df');
+    expect(dsnTypeOf({ faces: 0 })).toBeNull();
+  });
+});

@@ -1590,6 +1590,34 @@ describe('trigger effects are decided only for real views (privacy, Review Focus
     expect(diceBox.rolls).toHaveLength(1);
     expect(fx.decorate).not.toHaveBeenCalled();
   });
+
+  test('Review Focus 4: a themed roller\'s blind nat 20 gives a ghost view no theme fx and never calls the fx resolver', () => {
+    settings.showGhostDice = true;
+    const themedLooks = { decorate: vi.fn(() => () => ({ themeId: 'dragon-hoard' })) };
+    const realFx = createFxResolver({
+      getWorldRules: () => DEFAULT_RULES,
+      getUserRules: () => undefined,
+      currentUser: () => player,
+      getSetting: (k) => settings[k],
+    });
+    const spy = { decorate: vi.fn((...a) => realFx.decorate(...a)) };
+    const decorateFor = composeDecorateFor({ looks: themedLooks, fx: spy });
+    makeGate({ currentUser: () => player, decorateFor }).onCreate(blindMsg('m1'));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
+    expect(spy.decorate).not.toHaveBeenCalled();
+    expect(themedLooks.decorate).not.toHaveBeenCalled();
+    // control: the GM sees it for real, with the theme's embers instead of celebrate
+    diceBox.rolls.length = 0;
+    const gmFx = createFxResolver({
+      getWorldRules: () => DEFAULT_RULES,
+      getUserRules: () => undefined,
+      currentUser: () => gm,
+      getSetting: (k) => settings[k],
+    });
+    const gmDec = composeDecorateFor({ looks: themedLooks, fx: gmFx });
+    makeGate({ currentUser: () => gm, decorateFor: gmDec }).onCreate(blindMsg('m2', { isContentVisible: true }));
+    expect(diceBox.rolls[0].specs[0].fx.map((f) => f.effect.id)).toEqual(['embers']);
+  });
 });
 
 describe('roll areas follow the roller (P5-D1) and the GM private corner (P5-D7)', () => {

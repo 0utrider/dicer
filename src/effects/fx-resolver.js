@@ -9,7 +9,8 @@
  */
 import { normalizeRules, matchRule, effectiveRules, dsnDefaultsToRules } from './rules.js';
 import { outcomeOf, roleOf, damageTypesByTerm, KNOWN_DAMAGE_TYPES } from './roll-context.js';
-import { getShape, dieTypeForFaces } from '../core/dice-shapes.js';
+import { getShape, dieTypeForFaces, dsnTypeOf } from '../core/dice-shapes.js';
+import { findTheme, readThemeList } from '../themes/themes.js';
 
 /**
  * @typedef {{ ruleId: string, effect: object|null, sound: object|null, macro: string|null,
@@ -22,13 +23,6 @@ import { getShape, dieTypeForFaces } from '../core/dice-shapes.js';
 export const FX_SLOW_EFFECTS = ['celebrate', 'fumble'];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-
-/** The Dice So Nice type of a term: 'd' + a custom DENOMINATION, else 'd' + faces. */
-function dsnTypeOf(term) {
-  const denom = term?.constructor?.DENOMINATION;
-  if (typeof denom === 'string' && denom && denom !== 'd') return `d${denom}`;
-  return Number.isInteger(term?.faces) && term.faces > 0 ? `d${term.faces}` : null;
-}
 
 /** The face label text showing `value`: FaceSet labels are indexed like getShape(type).values. */
 function labelOf(faces, baseType, value) {
@@ -62,7 +56,9 @@ function safe(fn, fallback) {
  * @param {(key: string) => unknown} deps.getSetting
  * @param {(term) => string|null} [deps.shapeFor] base shape of a custom die type
  * @param {() => Set<string>} [deps.getKnownDamageTypes]
- * @param {(roll: object) => (((term, index: number) => object | null) | null)} [deps.damageThemeFor]
+ * @param {() => unknown} [deps.getWorldThemes] the raw worldThemes setting (a die's theme rules)
+ * @param {(userId: string) => unknown} [deps.getUserThemes] the raw `dicer.themes` flag of a user
+ * @param {(roll: object, rollerId?: string) => (((term, index: number) => object | null) | null)} [deps.damageThemeFor]
  *   the roll's damage themer; its theme's `landing` becomes an extra fx per die of that type
  */
 export function createFxResolver({
@@ -75,6 +71,8 @@ export function createFxResolver({
   shapeFor = () => null,
   getKnownDamageTypes = () => KNOWN_DAMAGE_TYPES,
   damageThemeFor = () => null,
+  getWorldThemes = () => [],
+  getUserThemes = () => undefined,
   warn = console.warn,
 }) {
   /** cache key -> { raw, json, rules }: settings and flags are normalized once per value. */
@@ -122,7 +120,23 @@ export function createFxResolver({
     return sound;
   }
 
-  function rulesFor(rollerId) {
+  /** The theme a die resolved to (P5-D4): built-in/world, else the viewer's or the roller's own list. */
+  function themeById(themeId, rollerId, me) {
+    const list = (raw, source) => safe(() => readThemeList(raw, source, warn), []);
+    return safe(
+      () =>
+        findTheme(themeId, {
+          worldThemes: list(safe(getWorldThemes, []), 'world'),
+          userThemes: [
+            ...(me ? list(safe(() => getUserThemes(me), undefined), 'user') : []),
+            ...(rollerId && rollerId !== me ? list(safe(() => getUserThemes(rollerId), undefined), 'user') : []),
+          ],
+        }),
+      null,
+    );
+  }
+
+  function rulesFor(rollerId, themeRules) {
     const world = normalized('world', 'world', safe(getWorldRules, null));
     const roller = rollerId
       ? normalized(
@@ -138,7 +152,15 @@ export function createFxResolver({
         ? mods.filter((r) => !off.includes(r?.id))
         : mods
       : [];
-    return effectiveRules({ world, roller, module });
+    if (!themeRules?.length) return effectiveRules({ world, roller, module });
+    // P5-D4: a theme rule replaces the world rule with the same id, for this theme's dice only.
+    const ids = new Set(themeRules.map((r) => r.id));
+    return effectiveRules({
+      world: world.filter((r) => !ids.has(r.id)),
+      roller,
+      module,
+      theme: themeRules,
+    });
   }
 
   return {
@@ -161,7 +183,17 @@ export function createFxResolver({
       if (!presets && !fxOn && !macros) return undefined;
 
       const rules = fxOn || macros ? rulesFor(rollerId) : [];
-      const themeOf = presets ? safe(() => damageThemeFor(roll), null) : null;
+      /** themeId -> that theme's effective rules; a theme without rules shares `rules`. */
+      const themed = new Map();
+      const rulesOf = (themeId) => {
+        if (!(fxOn || macros) || typeof themeId !== 'string') return rules;
+        if (!themed.has(themeId)) {
+          const themeRules = themeById(themeId, rollerId, me)?.rules;
+          themed.set(themeId, themeRules?.length ? rulesFor(rollerId, themeRules) : rules);
+        }
+        return themed.get(themeId);
+      };
+      const themeOf = presets ? safe(() => damageThemeFor(roll, rollerId ?? undefined), null) : null;
       const outcome = safe(() => outcomeOf(roll, message), null);
       const role = safe(() => roleOf(message), null);
       const formula = safe(() => roll?.formula, undefined);
@@ -179,7 +211,8 @@ export function createFxResolver({
         const landing = theme?.landing ?? null;
         // A discarded or inactive result (dropped, rerolled away) never triggers anything.
         if (result?.active === false || result?.discarded === true) return out;
-        if (!rules.length && !landing && !custom) return out;
+        const dieRules = rulesOf(look?.themeId);
+        if (!dieRules.length && !landing && !custom) return out;
         const value = result?.result;
         const faces = term?.faces;
         const dsnType = (typeof look?.dsnType === 'string' && look.dsnType) || dsnTypeOf(term);
@@ -213,7 +246,7 @@ export function createFxResolver({
             type: dsnType ?? type,
           });
         }
-        for (const rule of rules) {
+        for (const rule of dieRules) {
           if (!fxOn && !(typeof rule.macro === 'string' && rule.macro)) continue;
           if (!safe(() => matchRule(rule, die), false)) continue;
           if (!fxOn) {

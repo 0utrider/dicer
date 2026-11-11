@@ -561,3 +561,89 @@ describe('macros without effects (P4 final review)', () => {
     expect(playSound).not.toHaveBeenCalled();
   });
 });
+
+describe('theme sounds and celebrations (P5-D4)', () => {
+  const term = (faces = 20) => ({ faces, options: {} });
+  const res = (v) => ({ result: v, active: true });
+  const themed = (id) => ({ themeId: id });
+  const decor = (resolver, rollerId = 'alice', roll = d20(20)) =>
+    resolver.decorate({ author: { id: rollerId } }, roll);
+
+  test("a dragon-hoard nat 20 plays the theme's embers/fanfare once, not also celebrate", () => {
+    const dec = decor(make());
+    const out = dec(term(), res(20), 0, themed('dragon-hoard'));
+    expect(out.fx).toHaveLength(1);
+    expect(out.fx[0]).toMatchObject({
+      ruleId: 'dicer.nat20',
+      effect: { id: 'embers' },
+      sound: { builtin: 'fanfare' },
+      slowMotion: false,
+    });
+  });
+
+  test('a die with no theme (or a theme without that rule) still plays the world rule', () => {
+    const dec = decor(make());
+    expect(dec(term(), res(20), 0, {}).fx[0].effect.id).toBe('celebrate');
+    expect(dec(term(), res(20), 0, undefined).fx[0].effect.id).toBe('celebrate');
+    expect(dec(term(), res(20), 0, themed('verdant')).fx[0].effect.id).toBe('celebrate');
+    expect(dec(term(), res(1), 0, themed('dragon-hoard')).fx[0].effect.id).toBe('fumble');
+  });
+
+  test("showOthersEffects off hides another roller's theme celebration", () => {
+    settings.showOthersEffects = false;
+    const out = decor(make(), 'bob')(term(), res(20), 0, themed('dragon-hoard'));
+    expect(out.fx).toBeUndefined();
+    expect(decor(make(), 'alice')(term(), res(20), 0, themed('dragon-hoard')).fx).toHaveLength(1);
+  });
+
+  test('effects off: no theme fx; a discarded die triggers nothing', () => {
+    settings.effects = false;
+    expect(decor(make())(term(), res(20), 0, themed('dragon-hoard')).fx).toBeUndefined();
+    settings.effects = true;
+    const out = decor(make())(term(), { result: 20, discarded: true }, 0, themed('dragon-hoard'));
+    expect(out.fx).toBeUndefined();
+  });
+
+  test('a theme rule with a new id adds to the world rules and fires after the roller rules', () => {
+    const mine = {
+      id: 'user.t',
+      name: 'T',
+      appearance: { body: { type: 'opaque', color: '#101010' } },
+      rules: [{ id: 'extra', die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'sparkles' } }],
+    };
+    flags.alice = [{ id: 'roller', die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'shake' } }];
+    const r = make({ getUserThemes: (id) => (id === 'alice' ? [mine] : undefined) });
+    const out = decor(r)(term(), res(20), 0, themed('user.t'));
+    expect(out.fx.map((f) => f.ruleId)).toEqual(['dicer.nat20', 'roller', 'extra']);
+  });
+
+  test('a world theme is found in the worldThemes list and replaces the world rule', () => {
+    const w = {
+      id: 'world.w',
+      name: 'W',
+      appearance: { body: { type: 'opaque', color: '#101010' } },
+      rules: [{ id: 'dicer.nat20', die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'sparkles' } }],
+    };
+    const r = make({ getWorldThemes: () => [w] });
+    expect(decor(r)(term(), res(20), 0, themed('world.w')).fx.map((f) => f.effect.id)).toEqual(['sparkles']);
+  });
+
+  test('an unknown theme id leaves the world rules alone', () => {
+    expect(decor(make())(term(), res(20), 0, themed('gone')).fx[0].effect.id).toBe('celebrate');
+  });
+
+  test('effects off: a theme replaces the world rule in macro-only mode too', () => {
+    settings.effects = false;
+    const world = [
+      { id: 'dicer.nat20', die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'celebrate' }, macro: 'Macro.w' },
+    ];
+    const out = decor(make({ getWorldRules: () => world }))(term(), res(20), 0, {});
+    expect(out.fx[0]).toMatchObject({ macro: 'Macro.w', effect: null, sound: null });
+  });
+
+  test('the damage themer is asked with the roller id (P5-R8)', () => {
+    const damageThemeFor = vi.fn(() => null);
+    decor(make({ damageThemeFor }), 'bob');
+    expect(damageThemeFor).toHaveBeenCalledWith(expect.anything(), 'bob');
+  });
+});

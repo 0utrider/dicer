@@ -20,6 +20,7 @@ import {
 } from './user-looks.js';
 import { readThemeList } from '../themes/themes.js';
 import { roleOf } from '../effects/roll-context.js';
+import { dsnTypeOf } from '../core/dice-shapes.js';
 
 const STANDARD = 'standard';
 
@@ -27,11 +28,7 @@ const STANDARD = 'standard';
  * The Dice So Nice die type of a term: 'd20', or 'd' + the bare-letter DENOMINATION of a custom
  * die ('c' gives 'dc', 'f' gives 'df'), which is how DSN presets name them.
  */
-function dieTypeOf(term) {
-  const denom = term?.constructor?.DENOMINATION;
-  if (typeof denom === 'string' && denom && denom !== 'd') return `d${denom}`;
-  return Number.isInteger(term?.faces) && term.faces > 0 ? `d${term.faces}` : null;
-}
+const dieTypeOf = dsnTypeOf;
 
 const systemOf = (v) => (isPlainObject(v) && typeof v.system === 'string' && v.system ? v.system : null);
 

@@ -12,6 +12,7 @@ import { normalizeAppearance } from '../look/appearance.js';
 import { isPlainObject, colorsetNameToAppearance, themeLook } from '../compat/user-looks.js';
 import { findTheme, readThemeList } from '../themes/themes.js';
 import { damageTypesByTerm, KNOWN_DAMAGE_TYPES } from './roll-context.js';
+import { dsnTypeOf } from '../core/dice-shapes.js';
 
 // [id, body, interior, numbers, glow, soundMaterial, landing effect, landing sound]
 const rows = [
@@ -117,7 +118,10 @@ export function resolveDamageTheme(
   const value = level[type];
   if (value === 'none') return null;
   if (Object.hasOwn(DAMAGE_THEMES, value)) return DAMAGE_THEMES[value];
-  const theme = findTheme(value, themes);
+  // The viewer's own themes first (their override may name one), then the roller's, then world/built-in.
+  const own1 = (list) => (Array.isArray(list) ? list.find((t) => t && t.id === value) : undefined);
+  const theme =
+    own1(themes?.viewerThemes) ?? own1(themes?.userThemes) ?? findTheme(value, { worldThemes: themes?.worldThemes });
   if (theme) {
     const look = themeLook(theme, dieType);
     return { appearance: look.appearance, soundMaterial: theme.soundMaterial, landing: null, themeId: theme.id };
@@ -149,7 +153,13 @@ const safe = (fn, fallback) => {
  * with damagePresets off); `knownTypes()` is the set damage detection recognises (the systems'
  * types, the DSN defaults' and the world map's keys).
  */
-export function createDamageThemer({ registry, getSetting, getUserThemes = () => undefined, warn = console.warn }) {
+export function createDamageThemer({
+  registry,
+  getSetting,
+  getUserThemes = () => undefined,
+  getViewerId = () => undefined,
+  warn = console.warn,
+}) {
   const warned = new Set();
   const get = (k) => safe(() => getSetting(k), undefined);
   let key = null;
@@ -174,14 +184,17 @@ export function createDamageThemer({ registry, getSetting, getUserThemes = () =>
       const types = safe(() => damageTypesByTerm(roll, knownTypes()), new WeakMap());
       const worldMap = get('damageTypeMap');
       const userOverrides = get('damageThemeOverrides');
+      const viewerId = safe(getViewerId, undefined);
       const themes = {
         worldThemes: safe(() => readThemeList(get('worldThemes'), 'world', warn), []),
         userThemes: userId ? safe(() => readThemeList(getUserThemes(userId), 'user', warn), []) : [],
+        // The viewer's own themes (P5-R8): their override may name one, on anyone's roll.
+        viewerThemes: viewerId ? safe(() => readThemeList(getUserThemes(viewerId), 'user', warn), []) : [],
       };
       return (term, index = 0) => {
         const type = term !== null && typeof term === 'object' ? types.get(term) : undefined;
         if (typeof type !== 'string') return null;
-        const dieType = Number.isInteger(term.faces) && term.faces > 0 ? `d${term.faces}` : undefined;
+        const dieType = dsnTypeOf(term) ?? undefined;
         return safe(
           () => resolveDamageTheme(type, { userOverrides, worldMap, registry, index, warn, warned, dieType, themes }),
           null,

@@ -310,6 +310,6 @@ export function dsnDefaultsToRules(list, triggers, warn = console.warn) {
 }
 
 /** Enabled rules in firing order: world, then the roller's own, then module rules. */
-export function effectiveRules({ world = [], roller = [], module = [] } = {}) {
-  return [...world, ...roller, ...module].filter((r) => r.enabled);
+export function effectiveRules({ world = [], roller = [], module = [], theme = [] } = {}) {
+  return [...world, ...roller, ...theme, ...module].filter((r) => r.enabled);
 }
