@@ -36,6 +36,44 @@ test('longTask and firstFrame checks skip burst and soak', () => {
   }
 });
 
+test('H-R10: Dicer first-frame and big-pool checks judge dicerFirstFrame when there is one', () => {
+  const ff = get(checkTargets(base({ firstFrame: sum(70), dicerFirstFrame: sum(30) })), 'firstFrameMs');
+  expect(ff).toMatchObject({ value: 30, pass: true, measure: 'dicerFirstFrame', info: { id: 'firstFrame', value: 70 } });
+  const big = get(checkTargets(base({ kind: 'bigPool', firstFrame: sum(90), dicerFirstFrame: sum(120) })), 'bigPoolVisibleMs');
+  expect(big).toMatchObject({ value: 120, pass: false, measure: 'dicerFirstFrame', info: { id: 'firstFrame', value: 90 } });
+  // No gate timing (in-game, no message): the roll-call measure (H-D4) is judged.
+  const fallback = get(checkTargets(base({ firstFrame: sum(40) })), 'firstFrameMs');
+  expect(fallback).toMatchObject({ value: 40, pass: true, measure: 'firstFrame', info: { id: 'dicerFirstFrame', value: null } });
+  // DSN results always use the product-neutral measure.
+  const dsn = get(checkTargets(base({ product: 'dice-so-nice', firstFrame: sum(70), dicerFirstFrame: sum(30) })), 'firstFrameMs');
+  expect(dsn).toMatchObject({ value: 70, measure: 'firstFrame' });
+});
+
+test('summaryText shows both first-frame measures when the gate timing exists', () => {
+  const t = summaryText(suite({ results: [base({ firstFrame: sum(70), dicerFirstFrame: sum(30) })] }));
+  expect(t).toContain('first 70.0 ms');
+  expect(t).toContain('msg->frame 30.0 ms');
+  expect(summaryText(suite())).not.toContain('msg->frame');
+});
+
+test('perturb kind: no frame, long-task or first-frame checks; recovered is checked when present', () => {
+  const r = base({ kind: 'perturb', frame: sum(900), longTasks: { count: 1, maxMs: 300 }, firstFrame: sum(500) });
+  expect(checkTargets(r)).toEqual([]);
+  expect(get(checkTargets({ ...r, recovered: true }), 'recovered')).toMatchObject({ target: true, value: true, pass: true });
+  expect(get(checkTargets({ ...r, recovered: false }), 'recovered').pass).toBe(false);
+  expect(get(checkTargets({ ...r, recovered: null }), 'recovered').pass).toBeNull();
+});
+
+test('a refresh-limited display gives the frame check pass null, value kept', () => {
+  const c = get(checkTargets(base({ frame: sum(33.3), refreshLimited: true })), 'frameP95Ms');
+  expect(c).toMatchObject({ value: 33.3, pass: null });
+});
+
+test('summaryText prints suite notes under the header', () => {
+  const t = summaryText(suite({ notes: ['display refresh below 60 Hz: frame checks n/a'] }));
+  expect(t.split('\n')[1]).toBe('note: display refresh below 60 Hz: frame checks n/a');
+});
+
 test('null values give pass null (n/a)', () => {
   const c = checkTargets(base());
   expect(get(c, 'frameP95Ms').pass).toBeNull();

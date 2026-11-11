@@ -4,18 +4,45 @@ const EPS = 1e-9;
 
 const check = (id, target, value, pass) => ({ id, target, value, pass: value == null ? null : pass });
 
-/** G2 target checks for one ScenarioResult (vsync reports only, see H-R1/H-R5). */
+/**
+ * The first-frame measure a result is judged on (H-R10). For Dicer, dicerFirstFrame (the message
+ * gate intercepting the message -> its first drawn frame: G2's "message arriving") when it exists;
+ * otherwise firstFrame (roll call -> first frame, H-D4, the product-neutral head-to-head measure).
+ * `info` carries the other measure so reports can show both.
+ */
+export function firstFrameMeasure(r) {
+  const roll = r?.firstFrame?.p95 ?? null;
+  const gate = r?.product === 'dicer' ? (r?.dicerFirstFrame?.p95 ?? null) : null;
+  if (gate != null) return { measure: 'dicerFirstFrame', value: gate, info: { id: 'firstFrame', value: roll } };
+  return { measure: 'firstFrame', value: roll, info: { id: 'dicerFirstFrame', value: gate } };
+}
+
+/**
+ * G2 target checks for one ScenarioResult (vsync reports only, see H-R1/H-R5).
+ * - frameP95Ms on every kind but perturb; pass null when `refreshLimited` (display below 60 Hz).
+ * - longTaskMs and firstFrameMs / bigPoolVisibleMs on typical and bigPool only.
+ * - perturb (resize, contextLoss, hidden): only `recovered` here, when the result has it; the
+ *   harness adds failures and noRebuild.
+ */
 export function checkTargets(r) {
   const out = [];
   const timed = r.kind === 'typical' || r.kind === 'bigPool';
-  const fp95 = r.frame?.p95 ?? null;
-  out.push(check('frameP95Ms', TARGETS.frameP95Ms, fp95, fp95 <= TARGETS.frameP95Ms));
+  if (r.kind !== 'perturb') {
+    const fp95 = r.frame?.p95 ?? null;
+    const c = check('frameP95Ms', TARGETS.frameP95Ms, fp95, fp95 <= TARGETS.frameP95Ms);
+    if (r.refreshLimited) c.pass = null;
+    out.push(c);
+  }
   if (timed) {
     const lt = r.longTasks?.maxMs ?? null;
     out.push(check('longTaskMs', TARGETS.longTaskMs, lt, lt <= TARGETS.longTaskMs));
-    const ff = r.firstFrame?.p95 ?? null;
-    if (r.kind === 'bigPool') out.push(check('bigPoolVisibleMs', TARGETS.bigPoolVisibleMs, ff, ff <= TARGETS.bigPoolVisibleMs));
-    else out.push(check('firstFrameMs', TARGETS.firstFrameMs, ff, ff <= TARGETS.firstFrameMs));
+    const { measure, value: ff, info } = firstFrameMeasure(r);
+    const [id, target] = r.kind === 'bigPool' ? ['bigPoolVisibleMs', TARGETS.bigPoolVisibleMs] : ['firstFrameMs', TARGETS.firstFrameMs];
+    out.push({ ...check(id, target, ff, ff <= target), measure, info });
+  }
+  if (r.kind === 'perturb' && r.recovered !== undefined) {
+    const v = typeof r.recovered === 'boolean' ? r.recovered : null;
+    out.push(check('recovered', true, v, v === true));
   }
   if (r.heap) {
     const raw = r.heap.after - r.heap.before;
@@ -55,13 +82,17 @@ export function summaryText(suite) {
   const bestEffort = /firefox|safari/i.test(String(profile)) || (/firefox|safari/i.test(browser) && !/chrom|edg/i.test(browser));
   const head = `Dicer benchmark | ${suite.browser ?? 'n/a'} | GPU ${suite.gpu ?? 'n/a'} | tier ${suite.tier ?? 'n/a'} | Dicer ${suite.version ?? 'n/a'} | profile ${profile}`;
   const lines = [bestEffort ? `${head} | best effort` : head];
+  for (const n of suite.notes ?? []) lines.push(`note: ${n}`);
   for (const r of suite.results ?? []) {
     const checks = checkTargets(r);
     const failed = checks.filter((c) => c.pass === false).map((c) => c.id);
+    const gate = r.product === 'dicer' ? (r.dicerFirstFrame?.p95 ?? null) : null;
     const bits = [
       `frame p95 ${num(r.frame?.p95)} ms`,
       `long ${num(r.longTasks?.maxMs, 0)} ms`,
       `first ${num(r.firstFrame?.p95)} ms`,
+      // H-R10: the gate -> first frame time, judged for Dicer when present (both stay visible).
+      ...(gate != null ? [`msg->frame ${num(gate)} ms`] : []),
       `heap ${r.heap ? mb(r.heap.after - r.heap.before) : 'n/a'}`,
       `rolls ${r.rolls ?? 'n/a'}`,
       `fail ${r.failures ?? 'n/a'}`,
