@@ -5,7 +5,7 @@ export const AREA_DEBOUNCE_MS = 150;
  * The play area: the window minus the sidebar's rendered width. A collapsed v14 sidebar keeps
  * its tab strip, so the width is measured, never assumed to be 0.
  */
-export function measureArea({ doc = globalThis.document, win = globalThis.window } = {}) {
+export function measureUsable({ doc = globalThis.document, win = globalThis.window } = {}) {
   const sidebar = doc?.getElementById?.('sidebar');
   const sidebarWidth = sidebar ? sidebar.getBoundingClientRect().width || 0 : 0;
   return {
@@ -15,6 +15,9 @@ export function measureArea({ doc = globalThis.document, win = globalThis.window
     height: win.innerHeight,
   };
 }
+
+/** Alias kept for existing callers. */
+export const measureArea = measureUsable;
 
 /**
  * Calls onResize (debounced) after the window resizes or #sidebar's size changes. v14 fires

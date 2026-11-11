@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { measureArea, watchArea, AREA_DEBOUNCE_MS } from '../../src/foundry/area.js';
+import { measureArea, measureUsable, watchArea, AREA_DEBOUNCE_MS } from '../../src/foundry/area.js';
 
 function sidebar(width) {
   const el = document.createElement('div');
@@ -31,6 +31,19 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());
+
+describe('measureUsable', () => {
+  test('is the canonical name and measureArea is an alias', () => {
+    expect(measureArea).toBe(measureUsable);
+    sidebar(300);
+    expect(measureUsable({ doc: document, win: { innerWidth: 1600, innerHeight: 900 } })).toEqual({
+      left: 0,
+      top: 0,
+      width: 1300,
+      height: 900,
+    });
+  });
+});
 
 describe('measureArea', () => {
   test("subtracts the sidebar's rendered width, even when collapsed (the tab strip stays)", () => {
