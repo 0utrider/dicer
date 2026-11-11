@@ -20,7 +20,13 @@ npm run test:live:bench              # the full matrix
 npm run test:live:bench -- --dry-run # print the matrix, launch nothing, change nothing
 ```
 
-A full run goes through 8 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run.
+A full run goes through 8 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run. It exits 2 before starting when the credentials are missing, Foundry cannot be reached or `restore.json` is damaged.
+
+What each run covers:
+
+- Dicer, `pc` `vsync`: every scenario, including the 500-roll soak, resize, context loss and hidden tab.
+- Dicer, `throttled` `vsync`: `d20`, `mixed10`, `pool30`.
+- Each product in `pc` and `throttled` `uncapped`, and the effects-off pairing: `d20`, `mixed10`, `pool30`, `burst100`.
 
 ## Profiles and modes
 
@@ -36,24 +42,25 @@ A full run goes through 8 runs, including a 500-roll soak, a context-loss check 
 
 Uncapped intervals are not a 60 fps measure, so the G2 targets are not applied to them.
 
-The head-to-head pairs two comparisons:
+The head-to-head makes three comparisons:
 
-- Dicer defaults against DSN defaults.
-- DSN with its effects turned off against Dicer quality `low`.
+- Dicer defaults against DSN defaults on `pc`: Dicer must be clearly faster (frame p95 ratio at most 0.9).
+- Dicer defaults against DSN defaults on `throttled`: Dicer must not be slower.
+- DSN with its effects turned off against Dicer quality `low`, on `pc`: Dicer must not be slower.
 
 Reports are named `<product>-<profile>-<mode>[-<variant>]`, for example `dicer-pc-uncapped-low` or `dice-so-nice-pc-uncapped-effectsOff`.
 
 ## Output
 
-Everything goes to `artifacts/bench/<date>/` (ignored by git):
+Everything goes to `artifacts/bench/<timestamp>/`, for example `artifacts/bench/2026-11-11T12-00-00Z/` (ignored by git):
 
-- one `*.json` per run, with the raw measurements and, for the DSN effects-off run, the keys that were set (`dsnKeys`, `dsnFailed`);
+- one `*.json` per run, with the raw measurements (`suite`), the product's settings, page errors and, for DSN runs, `dsnFlag`: the DSN user flag read back after the harness wrote it;
 - `summary.md`, the file to read.
 
 ### Reading summary.md
 
 - **Runs**: the browser, GPU, tier and Dicer version of each run. Check the GPU column first: a software renderer means the numbers are not representative.
-- **G2 target checks**: one row per run, scenario and check, with the target, the measured value and Pass or Fail. Each failing row is something to tune. The checks include frame p95 (16.7 ms), longest task (50 ms), first frame (50 ms), big pool visible (100 ms), heap growth (2 MiB or 5%), no failed rolls, and no renderer rebuild on resize.
+- **G2 target checks**: one row per run, scenario and check, with the target, the measured value and Pass or Fail. Each failing row is something to tune. The checks include frame p95 (16.7 ms), longest task (50 ms), first frame (50 ms), big pool visible (100 ms), heap growth (at most 2 MiB and at most 5%), GPU geometries, textures and programs unchanged over the soak, no failed rolls, and no renderer rebuild on resize.
 - **Head-to-head**: the frame p95 of Dicer and DSN per scenario, their ratio, the limit, and the failed rolls of each. For the pc defaults pairing, Dicer must be clearly less than DSN (ratio at most 0.9).
 - **DSN effects-off user flag**: the DSN settings the harness wrote, read back. If an effect setting is missing here, DSN ran with that effect on and the pairing is less fair.
 - The last line counts failed rows, n/a rows and run errors.

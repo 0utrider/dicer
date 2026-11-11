@@ -195,7 +195,7 @@ The roll area rules (a player's area, the GM private corner) are also automated 
 
 ## 31. The benchmark refuses during a roll
 
-1. Roll `/r 30d20`, and press **Run the dice benchmark** (or run `game.dice3d.benchmark()`) while the dice are still in the air.
+1. Roll a big pool such as `/r 20d20` (anything that stays in the air for a few seconds), and press **Run the dice benchmark** (or run `game.dice3d.benchmark()`) while the dice are still in the air.
 2. Pass: a notice says the dice are still rolling, and nothing runs. With Dicer's **Enable 3D dice** off, a notice says 3D dice are turned off.
 
 ## 32. The bench harness restores the world on Ctrl+C
