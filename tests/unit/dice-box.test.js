@@ -14,6 +14,7 @@ import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
 import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
+import { createFontAtlases } from '../../src/fonts/font-atlas.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -2093,6 +2094,40 @@ describe('per-look fonts (font layer)', () => {
     a.release();
     b.release();
     box.dispose();
+  });
+
+  test('an atlas evicted while a roll holds its material is disposed once, after the roll lets go', async () => {
+    vi.useRealTimers();
+    const textures = [];
+    const fonts = createFontAtlases({
+      serif: atlas,
+      loadBundled: async () => null,
+      build: async () => ({ json: {}, width: 1, height: 1, field: new Uint8Array(1) }),
+      store: { get: async () => undefined, set: async () => {} },
+      getRoute: (p) => `/${p}`,
+      origin: 'https://vtt.example',
+      toAtlas: () => {
+        const texture = new THREE.Texture();
+        textures.push(texture);
+        return { ...fontAtlas, texture };
+      },
+      cacheSize: 1,
+      warn: () => {},
+    });
+    let look = sansLook;
+    const { box } = setup({ getAppearance: () => look, fonts });
+    await fonts.request('css:Comic Neue');
+    box.roll([{ type: 'd6', value: 1 }]);
+    expect(createDiceMaterial.mock.calls.at(-1)[1].texture).toBe(textures[0]);
+    const disposeA = vi.spyOn(textures[0], 'dispose');
+    look = { numbers: { font: 'css:Other' } };
+    await fonts.request('css:Other'); // evicts Comic Neue; onReady invalidates the materials
+    expect(fonts.get('css:Comic Neue')).toBeNull();
+    expect(disposeA).not.toHaveBeenCalled(); // the rolling die still binds it
+    box.clear(); // the roll lets go: its stale material is disposed, and with it the atlas
+    expect(disposeA).toHaveBeenCalledTimes(1);
+    box.dispose();
+    expect(disposeA).toHaveBeenCalledTimes(1);
   });
 
   test('a throwing font layer falls back to the serif', () => {

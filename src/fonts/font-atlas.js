@@ -16,6 +16,8 @@ import { normalizeAppearance } from '../look/appearance.js';
 export const FONT_TIMEOUT_MS = 8000;
 /** Bump when sdf-builder's output changes: stored atlases of another version are not reused. */
 export const GENERATOR_VERSION = 1;
+/** A stored-atlas lookup slower than this counts as "not stored" (a hung IndexedDB). */
+export const STORE_TIMEOUT_MS = 500;
 const CSS_FAMILY = /^[A-Za-z0-9 -]{1,64}$/;
 
 /**
@@ -191,6 +193,9 @@ export function createFontAtlases({
   const lru = new Map(); // runtime id -> atlas, least recently used first
   const inflight = new Map(); // id -> Promise<atlas | null>
   const failed = new Set();
+  const holds = new Map(); // runtime atlas -> materials binding it
+  const retired = new Set(); // evicted atlases still held: disposed on their last release
+  let storeDead = false;
   const listeners = new Set();
   let disposed = false;
   let builder = null;
@@ -203,10 +208,16 @@ export function createFontAtlases({
       )).then((b) => b.build(source)));
 
   async function fromStore(key) {
+    if (storeDead) return null;
     try {
-      const v = await store.get(key);
+      const v = await withTimeout(
+        Promise.resolve().then(() => store.get(key)),
+        STORE_TIMEOUT_MS,
+      );
       return isBuilt(v) ? v : null;
-    } catch {
+    } catch (err) {
+      // a hung store (timeout) is skipped from now on; a failed read just misses
+      if (/^not ready after/.test(err?.message ?? '')) storeDead = true;
       return null;
     }
   }
@@ -238,8 +249,29 @@ export function createFontAtlases({
     for (const [old, a] of lru) {
       if (lru.size <= cacheSize) break;
       lru.delete(old);
-      a.texture?.dispose?.();
+      // a material may still bind it: dispose when the last hold is released
+      if ((holds.get(a) ?? 0) > 0) retired.add(a);
+      else a.texture?.dispose?.();
     }
+  }
+
+  /**
+   * Marks `atlas` as bound by a material until the returned release() is called (idempotent).
+   * An evicted atlas keeps its texture while held and is disposed on the last release.
+   * The serif and sans atlases are never disposed by eviction: their holds are no-ops.
+   */
+  function hold(atlas) {
+    if (!atlas || atlas === serif || [...pinned.values()].includes(atlas)) return () => {};
+    holds.set(atlas, (holds.get(atlas) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const n = (holds.get(atlas) ?? 1) - 1;
+      if (n > 0) return void holds.set(atlas, n);
+      holds.delete(atlas);
+      if (retired.delete(atlas)) atlas.texture?.dispose?.();
+    };
   }
 
   function fail(id, err) {
@@ -305,12 +337,14 @@ export function createFontAtlases({
 
   function dispose() {
     disposed = true;
-    for (const a of [...lru.values(), ...pinned.values()]) a.texture?.dispose?.();
+    for (const a of [...lru.values(), ...pinned.values(), ...retired]) a.texture?.dispose?.();
     lru.clear();
     pinned.clear();
+    retired.clear();
+    holds.clear();
     listeners.clear();
     builder?.then((b) => b.dispose?.()).catch(() => {});
   }
 
-  return { get, request, onReady, dispose };
+  return { get, request, onReady, hold, dispose };
 }

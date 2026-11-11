@@ -15,6 +15,7 @@ import {
   fontFileUrl,
   fontSource,
   FONT_TIMEOUT_MS,
+  STORE_TIMEOUT_MS,
   GENERATOR_VERSION,
   dataTextureAtlas,
 } from '../../src/fonts/font-atlas.js';
@@ -163,9 +164,9 @@ describe('SDF builder (pure)', () => {
 });
 
 /** A 2D context stub: the font draws a filled rect per glyph; widths differ per fallback. */
-function fakeCanvas({ has = () => true } = {}) {
+function fakeCanvas({ has = () => true, metrics = false, log = [] } = {}) {
   let font = '';
-  const cv = { width: 0, height: 0 };
+  const cv = { width: 0, height: 0, log };
   let drawn = null;
   cv.getContext = () => ({
     set font(f) {
@@ -184,17 +185,30 @@ function fakeCanvas({ has = () => true } = {}) {
       drawn = { ch, x, y };
     },
     measureText(ch) {
+      log.push('measure');
       const own = has(ch) && /"Fam"/.test(font);
       const width = own ? 100 : /monospace/.test(font) ? 154 : 128;
-      return { width };
+      if (!metrics) return { width };
+      const px = Number(/(\d+)px/.exec(font)[1]);
+      // the drawn rect below: x in [pen, pen + 0.4 px), y in [base - 0.7 px, base)
+      return {
+        width,
+        actualBoundingBoxLeft: 0,
+        actualBoundingBoxRight: px * 0.4,
+        actualBoundingBoxAscent: px * 0.7,
+        actualBoundingBoxDescent: 0,
+      };
     },
     getImageData(x0, y0, w, h) {
+      log.push(['read', x0, y0, w, h]);
       const data = new Uint8ClampedArray(w * h * 4);
       if (drawn) {
         const px = Number(/(\d+)px/.exec(font)[1]);
         for (let y = Math.round(drawn.y - px * 0.7); y < drawn.y; y++)
-          for (let x = Math.round(drawn.x); x < drawn.x + px * 0.4; x++)
-            data[(y * w + x) * 4 + 3] = 255;
+          for (let x = Math.round(drawn.x); x < drawn.x + px * 0.4; x++) {
+            if (x < x0 || x >= x0 + w || y < y0 || y >= y0 + h) continue;
+            data[((y - y0) * w + (x - x0)) * 4 + 3] = 255;
+          }
       }
       return { data, width: w, height: h };
     },
@@ -202,6 +216,40 @@ function fakeCanvas({ has = () => true } = {}) {
   return cv;
 }
 describe('glyph raster', () => {
+  const drainAll = (it) => {
+    let r;
+    while (!(r = it.next()).done);
+    return r.value;
+  };
+
+  test('steps stay small: canvas setup, coverage check, draw + read-back and crop are separate', () => {
+    const log = [];
+    const cv = fakeCanvas({ metrics: true, log });
+    const it = rasterSteps({ family: 'Fam', makeCanvas: () => cv });
+    it.next(); // canvas setup only
+    expect(log).toEqual([]);
+    it.next(); // the first coverage check: measuring only, nothing read back
+    expect(log.every((e) => e === 'measure')).toBe(true);
+    it.next(); // draw + read-back of one glyph's band
+    expect(log.filter((e) => Array.isArray(e))).toHaveLength(1);
+    let steps = 3;
+    while (!it.next().done) steps++;
+    expect(steps).toBeGreaterThanOrEqual(1 + 3 * GLYPHS.length);
+  });
+
+  test('only the band around the measured glyph is read back, and it gives the same atlas', () => {
+    const log = [];
+    const banded = drainAll(
+      rasterSteps({ family: 'Fam', makeCanvas: () => fakeCanvas({ metrics: true, log }) }),
+    );
+    const reads = log.filter((e) => Array.isArray(e));
+    const full = Math.ceil(256 * 1.6);
+    for (const [, , , w, h] of reads) expect(w * h).toBeLessThan((full * full) / 2);
+    const whole = drainAll(rasterSteps({ family: 'Fam', makeCanvas: () => fakeCanvas() }));
+    expect(buildAtlas(banded).json).toEqual(buildAtlas(whole).json);
+    expect(buildAtlas(banded).field).toEqual(buildAtlas(whole).field);
+  });
+
   test('rasterSteps draws 0-9 and _ and returns cropped glyphs', () => {
     const it = rasterSteps({ family: 'Fam', makeCanvas: () => fakeCanvas() });
     let r;
@@ -460,6 +508,53 @@ describe('createFontAtlases', () => {
     const { fonts, warn } = make({ store });
     expect(await fonts.request('css:A')).not.toBeNull();
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  test('an evicted atlas still held by a material is disposed only when the last hold is released', async () => {
+    const { fonts, textures } = make({ opts: { cacheSize: 1 } });
+    const a = await fonts.request('css:A');
+    const release1 = fonts.hold(a);
+    const release2 = fonts.hold(a);
+    const disposeA = vi.spyOn(textures[0], 'dispose');
+    await fonts.request('css:B'); // evicts A
+    expect(fonts.get('css:A')).toBeNull();
+    expect(disposeA).not.toHaveBeenCalled();
+    release1();
+    release1(); // idempotent
+    expect(disposeA).not.toHaveBeenCalled();
+    release2();
+    expect(disposeA).toHaveBeenCalledTimes(1);
+  });
+
+  test('a held atlas that is still cached is not disposed on release; a later eviction disposes it at once', async () => {
+    const { fonts, textures } = make({ opts: { cacheSize: 1 } });
+    const a = await fonts.request('css:A');
+    fonts.hold(a)();
+    const disposeA = vi.spyOn(textures[0], 'dispose');
+    expect(disposeA).not.toHaveBeenCalled();
+    await fonts.request('css:B');
+    expect(disposeA).toHaveBeenCalledTimes(1);
+    expect(typeof fonts.hold(fonts.get('serif'))).toBe('function'); // serif: a no-op hold
+  });
+
+  test(`a hung store lookup counts as "not stored" after ${STORE_TIMEOUT_MS} ms; the font still builds`, async () => {
+    vi.useFakeTimers();
+    try {
+      const store = { get: vi.fn(() => new Promise(() => {})), set: vi.fn(async () => {}) };
+      const { fonts, build, warn } = make({ store });
+      const p = fonts.request('css:A');
+      await vi.advanceTimersByTimeAsync(STORE_TIMEOUT_MS + 1);
+      expect(await p).not.toBeNull();
+      expect(build).toHaveBeenCalledTimes(1);
+      expect(warn).not.toHaveBeenCalled();
+      // a store that hung once is skipped afterwards: no second wait
+      const q = fonts.request('css:B');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await q).not.toBeNull();
+      expect(store.get).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('dispose frees runtime textures and get gives null afterwards', async () => {

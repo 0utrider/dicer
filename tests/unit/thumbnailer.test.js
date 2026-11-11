@@ -393,3 +393,45 @@ describe('per-look fonts', () => {
     t.dispose();
   });
 });
+
+describe('per-look fonts: chain, cache and atlas holds', () => {
+  const fontAtlas = {
+    ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8'))),
+    texture: new THREE.Texture(),
+  };
+  const withFont = (font) => ({ ...theme(), appearance: { ...theme().appearance, numbers: { ...theme().appearance.numbers, font } } });
+
+  test('a slow font does not hold up the thumbnail chain', async () => {
+    const fonts = { get: () => null, request: vi.fn(() => new Promise(() => {})), hold: () => () => {} };
+    const { t, rig } = make({ opts: { fonts } });
+    t.thumbnail(withFont('css:Slow'), 'd20');
+    expect(await t.thumbnail(theme(1), 'd20')).toBe('blob:t1');
+    expect(rig.renderer.render).toHaveBeenCalledTimes(1);
+    t.dispose();
+  });
+
+  test('a thumbnail drawn with the serif standing in for its font is not cached', async () => {
+    const fonts = { get: () => null, request: vi.fn(async () => null), hold: () => () => {} };
+    const { t, rig } = make({ opts: { fonts } });
+    const a = await t.thumbnail(withFont('css:Nope'), 'd20');
+    const b = await t.thumbnail(withFont('css:Nope'), 'd20');
+    expect(a).toBeTruthy();
+    expect(b).not.toBe(a);
+    expect(rig.renderer.render).toHaveBeenCalledTimes(2);
+    t.dispose();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(a); // the loose URLs are freed too
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(b);
+  });
+
+  test('a font thumbnail is cached and holds its atlas only while it renders', async () => {
+    const release = vi.fn();
+    const fonts = { get: () => null, request: vi.fn(async () => fontAtlas), hold: vi.fn(() => release) };
+    const { t, rig } = make({ opts: { fonts } });
+    const a = await t.thumbnail(withFont('css:Comic Neue'), 'd20');
+    expect(await t.thumbnail(withFont('css:Comic Neue'), 'd20')).toBe(a);
+    expect(rig.renderer.render).toHaveBeenCalledTimes(1);
+    expect(fonts.hold).toHaveBeenCalledWith(fontAtlas);
+    expect(release).toHaveBeenCalledTimes(1);
+    t.dispose();
+  });
+});

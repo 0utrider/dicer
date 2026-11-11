@@ -379,3 +379,20 @@ describe('per-look fonts', () => {
     s.t.dispose();
   });
 });
+
+test('the preview holds a font atlas while its die exists and lets go on stop', () => {
+  const fontAtlas = {
+    ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8'))),
+    texture: new THREE.Texture(),
+  };
+  const release = vi.fn();
+  const fonts = { get: vi.fn(() => fontAtlas), request: vi.fn(), hold: vi.fn(() => release) };
+  const s = setup({ fonts });
+  const look = { ...theme(), appearance: { ...theme().appearance, numbers: { ...theme().appearance.numbers, font: 'sans' } } };
+  const p = s.t.preview(target(), look);
+  expect(fonts.hold).toHaveBeenCalledWith(fontAtlas);
+  expect(release).not.toHaveBeenCalled();
+  p.stop();
+  expect(release).toHaveBeenCalledTimes(1);
+  s.t.dispose();
+});

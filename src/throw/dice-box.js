@@ -505,6 +505,12 @@ export class DiceBox {
   }
 
   #disposeMaterial(material) {
+    const entry = this._refs.get(material);
+    try {
+      entry?.releaseAtlas?.();
+    } catch {
+      /* the font layer is gone */
+    }
     this._refs.delete(material);
     this._idle.delete(material);
     material.userData.uniforms?.uLabels.value.dispose();
@@ -645,7 +651,9 @@ export class DiceBox {
         mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
       this._materials.set(key, mat);
       // A layered material lives only while rolls hold it: its texture is theirs.
-      this._refs.set(mat, { refs: 0, stale: false, transient: !!layered, key });
+      // The font layer keeps an evicted atlas's texture until this material lets go of it.
+      const releaseAtlas = font.id === 'serif' ? null : this.#holdAtlas(font.atlas);
+      this._refs.set(mat, { refs: 0, stale: false, transient: !!layered, key, releaseAtlas });
       if (found) {
         try {
           this._onMaterial(mat, found.dsnType, appearance, found.preset);
@@ -675,6 +683,16 @@ export class DiceBox {
       }
     }
     return serif;
+  }
+
+  /** fonts.hold(atlas) -> release, or null (no hold support / a throwing layer). */
+  #holdAtlas(atlas) {
+    try {
+      const release = this._fonts?.hold?.(atlas);
+      return typeof release === 'function' ? release : null;
+    } catch {
+      return null;
+    }
   }
 
   /** The DiceSystem instance registered for `systemId`, or null; never throws. */

@@ -94,6 +94,7 @@ export function createThumbnailer({
 } = {}) {
   const make = createRenderer ?? (() => defaultCreateRenderer(size));
   const cache = new Map(); // key -> object URL
+  const loose = new Set(); // uncached object URLs (serif stand-ins), revoked on dispose
   const inflight = new Map(); // key -> Promise
   let chain = Promise.resolve();
   let renderer = null;
@@ -134,6 +135,16 @@ export function createThumbnailer({
       return fonts.get(id) ?? null;
     } catch {
       return null;
+    }
+  };
+  /** fonts.hold(a): keeps an evicted runtime atlas alive until release() (never throws). */
+  const holdAtlas = (a) => {
+    if (!a || a === atlas || typeof fonts?.hold !== 'function') return () => {};
+    try {
+      const release = fonts.hold(a);
+      return typeof release === 'function' ? release : () => {};
+    } catch {
+      return () => {};
     }
   };
   /** Resolves the font's atlas once ready, or the serif when it cannot be used. */
@@ -202,6 +213,7 @@ export function createThumbnailer({
     const cvs = canvas;
     const rnd = renderer;
     const material = createDiceMaterial(appearance, dieAtlas, shape, labels, flags);
+    const releaseAtlas = holdAtlas(dieAtlas);
     // The geometry is acquired only once the material exists; anything after it that throws
     // gives it back.
     const held = acquireGeometry(shape, shapeType, appearance);
@@ -217,6 +229,7 @@ export function createThumbnailer({
     } catch (err) {
       material.userData?.uniforms?.uLabels?.value?.dispose();
       material.dispose();
+      releaseAtlas();
       held.release();
       throw err;
     }
@@ -236,13 +249,13 @@ export function createThumbnailer({
       api.releaseShadow(shadow);
       material.userData?.uniforms?.uLabels?.value?.dispose();
       material.dispose();
+      releaseAtlas();
       held.release();
     }
   }
 
-  async function job(theme, dieType, key) {
-    const fontId = fontOf(theme.perType?.[dieType] ?? theme.appearance);
-    const dieAtlas = isSerif(fontId) ? atlas : await awaitAtlas(fontId);
+  /** standIn: the serif drew a look whose font cannot be used; such an image is not cached. */
+  async function job(theme, dieType, key, dieAtlas = atlas, standIn = false) {
     await new Promise((resolve) => idle(resolve));
     if (disposed || broken) return null;
     if (!renderer) init();
@@ -252,7 +265,8 @@ export function createThumbnailer({
       if (disposed) return null;
       if (broken) return null; // context lost mid-render: the image is not trustworthy
       const url = URL.createObjectURL(blob);
-      cache.set(key, url);
+      if (standIn) loose.add(url);
+      else cache.set(key, url);
       return url;
     } catch (err) {
       if (disposed) return null;
@@ -268,8 +282,17 @@ export function createThumbnailer({
     const key = `${appearanceKey(appearance)}|${dieType}|${size}`;
     if (cache.has(key)) return Promise.resolve(cache.get(key));
     if (inflight.has(key)) return inflight.get(key);
-    const p = chain.then(() => job(theme, dieType, key));
-    chain = p.catch(() => null);
+    const fontId = fontOf(appearance);
+    // A look with another font waits for it before joining the render chain, so a slow font
+    // never holds up other thumbnails.
+    const enqueue = (dieAtlas, standIn) => {
+      const r = chain.then(() => job(theme, dieType, key, dieAtlas, standIn));
+      chain = r.catch(() => null);
+      return r;
+    };
+    const p = isSerif(fontId)
+      ? enqueue(atlas, false)
+      : awaitAtlas(fontId).then((a) => (disposed ? null : enqueue(a, a === atlas)));
     inflight.set(key, p);
     const done = () => inflight.delete(key);
     p.then(done, done);
@@ -306,6 +329,7 @@ export function createThumbnailer({
       if (!res) return;
       res.material.userData?.uniforms?.uLabels?.value?.dispose();
       res.material.dispose();
+      res.releaseAtlas();
       res.release();
       res = null;
     };
@@ -324,6 +348,7 @@ export function createThumbnailer({
       const fontId = fontOf(appearance);
       const dieAtlas = readyAtlas(fontId);
       const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags);
+      const releaseAtlas = holdAtlas(dieAtlas);
       if (!dieAtlas) {
         // the serif stands in: rebuild the die once the font is ready
         awaitAtlas(fontId).then((a) => {
@@ -344,6 +369,7 @@ export function createThumbnailer({
       } catch (err) {
         material.userData?.uniforms?.uLabels?.value?.dispose();
         material.dispose();
+        releaseAtlas();
         held.release();
         throw err;
       }
@@ -352,6 +378,7 @@ export function createThumbnailer({
         material,
         geometry,
         release: held.release,
+        releaseAtlas,
         baseQ,
         y: mesh.position.y,
         standIn: !dieAtlas,
@@ -486,7 +513,8 @@ export function createThumbnailer({
   function dispose() {
     for (const p of [...previews]) p.stop();
     disposed = true;
-    for (const url of cache.values()) URL.revokeObjectURL(url);
+    for (const url of [...cache.values(), ...loose]) URL.revokeObjectURL(url);
+    loose.clear();
     for (const e of geometries.values()) e.geometry.dispose();
     geometries.clear();
     cache.clear();

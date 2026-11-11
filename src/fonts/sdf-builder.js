@@ -294,8 +294,31 @@ function syntheticUnderline(cw, ch, penX, baseY) {
   return cropGlyph(a, cw, ch, { char: UNDERLINE_SRC, penX, baseY, advance: RASTER_PX / 2 });
 }
 
+/** Ink margin (raster px) kept around the measured glyph box when reading pixels back. */
+const BAND_MARGIN = 8;
+
 /**
- * Draws each glyph of GLYPHS with `family` on a 2D canvas and crops it; yields after each.
+ * The canvas rect worth reading back for a glyph: its measured ink box (TextMetrics actual
+ * bounding box) plus a margin, clamped to the canvas; the whole canvas without metrics.
+ */
+function bandOf(m, penX, baseY, cw, ch) {
+  const l = m?.actualBoundingBoxLeft;
+  const r = m?.actualBoundingBoxRight;
+  const a = m?.actualBoundingBoxAscent;
+  const d = m?.actualBoundingBoxDescent;
+  if (![l, r, a, d].every(Number.isFinite)) return { x: 0, y: 0, w: cw, h: ch };
+  const x0 = Math.max(0, Math.floor(penX - l) - BAND_MARGIN);
+  const x1 = Math.min(cw, Math.ceil(penX + r) + BAND_MARGIN);
+  const y0 = Math.max(0, Math.floor(baseY - a) - BAND_MARGIN);
+  const y1 = Math.min(ch, Math.ceil(baseY + d) + BAND_MARGIN);
+  if (x1 <= x0 || y1 <= y0) return { x: 0, y: 0, w: cw, h: ch };
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/**
+ * Draws each glyph of GLYPHS with `family` on a 2D canvas and crops it. Each step is small (the
+ * G2 8 ms rule for idle slices): canvas setup; then per glyph the coverage check, the draw and
+ * read-back of only the band around the glyph, and the crop.
  * A glyph the family lacks is detected by measuring it with two different fallbacks: the
  * widths match only when the family itself draws it. A missing digit fails (code 'nodigits');
  * a missing "_" is replaced by a plain bar.
@@ -310,6 +333,7 @@ export function* rasterSteps({ family, makeCanvas }) {
   canvas.height = ch;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new FontError('unsupported', 'no 2D canvas context');
+  yield; // canvas creation in its own slice
   const name = `"${cssString(family)}"`;
   const width = (c, fallback) => {
     ctx.font = `${px}px ${name}, ${fallback}`;
@@ -319,18 +343,28 @@ export function* rasterSteps({ family, makeCanvas }) {
   const baseY = Math.round(px * 1.2);
   const glyphs = [];
   for (const c of GLYPHS) {
+    // the first measure resolves the font: its own step
     const own = width(c, 'monospace') === width(c, 'serif');
+    yield;
     let g = null;
     if (own) {
       ctx.font = `${px}px ${name}, serif`;
-      ctx.clearRect(0, 0, cw, ch);
+      const metrics = ctx.measureText(c);
+      const band = bandOf(metrics, penX, baseY, cw, ch);
+      ctx.clearRect(band.x, band.y, band.w, band.h);
       ctx.fillStyle = '#fff';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(c, penX, baseY);
-      const rgba = ctx.getImageData(0, 0, cw, ch).data;
-      const alpha = new Uint8Array(cw * ch);
+      const rgba = ctx.getImageData(band.x, band.y, band.w, band.h).data;
+      yield;
+      const alpha = new Uint8Array(band.w * band.h);
       for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3];
-      g = cropGlyph(alpha, cw, ch, { char: c, penX, baseY, advance: ctx.measureText(c).width });
+      g = cropGlyph(alpha, band.w, band.h, {
+        char: c,
+        penX: penX - band.x,
+        baseY: baseY - band.y,
+        advance: metrics.width,
+      });
     }
     if (!g && c === UNDERLINE_SRC) g = syntheticUnderline(cw, ch, penX, baseY);
     if (!g) throw new FontError('nodigits', `the font has no "${c}"`);
