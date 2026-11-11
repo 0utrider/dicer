@@ -207,3 +207,33 @@ test('every effects setting has its English name and hint', () => {
     expect(typeof en[key]?.Hint).toBe('string');
   }
 });
+
+test('disabledModuleTriggers is a hidden world Array defaulting to empty (P4-R12)', () => {
+  const cfg = capture().disabledModuleTriggers;
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: false, type: Array });
+  expect(cfg.default).toEqual([]);
+});
+
+test('the trigger editor menu is a client-visible ApplicationV2 proxy that lazily opens the editor', () => {
+  class FakeApp {}
+  const menus = {};
+  globalThis.foundry = { applications: { api: { ApplicationV2: FakeApp } } };
+  globalThis.game = {
+    settings: { register: () => {}, registerMenu: (ns, key, cfg) => (menus[key] = { ns, ...cfg }) },
+  };
+  try {
+    registerSettings();
+  } finally {
+    delete globalThis.game;
+    delete globalThis.foundry;
+  }
+  const menu = menus.triggerEditor;
+  expect(menu).toMatchObject({ ns: 'dicer', restricted: false });
+  expect(menu.name).toBe('DICER.Settings.triggerEditor.Name');
+  expect(menu.label).toBe('DICER.Settings.triggerEditor.Label');
+  expect(menu.hint).toBe('DICER.Settings.triggerEditor.Hint');
+  expect(Object.getPrototypeOf(menu.type)).toBe(FakeApp);
+  expect(typeof menu.type.prototype.render).toBe('function');
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings.triggerEditor;
+  expect(Object.keys(en).sort()).toEqual(['Hint', 'Label', 'Name']);
+});

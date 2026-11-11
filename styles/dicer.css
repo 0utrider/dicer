@@ -15,3 +15,80 @@
 .dicer-hide-initiative {
   visibility: hidden;
 }
+
+/* Trigger editor */
+.dicer-trigger-editor .window-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+.dicer-trigger-editor .dicer-tabs {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 1px solid var(--color-border-light-tertiary, #999);
+}
+.dicer-trigger-editor .dicer-tabs a.active {
+  font-weight: bold;
+  border-bottom: 2px solid var(--color-text-hyperlink, #c00);
+}
+.dicer-trigger-editor .dicer-rules {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.dicer-trigger-editor .dicer-rule {
+  border: 1px solid var(--color-border-light-tertiary, #999);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+.dicer-trigger-editor .dicer-rule.is-module {
+  opacity: 0.85;
+}
+.dicer-trigger-editor .dicer-rule.invalid {
+  border-color: var(--color-level-error, #c00);
+  box-shadow: 0 0 0 1px var(--color-level-error, #c00);
+}
+.dicer-trigger-editor .dicer-error {
+  color: var(--color-level-error, #c00);
+  margin: 0 0 0.25rem;
+}
+.dicer-trigger-editor .dicer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.25rem;
+}
+.dicer-trigger-editor .dicer-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-trigger-editor .dicer-row .dicer-grow {
+  flex: 1;
+}
+.dicer-trigger-editor .dicer-color,
+.dicer-trigger-editor .dicer-file {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.dicer-trigger-editor .dicer-badge {
+  font-size: var(--font-size-11, 11px);
+  margin-left: 0.5rem;
+  opacity: 0.8;
+}
+.dicer-trigger-editor .dicer-actions,
+.dicer-trigger-editor .form-footer {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: flex-end;
+}
+.dicer-trigger-editor .dicer-actions button {
+  flex: 0 0 auto;
+  width: auto;
+}

@@ -55,7 +55,7 @@ describe('normalizeRule', () => {
       { id: 'c', effect: { id: 'x' }, context: { formula: '/(/' } },
       { id: 'd', effect: { id: 'x' }, result: { kind: 'range', from: NaN, to: 3 } },
       { id: 'e', effect: { id: 'x' }, result: { kind: 'value', value: Infinity } },
-      { id: 'f', effect: { id: 'x' }, result: { kind: 'label', label: 'x' } },
+      { id: 'f', effect: { id: 'x' }, result: { kind: 'label', label: '' } },
       { id: 'g', effect: { id: 'x' }, outcome: 'meh' },
     ];
     for (const raw of cases) {
@@ -65,9 +65,11 @@ describe('normalizeRule', () => {
     }
   });
 
-  it('allows label only from modules', () => {
+  it('allows label from any source (P4-R11)', () => {
     const raw = { id: 'l', effect: { id: 'x' }, result: { kind: 'label', label: 'Hope' } };
     expect(normalizeRule(raw, 'module', vi.fn()).result).toEqual({ kind: 'label', label: 'Hope' });
+    expect(normalizeRule(raw, 'world', vi.fn()).result).toEqual({ kind: 'label', label: 'Hope' });
+    expect(normalizeRule(raw, 'user', vi.fn()).result).toEqual({ kind: 'label', label: 'Hope' });
     expect(normalizeRule({ ...raw, result: { kind: 'label', label: '' } }, 'module', vi.fn())).toBeNull();
   });
 

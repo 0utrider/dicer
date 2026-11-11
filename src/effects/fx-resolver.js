@@ -57,6 +57,7 @@ function safe(fn, fallback) {
  * @param {() => unknown} deps.getWorldRules the raw worldTriggers setting
  * @param {(userId: string) => unknown} deps.getUserRules the raw `dicer.triggers` flag of a user
  * @param {() => object[]} [deps.getModuleRules] already normalized module rules (DSN defaults)
+ * @param {() => string[]} [deps.getDisabledModuleRules] ids of module rules the GM switched off
  * @param {() => {id?: string}|undefined} deps.currentUser
  * @param {(key: string) => unknown} deps.getSetting
  * @param {(term) => string|null} [deps.shapeFor] base shape of a custom die type
@@ -68,6 +69,7 @@ export function createFxResolver({
   getWorldRules,
   getUserRules,
   getModuleRules = () => [],
+  getDisabledModuleRules = () => [],
   currentUser,
   getSetting,
   shapeFor = () => null,
@@ -117,8 +119,14 @@ export function createFxResolver({
           safe(() => getUserRules(rollerId), null),
         )
       : [];
-    const module = safe(getModuleRules, []);
-    return effectiveRules({ world, roller, module: Array.isArray(module) ? module : [] });
+    const mods = safe(getModuleRules, []);
+    const off = safe(getDisabledModuleRules, []);
+    const module = Array.isArray(mods)
+      ? Array.isArray(off) && off.length
+        ? mods.filter((r) => !off.includes(r?.id))
+        : mods
+      : [];
+    return effectiveRules({ world, roller, module });
   }
 
   return {

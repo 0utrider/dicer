@@ -4,6 +4,8 @@ import { createSync, rollToData, ghostRollData, ghostRoll } from '../compat/sync
 import { createRegistry } from '../compat/registry.js';
 import { readUserLooks } from '../compat/user-looks.js';
 import { measureArea } from '../foundry/area.js';
+import { moduleRulesOf } from '../effects/fx-resolver.js';
+import { getShape } from '../core/dice-shapes.js';
 
 const STANDARD_SYSTEM = 'standard';
 /** The gate and showForRoll hooks enableDebugMode logs. */
@@ -692,5 +694,50 @@ export function createDice3dApi({
       },
     },
   };
+  // Trigger editor support (Task 12): non-enumerable so they are not part of the DSN surface.
+  const moduleRules = moduleRulesOf(registry);
+  Object.defineProperties(api, {
+    /** Local only: throws one die whose spec carries `fx`. Never broadcast, no chat message, no hooks. */
+    _preview: {
+      value(fx, { type = 'd20', value } = {}) {
+        let die = type === 'd100' ? 'd10' : type;
+        let shape;
+        try {
+          shape = getShape(die);
+        } catch {
+          die = 'd20';
+          shape = getShape(die);
+        }
+        const values = shape.values;
+        const face = values.includes(value) ? value : Math.max(...values);
+        try {
+          return diceBox.roll([{ type: die, value: face, fx: [fx] }]).landed;
+        } catch (err) {
+          warnOnce('_preview', err);
+          return Promise.resolve();
+        }
+      },
+    },
+    /** What the editor needs from the registry: module rules, trigger ids with labels, SFX modes, dice types. */
+    _triggerContext: {
+      value() {
+        const triggers = [...(registry.sfxTriggers?.values() ?? [])].map((t) => ({
+          id: t.id,
+          name: typeof t.name === 'string' && t.name ? t.name : t.id,
+          results: Array.isArray(t.results)
+            ? t.results.filter((r) => typeof r === 'string' || typeof r === 'number').map(String)
+            : [],
+        }));
+        const diceTypes = new Set();
+        for (const sys of registry.systems.values()) for (const type of sys.dice.keys()) diceTypes.add(type);
+        return {
+          moduleRules: moduleRules(),
+          triggers,
+          modes: registry.getSFXModes(),
+          diceTypes: [...diceTypes],
+        };
+      },
+    },
+  });
   return api;
 }

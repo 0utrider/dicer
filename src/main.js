@@ -401,6 +401,7 @@ Hooks.once('ready', async () => {
         getWorldRules: () => getSetting('worldTriggers'),
         getUserRules: (id) => game.users?.get(id)?.getFlag?.('dicer', 'triggers'),
         getModuleRules: moduleRulesOf(registry),
+        getDisabledModuleRules: () => getSetting('disabledModuleTriggers'),
         currentUser: () => game.user,
         getSetting,
         shapeFor: resolver.shapeFor,

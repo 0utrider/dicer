@@ -343,3 +343,21 @@ test('moduleRulesOf converts the DSN defaults once per change, warning once', as
   getModule();
   expect(warn).toHaveBeenCalledTimes(1);
 });
+
+test('module rules named by getDisabledModuleRules do not fire (P4-R12)', async () => {
+  const { normalizeRule } = await import('../../src/effects/rules.js');
+  const modRule = (id) =>
+    normalizeRule({ id, die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'dsn:X' } }, 'module', warn);
+  let disabled = [];
+  const resolver = make({
+    getWorldRules: () => [],
+    getModuleRules: () => [modRule('dsn:a'), modRule('dsn:b')],
+    getDisabledModuleRules: () => disabled,
+  });
+  const ids = () => (plan(resolver, d20(20))[0].fx ?? []).map((f) => f.ruleId);
+  expect(ids()).toEqual(['dsn:a', 'dsn:b']);
+  disabled = ['dsn:a'];
+  expect(ids()).toEqual(['dsn:b']);
+  disabled = 'junk';
+  expect(ids()).toEqual(['dsn:a', 'dsn:b']);
+});

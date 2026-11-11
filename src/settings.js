@@ -14,6 +14,29 @@ export function registerNoticeSetting() {
 }
 
 /**
+ * The trigger editor's settings menu. registerMenu needs a class now, so this is a tiny proxy
+ * whose render() lazily imports the real editor (a separate chunk) and renders that instead.
+ */
+function registerTriggerMenu(t) {
+  const Base = globalThis.foundry?.applications?.api?.ApplicationV2;
+  if (!Base || typeof game.settings.registerMenu !== 'function') return;
+  class TriggerEditorMenu extends Base {
+    async render() {
+      const { openTriggerEditor } = await import('./ui/trigger-editor.js');
+      return openTriggerEditor();
+    }
+  }
+  game.settings.registerMenu(MODULE_ID, 'triggerEditor', {
+    name: t('triggerEditor.Name'),
+    label: t('triggerEditor.Label'),
+    hint: t('triggerEditor.Hint'),
+    icon: 'fa-solid fa-bolt',
+    type: TriggerEditorMenu,
+    restricted: false,
+  });
+}
+
+/**
  * Registers every Dicer setting.
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
@@ -256,6 +279,14 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     config: false,
     type: Array,
     default: structuredClone(DEFAULT_RULES),
+  });
+  registerTriggerMenu(t);
+  // Ids of module (Dice So Nice default) rules the GM switched off in the trigger editor.
+  game.settings.register(MODULE_ID, 'disabledModuleTriggers', {
+    scope: 'world',
+    config: false,
+    type: Array,
+    default: [],
   });
   registerNoticeSetting();
 }

@@ -36,7 +36,7 @@ const reject = (msg) => {
   throw new Reject(msg);
 };
 
-function normalizeResult(raw, source) {
+function normalizeResult(raw) {
   if (raw === undefined || raw === null) return { kind: 'any' };
   if (!isObj(raw)) reject('result must be an object');
   const kind = raw.kind ?? 'any';
@@ -49,7 +49,7 @@ function normalizeResult(raw, source) {
     if (!Number.isFinite(raw.from) || !Number.isFinite(raw.to)) reject('result range must be finite');
     return { kind, from: Math.min(raw.from, raw.to), to: Math.max(raw.from, raw.to) };
   }
-  if (kind === 'label' && source === 'module') {
+  if (kind === 'label') {
     if (!isStr(raw.label)) reject('result.label must be a non-empty string');
     return { kind, label: raw.label };
   }
@@ -134,7 +134,7 @@ export function normalizeRule(raw, source, warn = console.warn) {
     const sound = normalizeSound(raw.sound);
     const macro = isStr(raw.macro) ? raw.macro : null;
     if (!effect && !sound && !macro) reject('rule has no effect, sound or macro');
-    const result = normalizeResult(raw.result, source);
+    const result = normalizeResult(raw.result);
     const context = normalizeContext(raw.context);
     const outcome = raw.outcome ?? 'any';
     if (!OUTCOMES.includes(outcome)) reject(`unknown outcome "${String(outcome)}"`);

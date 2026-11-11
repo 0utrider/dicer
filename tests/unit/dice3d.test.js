@@ -919,3 +919,41 @@ describe('local ghost showForRoll uses the wire ghost shape (P3-R20)', () => {
     expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 1, ghost: true }]);
   });
 });
+
+describe('trigger editor helpers (Task 12)', () => {
+  test('_preview throws one local die carrying the fx, never a hook or a chat message', async () => {
+    const callAll = vi.fn();
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], hooks: { callAll, on() {} } });
+    expect(Object.keys(a)).not.toContain('_preview');
+    const fx = { ruleId: 'r', effect: { id: 'celebrate' }, sound: null, macro: null, slowMotion: false, value: 20, type: 'd20' };
+    const done = a._preview(fx, { type: 'd20', value: 20 });
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 20, fx: [fx] }]);
+    diceBox.rolls[0].resolve();
+    await done;
+    expect(callAll).not.toHaveBeenCalled();
+  });
+
+  test('_preview picks a valid face for the die and falls back to a d20', () => {
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k] });
+    a._preview({ ruleId: 'r' }, { type: 'd6', value: 99 });
+    expect(diceBox.roll.mock.calls[0][0][0]).toMatchObject({ type: 'd6', value: 6 });
+    a._preview({ ruleId: 'r' }, { type: 'weird-trigger' });
+    expect(diceBox.roll.mock.calls[1][0][0].type).toBe('d20');
+    a._preview({ ruleId: 'r' }, { type: 'd100', value: 7 });
+    expect(diceBox.roll.mock.calls[2][0][0]).toMatchObject({ type: 'd10' });
+  });
+
+  test('_triggerContext lists module rules, addSFXTrigger ids with labels, SFX modes and dice types', () => {
+    const registry = createRegistry();
+    registry.addSFXTrigger('mytrig', 'My trigger', ['Hope', 'Fear']);
+    registry.addSFXMode(class Fx { static id = 'myfx'; static specialEffectName = 'My Fx'; });
+    registry.addSFXDefaults([{ diceType: 'd20', onResult: ['20'], specialEffect: 'myfx' }]);
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], registry });
+    const ctx = a._triggerContext();
+    expect(Object.keys(a)).not.toContain('_triggerContext');
+    expect(ctx.moduleRules.map((r) => r.id)).toEqual(['dsn:d20:myfx:0']);
+    expect(ctx.triggers).toEqual([{ id: 'mytrig', name: 'My trigger', results: ['Hope', 'Fear'] }]);
+    expect(ctx.modes).toEqual({ myfx: 'My Fx' });
+    expect(Array.isArray(ctx.diceTypes)).toBe(true);
+  });
+});

@@ -7,11 +7,12 @@
  * renderAll can resume it across idle callbacks and respect its time budget.
  */
 import { mulberry32 } from '../core/rng.js';
+import { RESULT_SOUNDS } from './sound-names.js';
 
 export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
 export const SURFACES = ['felt', 'wood', 'stone', 'metal'];
 export const VARIANTS = 4;
-export const RESULT_SOUNDS = ['chime', 'fanfare', 'sparkle', 'fizzle', 'thud', 'whoosh', 'crackle', 'zap', 'boom'];
+export { RESULT_SOUNDS };
 
 const TAU = Math.PI * 2;
 /** Samples of work between yields (mask form: BLOCK - 1). About 0.1 ms of work each. */
