@@ -957,3 +957,33 @@ describe('trigger editor helpers (Task 12)', () => {
     expect(Array.isArray(ctx.diceTypes)).toBe(true);
   });
 });
+
+describe('damage map editor helpers (Task 13)', () => {
+  test('_preview passes a spec override (appearance, soundMaterial) to the one local die', () => {
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k] });
+    const fx = { ruleId: 'damage:fire', effect: { id: 'embers' }, sound: null, macro: null, slowMotion: false, value: 6, type: 'd6' };
+    const appearance = { body: { type: 'resin' } };
+    a._preview(fx, { type: 'd6', appearance, soundMaterial: 'glass' });
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 6, fx: [fx], appearance, soundMaterial: 'glass' }]);
+  });
+
+  test('_preview without fx throws a plain die with the override only', () => {
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k] });
+    a._preview(null, { type: 'd6', soundMaterial: 'metal' });
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 6, soundMaterial: 'metal' }]);
+  });
+
+  test('_damageContext lists colorsets and DSN damage defaults and resolves a theme with the registry', () => {
+    const registry = createRegistry();
+    registry.addColorset({ name: 'mycolors', description: 'Mine', foreground: '#fff', background: '#123456', outline: '#000' });
+    registry.addDamageTypeDefaults({ goo: 'mycolors' });
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], registry });
+    const ctx = a._damageContext();
+    expect(Object.keys(a)).not.toContain('_damageContext');
+    expect(ctx.colorsets).toContain('mycolors');
+    expect(ctx.damageTypeDefaults).toEqual({ goo: 'mycolors' });
+    expect(ctx.resolveTheme('goo', {})?.appearance).toBeTruthy();
+    expect(ctx.resolveTheme('fire', { userOverrides: { fire: 'cold' } }).id).toBe('cold');
+    expect(ctx.resolveTheme('fire', { userOverrides: { fire: 'none' } })).toBeNull();
+  });
+});

@@ -6,6 +6,7 @@ import { readUserLooks } from '../compat/user-looks.js';
 import { measureArea } from '../foundry/area.js';
 import { moduleRulesOf } from '../effects/fx-resolver.js';
 import { getShape } from '../core/dice-shapes.js';
+import { resolveDamageTheme } from '../effects/damage-themes.js';
 
 const STANDARD_SYSTEM = 'standard';
 /** The gate and showForRoll hooks enableDebugMode logs. */
@@ -699,7 +700,7 @@ export function createDice3dApi({
   Object.defineProperties(api, {
     /** Local only: throws one die whose spec carries `fx`. Never broadcast, no chat message, no hooks. */
     _preview: {
-      value(fx, { type = 'd20', value } = {}) {
+      value(fx, { type = 'd20', value, appearance, soundMaterial } = {}) {
         let die = type === 'd100' ? 'd10' : type;
         let shape;
         try {
@@ -711,11 +712,27 @@ export function createDice3dApi({
         const values = shape.values;
         const face = values.includes(value) ? value : Math.max(...values);
         try {
-          return diceBox.roll([{ type: die, value: face, fx: [fx] }]).landed;
+          // appearance / soundMaterial: a damage theme's look for the damage map editor's preview.
+          const spec = { type: die, value: face };
+          if (fx) spec.fx = [fx];
+          if (appearance) spec.appearance = appearance;
+          if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
+          return diceBox.roll([spec]).landed;
         } catch (err) {
           warnOnce('_preview', err);
           return Promise.resolve();
         }
+      },
+    },
+    /** What the damage map editor needs: DSN colorset names, DSN damage defaults, a theme resolver. */
+    _damageContext: {
+      value() {
+        return {
+          colorsets: [...registry.colorsets.keys()].map(String),
+          damageTypeDefaults: { ...registry.damageTypeDefaults },
+          resolveTheme: (type, { userOverrides, worldMap } = {}) =>
+            resolveDamageTheme(type, { userOverrides, worldMap, registry, warn: () => {} }),
+        };
       },
     },
     /** What the editor needs from the registry: module rules, trigger ids with labels, SFX modes, dice types. */

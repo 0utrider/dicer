@@ -361,3 +361,49 @@ test('module rules named by getDisabledModuleRules do not fire (P4-R12)', async 
   disabled = 'junk';
   expect(ids()).toEqual(['dsn:a', 'dsn:b']);
 });
+
+describe('damageTypeSounds (world custom landing sounds)', () => {
+  const fireTerm = { faces: 6, options: { flavor: 'fire' }, results: [{ result: 3 }] };
+  const fire = { formula: '1d6', dice: [fireTerm], terms: [fireTerm] };
+  const msg = { author: { id: 'alice' } };
+  const themed = (theme) => ({ damageThemeFor: () => () => theme });
+  const FIRE = { id: 'fire', landing: { effect: { id: 'embers' }, sound: { builtin: 'crackle' } } };
+
+  test('a custom sound replaces the theme landing sound and keeps its effect', () => {
+    settings.damageTypeSounds = { fire: { src: 'sounds/whoosh.ogg', volume: 0.4 } };
+    const [die] = plan(make(themed(FIRE)), fire, msg);
+    expect(die.fx[0]).toMatchObject({
+      ruleId: 'damage:fire',
+      effect: { id: 'embers' },
+      sound: { src: 'sounds/whoosh.ogg', volume: 0.4 },
+    });
+  });
+
+  test('without an entry the built-in landing sound stays', () => {
+    settings.damageTypeSounds = { cold: { src: 'x.ogg' } };
+    expect(plan(make(themed(FIRE)), fire, msg)[0].fx[0].sound).toEqual({ builtin: 'crackle' });
+    settings.damageTypeSounds = undefined;
+    expect(plan(make(themed(FIRE)), fire, msg)[0].fx[0].sound).toEqual({ builtin: 'crackle' });
+  });
+
+  test('a themed type with no landing (or a colorset theme) still plays its custom sound', () => {
+    settings.damageTypeSounds = { fire: { src: 'sounds/whoosh.ogg' } };
+    const [die] = plan(make(themed({ appearance: {} })), fire, msg);
+    expect(die.fx[0]).toMatchObject({ effect: null, sound: { src: 'sounds/whoosh.ogg' } });
+  });
+
+  test('no theme (type switched off) means no custom sound; a malformed entry is ignored', () => {
+    settings.damageTypeSounds = { fire: { src: 'sounds/whoosh.ogg' } };
+    expect(plan(make(themed(null)), fire, msg)[0].fx).toBeUndefined();
+    settings.damageTypeSounds = { fire: { src: 5 }, fire2: 'x' };
+    expect(plan(make(themed(FIRE)), fire, msg)[0].fx[0].sound).toEqual({ builtin: 'crackle' });
+    settings.damageTypeSounds = 'junk';
+    expect(plan(make(themed(FIRE)), fire, msg)[0].fx[0].sound).toEqual({ builtin: 'crackle' });
+  });
+
+  test('effects off: no custom sound either (the sound is part of the fx)', () => {
+    settings.damageTypeSounds = { fire: { src: 'sounds/whoosh.ogg' } };
+    settings.effects = false;
+    expect(plan(make(themed(FIRE)), fire, msg)[0].fx).toBeUndefined();
+  });
+});

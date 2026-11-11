@@ -6,7 +6,7 @@
 
 const MAX_DEPTH = 32;
 
-const DND5E_TYPES = [
+export const DND5E_TYPES = [
   'acid',
   'bludgeoning',
   'cold',
@@ -21,7 +21,7 @@ const DND5E_TYPES = [
   'slashing',
   'thunder',
 ];
-const PF2E_TYPES = [
+export const PF2E_TYPES = [
   'acid',
   'bludgeoning',
   'cold',

@@ -110,6 +110,18 @@ export function createFxResolver({
 
   const setting = (k) => safe(() => getSetting(k), undefined);
 
+  /** The world's `damageTypeSounds` entry for a type as a rule sound, or null (absent or malformed). */
+  function customSoundOf(type) {
+    if (typeof type !== 'string') return null;
+    const all = setting('damageTypeSounds');
+    if (!isObj(all) || !Object.hasOwn(all, type)) return null;
+    const entry = all[type];
+    if (!isObj(entry) || typeof entry.src !== 'string' || !entry.src) return null;
+    const sound = { src: entry.src };
+    if (Number.isFinite(entry.volume)) sound.volume = Math.max(0, Math.min(1, entry.volume));
+    return sound;
+  }
+
   function rulesFor(rollerId) {
     const world = normalized('world', 'world', safe(getWorldRules, null));
     const roller = rollerId
@@ -160,8 +172,11 @@ export function createFxResolver({
         const out = {};
         const damageType = isObj(term) ? damage.get(term) : undefined;
         if (presets && typeof damageType === 'string') out.damageType = damageType;
-        const landing = fxOn && themeOf ? safe(() => themeOf(term, termIndex), null) : null;
-        if (!rules.length && !landing?.landing) return out;
+        const theme = fxOn && themeOf ? safe(() => themeOf(term, termIndex), null) : null;
+        // P4-R2: the GM's custom sound for this damage type replaces the theme's landing sound.
+        const custom = theme ? customSoundOf(damageType) : null;
+        const landing = theme?.landing ?? null;
+        if (!rules.length && !landing && !custom) return out;
         const value = result?.result;
         const faces = term?.faces;
         const dsnType = (typeof look?.dsnType === 'string' && look.dsnType) || dsnTypeOf(term);
@@ -184,11 +199,11 @@ export function createFxResolver({
           outcome,
         };
         const fx = [];
-        if (landing?.landing) {
+        if (landing || custom) {
           fx.push({
-            ruleId: `damage:${landing.id}`,
-            effect: { ...landing.landing.effect },
-            sound: landing.landing.sound ? { ...landing.landing.sound } : null,
+            ruleId: `damage:${theme.id ?? damageType}`,
+            effect: landing ? { ...landing.effect } : null,
+            sound: custom ?? (landing?.sound ? { ...landing.sound } : null),
             macro: null,
             slowMotion: false,
             value,

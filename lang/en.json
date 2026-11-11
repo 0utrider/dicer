@@ -138,6 +138,11 @@
         "Name": "Damage dice themes",
         "Hint": "Give damage dice a look, impact sound and landing effect by damage type (fire, cold, acid and so on). Off shows your own dice. Never depends on the special effects setting."
       },
+      "damageMap": {
+        "Name": "Damage type map",
+        "Label": "Edit damage dice themes",
+        "Hint": "Choose the look, colors and landing sound of each damage type's dice. Everyone can set their own override; the GM sets the world choices."
+      },
       "triggerEditor": {
         "Name": "Trigger rules",
         "Label": "Edit trigger rules",
@@ -221,6 +226,27 @@
         "builtin": "Built-in",
         "file": "Sound file"
       }
+    },
+    "DamageMap": {
+      "Title": "Dicer damage type map",
+      "GMHint": "World choices apply to everyone's damage dice. Your own override wins over the world choice for you only. A custom landing sound replaces the theme's built-in one.",
+      "PlayerHint": "Your own override wins over the world choice, for your dice only. Only a GM can change the world choices and landing sounds.",
+      "World": "World choice",
+      "Mine": "My override",
+      "Default": "Default",
+      "None": "None (my own dice)",
+      "Theme": "Theme",
+      "Colorset": "Colorset",
+      "LandingSound": "Landing sound (world)",
+      "BuiltinSound": "Theme's built-in sound",
+      "Browse": "Choose a sound file",
+      "ClearSound": "Use the built-in sound",
+      "Volume": "Volume",
+      "Preview": "Preview",
+      "Save": "Save",
+      "Saved": "Damage map saved.",
+      "NoTheme": "This damage type has no theme here, so your own dice are used.",
+      "PreviewUnavailable": "Preview needs the 3D dice to be running."
     },
     "Commands": {
       "Description": "Open the Dicer settings."

@@ -196,39 +196,15 @@ describe('stored rules that cannot be read are kept', () => {
 describe('lang/en.json', () => {
   it('has no duplicate keys and resolves every DICER.Triggers key the editor and template use', async () => {
     const { readFileSync } = await import('node:fs');
-    const text = readFileSync('lang/en.json', 'utf8');
-    // Duplicate-key scan: a stack of key sets, one per object.
-    const stack = [];
-    const dups = [];
-    for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"\s*(:)?|([{}])/g)) {
-      if (m[3] === '{') stack.push(new Set());
-      else if (m[3] === '}') stack.pop();
-      else if (m[2]) {
-        const set = stack[stack.length - 1];
-        if (set.has(m[1])) dups.push(m[1]);
-        set.add(m[1]);
-      }
-    }
-    expect(dups).toEqual([]);
-    const lang = JSON.parse(text).DICER.Triggers;
-    const used = new Set();
-    for (const f of ['src/ui/trigger-editor.js', 'templates/trigger-editor.hbs']) {
-      const src = readFileSync(f, 'utf8');
-      for (const m of src.matchAll(/DICER\.Triggers\.([A-Za-z.$_-]+)/g)) used.add(m[1]);
-    }
-    const kinds = ['any', 'value', 'range', 'max', 'min', 'label'];
-    const outcomes = ['any', 'critical-success', 'success', 'failure', 'critical-failure'];
-    const sounds = ['none', 'builtin', 'file'];
-    const keys = [...used].flatMap((k) => {
-      if (k.startsWith('ResultKinds.')) return kinds.map((x) => `ResultKinds.${x}`);
-      if (k.startsWith('Outcomes.')) return outcomes.map((x) => `Outcomes.${x}`);
-      if (k.startsWith('Sound.')) return sounds.map((x) => `Sound.${x}`);
-      return [k];
+    const { duplicateKeys, usedKeys, resolve } = await import('./lang-check.js');
+    expect(duplicateKeys()).toEqual([]);
+    const lang = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Triggers;
+    const keys = usedKeys('Triggers', ['src/ui/trigger-editor.js', 'templates/trigger-editor.hbs'], {
+      'ResultKinds.': ['any', 'value', 'range', 'max', 'min', 'label'],
+      'Outcomes.': ['any', 'critical-success', 'success', 'failure', 'critical-failure'],
+      'Sound.': ['none', 'builtin', 'file'],
     });
     expect(keys.length).toBeGreaterThan(30);
-    for (const k of keys) {
-      const v = k.split('.').reduce((o, p) => o?.[p], lang);
-      expect(typeof v, `DICER.Triggers.${k}`).toBe('string');
-    }
+    for (const k of keys) expect(typeof resolve(lang, k), `DICER.Triggers.${k}`).toBe('string');
   });
 });

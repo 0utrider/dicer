@@ -92,3 +92,52 @@
   flex: 0 0 auto;
   width: auto;
 }
+
+/* Damage map editor */
+.dicer-damage-map-editor .window-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+.dicer-damage-map-editor .dicer-damage-rows {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.dicer-damage-map-editor .dicer-damage-row {
+  border: 1px solid var(--color-border-light-tertiary, #999);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+.dicer-damage-map-editor .dicer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+.dicer-damage-map-editor .dicer-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-damage-map-editor .dicer-row .dicer-grow {
+  flex: 1;
+}
+.dicer-damage-map-editor .dicer-file {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.dicer-damage-map-editor .dicer-row button,
+.dicer-damage-map-editor .form-footer button {
+  flex: 0 0 auto;
+  width: auto;
+}
+.dicer-damage-map-editor .form-footer {
+  display: flex;
+  justify-content: flex-end;
+}

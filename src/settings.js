@@ -14,24 +14,24 @@ export function registerNoticeSetting() {
 }
 
 /**
- * The trigger editor's settings menu. registerMenu needs a class now, so this is a tiny proxy
- * whose render() lazily imports the real editor (a separate chunk) and renders that instead.
+ * An editor's settings menu. registerMenu needs a class now, so this is a tiny proxy whose
+ * render() lazily imports the real editor (a separate chunk) and renders that instead.
+ * `open` is the dynamic import, written out by each caller so the bundler emits one chunk each.
  */
-function registerTriggerMenu(t) {
+function registerEditorMenu(t, key, icon, open) {
   const Base = globalThis.foundry?.applications?.api?.ApplicationV2;
   if (!Base || typeof game.settings.registerMenu !== 'function') return;
-  class TriggerEditorMenu extends Base {
+  class EditorMenu extends Base {
     async render() {
-      const { openTriggerEditor } = await import('./ui/trigger-editor.js');
-      return openTriggerEditor();
+      return (await open())();
     }
   }
-  game.settings.registerMenu(MODULE_ID, 'triggerEditor', {
-    name: t('triggerEditor.Name'),
-    label: t('triggerEditor.Label'),
-    hint: t('triggerEditor.Hint'),
-    icon: 'fa-solid fa-bolt',
-    type: TriggerEditorMenu,
+  game.settings.registerMenu(MODULE_ID, key, {
+    name: t(`${key}.Name`),
+    label: t(`${key}.Label`),
+    hint: t(`${key}.Hint`),
+    icon,
+    type: EditorMenu,
     restricted: false,
   });
 }
@@ -267,6 +267,16 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     type: Object,
     default: {},
   });
+  // damage type -> { src, volume? }: the GM's custom landing sound, replacing the theme's own.
+  game.settings.register(MODULE_ID, 'damageTypeSounds', {
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: {},
+  });
+  registerEditorMenu(t, 'damageMap', 'fa-solid fa-fire', () =>
+    import('./ui/damage-map-editor.js').then((m) => m.openDamageMapEditor),
+  );
   game.settings.register(MODULE_ID, 'damageThemeOverrides', {
     scope: 'client',
     config: false,
@@ -280,7 +290,9 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     type: Array,
     default: structuredClone(DEFAULT_RULES),
   });
-  registerTriggerMenu(t);
+  registerEditorMenu(t, 'triggerEditor', 'fa-solid fa-bolt', () =>
+    import('./ui/trigger-editor.js').then((m) => m.openTriggerEditor),
+  );
   // Ids of module (Dice So Nice default) rules the GM switched off in the trigger editor.
   game.settings.register(MODULE_ID, 'disabledModuleTriggers', {
     scope: 'world',

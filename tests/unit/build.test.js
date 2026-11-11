@@ -7,7 +7,7 @@ const BUDGET = 4 * 1024 * 1024;
 const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json', 'api.js'];
 
 /** Fetched on demand: a die model (dynamic import / DRACOLoader), or the DSN migration at ready. */
-const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|draco\/)/.test(p);
+const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|draco\/)/.test(p);
 
 /** Every file under dist/, as forward-slash paths. */
 const distFiles = () =>
@@ -34,6 +34,7 @@ describe('build', () => {
     const synth = lazy.find((p) => /synth-/.test(p));
     const effects = lazy.find((p) => /effects-/.test(p));
     const editor = lazy.find((p) => /trigger-editor-/.test(p));
+    const damageEditor = lazy.find((p) => /damage-map-editor-/.test(p));
     const soundNames = lazy.find((p) => /sound-names-/.test(p)); // the built-in sound list, shared by the synth and the editor
     const points = lazy.find((p) => /Points-/.test(p)); // three's Points, shared by the effects and model-loader chunks
     expect(synth).toBeTruthy();
@@ -42,6 +43,9 @@ describe('build', () => {
     // The editor is code + templates' logic; only the settings menu proxy is in the world-start bundle.
     expect(readFileSync(editor, 'utf8')).toContain('dicer-trigger-editor');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-trigger-editor');
+    expect(damageEditor).toBeTruthy();
+    expect(readFileSync(damageEditor, 'utf8')).toContain('dicer-damage-map-editor');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-damage-map-editor');
     expect(effects).toBeTruthy();
     expect(readFileSync(effects, 'utf8')).toContain('glow-pulse');
     expect(readFileSync(effects, 'utf8')).toContain('shockwave');
@@ -55,7 +59,7 @@ describe('build', () => {
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('has no Dicer counterpart yet');
     expect(readFileSync(migration, 'utf8')).toContain('has no Dicer counterpart yet');
     expect(lazy.sort()).toEqual(
-      [chunk, migration, synth, effects, editor, soundNames, points, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
+      [chunk, migration, synth, effects, editor, damageEditor, soundNames, points, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
     );
   });
   it('leaves api.js out of the bundle: it ships beside module.json, imported at runtime', () => {

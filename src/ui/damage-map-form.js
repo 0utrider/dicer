@@ -1,0 +1,127 @@
+/**
+ * Pure form <-> settings helpers of the damage map editor (no Foundry, no DOM). A form is
+ * `{ rows: Row[] }`, one row per damage type: `{ type, world, user, soundSrc, soundVolume }`
+ * (strings, what an HTML form submits). 'default' (or empty) means "no entry": the key is removed
+ * so the built-in map and the DSN `addDamageTypeDefaults` apply again.
+ */
+import { DND5E_TYPES, PF2E_TYPES, KNOWN_DAMAGE_TYPES } from '../effects/roll-context.js';
+
+export const DEFAULT_CHOICE = 'default';
+
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const str = (v) => (typeof v === 'string' ? v.trim() : '');
+const entries = (v) => (Array.isArray(v) ? v : isObj(v) ? Object.values(v) : []);
+const stringMap = (m) =>
+  Object.fromEntries(Object.entries(isObj(m) ? m : {}).filter(([, v]) => typeof v === 'string'));
+
+/**
+ * The editor's row order: the active system's types first, then the other known types
+ * alphabetically, then DSN default / stored keys alphabetically.
+ */
+export function damageTypeList({ systemId, extra = [] } = {}) {
+  const first = systemId === 'pf2e' ? PF2E_TYPES : systemId === 'dnd5e' ? DND5E_TYPES : [];
+  const out = [...first];
+  const seen = new Set(out);
+  const rest = [...KNOWN_DAMAGE_TYPES, ...extra]
+    .filter((t) => typeof t === 'string' && t && !seen.has(t))
+    .sort((a, b) => a.localeCompare(b));
+  for (const t of rest) {
+    if (!seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** The settings as a form; `types` fixes the order, stored keys not in it are appended. */
+export function formFromMap({ worldMap, overrides, sounds } = {}, types = []) {
+  const world = stringMap(worldMap);
+  const user = stringMap(overrides);
+  const snd = isObj(sounds) ? sounds : {};
+  const order = [...types];
+  for (const k of [...Object.keys(world), ...Object.keys(user), ...Object.keys(snd)])
+    if (!order.includes(k)) order.push(k);
+  return {
+    rows: order.map((type) => {
+      const s = isObj(snd[type]) ? snd[type] : {};
+      return {
+        type,
+        world: world[type] ?? DEFAULT_CHOICE,
+        user: user[type] ?? DEFAULT_CHOICE,
+        soundSrc: typeof s.src === 'string' ? s.src : '',
+        soundVolume: Number.isFinite(s.volume) ? String(s.volume) : '',
+      };
+    }),
+  };
+}
+
+/** A form (rows as an array or an index-keyed object) as `{ worldMap, overrides, sounds }`. */
+export function mapFromForm(form) {
+  const worldMap = {};
+  const overrides = {};
+  const sounds = {};
+  for (const row of entries(form?.rows)) {
+    if (!isObj(row)) continue;
+    const type = str(row.type);
+    if (!type) continue;
+    const world = str(row.world);
+    if (world && world !== DEFAULT_CHOICE) worldMap[type] = world;
+    const user = str(row.user);
+    if (user && user !== DEFAULT_CHOICE) overrides[type] = user;
+    const src = str(row.soundSrc);
+    if (src) {
+      const sound = { src };
+      const raw = str(String(row.soundVolume ?? ''));
+      const volume = raw === '' ? NaN : Number(raw);
+      if (Number.isFinite(volume)) sound.volume = Math.max(0, Math.min(1, volume));
+      sounds[type] = sound;
+    }
+  }
+  return { worldMap, overrides, sounds };
+}
+
+/**
+ * Saves a form. A player writes only their own overrides; the GM also writes the world map and
+ * the custom landing sounds.
+ */
+export async function saveMaps(form, { isGM, setWorld, setSounds, setOverrides }) {
+  const { worldMap, overrides, sounds } = mapFromForm(form);
+  if (isGM) {
+    await setWorld(worldMap);
+    await setSounds(sounds);
+  }
+  await setOverrides(overrides);
+  return { ok: true, wroteWorld: Boolean(isGM) };
+}
+
+/**
+ * What the Preview button throws for a resolved theme: the die's own look and sound material
+ * plus its landing fx (the custom sound replacing the built-in one). `fx` is null when the theme
+ * has neither an effect nor a sound.
+ */
+export function previewSpec(type, theme, sound, die = 'd6') {
+  const landing = theme?.landing ?? null;
+  const snd = sound?.src ? { src: sound.src, ...(Number.isFinite(sound.volume) ? { volume: sound.volume } : {}) } : (landing?.sound ?? null);
+  const effect = landing?.effect ?? null;
+  const fx =
+    effect || snd
+      ? {
+          ruleId: `damage:${theme?.id ?? type}`,
+          effect: effect ? { ...effect } : null,
+          sound: snd ? { ...snd } : null,
+          macro: null,
+          slowMotion: false,
+          value: 6,
+          type: die,
+        }
+      : null;
+  return {
+    fx,
+    options: {
+      type: die,
+      ...(theme?.appearance ? { appearance: theme.appearance } : {}),
+      ...(theme?.soundMaterial ? { soundMaterial: theme.soundMaterial } : {}),
+    },
+  };
+}

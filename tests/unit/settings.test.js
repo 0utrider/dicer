@@ -237,3 +237,28 @@ test('the trigger editor menu is a client-visible ApplicationV2 proxy that lazil
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings.triggerEditor;
   expect(Object.keys(en).sort()).toEqual(['Hint', 'Label', 'Name']);
 });
+
+test('the damage map menu is a lazy ApplicationV2 proxy and damageTypeSounds is a hidden world Object', () => {
+  class FakeApp {}
+  const menus = {};
+  const registered = {};
+  globalThis.foundry = { applications: { api: { ApplicationV2: FakeApp } } };
+  globalThis.game = {
+    settings: {
+      register: (ns, key, cfg) => (registered[key] = cfg),
+      registerMenu: (ns, key, cfg) => (menus[key] = { ns, ...cfg }),
+    },
+  };
+  try {
+    registerSettings();
+  } finally {
+    delete globalThis.game;
+    delete globalThis.foundry;
+  }
+  const menu = menus.damageMap;
+  expect(menu).toMatchObject({ ns: 'dicer', restricted: false });
+  expect(menu.name).toBe('DICER.Settings.damageMap.Name');
+  expect(Object.getPrototypeOf(menu.type)).toBe(FakeApp);
+  expect(menus.triggerEditor.type).not.toBe(menu.type);
+  expect(registered.damageTypeSounds).toMatchObject({ scope: 'world', config: false, type: Object, default: {} });
+});
