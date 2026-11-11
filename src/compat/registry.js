@@ -308,7 +308,7 @@ export function createRegistry({
       bad('addSFXMode', 'expected an SFX class with a static string `id`');
       return;
     }
-    const label = [sfxClass.specialEffectName, sfxClass.sfxName, sfxClass.name].find(isStr);
+    const label = isStr(sfxClass.specialEffectName) ? sfxClass.specialEffectName : id;
     sfxModes.set(id, { id, name: label, sfxClass });
     changed();
   }
@@ -381,6 +381,7 @@ export function createRegistry({
     textures,
     damageTypeDefaults,
     sfxTriggers,
+    sfxModes,
     diceFactory,
     exports: { Utils, COLORSETS },
     addSystem,

@@ -29,6 +29,8 @@ export const SHAKE_PX = 6;
  * @param {(key: string) => unknown} [o.getSetting]
  * @param {() => Promise<{EFFECTS: Record<string, object>}>} [o.loadLibrary]
  * @param {(die: object) => object|null} [o.isolate] DiceBox.isolate: the die's own uniforms
+ * @param {{effectFor(id: string): object|null}} [o.dsnSfx] resolves `dsn:` ids (Dice So Nice
+ *   special effects, third-party code that is not in the library chunk)
  */
 export function createEffectLayer({
   scene,
@@ -38,6 +40,7 @@ export function createEffectLayer({
   getSetting = () => undefined,
   loadLibrary = () => import('./library/effects.js'),
   isolate = () => null,
+  dsnSfx = null,
   particles = null,
   matchMedia = (q) => globalThis.matchMedia?.(q),
   warn = (...a) => console.warn(...a),
@@ -161,7 +164,17 @@ export function createEffectLayer({
 
   function moduleFor(f) {
     const id = f?.effect?.id;
-    if (typeof id !== 'string' || !library) return null;
+    if (typeof id !== 'string') return null;
+    if (id.startsWith('dsn:')) {
+      let m = null;
+      try {
+        m = dsnSfx?.effectFor(id) ?? null;
+      } catch (err) {
+        warnOnce(`dsn:${id}`, `cannot resolve special effect "${id}"`, err);
+      }
+      return m && typeof m.start === 'function' ? m : null;
+    }
+    if (!library) return null;
     const mod = Object.hasOwn(library, id) ? library[id] : null;
     return mod && typeof mod.start === 'function' ? mod : null;
   }
@@ -246,13 +259,14 @@ export function createEffectLayer({
       if (disposed || !Array.isArray(fx) || !fx.length) return;
       if (setting('effects') === false) return;
       if (!library) {
-        if (!fx.some((f) => f?.effect)) return;
-        if (!debugged) {
-          debugged = true;
-          debug('dicer: the effects library is not loaded yet; skipping this roll’s effects');
+        // DSN special effects do not need the library; everything else waits for it.
+        if (fx.some((f) => f?.effect && !String(f.effect.id).startsWith('dsn:'))) {
+          if (!debugged) {
+            debugged = true;
+            debug('dicer: the effects library is not loaded yet; skipping this roll’s effects');
+          }
+          prefetch();
         }
-        prefetch();
-        return;
       }
       const budget = Number(getTier()?.effectBudget) || 0;
       const picks = [];

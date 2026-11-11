@@ -29,6 +29,7 @@ import {
 } from './effects/fx-resolver.js';
 import { KNOWN_DAMAGE_TYPES } from './effects/roll-context.js';
 import { createEffectLayer } from './effects/effect-layer.js';
+import { createDsnSfx } from './effects/dsn-sfx.js';
 import { registerNoticeSetting, registerSettings, getSetting } from './settings.js';
 
 let dormant = false;
@@ -353,6 +354,19 @@ Hooks.once('ready', async () => {
         getTier: () => quality.config,
         getSetting,
         isolate: (die) => box?.isolate(die) ?? null,
+        // Dice So Nice special effects: `registry` is made later (activate), so read it lazily.
+        dsnSfx: createDsnSfx({
+          registry: {
+            get sfxModes() {
+              return registry?.sfxModes;
+            },
+          },
+          getBox: () => ({
+            scene: renderer.scene,
+            camera: renderer.camera,
+            glRenderer: renderer.glRenderer,
+          }),
+        }),
       });
       box = new DiceBox({
         renderer,
