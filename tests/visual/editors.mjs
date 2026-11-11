@@ -156,6 +156,40 @@ async function main() {
         { reducedMotion: 'reduce' },
       )),
     );
+    // One shot per remaining body type (the clear resin and the metal ones are above).
+    for (const type of ['opaque', 'marble', 'pearl'])
+      problems.push(
+        ...(await shoot(browser, 'app=appearance', `appearance-body-${type}.png`, async (page) => {
+          await livePreview(page);
+          await page.click(`[data-field="body.type"][data-value="${type}"]`);
+          await page.waitForTimeout(600);
+          await page.mouse.move(5, 5);
+        }, { reducedMotion: 'reduce' })),
+      );
+    // A font from the computer (Georgia) drawn on the die.
+    problems.push(
+      ...(await shoot(browser, 'app=appearance&theme=user.u1.georgia-gold', 'appearance-editor-font.png', async (page) => {
+        await livePreview(page);
+        await page.waitForTimeout(2500); // the worker builds the atlas, then the die is rebuilt
+        await page.evaluate(() => (document.querySelector('.dicer-ae-layers').scrollTop = 300));
+      }, { reducedMotion: 'reduce' })),
+    );
+    // The GM's "Push to players..." panel, and a player's view of a locked world default.
+    problems.push(
+      ...(await shoot(browser, 'app=themes', 'theme-browser-push.png', async (page) => {
+        await thumbs(page);
+        await page.click('.dicer-theme-card[data-theme="dragon-hoard"]');
+        await page.waitForFunction(() => document.querySelector('.dicer-theme-detail')?.dataset.theme === 'dragon-hoard');
+        await page.click('[data-action="push"]');
+        await page.waitForSelector('.dialog-v2 input[name="replaceAll"]');
+      })),
+    );
+    problems.push(
+      ...(await shoot(browser, 'app=themes&player=1&locked=1', 'theme-browser-locked.png', async (page) => {
+        await thumbs(page);
+        await page.waitForSelector('.dicer-locked');
+      })),
+    );
     problems.push(...(await shoot(browser, 'app=triggers', 'trigger-rules.png')));
     problems.push(
       ...(await shoot(browser, 'app=triggers', 'trigger-rules-selected.png', async (page) => {

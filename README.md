@@ -98,11 +98,31 @@ Themes follow the same privacy rule as looks and effects. Someone who cannot see
 
 To look at all 22 themes and throw each one with its celebration, run `npm run dev` and open `/dev/themes.html`.
 
+## Designing your own dice
+
+In the theme browser press **New theme** (or duplicate a theme and edit it). The appearance editor shows a live die that turns as you edit. You can change:
+
+- **Body**: opaque, clear resin, metal, marble or pearl, with colours, roughness and a finish. Only clear resin has an **Inside** (a nebula, glitter and so on).
+- **Numbers**: paint, gold, silver or enamel, a colour, the engraving depth and a font.
+- **Edges**: five steps of sharpness, from sharp to very round.
+- **Glow**, a look **per die type**, and the **sound and celebrations**.
+
+Every look is saved as a theme, so it can be your default, be used for one die type, one kind of roll or one character, be exported, and (GM) be published to the world.
+
+### Fonts
+
+- **Serif** is the built-in DM Serif Display and **Sans** is Atkinson Hyperlegible Bold, a clear face made for reading. Both are open fonts and ship with Dicer.
+- **On this computer** uses a font installed on your computer (or loaded by the page's CSS). Other players see it only if they have it too.
+- **Font file** uses a `.ttf`, `.otf` or `.woff` file in Foundry's data folder, so every player gets the same digits.
+- The digits of a computer font or a font file are built in the background the first time they are needed and then kept. Until they are ready the dice show the serif digits. A font that cannot be loaded falls back to the serif digits and writes one warning to the console.
+
 ## GM controls
 
 - **World default theme** (a setting): the theme players' dice use until they choose one of their own.
 - **Push to players**: in the theme browser, select a theme and click "Push to players...". It becomes every player's default theme. Their choices for a die type or a kind of roll are kept, unless you tick "Replace everything".
 - **Lock player looks** (a setting, needs a world default theme): every player's dice use the world default, whatever they chose, and the browser hides their "use" actions ("Your GM has set everyone's dice"). Players can still design and save themes. GMs are not affected, and a roll, colorset or damage type that names its own look still does.
+  - A player whose theme is already Sapphire Nebula (the built-in default) and who selects it again does not override the GM's world default, because Foundry fires no change for an unchanged setting. To keep Sapphire over a world default, they pick another theme and then pick Sapphire again.
+- **Dice look button on actor sheets** (a client setting): shows a Dice look button in the header of the sheets of actors you own.
 - The existing world caps stay as they were: **Graphics quality** (the world cap) and **Maximum dice**. No new caps.
 
 ## Roll areas

@@ -143,4 +143,42 @@ The privacy of effects and sounds for blind rolls, and **Show other players' eff
 1. Open **Theme browser** on a real GPU (not a remote desktop or software rendering).
 2. Pass: all themes show a lit die picture within a few seconds, the pictures match what the dice look like when rolled, and the dice canvas does not flicker. Close the browser: `game.dice3d._debug.isLooping` stays false and no extra WebGL context remains in the browser's task manager or `chrome://gpu`.
 
+## 23. Design a theme, use it as default, see it on another player's screen
+
+1. Open **Theme browser**, press **New theme** and design a look in the appearance editor: a body type, colours, a number fill and some edge sharpness. Name it, press **Save as my theme**, then use it as your default.
+2. As player B (another client), watch you roll a public d20 and a d6.
+3. Pass: your dice look like the editor's preview on B's screen. The first roll with the new look shows no visible hitch.
+
+## 24. A font from the computer and a font file
+
+1. In the appearance editor, set **Font** to **On this computer**, type a font you have (for example Georgia) or pick a chip, and check that the preview die shows the new digits within a moment.
+2. Set **Font** to **Font file**, pick a `.ttf`, `.otf` or `.woff` file on the Foundry server, and check the preview again.
+3. Type a family that does not exist, or a path to a file that is not a font. Pass: the die keeps the default digits and the console shows one warning, never an error loop. On another player's computer that lacks your font, your dice also show the default digits.
+
+## 25. Edge steps on every die
+
+1. Edit a theme and press each of the five **Sharpness** steps (sharp to very round).
+2. Click each die type (d4, d6, d8, d10, d12, d20, d100) under the preview for at least the first and last step.
+3. Pass: every die changes shape with the step, none shows holes, gaps or flickering faces, and a roll with the saved theme matches.
+
+## 26. GM push, with and without "Replace everything"
+
+1. Give player A a d6 theme of their own and a default theme of their own.
+2. As the GM, select a theme in **Theme browser**, press **Push to players...** and confirm without ticking **Replace everything**.
+3. Pass: A's default is the pushed theme and their d6 choice is kept. A notice shows how many players were updated.
+4. Push another theme and tick **Replace everything**. Pass: A's d6 choice and their per-roll-type choices are cleared too.
+5. As a player, check that **Push to players...** is not shown.
+
+## 27. Lock player looks
+
+1. As the GM, set **World default theme**, then turn on **Lock player looks**.
+2. As a player who chose another theme, roll a d20.
+3. Pass: the dice use the world default, the theme browser says "Your GM has set everyone's dice" and its "use" actions are gone. The player can still design and save a theme. The GM's own dice are not affected. Turn the lock off and the player's choice returns.
+4. Known limit: a player whose theme is already the built-in default (Sapphire Nebula) and who selects it again does not override the GM's world default, because Foundry fires no change for an unchanged setting. They pick another theme and then Sapphire again.
+
+## 28. The actor-sheet "Dice look" button
+
+1. With **Dice look button on actor sheets** on, open a character sheet you own.
+2. Pass: a **Dice look** button shows in the sheet header and opens the theme browser pointed at that character. Turn the setting off and the button is gone the next time the sheet renders.
+
 The roll area rules (a player's area, the GM private corner) are also automated in `npm run test:live:areas`.

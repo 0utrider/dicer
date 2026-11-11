@@ -133,6 +133,27 @@ globalThis.foundry = {
   utils: { expandObject, randomID: () => Math.random().toString(36).slice(2, 10) },
   data: { operators: { ForcedDeletion: { create: () => undefined } } },
 };
+// A minimal DialogV2.confirm: shows the dialog's own content (the push panel) and waits for a button.
+globalThis.foundry.applications.api.DialogV2 = {
+  confirm({ window: win, content, yes }) {
+    return new Promise((resolve) => {
+      const el = document.createElement('form');
+      el.className = 'application dialog dialog-v2 themed theme-dark';
+      el.style.cssText = 'position:absolute;left:300px;top:260px;width:400px;height:auto;z-index:100';
+      el.innerHTML = `<header class="window-header"><h1 class="window-title">${esc(win.title)}</h1></header>
+        <section class="window-content standard-form">${content}
+          <footer class="form-footer"><button type="button" data-r="yes"><i class="fa-solid fa-check"></i> ${esc(localize('DICER.Themes.Push'))}</button>
+          <button type="button" data-r="no"><i class="fa-solid fa-xmark"></i> ${esc(localize('Cancel'))}</button></footer></section>`;
+      el.addEventListener('click', (event) => {
+        const r = event.target.closest('[data-r]')?.dataset.r;
+        if (!r) return;
+        el.remove();
+        resolve(r === 'yes' ? yes.callback(event, { form: el }) : null);
+      });
+      document.getElementById('stage').appendChild(el);
+    });
+  },
+};
 
 // --- sample world ---------------------------------------------------------------------------------
 const quiet = () => {};
@@ -177,6 +198,12 @@ const store = {
   ],
   disabledModuleTriggers: [],
 };
+// ?locked=1 (with &player=1): the GM has set everyone's dice to a world default and locked it.
+if (params.get('locked') === '1') {
+  store.worldDefaultTheme = 'dragon-hoard';
+  store.theme = 'dragon-hoard';
+  store.lockPlayerLooks = true;
+}
 const userFlags = {
   themes: [
     { id: 'user.u1.my-ember', name: 'My Ember', appearance: theme('ember-core').appearance },
@@ -190,6 +217,18 @@ const userFlags = {
         numbers: { fill: 'gold', color: '#e2b04a', depth: 0.55, font: 'serif' },
         edges: { radius: 0.5 },
         glow: { color: '#7fb4ff', intensity: 0 },
+      },
+      perType: {},
+      rules: [],
+    },
+    {
+      id: 'user.u1.georgia-gold',
+      name: 'Georgia Gold',
+      appearance: {
+        body: { type: 'opaque', color: '#5a1620', color2: '#2a0910', finish: 'polished', roughness: 0.2 },
+        numbers: { fill: 'gold', color: '#e2b04a', depth: 0.55, font: 'css:Georgia' },
+        edges: { radius: 0.25 },
+        glow: { color: '#ffd166', intensity: 0 },
       },
       perType: {},
       rules: [],
