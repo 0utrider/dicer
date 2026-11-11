@@ -3,7 +3,7 @@ import { facesFor } from '../../src/compat/faces.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { findTheme } from '../../src/themes/themes.js';
-import { themeRef } from '../../src/compat/user-looks.js';
+import { themeRef, chosenRef, mirrorLookSetting } from '../../src/compat/user-looks.js';
 import { slotPatch } from '../../src/ui/theme-form.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { colorsetToAppearance, BUILTIN_COLORSETS } from '../../src/compat/colorset-map.js';
@@ -461,6 +461,25 @@ describe('GM controls: world default theme and the player lock (P7-D4)', () => {
     // without a world default the built-in default is unchanged
     const none = make({ users: { p: user({ global: themeRef('default') }) } });
     expect(look(none.resolver, plain, 'p').appearance).toEqual(LOOKS.default.appearance);
+  });
+  test("a deliberate 'default' choice (chosenRef) beats the world default; the old unmarked auto-mirror does not", () => {
+    const wd = (flag) => make({ users: { p: user(flag) }, worldDefault: 'verdant' });
+    const chosen = wd({ global: chosenRef('default') });
+    expect(look(chosen.resolver, plain, 'p').appearance).toEqual(LOOKS.default.appearance);
+    const old = wd({ global: { theme: 'default' } });
+    expect(look(old.resolver, plain, 'p').themeId).toBe('verdant');
+  });
+  test('switching from another theme back to default (the real mirror write, merged) keeps Sapphire', async () => {
+    let flag = { global: themeRef('obsidian') };
+    const u = {
+      getFlag: () => flag,
+      setFlag: async (s, k, patch) => {
+        flag = { ...flag, global: { ...flag.global, ...patch.global } }; // setFlag merges
+      },
+    };
+    await mirrorLookSetting(u, 'default');
+    const { resolver } = make({ users: { p: u }, worldDefault: 'verdant' });
+    expect(look(resolver, plain, 'p').appearance).toEqual(LOOKS.default.appearance);
   });
   test('the lock makes the world default win over a player own refs (global, type, role) and actor flags', () => {
     const users = { p: user({ ...T('ruby-classic'), d20: T('obsidian').global, 'role:attack': T('obsidian').global }) };

@@ -91,6 +91,9 @@ export function lookRefToAppearance(ref, registry, index = 0, { dieType, themes,
  */
 export const themeRef = (themeId) => ({ theme: themeId, appearance: null, colorset: null, look: null, system: null });
 
+/** A global slot that records a deliberate choice (a setting change or a GM push), not an auto-mirror. */
+export const chosenRef = (themeId) => ({ ...themeRef(themeId), chosen: true });
+
 /** A slot that is a die type (d20, d6...), as opposed to `global` or `role:<role>`. */
 const isDieSlot = (key) => /^d[a-z0-9]+$/i.test(key);
 
@@ -100,7 +103,7 @@ const isDieSlot = (key) => /^d[a-z0-9]+$/i.test(key);
  * Nice colours, old looks) are dropped; per-type and per-role theme choices are kept.
  */
 export async function mirrorLookSetting(user, themeId) {
-  const patch = { global: themeRef(themeId) };
+  const patch = { global: chosenRef(themeId) };
   for (const [key, ref] of Object.entries(readUserLooks(user))) {
     if (isDieSlot(key) && !(typeof ref.theme === 'string' && ref.theme)) patch[key] = null;
   }
@@ -112,7 +115,7 @@ export async function mirrorLookSetting(user, themeId) {
  * nulls themeRef adds): the GM's world default may replace it.
  */
 export function isNeverChose(ref) {
-  if (!isPlainObject(ref)) return false;
+  if (!isPlainObject(ref) || ref.chosen === true) return false;
   const named = ['theme', 'look'].filter((k) => ref[k] !== undefined && ref[k] !== null);
   if (named.length !== 1 || ref[named[0]] !== 'default') return false;
   return ['appearance', 'colorset', 'system'].every((k) => ref[k] === undefined || ref[k] === null);

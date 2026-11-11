@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { duplicateKeys, usedKeys, resolve } from './lang-check.js';
-import { themeRef } from '../../src/compat/user-looks.js';
+import { themeRef, chosenRef } from '../../src/compat/user-looks.js';
 import {
   assignTheme,
   slotPatch,
@@ -414,7 +414,7 @@ describe('the browser actions', () => {
     it('pushThemeToPlayers writes every player global slot, never a GM, and keeps their other choices', async () => {
       user.isGM = true;
       expect(await mod.pushThemeToPlayers('verdant')).toEqual({ updated: 2 });
-      for (const p of players) expect(p.setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: themeRef('verdant') });
+      for (const p of players) expect(p.setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: chosenRef('verdant') });
       expect(gmOther.setFlag).not.toHaveBeenCalled();
       expect(user.setFlag).not.toHaveBeenCalled();
     });
@@ -422,11 +422,12 @@ describe('the browser actions', () => {
       user.isGM = true;
       await mod.pushThemeToPlayers('verdant', { replaceAll: true });
       expect(players[0].setFlag).toHaveBeenCalledWith('dicer', 'appearance', {
-        global: themeRef('verdant'),
+        global: chosenRef('verdant'),
         d20: 'DELETE',
         'role:save': 'DELETE',
       });
-      expect(players[1].setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: themeRef('verdant') });
+      expect(players[1].setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: chosenRef('verdant') });
+      expect(chosenRef('verdant').chosen).toBe(true);
     });
     it('push is offered and allowed only for built-in and world themes', async () => {
       user.isGM = true;
@@ -451,7 +452,7 @@ describe('the browser actions', () => {
       flags.appearance = undefined;
       const app = make();
       expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['ruby-classic']);
-      flags.appearance = { global: themeRef('verdant') }; // what a push writes
+      flags.appearance = { global: chosenRef('verdant') }; // what a push writes
       expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['verdant']);
       flags.appearance = { global: { colorset: 'fire' } }; // not a theme ref: the setting
       expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['ruby-classic']);

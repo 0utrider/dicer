@@ -117,6 +117,13 @@ describe('mirrorLookSetting', () => {
     const looks = readUserLooks(user);
     expect(lookRefToAppearance(looks.global, null)).toMatchObject({ themeId: 'ruby-classic' });
   });
+  test('a setting change marks the global slot as a deliberate choice, which the look reader ignores', async () => {
+    const user = mergingUser(undefined);
+    await mirrorLookSetting(user, 'default');
+    const { global } = readUserLooks(user);
+    expect(global.chosen).toBe(true);
+    expect(lookRefToAppearance(global, null)).toMatchObject({ themeId: 'default' });
+  });
   test('the new default reaches every die: stale per-type non-theme entries are dropped, theme entries kept', async () => {
     const user = mergingUser({
       global: { look: 'old' },

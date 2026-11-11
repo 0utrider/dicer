@@ -5,6 +5,7 @@
  * editor, its own lazy chunk), export / import files and the GM's publish. The pure logic is in ./theme-form.js; the data actions below
  * (assign, clear, save, import, export, publish) are exported so they can be tested without a DOM.
  */
+import { chosenRef } from '../compat/user-looks.js';
 import { DIE_TYPES, findTheme, readThemeList } from '../themes/themes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { damageTypeList } from './damage-map-form.js';
@@ -201,7 +202,7 @@ export async function pushThemeToPlayers(themeId, { replaceAll = false } = {}) {
   let updated = 0;
   for (const player of users ? [...users] : []) {
     if (!player || player.isGM) continue;
-    const patch = slotPatch('global', themeId);
+    const patch = { global: chosenRef(themeId) };
     if (replaceAll) {
       let flag = null;
       try {
