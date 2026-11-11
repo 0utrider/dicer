@@ -228,6 +228,28 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     type: Boolean,
     default: true,
   });
+  // Damage themes: a look, impact sound and landing effect per damage type.
+  game.settings.register(MODULE_ID, 'damagePresets', {
+    name: t('damagePresets.Name'),
+    hint: t('damagePresets.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  // damage type -> theme id | colorset name | 'none'; edited by the damage-theme UI, not the form.
+  game.settings.register(MODULE_ID, 'damageTypeMap', {
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: {},
+  });
+  game.settings.register(MODULE_ID, 'damageThemeOverrides', {
+    scope: 'client',
+    config: false,
+    type: Object,
+    default: {},
+  });
   // Edited by the trigger editor (Task 12), never in the settings form.
   game.settings.register(MODULE_ID, 'worldTriggers', {
     scope: 'world',

@@ -1,6 +1,7 @@
 /**
  * Decides what each die looks like. The first matching rule wins, per term:
  *   1. term.options.appearance   2. term.options.colorset   3. the term's flavor
+ *   3b. the damage theme of the term's damage type (P4-D3; also sets soundMaterial)
  *   4. the actor's dicer.appearance (options.dsnActorId)   5. the roller's dicer.appearance
  *      (die type, then global)   6. DEFAULT_APPEARANCE.
  * A registered preset for the ref's system replaces rules 5-6 (its colorset) and attaches its
@@ -34,6 +35,8 @@ const systemOf = (v) => (isPlainObject(v) && typeof v.system === 'string' && v.s
  * @param {(id: string) => object | undefined} deps.getUser
  * @param {(id: string) => object | undefined} [deps.getActor]
  * @param {(preset: object) => object | undefined} [deps.facesFor] the Task 5 seam: a preset's FaceSet
+ * @param {(roll: object) => (((term, index: number) => object | null) | null)} [deps.damageThemeFor]
+ *   a roll's damage themer (createDamageThemer.forRoll); null when damagePresets is off
  * @param {(msg: string, err?: unknown) => void} [deps.warn]
  */
 export function createLookResolver({
@@ -41,6 +44,7 @@ export function createLookResolver({
   getUser,
   getActor = () => undefined,
   facesFor = () => undefined,
+  damageThemeFor = null,
   warn = console.warn,
 }) {
   let warned = false;
@@ -62,7 +66,7 @@ export function createLookResolver({
     return colorsetNameToAppearance(cs, registry, index);
   }
 
-  function resolve(term, authorId, index) {
+  function resolve(term, authorId, index, themeOf) {
     const type = dieTypeOf(term);
     const options = isPlainObject(term?.options) ? term.options : {};
     let appearance = null;
@@ -79,6 +83,15 @@ export function createLookResolver({
       const flavor = term.flavor.trim();
       const named = flavor.toLowerCase().startsWith('die:') ? flavor.slice(4).trim() : flavor;
       appearance = colorsetNameToAppearance(named, registry, index);
+    }
+    // The damage theme (P4-D3): after explicit colorsets and flavor, before actor/user looks.
+    let soundMaterial;
+    if (!appearance && themeOf) {
+      const theme = themeOf(term, index);
+      if (theme?.appearance) {
+        appearance = theme.appearance;
+        soundMaterial = theme.soundMaterial;
+      }
     }
     if (!appearance && typeof options.dsnActorId === 'string') {
       const ref = getActor(options.dsnActorId)?.flags?.dicer?.appearance;
@@ -105,6 +118,7 @@ export function createLookResolver({
     if (type) out.dsnType = type;
     // DiceBox finds the preset again by system + dsnType (diceSoNiceOnMaterialReady, P3-R3).
     out.system = preset?.system ?? system ?? STANDARD;
+    if (soundMaterial) out.soundMaterial = soundMaterial;
     if (preset) {
       // A bad preset loses its faces (the dice show numbers), never the look.
       let faces;
@@ -124,9 +138,15 @@ export function createLookResolver({
     /** @returns {(term, result, termIndex) => object} a decorator for planThrow */
     decorate(message, roll, authorId) {
       const author = authorId ?? message?.author?.id;
+      let themeOf = null;
+      try {
+        themeOf = damageThemeFor?.(roll) ?? null;
+      } catch (err) {
+        warnOnce(err);
+      }
       return (term, result, termIndex = 0) => {
         try {
-          return resolve(term, author, termIndex);
+          return resolve(term, author, termIndex, themeOf);
         } catch (err) {
           warnOnce(err);
           return { appearance: DEFAULT_APPEARANCE };

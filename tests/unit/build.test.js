@@ -38,8 +38,9 @@ describe('build', () => {
     expect(effects).toBeTruthy();
     expect(readFileSync(effects, 'utf8')).toContain('glow-pulse');
     expect(readFileSync(effects, 'utf8')).toContain('shockwave');
-    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('glow-pulse');
-    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('shockwave');
+    // Effect ids are data (the damage themes name them); the library's shader uniforms are code.
+    expect(readFileSync(effects, 'utf8')).toContain('uAlpha');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('uAlpha');
     expect(migration).toBeTruthy();
     expect(chunk).toBeTruthy();
     expect(readFileSync(chunk, 'utf8')).toContain('KHR_draco_mesh_compression');

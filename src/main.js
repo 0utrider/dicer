@@ -27,7 +27,7 @@ import {
   createLandedFx,
   moduleRulesOf,
 } from './effects/fx-resolver.js';
-import { KNOWN_DAMAGE_TYPES } from './effects/roll-context.js';
+import { createDamageThemer } from './effects/damage-themes.js';
 import { createEffectLayer } from './effects/effect-layer.js';
 import { createDsnSfx } from './effects/dsn-sfx.js';
 import { registerNoticeSetting, registerSettings, getSetting } from './settings.js';
@@ -57,21 +57,6 @@ const landedFx = createLandedFx({
   playSound: (sound) => soundEngine?.result(sound),
   fromUuid: (uuid) => globalThis.fromUuid(uuid),
 });
-
-/** The damage types rules may name: the systems' own plus every registered theme's. */
-function knownDamageTypesOf(reg) {
-  let key = null;
-  let set = KNOWN_DAMAGE_TYPES;
-  return () => {
-    const extra = Object.keys(reg?.damageTypeDefaults ?? {});
-    const next = extra.join('|');
-    if (next !== key) {
-      key = next;
-      set = new Set([...KNOWN_DAMAGE_TYPES, ...extra]);
-    }
-    return set;
-  };
-}
 
 /** Renders the sounds in an idle callback (never on a roll's frames). */
 function preloadSounds() {
@@ -400,10 +385,12 @@ Hooks.once('ready', async () => {
       // types are shaped through the registry.
       // Model urls go through the same routeOf as face images: one url policy.
       registry = createRegistry({ hooks: Hooks, routeUrl: routeOf });
+      const damageThemer = createDamageThemer({ registry, getSetting });
       const resolver = createLookResolver({
         registry,
         getUser: (id) => game.users?.get(id),
         getActor: (id) => game.actors?.get(id),
+        damageThemeFor: (roll) => damageThemer.forRoll(roll),
         // Preset faces the digit atlas cannot draw become image / text face layers.
         facesFor: presetFaces,
       });
@@ -417,7 +404,8 @@ Hooks.once('ready', async () => {
         currentUser: () => game.user,
         getSetting,
         shapeFor: resolver.shapeFor,
-        getKnownDamageTypes: knownDamageTypesOf(registry),
+        getKnownDamageTypes: damageThemer.knownTypes,
+        damageThemeFor: (roll) => damageThemer.forRoll(roll),
       });
       // (message, roll, authorId?, rollerId?): looks from the author, rules from the roller.
       const decorateFor = composeDecorateFor({ looks: resolver, fx: fxResolver });

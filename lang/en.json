@@ -134,6 +134,10 @@
         "Name": "Screen shake",
         "Hint": "Let effects shake the dice briefly. Only the dice move, never the map. Off when your system asks for reduced motion."
       },
+      "damagePresets": {
+        "Name": "Damage dice themes",
+        "Hint": "Give damage dice a look, impact sound and landing effect by damage type (fire, cold, acid and so on). Off shows your own dice. Never depends on the special effects setting."
+      },
       "triggerMacros": {
         "Name": "Trigger macros",
         "Hint": "Let trigger rules run a macro when they fire. The macro runs once, on the roller's client."

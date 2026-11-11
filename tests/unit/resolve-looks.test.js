@@ -259,3 +259,43 @@ test('a throwing user lookup warns once and falls back to the default look', () 
   expect(() => dec(term(20), RES, 0)).not.toThrow();
   expect(warn).toHaveBeenCalledTimes(1);
 });
+
+describe('damage theme (P4-D3)', () => {
+  const THEME = { appearance: LOOKS['jade-marble'].appearance, soundMaterial: 'stone' };
+  const themed = (users = {}, actors = {}) => {
+    const registry = createRegistry({ warn: () => {} });
+    return createLookResolver({
+      registry,
+      getUser: (id) => users[id],
+      getActor: (id) => actors[id],
+      damageThemeFor: () => () => THEME,
+      warn: () => {},
+    });
+  };
+  test('beats the actor flag and the user look; carries soundMaterial', () => {
+    const actors = { a1: { flags: { dicer: { appearance: { look: 'ruby-classic' } } } } };
+    const users = { u: user({ global: { look: 'sharp-crystal' } }) };
+    const out = look(themed(users, actors), term(6, { options: { dsnActorId: 'a1' } }), 'u');
+    expect(out.appearance).toBe(THEME.appearance);
+    expect(out.soundMaterial).toBe('stone');
+  });
+  test('loses to options.colorset and to a flavor colorset, with no soundMaterial', () => {
+    const r = themed();
+    expect(look(r, term(6, { options: { colorset: 'fire' } }), 'u').appearance).toEqual(fire);
+    const byFlavor = look(r, term(6, { flavor: 'Fire' }), 'u');
+    expect(byFlavor.appearance).toEqual(fire);
+    expect(byFlavor.soundMaterial).toBeUndefined();
+  });
+  test('a throwing damageThemeFor leaves the normal chain', () => {
+    const registry = createRegistry({ warn: () => {} });
+    const r = createLookResolver({
+      registry,
+      getUser: () => undefined,
+      damageThemeFor: () => {
+        throw new Error('x');
+      },
+      warn: () => {},
+    });
+    expect(look(r, term(6), 'u').appearance).toEqual(DEFAULT_APPEARANCE);
+  });
+});

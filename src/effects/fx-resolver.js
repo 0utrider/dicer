@@ -61,6 +61,8 @@ function safe(fn, fallback) {
  * @param {(key: string) => unknown} deps.getSetting
  * @param {(term) => string|null} [deps.shapeFor] base shape of a custom die type
  * @param {() => Set<string>} [deps.getKnownDamageTypes]
+ * @param {(roll: object) => (((term, index: number) => object | null) | null)} [deps.damageThemeFor]
+ *   the roll's damage themer; its theme's `landing` becomes an extra fx per die of that type
  */
 export function createFxResolver({
   getWorldRules,
@@ -70,6 +72,7 @@ export function createFxResolver({
   getSetting,
   shapeFor = () => null,
   getKnownDamageTypes = () => KNOWN_DAMAGE_TYPES,
+  damageThemeFor = () => null,
   warn = console.warn,
 }) {
   /** cache key -> { raw, json, rules }: settings and flags are normalized once per value. */
@@ -122,16 +125,21 @@ export function createFxResolver({
     /**
      * A decorator for planThrow: `(term, result, termIndex, look?) => {fx?, damageType?}`.
      * `look` is the look resolver's partial for the same die (its faces give label rules).
-     * Returns undefined when effects are off, or the roll is another user's and
-     * showOthersEffects is off.
+     * `damageType` follows damagePresets only. The fx (rules and the theme's landing) are absent
+     * when effects are off, or the roll is another user's and showOthersEffects is off.
      */
     decorate(message, roll, authorId) {
-      if (setting('effects') === false) return undefined;
       const me = safe(currentUser, undefined)?.id ?? null;
       const rollerId = message?.author?.id ?? authorId ?? null;
-      if (rollerId !== me && setting('showOthersEffects') === false) return undefined;
+      // P4-R7: the damage type is not an effect. It follows damagePresets alone; the effects and
+      // showOthersEffects settings gate only the fx (trigger rules and the theme's landing).
+      const presets = setting('damagePresets') !== false;
+      const fxOn =
+        setting('effects') !== false && (rollerId === me || setting('showOthersEffects') !== false);
+      if (!presets && !fxOn) return undefined;
 
-      const rules = rulesFor(rollerId);
+      const rules = fxOn ? rulesFor(rollerId) : [];
+      const themeOf = presets ? safe(() => damageThemeFor(roll), null) : null;
       const outcome = safe(() => outcomeOf(roll, message), null);
       const role = safe(() => roleOf(message), null);
       const formula = safe(() => roll?.formula, undefined);
@@ -143,8 +151,9 @@ export function createFxResolver({
       return (term, result, termIndex, look) => {
         const out = {};
         const damageType = isObj(term) ? damage.get(term) : undefined;
-        if (typeof damageType === 'string') out.damageType = damageType;
-        if (!rules.length) return out;
+        if (presets && typeof damageType === 'string') out.damageType = damageType;
+        const landing = fxOn && themeOf ? safe(() => themeOf(term, termIndex), null) : null;
+        if (!rules.length && !landing?.landing) return out;
         const value = result?.result;
         const faces = term?.faces;
         const dsnType = (typeof look?.dsnType === 'string' && look.dsnType) || dsnTypeOf(term);
@@ -167,6 +176,17 @@ export function createFxResolver({
           outcome,
         };
         const fx = [];
+        if (landing?.landing) {
+          fx.push({
+            ruleId: `damage:${landing.id}`,
+            effect: { ...landing.landing.effect },
+            sound: landing.landing.sound ? { ...landing.landing.sound } : null,
+            macro: null,
+            slowMotion: false,
+            value,
+            type: dsnType ?? type,
+          });
+        }
         for (const rule of rules) {
           if (!safe(() => matchRule(rule, die), false)) continue;
           const effect = rule.effect ?? null;
