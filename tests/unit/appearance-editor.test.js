@@ -10,6 +10,7 @@ import {
   visibleSections,
   fontInvalid,
   setField,
+  METAL_FILL_COLORS,
   addOverride,
   removeOverride,
   looksFromForms,
@@ -59,6 +60,15 @@ describe('form <-> appearance', () => {
     const f = setField(setField(formFromAppearance(resinNebula), 'body.roughness', '0.9'), 'edges.radius', '0.25');
     const a = appearanceFromForm(f);
     expect([a.body.roughness, a.edges.radius]).toEqual([0.9, 0.25]);
+  });
+  it('a metal fill gets its own colour (the colour picker is hidden for metals)', () => {
+    let f = setField(formFromAppearance({ numbers: { fill: 'gold', color: '#e2b04a' } }), 'numbers.fill', 'silver');
+    expect(appearanceFromForm(f).numbers).toMatchObject({ fill: 'silver', color: METAL_FILL_COLORS.silver });
+    f = setField(f, 'numbers.fill', 'gold');
+    expect(appearanceFromForm(f).numbers.color).toBe(METAL_FILL_COLORS.gold);
+    // paint and enamel keep whatever colour is there (their picker shows)
+    f = setField(setField(f, 'numbers.color', '#ff0000'), 'numbers.fill', 'enamel');
+    expect(appearanceFromForm(f).numbers.color).toBe('#ff0000');
   });
   it('keeps the inside through a non-resin body (resin -> metal -> resin)', () => {
     let f = formFromAppearance(resinNebula);

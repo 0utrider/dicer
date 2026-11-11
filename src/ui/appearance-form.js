@@ -102,9 +102,18 @@ export function visibleSections(look) {
   };
 }
 
+/**
+ * The number colour a metal fill switches to. Gold and silver are the same metal finish tinted by
+ * the number colour, and the editor hides that picker for metals, so picking a metal sets its colour.
+ */
+export const METAL_FILL_COLORS = Object.freeze({ gold: '#e2b04a', silver: '#d8dde6' });
+
 /** Sets one dotted path ('body.color') of a form copy; numeric fields become numbers. */
 export function setField(form, path, value) {
   const out = plain(form);
+  if (path === 'numbers.fill' && Object.hasOwn(METAL_FILL_COLORS, value)) {
+    out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), color: METAL_FILL_COLORS[value] };
+  }
   const parts = String(path).split('.');
   const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity'];
   let o = out;
