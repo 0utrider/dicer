@@ -347,7 +347,11 @@ test('moduleRulesOf converts the DSN defaults once per change, warning once', as
 test('module rules named by getDisabledModuleRules do not fire (P4-R12)', async () => {
   const { normalizeRule } = await import('../../src/effects/rules.js');
   const modRule = (id) =>
-    normalizeRule({ id, die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'dsn:X' } }, 'module', warn);
+    normalizeRule(
+      { id, die: 'd20', result: { kind: 'value', value: 20 }, effect: { id: 'dsn:X' } },
+      'module',
+      warn,
+    );
   let disabled = [];
   const resolver = make({
     getWorldRules: () => [],
@@ -411,13 +415,149 @@ describe('damageTypeSounds (world custom landing sounds)', () => {
 describe('createLandedFx onSound', () => {
   test('is called with the sound name for each requested result sound, builtin or file', () => {
     const onSound = vi.fn();
-    const landed = createLandedFx({ playSound: vi.fn(), fromUuid: vi.fn(), onSound, warn: vi.fn() });
+    const landed = createLandedFx({
+      playSound: vi.fn(),
+      fromUuid: vi.fn(),
+      onSound,
+      warn: vi.fn(),
+    });
     const base = { ruleId: 'r', effect: null, macro: null };
-    landed({}, [
-      { ...base, sound: { builtin: 'fanfare' } },
-      { ...base, sound: { src: 'sounds/x.ogg' } },
-      { ...base, sound: null },
-    ], {});
+    landed(
+      {},
+      [
+        { ...base, sound: { builtin: 'fanfare' } },
+        { ...base, sound: { src: 'sounds/x.ogg' } },
+        { ...base, sound: null },
+      ],
+      {},
+    );
     expect(onSound.mock.calls.map((c) => c[0])).toEqual(['fanfare', 'sounds/x.ogg']);
+  });
+});
+
+describe('discarded results (P4 final review)', () => {
+  const kl = () => ({
+    formula: '2d20kl',
+    dice: [
+      {
+        faces: 20,
+        results: [
+          { result: 20, active: false, discarded: true },
+          { result: 4, active: true },
+        ],
+      },
+    ],
+  });
+
+  test('a discarded nat 20 gets no fx; the kept 4 is untouched', () => {
+    const dice = plan(make(), kl(), { author: { id: 'alice' } });
+    expect(dice).toHaveLength(2);
+    expect(dice[0].fx).toBeUndefined();
+    expect(dice[1].fx).toBeUndefined();
+  });
+
+  test('a discarded die gets no damage landing but keeps its damage type', () => {
+    const theme = { id: 'fire', landing: { effect: { id: 'embers' }, sound: { builtin: 'x' } } };
+    const r = make({ damageThemeFor: () => () => theme });
+    settings.damagePresets = true;
+    const roll = {
+      formula: '2d6kh',
+      dice: [
+        {
+          faces: 6,
+          results: [
+            { result: 1, active: false, discarded: true },
+            { result: 5, active: true },
+          ],
+        },
+      ],
+    };
+    const dice = plan(r, roll, { author: { id: 'alice' } });
+    expect(dice[0].fx).toBeUndefined();
+    expect(dice[1].fx?.[0].ruleId).toMatch(/^damage:/);
+  });
+
+  test('an active exploded die still triggers; a rerolled-away result does not', () => {
+    const roll = {
+      formula: '1d20x',
+      dice: [
+        {
+          faces: 20,
+          results: [
+            { result: 20, active: true, exploded: true },
+            { result: 20, active: false, rerolled: true },
+          ],
+        },
+      ],
+    };
+    const dice = plan(make(), roll, { author: { id: 'alice' } });
+    expect(dice[0].fx[0].ruleId).toBe('dicer.nat20');
+    expect(dice[1].fx).toBeUndefined();
+  });
+});
+
+describe('macros without effects (P4 final review)', () => {
+  const world = [
+    {
+      id: 'm',
+      die: 'd20',
+      result: { kind: 'value', value: 20 },
+      macro: 'Macro.abc',
+      effect: { id: 'celebrate' },
+      sound: { builtin: 'fanfare' },
+    },
+  ];
+
+  test('effects off: the roller still gets a macro-only fx', () => {
+    settings.effects = false;
+    const r = make({ getWorldRules: () => world });
+    const fx = plan(r, d20(20), { author: { id: 'alice' } })[0].fx;
+    expect(fx).toEqual([
+      {
+        ruleId: 'm',
+        effect: null,
+        sound: null,
+        macro: 'Macro.abc',
+        slowMotion: false,
+        value: 20,
+        type: 'd20',
+      },
+    ]);
+  });
+
+  test('effects off and not the roller or macros off: nothing', () => {
+    settings.effects = false;
+    const r = make({ getWorldRules: () => world });
+    expect(plan(r, d20(20), { author: { id: 'bob' } })[0].fx).toBeUndefined();
+    settings.triggerMacros = false;
+    expect(plan(r, d20(20), { author: { id: 'alice' } })[0].fx).toBeUndefined();
+  });
+
+  test('rules without a macro give nothing when effects are off; no theme landing either', () => {
+    settings.effects = false;
+    const theme = { id: 'fire', landing: { effect: { id: 'embers' } } };
+    const r = make({ damageThemeFor: () => () => theme });
+    expect(plan(r, d20(20), { author: { id: 'alice' } })[0].fx).toBeUndefined();
+  });
+
+  test('createLandedFx runs a macro-only fx once with null effect and sound', async () => {
+    const execute = vi.fn();
+    const playSound = vi.fn();
+    const landed = createLandedFx({ playSound, fromUuid: async () => ({ execute }) });
+    const key = {};
+    const f = {
+      ruleId: 'm',
+      effect: null,
+      sound: null,
+      macro: 'Macro.abc',
+      slowMotion: false,
+      value: 20,
+      type: 'd20',
+    };
+    landed({}, [f], key);
+    landed({}, [f], key);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(playSound).not.toHaveBeenCalled();
   });
 });

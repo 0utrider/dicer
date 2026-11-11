@@ -360,6 +360,7 @@ Hooks.once('ready', async () => {
         getTier: () => quality.config,
         getSetting,
         onPlay: debugCounters.countFx,
+        isSafe: () => quality.flags().safe === true,
         isolate: (die) => box?.isolate(die) ?? null,
         // Dice So Nice special effects: `registry` is made later (activate), so read it lazily.
         dsnSfx: createDsnSfx({

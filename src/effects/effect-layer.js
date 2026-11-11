@@ -30,6 +30,7 @@ export const SHAKE_PX = 6;
  * @param {() => Promise<{EFFECTS: Record<string, object>}>} [o.loadLibrary]
  * @param {(id: string) => void} [o.onPlay] called once per effect that actually started (debug counters)
  * @param {(die: object) => object|null} [o.isolate] DiceBox.isolate: the die's own uniforms
+ * @param {() => boolean} [o.isSafe] the safe flags are on: library shaders are skipped, DSN effects run
  * @param {{effectFor(id: string): object|null}} [o.dsnSfx] resolves `dsn:` ids (Dice So Nice
  *   special effects, third-party code that is not in the library chunk)
  */
@@ -42,6 +43,7 @@ export function createEffectLayer({
   loadLibrary = () => import('./library/effects.js'),
   isolate = () => null,
   dsnSfx = null,
+  isSafe = () => false,
   particles = null,
   matchMedia = (q) => globalThis.matchMedia?.(q),
   onPlay = () => {},
@@ -262,9 +264,19 @@ export function createEffectLayer({
     prefetch,
 
     /** Starts a landed die's effects (fx: Task 7 Fx[]); never throws. */
-    play(die, fx) {
-      if (disposed || !Array.isArray(fx) || !fx.length) return;
+    play(die, fxIn) {
+      if (disposed || !Array.isArray(fxIn) || !fxIn.length) return;
       if (setting('effects') === false) return;
+      let safeMode = false;
+      try {
+        safeMode = isSafe() === true;
+      } catch {
+        // a throwing probe counts as not safe
+      }
+      const fx = safeMode
+        ? fxIn.filter((f) => String(f?.effect?.id ?? '').startsWith('dsn:'))
+        : fxIn;
+      if (!fx.length) return;
       if (!library) {
         // DSN special effects do not need the library; everything else waits for it.
         if (fx.some((f) => f?.effect && !String(f.effect.id).startsWith('dsn:'))) {
@@ -296,7 +308,7 @@ export function createEffectLayer({
 
     /** Advances every running effect; true while any runs (or the canvas shakes). */
     update(nowMs) {
-      for (let i = 0; i < running.length; ) {
+      for (let i = 0; i < running.length;) {
         let alive = false;
         try {
           alive = running[i].handle.update(nowMs) === true;

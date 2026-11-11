@@ -156,16 +156,17 @@ export function createFxResolver({
       const presets = setting('damagePresets') !== false;
       const fxOn =
         setting('effects') !== false && (rollerId === me || setting('showOthersEffects') !== false);
-      if (!presets && !fxOn) return undefined;
+      // Macros run on the roller's client whatever that client's effects setting says.
+      const macros = rollerId !== null && rollerId === me && setting('triggerMacros') !== false;
+      if (!presets && !fxOn && !macros) return undefined;
 
-      const rules = fxOn ? rulesFor(rollerId) : [];
+      const rules = fxOn || macros ? rulesFor(rollerId) : [];
       const themeOf = presets ? safe(() => damageThemeFor(roll), null) : null;
       const outcome = safe(() => outcomeOf(roll, message), null);
       const role = safe(() => roleOf(message), null);
       const formula = safe(() => roll?.formula, undefined);
       const speakerActor = safe(() => message?.speaker?.actor, undefined);
       const damage = safe(() => damageTypesByTerm(roll, getKnownDamageTypes()), new WeakMap());
-      const macros = rollerId !== null && rollerId === me && setting('triggerMacros') !== false;
       const slow = setting('slowMotion') !== false;
 
       return (term, result, termIndex, look) => {
@@ -176,6 +177,8 @@ export function createFxResolver({
         // P4-R2: the GM's custom sound for this damage type replaces the theme's landing sound.
         const custom = theme ? customSoundOf(damageType) : null;
         const landing = theme?.landing ?? null;
+        // A discarded or inactive result (dropped, rerolled away) never triggers anything.
+        if (result?.active === false || result?.discarded === true) return out;
         if (!rules.length && !landing && !custom) return out;
         const value = result?.result;
         const faces = term?.faces;
@@ -211,7 +214,21 @@ export function createFxResolver({
           });
         }
         for (const rule of rules) {
+          if (!fxOn && !(typeof rule.macro === 'string' && rule.macro)) continue;
           if (!safe(() => matchRule(rule, die), false)) continue;
+          if (!fxOn) {
+            // Effects off: the roller's macro still runs, with no effect, sound or slow motion.
+            fx.push({
+              ruleId: rule.id,
+              effect: null,
+              sound: null,
+              macro: rule.macro,
+              slowMotion: false,
+              value,
+              type: dsnType ?? type,
+            });
+            continue;
+          }
           const effect = rule.effect ?? null;
           fx.push({
             ruleId: rule.id,

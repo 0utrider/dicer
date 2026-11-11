@@ -67,6 +67,8 @@ A trigger rule says "when a die matches this, play an effect, a sound, or run a 
 
 Open **Configure Settings, Dicer, Trigger rules** (the trigger editor) to edit them. The GM edits the world rules; each player can add personal rules. The roller's rules decide what plays. Each viewer chooses whether to see other players' effects with **Show other players' effects**.
 
+A macro runs on the roller's own client, once per rule, when the matching die's animation lands. So it does not run when the roller has 3D dice turned off, when their browser tab is hidden, or for dice beyond the maximum dice limit (those are not drawn).
+
 Other settings: **Special effects**, **Screen shake**, **Slow motion** (changes only your own animation speed) and **Trigger macros** (a macro runs once, on the roller's client).
 
 Effects and their sounds never play for someone who cannot see the roll's result: a blind or whispered roll gives other players nothing, not even a celebration. The render loop runs only while an effect plays, and lower quality tiers run lighter effects. Screen shake is off when your operating system asks for reduced motion.

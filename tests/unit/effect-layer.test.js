@@ -132,7 +132,14 @@ test('the effects setting off: play() starts nothing', async () => {
 });
 
 test('unknown ids, null effects and malformed fx are skipped; a throwing start warns once per id', async () => {
-  const bad = { id: 'bad', cost: 1, defaults: {}, start: () => { throw new Error('x'); } };
+  const bad = {
+    id: 'bad',
+    cost: 1,
+    defaults: {},
+    start: () => {
+      throw new Error('x');
+    },
+  };
   const { layer, warn } = setup({ tier: 'ultra', modules: { a: timed('a'), bad } });
   await layer.prefetch();
   expect(() => {
@@ -165,7 +172,9 @@ test('effect options are copies: the shared fx objects are never mutated', async
   const spy = { ...timed('spy'), start: (ctx) => ((seen = ctx), timed('spy').start(ctx)) };
   const { layer } = setup({ modules: { spy } });
   await layer.prefetch();
-  const fx = Object.freeze([Object.freeze({ effect: Object.freeze({ id: 'spy', color: '#ff0000', size: 3 }) })]);
+  const fx = Object.freeze([
+    Object.freeze({ effect: Object.freeze({ id: 'spy', color: '#ff0000', size: 3 }) }),
+  ]);
   layer.play(makeDie(), fx);
   expect(seen.color).toBeInstanceOf(THREE.Color);
   expect(seen.color.getHexString()).toBe('ff0000');
@@ -243,12 +252,20 @@ describe('die effects (library)', () => {
       expect(EFFECTS[id].id).toBe(id);
       expect(EFFECTS[id].cost).toBe(1);
       expect(EFFECTS[id].defaults).toEqual(
-        expect.objectContaining({ color: expect.any(String), intensity: expect.any(Number), duration: expect.any(Number) }),
+        expect.objectContaining({
+          color: expect.any(String),
+          intensity: expect.any(Number),
+          duration: expect.any(Number),
+        }),
       );
     }
   });
   test('color-shift: eases the tint in over 150 ms, holds, eases out, ends at zero', async () => {
-    const { layer, u, isolate } = await run('color-shift', { color: '#ff0000', intensity: 1, duration: 1000 });
+    const { layer, u, isolate } = await run('color-shift', {
+      color: '#ff0000',
+      intensity: 1,
+      duration: 1000,
+    });
     expect(isolate).toHaveBeenCalledTimes(1);
     layer.update(0);
     layer.update(75);
@@ -317,4 +334,22 @@ test('a throwing onPlay never stops an effect', async () => {
   await layer.prefetch();
   layer.play(makeDie(), fxOf('a'));
   expect(layer.running).toBe(1);
+});
+
+describe('safe mode', () => {
+  test('library effects are skipped while isSafe() is true; DSN effects still run', async () => {
+    let safe = true;
+    let dsn;
+    const { layer, log } = setup({
+      isSafe: () => safe,
+      dsnSfx: { effectFor: (id) => (id === 'dsn:x' ? dsn : null) },
+    });
+    dsn = timed('dsn:x', 1, log);
+    await layer.prefetch();
+    layer.play(makeDie(), fxOf('a', 'dsn:x'));
+    expect(log.filter((e) => e[0] === 'start').map((e) => e[1])).toEqual(['dsn:x']);
+    safe = false;
+    layer.play(makeDie(), fxOf('a'));
+    expect(log.filter((e) => e[0] === 'start').map((e) => e[1])).toEqual(['dsn:x', 'a']);
+  });
 });
