@@ -124,8 +124,9 @@ export function prewarm(sim, types) {
 /**
  * Create a simulation. World units: 1 = a die's circumradius, floor at y = 0.
  * Each throw builds a fresh Rapier world, so a throw depends only on (area, request).
- * `throw({dice, seed, area?})`: `area` = {cx, cz, halfWidth, halfDepth} puts this throw's walls,
- * spawn edge and aim around (cx, cz); without it the throw uses the resized stage area at the
+ * `throw({dice, seed, area?})`: `area` = {cx, cz, halfWidth, halfDepth} puts this throw's walls
+ * and aim around (cx, cz); its dice spawn beyond the stage edge on the seeded side (P5-R5),
+ * within the area's lateral span, and fly in through the open area wall; without it the throw uses the resized stage area at the
  * origin (bit-identical to before per-throw areas). The floor is shared and covers both.
  */
 export function createSim(initialArea, hulls) {
@@ -247,15 +248,21 @@ export function createSim(initialArea, hulls) {
 
         const lateralHalf = alongX ? hd : hw;
         const columns = Math.max(1, Math.floor((2 * (lateralHalf - 1)) / DIE_SPACING));
+        // P5-R5: dice spawn beyond the STAGE edge on the spawn side (off-screen), never inside
+        // the visible stage, and fly across it to the area; laterally they stay within the
+        // area's span. For the default (area == stage) this is exactly the old spawn.
+        const stageHalf = alongX ? area.halfWidth : area.halfDepth;
+        const areaFar = sign * (alongX ? cx : cz) + (alongX ? hw : hd);
+        const spawnFrom = Math.max(stageHalf, areaFar);
         const bodies = [];
         for (let i = 0; i < n; i++) {
           const col = i % columns;
           const row = Math.floor(i / columns);
           const lateral = (col - (columns - 1) / 2) * DIE_SPACING + (rand() - 0.5) * 0.3;
-          const out = (alongX ? hw : hd) + SPAWN_GAP + 0.5 + row * DIE_SPACING + rand() * 0.3;
+          const out = spawnFrom + SPAWN_GAP + 0.5 + row * DIE_SPACING + rand() * 0.3;
           const y = 2 + rand() * 3;
-          const px = cx + (alongX ? sign * out : lateral);
-          const pz = cz + (alongX ? lateral : sign * out);
+          const px = alongX ? sign * out : cx + lateral;
+          const pz = alongX ? cz + lateral : sign * out;
           // Aim at a seeded point inside the inner 60% of the area.
           const tx = cx + (rand() * 2 - 1) * INNER_FRACTION * hw;
           const tz = cz + (rand() * 2 - 1) * INNER_FRACTION * hd;

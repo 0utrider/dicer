@@ -266,3 +266,53 @@ test('a malformed area falls back to the stage', () => {
     expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area, bad ?? undefined).chunks)).toBe('1118cbd0');
   }
 });
+
+/** Every die's first frame and its settled frame for one throw into `throwArea`. */
+function firstAndLast(chunks, n) {
+  const first = chunks[0].data;
+  const last = chunks.at(-1);
+  const base = (last.steps - 1) * n * FLOATS_PER_DIE;
+  const out = [];
+  for (let d = 0; d < n; d++) {
+    const f = d * FLOATS_PER_DIE;
+    const o = base + d * FLOATS_PER_DIE;
+    out.push({ x0: first[f], z0: first[f + 2], x: last.data[o], z: last.data[o + 2] });
+  }
+  return out;
+}
+
+test('P5-R5: dice spawn off-screen beyond the stage edge and settle inside an inner area', () => {
+  const centre = { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 };
+  for (let seed = 1; seed <= 20; seed++) {
+    const n = 5;
+    const { res, chunks } = runEv(Array(n).fill('d6'), seed, area, centre);
+    expect(res.settledStep, `seed ${seed}`).toBeLessThan(MAX_STEPS);
+    for (const [d, p] of firstAndLast(chunks, n).entries()) {
+      const tag = `seed ${seed} die ${d}`;
+      expect(Math.abs(p.x0) > area.halfWidth || Math.abs(p.z0) > area.halfDepth, tag).toBe(true);
+      expect(Math.abs(p.x - centre.cx), tag).toBeLessThan(centre.halfWidth + 1);
+      expect(Math.abs(p.z - centre.cz), tag).toBeLessThan(centre.halfDepth + 1);
+    }
+  }
+});
+
+test('P5-R5: far corner areas settle inside the area within MAX_STEPS (20 seeds)', () => {
+  // The 'corner' preset on a 12 x 7 stage is roughly this; also the opposite corner.
+  const corners = [
+    { cx: 7.44, cz: 2.45, halfWidth: 4.56, halfDepth: 3.15 },
+    { cx: -7.44, cz: -2.45, halfWidth: 4.56, halfDepth: 3.15 },
+  ];
+  for (const c of corners) {
+    for (let seed = 1; seed <= 20; seed++) {
+      const n = 5;
+      const { res, chunks } = runEv(['d20', 'd6', 'd8', 'd10', 'd4'], seed, area, c);
+      expect(res.settledStep, `seed ${seed}`).toBeLessThan(MAX_STEPS);
+      for (const [d, p] of firstAndLast(chunks, n).entries()) {
+        const tag = `cx ${c.cx} seed ${seed} die ${d}`;
+        expect(Math.abs(p.x0) > area.halfWidth || Math.abs(p.z0) > area.halfDepth, tag).toBe(true);
+        expect(Math.abs(p.x - c.cx), tag).toBeLessThan(c.halfWidth + 1);
+        expect(Math.abs(p.z - c.cz), tag).toBeLessThan(c.halfDepth + 1);
+      }
+    }
+  }
+});
