@@ -242,3 +242,31 @@ export async function initiativeTrack() {
     await combat.delete();
   }
 }
+
+/* ------------------------------------------------------------------------------------------ *
+ * Effects and sounds RPCs (tests/live/effects.mjs). Names and counts only: the counters in
+ * game.dice3d._debug hold effect ids and result sound names, never roll values.
+ * ------------------------------------------------------------------------------------------ */
+
+/** This client's effect play and result sound counters (copies). */
+export function fxCounts() {
+  const d = game.dice3d._debug;
+  return { fxPlays: { ...d.fxPlays }, resultSounds: { ...d.resultSounds } };
+}
+
+export function getDicerSetting(key) {
+  return game.settings.get('dicer', key);
+}
+
+export function setDicerSetting({ key, value }) {
+  return game.settings.set('dicer', key, value);
+}
+
+/** Rolls a 1d20 forced to a natural 20 into chat with the roll mode; returns the message id. */
+export async function rollNat20({ rollMode }) {
+  const roll = await new Roll('1d20').evaluate();
+  roll.dice[0].results[0].result = 20;
+  roll._total = 20;
+  const message = await roll.toMessage({}, { rollMode });
+  return message.id;
+}

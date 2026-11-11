@@ -67,3 +67,37 @@ Dicer listens for `chatCommandsReady` from module load, not from its `init` hook
 2. Type `/dice3d`, then `/d3d` and `/dsn`, in chat.
 3. Pass: all three autocomplete and open the settings on the Dicer tab, and no chat message is posted.
 4. Enable Dice So Nice too (Dicer goes dormant) and reload. Pass: Dicer registers none of the three; `/dsn` belongs to DSN.
+
+## 10. Sound unlock on the first click
+
+1. Reload the world and do not click anything. Roll a die by chat command.
+2. Pass: no console error about the audio context. Click anywhere in the window, then roll again: the dice click and clatter.
+
+## 11. Quieter when unfocused
+
+1. With **Quieter when the window is unfocused** on, start a roll and click another window right away.
+2. Pass: the landing sounds are clearly quieter. Turn the setting off and repeat: they are at full volume.
+
+## 12. PF2e fire strike shows ember dice
+
+1. In a PF2e world with **Damage dice themes** on, roll a fire strike's damage.
+2. Pass: the damage dice look like fire dice (dark resin with orange liquid), and embers rise where they land. With the `fire` entry set to `none` in **Damage type map**, the dice use the normal look.
+
+## 13. dnd5e radiant damage
+
+1. In a dnd5e world, roll radiant damage (for example Guiding Bolt).
+2. Pass: the dice use the pale gold vitality theme, with a light burst where they land.
+
+## 14. 30d6 with a "6 gives sparks" rule
+
+1. In **Trigger rules**, add a rule: die d6, value 6, effect sparkles.
+2. Roll `/r 30d6` and watch the animation.
+3. Pass: no stutter or freeze while the sparks play, and the dice settle and fade as usual. A few seconds later `game.dice3d._debug.isLooping` is false.
+
+## 15. Reduced motion suppresses screen shake
+
+1. Turn on the operating system's reduced motion setting (Windows: Settings, Accessibility, Visual effects, Animation effects off). Reload.
+2. Roll a natural 20 with a shake effect in the matching rule.
+3. Pass: the dice canvas does not shake. With the OS setting off and **Screen shake** on, it does.
+
+The privacy of effects and sounds for blind rolls, and **Show other players' effects**, are also automated in `npm run test:live:effects`.

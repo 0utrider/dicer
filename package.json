@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:live": "node tests/live/smoke.mjs",
     "test:live:compat": "node tests/live/compat.mjs",
+    "test:live:effects": "node tests/live/effects.mjs",
     "test:visual": "node tests/visual/looks.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
