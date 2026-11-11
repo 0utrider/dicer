@@ -2,7 +2,14 @@ import RAPIER from '@dimforge/rapier3d-deterministic';
 import * as glue from '@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.js';
 import { getShape } from '../core/dice-shapes.js';
 import { mulberry32 } from '../core/rng.js';
-import { CHUNK_STEPS, FLOATS_PER_DIE, MAX_STEPS, STEP_SECONDS } from './protocol.js';
+import {
+  CHUNK_STEPS,
+  FLOATS_PER_DIE,
+  IMPACT_FLOATS,
+  MAX_IMPACTS_PER_CHUNK,
+  MAX_STEPS,
+  STEP_SECONDS,
+} from './protocol.js';
 
 const GRAVITY = -9.81 * 4;
 const DIE_RESTITUTION = 0.35;
@@ -97,6 +104,17 @@ export function createSim(initialArea, hulls) {
   let disposed = false;
   /** Buffer pool keyed by full-chunk float length. */
   const pool = new Map();
+  /** Pool of impact-event buffers (fixed size, one per chunk in flight). */
+  const eventPool = [];
+  const EVENT_LENGTH = MAX_IMPACTS_PER_CHUNK * IMPACT_FLOATS;
+
+  function takeEventBuffer() {
+    while (eventPool.length) {
+      const buf = eventPool.pop();
+      if (buf.byteLength > 0) return buf;
+    }
+    return new Float32Array(EVENT_LENGTH);
+  }
 
   function takeBuffer(length) {
     const list = pool.get(length);
@@ -150,7 +168,10 @@ export function createSim(initialArea, hulls) {
     },
 
     /** Return a transferred-back buffer to the pool. */
-    recycle(buffer) {
+    recycle(buffer, events) {
+      if (events && events.byteLength > 0 && eventPool.length < POOL_LIMIT) {
+        eventPool.push(new Float32Array(events.buffer));
+      }
       if (!buffer || buffer.byteLength === 0) return;
       const full = new Float32Array(buffer.buffer);
       const list = pool.get(full.length) ?? [];
@@ -165,19 +186,27 @@ export function createSim(initialArea, hulls) {
       const n = req.dice.length;
       const world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
       world.timestep = STEP_SECONDS;
+      const eventQueue = new RAPIER.EventQueue(true);
+      /** collider handle -> die index, -1 floor, -2 wall */
+      const owner = new Map();
+      const withEvents = (desc) => desc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
       try {
-        world.createCollider(
-          RAPIER.ColliderDesc.cuboid(hw + FLOOR_MARGIN, 0.5, hd + FLOOR_MARGIN)
-            .setTranslation(0, -0.5, 0)
-            .setFriction(FLOOR_FRICTION)
-            .setRestitution(DIE_RESTITUTION),
+        const floor = world.createCollider(
+          withEvents(
+            RAPIER.ColliderDesc.cuboid(hw + FLOOR_MARGIN, 0.5, hd + FLOOR_MARGIN)
+              .setTranslation(0, -0.5, 0)
+              .setFriction(FLOOR_FRICTION)
+              .setRestitution(DIE_RESTITUTION),
+          ),
         );
+        owner.set(floor.handle, -1);
 
         // Seeded spawn edge: 0 = +x, 1 = -x, 2 = +z, 3 = -z. Its wall starts disabled ("open").
         const edge = Math.floor(rand() * 4);
         const walls = addWalls(world, edge);
         const alongX = edge < 2;
         const sign = edge % 2 === 0 ? 1 : -1;
+        for (const w of walls) owner.set(w.handle, -2);
         const spawnWall = walls[edge];
         spawnWall.setEnabled(false);
 
@@ -216,7 +245,11 @@ export function createSim(initialArea, hulls) {
               .setAngularDamping(coin ? COIN_ANGULAR_DAMPING : 0.1)
               .setCcdEnabled(true),
           );
-          world.createCollider(dieColliderDesc(req.dice[i].type, hulls), body);
+          const collider = world.createCollider(
+            withEvents(dieColliderDesc(req.dice[i].type, hulls)),
+            body,
+          );
+          owner.set(collider.handle, i);
           bodies.push(body);
         }
 
@@ -228,9 +261,44 @@ export function createSim(initialArea, hulls) {
         let wallClosed = false;
         let restSteps = 0;
         let settledStep = MAX_STEPS;
+        // Linear velocities just before each step (the impact speed is read from these).
+        const preVel = new Float64Array(n * 3);
+        let impacts = []; // this chunk's events: [frame, die, other, speed]
+
+        const onCollision = (h1, h2, started, frame) => {
+          if (!started) return;
+          const a = owner.get(h1);
+          const b = owner.get(h2);
+          if (a === undefined || b === undefined) return;
+          let die = a;
+          let other = b;
+          if (die < 0 || (other >= 0 && other < die)) [die, other] = [other, die];
+          if (die < 0) return; // floor/wall pair cannot happen (both fixed), guard anyway
+          let speed;
+          if (other >= 0) {
+            speed = Math.hypot(
+              preVel[die * 3] - preVel[other * 3],
+              preVel[die * 3 + 1] - preVel[other * 3 + 1],
+              preVel[die * 3 + 2] - preVel[other * 3 + 2],
+            );
+          } else {
+            speed = Math.hypot(preVel[die * 3], preVel[die * 3 + 1], preVel[die * 3 + 2]);
+          }
+          impacts.push([frame, die, other, speed]);
+        };
 
         for (let step = 1; step <= MAX_STEPS; step++) {
-          world.step();
+          for (let d = 0; d < n; d++) {
+            const v = bodies[d].linvel();
+            preVel[d * 3] = v.x;
+            preVel[d * 3 + 1] = v.y;
+            preVel[d * 3 + 2] = v.z;
+          }
+          world.step(eventQueue);
+          const frame = step - 1; // global frame index == Playback's playhead unit
+          eventQueue.drainCollisionEvents((h1, h2, started) =>
+            onCollision(h1, h2, started, frame),
+          );
 
           let allInside = true;
           let allAtRest = true;
@@ -286,7 +354,20 @@ export function createSim(initialArea, hulls) {
           if (finished) settledStep = step;
           if (inChunk === CHUNK_STEPS || finished) {
             const data = new Float32Array(buf.buffer, 0, inChunk * floatsPerStep);
-            onChunk({ index: chunkIndex++, steps: inChunk, data, done: finished });
+            if (impacts.length > MAX_IMPACTS_PER_CHUNK) {
+              // Keep the fastest; the stable sort keeps step order for equal speeds.
+              impacts = impacts
+                .map((e, i) => [e, i])
+                .sort((x, y) => y[0][3] - x[0][3] || x[1] - y[1])
+                .slice(0, MAX_IMPACTS_PER_CHUNK)
+                .map(([e]) => e)
+                .sort((x, y) => x[0] - y[0]);
+            }
+            const eventBuf = takeEventBuffer();
+            impacts.forEach((e, i) => eventBuf.set(e, i * IMPACT_FLOATS));
+            const events = new Float32Array(eventBuf.buffer, 0, impacts.length * IMPACT_FLOATS);
+            impacts = [];
+            onChunk({ index: chunkIndex++, steps: inChunk, data, events, done: finished });
             if (finished) break;
             buf = takeBuffer(fullLength);
             inChunk = 0;
@@ -294,6 +375,7 @@ export function createSim(initialArea, hulls) {
         }
         return { settledStep };
       } finally {
+        eventQueue.free();
         world.free();
       }
     },
@@ -301,6 +383,7 @@ export function createSim(initialArea, hulls) {
     dispose() {
       disposed = true;
       pool.clear();
+      eventPool.length = 0;
     },
   };
 }

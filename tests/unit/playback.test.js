@@ -109,3 +109,28 @@ describe('round trip over all die types', () => {
     }
   }
 });
+
+test('takeEvents hands each event once, in playhead order, none while waiting', () => {
+  const d = die();
+  const p = new Playback({ dice: [d], area });
+  const c0 = chunk(0, 30, 60, false);
+  c0.events = new Float32Array([5, 0, -1, 7, 10, 0, -1, 9, 12, 0, -2, 3]);
+  const c1 = chunk(30, 30, 60, true);
+  c1.events = new Float32Array([40, 0, -1, 1]);
+  p.push(c0);
+  p.update(0);
+  expect(p.update(1000)).toBe('waiting');
+  expect(p.takeEvents()).toEqual([]);
+  p.push(c1);
+  expect(p.update(1000)).toBe('playing');
+  expect(p.takeEvents()).toEqual([]);
+  // frame 5 was before the dice were on screen (dropped); the hop crosses 10 and 12, not 40
+  expect(p.update(1000 + 20 * (1000 / 60))).toBe('playing');
+  expect(p.takeEvents()).toEqual([
+    { die: 0, other: -1, speed: 9 },
+    { die: 0, other: -2, speed: 3 },
+  ]);
+  expect(p.takeEvents()).toEqual([]);
+  expect(p.update(9000)).toBe('landed');
+  expect(p.takeEvents()).toEqual([]);
+});

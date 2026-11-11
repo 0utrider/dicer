@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, expect, test } from 'vitest';
 import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
-import { FLOATS_PER_DIE, MAX_STEPS } from '../../src/physics/protocol.js';
+import { FLOATS_PER_DIE, IMPACT_FLOATS, MAX_STEPS } from '../../src/physics/protocol.js';
 
 const area = { halfWidth: 12, halfDepth: 7 };
 
@@ -135,4 +135,42 @@ test('30 d20 whole throw stays cheap after pre-warm (relative to a same-process 
 test('a missing hull is an error, not a silent fallback', () => {
   const sim = createSim(area, {});
   expect(() => sim.throw({ dice: [{ type: 'd6' }], seed: 1 }, () => {})).toThrow(/no hull/);
+});
+
+const eventsOf = (chunks) => chunks.flatMap((c) => Array.from(c.events ?? []));
+
+test('a throw reports floor impacts', () => {
+  const { chunks } = run(['d6', 'd6', 'd6'], 5);
+  const ev = eventsOf(chunks);
+  expect(ev.length % IMPACT_FLOATS).toBe(0);
+  const list = [];
+  for (let i = 0; i < ev.length; i += IMPACT_FLOATS) {
+    list.push({ step: ev[i], die: ev[i + 1], other: ev[i + 2], speed: ev[i + 3] });
+  }
+  expect(list.some((e) => e.other === -1)).toBe(true);
+  for (const e of list) {
+    expect(e.die).toBeGreaterThanOrEqual(0);
+    expect(e.die).toBeLessThan(3);
+    expect(e.speed).toBeGreaterThanOrEqual(0);
+  }
+  for (let i = 1; i < list.length; i++) expect(list[i].step).toBeGreaterThanOrEqual(list[i - 1].step);
+  for (const c of chunks) expect(c.events.length % IMPACT_FLOATS).toBe(0);
+});
+
+test('same seed gives identical events', () => {
+  const a = run(['d20', 'd6', 'd6'], 7);
+  const b = run(['d20', 'd6', 'd6'], 7);
+  expect(eventsOf(a.chunks).length).toBeGreaterThan(0);
+  expect(eventsOf(a.chunks)).toEqual(eventsOf(b.chunks));
+});
+
+test('impacts fade out', () => {
+  const { res, chunks } = run(['d6', 'd6', 'd6'], 5);
+  const ev = eventsOf(chunks);
+  const floor = [];
+  for (let i = 0; i < ev.length; i += IMPACT_FLOATS) {
+    if (ev[i] <= res.settledStep) floor.push({ other: ev[i + 2], speed: ev[i + 3] });
+  }
+  const first = floor.find((e) => e.other === -1);
+  expect(first.speed).toBeGreaterThan(4 * floor.at(-1).speed);
 });

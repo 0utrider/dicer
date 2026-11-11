@@ -125,3 +125,19 @@ test('a worker messageerror event rejects every pending stream', async () => {
   w.onmessageerror({});
   await expect(a.done).rejects.toThrow(/could not be deserialized/);
 });
+
+test('chunk keeps events', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  w.emit({ type: 'ready' });
+  const stream = client.throw({ dice: [{ type: 'd20' }], seed: 1 });
+  const id = w.sent.find((s) => s.m.type === 'throw').m.id;
+  const got = [];
+  stream.onChunk((c) => got.push(c));
+  const events = new Float32Array([3, 0, -1, 2.5]);
+  w.emit({ type: 'chunk', id, index: 0, steps: 30, data: new Float32Array(210), done: false, events });
+  w.emit({ type: 'chunk', id, index: 1, steps: 5, data: new Float32Array(35), done: true });
+  expect(Array.from(got[0].events)).toEqual([3, 0, -1, 2.5]);
+  expect(got[1].events).toBeInstanceOf(Float32Array);
+  expect(got[1].events.length).toBe(0);
+});

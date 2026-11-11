@@ -24,10 +24,10 @@ self.onmessage = async (e) => {
     if (msg.type === MSG.RESIZE) {
       sim.resize(msg.area);
     } else if (msg.type === MSG.RECYCLE) {
-      sim.recycle(msg.buffer);
+      sim.recycle(msg.buffer, msg.events);
     } else if (msg.type === MSG.THROW) {
       const { settledStep } = sim.throw({ dice: msg.dice, seed: msg.seed }, (c) =>
-        self.postMessage({ type: MSG.CHUNK, id: msg.id, ...c }, [c.data.buffer]),
+        self.postMessage({ type: MSG.CHUNK, id: msg.id, ...c }, [c.data.buffer, c.events.buffer]),
       );
       self.postMessage({ type: MSG.DONE, id: msg.id, settledStep });
     }

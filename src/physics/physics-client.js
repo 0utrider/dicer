@@ -72,9 +72,11 @@ export class PhysicsClient {
   }
 
   /** Hand a consumed chunk buffer back to the worker's pool (transferred). */
-  recycle(buffer) {
+  recycle(buffer, events) {
     if (this._failed) return;
-    this._worker.postMessage({ type: MSG.RECYCLE, buffer }, [buffer.buffer]);
+    const transfer = [buffer.buffer];
+    if (events && events.byteLength > 0) transfer.push(events.buffer);
+    this._worker.postMessage({ type: MSG.RECYCLE, buffer, events }, transfer);
   }
 
   terminate() {
@@ -107,7 +109,13 @@ export class PhysicsClient {
     }
     const s = this._streams.get(m.id);
     if (m.type === MSG.CHUNK && s) {
-      const chunk = { index: m.index, steps: m.steps, data: m.data, done: m.done };
+      const chunk = {
+        index: m.index,
+        steps: m.steps,
+        data: m.data,
+        events: m.events ?? new Float32Array(0),
+        done: m.done,
+      };
       if (s.cb) s.cb(chunk);
       else s.pending.push(chunk);
     } else if (m.type === MSG.DONE && s) {

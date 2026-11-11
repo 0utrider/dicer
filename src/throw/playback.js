@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLOATS_PER_DIE, STEP_SECONDS } from '../physics/protocol.js';
+import { FLOATS_PER_DIE, IMPACT_FLOATS, STEP_SECONDS } from '../physics/protocol.js';
 import { readTopFace, rotationToShow, faceForValue } from '../core/face-reader.js';
 
 const _q = [0, 0, 0, 1];
@@ -19,6 +19,9 @@ export class Playback {
     this._frames = 0;
     this._firstInside = -1; // first frame with any die inside the area
     this._playhead = 0;
+    this._events = []; // [frame, die, other, speed], in frame order across pushes
+    this._eventCursor = 0; // next event not yet handed out
+    this._playing = false; // last update() returned 'playing'
     this._lastMs = undefined;
     this._landed = false;
   }
@@ -39,6 +42,12 @@ export class Playback {
           this._firstInside = base + s;
           break;
         }
+      }
+    }
+    const ev = chunk.events;
+    if (ev) {
+      for (let i = 0; i + IMPACT_FLOATS <= ev.length; i += IMPACT_FLOATS) {
+        this._events.push([ev[i], ev[i + 1], ev[i + 2], ev[i + 3]]);
       }
     }
     if (chunk.done) this._applyResults(chunk.data, (chunk.steps - 1) * stride);
@@ -118,7 +127,23 @@ export class Playback {
     }
     this._playhead = ph;
     this._place(ph);
+    this._playing = state === 'playing';
     return state;
+  }
+
+  /**
+   * Impact events whose frame the playhead crossed since the last call. Only while the last
+   * update() was 'playing'; events before the dice entered the area are dropped silently.
+   */
+  takeEvents() {
+    if (!this._playing) return [];
+    const out = [];
+    const ev = this._events;
+    while (this._eventCursor < ev.length && ev[this._eventCursor][0] <= this._playhead) {
+      const [frame, die, other, speed] = ev[this._eventCursor++];
+      if (frame >= this._firstInside) out.push({ die, other, speed });
+    }
+    return out;
   }
 
   release() {
