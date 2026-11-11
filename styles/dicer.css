@@ -388,7 +388,24 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   object-fit: contain;
   border: none;
 }
-.dicer-theme-browser .dicer-thumb[hidden] {
+.dicer-theme-browser .dicer-thumb[hidden],
+.dicer-theme-browser .dicer-live[hidden] {
+  display: none;
+}
+.dicer-theme-browser .dicer-live {
+  position: absolute;
+  inset: 4%;
+  width: 92%;
+  height: 92%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.dicer-theme-browser .dicer-live:active {
+  cursor: grabbing;
+}
+.dicer-theme-browser .dicer-stage.has-live .dicer-thumb,
+.dicer-theme-browser .dicer-stage.has-live .dicer-fallback {
   display: none;
 }
 .dicer-theme-browser .dicer-mark {

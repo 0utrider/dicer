@@ -10,6 +10,7 @@ import { buildDieGeometry } from '../core/chamfer.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { restingQuaternion, minY } from '../core/resting.js';
 import { appearanceKey } from '../look/appearance.js';
+import { createTurntable } from './turntable.js';
 
 const ENV_RESOLUTION = 128;
 /** The face shown on top per type (6 and 9 show the underline mark). */
@@ -36,6 +37,25 @@ function defaultCreateRenderer(size) {
   });
 }
 
+function frameCamera(cam, restY) {
+  const target = new THREE.Vector3(0, restY * 0.85, 0);
+  const dir = new THREE.Vector3(0, Math.sin(VIEW_ANGLE), Math.cos(VIEW_ANGLE));
+  cam.position.copy(target).addScaledVector(dir, VIEW_DISTANCE);
+  cam.lookAt(target);
+}
+
+const TMP = new THREE.Quaternion();
+const AXIS_X = new THREE.Vector3(1, 0, 0);
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
+/** pitch (about X) * tilt (about Z) * yaw (about Y), applied on top of the resting orientation. */
+function poseQuaternion({ yaw, pitch, tilt }, out) {
+  out.setFromAxisAngle(AXIS_Y, yaw);
+  out.premultiply(TMP.setFromAxisAngle(AXIS_Z, tilt));
+  out.premultiply(TMP.setFromAxisAngle(AXIS_X, pitch));
+  return out;
+}
+
 function canvasToBlob(canvas) {
   if (typeof canvas.convertToBlob === 'function') return canvas.convertToBlob({ type: 'image/png' });
   return new Promise((resolve, reject) =>
@@ -51,6 +71,10 @@ function canvasToBlob(canvas) {
  * @param {(cb:Function)=>void} [o.idle]
  * @param {(msg:string)=>void} [o.warn]
  * @param {()=>object} [o.createScene] test seam (headless PMREM)
+ * @param {(cb:Function)=>number} [o.raf] requestAnimationFrame (live preview)
+ * @param {(id:number)=>void} [o.caf] cancelAnimationFrame
+ * @param {()=>boolean} [o.reducedMotion] prefers-reduced-motion
+ * @param {object} [o.doc] the document (visibilityState + visibilitychange)
  */
 export function createThumbnailer({
   atlas,
@@ -59,6 +83,10 @@ export function createThumbnailer({
   idle = defaultIdle,
   warn = console.warn,
   createScene = () => buildScene(),
+  raf = (cb) => globalThis.requestAnimationFrame(cb),
+  caf = (id) => globalThis.cancelAnimationFrame(id),
+  reducedMotion = () => Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches),
+  doc = globalThis.document,
 } = {}) {
   const make = createRenderer ?? (() => defaultCreateRenderer(size));
   const cache = new Map(); // key -> object URL
@@ -72,11 +100,15 @@ export function createThumbnailer({
   let broken = false;
   let disposed = false;
   let flags = null;
+  let curSize = 0; // the renderer's current square size (a preview frame may change it)
+  let busy = false; // a thumbnail render + capture is in flight: no preview frame may touch the canvas
+  const previews = new Set();
 
   const fail = (message) => {
     if (broken) return;
     broken = true;
     warn(`dicer: theme thumbnails unavailable (${message})`);
+    for (const p of [...previews]) p.halt(true);
     teardown(); // release the broken renderer, scene and PMREM now (no idle GPU)
   };
 
@@ -91,6 +123,7 @@ export function createThumbnailer({
       canvas.addEventListener?.('webglcontextlost', onLost);
       renderer.setPixelRatio(1);
       renderer.setSize(size, size, false);
+      curSize = size;
       renderer.setClearColor(0x000000, 0);
       sceneApi = createScene();
       sceneApi.setEnvironment(renderer, { resolution: ENV_RESOLUTION });
@@ -111,6 +144,7 @@ export function createThumbnailer({
       /* already gone */
     }
     sceneApi = renderer = camera = canvas = onLost = null;
+    curSize = 0;
   }
 
   async function renderOne(theme, dieType) {
@@ -131,14 +165,17 @@ export function createThumbnailer({
     mesh.position.y = -minY(geometry, mesh.quaternion);
     const shadow = api.shadowFor({ position: mesh.position, geometry });
     api.scene.add(mesh);
+    busy = true;
     try {
-      const target = new THREE.Vector3(0, mesh.position.y * 0.85, 0);
-      const dir = new THREE.Vector3(0, Math.sin(VIEW_ANGLE), Math.cos(VIEW_ANGLE));
-      cam.position.copy(target).addScaledVector(dir, VIEW_DISTANCE);
-      cam.lookAt(target);
+      frameCamera(cam, mesh.position.y);
+      if (curSize !== size) {
+        rnd.setSize(size, size, false);
+        curSize = size;
+      }
       rnd.render(api.scene, cam);
       return await canvasToBlob(cvs);
     } finally {
+      busy = false;
       api.scene.remove(mesh);
       api.releaseShadow(shadow);
       material.userData?.uniforms?.uLabels?.value?.dispose();
@@ -181,12 +218,193 @@ export function createThumbnailer({
     return p;
   }
 
+  /**
+   * A live turning die on a visible 2D canvas, drawn by this thumbnailer's renderer and scene (no
+   * second WebGL context): each frame is rendered offscreen, then copied with drawImage in the same
+   * task. The material and geometry live only while the preview does. The loop runs only while the
+   * document is visible; prefers-reduced-motion draws still frames (drag still turns the die).
+   * @param {HTMLCanvasElement} target a canvas already sized (css size * pixel ratio), square
+   * @param {object} theme
+   * @param {string} [dieType]
+   * @param {{onFrame?:Function, onLost?:Function}} [hooks] onFrame after each drawn frame; onLost
+   *   once when the preview ended because WebGL failed (show the static thumbnail instead)
+   * @returns {{setRotation:(r:{yaw?:number,pitch?:number})=>void, reset:()=>void, stop:()=>void, active:boolean}|null}
+   */
+  function preview(target, theme, dieType = 'd20', hooks = {}) {
+    const appearance = theme?.perType?.[dieType] ?? theme?.appearance;
+    if (disposed || broken || !appearance || !target) return null;
+    const ctx = target.getContext?.('2d');
+    if (!ctx) return null;
+    const still = reducedMotion();
+    const turn = createTurntable({ reducedMotion: still });
+    const q = new THREE.Quaternion();
+    let res = null; // { mesh, material, geometry, baseQ, y }
+    let handle = 0;
+    let last = null;
+    let stopped = false;
+    const visible = () => !doc || doc.visibilityState === undefined || doc.visibilityState === 'visible';
+
+    const free = () => {
+      if (!res) return;
+      res.material.userData?.uniforms?.uLabels?.value?.dispose();
+      res.material.dispose();
+      res.geometry.dispose();
+      res = null;
+    };
+    const cancel = () => {
+      if (handle) caf(handle);
+      handle = 0;
+      last = null;
+    };
+
+    function build() {
+      if (!renderer) init();
+      if (!renderer || broken) return false;
+      const shapeType = dieType === 'd100' ? 'd10' : dieType;
+      const shape = getShape(shapeType);
+      const geometry = buildDieGeometry(shape, { style: appearance.edges?.style });
+      geometry.computeBoundingSphere();
+      const labels = shape.values.map((v) => labelFor(shapeType, v));
+      const material = createDiceMaterial(appearance, atlas, shape, labels, flags);
+      const mesh = new THREE.Mesh(geometry, material);
+      const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
+      const baseQ = restingQuaternion(shape, Math.max(0, face)).clone();
+      mesh.position.y = -minY(geometry, baseQ);
+      res = { mesh, material, geometry, baseQ, y: mesh.position.y };
+      return true;
+    }
+
+    function frame() {
+      if (stopped || busy) return;
+      try {
+        if (!res && !build()) return;
+        const api = sceneApi;
+        const rnd = renderer;
+        const px = Math.max(1, Math.round(target.width));
+        if (curSize !== px) {
+          rnd.setSize(px, px, false);
+          curSize = px;
+        }
+        res.mesh.quaternion.copy(poseQuaternion(turn.pose(), q)).multiply(res.baseQ);
+        const shadow = api.shadowFor({ position: res.mesh.position, geometry: res.geometry });
+        api.scene.add(res.mesh);
+        try {
+          frameCamera(camera, res.y);
+          rnd.render(api.scene, camera);
+          ctx.clearRect(0, 0, target.width, target.height);
+          ctx.drawImage(canvas, 0, 0, target.width, target.height);
+        } finally {
+          api.scene.remove(res.mesh);
+          api.releaseShadow(shadow);
+        }
+        hooks.onFrame?.();
+      } catch (err) {
+        if (stopped || disposed) return;
+        warn(`dicer: theme preview failed (${err?.message ?? err})`);
+        p.halt(true);
+      }
+    }
+
+    function tick(ts) {
+      handle = 0;
+      if (stopped || !visible()) return; // a hidden document resumes through visibilitychange
+      const dt = last === null ? 0 : (ts - last) / 1000;
+      last = ts;
+      turn.update(dt);
+      frame();
+      if (!stopped) handle = raf(tick);
+    }
+
+    /** Draws now when the loop is not running (reduced motion, or between events). */
+    const redraw = () => {
+      if (still || !handle) frame();
+    };
+    const wake = () => {
+      if (stopped || handle || !visible()) return;
+      if (still) return frame();
+      last = null;
+      handle = raf(tick);
+    };
+    const onVisibility = () => (visible() ? wake() : cancel());
+
+    // drag to spin, double-click to reset
+    let pointer = null;
+    let lastT = 0;
+    const down = (e) => {
+      if (e.button > 0) return;
+      pointer = e.pointerId;
+      target.setPointerCapture?.(e.pointerId);
+      lastT = e.timeStamp ?? 0;
+      turn.grab();
+    };
+    const move = (e) => {
+      if (e.pointerId !== pointer) return;
+      const t = e.timeStamp ?? lastT;
+      turn.drag(e.movementX ?? 0, e.movementY ?? 0, (t - lastT) / 1000);
+      lastT = t;
+      redraw();
+    };
+    const up = (e) => {
+      if (e.pointerId !== pointer) return;
+      pointer = null;
+      target.releasePointerCapture?.(e.pointerId);
+      turn.release();
+      wake();
+    };
+    const dbl = () => {
+      turn.reset();
+      redraw();
+    };
+    const listeners = [
+      ['pointerdown', down],
+      ['pointermove', move],
+      ['pointerup', up],
+      ['pointercancel', up],
+      ['dblclick', dbl],
+    ];
+
+    const p = {
+      get active() {
+        return !stopped;
+      },
+      setRotation(r) {
+        turn.set(r);
+        redraw();
+      },
+      reset: dbl,
+      /** lost: the preview ended because WebGL failed rather than because the caller stopped it. */
+      halt(lost = false) {
+        if (stopped) return;
+        stopped = true;
+        cancel();
+        for (const [t, f] of listeners) target.removeEventListener?.(t, f);
+        doc?.removeEventListener?.('visibilitychange', onVisibility);
+        previews.delete(p);
+        free();
+        if (lost) hooks.onLost?.();
+      },
+      stop() {
+        p.halt(false);
+      },
+    };
+
+    previews.add(p);
+    for (const [t, f] of listeners) target.addEventListener?.(t, f);
+    doc?.addEventListener?.('visibilitychange', onVisibility);
+    if (visible()) {
+      frame(); // the first frame at once, so the stage never sits empty
+      if (!stopped && !still) handle = raf(tick);
+    }
+    return p;
+  }
+
   function dispose() {
+    for (const p of [...previews]) p.stop();
     disposed = true;
     for (const url of cache.values()) URL.revokeObjectURL(url);
     cache.clear();
     teardown();
   }
 
-  return { thumbnail, dispose };
+  return { thumbnail, preview, dispose };
 }

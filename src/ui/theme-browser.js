@@ -287,6 +287,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   #urls = new Map(); // theme id -> thumbnail URL already made (re-renders show it at once)
   #editing = null; // { base: theme (raw, stored), form }
   #thumbs = null;
+  #preview = null; // the live turning die of the detail panel (thumbnailer.preview)
   #token = 0;
 
   get #isGM() {
@@ -428,6 +429,52 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       this.render();
     });
     this.#loadThumbnails();
+    this.#startPreview();
+  }
+
+  /** The offscreen renderer (made on first use); null when the dice atlas is not available. */
+  #thumbnailer() {
+    if (this.#thumbs) return this.#thumbs;
+    let atlas = null;
+    try {
+      atlas = globalThis.game?.dice3d?._themeContext?.()?.atlas ?? null;
+    } catch {
+      atlas = null;
+    }
+    if (atlas) this.#thumbs = createThumbnailer({ atlas, size: 256 });
+    return this.#thumbs;
+  }
+
+  #stopPreview() {
+    this.#preview?.stop();
+    this.#preview = null;
+  }
+
+  /**
+   * The detail panel's d20 turns live on a canvas (same renderer as the thumbnails). It starts on
+   * every render for the selected theme and stops on the next one, on close, and when WebGL is lost
+   * (the static thumbnail then shows again).
+   */
+  #startPreview() {
+    this.#stopPreview();
+    const canvas = this.element?.querySelector?.('canvas.dicer-live');
+    const theme = canvas ? this.#find(this.#selected) : null;
+    const thumbs = theme ? this.#thumbnailer() : null;
+    if (!thumbs) return;
+    const stage = canvas.closest('.dicer-stage');
+    const css = Math.round((stage?.clientWidth || 190) * 0.92); // the canvas fills 92% of its stage
+    canvas.width = canvas.height = Math.max(1, Math.round(css * Math.min(globalThis.devicePixelRatio || 1, 2)));
+    const live = (on) => {
+      canvas.hidden = !on;
+      stage?.classList.toggle('has-live', on);
+    };
+    this.#preview = thumbs.preview(canvas, theme, 'd20', {
+      onFrame: () => canvas.hidden && live(true),
+      onLost: () => {
+        live(false);
+        this.#preview = null;
+      },
+    });
   }
 
   /** Shows a thumbnail on every image of that theme (its card and the detail preview). */
@@ -448,17 +495,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       const url = this.#urls.get(card.dataset.theme);
       if (url) this.#show(card.dataset.theme, url);
     }
-    if (!this.#thumbs) {
-      let atlas = null;
-      try {
-        atlas = globalThis.game?.dice3d?._themeContext?.()?.atlas ?? null;
-      } catch {
-        atlas = null;
-      }
-      if (!atlas) return;
-      this.#thumbs = createThumbnailer({ atlas, size: 256 });
-    }
-    const thumbs = this.#thumbs;
+    const thumbs = this.#thumbnailer();
+    if (!thumbs) return;
     const themes = new Map(this.#entries().themes.map((t) => [t.id, t]));
     // The selected theme first, so the detail preview fills in at once.
     const first = (card) => (card.dataset.theme === this.#selected ? 0 : 1);
@@ -587,6 +625,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   async close(options) {
     if (instance === this) instance = null;
     this.#token++;
+    this.#stopPreview(); // nothing keeps drawing once the browser is closed
     this.#thumbs?.dispose();
     this.#thumbs = null;
     this.#urls.clear(); // the thumbnailer revoked its URLs

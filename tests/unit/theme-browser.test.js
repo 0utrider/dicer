@@ -244,6 +244,7 @@ describe('the browser actions', () => {
         this.options = options;
       }
       static DEFAULT_OPTIONS = {};
+      async close() {}
     }
     vi.stubGlobal('foundry', {
       applications: { api: { ApplicationV2: FakeApp, HandlebarsApplicationMixin: (B) => class extends B {} } },
@@ -447,6 +448,89 @@ describe('the browser actions', () => {
       await actions.clear.call(app, {}, { dataset: { target: 'die:d20' } });
       expect(user.setFlag).toHaveBeenCalledWith('dicer', 'appearance', { d20: 'DELETE' });
       expect(app.render).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the live preview', () => {
+    let thumbs;
+    let handles;
+    const stageFor = (app) => {
+      const el = document.createElement('div');
+      el.innerHTML = '<div class="dicer-stage"><canvas class="dicer-live" hidden></canvas></div>';
+      app.element = el;
+      return el.querySelector('canvas');
+    };
+    beforeEach(async () => {
+      handles = [];
+      thumbs = {
+        thumbnail: vi.fn(async () => null),
+        dispose: vi.fn(),
+        preview: vi.fn((canvas, theme, type, hooks) => {
+          const h = { stop: vi.fn(), hooks, theme };
+          handles.push(h);
+          return h;
+        }),
+      };
+      const { createThumbnailer } = await import('../../src/themes/thumbnailer.js');
+      createThumbnailer.mockReturnValue(thumbs);
+      globalThis.game.dice3d = { _themeContext: () => ({ atlas: {} }) };
+    });
+    const open = async () => {
+      const app = new mod.ThemeBrowser();
+      await app._prepareContext();
+      const canvas = stageFor(app);
+      app._onRender();
+      return { app, canvas };
+    };
+
+    it('starts a preview of the selected theme on a canvas sized by the pixel ratio (max 2)', async () => {
+      const before = globalThis.devicePixelRatio;
+      globalThis.devicePixelRatio = 3;
+      try {
+        const { canvas } = await open();
+        expect(thumbs.preview).toHaveBeenCalledTimes(1);
+        expect(handles[0].theme.id).toBe('default'); // the default theme is selected
+        expect([canvas.width, canvas.height]).toEqual([350, 350]); // 175 css px (92% of the 190 default stage) * 2
+      } finally {
+        globalThis.devicePixelRatio = before;
+      }
+    });
+    it('shows the canvas on the first frame and hides it again when WebGL is lost', async () => {
+      const { canvas } = await open();
+      handles[0].hooks.onFrame();
+      expect(canvas.hidden).toBe(false);
+      expect(canvas.closest('.dicer-stage').classList.contains('has-live')).toBe(true);
+      handles[0].hooks.onLost();
+      expect(canvas.hidden).toBe(true);
+      expect(canvas.closest('.dicer-stage').classList.contains('has-live')).toBe(false);
+    });
+    it('a re-render stops the previous preview before starting the next', async () => {
+      const { app } = await open();
+      stageFor(app);
+      app._onRender();
+      expect(handles[0].stop).toHaveBeenCalledTimes(1);
+      expect(handles).toHaveLength(2);
+      expect(handles[1].stop).not.toHaveBeenCalled();
+    });
+    it('closing the browser stops the preview before disposing the thumbnailer', async () => {
+      const { app } = await open();
+      await app.close();
+      expect(handles[0].stop).toHaveBeenCalledTimes(1);
+      expect(thumbs.dispose).toHaveBeenCalledTimes(1);
+      expect(handles[0].stop.mock.invocationCallOrder[0]).toBeLessThan(thumbs.dispose.mock.invocationCallOrder[0]);
+    });
+    it('no preview without a canvas (edit form) or without the dice atlas', async () => {
+      const app = new mod.ThemeBrowser();
+      await app._prepareContext();
+      app.element = document.createElement('div');
+      app._onRender();
+      expect(thumbs.preview).not.toHaveBeenCalled();
+      globalThis.game.dice3d = undefined;
+      const b = new mod.ThemeBrowser();
+      await b._prepareContext();
+      stageFor(b);
+      b._onRender();
+      expect(thumbs.preview).not.toHaveBeenCalled();
     });
   });
 

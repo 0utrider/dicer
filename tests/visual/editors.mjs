@@ -1,7 +1,7 @@
 // Visual check of the three editor windows: opens dev/editors.html in Playwright Chromium with
 // Foundry's real stylesheet (served from the local Foundry install under /__foundry/), renders
 // the real apps with sample data and saves docs/signoff/ui/*.png at 1000x800 in the dark theme:
-// theme-browser.png, theme-browser-selected.png (a card clicked), theme-edit.png, trigger-rules.png,
+// theme-browser.png, theme-browser-selected.png (a card clicked; also checks that the live die rotates), theme-edit.png, trigger-rules.png,
 // trigger-rules-selected.png (a rule clicked), damage-map.png, damage-map-player.png.
 // Fails on any page error. Env: DICER_VISUAL_PORT (default 5182), DICER_VISUAL_HEADED=1,
 // DICER_FOUNDRY_APP (default C:/Program Files/Foundry Virtual Tabletop/resources/app).
@@ -98,6 +98,14 @@ async function main() {
         await page.click('.dicer-theme-card[data-theme="dragon-hoard"]');
         await page.waitForFunction(() => document.querySelector('.dicer-theme-detail')?.dataset.theme === 'dragon-hoard');
         await thumbs(page);
+        // the detail die turns live: two shots of its stage ~1 s apart must differ
+        await page.waitForSelector('.dicer-theme-detail .dicer-stage.has-live canvas.dicer-live', { timeout: 30000 });
+        const stage = page.locator('.dicer-theme-detail .dicer-stage');
+        const a = await stage.screenshot();
+        await page.waitForTimeout(1000);
+        const b = await stage.screenshot();
+        if (a.equals(b)) throw new Error('theme-browser-selected: the live preview did not change in 1 s (not rotating)');
+        console.log('editors: live preview is rotating');
       })),
     );
     problems.push(
