@@ -1718,6 +1718,35 @@ describe('roll areas follow the roller (P5-D1) and the GM private corner (P5-D7)
       expect(areaFor.mock.calls.every(([a]) => a.gmPrivate === false)).toBe(true);
     });
 
+    test('a secret roll counts as GM-private (P5-R7), a ghost-view client never', () => {
+      const areaFor = vi.fn(() => null);
+      makeGate({ currentUser: () => gm, areaFor, userIsGM: gmOf }).onCreate(
+        message('m1', { author: { id: 'gm' }, rolls: [{ ...d20Roll(), secret: true }] }),
+      );
+      expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: true });
+    });
+
+    test('a secret flag set by RollStart also counts', () => {
+      const areaFor = vi.fn(() => null);
+      hooks.listeners.diceSoNiceRollStart = [
+        (id, ctx) => {
+          ctx.roll.secret = true;
+        },
+      ];
+      makeGate({ currentUser: () => gm, areaFor, userIsGM: gmOf }).onCreate(
+        message('m1', { author: { id: 'gm' } }),
+      );
+      expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: true });
+    });
+
+    test('a group with one non-secret roll is not private', () => {
+      const areaFor = vi.fn(() => null);
+      makeGate({ currentUser: () => gm, areaFor, userIsGM: gmOf }).onCreate(
+        message('m1', { author: { id: 'gm' }, rolls: [{ ...d20Roll(1), secret: true }, d20Roll(2)] }),
+      );
+      expect(areaFor.mock.calls.every(([a]) => a.gmPrivate === false)).toBe(true);
+    });
+
     test('a real GM-only roll asks for the corner (the resolver decides by client)', () => {
       const areaFor = vi.fn(() => null);
       makeGate({ currentUser: () => gm, areaFor, userIsGM: gmOf }).onCreate(gmBlind('m1'));

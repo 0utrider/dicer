@@ -7,6 +7,9 @@ import { measureArea } from '../foundry/area.js';
 import { moduleRulesOf } from '../effects/fx-resolver.js';
 import { getShape } from '../core/dice-shapes.js';
 import { resolveDamageTheme } from '../effects/damage-themes.js';
+import { PRESETS, normalizeAreaDef } from '../areas/area-model.js';
+import { snapshotAreas, withArea } from '../areas/area-store.js';
+import { isGmOnly } from '../areas/gm-only.js';
 
 const STANDARD_SYSTEM = 'standard';
 /** The gate and showForRoll hooks enableDebugMode logs. */
@@ -136,6 +139,7 @@ export function createDice3dApi({
   facesFor = () => undefined,
   getArea = () => measureArea(),
   areaFor = () => null,
+  writeSetting = (key, value) => globalThis.game.settings.set('dicer', key, value),
   importMigration = importMigrationModule,
   debugCounters = createDebugCounters(),
 }) {
@@ -282,8 +286,13 @@ export function createDice3dApi({
   function areaHere(s, view) {
     try {
       const gms = s.users?.length ? listGms() : [];
-      const gmOnly = s.blind || (s.users?.length > 0 && s.users.every((id) => gms.includes(id)));
-      return areaFor({ rollerId: s.senderId ?? undefined, gmPrivate: view === 'real' && Boolean(gmOnly) }) ?? null;
+      const gmOnly = isGmOnly({
+        blind: Boolean(s.blind),
+        secret: Boolean(s.secret),
+        recipients: s.users,
+        isGm: (id) => gms.includes(id),
+      });
+      return areaFor({ rollerId: s.senderId ?? undefined, gmPrivate: view === 'real' && gmOnly }) ?? null;
     } catch (err) {
       console.error('dicer: cannot resolve the roll area', err);
       return null;
@@ -477,6 +486,46 @@ export function createDice3dApi({
     { set: () => true, deleteProperty: () => true, defineProperty: () => true },
   );
 
+  const isGmHere = () => me()?.isGM === true;
+  /** GM-only write: a player's call writes nothing, warns once and resolves false. */
+  async function writeAreas(name, key, value) {
+    if (!isGmHere()) {
+      warnOnce('rollAreas (GM only)', name);
+      return false;
+    }
+    try {
+      await writeSetting(key, value);
+      return true;
+    } catch (err) {
+      console.warn(`dicer: game.dice3d.rollAreas.${name} could not save`, err);
+      return false;
+    }
+  }
+  const rollAreas = Object.freeze({
+    presets: Object.freeze(Object.keys(PRESETS)),
+    get(userId = null) {
+      const snap = snapshotAreas(getSetting);
+      return userId != null && Object.hasOwn(snap.users, userId) ? snap.users[userId] : snap.default;
+    },
+    rect(userId = null) {
+      try {
+        // No area from the resolver means the whole usable stage.
+        const rect = areaFor({ rollerId: userId ?? undefined, gmPrivate: false }) ?? getArea();
+        const { left, top, width, height } = rect;
+        return { left, top, width, height };
+      } catch (err) {
+        warnOnce('rollAreas.rect', err);
+        return null;
+      }
+    },
+    set(userId, def) {
+      return writeAreas('set', 'rollAreas', withArea(getSetting('rollAreas'), userId ?? null, def));
+    },
+    setGmPrivateArea(def) {
+      return writeAreas('setGmPrivateArea', 'gmPrivateArea', normalizeAreaDef(def));
+    },
+  });
+
   const api = {
     addSystem(system, mode) {
       return reg('addSystem', [system, mode]);
@@ -598,6 +647,9 @@ export function createDice3dApi({
         }
       }
     },
+
+    /** Dicer's own roll-area API (P5; Dice So Nice has none). */
+    rollAreas,
 
     get DiceFactory() {
       return registry.diceFactory;

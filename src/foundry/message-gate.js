@@ -1,5 +1,6 @@
 import { viewFor } from '../compat/privacy.js';
 import { ghostRoll } from '../compat/sync.js';
+import { isGmOnly } from '../areas/gm-only.js';
 import { HIDE, pinCard, refreshCard, matchesIn, hiddenIn, isSelector } from './chat-hiding.js';
 
 /**
@@ -43,15 +44,16 @@ function rollOrderOf(roll) {
  * dropped, so every group throws something. Each group is an array of per-roll specs carrying
  * `allReal`: every roll in it is a real view here (a ghost never uses the GM private corner).
  */
-function groupsOf(rolls, plan, views = []) {
+function groupsOf(rolls, plan, views = [], secrets = []) {
   const byOrder = new Map();
   plan.forEach((specs, i) => {
     if (!specs.length) return;
     const order = rollOrderOf(rolls[i]);
-    if (!byOrder.has(order)) byOrder.set(order, Object.assign([], { allReal: true }));
+    if (!byOrder.has(order)) byOrder.set(order, Object.assign([], { allReal: true, allSecret: true }));
     const group = byOrder.get(order);
     group.push(specs);
     if (views[i] !== 'real') group.allReal = false;
+    if (secrets[i] !== true) group.allSecret = false;
   });
   return [...byOrder.keys()].sort((a, b) => a - b).map((order) => byOrder.get(order));
 }
@@ -217,11 +219,14 @@ export function createMessageGate({
 
   const ghostDecorator = () => () => ({ ghost: true });
 
-  /** Only GMs can see the message: blind, or whispered to GMs only. */
-  function gmOnly(message) {
-    if (message.blind) return true;
-    const whisper = Array.isArray(message.whisper) ? message.whisper : [];
-    return whisper.length > 0 && whisper.every((w) => userIsGM(typeof w === 'string' ? w : w?.id));
+  /** Only GMs can see the message (blind or whispered to GMs only), or the group is all secret. */
+  function gmOnly(message, group) {
+    return isGmOnly({
+      blind: Boolean(message.blind),
+      secret: group.allSecret === true,
+      recipients: message.whisper,
+      isGm: userIsGM,
+    });
   }
 
   /**
@@ -231,7 +236,7 @@ export function createMessageGate({
    */
   function areaOf(message, group) {
     try {
-      const gmPrivate = group.allReal === true && gmOnly(message);
+      const gmPrivate = group.allReal === true && gmOnly(message, group);
       return areaFor({ rollerId: message.author?.id, gmPrivate }) ?? null;
     } catch (err) {
       console.error('dicer: cannot resolve the roll area', err);
@@ -497,7 +502,11 @@ export function createMessageGate({
       const unchanged = rolls[from] === first && views.every((v, i) => v === eligible.views[i]);
       const plan = unchanged ? eligible.plan : planAll(rolls, message, views);
       // The order is the message's own, like the views: a replacement cannot reorder.
-      throwGroups(id, entry, groupsOf(message.rolls, plan, views), message);
+      // A roll is secret when it was, or RollStart made it (P5-R7); only used for the GM corner.
+      const secrets = message.rolls.map(
+        (r, i) => flags.secretAll || Boolean(r?.secret || before[i]?.secret),
+      );
+      throwGroups(id, entry, groupsOf(message.rolls, plan, views, secrets), message);
     } catch (err) {
       console.error('dicer: chat message gate failed', err);
       reveal(id);

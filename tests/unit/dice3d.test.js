@@ -1090,6 +1090,13 @@ describe('showForRoll uses the sender area (P5-D1) and the GM private corner (P5
     expect(areaFor.mock.calls.map(([q]) => q.gmPrivate)).toEqual([true, false, false]);
   });
 
+  test('a secret roll counts as GM-private (P5-R7)', async () => {
+    me = { id: 'gm', isGM: true };
+    make().showForRoll({ ...roll(20, 12), secret: true });
+    await Promise.resolve();
+    expect(areaFor).toHaveBeenCalledWith({ rollerId: 'gm', gmPrivate: true });
+  });
+
   test('a ghost view never asks for the corner (blind roll seen by a player)', async () => {
     settings.showGhostDice = true;
     make({ socket: socket() });

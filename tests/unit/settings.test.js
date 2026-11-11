@@ -296,11 +296,20 @@ describe('roll area settings (Plan 5 Task 3)', () => {
     expect(capture().rollAreas.default).not.toBe(capture().rollAreas.default);
   });
 
-  test('area settings change nothing on change (the resolver reads them per throw)', () => {
-    const r = capture();
-    for (const key of ['rollAreas', 'areaScale', 'gmPrivateCorner', 'gmPrivateArea', 'perPlayerAreas']) {
+  test('only rollAreas and gmPrivateArea react to a change (the hook source); the resolver reads the rest per throw', () => {
+    const onRollAreasChange = vi.fn();
+    const r = capture({ onRollAreasChange });
+    r.rollAreas.onChange({ default: { preset: 'full' } });
+    expect(onRollAreasChange).toHaveBeenCalledTimes(1);
+    r.gmPrivateArea.onChange({ preset: 'corner' });
+    expect(onRollAreasChange).toHaveBeenCalledTimes(2);
+    for (const key of ['areaScale', 'gmPrivateCorner', 'perPlayerAreas']) {
       expect(r[key].onChange).toBeUndefined();
     }
+  });
+
+  test('the area change hook source does not throw without its callback', () => {
+    expect(() => capture().rollAreas.onChange({})).not.toThrow();
   });
 
   test('every visible area setting has its English name and hint', () => {

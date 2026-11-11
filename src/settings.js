@@ -40,13 +40,20 @@ function registerEditorMenu(t, key, icon, open) {
  * Registers every Dicer setting.
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
+ * @param {() => void} [callbacks.onRollAreasChange] runs when rollAreas or gmPrivateArea changes
  * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when look,
  *   interiors, engraving, shadows, glow, presetFaces, presetModels or effects changes
  * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
  *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
  * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
  */
-export function registerSettings({ onAreaChange, onLookChange, onQualityChange, onSoundChange } = {}) {
+export function registerSettings({
+  onAreaChange,
+  onRollAreasChange,
+  onLookChange,
+  onQualityChange,
+  onSoundChange,
+} = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   game.settings.register(MODULE_ID, 'enabled', {
     name: t('enabled.Name'),
@@ -307,6 +314,8 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     config: false,
     type: Object,
     default: { default: { preset: 'full' }, users: {} },
+    // Foundry fires a world setting's onChange on every client: the dicerRollAreasChanged hook.
+    onChange: () => onRollAreasChange?.(),
   });
   game.settings.register(MODULE_ID, 'perPlayerAreas', {
     name: t('perPlayerAreas.Name'),
@@ -340,6 +349,7 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     config: false,
     type: Object,
     default: { preset: 'corner' },
+    onChange: () => onRollAreasChange?.(),
   });
   registerNoticeSetting();
 }

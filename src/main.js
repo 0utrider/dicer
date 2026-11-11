@@ -12,6 +12,7 @@ import { registerChatCommands } from './compat/chat-commands.js';
 import { dsnIsActive, notifyGmOnce } from './foundry/coexistence.js';
 import { measureArea, watchArea } from './foundry/area.js';
 import { createAreaResolver } from './areas/area-resolver.js';
+import { snapshotAreas } from './areas/area-store.js';
 import { startEngine, announceReady } from './foundry/startup.js';
 import { createDice3dApi, createDebugCounters, materialReadyNotifier } from './api/dice3d.js';
 import { createRegistry } from './compat/registry.js';
@@ -304,7 +305,19 @@ Hooks.once('init', () => {
     registerNoticeSetting();
     return;
   }
-  registerSettings({ onAreaChange: resizeDice, onLookChange, onQualityChange, onSoundChange });
+  registerSettings({
+    onAreaChange: resizeDice,
+    onRollAreasChange: () => {
+      try {
+        Hooks.callAll('dicerRollAreasChanged', snapshotAreas(getSetting));
+      } catch (err) {
+        console.error('dicer: a dicerRollAreasChanged listener failed', err);
+      }
+    },
+    onLookChange,
+    onQualityChange,
+    onSoundChange,
+  });
   loadPublicApi();
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
