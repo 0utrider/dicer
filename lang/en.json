@@ -160,6 +160,11 @@
         "Label": "Edit damage dice themes",
         "Hint": "Choose the look, colors and landing sound of each damage type's dice. Everyone can set their own override; the GM sets the world choices."
       },
+      "themeBrowser": {
+        "Name": "Theme browser",
+        "Label": "Browse dice themes",
+        "Hint": "Browse built-in, world and your own dice themes with live previews, use one as your default, for a die type, a roll type, one of your characters or a damage type, and duplicate, edit, import or export your own. A GM can also publish themes to the world."
+      },
       "triggerEditor": {
         "Name": "Trigger rules",
         "Label": "Edit trigger rules",
@@ -284,6 +289,68 @@
       "Unreadable": "Some stored damage map entries cannot be shown here and are kept as they are:",
       "NoTheme": "This damage type has no theme here, so your own dice are used.",
       "PreviewUnavailable": "Preview needs the 3D dice to be running."
+    },
+    "Themes": {
+      "Title": "Dicer themes",
+      "Filter": "Show",
+      "Filter_all": "All",
+      "Source": {
+        "builtin": "Built-in",
+        "world": "World",
+        "user": "Mine"
+      },
+      "Role": {
+        "attack": "Attack rolls",
+        "damage": "Damage rolls",
+        "save": "Saving throws",
+        "skill": "Skill checks",
+        "initiative": "Initiative",
+        "check": "Other checks"
+      },
+      "Group": {
+        "default": "Default",
+        "die": "Die type",
+        "role": "Roll type",
+        "actor": "My characters",
+        "damage": "Damage type (mine)",
+        "worldDamage": "Damage type (world)"
+      },
+      "MyDefault": "My default",
+      "UseDefault": "My default",
+      "UseFor": "Use this theme for",
+      "Use": "Use",
+      "Clear": "Clear",
+      "Applied": "Theme applied.",
+      "Cleared": "Theme choice cleared.",
+      "NotAllowed": "That is not possible here (you may not own that character, or only a GM can do it).",
+      "Duplicate": "Duplicate into My themes",
+      "Copy": "copy",
+      "Edit": "Edit",
+      "Export": "Export to a file",
+      "ExportMine": "Export my themes",
+      "NothingToExport": "You have no themes of your own to export.",
+      "Import": "Import",
+      "Imported": "Themes imported:",
+      "ImportFailed": "The theme file could not be imported.",
+      "Publish": "Publish to the world (GM)",
+      "Published": "Theme published to the world.",
+      "Delete": "Delete",
+      "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:",
+      "EditHint": "A simple editor: pick a base look, a look per die type, the impact sound and the celebration for a natural 20 and a natural 1.",
+      "Name": "Name",
+      "BaseLook": "Base look",
+      "SoundMaterial": "Impact sound",
+      "PerType": "Look per die type",
+      "SameAsBase": "Same as base",
+      "KeepCustom": "Keep current (custom)",
+      "None": "None",
+      "Effect": "Effect",
+      "Sound": "Sound",
+      "NatHigh": "Natural 20",
+      "NatLow": "Natural 1",
+      "Save": "Save",
+      "Saved": "Theme saved.",
+      "Cancel": "Cancel"
     },
     "Commands": {
       "Description": "Open the Dicer settings."

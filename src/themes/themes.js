@@ -7,7 +7,7 @@ import { normalizeRule } from '../effects/rules.js';
 export const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
 /** Effect catalogue ids (the library chunk is lazy, so the list is repeated here); 'dsn:' ids are also allowed. */
-const KNOWN_EFFECTS = [
+export const KNOWN_EFFECTS = [
   'glow-pulse',
   'color-shift',
   'number-flare',

@@ -82,7 +82,7 @@ function preloadEffects() {
 
 /** Fetches the two editor chunks in an idle callback (they are small), so opening one is instant. */
 export function preloadEditors(
-  loaders = [() => import('./ui/trigger-editor.js'), () => import('./ui/damage-map-editor.js'), () => import('./ui/area-editor.js')],
+  loaders = [() => import('./ui/trigger-editor.js'), () => import('./ui/damage-map-editor.js'), () => import('./ui/area-editor.js'), () => import('./ui/theme-browser.js')],
 ) {
   const run = () => {
     for (const load of loaders) {
@@ -493,6 +493,7 @@ Hooks.once('ready', async () => {
         getArea: () => measureArea(),
         areaFor: areas.rectFor,
         debugCounters,
+        getAtlas: () => digitAtlas,
       });
       dice3d = api;
       game.dice3d = api;

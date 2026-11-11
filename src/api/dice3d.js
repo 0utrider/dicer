@@ -142,6 +142,7 @@ export function createDice3dApi({
   writeSetting = (key, value) => globalThis.game.settings.set('dicer', key, value),
   importMigration = importMigrationModule,
   debugCounters = createDebugCounters(),
+  getAtlas = () => null,
 }) {
   const warned = new Set();
   /** A malformed third-party call logs one warning per member, never throws. */
@@ -839,6 +840,12 @@ export function createDice3dApi({
           resolveTheme: (type, { userOverrides, worldMap } = {}) =>
             resolveDamageTheme(type, { userOverrides, worldMap, registry, warn: () => {} }),
         };
+      },
+    },
+    /** What the theme browser needs: the digit atlas its thumbnail renderer draws numbers with. */
+    _themeContext: {
+      value() {
+        return { atlas: getAtlas() };
       },
     },
     /** What the editor needs from the registry: module rules, trigger ids with labels, SFX modes, dice types. */

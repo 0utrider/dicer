@@ -219,3 +219,88 @@
   flex: 0 0 auto;
   width: auto;
 }
+
+/* Theme browser */
+.dicer-theme-browser .window-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+.dicer-theme-browser .dicer-theme-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+.dicer-theme-browser .dicer-theme-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.5rem;
+}
+.dicer-theme-browser .dicer-theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border-light-tertiary, #999);
+  border-radius: 4px;
+  padding: 0.4rem;
+}
+.dicer-theme-browser .dicer-swatch {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 4px;
+}
+.dicer-theme-browser .dicer-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.dicer-theme-browser .dicer-thumb[hidden] {
+  display: none;
+}
+.dicer-theme-browser header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.25rem;
+}
+.dicer-theme-browser .dicer-badge {
+  font-size: var(--font-size-11, 11px);
+  border: 1px solid var(--color-border-light-tertiary, #999);
+  border-radius: 8px;
+  padding: 0 6px;
+}
+.dicer-theme-browser .dicer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: flex-end;
+}
+.dicer-theme-browser .dicer-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-theme-browser .dicer-row .dicer-grow {
+  flex: 1;
+}
+.dicer-theme-browser .dicer-target {
+  flex: 1;
+  min-width: 0;
+}
+.dicer-theme-browser button {
+  flex: 0 0 auto;
+  width: auto;
+}
+.dicer-theme-browser .dicer-theme-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+}

@@ -7,7 +7,7 @@ const BUDGET = 4 * 1024 * 1024;
 const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json', 'api.js'];
 
 /** Fetched on demand: a die model (dynamic import / DRACOLoader), or the DSN migration at ready. */
-const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|draco\/)/.test(p);
+const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|draco\/)/.test(p);
 
 /** Every file under dist/, as forward-slash paths. */
 const distFiles = () =>
@@ -36,6 +36,8 @@ describe('build', () => {
     const editor = lazy.find((p) => /trigger-editor-/.test(p));
     const damageEditor = lazy.find((p) => /damage-map-editor-/.test(p));
     const areaEditor = lazy.find((p) => /area-editor-/.test(p));
+    const themeBrowser = lazy.find((p) => /theme-browser-/.test(p));
+    const damageForm = lazy.find((p) => /damage-map-form-/.test(p)); // shared by the damage map editor and the theme browser
     const soundNames = lazy.find((p) => /sound-names-/.test(p)); // the built-in sound list, shared by the synth and the editor
     const points = lazy.find((p) => /Points-/.test(p)); // three's Points, shared by the effects and model-loader chunks
     expect(synth).toBeTruthy();
@@ -50,6 +52,9 @@ describe('build', () => {
     expect(areaEditor).toBeTruthy();
     expect(readFileSync(areaEditor, 'utf8')).toContain('dicer-area-editor');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-area-editor');
+    expect(themeBrowser).toBeTruthy();
+    expect(readFileSync(themeBrowser, 'utf8')).toContain('dicer-theme-browser');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-theme-browser');
     expect(effects).toBeTruthy();
     expect(readFileSync(effects, 'utf8')).toContain('glow-pulse');
     expect(readFileSync(effects, 'utf8')).toContain('shockwave');
@@ -63,7 +68,7 @@ describe('build', () => {
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('has no Dicer counterpart yet');
     expect(readFileSync(migration, 'utf8')).toContain('has no Dicer counterpart yet');
     expect(lazy.sort()).toEqual(
-      [chunk, migration, synth, effects, editor, damageEditor, areaEditor, soundNames, points, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
+      [chunk, migration, synth, effects, editor, damageEditor, areaEditor, themeBrowser, damageForm, soundNames, points, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
     );
   });
   it('keeps the built-in theme table under 6 KiB minified (P5-R1)', () => {
