@@ -614,7 +614,16 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     return this.close();
   }
 
-  async close(options) {
+  /**
+   * Every way of closing (the window's X, Escape, Cancel) runs through close(): with unsaved
+   * edits it asks the same question openAppearanceEditor does, and "no" keeps the window open.
+   * `{ discard: true }` skips the question (the caller already asked).
+   */
+  async close(options = {}) {
+    if (!options?.discard && this.rendered !== false && this.dirty) {
+      const discard = await confirmDiscard();
+      if (!discard) return this;
+    }
     if (instance === this) instance = null;
     this.#scheduler.cancel();
     this.#stopPreview(); // nothing keeps drawing once the editor is closed
@@ -624,16 +633,21 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 }
 
+/** "Discard the unsaved changes?" -> true to discard. */
+function confirmDiscard() {
+  return foundry.applications.api.DialogV2.confirm({
+    window: { title: loc('DICER.Appearance.Title') },
+    content: `<p>${loc('DICER.Appearance.DiscardChanges')}</p>`,
+  });
+}
+
 /** Opens the editor (one at a time): on a theme ({themeId}) or new from a base theme / look ({base}). */
 export async function openAppearanceEditor(options = {}) {
   if (instance?.dirty) {
-    const discard = await foundry.applications.api.DialogV2.confirm({
-      window: { title: loc('DICER.Appearance.Title') },
-      content: `<p>${loc('DICER.Appearance.DiscardChanges')}</p>`,
-    });
+    const discard = await confirmDiscard();
     if (!discard) return instance.render({ force: true }); // keep editing the current look
   }
-  if (instance) await instance.close();
+  if (instance) await instance.close({ discard: true });
   instance = new AppearanceEditor(options);
   return instance.render({ force: true });
 }

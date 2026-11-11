@@ -629,6 +629,9 @@ Hooks.once('ready', async () => {
     registry = null;
     faceTextures = null;
     dice3d = null;
+    fontAtlases?.dispose(); // its textures and the font builder's worker
+    fontAtlases = null;
+    digitAtlas = null;
     soundEngine?.dispose();
     soundEngine = null;
     effectLayer?.dispose();

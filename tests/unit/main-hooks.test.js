@@ -193,3 +193,12 @@ describe('the Dice look button setting, guards and v1 dedupe', () => {
     warn.mockRestore();
   });
 });
+
+describe('engine start failure (M-8)', () => {
+  test('the font layer is disposed with the rest when the engine cannot start', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('src/main.js', 'utf8');
+    const failed = src.slice(src.indexOf('if (!started) {'), src.indexOf('announceReady({'));
+    expect(failed).toMatch(/fontAtlases\?\.dispose\(\);[^\n]*\n\s*fontAtlases = null;/);
+  });
+});

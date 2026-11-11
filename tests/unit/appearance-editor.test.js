@@ -574,6 +574,26 @@ describe('the appearance editor', () => {
     await next.close();
   });
 
+  it('closing a dirty editor (window X, Escape, Cancel) asks first; no keeps it open (M-8)', async () => {
+    const confirm = foundry.applications.api.DialogV2.confirm;
+    confirm.mockClear();
+    const app = await mod.openAppearanceEditor({ themeId: 'user.u1.mine' });
+    await app.close(); // clean: closes without a question
+    expect(confirm).not.toHaveBeenCalled();
+    expect(thumbs.dispose).toHaveBeenCalledTimes(1);
+    const dirty = await mod.openAppearanceEditor({ themeId: 'user.u1.mine' });
+    await click(dirty, '[data-field="body.type"][data-value="pearl"]');
+    confirm.mockResolvedValueOnce(false);
+    expect(await dirty.close()).toBe(dirty); // the X: kept open, still editing
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0].content).toContain(localize('DICER.Appearance.DiscardChanges'));
+    expect(dirty.element.isConnected).toBe(true);
+    confirm.mockResolvedValueOnce(true);
+    await click(dirty, '[data-action="cancel"]');
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(dirty.element.isConnected).toBe(false);
+  });
+
   it('a duplicate of a built-in theme starts as an unsaved copy named "(copy)"', async () => {
     const app = await open({ base: BUILTIN_THEMES[0] });
     expect(q(app, 'input[name="name"]').value).toBe(`${BUILTIN_THEMES[0].name} (copy)`);
