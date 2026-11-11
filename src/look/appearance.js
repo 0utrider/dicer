@@ -45,7 +45,10 @@ function edgeRadius(e, fallback) {
   return e.style === 'sharp' ? 0 : fallback;
 }
 
-const FONT_FILE = /^[A-Za-z0-9 _.\-/%()+,@]+\.(woff2?|ttf|otf)$/i;
+// Block only the dangerous: control chars, backslash, ? # : (http:, data:, C:), encoded dots/slashes.
+// eslint-disable-next-line no-control-regex
+const FONT_BAD = /[\u0000-\u001f\u007f-\u009f\\?#:]|%2e|%2f|%5c/i;
+const FONT_FILE = { test: (p) => !FONT_BAD.test(p) && /^[^]+\.(woff2?|ttf|otf)$/i.test(p) && p === p.trim() };
 function font(v, fallback) {
   if (typeof v !== 'string') return fallback;
   if (FONT_IDS_BUILTIN.includes(v)) return v;
