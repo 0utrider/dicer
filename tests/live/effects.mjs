@@ -5,7 +5,9 @@
 // Scenarios, each with a forced natural 20 (the default celebrate rule plays the celebrate effect
 // and the fanfare sound):
 //   1. GM rolls publicly: the GM client counts a celebrate play and a fanfare sound.
-//   2. GM rolls blind: the GM client counts both; the player client counts neither.
+//   2. GM rolls blind: the GM client counts both; the player client counts neither (view none).
+//   2b. The player rolls blind with showGhostDice on: the GM counts both; the player draws a ghost die
+//      (checked through view kinds) and counts neither.
 //   3. GM rolls publicly with the player's showOthersEffects on: the player counts both.
 //   4. The same with showOthersEffects off: the player counts neither (the viewer's filter).
 import { chromium } from 'playwright';
@@ -17,7 +19,8 @@ const GM_PASSWORD = process.env.DICER_GM_PASSWORD;
 const PLAYER_USER = process.env.DICER_PLAYER_USER;
 const PLAYER_PASSWORD = process.env.DICER_PLAYER_PASSWORD;
 const OUT = 'artifacts/live/effects.json';
-const SETTLE_MS = 4000; // how long a roll's effects and sounds get to start (and to not start)
+const POLL_TIMEOUT_MS = 20000; // how long the roller's counters get to rise
+const GRACE_MS = 2500; // after they rise, how long the other client is watched for counts that must not come
 const EFFECT = 'celebrate';
 const SOUND = 'fanfare';
 
@@ -73,13 +76,26 @@ const rose = (before, after) => ({
   sound: (after.resultSounds[SOUND] ?? 0) - (before.resultSounds[SOUND] ?? 0),
 });
 
-/** Rolls a nat 20 as the GM and returns what each client counted while it played out. */
-async function observe(gm, player, rollMode) {
+/**
+ * Rolls a nat 20 as `roller` ('gm' or 'player') and returns what each client counted. Polls until
+ * the GM client's counters rise (the GM sees every roll), then waits a short grace so a count that
+ * must not come has had time to. `id` is the chat message id.
+ */
+async function observe(gm, player, rollMode, roller = 'gm') {
   const [g0, p0] = await Promise.all([rpc(gm, 'fxCounts'), rpc(player, 'fxCounts')]);
-  await rpc(gm, 'rollNat20', { rollMode });
-  await gm.waitForTimeout(SETTLE_MS);
-  const [g1, p1] = await Promise.all([rpc(gm, 'fxCounts'), rpc(player, 'fxCounts')]);
-  return { gm: rose(g0, g1), player: rose(p0, p1) };
+  const id = await rpc(roller === 'gm' ? gm : player, 'rollNat20', { rollMode });
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  let g1 = g0;
+  while (Date.now() < deadline) {
+    g1 = await rpc(gm, 'fxCounts');
+    const r = rose(g0, g1);
+    if (r.fx >= 1 && r.sound >= 1) break;
+    await gm.waitForTimeout(250);
+  }
+  await gm.waitForTimeout(GRACE_MS);
+  [g1] = await Promise.all([rpc(gm, 'fxCounts')]);
+  const p1 = await rpc(player, 'fxCounts');
+  return { id, gm: rose(g0, g1), player: rose(p0, p1) };
 }
 
 async function run(gm, player) {
@@ -109,12 +125,31 @@ async function run(gm, player) {
     });
 
     seen = await observe(gm, player, 'blindroll');
-    scenario('2 a blind nat 20 gives the player no effect and no sound', {
+    scenario('2 a GM blind nat 20 gives the player no effect and no sound (view none)', {
       'GM: celebrate played': seen.gm.fx >= 1,
       'GM: fanfare requested': seen.gm.sound >= 1,
       'player: no celebrate': seen.player.fx === 0,
       'player: no fanfare': seen.player.sound === 0,
     });
+
+    // The privacy gate proper: a player's own blind roll is drawn on the player's client as ghost dice
+    // (showGhostDice on) and must still run no effect and no result sound there.
+    const ghostOriginal = await rpc(gm, 'getGhostSetting');
+    try {
+      await rpc(gm, 'setGhostSetting', true);
+      seen = await observe(gm, player, 'blindroll', 'player');
+      const kinds = await rpc(player, 'viewKinds', seen.id);
+      scenario('2b a player blind nat 20 with ghost dice: GM gets both, the ghost view gets neither', {
+        'GM: celebrate played': seen.gm.fx >= 1,
+        'GM: fanfare requested': seen.gm.sound >= 1,
+        'player: a ghost die was drawn (view kind ghost, never real)':
+          Array.isArray(kinds) && kinds.length > 0 && kinds.every((k) => k === 'ghost'),
+        'player: no celebrate': seen.player.fx === 0,
+        'player: no fanfare': seen.player.sound === 0,
+      });
+    } finally {
+      await rpc(gm, 'setGhostSetting', Boolean(ghostOriginal)).catch(() => {});
+    }
 
     seen = await observe(gm, player, 'publicroll');
     scenario('3 a public nat 20 gives the player both with showOthersEffects on', {

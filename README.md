@@ -167,7 +167,8 @@ It prints `compat: N/N passed`, writes `artifacts/live/compat.json` and exits 0 
 `npm run test:live:effects` uses the same accounts and variables as the compatibility test. It rolls a forced natural 20 as the GM and reads the counters in `game.dice3d._debug` (`fxPlays` and `resultSounds`: names and counts only). It checks that:
 
 1. a public roll plays `celebrate` and the `fanfare` sound on the GM client;
-2. a blind roll plays both for the GM and neither for the player;
+2. a GM blind roll plays both for the GM and neither for the player (who sees nothing);
+   a player blind roll with ghost dice on plays both for the GM and neither on the player, whose client draws a ghost die;
 3. a public roll plays both for the player when **Show other players' effects** is on;
 4. with that setting off, the player gets neither.
 

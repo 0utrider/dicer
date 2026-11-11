@@ -270,3 +270,8 @@ export async function rollNat20({ rollMode }) {
   const message = await roll.toMessage({}, { rollMode });
   return message.id;
 }
+
+/** View kinds ('real' | 'ghost' | 'none') this client used for message `id`; null if none recorded. */
+export function viewKinds(id) {
+  return game.dice3d._debug.lastRollViews[id] ?? null;
+}
