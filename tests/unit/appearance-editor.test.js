@@ -70,6 +70,10 @@ describe('form <-> appearance', () => {
     f = setField(setField(f, 'numbers.color', '#ff0000'), 'numbers.fill', 'enamel');
     expect(appearanceFromForm(f).numbers.color).toBe('#ff0000');
   });
+  it('re-picking the same metal fill keeps a saved colour (old looks keep their tint)', () => {
+    const f = setField(formFromAppearance({ numbers: { fill: 'silver', color: '#e2b04a' } }), 'numbers.fill', 'silver');
+    expect(appearanceFromForm(f).numbers).toMatchObject({ fill: 'silver', color: '#e2b04a' });
+  });
   it('keeps the inside through a non-resin body (resin -> metal -> resin)', () => {
     let f = formFromAppearance(resinNebula);
     f = setField(f, 'body.type', 'metal');

@@ -111,7 +111,8 @@ export const METAL_FILL_COLORS = Object.freeze({ gold: '#e2b04a', silver: '#d8dd
 /** Sets one dotted path ('body.color') of a form copy; numeric fields become numbers. */
 export function setField(form, path, value) {
   const out = plain(form);
-  if (path === 'numbers.fill' && Object.hasOwn(METAL_FILL_COLORS, value)) {
+  // Only a change of fill sets the colour: re-picking the same metal keeps a saved look's tint.
+  if (path === 'numbers.fill' && Object.hasOwn(METAL_FILL_COLORS, value) && out.numbers?.fill !== value) {
     out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), color: METAL_FILL_COLORS[value] };
   }
   const parts = String(path).split('.');
