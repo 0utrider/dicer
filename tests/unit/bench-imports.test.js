@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 
 const FILES = ['stats', 'recorder', 'scenarios', 'report', 'dicer-adapter'];
-const EXPECTED_COUNT = { stats: 0, recorder: 0, scenarios: 2, report: 1, 'dicer-adapter': 2 };
+const EXPECTED_COUNT = { stats: 0, recorder: 0, scenarios: 2, report: 1, 'dicer-adapter': 4 };
 const read = (n) => readFileSync(new URL(`../../src/bench/${n}.js`, import.meta.url), 'utf8');
 
 /** Blank comments and string/template contents so only code remains. */

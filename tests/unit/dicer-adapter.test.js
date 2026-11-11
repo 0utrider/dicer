@@ -142,8 +142,30 @@ test('a dice cap below a scenario pool adds a note to its result', async () => {
   vi.spyOn(sc, 'runSuite');
   const api = { _debug: debug(), _benchArmFirstFrame: (cb) => cb?.(), showForRoll: vi.fn(async () => true) };
   const { runDicerBenchmark } = await import('../../src/bench/dicer-adapter.js');
-  const out = await runDicerBenchmark(api, { scenarios: ['pool30', 'd20'], hooks: { on() {}, off() {} }, maxDice: () => 20, win: { ...globalThis, requestAnimationFrame: (cb) => setTimeout(() => cb(performance.now()), 1), cancelAnimationFrame: clearTimeout, dispatchEvent() {}, performance, navigator: {} } });
+  const out = await runDicerBenchmark(api, { scenarios: ['pool30', 'd20'], hooks: { on() {}, off() {} }, maxDice: () => 20, idleSampleMs: 50, win: { ...globalThis, requestAnimationFrame: (cb) => setTimeout(() => cb(performance.now()), 1), cancelAnimationFrame: clearTimeout, dispatchEvent() {}, performance, navigator: {} } });
   expect(out.suite.results[0].notes).toContain('pool30 threw 20 of 30 dice (maxDice)');
   expect(out.suite.results[1].notes.some((n) => /maxDice/.test(n))).toBe(false);
   expect(out.text).toContain('pool30 threw 20 of 30 dice (maxDice)');
+});
+
+test('M2: an idle display below 60 Hz makes the frame checks n/a, with a summary note', async () => {
+  const { runDicerBenchmark, REFRESH_NOTE } = await import('../../src/bench/dicer-adapter.js');
+  const api = { _debug: debug(), _benchArmFirstFrame: (cb) => cb?.(), showForRoll: vi.fn(async () => true) };
+  const run = (frameMs) =>
+    runDicerBenchmark(api, {
+      scenarios: ['d20'],
+      hooks: { on() {}, off() {} },
+      idleSampleMs: 300,
+      win: { ...globalThis, requestAnimationFrame: (cb) => setTimeout(() => cb(performance.now()), frameMs), cancelAnimationFrame: clearTimeout, dispatchEvent() {}, performance, navigator: {} },
+    });
+  expect(REFRESH_NOTE).toBe('display refresh below 60 Hz: frame checks n/a');
+  const slow = await run(33);
+  expect(slow.suite.notes).toEqual([REFRESH_NOTE]);
+  expect(slow.suite.results[0].refreshLimited).toBe(true);
+  expect(slow.text).toContain(REFRESH_NOTE);
+  const { checkTargets } = await import('../../src/bench/dicer-adapter.js');
+  expect(checkTargets(slow.suite.results[0]).find((c) => c.id === 'frameP95Ms').pass).toBeNull();
+  const fast = await run(4);
+  expect(fast.suite.notes ?? []).toEqual([]);
+  expect(fast.suite.results[0].refreshLimited).toBeUndefined();
 });

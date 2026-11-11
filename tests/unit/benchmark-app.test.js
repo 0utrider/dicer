@@ -62,6 +62,12 @@ test('a finished suite shows one row per scenario with its verdict', async () =>
   expect(ctx.canCopy).toBe(true);
 });
 
+test('suite notes (display below 60 Hz) show in the meta line', async () => {
+  const notes = ['display refresh below 60 Hz: frame checks n/a'];
+  const ctx = await new App({ suite: { ...suite, notes } })._prepareContext();
+  expect(ctx.meta).toContain(notes[0]);
+});
+
 test('Run calls game.dice3d.benchmark, shows progress, then the result', async () => {
   let resolveRun;
   const bench = vi.fn(({ onProgress }) => {

@@ -5,6 +5,8 @@
  */
 import { SCENARIOS, runSuite } from './scenarios.js';
 import { summaryText, checkTargets } from './report.js';
+import { createRecorder } from './recorder.js';
+import { summarize } from './stats.js';
 
 export { summaryText, checkTargets };
 
@@ -12,6 +14,18 @@ export { summaryText, checkTargets };
 export const DEFAULT_SCENARIOS = Object.freeze(['d20', 'mixed10', 'pool30', 'burst20']);
 
 const START_TIMEOUT_MS = 2000;
+/** Idle rAF sampled before the first scenario, and the median interval that means "below 60 Hz". */
+const IDLE_SAMPLE_MS = 1000;
+const REFRESH_LIMIT_MS = 17;
+export const REFRESH_NOTE = 'display refresh below 60 Hz: frame checks n/a';
+
+/** Median idle rAF interval over `ms` (null when no frame came). */
+async function idleFrameMedian(win, ms) {
+  const rec = createRecorder({ win });
+  rec.start();
+  await new Promise((r) => setTimeout(r, ms));
+  return summarize(rec.stop().intervals)?.p50 ?? null;
+}
 
 /** "Chrome 131" from a user agent string; the raw string (trimmed) when it is not a known browser. */
 function browserName(ua) {
@@ -132,11 +146,23 @@ export function createDicerAdapter(api, { roll, gpu, version, win = globalThis, 
  * Runs scenarios against `api` and returns `{suite, text}`. `onProgress({index, total, id})` is
  * called before each scenario. Used by `game.dice3d.benchmark()` and the benchmark window.
  */
-export async function runDicerBenchmark(api, { scenarios = DEFAULT_SCENARIOS, onProgress, hooks, win = globalThis, maxDice, ...adapterOpts } = {}) {
+export async function runDicerBenchmark(
+  api,
+  { scenarios = DEFAULT_SCENARIOS, onProgress, hooks, win = globalThis, maxDice, idleSampleMs = IDLE_SAMPLE_MS, ...adapterOpts } = {},
+) {
   const adapter = createDicerAdapter(api, { win, ...adapterOpts });
   const ids = [...scenarios];
   const results = [];
   let meta = null;
+  // A display capped below 60 Hz (a 30 Hz panel, a power saver) cannot meet a 16.7 ms frame p95
+  // whatever Dicer does: the frame checks are then n/a, not FAIL.
+  const notes = [];
+  let refreshLimited = false;
+  if (idleSampleMs > 0) {
+    const median = await idleFrameMedian(win, idleSampleMs);
+    refreshLimited = median != null && median > REFRESH_LIMIT_MS;
+    if (refreshLimited) notes.push(REFRESH_NOTE);
+  }
   for (const [index, id] of ids.entries()) {
     try {
       onProgress?.({ index, total: ids.length, id });
@@ -149,6 +175,7 @@ export async function runDicerBenchmark(api, { scenarios = DEFAULT_SCENARIOS, on
     if (Number.isFinite(cap) && cap > 0 && dice > cap) {
       for (const r of part.results) (r.notes ??= []).push(`${id} threw ${cap} of ${dice} dice (maxDice)`);
     }
+    if (refreshLimited) for (const r of part.results) r.refreshLimited = true;
     results.push(...part.results);
     meta = part;
   }
@@ -158,6 +185,7 @@ export async function runDicerBenchmark(api, { scenarios = DEFAULT_SCENARIOS, on
     tier: meta?.tier ?? null,
     version: meta?.version ?? null,
     profile: 'in-game',
+    notes,
     results,
   };
   return { suite, text: summaryText(suite) };

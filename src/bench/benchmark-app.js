@@ -65,7 +65,7 @@ export class BenchmarkApp extends HandlebarsApplicationMixin(ApplicationV2) {
   async _prepareContext() {
     const suite = this.#suite;
     const meta = suite
-      ? `${suite.browser ?? '–'} | GPU ${suite.gpu ?? '–'} | tier ${suite.tier ?? '–'} | Dicer ${suite.version ?? '–'}`
+      ? [`${suite.browser ?? '–'} | GPU ${suite.gpu ?? '–'} | tier ${suite.tier ?? '–'} | Dicer ${suite.version ?? '–'}`, ...(suite.notes ?? [])].join(' | ')
       : '';
     return {
       running: this.#running,
