@@ -13,6 +13,46 @@ export const RATE_JITTER = 0.04;
 // Buffers are rendered at a fixed rate and tagged with it; WebAudio resamples on playback,
 // so the context's own rate never needs to be known before the first sound is due.
 export const RENDER_RATE = 48000;
+// Real recorded dice hits live in one audio sprite (assets/sounds/dice-hits.mp3 + .json).
+export const SPRITE_PATHS = {
+  audio: 'modules/dicer/assets/sounds/dice-hits.mp3',
+  table: 'modules/dicer/assets/sounds/dice-hits.json',
+};
+// Loudness buckets on impactGain: a first floor impact (~24 sim units/s, gain 1) is heavy, the
+// mid bounces are medium, late settling taps (speed < ~11) are light.
+export const HEAVY_GAIN = 0.5; // speed >= ~18.1
+export const MEDIUM_GAIN = 0.12; // speed >= ~10.9
+export const SAMPLE_RATE_JITTER = 0.03;
+const HIT_LEAD = 0.01; // seconds kept before each hit's onset and
+const HIT_TAIL = 0.03; // after its end (hits are separated by 50 ms of silence)
+
+// Colouring on top of the recording (resin dice on a hard table): a playbackRate factor and
+// filters in order. Surfaces add an extra gain in dB.
+export const MATERIAL_COLOUR = {
+  plastic: { rate: 1, filters: [] },
+  glass: { rate: 1, filters: [] },
+  metal: { rate: 1.15, filters: [{ type: 'highshelf', frequency: 4000, gain: 4 }] },
+  wood: { rate: 0.9, filters: [{ type: 'lowpass', frequency: 3500 }] },
+  stone: { rate: 1.05, filters: [{ type: 'highshelf', frequency: 4000, gain: 2 }] },
+};
+export const SURFACE_COLOUR = {
+  felt: { db: -3, filters: [{ type: 'lowpass', frequency: 2000 }] },
+  wood: { db: 0, filters: [] },
+  stone: { db: 0, filters: [{ type: 'highshelf', frequency: 4000, gain: 3 }] },
+  metal: { db: 0, filters: [{ type: 'peaking', frequency: 3000, Q: 1, gain: 4 }] },
+};
+const DIE_TYPES = new Set(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
+const DIE_ALIAS = { d100: 'd10', d2: 'd6' };
+const LEVEL_ORDER = {
+  heavy: ['heavy', 'medium', 'light'],
+  medium: ['medium', 'heavy', 'light'],
+  light: ['light', 'medium', 'heavy'],
+};
+
+/** Loudness bucket of an impact gain (0..1): 'heavy' | 'medium' | 'light'. */
+export function hitLevel(gain) {
+  return gain >= HEAVY_GAIN ? 'heavy' : gain >= MEDIUM_GAIN ? 'medium' : 'light';
+}
 
 export function impactGain(speed) {
   if (!(speed > MIN_IMPACT_SPEED)) return 0;
@@ -33,6 +73,8 @@ export function createSoundEngine({
   hasFocus = () => (typeof document !== 'undefined' ? document.hasFocus() : true),
   fetchSound = (...a) => fetch(...a),
   idle = defaultIdle,
+  resolveUrl = (p) => p,
+  createDecodeContext = null, // decodes the sprite without waking the real context
   warn = (...a) => console.warn(...a),
   now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
 } = {}) {
@@ -53,6 +95,10 @@ export function createSoundEngine({
   const inflight = new Map();
   let voices = []; // { src, gain, end }
   let warnedCtx = false;
+  let sprite = null; // { buffer, hits } once the recorded hits are decoded
+  let spriteFailed = false;
+  let spriteLoading = null;
+  const lastPick = new Map(); // dieKey -> index of the hit it last played
 
   const setting = (k, fallback) => {
     try {
@@ -166,20 +212,31 @@ export function createSoundEngine({
     }, IDLE_SUSPEND_MS);
   }
 
-  function start(buffer, gain, rate = 1) {
+  function start(buffer, gain, rate = 1, { filters = [], offset, duration } = {}) {
     const src = ctx.createBufferSource();
     src.buffer = buffer;
     src.playbackRate.value = rate;
     const g = ctx.createGain();
     g.gain.value = gain;
-    src.connect(g);
+    let node = src;
+    for (const f of filters) {
+      const b = ctx.createBiquadFilter();
+      b.type = f.type;
+      b.frequency.value = f.frequency;
+      if (f.gain !== undefined) b.gain.value = f.gain;
+      if (f.Q !== undefined) b.Q.value = f.Q;
+      node.connect(b);
+      node = b;
+    }
+    node.connect(g);
     g.connect(ctx.destination);
-    const voice = { src, gain, end: ctx.currentTime + buffer.duration / rate };
+    const voice = { src, gain, end: ctx.currentTime + (duration ?? buffer.duration) / rate };
     voices.push(voice);
     src.onended = () => {
       voices = voices.filter((v) => v !== voice);
     };
-    src.start(0);
+    if (duration === undefined) src.start(0);
+    else src.start(0, offset, duration);
     armIdle();
     return voice;
   }
@@ -201,7 +258,42 @@ export function createSoundEngine({
     return true;
   }
 
-  function impact({ material, surface, speed, other, dieKey } = {}) {
+  function pickHit(level, dieType, dieKey) {
+    const hits = sprite.hits;
+    const want = DIE_TYPES.has(dieType) ? dieType : DIE_ALIAS[dieType];
+    const last = dieKey === undefined ? undefined : lastPick.get(dieKey);
+    for (const lv of LEVEL_ORDER[level]) {
+      const pool = [];
+      for (let i = 0; i < hits.length; i++) if (hits[i].level === lv && i !== last) pool.push(i);
+      if (!pool.length) continue;
+      const same = want ? pool.filter((i) => hits[i].die === want) : [];
+      const from = same.length ? same : pool;
+      return from[Math.floor(Math.random() * from.length)];
+    }
+    return -1;
+  }
+
+  function playSample({ material, surface, level, gain, other, dieKey, dieType, t }) {
+    const idx = pickHit(level, dieType, dieKey);
+    if (idx < 0) return;
+    const hit = sprite.hits[idx];
+    const mat = MATERIAL_COLOUR[material] ?? MATERIAL_COLOUR.plastic;
+    const surf = other === -1 ? SURFACE_COLOUR[surface] : null;
+    const g = gain * (surf ? 10 ** (surf.db / 20) : 1);
+    if (!admit(g, 1)) return;
+    if (dieKey !== undefined) {
+      lastHit.set(dieKey, t);
+      lastPick.set(dieKey, idx);
+    }
+    const jitter = 1 + (Math.random() * 2 - 1) * SAMPLE_RATE_JITTER;
+    start(sprite.buffer, g, mat.rate * jitter, {
+      filters: [...mat.filters, ...(surf?.filters ?? [])],
+      offset: Math.max(0, hit.start - HIT_LEAD),
+      duration: hit.duration + HIT_LEAD + HIT_TAIL,
+    });
+  }
+
+  function impact({ material, surface, speed, other, dieKey, dieType } = {}) {
     try {
       if (disposed || !setting('sounds', true)) return;
       const gain = impactGain(speed) * volume('soundVolume') * focusFactor();
@@ -210,6 +302,24 @@ export function createSoundEngine({
       if (dieKey !== undefined) {
         const last = lastHit.get(dieKey);
         if (last !== undefined && t - last < DIE_DEBOUNCE_MS) return;
+      }
+      if (!sprite && !spriteFailed) {
+        if (!spriteLoading) preload(); // late start: this impact is dropped, the next ones play
+        return;
+      }
+      if (sprite) {
+        if (!ensureContext() || !running()) return;
+        const level = hitLevel(impactGain(speed));
+        playSample({ material: material ?? 'plastic', surface, level, gain, other, dieKey, dieType, t });
+        if (lastHit.size > 256) {
+          for (const [k, v] of lastHit) {
+            if (t - v > 1000) {
+              lastHit.delete(k);
+              lastPick.delete(k);
+            }
+          }
+        }
+        return;
       }
       if (!rendered) return; // synth not ready yet; a late clatter is worse than none
       if (!ensureContext() || !running()) return;
@@ -283,17 +393,47 @@ export function createSoundEngine({
     }
   }
 
+  async function loadSprite() {
+    try {
+      const [tableRes, audioRes] = await Promise.all([
+        fetchSound(resolveUrl(SPRITE_PATHS.table)),
+        fetchSound(resolveUrl(SPRITE_PATHS.audio)),
+      ]);
+      if (tableRes?.ok === false || audioRes?.ok === false) throw new Error('HTTP error');
+      const table = await tableRes.json();
+      const hits = (table?.hits ?? []).filter(
+        (h) => Number.isFinite(h?.start) && Number.isFinite(h?.duration) && h.duration > 0,
+      );
+      if (!hits.length) throw new Error('empty hit table');
+      const dc = createDecodeContext
+        ? createDecodeContext()
+        : typeof OfflineAudioContext === 'function'
+          ? new OfflineAudioContext(1, 1, RENDER_RATE)
+          : ensureContext();
+      if (!dc) throw new Error('no audio context to decode with');
+      const buffer = await dc.decodeAudioData(await audioRes.arrayBuffer());
+      if (!disposed) sprite = { buffer, hits };
+    } catch (e) {
+      spriteFailed = true;
+      warn('Dicer: recorded dice sounds could not be loaded, using synthesized ones', e);
+    }
+  }
+
+  async function loadRendered() {
+    try {
+      const mod = await loadSynth();
+      if (Number.isInteger(mod.VARIANTS) && mod.VARIANTS > 0) variants = mod.VARIANTS;
+      rendered = await mod.renderAll(RENDER_RATE, { idle });
+    } catch (e) {
+      warn('Dicer: sound synthesis failed', e);
+    }
+  }
+
   function preload() {
     if (preloading) return preloading;
-    preloading = (async () => {
-      try {
-        const mod = await loadSynth();
-        if (Number.isInteger(mod.VARIANTS) && mod.VARIANTS > 0) variants = mod.VARIANTS;
-        rendered = await mod.renderAll(RENDER_RATE, { idle });
-      } catch (e) {
-        warn('Dicer: sound synthesis failed', e);
-      }
-    })();
+    spriteLoading = loadSprite();
+    // The synth stays loaded: it renders the built-in result sounds and the impact fallback.
+    preloading = Promise.all([spriteLoading, loadRendered()]).then(() => {});
     return preloading;
   }
 
@@ -303,6 +443,7 @@ export function createSoundEngine({
     voices = [];
     buffers.clear();
     custom.clear();
+    sprite = null;
     try {
       const r = ctx?.close?.();
       if (r && typeof r.catch === 'function') r.catch(() => {});

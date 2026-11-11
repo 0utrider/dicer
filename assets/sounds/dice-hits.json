@@ -1,0 +1,204 @@
+{
+ "source": "Halfwits & Failed Crits, SFX Pack - Rolling Dice (CC0)",
+ "rate": 48000,
+ "hits": [
+  {
+   "start": 0.05,
+   "duration": 0.107,
+   "level": "heavy",
+   "die": "d4"
+  },
+  {
+   "start": 0.207,
+   "duration": 0.109,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 0.366,
+   "duration": 0.135,
+   "level": "heavy",
+   "die": "d8"
+  },
+  {
+   "start": 0.551,
+   "duration": 0.069,
+   "level": "heavy",
+   "die": "d10"
+  },
+  {
+   "start": 0.67,
+   "duration": 0.139,
+   "level": "heavy",
+   "die": "d12"
+  },
+  {
+   "start": 0.859,
+   "duration": 0.099,
+   "level": "heavy",
+   "die": "d20"
+  },
+  {
+   "start": 1.008,
+   "duration": 0.059,
+   "level": "heavy",
+   "die": "d4"
+  },
+  {
+   "start": 1.117,
+   "duration": 0.079,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 1.246,
+   "duration": 0.059,
+   "level": "heavy",
+   "die": "d8"
+  },
+  {
+   "start": 1.355,
+   "duration": 0.075,
+   "level": "heavy",
+   "die": "d10"
+  },
+  {
+   "start": 1.48,
+   "duration": 0.093,
+   "level": "heavy",
+   "die": "d12"
+  },
+  {
+   "start": 1.623,
+   "duration": 0.073,
+   "level": "heavy",
+   "die": "d20"
+  },
+  {
+   "start": 1.746,
+   "duration": 0.073,
+   "level": "medium",
+   "die": "d4"
+  },
+  {
+   "start": 1.869,
+   "duration": 0.077,
+   "level": "medium",
+   "die": "d6"
+  },
+  {
+   "start": 1.996,
+   "duration": 0.077,
+   "level": "medium",
+   "die": "d8"
+  },
+  {
+   "start": 2.123,
+   "duration": 0.071,
+   "level": "medium",
+   "die": "d10"
+  },
+  {
+   "start": 2.244,
+   "duration": 0.065,
+   "level": "medium",
+   "die": "d12"
+  },
+  {
+   "start": 2.359,
+   "duration": 0.075,
+   "level": "medium",
+   "die": "d20"
+  },
+  {
+   "start": 2.484,
+   "duration": 0.067,
+   "level": "medium",
+   "die": "d4"
+  },
+  {
+   "start": 2.601,
+   "duration": 0.081,
+   "level": "medium",
+   "die": "d6"
+  },
+  {
+   "start": 2.732,
+   "duration": 0.109,
+   "level": "medium",
+   "die": "d8"
+  },
+  {
+   "start": 2.891,
+   "duration": 0.081,
+   "level": "medium",
+   "die": "d10"
+  },
+  {
+   "start": 3.022,
+   "duration": 0.077,
+   "level": "medium",
+   "die": "d12"
+  },
+  {
+   "start": 3.149,
+   "duration": 0.085,
+   "level": "medium",
+   "die": "d20"
+  },
+  {
+   "start": 3.284,
+   "duration": 0.1843,
+   "level": "light",
+   "die": "d4"
+  },
+  {
+   "start": 3.5183,
+   "duration": 0.1025,
+   "level": "light",
+   "die": "d6"
+  },
+  {
+   "start": 3.6708,
+   "duration": 0.067,
+   "level": "light",
+   "die": "d8"
+  },
+  {
+   "start": 3.7878,
+   "duration": 0.083,
+   "level": "light",
+   "die": "d10"
+  },
+  {
+   "start": 3.9208,
+   "duration": 0.085,
+   "level": "light",
+   "die": "d12"
+  },
+  {
+   "start": 4.0558,
+   "duration": 0.135,
+   "level": "light",
+   "die": "d20"
+  },
+  {
+   "start": 4.2408,
+   "duration": 0.063,
+   "level": "light",
+   "die": "d4"
+  },
+  {
+   "start": 4.3538,
+   "duration": 0.065,
+   "level": "light",
+   "die": "d6"
+  },
+  {
+   "start": 4.4688,
+   "duration": 0.2,
+   "level": "light",
+   "die": "d8"
+  }
+ ]
+}

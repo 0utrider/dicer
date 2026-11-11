@@ -7,6 +7,9 @@ import {
   LOUD_IMPACT_SPEED,
   MAX_VOICES,
   DIE_DEBOUNCE_MS,
+  HEAVY_GAIN,
+  MEDIUM_GAIN,
+  hitLevel,
 } from '../../src/audio/sound-engine.js';
 
 const MATS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
@@ -21,14 +24,35 @@ const fakeSynth = {
   },
 };
 
+// A small hit table: every level has two d20 hits and one d6, d4 and d10 hit.
+const HITS = [];
+for (const level of ['heavy', 'medium', 'light']) {
+  for (const die of ['d20', 'd20', 'd6', 'd4', 'd10']) {
+    HITS.push({ start: 0.05 + HITS.length * 0.2, duration: 0.1, level, die });
+  }
+}
+const spriteOk = async (url) => {
+  if (url.endsWith('.json')) return { ok: true, json: async () => ({ rate: 48000, hits: HITS }) };
+  return { ok: true, arrayBuffer: async () => new ArrayBuffer(16) };
+};
+const hitAt = (source) => HITS[Math.round((source.offset + 0.01 - 0.05) / 0.2)];
+
 let ctx;
+let decodeCtx;
+let decodeCtxCount;
 let settings;
 let warn;
 let now;
 let focus;
 function make(extra = {}) {
   ctx = undefined;
+  decodeCtx = undefined;
+  decodeCtxCount = 0;
   const createContext = vi.fn(() => (ctx = new FakeAudioContext()));
+  // The sprite is fetched through the same fetchSound as custom files; tests that supply their
+  // own custom-file fetcher keep the sprite on the happy path unless they pass `sprite`.
+  const { fetchSound: custom, sprite = spriteOk, ...rest } = extra;
+  const fetchSound = (url, ...a) => (/dice-hits/.test(url) || !custom ? sprite(url, ...a) : custom(url, ...a));
   const engine = createSoundEngine({
     createContext,
     loadSynth: async () => fakeSynth,
@@ -37,7 +61,12 @@ function make(extra = {}) {
     warn,
     now: () => now,
     idle: (cb) => setTimeout(cb, 0),
-    ...extra,
+    fetchSound,
+    createDecodeContext: () => {
+      decodeCtxCount++;
+      return (decodeCtx = new FakeAudioContext());
+    },
+    ...rest,
   });
   return { engine, createContext };
 }
@@ -115,12 +144,12 @@ describe('sound engine', () => {
     expect(ctx.sources.length).toBe(2);
   });
 
-  it('floor adds the surface voice', async () => {
+  it('a floor hit is one voice: the recording already contains the table', async () => {
     const { engine } = await ready();
     engine.impact(hit({ other: -1 }));
-    expect(ctx.sources.length).toBe(2);
+    expect(ctx.sources.length).toBe(1);
     engine.impact(hit({ other: 2, dieKey: 'b' }));
-    expect(ctx.sources.length).toBe(3);
+    expect(ctx.sources.length).toBe(2);
   });
 
   it('drops quiet impacts without creating a context', async () => {
@@ -158,8 +187,8 @@ describe('sound engine', () => {
     expect(ctx.sources[0].totalGain).toBeCloseTo(1, 5);
   });
 
-  it('jitters playback rate within 4% and rotates variants', async () => {
-    const { engine } = await ready();
+  it('synth fallback jitters playback rate within 4% and rotates variants', async () => {
+    const { engine } = await ready({ sprite: async () => ({ ok: false, status: 404 }) });
     for (let i = 0; i < 8; i++) {
       now += 100;
       engine.impact(hit());
@@ -170,6 +199,160 @@ describe('sound engine', () => {
     }
     const bufs = new Set(ctx.sources.map((s) => s.buffer));
     expect(bufs.size).toBe(4);
+  });
+
+  describe('recorded hits', () => {
+    const play = (engine, over = {}) => {
+      now += 100;
+      if (ctx) ctx.currentTime += 1; // earlier hits have finished: the voice cap is not in play
+      engine.impact(hit({ other: 2, ...over }));
+      return ctx.sources[ctx.sources.length - 1];
+    };
+
+    it('loads the sprite once and plays every hit from the shared buffer', async () => {
+      const sprite = vi.fn(spriteOk);
+      const { engine } = await ready({ sprite });
+      expect(sprite).toHaveBeenCalledTimes(2); // table + audio
+      expect(decodeCtxCount).toBe(1);
+      expect(decodeCtx.decoded.length).toBe(1);
+      for (let i = 0; i < 5; i++) play(engine, { dieKey: `k${i}` });
+      await engine.preload();
+      expect(sprite).toHaveBeenCalledTimes(2);
+      expect(new Set(ctx.sources.map((s) => s.buffer)).size).toBe(1);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('starts at the hit offset with a small lead and tail', async () => {
+      const { engine } = await ready();
+      const s = play(engine, { dieType: 'd6' });
+      const h = HITS.find((x) => x.level === 'heavy' && x.die === 'd6');
+      expect(s.startedAt).toBe(0);
+      expect(s.offset).toBeCloseTo(h.start - 0.01, 6);
+      expect(s.duration).toBeCloseTo(h.duration + 0.04, 6);
+      expect(s.playbackRate.value).toBeGreaterThanOrEqual(0.97);
+      expect(s.playbackRate.value).toBeLessThanOrEqual(1.03);
+    });
+
+    it('buckets by speed', () => {
+      expect(hitLevel(impactGain(24))).toBe('heavy');
+      expect(hitLevel(impactGain(18.5))).toBe('heavy');
+      expect(hitLevel(impactGain(15))).toBe('medium');
+      expect(hitLevel(impactGain(10))).toBe('light');
+      expect(hitLevel(impactGain(5))).toBe('light');
+      expect(MEDIUM_GAIN).toBeLessThan(HEAVY_GAIN);
+    });
+
+    it('strong impacts play heavy hits, medium ones medium, soft ones light', async () => {
+      const { engine } = await ready();
+      const level = (speed, i) => hitAt(play(engine, { speed, dieKey: `s${speed}-${i}` })).level;
+      for (let i = 0; i < 5; i++) expect(level(30, i)).toBe('heavy');
+      for (let i = 0; i < 5; i++) expect(level(15, i)).toBe('medium');
+      for (let i = 0; i < 5; i++) expect(level(9, i)).toBe('light');
+    });
+
+    it('prefers the die type, mapping d100 to d10 and d2 to d6', async () => {
+      const { engine } = await ready();
+      const die = (over) => hitAt(play(engine, over)).die;
+      for (let i = 0; i < 6; i++) expect(die({ dieKey: `a${i}`, dieType: 'd4' })).toBe('d4');
+      for (let i = 0; i < 6; i++) expect(die({ dieKey: `b${i}`, dieType: 'd100' })).toBe('d10');
+      for (let i = 0; i < 6; i++) expect(die({ dieKey: `c${i}`, dieType: 'd2' })).toBe('d6');
+      expect(['d4', 'd6', 'd10', 'd20']).toContain(die({ dieKey: 'z', dieType: 'd7' }));
+    });
+
+    it('never repeats the previous hit of a die', async () => {
+      const { engine } = await ready();
+      let prev = null;
+      for (let i = 0; i < 30; i++) {
+        const s = play(engine, { dieKey: 'same', dieType: 'd20' });
+        expect(s.offset).not.toBe(prev);
+        prev = s.offset;
+      }
+    });
+
+    it('colours by material', async () => {
+      const { engine } = await ready();
+      const m = (material) => play(engine, { material, dieKey: material });
+      let s = m('plastic');
+      expect(s.filters.length).toBe(0);
+      s = m('glass');
+      expect(s.filters.length).toBe(0);
+      s = m('metal');
+      expect(s.playbackRate.value / 1.15).toBeGreaterThanOrEqual(0.97);
+      expect(s.playbackRate.value / 1.15).toBeLessThanOrEqual(1.03);
+      expect(s.filters.map((f) => [f.type, f.frequency.value, f.gain.value])).toEqual([['highshelf', 4000, 4]]);
+      s = m('wood');
+      expect(s.playbackRate.value / 0.9).toBeGreaterThanOrEqual(0.97);
+      expect(s.playbackRate.value / 0.9).toBeLessThanOrEqual(1.03);
+      expect(s.filters.map((f) => [f.type, f.frequency.value])).toEqual([['lowpass', 3500]]);
+      s = m('stone');
+      expect(s.playbackRate.value / 1.05).toBeGreaterThanOrEqual(0.97);
+      expect(s.playbackRate.value / 1.05).toBeLessThanOrEqual(1.03);
+      expect(s.filters.map((f) => [f.type, f.frequency.value, f.gain.value])).toEqual([['highshelf', 4000, 2]]);
+    });
+
+    it('colours floor hits by surface and leaves other dice contacts alone', async () => {
+      const { engine } = await ready();
+      const f = (surface, over = {}) => play(engine, { surface, other: -1, speed: 24, dieKey: surface, ...over });
+      let s = f('felt');
+      expect(s.filters.map((x) => [x.type, x.frequency.value])).toEqual([['lowpass', 2000]]);
+      expect(s.totalGain).toBeCloseTo(10 ** (-3 / 20), 5);
+      s = f('wood');
+      expect(s.filters.length).toBe(0);
+      expect(s.totalGain).toBeCloseTo(1, 5);
+      s = f('stone');
+      expect(s.filters.map((x) => [x.type, x.gain.value])).toEqual([['highshelf', 3]]);
+      s = f('metal');
+      expect(s.filters.map((x) => [x.type, x.frequency.value, x.gain.value])).toEqual([['peaking', 3000, 4]]);
+      s = play(engine, { surface: 'felt', other: 3, speed: 24, dieKey: 'dd' });
+      expect(s.filters.length).toBe(0);
+      expect(s.totalGain).toBeCloseTo(1, 5);
+      s = play(engine, { surface: 'metal', material: 'metal', other: -1, dieKey: 'mm' });
+      expect(s.filters.map((x) => x.type)).toEqual(['highshelf', 'peaking']);
+    });
+
+    it('plays nothing before the sprite is ready and loads lazily without preload', async () => {
+      const sprite = vi.fn(spriteOk);
+      const { engine } = make({ sprite });
+      engine.impact(hit());
+      expect(ctx).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(sprite).toHaveBeenCalledTimes(2);
+      now += 100;
+      engine.impact(hit());
+      expect(ctx.sources.length).toBe(1);
+    });
+
+    it('nothing plays while the sprite is still loading', async () => {
+      let release;
+      const gate = new Promise((r) => (release = r));
+      const { engine } = make({
+        sprite: async (u) => {
+          await gate;
+          return spriteOk(u);
+        },
+      });
+      engine.preload();
+      engine.impact(hit());
+      expect(ctx).toBeUndefined();
+      release();
+      await vi.advanceTimersByTimeAsync(50);
+      now += 100;
+      engine.impact(hit());
+      expect(ctx.sources.length).toBe(1);
+    });
+
+    it('a failed load warns once and falls back to the synthesized impacts', async () => {
+      const { engine } = await ready({ sprite: async () => ({ ok: false, status: 404 }) });
+      expect(warn).toHaveBeenCalledTimes(1);
+      engine.impact(hit({ other: -1 }));
+      expect(ctx.sources.length).toBe(2); // impact + synth surface voice
+      now += 100;
+      engine.impact(hit());
+      await engine.preload();
+      expect(warn).toHaveBeenCalledTimes(1);
+      await engine.result({ builtin: 'chime' });
+      expect(ctx.sources.length).toBe(4);
+    });
   });
 
   it('survives missing WebAudio with one warning', async () => {

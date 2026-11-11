@@ -57,7 +57,7 @@ It rolls `1d20`, `3d6+2`, `1d100` and `1d7`, prints `smoke: 4/4 passed` and exit
 
 Dice click and clatter as they land. The sound depends on the die's material (plastic, metal, wood, glass or stone) and on the table surface (felt, wood, stone or metal). Result sounds, such as a fanfare on a natural 20, come from trigger rules (see Effects and triggers).
 
-The sounds are made by code the first time they are needed, not loaded from files, so the module stays small. Browsers keep audio locked until your first click in the window; after that sounds play normally. No audio is set up until a sound is due, and it is switched off again after 30 seconds of quiet.
+Impacts are real recorded dice hits (`assets/sounds/`: one 56 KB audio sprite of 33 hits, fetched the first time sounds are used). Loud impacts pick a heavy hit, soft settling taps a light one, preferring hits recorded with the same kind of die; the die's material and the table surface only tint the recording (a metal die is brighter, a wood die duller, felt softer). If the recording cannot be loaded, Dicer falls back to synthesized impacts. Result sounds are still made by code the first time they are needed. Dice hit recordings: SFX Pack - Rolling Dice by Halfwits & Failed Crits, CC0 (see `assets/sounds/CREDITS.md`). Browsers keep audio locked until your first click in the window; after that sounds play normally. No audio is set up until a sound is due, and it is switched off again after 30 seconds of quiet.
 
 Settings: **Dice sounds** (on/off), **Dice sound volume**, **Effects volume**, **Quieter when the window is unfocused**, **Table surface** (world) and **My table surface** (this client). Impact sounds play for any die you can see, including ghost dice, because they say nothing about the result.
 
@@ -73,7 +73,7 @@ Other settings: **Special effects**, **Screen shake**, **Slow motion** (changes 
 
 Effects and their sounds never play for someone who cannot see the roll's result: a blind or whispered roll gives other players nothing, not even a celebration. The render loop runs only while an effect plays, and lower quality tiers run lighter effects. Screen shake is off when your operating system asks for reduced motion.
 
-To preview every effect, damage theme and sound, run `npm run dev` and open `/dev/effects.html`.
+To preview every effect, damage theme and sound, run `npm run dev` and open `/dev/effects.html`, which also has buttons to audition the recorded dice hits by material, surface and loudness.
 
 ## Damage themes
 

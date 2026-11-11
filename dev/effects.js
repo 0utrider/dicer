@@ -44,7 +44,8 @@ const physics = new PhysicsClient(createPhysicsWorker, { hulls: computeHulls() }
 const renderer = new DiceRenderer({ container: document.body, pixelRatioCap: 1.5 });
 renderer.applyTier(TIERS[tier]);
 
-const sounds = createSoundEngine();
+// The recorded dice hits are fetched from /assets/sounds (the module root in dev).
+const sounds = createSoundEngine({ resolveUrl: (p) => `/${p.replace(/^modules\/dicer\//, '')}` });
 let box = null;
 const layer = createEffectLayer({
   scene: renderer.scene,
@@ -99,6 +100,14 @@ const playResult = (name) => sounds.preload().then(() => sounds.result({ builtin
 const playImpact = (material, surface) =>
   sounds.preload().then(() => sounds.impact({ material, surface, speed: 24, other: -1 }));
 
+// Heavy / medium / light recorded hit through the real engine, as a floor impact.
+const HIT_SPEEDS = { heavy: 30, medium: 15, light: 8 };
+let hitSeq = 0;
+const playHit = (material, surface, level) =>
+  sounds.preload().then(() =>
+    sounds.impact({ material, surface, speed: HIT_SPEEDS[level], other: -1, dieKey: `audition:${hitSeq++}` }),
+  );
+
 function buttons(containerId, items, onClick) {
   const el = $(containerId);
   for (const [label, args] of items) {
@@ -131,6 +140,17 @@ buttons(
   playImpact,
 );
 
+buttons(
+  'hits-material',
+  SOUND_MATERIALS.flatMap((m) => Object.keys(HIT_SPEEDS).map((l) => [`${m} ${l}`, [m, 'wood', l]])),
+  playHit,
+);
+buttons(
+  'hits-surface',
+  SURFACES.flatMap((s) => Object.keys(HIT_SPEEDS).map((l) => [`${s} ${l}`, [null, s, l]])),
+  (m, s, l) => playHit('plastic', s, l),
+);
+
 for (const t of TIER_ORDER) $('tier').add(new Option(t, t));
 $('tier').value = tier;
 function setTier(name) {
@@ -145,6 +165,6 @@ $('tier').addEventListener('change', (e) => setTier(e.target.value));
 $('plain').addEventListener('click', () => roll({ fx: [] }));
 window.addEventListener('resize', () => box.onResize());
 
-window.__effects = { roll, playEffect, playTheme, playResult, playImpact, setTier, errors, layer, box };
+window.__effects = { roll, playEffect, playTheme, playResult, playImpact, playHit, setTier, errors, layer, box };
 $('status').textContent =
   `ready (${Object.keys(EFFECTS).length} effects, ${Object.keys(DAMAGE_THEMES).length} themes)`;

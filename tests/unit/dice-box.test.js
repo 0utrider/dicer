@@ -1447,7 +1447,7 @@ describe('impact sounds', () => {
     renderer.tick(950); // playhead ~57, still playing
     expect(onImpact).toHaveBeenCalledTimes(2);
     const [a, b] = onImpact.mock.calls.map((c) => c[0]);
-    expect(a).toMatchObject({ material: 'plastic', surface: 'wood', speed: 12, other: 0 });
+    expect(a).toMatchObject({ material: 'plastic', surface: 'wood', speed: 12, other: 0, dieType: 'd6' });
     expect(b).toMatchObject({ material: 'metal', surface: 'wood', speed: 20, other: -2 });
     expect(a.dieKey).not.toBe(b.dieKey);
   });

@@ -373,7 +373,7 @@ Hooks.once('ready', async () => {
       });
       faceTextures = createFaceTextures({ loadImage: loadFaceImage, loadFont: loadFaceFont });
       soundEngine?.dispose();
-      soundEngine = createSoundEngine({ getSetting: (k) => getSetting(k) });
+      soundEngine = createSoundEngine({ getSetting: (k) => getSetting(k), resolveUrl: routeOf });
       let box = null;
       effectLayer?.dispose();
       effectLayer = createEffectLayer({

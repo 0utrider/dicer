@@ -150,7 +150,7 @@ export class DiceBox {
     // (systemId) -> the DiceSystem instance it was registered with, or null (api.js): its
     // material callbacks and dice events apply to that system's dice.
     this._systemFor = systemFor;
-    // ({ material, surface, speed, other, dieKey }) per impact the playhead crosses (sound engine)
+    // ({ material, surface, speed, other, dieKey, dieType }) per impact the playhead crosses (sound engine)
     this._onImpact = onImpact;
     this._getSurface = getSurface;
     // (die, fx, rollKey) once per landed die carrying fx (never a ghost, never a d100's tens
@@ -1052,6 +1052,7 @@ export class DiceBox {
           speed,
           other,
           dieKey: `${roll.id}:${die}`,
+          dieType: d.type,
         });
       }
     } catch (err) {
