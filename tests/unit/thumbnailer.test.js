@@ -365,3 +365,31 @@ describe('geometry per edge step', () => {
     t.dispose();
   });
 });
+
+describe('per-look fonts', () => {
+  const fontAtlas = {
+    ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8'))),
+    texture: new THREE.Texture(),
+  };
+  const withFont = (font) => ({ ...theme(), appearance: { ...theme().appearance, numbers: { ...theme().appearance.numbers, font } } });
+  beforeEach(() => {
+    createDiceMaterial.mockClear();
+  });
+
+  test('a thumbnail waits for its font and draws with that atlas', async () => {
+    const fonts = { get: vi.fn(() => null), request: vi.fn(async () => fontAtlas) };
+    const { t } = make({ opts: { fonts } });
+    expect(await t.thumbnail(withFont('css:Comic Neue'), 'd20')).toBe('blob:t1');
+    expect(fonts.request).toHaveBeenCalledWith('css:Comic Neue');
+    expect(createDiceMaterial.mock.calls.at(-1)[1]).toBe(fontAtlas);
+    t.dispose();
+  });
+
+  test('a font that cannot be used draws with the serif', async () => {
+    const fonts = { get: vi.fn(() => null), request: vi.fn(async () => null) };
+    const { t } = make({ opts: { fonts } });
+    await t.thumbnail(withFont('css:Nope'), 'd6');
+    expect(createDiceMaterial.mock.calls.at(-1)[1]).toBe(atlas);
+    t.dispose();
+  });
+});

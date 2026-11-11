@@ -3,11 +3,14 @@ import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { sep } from 'node:path';
 
 const BUDGET = 4 * 1024 * 1024;
-/** Loaded at world start besides dist/ (loadDigitAtlas; main.js imports api.js at init). */
+/**
+ * Loaded at world start besides dist/ (loadDigitAtlas; main.js imports api.js at init). The sans
+ * atlas (digits-sans.*) is not: the font layer loads it only when a look uses it.
+ */
 const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digits.json', 'api.js'];
 
 /** Fetched on demand: a die model (dynamic import / DRACOLoader), or the DSN migration at ready. */
-const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|draco\/)/.test(p);
+const isLazy = (p) => /^dist\/(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|Points-[^/]+\.js|font-builder-[^/]+\.js|assets\/font-worker-[^/]+\.js|draco\/)/.test(p);
 
 /** Every file under dist/, as forward-slash paths. */
 const distFiles = () =>
@@ -40,6 +43,15 @@ describe('build', () => {
     const damageForm = lazy.find((p) => /damage-map-form-/.test(p)); // shared by the damage map editor and the theme browser
     const soundNames = lazy.find((p) => /sound-names-/.test(p)); // the built-in sound list, shared by the synth and the editor
     const points = lazy.find((p) => /Points-/.test(p)); // three's Points, shared by the effects and model-loader chunks
+    const fontBuilder = lazy.find((p) => /font-builder-/.test(p)); // runtime font atlases (P7-D3)
+    const fontWorker = lazy.find((p) => /font-worker-/.test(p));
+    expect(fontBuilder).toBeTruthy();
+    expect(fontWorker).toBeTruthy();
+    // The SDF builder lives in the lazy chunks only; dicer.js just names the worker's URL.
+    expect(readFileSync(fontBuilder, 'utf8')).toContain('nodigits');
+    expect(readFileSync(fontWorker, 'utf8')).toContain('nodigits');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('nodigits');
+    expect(WORLD_START_ASSETS.some((p) => p.includes('digits-sans'))).toBe(false);
     expect(synth).toBeTruthy();
     expect(editor).toBeTruthy();
     expect(soundNames).toBeTruthy();
@@ -68,7 +80,7 @@ describe('build', () => {
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('has no Dicer counterpart yet');
     expect(readFileSync(migration, 'utf8')).toContain('has no Dicer counterpart yet');
     expect(lazy.sort()).toEqual(
-      [chunk, migration, synth, effects, editor, damageEditor, areaEditor, themeBrowser, damageForm, soundNames, points, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
+      [chunk, migration, synth, effects, editor, damageEditor, areaEditor, themeBrowser, damageForm, soundNames, points, fontBuilder, fontWorker, 'dist/draco/draco_decoder.wasm', 'dist/draco/draco_wasm_wrapper.js'].sort(),
     );
   });
   it('keeps the built-in theme table under 6 KiB minified (P5-R1)', () => {

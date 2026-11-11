@@ -3,6 +3,7 @@ import { createPhysicsWorker, PhysicsClient } from './physics/physics-client.js'
 import { computeHulls } from './physics/hulls.js';
 import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
+import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup } from './render/warmup.js';
 import { DiceBox } from './throw/dice-box.js';
@@ -43,6 +44,7 @@ let diceRenderer = null;
 let quality = null;
 let stopWatchingArea = null;
 let digitAtlas = null;
+let fontAtlases = null; // the font layer: the atlas of each look's numbers.font
 let registry = null; // the DSN registry, once activate() made it
 let faceTextures = null; // shared by DiceBox and preloadPresets (one cache)
 let dice3d = null; // game.dice3d, once activate() made it
@@ -371,6 +373,15 @@ Hooks.once('ready', async () => {
       }),
     createDiceBox: ({ atlas, physics, renderer }) => {
       digitAtlas = atlas;
+      fontAtlases?.dispose();
+      // serif is the atlas above; sans and runtime fonts load only when a look uses them
+      fontAtlases = createFontAtlases({
+        serif: atlas,
+        loadBundled: (name) =>
+          loadDigitAtlas(foundry.utils.getRoute('modules/dicer/assets/fonts'), `digits-${name}`),
+        createWorker: createFontWorker,
+        getRoute: (path) => foundry.utils.getRoute(path),
+      });
       // Applies the medium tier now and starts the (cached) probe; rolls never wait for it.
       quality = createQualityController({
         renderer,
@@ -429,6 +440,7 @@ Hooks.once('ready', async () => {
         getSurface: () => soundSurface(getSetting),
         onLandedFx: (die, fx, rollKey) => landedFx(die, fx, rollKey),
         effects: effectLayer,
+        fonts: fontAtlases,
       });
       return box;
     },
@@ -509,6 +521,7 @@ Hooks.once('ready', async () => {
         areaFor: areas.rectFor,
         debugCounters,
         getAtlas: () => digitAtlas,
+        getFonts: () => fontAtlases,
       });
       dice3d = api;
       game.dice3d = api;

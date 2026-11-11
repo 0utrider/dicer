@@ -75,6 +75,9 @@ function canvasToBlob(canvas) {
  * @param {(id:number)=>void} [o.caf] cancelAnimationFrame
  * @param {()=>boolean} [o.reducedMotion] prefers-reduced-motion
  * @param {object} [o.doc] the document (visibilityState + visibilitychange)
+ * @param {{get: Function, request: Function}} [o.fonts] the font layer (fonts/font-atlas.js): the
+ *   atlas of a look's numbers.font. A thumbnail waits for its font (the layer times out); a live
+ *   preview draws with the serif until the font is ready, then rebuilds its die.
  */
 export function createThumbnailer({
   atlas,
@@ -87,6 +90,7 @@ export function createThumbnailer({
   caf = (id) => globalThis.cancelAnimationFrame(id),
   reducedMotion = () => Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches),
   doc = globalThis.document,
+  fonts = null,
 } = {}) {
   const make = createRenderer ?? (() => defaultCreateRenderer(size));
   const cache = new Map(); // key -> object URL
@@ -121,6 +125,26 @@ export function createThumbnailer({
     if (geometries.get(key) === entry) geometries.delete(key);
   }
   let flags = null;
+  const fontOf = (appearance) => appearance?.numbers?.font ?? 'serif';
+  const isSerif = (id) => !id || id === 'serif' || !fonts;
+  /** The ready atlas for a font id, else null (never throws). */
+  const readyAtlas = (id) => {
+    if (isSerif(id)) return atlas;
+    try {
+      return fonts.get(id) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  /** Resolves the font's atlas once ready, or the serif when it cannot be used. */
+  const awaitAtlas = async (id) => {
+    if (isSerif(id)) return atlas;
+    try {
+      return (await fonts.request(id)) ?? atlas;
+    } catch {
+      return atlas;
+    }
+  };
   let curSize = 0; // the renderer's current square size (a preview frame may change it)
   let busy = false; // a thumbnail render + capture is in flight: no preview frame may touch the canvas
   const previews = new Set();
@@ -168,7 +192,7 @@ export function createThumbnailer({
     curSize = 0;
   }
 
-  async function renderOne(theme, dieType) {
+  async function renderOne(theme, dieType, dieAtlas = atlas) {
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
     const shapeType = dieType === 'd100' ? 'd10' : dieType;
     const shape = getShape(shapeType);
@@ -177,7 +201,7 @@ export function createThumbnailer({
     const cam = camera;
     const cvs = canvas;
     const rnd = renderer;
-    const material = createDiceMaterial(appearance, atlas, shape, labels, flags);
+    const material = createDiceMaterial(appearance, dieAtlas, shape, labels, flags);
     // The geometry is acquired only once the material exists; anything after it that throws
     // gives it back.
     const held = acquireGeometry(shape, shapeType, appearance);
@@ -217,12 +241,14 @@ export function createThumbnailer({
   }
 
   async function job(theme, dieType, key) {
+    const fontId = fontOf(theme.perType?.[dieType] ?? theme.appearance);
+    const dieAtlas = isSerif(fontId) ? atlas : await awaitAtlas(fontId);
     await new Promise((resolve) => idle(resolve));
     if (disposed || broken) return null;
     if (!renderer) init();
     if (!renderer || broken) return null;
     try {
-      const blob = await renderOne(theme, dieType);
+      const blob = await renderOne(theme, dieType, dieAtlas);
       if (disposed) return null;
       if (broken) return null; // context lost mid-render: the image is not trustworthy
       const url = URL.createObjectURL(blob);
@@ -295,7 +321,17 @@ export function createThumbnailer({
       const shapeType = dieType === 'd100' ? 'd10' : dieType;
       const shape = getShape(shapeType);
       const labels = shape.values.map((v) => labelFor(shapeType, v));
-      const material = createDiceMaterial(appearance, atlas, shape, labels, flags);
+      const fontId = fontOf(appearance);
+      const dieAtlas = readyAtlas(fontId);
+      const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags);
+      if (!dieAtlas) {
+        // the serif stands in: rebuild the die once the font is ready
+        awaitAtlas(fontId).then((a) => {
+          if (a === atlas || stopped || !res?.standIn) return;
+          free();
+          redraw();
+        });
+      }
       const held = acquireGeometry(shape, shapeType, appearance);
       const geometry = held.geometry;
       let mesh;
@@ -311,7 +347,15 @@ export function createThumbnailer({
         held.release();
         throw err;
       }
-      res = { mesh, material, geometry, release: held.release, baseQ, y: mesh.position.y };
+      res = {
+        mesh,
+        material,
+        geometry,
+        release: held.release,
+        baseQ,
+        y: mesh.position.y,
+        standIn: !dieAtlas,
+      };
       return true;
     }
 

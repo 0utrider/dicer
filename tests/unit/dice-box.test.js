@@ -2028,3 +2028,79 @@ test('P5-R6: a tiny per-throw area is grown to hold its dice, around its centre,
   expect(many.cx - many.halfWidth).toBeCloseTo(-10, 9);
   expect(many.cz - many.halfDepth).toBeCloseTo(-5, 9);
 });
+
+describe('per-look fonts (font layer)', () => {
+  const sansLook = { numbers: { font: 'css:Comic Neue' } };
+  const fontAtlas = {
+    ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8'))),
+    texture: new THREE.Texture(),
+  };
+  function fakeFonts() {
+    const ready = new Set();
+    const listeners = new Set();
+    return {
+      get: vi.fn((id) => (ready.has(id) ? fontAtlas : null)),
+      request: vi.fn(async () => null),
+      onReady: vi.fn((cb) => (listeners.add(cb), () => listeners.delete(cb))),
+      listeners,
+      makeReady(id) {
+        ready.add(id);
+        for (const cb of listeners) cb(id);
+      },
+    };
+  }
+  beforeEach(() => {
+    createDiceMaterial.mockClear();
+  });
+
+  test('a font not ready yet: the material uses the serif and the font is requested', () => {
+    const fonts = fakeFonts();
+    const { box } = setup({ appearance: sansLook, fonts });
+    const warm = box.acquireWarmup(['d6']);
+    expect(createDiceMaterial.mock.calls[0][1]).toBe(atlas);
+    expect(fonts.request).toHaveBeenCalledWith('css:Comic Neue');
+    warm.release();
+    box.dispose();
+  });
+
+  test('onReady rebuilds the materials once; the new ones draw with the font atlas', () => {
+    const fonts = fakeFonts();
+    const { box } = setup({ appearance: sansLook, fonts });
+    const before = box.acquireWarmup(['d6']);
+    before.release();
+    const invalidate = vi.spyOn(box, 'invalidateMaterials');
+    fonts.makeReady('css:Comic Neue');
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    const after = box.acquireWarmup(['d6']);
+    expect(after.materials[0]).not.toBe(before.materials[0]);
+    expect(createDiceMaterial.mock.calls.at(-1)[1]).toBe(fontAtlas);
+    after.release();
+    box.dispose();
+    expect(fonts.listeners.size).toBe(0); // dispose unsubscribes
+  });
+
+  test('the serif look never asks the font layer; the cache key separates fonts', () => {
+    const fonts = fakeFonts();
+    fonts.makeReady('css:Comic Neue');
+    let look = { numbers: { font: 'serif' } };
+    const { box } = setup({ getAppearance: () => look, fonts });
+    const a = box.acquireWarmup(['d6']);
+    expect(fonts.get).not.toHaveBeenCalled();
+    look = sansLook;
+    const b = box.acquireWarmup(['d6']);
+    expect(b.materials[0]).not.toBe(a.materials[0]);
+    expect(createDiceMaterial.mock.calls.at(-1)[1]).toBe(fontAtlas);
+    a.release();
+    b.release();
+    box.dispose();
+  });
+
+  test('a throwing font layer falls back to the serif', () => {
+    const fonts = { get: () => { throw new Error('x'); }, request: () => { throw new Error('y'); } };
+    const { box } = setup({ appearance: sansLook, fonts });
+    const warm = box.acquireWarmup(['d6']);
+    expect(createDiceMaterial.mock.calls[0][1]).toBe(atlas);
+    warm.release();
+    box.dispose();
+  });
+});

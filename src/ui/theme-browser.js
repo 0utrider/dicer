@@ -436,12 +436,15 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   #thumbnailer() {
     if (this.#thumbs) return this.#thumbs;
     let atlas = null;
+    let fonts = null;
     try {
-      atlas = globalThis.game?.dice3d?._themeContext?.()?.atlas ?? null;
+      const context = globalThis.game?.dice3d?._themeContext?.();
+      atlas = context?.atlas ?? null;
+      fonts = context?.fonts ?? null;
     } catch {
       atlas = null;
     }
-    if (atlas) this.#thumbs = createThumbnailer({ atlas, size: 256 });
+    if (atlas) this.#thumbs = createThumbnailer({ atlas, fonts, size: 256 });
     return this.#thumbs;
   }
 

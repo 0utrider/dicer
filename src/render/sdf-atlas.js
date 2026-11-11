@@ -50,17 +50,18 @@ export function parseAtlas(json) {
 }
 
 /**
- * Loads digits.json and digits.png from a base URL.
+ * Loads <name>.json and <name>.png from a base URL.
  * @param {string} baseUrl folder holding the atlas, e.g. "modules/dicer/assets/fonts"
+ * @param {string} [name] "digits" (the bundled serif) or "digits-sans"
  */
-export async function loadDigitAtlas(baseUrl) {
+export async function loadDigitAtlas(baseUrl, name = 'digits') {
   const root = baseUrl.replace(/\/+$/, '');
   const [json, texture] = await Promise.all([
-    fetch(`${root}/digits.json`).then((r) => {
-      if (!r.ok) throw new Error(`dicer: cannot load ${root}/digits.json (${r.status})`);
+    fetch(`${root}/${name}.json`).then((r) => {
+      if (!r.ok) throw new Error(`dicer: cannot load ${root}/${name}.json (${r.status})`);
       return r.json();
     }),
-    new THREE.TextureLoader().loadAsync(`${root}/digits.png`),
+    new THREE.TextureLoader().loadAsync(`${root}/${name}.png`),
   ]);
   // Distances must not be filtered across glyphs or gamma-decoded.
   texture.colorSpace = THREE.NoColorSpace;

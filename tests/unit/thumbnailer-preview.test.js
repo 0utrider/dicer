@@ -29,6 +29,7 @@ function rig() {
   const poses = [];
   const dice = [];
   const sizes = [];
+  const atlases = []; // the uAtlas texture of each rendered die
   const renderer = {
     domElement: canvas,
     toneMapping: 0,
@@ -38,11 +39,12 @@ function rig() {
     render: vi.fn((scene) => {
       const m = scene.children.find((c) => c.isMesh && c.material.userData?.uniforms);
       poses.push(m ? m.quaternion.toArray() : null);
+      atlases.push(m ? m.material.userData.uniforms.uAtlas.value : null);
       dice.push(scene.children.filter((c) => c.isMesh && c.visible && c.material.userData?.uniforms).length);
     }),
     dispose: vi.fn(),
   };
-  return { canvas, renderer, listeners, poses, dice, sizes };
+  return { canvas, renderer, listeners, poses, dice, sizes, atlases };
 }
 
 function target(size = 100) {
@@ -61,7 +63,7 @@ function target(size = 100) {
   };
 }
 
-function setup({ reduced = false } = {}) {
+function setup({ reduced = false, fonts } = {}) {
   const r = rig();
   let id = 0;
   const pending = new Map();
@@ -84,6 +86,7 @@ function setup({ reduced = false } = {}) {
     caf,
     doc,
     reducedMotion: () => reduced,
+    fonts,
   });
   let now = 0;
   const step = (ms = 100) => {
@@ -331,5 +334,48 @@ describe('turntable', () => {
     t.release();
     const y = t.pose().yaw;
     expect(turns(t, 1).yaw).toBe(y);
+  });
+});
+
+describe('per-look fonts', () => {
+  const fontAtlas = {
+    ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8'))),
+    texture: new THREE.Texture(),
+  };
+  const sansTheme = () => ({ ...theme(), appearance: { ...theme().appearance, numbers: { ...theme().appearance.numbers, font: 'sans' } } });
+
+  test('the preview draws with the serif until the font is ready, then rebuilds its die with it', async () => {
+    let ready = false;
+    let resolve;
+    const fonts = {
+      get: vi.fn(() => (ready ? fontAtlas : null)),
+      request: vi.fn(() => new Promise((r) => (resolve = r))),
+    };
+    const s = setup({ fonts });
+    const p = s.t.preview(target(), sansTheme());
+    expect(s.r.atlases[0]).toBe(atlas.texture);
+    expect(fonts.request).toHaveBeenCalledWith('sans');
+    ready = true;
+    resolve(fontAtlas);
+    await Promise.resolve();
+    await Promise.resolve();
+    s.step(16);
+    expect(s.r.atlases.at(-1)).toBe(fontAtlas.texture);
+    p.stop();
+    s.t.dispose();
+  });
+
+  test('a ready font is used from the first frame; a serif look never asks', () => {
+    const fonts = { get: vi.fn(() => fontAtlas), request: vi.fn() };
+    const s = setup({ fonts });
+    const p = s.t.preview(target(), sansTheme());
+    expect(s.r.atlases[0]).toBe(fontAtlas.texture);
+    expect(fonts.request).not.toHaveBeenCalled();
+    p.stop();
+    fonts.get.mockClear();
+    const q = s.t.preview(target(), theme());
+    expect(fonts.get).not.toHaveBeenCalled();
+    q.stop();
+    s.t.dispose();
   });
 });

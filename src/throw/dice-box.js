@@ -133,10 +133,21 @@ export class DiceBox {
     getSurface = () => 'felt',
     onLandedFx = () => {},
     effects = null,
+    fonts = null,
   }) {
     this._renderer = renderer;
     this._physics = physics;
     this._atlas = atlas;
+    // The font layer (fonts/font-atlas.js) or null: the atlas of a look's numbers.font. A font
+    // not ready yet draws with the serif `atlas` and is requested; once it is ready the cached
+    // materials are rebuilt (rolls in flight keep theirs).
+    this._fonts = fonts;
+    this._offFontReady = null;
+    try {
+      this._offFontReady = fonts?.onReady?.(() => this.invalidateMaterials()) ?? null;
+    } catch (err) {
+      console.warn('dicer: cannot watch the font layer', err);
+    }
     // The fixed `appearance` option (Plan 1) is kept as a constant getter.
     this._getAppearance = getAppearance ?? (() => appearance ?? DEFAULT_APPEARANCE);
     this._getFlags = getFlags;
@@ -401,6 +412,8 @@ export class DiceBox {
   /** Clear, stop listening, then free the cached geometries and every live material. */
   dispose() {
     this._visibility?.removeEventListener?.('visibilitychange', this._onVisibility);
+    if (typeof this._offFontReady === 'function') this._offFontReady();
+    this._offFontReady = null;
     this.clear();
     for (const g of this._geometries.values()) g.dispose();
     this._geoRefs.clear();
@@ -605,7 +618,10 @@ export class DiceBox {
     const systemKey = custom ? `|sys:${custom}` : '';
     const hooks = custom ? this.#materialHooks(custom, appearance) : null;
     const hookKey = hooks ? `|sc:${hooks.cacheString}` : '';
-    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${systemKey}${hookKey}`;
+    const font = this.#fontAtlas(ghost ? 'serif' : appearance.numbers?.font);
+    // The atlas actually used is part of the key: a serif stand-in is never reused once the
+    // font is ready.
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${systemKey}${hookKey}|atlas:${font.id}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
@@ -622,8 +638,8 @@ export class DiceBox {
       });
       const build = () =>
         layered
-          ? createDiceMaterial(appearance, this._atlas, shape, labels, flags, layered)
-          : createDiceMaterial(appearance, this._atlas, shape, labels, flags);
+          ? createDiceMaterial(appearance, font.atlas, shape, labels, flags, layered)
+          : createDiceMaterial(appearance, font.atlas, shape, labels, flags);
       mat = build();
       if (hooks)
         mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
@@ -639,6 +655,26 @@ export class DiceBox {
       }
     }
     return mat;
+  }
+
+  /**
+   * { atlas, id } for a numbers.font: the font layer's atlas when ready, else the serif (and the
+   * font is requested). Never throws.
+   */
+  #fontAtlas(fontId) {
+    const serif = { atlas: this._atlas, id: 'serif' };
+    if (!fontId || fontId === 'serif' || !this._fonts) return serif;
+    try {
+      const atlas = this._fonts.get(fontId);
+      if (atlas) return { atlas, id: fontId };
+      Promise.resolve(this._fonts.request(fontId)).catch(() => {});
+    } catch (err) {
+      if (!this._fontWarned) {
+        this._fontWarned = true;
+        console.warn('dicer: the font layer threw; numbers use the serif', err);
+      }
+    }
+    return serif;
   }
 
   /** The DiceSystem instance registered for `systemId`, or null; never throws. */

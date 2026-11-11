@@ -143,6 +143,7 @@ export function createDice3dApi({
   importMigration = importMigrationModule,
   debugCounters = createDebugCounters(),
   getAtlas = () => null,
+  getFonts = () => null,
 }) {
   const warned = new Set();
   /** A malformed third-party call logs one warning per member, never throws. */
@@ -853,10 +854,13 @@ export function createDice3dApi({
         };
       },
     },
-    /** What the theme browser needs: the digit atlas its thumbnail renderer draws numbers with. */
+    /**
+     * What the theme browser needs: the digit atlas its thumbnail renderer draws numbers with,
+     * and the font layer for looks with another numbers.font.
+     */
     _themeContext: {
       value() {
-        return { atlas: getAtlas() };
+        return { atlas: getAtlas(), fonts: getFonts() };
       },
     },
     /** What the editor needs from the registry: module rules, trigger ids with labels, SFX modes, dice types. */
