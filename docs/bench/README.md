@@ -19,7 +19,11 @@
 ```
 npm run test:live:bench              # the full matrix
 npm run test:live:bench -- --dry-run # print the matrix, launch nothing, change nothing
+npm run test:live:bench -- --quick   # a shorter partial run, for checking a fix
+npm run test:live:bench -- --only dice-so-nice   # only the runs whose name contains this
 ```
+
+`--quick` skips the throttled runs and makes fewer rolls where the count only buys precision: the soak makes 200 rolls (heap and resources at roll 50 and roll 200, still enough to show a leak) and `burst100` makes 30. `--only` takes one or more comma-separated parts of run names (see Profiles and modes for the names), for example `--only dicer-pc-vsync` or `--only dice-so-nice,dicer-pc-uncapped`. The two combine, and `--dry-run` shows what either one would run. `summary.md` of a partial run says so in its first line: the full run is the one that decides.
 
 A full run goes through 8 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The terminal prints a timestamped line as each run's warm-up roll and each scenario starts and ends, so a long run visibly progresses. The module switch gets 60 s; a Foundry dialog that blocks it stops the run with a message instead of hanging it. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run. It exits 2 before starting when the credentials are missing, Foundry cannot be reached or `restore.json` is damaged.
 

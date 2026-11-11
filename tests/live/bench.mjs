@@ -77,7 +77,8 @@ function printPlan(plan, decision) {
       e.product === 'dice-so-nice' ? `maxDiceNumber ${lib.DSN_MAX_DICE}` : null,
       flag ? (flag.exists ? 'dsn user flag = effects off' : 'dsn user flag unset') : null,
     ].filter(Boolean);
-    console.log(`  ${i + 1}. ${lib.runName(e)}: ${e.ids.join(', ')} (${extra.join(', ')})`);
+    const ids = e.ids.map((id) => (e.rolls?.[id] ? `${id} (${e.rolls[id]} rolls)` : id));
+    console.log(`  ${i + 1}. ${lib.runName(e)}: ${ids.join(', ')} (${extra.join(', ')})`);
   }
   if (decision.action === 'restore')
     console.log(`bench: ${lib.RESTORE_FILE} exists: a live run restores it first`);
@@ -320,7 +321,7 @@ function createHarness(chromium) {
       const settings = await rpc(s.page, 'benchSettings');
       await s.cdp.send('Emulation.setCPUThrottlingRate', { rate: p.cpuThrottle });
       await sleep(SETTLE_MS);
-      const suite = await rpc(s.page, 'benchRun', { ids: entry.ids, profile: lib.runName(entry) });
+      const suite = await rpc(s.page, 'benchRun', { ids: entry.ids, profile: lib.runName(entry), rolls: entry.rolls ?? null });
       return {
         at: new Date().toISOString(),
         entry,
@@ -411,7 +412,10 @@ function createHarness(chromium) {
 
 async function main() {
   const args = lib.parseArgs(process.argv.slice(2));
-  const plan = lib.matrix();
+  if (args.error) die(args.error);
+  const { plan, error: planError } = lib.planFor(args);
+  if (planError) die(planError);
+  if (args.quick || args.only) console.log(`bench: partial run: ${plan.map(lib.runName).join(', ')}`);
   const decision = lib.startupDecision(await readRestore());
   if (args.dryRun) {
     printPlan(plan, decision);
@@ -520,7 +524,7 @@ async function main() {
   }
 
   const rows = lib.verdicts(reports);
-  const md = lib.summaryMarkdown({ date: outDir.split('/').pop(), reports, rows, errors, dsnFlag });
+  const md = lib.summaryMarkdown({ date: outDir.split('/').pop(), reports, rows, errors, dsnFlag, quick: args.quick, only: args.only });
   await mkdir(outDir, { recursive: true });
   await writeFile(`${outDir}/summary.md`, md);
   console.log(md);
