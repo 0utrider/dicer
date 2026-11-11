@@ -152,7 +152,7 @@ The privacy of effects and sounds for blind rolls, and **Show other players' eff
 ## 24. A font from the computer and a font file
 
 1. In the appearance editor, set **Font** to **On this computer**, type a font you have (for example Georgia) or pick a chip, and check that the preview die shows the new digits within a moment.
-2. Set **Font** to **Font file**, pick a `.ttf`, `.otf` or `.woff` file on the Foundry server, and check the preview again.
+2. Set **Font** to **Font file**, pick a `.ttf`, `.otf`, `.woff` or `.woff2` file on the Foundry server, and check the preview again.
 3. Type a family that does not exist, or a path to a file that is not a font. Pass: the die keeps the default digits and the console shows one warning, never an error loop. On another player's computer that lacks your font, your dice also show the default digits.
 
 ## 25. Edge steps on every die
@@ -164,9 +164,9 @@ The privacy of effects and sounds for blind rolls, and **Show other players' eff
 ## 26. GM push, with and without "Replace everything"
 
 1. Give player A a d6 theme of their own and a default theme of their own.
-2. As the GM, select a theme in **Theme browser**, press **Push to players...** and confirm without ticking **Replace everything**.
+2. As the GM, select a built-in or world theme in **Theme browser** (a "Mine" theme is refused until published), press **Push to players...** and confirm without ticking **Replace everything**.
 3. Pass: A's default is the pushed theme and their d6 choice is kept. A notice shows how many players were updated.
-4. Push another theme and tick **Replace everything**. Pass: A's d6 choice and their per-roll-type choices are cleared too.
+4. Push another theme and tick **Replace everything**. Pass: A's choices for a die type, a kind of roll, a character and a damage type are all cleared; only the default remains.
 5. As a player, check that **Push to players...** is not shown.
 
 ## 27. Lock player looks
@@ -179,6 +179,6 @@ The privacy of effects and sounds for blind rolls, and **Show other players' eff
 ## 28. The actor-sheet "Dice look" button
 
 1. With **Dice look button on actor sheets** on, open a character sheet you own.
-2. Pass: a **Dice look** button shows in the sheet header and opens the theme browser pointed at that character. Turn the setting off and the button is gone the next time the sheet renders.
+2. Pass: a **Dice look** control shows in the sheet's header controls (the menu) on current sheets, or as a header button on older sheets, and opens the theme browser pointed at that character. Turn the setting off and the button is gone the next time the sheet renders.
 
 The roll area rules (a player's area, the GM private corner) are also automated in `npm run test:live:areas`.

@@ -4,7 +4,7 @@
 // helpers they use), their action handlers answer clicks and the theme browser's _onRender makes
 // real thumbnails through the thumbnailer. tests/visual/editors.mjs drives it and screenshots it.
 // Query: ?app=themes|appearance|triggers|damage  &player=1 (a player instead of the GM)
-//        &theme=<id> (appearance: the theme to edit).
+//        &theme=<id> (appearance: the theme to edit), &locked=1 (with player=1: a world default with the lock on).
 import { loadDigitAtlas } from '../src/render/sdf-atlas.js';
 import { createFontAtlases, createFontWorker } from '../src/fonts/font-atlas.js';
 import { BUILTIN_THEMES } from '../src/themes/themes.js';

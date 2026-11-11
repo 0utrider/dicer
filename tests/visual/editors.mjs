@@ -157,6 +157,7 @@ async function main() {
       )),
     );
     // One shot per remaining body type (the clear resin and the metal ones are above).
+    const bodyShots = {};
     for (const type of ['opaque', 'marble', 'pearl'])
       problems.push(
         ...(await shoot(browser, 'app=appearance', `appearance-body-${type}.png`, async (page) => {
@@ -164,8 +165,11 @@ async function main() {
           await page.click(`[data-field="body.type"][data-value="${type}"]`);
           await page.waitForTimeout(600);
           await page.mouse.move(5, 5);
+          bodyShots[type] = (await page.locator('.dicer-ae-stage').screenshot()).toString('base64');
         }, { reducedMotion: 'reduce' })),
       );
+    if (Object.keys(bodyShots).length === 3 && new Set(Object.values(bodyShots)).size !== 3)
+      problems.push('appearance-body: two body types drew the same stage');
     // A font from the computer (Georgia) drawn on the die.
     problems.push(
       ...(await shoot(browser, 'app=appearance&theme=user.u1.georgia-gold', 'appearance-editor-font.png', async (page) => {
