@@ -9,6 +9,8 @@ import {
 import { createDice3dApi } from '../../src/api/dice3d.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { explodingD6, rerolledD20, dynamicCountD6, coin } from './foundry-roll.js';
+import { createFxResolver, composeDecorateFor } from '../../src/effects/fx-resolver.js';
+import { DEFAULT_RULES } from '../../src/effects/rules.js';
 
 /** A socket.io-like fake: one handler per event, emits recorded (Foundry never echoes). */
 function fakeSocket() {
@@ -398,6 +400,57 @@ describe('showForRoll over the socket', () => {
     });
   });
 
+  describe('trigger effects on receivers (privacy)', () => {
+    function fxDecorateFor(user, world = DEFAULT_RULES) {
+      const fx = createFxResolver({
+        getWorldRules: () => world,
+        getUserRules: () => undefined,
+        currentUser: () => user,
+        getSetting: (k) => settings[k] ?? true,
+      });
+      return composeDecorateFor({ looks: null, fx });
+    }
+    function fxBus(world) {
+      bus.length = 0;
+      const mk = (user) => client(user, bus, { decorateFor: fxDecorateFor(user, world) });
+      gm = mk({ id: 'gm', isGM: true });
+      alice = mk({ id: 'alice', isGM: false });
+      bob = mk({ id: 'bob', isGM: false });
+    }
+
+    test('a blind nat 20: the GM (real view) gets fx, bob (ghost view) gets none', async () => {
+      settings.showGhostDice = true;
+      fxBus();
+      alice.api.showForRoll(roll([20, 20]), alice.user, true, ['gm', 'bob'], true);
+      await flush();
+      expect(gm.diceBox.rolls[0].specs[0].fx[0].ruleId).toBe('dicer.nat20');
+      expect(bob.diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true }]);
+    });
+
+    test('a receiver reads the outcome from roll.options (there is no message)', async () => {
+      const world = [{ id: 'crit', outcome: 'critical-success', effect: { id: 'celebrate' } }];
+      const fromData = (data) => ({ ...fakeFromData(data), options: data.options });
+      bus.length = 0;
+      const mk = (user) => client(user, bus, { decorateFor: fxDecorateFor(user, world), fromData });
+      alice = mk({ id: 'alice', isGM: false });
+      bob = mk({ id: 'bob', isGM: false });
+      const r = roll([20, 14]);
+      r.toJSON = () => ({ ...rollToData(roll([20, 14])), options: { degreeOfSuccess: 3 } });
+      alice.api.showForRoll(r, alice.user, true);
+      await flush();
+      expect(bob.diceBox.rolls[0].specs[0].fx[0].ruleId).toBe('crit');
+    });
+
+    test("the sender, not the caller's author, is the roller: no macro runs on the author's client", async () => {
+      const world = [{ id: 'm', die: 'd20', result: { kind: 'value', value: 20 }, macro: 'Macro.x' }];
+      fxBus(world);
+      gm.api.showForRoll(roll([20, 20]), alice.user, true);
+      await flush();
+      expect(alice.diceBox.rolls[0].specs[0].fx[0].macro).toBeNull();
+      expect(gm.diceBox.rolls[0].specs[0].fx[0].macro).toBe('Macro.x');
+    });
+  });
+
   describe('author vs sender (P3-R18)', () => {
     test("a GM's showForRoll for a player animates on receivers with the player's look", async () => {
       const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'look' } }));
@@ -411,7 +464,7 @@ describe('showForRoll over the socket', () => {
       expect(bob.diceBox.roll).toHaveBeenCalledWith([
         { type: 'd20', value: 5, appearance: { tag: 'look' } },
       ]);
-      expect(decorateFor).toHaveBeenCalledWith(null, expect.anything(), 'alice');
+      expect(decorateFor).toHaveBeenCalledWith(null, expect.anything(), 'alice', 'gm');
     });
 
     test('a forged userId is still rejected, whatever authorId says', async () => {

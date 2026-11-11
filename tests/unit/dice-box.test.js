@@ -1486,3 +1486,86 @@ describe('impact sounds', () => {
     expect(landed).toBeTruthy();
   });
 });
+
+describe('trigger effects at landing (onLandedFx)', () => {
+  const nat20fx = [
+    { ruleId: 'dicer.nat20', effect: { id: 'celebrate' }, sound: { builtin: 'fanfare' }, macro: null, slowMotion: true },
+  ];
+  const land = (renderer, physics) => {
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+  };
+
+  test('a landed die with fx calls onLandedFx(die, fx, rollKey) once; the sound plays once', async () => {
+    const result = vi.fn();
+    const onLandedFx = vi.fn((die, fx) => fx.forEach((f) => f.sound && result(f.sound)));
+    const { renderer, physics, box } = setup({ onLandedFx });
+    const { landed } = box.roll([
+      { type: 'd20', value: 20, fx: nat20fx, damageType: 'fire' },
+      { type: 'd6', value: 3 },
+    ]);
+    const isLanded = settled(landed);
+    renderer.tick(0);
+    expect(onLandedFx).not.toHaveBeenCalled();
+    land(renderer, physics);
+    renderer.tick(2100);
+    await flushMicrotasks();
+    expect(isLanded()).toBe(true);
+    expect(onLandedFx).toHaveBeenCalledTimes(1);
+    const [die, fx, key] = onLandedFx.mock.calls[0];
+    expect(die).toMatchObject({ type: 'd20', value: 20, damageType: 'fire' });
+    expect(fx).toBe(nat20fx);
+    expect(key).toEqual(expect.any(Object));
+    expect(result).toHaveBeenCalledTimes(1);
+    expect(result).toHaveBeenCalledWith({ builtin: 'fanfare' });
+  });
+
+  test('a ghost die never calls it, even if its spec carried fx', () => {
+    const onLandedFx = vi.fn();
+    const { renderer, physics, box } = setup({ onLandedFx });
+    box.roll([{ type: 'd20', value: 20, ghost: true, fx: nat20fx, damageType: 'fire' }]);
+    const die = box._rolls.values().next().value.dice[0];
+    expect(die.fx).toBeNull();
+    expect(die.damageType).toBeUndefined();
+    land(renderer, physics);
+    expect(onLandedFx).not.toHaveBeenCalled();
+  });
+
+  test('a d100 fires its fx on the ones die only', () => {
+    const onLandedFx = vi.fn();
+    const { renderer, physics, box } = setup({ onLandedFx });
+    box.roll([
+      { type: 'd10', value: 90, variant: 'd100tens', fx: nat20fx },
+      { type: 'd10', value: 7, fx: nat20fx },
+    ]);
+    land(renderer, physics);
+    expect(onLandedFx).toHaveBeenCalledTimes(1);
+    expect(onLandedFx.mock.calls[0][0].variant).toBeUndefined();
+  });
+
+  test('roll.slowMotion is true only when a (non-ghost) spec fx asks for it', () => {
+    const { box } = setup();
+    box.roll([{ type: 'd20', value: 20, fx: nat20fx }]);
+    box.roll([{ type: 'd20', value: 20, fx: [{ ...nat20fx[0], slowMotion: false }] }]);
+    box.roll([{ type: 'd20', value: 20, ghost: true, fx: nat20fx }]);
+    expect([...box._rolls].map((r) => r.slowMotion)).toEqual([true, false, false]);
+  });
+
+  test('a throwing onLandedFx warns once and never blocks landing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onLandedFx = vi.fn(() => {
+      throw new Error('x');
+    });
+    const { renderer, physics, box } = setup({ onLandedFx });
+    const a = settled(box.roll([{ type: 'd20', value: 20, fx: nat20fx }]).landed);
+    const b = settled(box.roll([{ type: 'd20', value: 1, fx: nat20fx }]).landed);
+    land(renderer, physics);
+    await flushMicrotasks();
+    expect(a()).toBe(true);
+    expect(b()).toBe(true);
+    expect(onLandedFx).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});

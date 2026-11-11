@@ -119,6 +119,7 @@ export class DiceBox {
     systemFor = () => null,
     onImpact = () => {},
     getSurface = () => 'felt',
+    onLandedFx = () => {},
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -145,6 +146,10 @@ export class DiceBox {
     // ({ material, surface, speed, other, dieKey }) per impact the playhead crosses (sound engine)
     this._onImpact = onImpact;
     this._getSurface = getSurface;
+    // (die, fx, rollKey) once per landed die carrying fx (never a ghost, never a d100's tens
+    // die): plays the result sound and macro (main.js). rollKey is one object per roll.
+    this._onLandedFx = onLandedFx;
+    this._fxWarned = false;
     this._rollSeq = 0;
     this._systemWarned = new Set(); // system id|kind: one warning each
     this._geometries = new Map(); // type|edge style -> BufferGeometry (P2-R5)
@@ -204,6 +209,8 @@ export class DiceBox {
       roll.flags = flags;
       roll.id = ++this._rollSeq;
       for (const spec of specs) roll.dice.push(this.#makeDie(spec, roll, flags, rollLook));
+      // Only this client's animation slows down (Task 8 reads it); fx exist on real dice only.
+      roll.slowMotion = roll.dice.some((d) => d.fx?.some((f) => f?.slowMotion === true));
       this.#acquireAssets(roll);
       for (const die of roll.dice) this._renderer.scene.add(die.outer);
       roll.playback = new Playback({ dice: roll.dice, area: this._area });
@@ -607,6 +614,12 @@ export class DiceBox {
       // A ghost has no system, so it never fires one.
       systemInstance: system ? this.#systemOf(system) : null,
       value: ghost ? undefined : spec.value,
+      // Trigger effects: never on a ghost; a d100 plays them once, on its ones die.
+      fx:
+        !ghost && spec.variant !== 'd100tens' && Array.isArray(spec.fx) && spec.fx.length
+          ? spec.fx
+          : null,
+      damageType: !ghost && typeof spec.damageType === 'string' ? spec.damageType : undefined,
       spawned: false,
       faceTex: null,
       // A ghost never shows a model: its numbers would show through.
@@ -803,6 +816,7 @@ export class DiceBox {
     clearTimeout(roll.landingTimer);
     roll.phase = 'lingering';
     this.#fireResults(roll);
+    this.#fireFx(roll);
     roll.resolveLanded();
     roll.timer = setTimeout(() => {
       if (roll.removed) return;
@@ -815,6 +829,21 @@ export class DiceBox {
       });
       this._renderer.startLoop(this._tick); // restarts the loop if it was stopped meanwhile
     }, this._timeBeforeHide() ?? DEFAULT_LINGER_MS);
+  }
+
+  /** onLandedFx per landed die with fx; a throwing listener warns once and never blocks landing. */
+  #fireFx(roll) {
+    for (const die of roll.dice) {
+      if (!die.fx || die.ghost) continue;
+      roll.fxKey ??= { id: roll.id };
+      try {
+        this._onLandedFx(die, die.fx, roll.fxKey);
+      } catch (err) {
+        if (this._fxWarned) continue;
+        this._fxWarned = true;
+        console.warn('dicer: a landed-effect listener threw', err);
+      }
+    }
   }
 
   /** One RESULT event per system instance, with that system's landed dice. */

@@ -1,5 +1,7 @@
 import { registerSettings } from '../../src/settings.js';
+import { readFileSync } from 'node:fs';
 import { LOOKS } from '../../src/look/looks.js';
+import { DEFAULT_RULES } from '../../src/effects/rules.js';
 
 function capture(callbacks) {
   const registered = {};
@@ -165,4 +167,33 @@ describe('sound settings', () => {
     r.sounds.onChange(false);
     expect(onSoundChange).toHaveBeenCalledWith('sounds', false);
   });
+});
+
+describe('effects settings', () => {
+  test('effects, showOthersEffects and slowMotion are client Booleans, default on', () => {
+    const r = capture();
+    for (const key of ['effects', 'showOthersEffects', 'slowMotion']) {
+      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+      expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
+      expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
+    }
+  });
+  test('triggerMacros is a world Boolean, default on', () => {
+    expect(capture().triggerMacros).toMatchObject({ scope: 'world', config: true, type: Boolean, default: true });
+  });
+  test('worldTriggers is a hidden world Array defaulting to a deep copy of DEFAULT_RULES', () => {
+    const cfg = capture().worldTriggers;
+    expect(cfg).toMatchObject({ scope: 'world', config: false, type: Array });
+    expect(cfg.default).toEqual(DEFAULT_RULES);
+    expect(cfg.default).not.toBe(DEFAULT_RULES);
+    expect(cfg.default[0]).not.toBe(DEFAULT_RULES[0]);
+  });
+});
+
+test('every effects setting has its English name and hint', () => {
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings;
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros']) {
+    expect(typeof en[key]?.Name).toBe('string');
+    expect(typeof en[key]?.Hint).toBe('string');
+  }
 });

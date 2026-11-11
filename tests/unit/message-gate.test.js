@@ -2,6 +2,8 @@
 import { createMessageGate, WATCHDOG_MS } from '../../src/foundry/message-gate.js';
 import { planThrow as realPlanThrow } from '../../src/throw/throw-planner.js';
 import { explodingD6, rerolledD20, dynamicCountD6, coin } from './foundry-roll.js';
+import { createFxResolver, composeDecorateFor } from '../../src/effects/fx-resolver.js';
+import { DEFAULT_RULES } from '../../src/effects/rules.js';
 
 const COMPLETE = 'diceSoNiceRollComplete';
 
@@ -1521,4 +1523,69 @@ test('RollStart gets a copy of the whisper list: a listener mutating ctx.users l
   const ctx = hooks.named('diceSoNiceRollStart')[0][2];
   expect(ctx.users).not.toBe(whisper);
   expect(whisper).toEqual(['gm', 'p1']);
+});
+
+describe('trigger effects are decided only for real views (privacy, Review Focus 1)', () => {
+  const player = { id: 'p1', isGM: false };
+  const gm = { id: 'gm', isGM: true };
+  /** A nat-20 d20 whose term names a damage type, so a leak of either would show. */
+  const nat20 = (extra = {}) => {
+    const term = { faces: 20, options: { flavor: 'fire' }, results: [{ result: 20, active: true }] };
+    return { formula: '1d20', dice: [term], terms: [term], ...extra };
+  };
+  function fxGate(viewer) {
+    const fx = createFxResolver({
+      getWorldRules: () => DEFAULT_RULES,
+      getUserRules: () => undefined,
+      currentUser: () => viewer,
+      getSetting: (k) => settings[k],
+    });
+    const decorateFor = composeDecorateFor({ looks: { decorate: () => () => ({}) }, fx });
+    return makeGate({ currentUser: () => viewer, decorateFor });
+  }
+  const blindMsg = (id, extra = {}) =>
+    message(id, { rolls: [nat20()], isContentVisible: false, blind: true, whisper: ['gm'], author: { id: 'p1' }, ...extra });
+  const hasLeak = (specs) => specs.some((s) => 'fx' in s || 'damageType' in s);
+
+  test('a real view of a nat 20 carries the fx and the damage type (control)', () => {
+    fxGate(player).onCreate(message('m1', { rolls: [nat20()], author: { id: 'p1' } }));
+    expect(diceBox.rolls[0].specs[0].fx[0].effect.id).toBe('celebrate');
+    expect(diceBox.rolls[0].specs[0].damageType).toBe('fire');
+  });
+
+  test('a blind message seen by a player: ghost specs with no fx and no damageType', () => {
+    settings.showGhostDice = true;
+    fxGate(player).onCreate(blindMsg('m1'));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
+    expect(hasLeak(diceBox.rolls[0].specs)).toBe(false);
+  });
+
+  test('a GM viewing the blind roll: fx present', () => {
+    fxGate(gm).onCreate(blindMsg('m1', { isContentVisible: true }));
+    expect(diceBox.rolls[0].specs[0].fx[0].ruleId).toBe('dicer.nat20');
+  });
+
+  test('whispered to someone else: nothing thrown', () => {
+    fxGate(player).onCreate(message('m1', { rolls: [nat20()], isContentVisible: false, whisper: ['x'], author: { id: 'x' } }));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('roll.ghost: ghost specs without fx, even for the GM', () => {
+    fxGate(gm).onCreate(message('m1', { rolls: [nat20({ ghost: true })], author: { id: 'p1' } }));
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
+  });
+
+  test('secret: nothing thrown for a player', () => {
+    fxGate(player).onCreate(message('m1', { rolls: [nat20({ secret: true })], author: { id: 'p1' } }));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('a ghost view never even calls the fx resolver', () => {
+    settings.showGhostDice = true;
+    const fx = { decorate: vi.fn(() => () => ({ fx: [{ ruleId: 'leak' }] })) };
+    const decorateFor = composeDecorateFor({ looks: { decorate: () => () => ({}) }, fx });
+    makeGate({ currentUser: () => player, decorateFor }).onCreate(blindMsg('m1'));
+    expect(diceBox.rolls).toHaveLength(1);
+    expect(fx.decorate).not.toHaveBeenCalled();
+  });
 });

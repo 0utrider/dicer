@@ -21,6 +21,13 @@ import { mirrorLookSetting, mirrorLookIfMissing } from './compat/user-looks.js';
 import { DEFAULT_APPEARANCE } from './look/appearance.js';
 import { LOOKS } from './look/looks.js';
 import { createSoundEngine } from './audio/sound-engine.js';
+import {
+  createFxResolver,
+  composeDecorateFor,
+  createLandedFx,
+  moduleRulesOf,
+} from './effects/fx-resolver.js';
+import { KNOWN_DAMAGE_TYPES } from './effects/roll-context.js';
 import { registerNoticeSetting, registerSettings, getSetting } from './settings.js';
 
 let dormant = false;
@@ -40,6 +47,27 @@ let soundEngine = null; // impact and result sounds; its synth is a lazy chunk
 export function soundSurface(get) {
   const own = get('soundSurfaceOverride');
   return own && own !== 'world' ? own : get('soundSurface') || 'felt';
+}
+
+/** Result sounds (never awaited) and trigger macros, once per landed die carrying fx. */
+const landedFx = createLandedFx({
+  playSound: (sound) => soundEngine?.result(sound),
+  fromUuid: (uuid) => globalThis.fromUuid(uuid),
+});
+
+/** The damage types rules may name: the systems' own plus every registered theme's. */
+function knownDamageTypesOf(reg) {
+  let key = null;
+  let set = KNOWN_DAMAGE_TYPES;
+  return () => {
+    const extra = Object.keys(reg?.damageTypeDefaults ?? {});
+    const next = extra.join('|');
+    if (next !== key) {
+      key = next;
+      set = new Set([...KNOWN_DAMAGE_TYPES, ...extra]);
+    }
+    return set;
+  };
 }
 
 /** Renders the sounds in an idle callback (never on a roll's frames). */
@@ -325,6 +353,7 @@ Hooks.once('ready', async () => {
         systemFor: (id) => registry?.systems.get(id)?.instance ?? null,
         onImpact: (e) => soundEngine?.impact(e),
         getSurface: () => soundSurface(getSetting),
+        onLandedFx: (die, fx, rollKey) => landedFx(die, fx, rollKey),
       });
     },
     activate: ({ renderer, diceBox: box }) => {
@@ -342,8 +371,19 @@ Hooks.once('ready', async () => {
         facesFor: presetFaces,
       });
       const plan = (roll, opts) => planThrow(roll, { shapeFor: resolver.shapeFor, ...opts });
-      const decorateFor = (message, roll, authorId) =>
-        resolver.decorate(message, roll, authorId ?? message?.author?.id);
+      // Trigger effects ride the same decorator, which the gate and showForRoll call for real
+      // views only (ghosts use the ghost decorator, 'none' is not planned): privacy-first.
+      const fxResolver = createFxResolver({
+        getWorldRules: () => getSetting('worldTriggers'),
+        getUserRules: (id) => game.users?.get(id)?.getFlag?.('dicer', 'triggers'),
+        getModuleRules: moduleRulesOf(registry),
+        currentUser: () => game.user,
+        getSetting,
+        shapeFor: resolver.shapeFor,
+        getKnownDamageTypes: knownDamageTypesOf(registry),
+      });
+      // (message, roll, authorId?, rollerId?): looks from the author, rules from the roller.
+      const decorateFor = composeDecorateFor({ looks: resolver, fx: fxResolver });
       gate = createMessageGate({
         diceBox: box,
         planThrow: plan,

@@ -117,6 +117,22 @@
       "soundSurfaceOverride": {
         "Name": "My table surface",
         "Hint": "Hear a different surface than the world's setting."
+      },
+      "effects": {
+        "Name": "Special effects",
+        "Hint": "Play effects and result sounds when a die shows a triggering result, such as a natural 20. Effects never play for rolls you cannot see."
+      },
+      "showOthersEffects": {
+        "Name": "Show other players' effects",
+        "Hint": "Also play the effects of other players' rolls. Off plays only the effects of your own rolls."
+      },
+      "slowMotion": {
+        "Name": "Slow motion",
+        "Hint": "Slow the landing down on this screen when a die celebrates or fumbles. Other players' timing is never affected."
+      },
+      "triggerMacros": {
+        "Name": "Trigger macros",
+        "Hint": "Let trigger rules run a macro when they fire. The macro runs once, on the roller's client."
       }
     },
     "Commands": {

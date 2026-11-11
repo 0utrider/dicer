@@ -174,9 +174,13 @@ export function createDice3dApi({
     });
   }
 
-  function decoratorFor(roll, authorId) {
+  /**
+   * The real-view decorator: `authorId` picks the look; the verified sender is the roller whose
+   * trigger rules apply (P3-R18: the caller's `user` never chooses rules or runs macros).
+   */
+  function decoratorFor(roll, authorId, senderId) {
     try {
-      return decorateFor(null, roll, authorId) || undefined;
+      return decorateFor(null, roll, authorId, senderId) || undefined;
     } catch (err) {
       console.error('dicer: cannot resolve the dice looks', err);
       return undefined;
@@ -292,7 +296,7 @@ export function createDice3dApi({
       const { dice } = planThrow(ghost ? ghostRoll(toThrow) : toThrow, {
         maxDice: Number(getSetting('maxDice')) || 20,
         showExtra: getSetting('showExtraDice') !== false,
-        decorate: ghost ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId),
+        decorate: ghost ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId, s.senderId),
       });
       if (!dice.length) return false;
       await diceBox.roll(dice).landed;

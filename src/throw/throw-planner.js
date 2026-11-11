@@ -4,7 +4,9 @@ import { dieTypeForFaces } from '../core/dice-shapes.js';
  * @typedef {{kind:'glyph', text:string}|{kind:'text', text:string}|{kind:'image', url:string}|{kind:'blank'}} FaceLabel
  * @typedef {{ key: string, labels: FaceLabel[] }} FaceSet indexed like getShape(type).values
  * @typedef {{ type: string, value: number, variant?: 'd100tens', appearance?: object,
- *   faces?: FaceSet, ghost?: boolean, model?: string }} DieSpec
+ *   faces?: FaceSet, ghost?: boolean, model?: string,
+ *   fx?: import('../effects/fx-resolver.js').Fx[], damageType?: string }} DieSpec
+ *   `fx` and `damageType` are result-dependent: set only for real views (never on a ghost).
  */
 
 /** The dice one result throws: a d100 is a tens d10 plus a ones d10. */

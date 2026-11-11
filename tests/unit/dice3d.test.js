@@ -3,6 +3,8 @@ import { planThrow } from '../../src/throw/throw-planner.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { buildScene } from '../../src/render/scene.js';
 import { explodingD6, rerolledD20, dynamicCountD6 } from './foundry-roll.js';
+import { createFxResolver, composeDecorateFor } from '../../src/effects/fx-resolver.js';
+import { DEFAULT_RULES } from '../../src/effects/rules.js';
 
 function fakeDiceBox() {
   const rolls = [];
@@ -74,12 +76,12 @@ test('showForRoll decorates with the given user (or the local user) as author', 
     });
     const r = roll(20, 4);
     a.showForRoll(r, { id: 'remote' });
-    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'remote');
+    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'remote', 'me');
     expect(diceBox.roll).toHaveBeenLastCalledWith([
       { type: 'd20', value: 4, appearance: { tag: 'x' } },
     ]);
     a.showForRoll(r);
-    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'me');
+    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'me', 'me');
   } finally {
     delete globalThis.game;
   }
@@ -556,6 +558,32 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     a.showForRoll(roll(20, 12), me, false, null, true);
     await Promise.resolve();
     expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 12 }]);
+  });
+
+  describe('trigger effects (privacy)', () => {
+    const fxMake = () => {
+      const fx = createFxResolver({
+        getWorldRules: () => DEFAULT_RULES,
+        getUserRules: () => undefined,
+        currentUser: () => me,
+        getSetting: (k) => settings[k],
+      });
+      return make({ decorateFor: composeDecorateFor({ looks: null, fx }) });
+    };
+
+    test('a blind nat 20 on a player client (ghosts on): no fx on any spec', async () => {
+      settings.showGhostDice = true;
+      fxMake().showForRoll(roll(20, 20), me, false, null, true);
+      await Promise.resolve();
+      expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true }]);
+    });
+
+    test('the same blind nat 20 on the GM client carries the celebrate fx', async () => {
+      me = { id: 'gm', isGM: true };
+      fxMake().showForRoll(roll(20, 20), me, false, null, true);
+      await Promise.resolve();
+      expect(diceBox.rolls[0].specs[0].fx[0].effect.id).toBe('celebrate');
+    });
   });
 
   test('options.ghost and roll.ghost throw ghosts; options.secret hides from a player', async () => {

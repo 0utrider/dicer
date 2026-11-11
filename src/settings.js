@@ -1,4 +1,5 @@
 import { LOOKS } from './look/looks.js';
+import { DEFAULT_RULES } from './effects/rules.js';
 
 export const MODULE_ID = 'dicer';
 
@@ -205,6 +206,32 @@ export function registerSettings({ onAreaChange, onLookChange, onQualityChange, 
     type: String,
     choices: surfaceChoices(['world', ...surfaces]),
     default: 'world',
+  });
+  // Trigger effects (P4-D2): the roller's rules decide; each viewer filters what they see.
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion']) {
+    game.settings.register(MODULE_ID, key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope: 'client',
+      config: true,
+      type: Boolean,
+      default: true,
+    });
+  }
+  game.settings.register(MODULE_ID, 'triggerMacros', {
+    name: t('triggerMacros.Name'),
+    hint: t('triggerMacros.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  // Edited by the trigger editor (Task 12), never in the settings form.
+  game.settings.register(MODULE_ID, 'worldTriggers', {
+    scope: 'world',
+    config: false,
+    type: Array,
+    default: structuredClone(DEFAULT_RULES),
   });
   registerNoticeSetting();
 }
