@@ -16,7 +16,11 @@ const PER_BUCKET = { heavy: 12, medium: 12, light: 9 };
 const DICE = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 
 const packDir = process.argv[2];
-if (!packDir) throw new Error('usage: node scripts/build-dice-sprite.mjs "<pack folder>"');
+if (!packDir) throw new Error('usage: node scripts/build-dice-sprite.mjs "<pack folder>" ["<kenney casino Audio folder>"]');
+// Optional second argument: Kenney's "Casino Audio" (CC0) Audio folder. Its die/dice throws were
+// recorded on a felt casino table (spectral centroid ~1 kHz vs ~2.4 kHz for the hard-table
+// pack), so they become the felt-table hits.
+const feltDir = process.argv[3];
 
 function decode(file) {
   const buf = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-ac', '1', '-ar', String(RATE), '-f', 'f32le', '-'], {
@@ -26,7 +30,7 @@ function decode(file) {
 }
 
 /** Onsets of hits in a recording, each cut to at most MAX_HIT_S, faded and normalized. */
-function hitsIn(x, die) {
+function hitsIn(x, die, maxHit = MAX_HIT_S) {
   const win = Math.round(RATE * 0.002);
   const env = new Float32Array(Math.ceil(x.length / win));
   for (let i = 0; i < env.length; i++) {
@@ -47,7 +51,7 @@ function hitsIn(x, die) {
   onsets.forEach((o, k) => {
     const start = Math.max(0, o * win - Math.round(RATE * 0.003));
     const next = k + 1 < onsets.length ? onsets[k + 1] * win - Math.round(RATE * 0.004) : x.length;
-    const end = Math.min(x.length, start + Math.round(RATE * MAX_HIT_S), next);
+    const end = Math.min(x.length, start + Math.round(RATE * maxHit), next);
     if (end - start < RATE * 0.04) return;
     const cut = x.slice(start, end);
     const p = cut.reduce((a, s) => Math.max(a, Math.abs(s)), 0);
@@ -89,27 +93,42 @@ for (const [bucket, count] of Object.entries(PER_BUCKET)) {
   }
 }
 
-const gap = Math.round(RATE * GAP_S);
-const total = picked.reduce((n, h) => n + h.samples.length + gap, gap);
-const sprite = new Float32Array(total);
-const hits = [];
-let at = gap;
-for (const h of picked) {
-  sprite.set(h.samples, at);
-  hits.push({ start: +(at / RATE).toFixed(4), duration: +(h.samples.length / RATE).toFixed(4), level: h.bucket, die: h.die });
-  at += h.samples.length + gap;
+/** Packs picked hits into one mono sprite: `<base>.mp3` + `<base>.json` under assets/sounds. */
+function writeSprite(picked, base, source) {
+  const gap = Math.round(RATE * GAP_S);
+  const total = picked.reduce((n, h) => n + h.samples.length + gap, gap);
+  const sprite = new Float32Array(total);
+  const hits = [];
+  let at = gap;
+  for (const h of picked) {
+    sprite.set(h.samples, at);
+    hits.push({ start: +(at / RATE).toFixed(4), duration: +(h.samples.length / RATE).toFixed(4), level: h.bucket, die: h.die });
+    at += h.samples.length + gap;
+  }
+  const work = join(tmpdir(), `dicer-sprite-${process.pid}-${base}`);
+  mkdirSync(work, { recursive: true });
+  const raw = join(work, 'sprite.f32');
+  writeFileSync(raw, Buffer.from(sprite.buffer));
+  const outDir = join(import.meta.dirname, '..', 'assets', 'sounds');
+  mkdirSync(outDir, { recursive: true });
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'f32le', '-ar', String(RATE), '-ac', '1', '-i', raw, '-c:a', 'libmp3lame', '-b:a', '96k', join(outDir, `${base}.mp3`)]);
+  writeFileSync(join(outDir, `${base}.json`), JSON.stringify({ source, rate: RATE, hits }, null, 1) + '\n');
+  rmSync(work, { recursive: true, force: true });
+  const counts = ['heavy', 'medium', 'light'].map((b) => `${b}=${hits.filter((h) => h.level === b).length}`).join(' ');
+  console.log(`${base}: ${hits.length} hits, ${(total / RATE).toFixed(2)} s ${counts}`);
 }
 
-const work = join(tmpdir(), `dicer-sprite-${process.pid}`);
-mkdirSync(work, { recursive: true });
-const raw = join(work, 'sprite.f32');
-writeFileSync(raw, Buffer.from(sprite.buffer));
-const outDir = join(import.meta.dirname, '..', 'assets', 'sounds');
-mkdirSync(outDir, { recursive: true });
-execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'f32le', '-ar', String(RATE), '-ac', '1', '-i', raw, '-c:a', 'libmp3lame', '-b:a', '96k', join(outDir, 'dice-hits.mp3')]);
-writeFileSync(
-  join(outDir, 'dice-hits.json'),
-  JSON.stringify({ source: 'Halfwits & Failed Crits, SFX Pack - Rolling Dice (CC0)', rate: RATE, hits }, null, 1) + '\n',
-);
-rmSync(work, { recursive: true, force: true });
-console.log(`${hits.length} hits, ${(total / RATE).toFixed(2)} s`, Object.entries(PER_BUCKET).map(([b]) => `${b}=${hits.filter((h) => h.level === b).length}`).join(' '));
+writeSprite(picked, 'dice-hits', 'Halfwits & Failed Crits, SFX Pack - Rolling Dice (CC0)');
+
+if (feltDir) {
+  // Felt decays fast: shorter hits. Casino dice are d6s.
+  const felt = [];
+  for (const name of ['die-throw-1', 'die-throw-2', 'die-throw-3', 'die-throw-4', 'dice-throw-1', 'dice-throw-2', 'dice-throw-3']) {
+    try {
+      felt.push(...hitsIn(decode(join(feltDir, `${name}.ogg`)), 'd6', 0.15));
+    } catch {
+      // a missing file just contributes nothing
+    }
+  }
+  writeSprite(felt.map((h) => ({ ...h, bucket: bucketOf(h) })), 'dice-hits-felt', 'Kenney, Casino Audio 1.1 (CC0), recorded on a felt table');
+}

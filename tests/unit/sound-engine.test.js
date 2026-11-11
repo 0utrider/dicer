@@ -31,10 +31,19 @@ for (const level of ['heavy', 'medium', 'light']) {
     HITS.push({ start: 0.05 + HITS.length * 0.2, duration: 0.1, level, die });
   }
 }
+// The felt-table sprite: its own hits, far from the hard-table ones, so tests can tell them apart.
+const FELT_HITS = ['heavy', 'heavy', 'medium', 'light'].map((level, i) => ({
+  start: 10.05 + i * 0.2,
+  duration: 0.1,
+  level,
+  die: 'd6',
+}));
 const spriteOk = async (url) => {
-  if (url.endsWith('.json')) return { ok: true, json: async () => ({ rate: 48000, hits: HITS }) };
-  return { ok: true, arrayBuffer: async () => new ArrayBuffer(16) };
+  const felt = /dice-hits-felt/.test(url);
+  if (url.endsWith('.json')) return { ok: true, json: async () => ({ rate: 48000, hits: felt ? FELT_HITS : HITS }) };
+  return { ok: true, arrayBuffer: async () => new ArrayBuffer(felt ? 32 : 16) };
 };
+const noFelt = async (url) => (/dice-hits-felt/.test(url) ? { ok: false, status: 404 } : spriteOk(url));
 const hitAt = (source) => HITS[Math.round((source.offset + 0.01 - 0.05) / 0.2)];
 
 let ctx;
@@ -212,12 +221,12 @@ describe('sound engine', () => {
     it('loads the sprite once and plays every hit from the shared buffer', async () => {
       const sprite = vi.fn(spriteOk);
       const { engine } = await ready({ sprite });
-      expect(sprite).toHaveBeenCalledTimes(2); // table + audio
+      expect(sprite).toHaveBeenCalledTimes(4); // table + audio, hard and felt
       expect(decodeCtxCount).toBe(1);
-      expect(decodeCtx.decoded.length).toBe(1);
+      expect(decodeCtx.decoded.length).toBe(2); // the hard-table and the felt sprite
       for (let i = 0; i < 5; i++) play(engine, { dieKey: `k${i}` });
       await engine.preload();
-      expect(sprite).toHaveBeenCalledTimes(2);
+      expect(sprite).toHaveBeenCalledTimes(4);
       expect(new Set(ctx.sources.map((s) => s.buffer)).size).toBe(1);
       expect(warn).not.toHaveBeenCalled();
     });
@@ -290,13 +299,36 @@ describe('sound engine', () => {
       expect(s.filters.map((f) => [f.type, f.frequency.value, f.gain.value])).toEqual([['highshelf', 4000, 2]]);
     });
 
+    it('a felt table plays the felt recordings for floor hits, unfiltered', async () => {
+      const { engine } = await ready();
+      for (let i = 0; i < 6; i++) {
+        const s = play(engine, { surface: 'felt', other: -1, speed: 24, dieKey: `felt${i}` });
+        expect(s.offset).toBeGreaterThanOrEqual(10); // a felt hit, not a hard-table one
+        expect(s.filters.length).toBe(0);
+      }
+      // Dice clicking against each other on felt are still resin on resin: the hard-table hits.
+      const dd = play(engine, { surface: 'felt', other: 3, speed: 24, dieKey: 'felt-dd' });
+      expect(dd.offset).toBeLessThan(10);
+      // Soft settling taps on felt use the felt set's quiet hits.
+      const soft = play(engine, { surface: 'felt', other: -1, speed: 9, dieKey: 'soft' });
+      expect(FELT_HITS[Math.round((soft.offset + 0.01 - 10.05) / 0.2)].level).toBe('light');
+    });
+
+    it('without the felt recordings, a felt floor hit falls back to a muffled hard-table hit', async () => {
+      const { engine } = await ready({ sprite: noFelt });
+      const s = play(engine, { surface: 'felt', other: -1, speed: 24, dieKey: 'nf' });
+      expect(s.offset).toBeLessThan(10);
+      expect(s.filters.map((x) => [x.type, x.frequency.value])).toEqual([['lowpass', 1200]]);
+      expect(s.totalGain).toBeCloseTo(10 ** (-4 / 20), 5);
+      expect(warn).toHaveBeenCalledTimes(1);
+      // The hard-table sounds still play normally.
+      expect(play(engine, { surface: 'wood', other: -1, speed: 24, dieKey: 'nf2' }).offset).toBeLessThan(10);
+    });
+
     it('colours floor hits by surface and leaves other dice contacts alone', async () => {
       const { engine } = await ready();
       const f = (surface, over = {}) => play(engine, { surface, other: -1, speed: 24, dieKey: surface, ...over });
-      let s = f('felt');
-      expect(s.filters.map((x) => [x.type, x.frequency.value])).toEqual([['lowpass', 2000]]);
-      expect(s.totalGain).toBeCloseTo(10 ** (-3 / 20), 5);
-      s = f('wood');
+      let s = f('wood');
       expect(s.filters.length).toBe(0);
       expect(s.totalGain).toBeCloseTo(1, 5);
       s = f('stone');
@@ -316,7 +348,7 @@ describe('sound engine', () => {
       engine.impact(hit());
       expect(ctx).toBeUndefined();
       await vi.advanceTimersByTimeAsync(50);
-      expect(sprite).toHaveBeenCalledTimes(2);
+      expect(sprite).toHaveBeenCalledTimes(4);
       now += 100;
       engine.impact(hit());
       expect(ctx.sources.length).toBe(1);

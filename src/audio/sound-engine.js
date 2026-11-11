@@ -18,6 +18,12 @@ export const SPRITE_PATHS = {
   audio: 'modules/dicer/assets/sounds/dice-hits.mp3',
   table: 'modules/dicer/assets/sounds/dice-hits.json',
 };
+// Dice recorded on a felt table (a different recording, not a filtered hard one): floor hits on
+// a felt surface play these. Optional: without them felt falls back to SURFACE_COLOUR.felt.
+export const FELT_SPRITE_PATHS = {
+  audio: 'modules/dicer/assets/sounds/dice-hits-felt.mp3',
+  table: 'modules/dicer/assets/sounds/dice-hits-felt.json',
+};
 // Loudness buckets on impactGain: a first floor impact (~24 sim units/s, gain 1) is heavy, the
 // mid bounces are medium, late settling taps (speed < ~11) are light.
 export const HEAVY_GAIN = 0.5; // speed >= ~18.1
@@ -36,7 +42,8 @@ export const MATERIAL_COLOUR = {
   stone: { rate: 1.05, filters: [{ type: 'highshelf', frequency: 4000, gain: 2 }] },
 };
 export const SURFACE_COLOUR = {
-  felt: { db: -3, filters: [{ type: 'lowpass', frequency: 2000 }] },
+  // Only when the felt recordings are unavailable: a strongly muffled hard-table hit.
+  felt: { db: -4, filters: [{ type: 'lowpass', frequency: 1200 }] },
   wood: { db: 0, filters: [] },
   stone: { db: 0, filters: [{ type: 'highshelf', frequency: 4000, gain: 3 }] },
   metal: { db: 0, filters: [{ type: 'peaking', frequency: 3000, Q: 1, gain: 4 }] },
@@ -258,10 +265,12 @@ export function createSoundEngine({
     return true;
   }
 
-  function pickHit(level, dieType, dieKey) {
-    const hits = sprite.hits;
+  /** A hit index of `set` (a decoded sprite) by level, die type, and not the die's last hit. */
+  function pickHit(set, level, dieType, dieKey) {
+    const hits = set.hits;
     const want = DIE_TYPES.has(dieType) ? dieType : DIE_ALIAS[dieType];
-    const last = dieKey === undefined ? undefined : lastPick.get(dieKey);
+    const prev = dieKey === undefined ? undefined : lastPick.get(dieKey);
+    const last = prev?.set === set ? prev.idx : undefined;
     for (const lv of LEVEL_ORDER[level]) {
       const pool = [];
       for (let i = 0; i < hits.length; i++) if (hits[i].level === lv && i !== last) pool.push(i);
@@ -274,19 +283,23 @@ export function createSoundEngine({
   }
 
   function playSample({ material, surface, level, gain, other, dieKey, dieType, t }) {
-    const idx = pickHit(level, dieType, dieKey);
+    const floor = other === -1;
+    // A felt floor plays the felt recordings as they are; any other floor colours the hard ones.
+    const onFelt = floor && surface === 'felt' && sprite.felt;
+    const set = onFelt ? sprite.felt : sprite;
+    const idx = pickHit(set, level, dieType, dieKey);
     if (idx < 0) return;
-    const hit = sprite.hits[idx];
+    const hit = set.hits[idx];
     const mat = MATERIAL_COLOUR[material] ?? MATERIAL_COLOUR.plastic;
-    const surf = other === -1 ? SURFACE_COLOUR[surface] : null;
+    const surf = floor && !onFelt ? SURFACE_COLOUR[surface] : null;
     const g = gain * (surf ? 10 ** (surf.db / 20) : 1);
     if (!admit(g, 1)) return;
     if (dieKey !== undefined) {
       lastHit.set(dieKey, t);
-      lastPick.set(dieKey, idx);
+      lastPick.set(dieKey, { set, idx });
     }
     const jitter = 1 + (Math.random() * 2 - 1) * SAMPLE_RATE_JITTER;
-    start(sprite.buffer, g, mat.rate * jitter, {
+    start(set.buffer, g, mat.rate * jitter, {
       filters: [...mat.filters, ...(surf?.filters ?? [])],
       offset: Math.max(0, hit.start - HIT_LEAD),
       duration: hit.duration + HIT_LEAD + HIT_TAIL,
@@ -393,30 +406,46 @@ export function createSoundEngine({
     }
   }
 
+  /** Fetches and decodes one sprite: `{buffer, hits}`; throws on any failure. */
+  async function fetchSprite(paths, dc) {
+    const [tableRes, audioRes] = await Promise.all([
+      fetchSound(resolveUrl(paths.table)),
+      fetchSound(resolveUrl(paths.audio)),
+    ]);
+    if (tableRes?.ok === false || audioRes?.ok === false) throw new Error('HTTP error');
+    const table = await tableRes.json();
+    const hits = (table?.hits ?? []).filter(
+      (h) => Number.isFinite(h?.start) && Number.isFinite(h?.duration) && h.duration > 0,
+    );
+    if (!hits.length) throw new Error('empty hit table');
+    const buffer = await dc.decodeAudioData(await audioRes.arrayBuffer());
+    return { buffer, hits };
+  }
+
   async function loadSprite() {
+    let dc;
     try {
-      const [tableRes, audioRes] = await Promise.all([
-        fetchSound(resolveUrl(SPRITE_PATHS.table)),
-        fetchSound(resolveUrl(SPRITE_PATHS.audio)),
-      ]);
-      if (tableRes?.ok === false || audioRes?.ok === false) throw new Error('HTTP error');
-      const table = await tableRes.json();
-      const hits = (table?.hits ?? []).filter(
-        (h) => Number.isFinite(h?.start) && Number.isFinite(h?.duration) && h.duration > 0,
-      );
-      if (!hits.length) throw new Error('empty hit table');
-      const dc = createDecodeContext
+      dc = createDecodeContext
         ? createDecodeContext()
         : typeof OfflineAudioContext === 'function'
           ? new OfflineAudioContext(1, 1, RENDER_RATE)
           : ensureContext();
       if (!dc) throw new Error('no audio context to decode with');
-      const buffer = await dc.decodeAudioData(await audioRes.arrayBuffer());
-      if (!disposed) sprite = { buffer, hits };
     } catch (e) {
       spriteFailed = true;
       warn('Dicer: recorded dice sounds could not be loaded, using synthesized ones', e);
+      return;
     }
+    const [table, felt] = await Promise.allSettled([fetchSprite(SPRITE_PATHS, dc), fetchSprite(FELT_SPRITE_PATHS, dc)]);
+    if (table.status === 'rejected') {
+      spriteFailed = true;
+      warn('Dicer: recorded dice sounds could not be loaded, using synthesized ones', table.reason);
+      return;
+    }
+    if (felt.status === 'rejected') {
+      warn('Dicer: felt-table dice sounds could not be loaded, muffling the hard-table ones', felt.reason);
+    }
+    if (!disposed) sprite = { ...table.value, felt: felt.status === 'fulfilled' ? felt.value : null };
   }
 
   async function loadRendered() {

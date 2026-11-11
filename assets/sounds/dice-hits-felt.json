@@ -1,0 +1,84 @@
+{
+ "source": "Kenney, Casino Audio 1.1 (CC0), recorded on a felt table",
+ "rate": 48000,
+ "hits": [
+  {
+   "start": 0.05,
+   "duration": 0.15,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 0.25,
+   "duration": 0.141,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 0.441,
+   "duration": 0.131,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 0.622,
+   "duration": 0.15,
+   "level": "medium",
+   "die": "d6"
+  },
+  {
+   "start": 0.822,
+   "duration": 0.15,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 1.022,
+   "duration": 0.15,
+   "level": "light",
+   "die": "d6"
+  },
+  {
+   "start": 1.222,
+   "duration": 0.15,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 1.422,
+   "duration": 0.15,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 1.622,
+   "duration": 0.15,
+   "level": "light",
+   "die": "d6"
+  },
+  {
+   "start": 1.822,
+   "duration": 0.15,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 2.022,
+   "duration": 0.119,
+   "level": "heavy",
+   "die": "d6"
+  },
+  {
+   "start": 2.191,
+   "duration": 0.069,
+   "level": "medium",
+   "die": "d6"
+  },
+  {
+   "start": 2.31,
+   "duration": 0.15,
+   "level": "medium",
+   "die": "d6"
+  }
+ ]
+}
