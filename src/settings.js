@@ -372,6 +372,10 @@ export function registerSettings({
   registerEditorMenu(t, 'themeBrowser', 'fa-solid fa-dice-d20', () =>
     import('./ui/theme-browser.js').then((m) => m.openThemeBrowser),
   );
+  // The appearance editor: everyone designs looks and saves them as their own themes; the GM also as world themes.
+  registerEditorMenu(t, 'appearanceEditor', 'fa-solid fa-palette', () =>
+    import('./ui/appearance-editor.js').then((m) => m.openAppearanceEditor),
+  );
   // Opens for everyone: the GM edits, a player gets a read-only preview of their own area (P5-D3).
   registerEditorMenu(t, 'rollAreaEditor', 'fa-solid fa-vector-square', () =>
     import('./ui/area-editor.js').then((m) => m.openAreaEditor),

@@ -380,6 +380,65 @@ describe('per-look fonts', () => {
   });
 });
 
+describe('update (the appearance editor)', () => {
+  const looks = (i) => ({
+    ...theme(),
+    appearance: { ...theme().appearance, body: { ...theme().appearance.body, color: i % 2 ? '#112233' : '#aabbcc' } },
+  });
+
+  test('update swaps the look and die type in place, keeping the turn and the loop', () => {
+    const s = setup();
+    const p = s.t.preview(target(), theme(), 'd20');
+    s.step(500);
+    const pending = s.pending.size;
+    p.update(theme(1), 'd6');
+    s.step(16);
+    const scene = s.r.renderer.render.mock.calls.at(-1)[0];
+    expect(scene).toBeTruthy();
+    expect(s.pending.size).toBe(pending); // still one frame request: no second loop
+    expect(p.active).toBe(true);
+    // the turn continued: the pose after the update is not the starting pose
+    expect(s.r.poses.at(-1)).not.toEqual(s.r.poses[0]);
+    p.stop();
+    s.t.dispose();
+  });
+
+  test('200 updates leave no undisposed material', () => {
+    const s = setup();
+    const made = new Set();
+    s.r.renderer.render.mockImplementation((scene) => {
+      for (const c of scene.children) if (c.isMesh && c.material.userData?.uniforms) made.add(c.material);
+    });
+    const freed = new Set();
+    vi.spyOn(THREE.MeshPhysicalMaterial.prototype, 'dispose').mockImplementation(function () {
+      freed.add(this);
+    });
+    const p = s.t.preview(target(), looks(0), 'd20');
+    for (let i = 1; i <= 200; i++) {
+      p.update(looks(i), i % 3 ? 'd20' : 'd8');
+      if (i % 7 === 0) s.step(16);
+    }
+    s.step(16);
+    p.stop();
+    expect(made.size).toBeGreaterThan(20);
+    for (const m of made) expect(freed.has(m)).toBe(true);
+    s.t.dispose();
+  });
+
+  test('update after stop is ignored; a missing look is ignored', () => {
+    const s = setup();
+    const p = s.t.preview(target(), theme());
+    p.stop();
+    const n = s.r.renderer.render.mock.calls.length;
+    expect(() => p.update(theme(1), 'd6')).not.toThrow();
+    const q = s.t.preview(target(), theme());
+    expect(() => q.update(null)).not.toThrow();
+    expect(q.active).toBe(true);
+    expect(s.r.renderer.render.mock.calls.length).toBeGreaterThanOrEqual(n + 1);
+    s.t.dispose();
+  });
+});
+
 test('the preview holds a font atlas while its die exists and lets go on stop', () => {
   const fontAtlas = {
     ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits-sans.json', 'utf8'))),

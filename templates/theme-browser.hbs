@@ -1,55 +1,4 @@
 <div class="dicer-theme-browser-body">
-{{#if editing}}
-  <form class="dicer-theme-edit">
-    <p class="dicer-hint">{{localize "DICER.Themes.EditHint"}}</p>
-    <div class="dicer-edit-grid dicer-edit-main">
-      <label class="dicer-field dicer-span-2">
-        <span>{{localize "DICER.Themes.Name"}}</span>
-        <input type="text" name="name" value="{{edit.name}}">
-      </label>
-      <label class="dicer-field">
-        <span>{{localize "DICER.Themes.BaseLook"}}</span>
-        <select name="base">{{selectOptions lookChoices selected=edit.base}}</select>
-      </label>
-      <label class="dicer-field">
-        <span>{{localize "DICER.Themes.SoundMaterial"}}</span>
-        <select name="soundMaterial">{{selectOptions materialChoices selected=edit.soundMaterial}}</select>
-      </label>
-    </div>
-    <fieldset class="dicer-section">
-      <legend>{{localize "DICER.Themes.PerType"}}</legend>
-      <div class="dicer-edit-grid dicer-edit-dice">
-        {{#each dieRows}}
-          <label class="dicer-field">
-            <span>{{label}}</span>
-            <select name="perType.{{type}}">{{selectOptions ../perTypeChoices selected=value}}</select>
-          </label>
-        {{/each}}
-      </div>
-    </fieldset>
-    <div class="dicer-edit-celebrations">
-      {{#each celebrations}}
-        <fieldset class="dicer-section">
-          <legend>{{label}}</legend>
-          <div class="dicer-edit-grid">
-            <label class="dicer-field">
-              <span>{{localize "DICER.Themes.Effect"}}</span>
-              <select name="{{key}}.effect">{{selectOptions ../effectChoices selected=effect}}</select>
-            </label>
-            <label class="dicer-field">
-              <span>{{localize "DICER.Themes.Sound"}}</span>
-              <select name="{{key}}.sound">{{selectOptions ../soundChoices selected=sound}}</select>
-            </label>
-          </div>
-        </fieldset>
-      {{/each}}
-    </div>
-    <footer class="dicer-footer">
-      <button type="button" data-action="cancelEdit"><i class="fa-solid fa-xmark"></i> {{localize "DICER.Themes.Cancel"}}</button>
-      <button type="button" class="bright" data-action="saveEdit"><i class="fa-solid fa-floppy-disk"></i> {{localize "DICER.Themes.Save"}}</button>
-    </footer>
-  </form>
-{{else}}
   <div class="dicer-toolbar">
     <nav class="dicer-segmented" aria-label="{{localize "DICER.Themes.Filter"}}">
       {{#each filters}}
@@ -59,6 +8,7 @@
       {{/each}}
     </nav>
     <div class="dicer-toolbar-actions">
+      <button type="button" class="bright" data-action="create"><i class="fa-solid fa-palette"></i> {{localize "DICER.Themes.Create"}}</button>
       <button type="button" data-action="importThemes"><i class="fa-solid fa-file-import"></i> {{localize "DICER.Themes.Import"}}</button>
       <button type="button" data-action="exportMine"><i class="fa-solid fa-file-export"></i> {{localize "DICER.Themes.ExportMine"}}</button>
     </div>
@@ -149,5 +99,4 @@
       </aside>
     {{/if}}
   </div>
-{{/if}}
 </div>

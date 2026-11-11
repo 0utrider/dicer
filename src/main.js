@@ -83,9 +83,9 @@ function preloadEffects() {
   else setTimeout(run, 200);
 }
 
-/** Fetches the editor chunks (triggers, damage map, roll areas, themes) in an idle callback (they are small), so opening one is instant. */
+/** Fetches the editor chunks (triggers, damage map, roll areas, themes, appearance) in an idle callback (they are small), so opening one is instant. */
 export function preloadEditors(
-  loaders = [() => import('./ui/trigger-editor.js'), () => import('./ui/damage-map-editor.js'), () => import('./ui/area-editor.js'), () => import('./ui/theme-browser.js')],
+  loaders = [() => import('./ui/trigger-editor.js'), () => import('./ui/damage-map-editor.js'), () => import('./ui/area-editor.js'), () => import('./ui/theme-browser.js'), () => import('./ui/appearance-editor.js')],
 ) {
   const run = () => {
     for (const load of loaders) {

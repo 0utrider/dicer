@@ -1,10 +1,12 @@
-// Render harness for the three editor windows (theme browser, trigger rules, damage type map).
+// Render harness for the editor windows (theme browser, appearance editor, trigger rules, damage type map).
 // The real application classes run against a small ApplicationV2 / game stand-in: their own
 // _prepareContext builds the context, the real .hbs templates render it (Handlebars + the Foundry
 // helpers they use), their action handlers answer clicks and the theme browser's _onRender makes
 // real thumbnails through the thumbnailer. tests/visual/editors.mjs drives it and screenshots it.
-// Query: ?app=themes|triggers|damage  &player=1 (a player instead of the GM).
+// Query: ?app=themes|appearance|triggers|damage  &player=1 (a player instead of the GM)
+//        &theme=<id> (appearance: the theme to edit).
 import { loadDigitAtlas } from '../src/render/sdf-atlas.js';
+import { createFontAtlases, createFontWorker } from '../src/fonts/font-atlas.js';
 import { BUILTIN_THEMES } from '../src/themes/themes.js';
 import { DEFAULT_RULES, normalizeRule } from '../src/effects/rules.js';
 import { resolveDamageTheme } from '../src/effects/damage-themes.js';
@@ -179,6 +181,19 @@ const userFlags = {
   themes: [
     { id: 'user.u1.my-ember', name: 'My Ember', appearance: theme('ember-core').appearance },
     { id: 'user.u1.night-sky', name: 'Night Sky (copy)', appearance: theme('starlit-glitter').appearance },
+    {
+      id: 'user.u1.midnight-nebula',
+      name: 'Midnight Nebula',
+      appearance: {
+        body: { type: 'resin', color: '#2b4fa8', color2: '#0b1440', finish: 'polished', roughness: 0.04 },
+        interior: { type: 'nebula', colors: ['#b04dff', '#2fd8f0'], density: 0.72, shape: 'star' },
+        numbers: { fill: 'gold', color: '#e2b04a', depth: 0.55, font: 'serif' },
+        edges: { radius: 0.5 },
+        glow: { color: '#7fb4ff', intensity: 0 },
+      },
+      perType: {},
+      rules: [],
+    },
   ],
   appearance: { d20: { theme: 'galaxy-nebula' }, 'role:attack': { theme: 'dragon-hoard' }, d6: { theme: 'dragon-hoard' } },
   triggers: [
@@ -199,7 +214,17 @@ const moduleRule = normalizeRule(
   'module',
   quiet,
 );
-const atlas = which === 'themes' ? await loadDigitAtlas('/assets/fonts') : null;
+const atlas = which === 'themes' || which === 'appearance' ? await loadDigitAtlas('/assets/fonts') : null;
+// The real font layer (sans atlas, computer fonts) for the appearance editor's preview.
+const fonts =
+  which === 'appearance'
+    ? createFontAtlases({
+        serif: atlas,
+        loadBundled: (name) => loadDigitAtlas('/assets/fonts', `digits-${name}`),
+        createWorker: createFontWorker,
+        getRoute: (path) => `/${path}`,
+      })
+    : null;
 
 globalThis.game = {
   user: {
@@ -218,7 +243,7 @@ globalThis.game = {
     set: async (scope, key, value) => (store[key] = value),
   },
   dice3d: {
-    _themeContext: () => ({ atlas }),
+    _themeContext: () => ({ atlas, fonts }),
     _triggerContext: () => ({
       moduleRules: [moduleRule],
       triggers: [],
@@ -239,6 +264,9 @@ let app;
 if (which === 'themes') {
   const { ThemeBrowser } = await import('../src/ui/theme-browser.js');
   app = new ThemeBrowser();
+} else if (which === 'appearance') {
+  const { AppearanceEditor } = await import('../src/ui/appearance-editor.js');
+  app = new AppearanceEditor({ themeId: params.get('theme') ?? 'user.u1.midnight-nebula' });
 } else if (which === 'triggers') {
   const { TriggerEditor } = await import('../src/ui/trigger-editor.js');
   app = new TriggerEditor();
@@ -259,5 +287,15 @@ async function thumbnailsReady(timeout = 60000) {
   return [...document.querySelectorAll('.dicer-theme-card img.dicer-thumb')].filter((i) => !i.hidden).length;
 }
 
-window.__editors = { app, errors, store, userFlags, thumbnailsReady };
+/** Resolves once the appearance editor's live die has drawn (or after the timeout). */
+async function previewReady(timeout = 30000) {
+  const end = performance.now() + timeout;
+  while (performance.now() < end) {
+    if (document.querySelector('.dicer-ae-stage.has-live canvas.dicer-live:not([hidden])')) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
+}
+
+window.__editors = { app, errors, store, userFlags, thumbnailsReady, previewReady };
 window.__ready = true;

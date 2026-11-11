@@ -1,18 +1,15 @@
 /**
  * The theme browser (lazy chunk, opened from the `dicer.themeBrowser` settings menu): a gallery
  * of built-in, world and the user's own themes with live thumbnails, "use" assignment (default,
- * die type, roll role, owned actor, damage type), duplicate + a simple edit form, export / import
- * files and the GM's publish. The pure logic is in ./theme-form.js; the data actions below
+ * die type, roll role, owned actor, damage type), create / duplicate / edit (in the appearance
+ * editor, its own lazy chunk), export / import files and the GM's publish. The pure logic is in ./theme-form.js; the data actions below
  * (assign, clear, save, import, export, publish) are exported so they can be tested without a DOM.
  */
-import { LOOKS } from '../look/looks.js';
-import { RESULT_SOUNDS } from '../audio/sound-names.js';
-import { DIE_TYPES, SOUND_MATERIALS, KNOWN_EFFECTS } from '../themes/themes.js';
+import { DIE_TYPES } from '../themes/themes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { damageTypeList } from './damage-map-form.js';
 import {
   ROLL_ROLES,
-  KEEP,
   roleSlot,
   slotPatch,
   assignDamage,
@@ -24,9 +21,6 @@ import {
   exportJson,
   importThemes,
   slugify,
-  formFromTheme,
-  themeFromForm,
-  mergeEdited,
   themeAssignments,
 } from './theme-form.js';
 
@@ -245,12 +239,6 @@ export function pickSelected(visible, current, defaultId) {
   return visible[0]?.id ?? null;
 }
 
-const choiceMap = (ids, nameOf, none, keep) => ({
-  ...(none === undefined ? {} : { '': none }),
-  ...(keep ? { [KEEP]: keep } : {}),
-  ...Object.fromEntries(ids.map((id) => [id, nameOf(id)])),
-});
-
 let instance = null;
 
 export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
@@ -268,8 +256,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       clear: ThemeBrowser.#onClear,
       duplicate: ThemeBrowser.#onDuplicate,
       edit: ThemeBrowser.#onEdit,
-      saveEdit: ThemeBrowser.#onSaveEdit,
-      cancelEdit: ThemeBrowser.#onCancelEdit,
+      create: ThemeBrowser.#onCreate,
       exportOne: ThemeBrowser.#onExportOne,
       exportMine: ThemeBrowser.#onExportMine,
       importThemes: ThemeBrowser.#onImport,
@@ -285,7 +272,6 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   #filter = 'all';
   #selected = null; // the theme id shown in the detail panel
   #urls = new Map(); // theme id -> thumbnail URL already made (re-renders show it at once)
-  #editing = null; // { base: theme (raw, stored), form }
   #thumbs = null;
   #preview = null; // the live turning die of the detail panel (thumbnailer.preview)
   #token = 0;
@@ -339,7 +325,6 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _prepareContext() {
-    if (this.#editing) return this.#editContext();
     const { themes, unreadable } = this.#entries();
     const filter = Object.hasOwn(FILTER_KEYS, this.#filter) ? this.#filter : 'all';
     const isGM = this.#isGM;
@@ -368,14 +353,13 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         slotCount: others.length,
         slotTooltip: others.map(labelOf).join(', '),
         assigned: targets.map((target) => ({ target, label: labelOf(target), isDefault: target === 'default' })),
-        canEdit: t.source === 'user',
+        canEdit: t.source === 'user' || (t.source === 'world' && isGM),
         canPublish: isGM && t.source !== 'world',
         canDelete: t.source === 'user' || (t.source === 'world' && isGM),
       };
     };
     const cards = visible.map(view);
     return {
-      editing: false,
       filter,
       filters: Object.entries(FILTER_KEYS).map(([id, key]) => ({
         id,
@@ -388,29 +372,6 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       hasCards: cards.length > 0,
       detail: cards.find((c) => c.selected) ?? null,
       unreadable: unreadable.map((u) => ({ label: label(u.raw), sourceLabel: loc(SOURCE_LABEL[u.source]) })),
-    };
-  }
-
-  #editContext() {
-    const { form } = this.#editing;
-    const looks = Object.keys(LOOKS);
-    const lookName = (id) => LOOKS[id].name;
-    const keep = loc('DICER.Themes.KeepCustom');
-    const needKeep = (v) => v === KEEP;
-    const withKeep = (map, v) => (needKeep(v) && !(KEEP in map) ? { ...map, [KEEP]: keep } : map);
-    return {
-      editing: true,
-      edit: form,
-      lookChoices: withKeep(choiceMap(looks, lookName), form.base),
-      materialChoices: choiceMap(SOUND_MATERIALS, humanize, loc('DICER.Themes.None')),
-      perTypeChoices: choiceMap(looks, lookName, loc('DICER.Themes.SameAsBase'), keep),
-      effectChoices: choiceMap(KNOWN_EFFECTS, humanize, loc('DICER.Themes.None'), keep),
-      soundChoices: choiceMap(RESULT_SOUNDS, humanize, loc('DICER.Themes.None'), keep),
-      dieRows: DIE_TYPES.map((type) => ({ type, label: type, value: form.perType[type] })),
-      celebrations: [
-        { key: 'nat20', label: loc('DICER.Themes.NatHigh'), ...form.nat20 },
-        { key: 'nat1', label: loc('DICER.Themes.NatLow'), ...form.nat1 },
-      ],
     };
   }
 
@@ -557,36 +518,31 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     if (ok) await this.render();
   }
 
-  static async #onDuplicate(event, target) {
+  /** Opens the appearance editor (its own lazy chunk); a save there refreshes the gallery. */
+  #openEditor(options) {
+    const onSave = (id) => {
+      this.#selected = id;
+      this.#urls.clear(); // an edited theme keeps its id: make its thumbnail again
+      this.render();
+    };
+    return import('./appearance-editor.js').then((m) => m.openAppearanceEditor({ ...options, onSave }));
+  }
+
+  /** Duplicate opens the editor on an unsaved copy; it becomes a theme of mine on Save. */
+  static #onDuplicate(event, target) {
+    const theme = ThemeBrowser.#themeOf(this, target);
+    if (theme) return this.#openEditor({ base: theme });
+  }
+
+  static #onEdit(event, target) {
     const theme = ThemeBrowser.#themeOf(this, target);
     if (!theme) return;
-    const copy = await duplicate(theme);
-    this.#filter = 'user';
-    if (copy) this.#selected = copy.id;
-    await this.render();
+    if (theme.source === 'user' || (theme.source === 'world' && this.#isGM)) return this.#openEditor({ themeId: theme.id });
   }
 
-  static async #onEdit(event, target) {
-    const theme = ThemeBrowser.#themeOf(this, target);
-    if (!theme || theme.source !== 'user') return;
-    this.#editing = { base: theme, form: formFromTheme(theme) };
-    await this.render();
-  }
-
-  static async #onSaveEdit() {
-    if (!this.#editing) return;
-    const form = this.element.querySelector('.dicer-theme-edit');
-    const data = foundry.utils.expandObject(new foundry.applications.ux.FormDataExtended(form).object);
-    const stored = userList().find((t) => t && t.id === this.#editing.base.id);
-    await saveMine(mergeEdited(stored, themeFromForm(data, this.#editing.base)));
-    this.#editing = null;
-    notify('info', loc('DICER.Themes.Saved'));
-    await this.render();
-  }
-
-  static async #onCancelEdit() {
-    this.#editing = null;
-    await this.render();
+  /** A new theme from the default look. */
+  static #onCreate() {
+    return this.#openEditor({});
   }
 
   static #onExportOne(event, target) {

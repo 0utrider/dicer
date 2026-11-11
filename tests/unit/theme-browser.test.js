@@ -21,6 +21,7 @@ import {
 } from '../../src/ui/theme-form.js';
 import { BUILTIN_THEMES, normalizeTheme } from '../../src/themes/themes.js';
 
+vi.mock('../../src/ui/appearance-editor.js', () => ({ openAppearanceEditor: vi.fn(async () => {}) }));
 vi.mock('../../src/themes/thumbnailer.js', () => ({
   createThumbnailer: vi.fn(() => ({ thumbnail: vi.fn(async () => null), dispose: vi.fn() })),
 }));
@@ -441,6 +442,34 @@ describe('the browser actions', () => {
       expect(ctx.cards[0].showBadge).toBe(true);
       expect(ctx.detail.id).toBe('user.u1.mine');
       expect(app.render).toHaveBeenCalledTimes(2);
+    });
+
+    it('Create, Duplicate and Edit open the appearance editor (no simple form); Edit only where the user may write', async () => {
+      const { openAppearanceEditor } = await import('../../src/ui/appearance-editor.js');
+      openAppearanceEditor.mockClear();
+      flags.themes = [raw('user.u1.mine', 'Mine')];
+      store.worldThemes = [raw('world.w', 'W')];
+      const app = make();
+      await actions.create.call(app, {}, { dataset: {} });
+      expect(openAppearanceEditor.mock.calls[0][0]).toEqual({ onSave: expect.any(Function) });
+      await actions.duplicate.call(app, {}, { dataset: { theme: 'verdant' } });
+      expect(openAppearanceEditor.mock.calls[1][0].base.id).toBe('verdant');
+      expect(flags.themes).toHaveLength(1); // nothing saved until the editor saves
+      await actions.edit.call(app, {}, { dataset: { theme: 'user.u1.mine' } });
+      expect(openAppearanceEditor.mock.calls[2][0].themeId).toBe('user.u1.mine');
+      await actions.edit.call(app, {}, { dataset: { theme: 'world.w' } }); // a player: no edit of world themes
+      await actions.edit.call(app, {}, { dataset: { theme: 'verdant' } }); // built-in: no edit
+      expect(openAppearanceEditor).toHaveBeenCalledTimes(3);
+      user.isGM = true;
+      await actions.edit.call(app, {}, { dataset: { theme: 'world.w' } });
+      expect(openAppearanceEditor.mock.calls[3][0].themeId).toBe('world.w');
+      expect(mod.ThemeBrowser.DEFAULT_OPTIONS.actions.saveEdit).toBeUndefined();
+      // a save in the editor selects the theme and re-renders the gallery
+      openAppearanceEditor.mock.calls[3][0].onSave('world.w');
+      expect(app.render).toHaveBeenCalled();
+      const ctx = await app._prepareContext();
+      expect(ctx.detail.id).toBe('world.w');
+      expect(ctx.detail.canEdit).toBe(true);
     });
 
     it('an assignment chip clears its own slot', async () => {

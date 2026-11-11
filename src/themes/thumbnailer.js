@@ -309,10 +309,11 @@ export function createThumbnailer({
    * @param {string} [dieType]
    * @param {{onFrame?:Function, onLost?:Function}} [hooks] onFrame after each drawn frame; onLost
    *   once when the preview ended because WebGL failed (show the static thumbnail instead)
-   * @returns {{setRotation:(r:{yaw?:number,pitch?:number})=>void, reset:()=>void, stop:()=>void, active:boolean}|null}
+   * @returns {{setRotation:(r:{yaw?:number,pitch?:number})=>void, reset:()=>void, update:(theme:object, dieType?:string)=>void, stop:()=>void, active:boolean}|null}
+   *   update swaps the look (and die type) in place: the old material is freed, the turn goes on.
    */
   function preview(target, theme, dieType = 'd20', hooks = {}) {
-    const appearance = theme?.perType?.[dieType] ?? theme?.appearance;
+    let appearance = theme?.perType?.[dieType] ?? theme?.appearance;
     if (disposed || broken || !appearance || !target) return null;
     const ctx = target.getContext?.('2d');
     if (!ctx) return null;
@@ -484,6 +485,14 @@ export function createThumbnailer({
         redraw();
       },
       reset: dbl,
+      update(next, type = dieType) {
+        const look = next?.perType?.[type] ?? next?.appearance;
+        if (stopped || !look) return;
+        appearance = look;
+        dieType = type;
+        free();
+        redraw();
+      },
       /** lost: the preview ended because WebGL failed rather than because the caller stopped it. */
       halt(lost = false) {
         if (stopped) return;

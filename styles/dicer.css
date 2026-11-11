@@ -95,10 +95,10 @@
 }
 
 /* ------------------------------------------------------------------------------------------- */
-/* Editor windows (theme browser, trigger rules, damage map). Everything is scoped under the   */
+/* Editor windows (themes, appearance, trigger rules, damage map). Everything is scoped under */
 /* app's root class and built on Foundry's own variables, so dark and light themes both work.  */
 /* ------------------------------------------------------------------------------------------- */
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) {
   --dicer-accent: var(--color-warm-1, #ee9b3a);
   --dicer-line: color-mix(in srgb, currentColor 14%, transparent);
   --dicer-line-strong: color-mix(in srgb, currentColor 28%, transparent);
@@ -111,17 +111,17 @@
   --dicer-radius: 6px;
   --dicer-head-bg: #17151c;
 }
-body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor),
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor).theme-light {
+body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor),
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor).theme-light {
   --dicer-head-bg: #ece6dc;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .window-content {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .window-content {
   padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-:is(.dicer-theme-browser-body, .dicer-trigger-body, .dicer-damage-map-body) {
+:is(.dicer-theme-browser-body, .dicer-trigger-body, .dicer-damage-map-body, .dicer-ae-body) {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -131,7 +131,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 
 /* shared pieces */
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) button {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) button {
   flex: 0 0 auto;
   width: auto;
   height: var(--dicer-control-h);
@@ -140,12 +140,12 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   font-size: var(--font-size-13, 13px);
   white-space: nowrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) button.dicer-icon {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) button.dicer-icon {
   width: var(--dicer-control-h);
   flex: 0 0 var(--dicer-control-h);
   padding: 0;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) button.dicer-ghost {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) button.dicer-ghost {
   --button-background-color: transparent;
   --button-border-color: transparent;
   --button-text-color: var(--color-text-secondary);
@@ -153,42 +153,42 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   --button-hover-border-color: var(--dicer-line-strong);
   --button-hover-text-color: var(--color-text-emphatic);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) button.dicer-danger:hover:not(:disabled) {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) button.dicer-danger:hover:not(:disabled) {
   --button-hover-background-color: var(--color-level-error, #ce0707);
   --button-hover-border-color: var(--color-level-error, #ce0707);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) :is(select, input[type='text'], input[type='number']) {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) :is(select, input[type='text'], input[type='number']) {
   height: var(--dicer-control-h);
   width: 100%;
   min-width: 0;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-hint {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-hint {
   margin: 0;
   font-size: var(--font-size-12, 12px);
   line-height: 1.4;
   color: var(--dicer-muted);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-muted {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-muted {
   color: var(--dicer-muted);
   font-size: var(--font-size-12, 12px);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-empty {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-empty {
   margin: 12px;
   color: var(--dicer-muted);
   font-style: italic;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-toolbar {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-toolbar-actions {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-toolbar-actions {
   display: flex;
   gap: 6px;
   margin-left: auto;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-segmented {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-segmented {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
@@ -196,7 +196,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   border-radius: calc(var(--dicer-radius) + 2px);
   background: var(--dicer-surface);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-segmented button {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-segmented button {
   --button-background-color: transparent;
   --button-border-color: transparent;
   --button-text-color: var(--color-text-secondary);
@@ -208,7 +208,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   border-radius: var(--dicer-radius);
   gap: 6px;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-segmented button.active {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-segmented button.active {
   --button-background-color: var(--dicer-selected);
   --button-hover-background-color: var(--dicer-selected);
   --button-text-color: var(--color-text-emphatic);
@@ -219,39 +219,39 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   outline: none; /* Foundry outlines an active button; the fill marks it here */
   font-weight: 600;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-count {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-count {
   font-size: var(--font-size-11, 11px);
   font-weight: normal;
   color: var(--dicer-muted);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-field {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-field {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
   margin: 0;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-field > span:first-child {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-field > span:first-child {
   font-size: var(--font-size-12, 12px);
   color: var(--dicer-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-footer {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid var(--dicer-line);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-footer button {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-footer button {
   min-width: 120px;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-footer:empty {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-footer:empty {
   display: none;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-badge {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-badge {
   display: inline-block;
   padding: 1px 7px;
   border-radius: 999px;
@@ -263,15 +263,15 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   color: var(--dicer-muted);
   white-space: nowrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-badge-user {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-badge-user {
   border-color: color-mix(in srgb, var(--dicer-accent) 45%, transparent);
   color: var(--dicer-accent);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-badge-world {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-badge-world {
   border-color: color-mix(in srgb, var(--color-level-info, #59a1f6) 45%, transparent);
   color: var(--color-level-info, #59a1f6);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-chip {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -283,16 +283,16 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   background: var(--dicer-surface-strong);
   font-size: var(--font-size-12, 12px);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-chip > span {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-chip > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-chip.is-default {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-chip.is-default {
   padding-right: 8px;
   background: var(--dicer-selected);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) button.dicer-chip-x {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) button.dicer-chip-x {
   --button-background-color: transparent;
   --button-border-color: transparent;
   --button-hover-background-color: var(--dicer-surface-strong);
@@ -305,7 +305,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   font-size: 10px;
   color: var(--dicer-muted);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor) .dicer-sr {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor) .dicer-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -358,7 +358,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   border-color: var(--dicer-accent);
   background: var(--dicer-selected);
 }
-.dicer-theme-browser .dicer-stage {
+:is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-stage {
   position: relative;
   aspect-ratio: 1;
   border-radius: var(--dicer-radius);
@@ -371,13 +371,13 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
     radial-gradient(circle at 50% 35%, #3a3940 0%, #1f1e24 58%, #141317 100%);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
-.dicer-theme-browser .dicer-fallback {
+:is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-fallback {
   font-size: 44px;
   color: var(--dicer-swatch, #888);
   opacity: 0.85;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6));
 }
-.dicer-theme-browser .dicer-stage.has-thumb .dicer-fallback {
+:is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-stage.has-thumb .dicer-fallback {
   display: none;
 }
 .dicer-theme-browser .dicer-thumb {
@@ -389,10 +389,10 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   border: none;
 }
 .dicer-theme-browser .dicer-thumb[hidden],
-.dicer-theme-browser .dicer-live[hidden] {
+:is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-live[hidden] {
   display: none;
 }
-.dicer-theme-browser .dicer-live {
+:is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-live {
   position: absolute;
   inset: 4%;
   width: 92%;
@@ -401,11 +401,11 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   touch-action: none;
   user-select: none;
 }
-.dicer-theme-browser .dicer-live:active {
+:is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-live:active {
   cursor: grabbing;
 }
 .dicer-theme-browser .dicer-stage.has-live .dicer-thumb,
-.dicer-theme-browser .dicer-stage.has-live .dicer-fallback {
+:is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-stage.has-live .dicer-fallback {
   display: none;
 }
 .dicer-theme-browser .dicer-mark {
@@ -544,44 +544,16 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   padding: 0;
   list-style: none;
 }
-.dicer-theme-browser .dicer-theme-edit {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.dicer-theme-browser .dicer-edit-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px 12px;
-}
-.dicer-theme-browser .dicer-edit-main {
-  grid-template-columns: 2fr 1fr 1fr;
-}
-.dicer-theme-browser .dicer-edit-main .dicer-span-2 {
-  grid-column: auto;
-}
-.dicer-theme-browser .dicer-edit-celebrations {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.dicer-theme-browser .dicer-theme-edit .dicer-footer {
-  margin-top: auto;
-}
-
-/* sections (theme edit form and trigger editor) */
-:is(.dicer-theme-browser, .dicer-trigger-editor) .dicer-section {
+/* sections (trigger editor) */
+.dicer-trigger-editor .dicer-section {
   margin: 0;
   padding: 10px 12px 12px;
   border: 1px solid var(--dicer-line);
   border-radius: 8px;
   background: var(--dicer-surface);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor) .dicer-section > legend,
-:is(.dicer-theme-browser, .dicer-trigger-editor) .dicer-section > h4 {
+.dicer-trigger-editor .dicer-section > legend,
+.dicer-trigger-editor .dicer-section > h4 {
   margin: 0 0 8px;
   padding: 0 4px;
   border: none;
@@ -929,4 +901,408 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-damage-map-editor .dicer-dm-num,
 .dicer-damage-map-editor .dicer-dm-num input {
   text-align: right;
+}
+
+/* Appearance editor -------------------------------------------------------------------------- */
+.dicer-appearance-editor .dicer-ae-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 12px;
+}
+.dicer-appearance-editor .dicer-ae-preview {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--dicer-line);
+  border-radius: 8px;
+  background: var(--dicer-surface);
+}
+.dicer-appearance-editor .dicer-ae-stage {
+  width: 100%;
+  border-radius: 8px;
+}
+.dicer-appearance-editor .dicer-ae-stage .dicer-fallback {
+  font-size: 96px;
+}
+.dicer-appearance-editor .dicer-ae-stage .dicer-live {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.dicer-appearance-editor .dicer-ae-stage-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(10, 10, 14, 0.72);
+  color: var(--dicer-accent);
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.dicer-appearance-editor .dicer-ae-dice {
+  display: flex;
+}
+.dicer-appearance-editor .dicer-ae-dice button {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-appearance-editor .dicer-ae-dice button.has-own::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dicer-accent);
+}
+.dicer-appearance-editor .dicer-ae-drag {
+  text-align: center;
+}
+.dicer-appearance-editor .dicer-ae-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--dicer-line);
+}
+.dicer-appearance-editor .dicer-ae-tools h4 {
+  grid-column: 1 / -1;
+  margin: 0;
+  border: none;
+  font-family: var(--font-body);
+  font-size: var(--font-size-11, 11px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dicer-muted);
+}
+.dicer-appearance-editor .dicer-ae-tools button {
+  width: 100%;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-appearance-editor .dicer-ae-layers {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+.dicer-appearance-editor .dicer-ae-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--dicer-accent) 55%, transparent);
+  border-radius: 8px;
+  background: var(--dicer-selected);
+  color: var(--color-text-emphatic);
+  font-weight: 600;
+}
+.dicer-appearance-editor .dicer-ae-banner button {
+  margin-left: auto;
+}
+.dicer-appearance-editor .dicer-ae-section {
+  flex: none;
+  border: 1px solid var(--dicer-line);
+  border-radius: 8px;
+  background: var(--dicer-surface);
+}
+.dicer-appearance-editor .dicer-ae-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: var(--font-size-11, 11px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.dicer-appearance-editor .dicer-ae-section > summary::-webkit-details-marker {
+  display: none;
+}
+.dicer-appearance-editor .dicer-ae-section > summary > i {
+  width: 14px;
+  text-align: center;
+  color: var(--dicer-accent);
+}
+.dicer-appearance-editor .dicer-ae-section > summary > em {
+  margin-left: auto;
+  font-style: normal;
+  font-weight: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--dicer-muted);
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-appearance-editor .dicer-ae-section > summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin: 0 2px 3px 4px;
+  border-right: 1.5px solid var(--dicer-muted);
+  border-bottom: 1.5px solid var(--dicer-muted);
+  transform: rotate(45deg);
+  transition: transform 120ms;
+}
+.dicer-appearance-editor .dicer-ae-section:not([open]) > summary::after {
+  margin-bottom: 0;
+  transform: rotate(-45deg);
+}
+.dicer-appearance-editor .dicer-ae-section > summary:hover {
+  color: var(--color-text-emphatic);
+}
+.dicer-appearance-editor .dicer-ae-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 12px 12px;
+}
+.dicer-appearance-editor .dicer-ae-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.dicer-appearance-editor .dicer-ae-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dicer-appearance-editor button.dicer-ae-chip {
+  --button-background-color: var(--dicer-surface);
+  --button-border-color: var(--dicer-line);
+  --button-text-color: var(--color-text-secondary);
+  --button-hover-background-color: var(--dicer-surface-strong);
+  --button-hover-border-color: var(--dicer-line-strong);
+  --button-hover-text-color: var(--color-text-emphatic);
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 6px;
+  border-radius: 999px;
+}
+.dicer-appearance-editor button.dicer-ae-chip > i {
+  width: 18px;
+  text-align: center;
+  font-size: 12px;
+}
+.dicer-appearance-editor button.dicer-ae-chip.active {
+  --button-background-color: var(--dicer-selected);
+  --button-hover-background-color: var(--dicer-selected);
+  --button-border-color: var(--dicer-accent);
+  --button-hover-border-color: var(--dicer-accent);
+  --button-text-color: var(--color-text-emphatic);
+  --button-hover-text-color: var(--color-text-emphatic);
+  outline: none;
+  box-shadow: none;
+  font-weight: 600;
+}
+.dicer-appearance-editor button.dicer-ae-chip.active > i {
+  color: var(--dicer-accent);
+}
+.dicer-appearance-editor .dicer-ae-swatch {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+  background: var(--c);
+}
+.dicer-appearance-editor .dicer-ae-swatch-opaque {
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.35) 0 8%, transparent 30%),
+    var(--c);
+}
+.dicer-appearance-editor .dicer-ae-swatch-resin {
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.9) 0 7%, transparent 26%),
+    radial-gradient(circle at 60% 70%, color-mix(in srgb, var(--c2) 70%, transparent) 0 30%, transparent 62%),
+    color-mix(in srgb, var(--c) 55%, transparent);
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--c) 70%, white 30%),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.dicer-appearance-editor .dicer-ae-swatch-metal {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--c) 30%, white 70%) 0%,
+    var(--c) 38%,
+    color-mix(in srgb, var(--c) 50%, black 50%) 62%,
+    color-mix(in srgb, var(--c) 60%, white 40%) 100%
+  );
+}
+.dicer-appearance-editor .dicer-ae-swatch-marble {
+  background:
+    linear-gradient(118deg, transparent 38%, var(--c2) 42% 47%, transparent 51%),
+    linear-gradient(62deg, transparent 58%, color-mix(in srgb, var(--c2) 70%, transparent) 61% 64%, transparent 67%),
+    var(--c);
+}
+.dicer-appearance-editor .dicer-ae-swatch-pearl {
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95) 0 9%, transparent 42%),
+    conic-gradient(from 210deg, var(--c), var(--c2), color-mix(in srgb, var(--c) 40%, white 60%), var(--c));
+}
+.dicer-appearance-editor .dicer-ae-fill-paint {
+  background: var(--c);
+}
+.dicer-appearance-editor .dicer-ae-fill-gold {
+  background: linear-gradient(135deg, #fff1bd 0%, #e0b23d 35%, #8f6514 65%, #f3d47c 100%);
+}
+.dicer-appearance-editor .dicer-ae-fill-silver {
+  background: linear-gradient(135deg, #ffffff 0%, #c3c8cf 35%, #6c7179 65%, #eceff2 100%);
+}
+.dicer-appearance-editor .dicer-ae-fill-enamel {
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.85) 0 8%, transparent 30%),
+    var(--c);
+}
+.dicer-appearance-editor .dicer-ae-color-pair {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.dicer-appearance-editor .dicer-ae-color-pair input[type='color'] {
+  flex: 0 0 40px;
+  width: 40px;
+  height: var(--dicer-control-h);
+  padding: 2px;
+  border: 1px solid var(--dicer-line-strong);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.dicer-appearance-editor .dicer-ae-color-pair input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.dicer-appearance-editor .dicer-ae-color-pair input[type='color']::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+.dicer-appearance-editor .dicer-ae-color-pair input[type='text'] {
+  font-family: var(--font-mono, monospace);
+  text-transform: lowercase;
+}
+.dicer-appearance-editor .dicer-ae-range > span:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dicer-appearance-editor .dicer-ae-range output {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-emphatic);
+}
+.dicer-appearance-editor .dicer-ae-range input[type='range'] {
+  width: 100%;
+  margin: 2px 0;
+  accent-color: var(--dicer-accent);
+}
+.dicer-appearance-editor .dicer-ae-seg {
+  display: flex;
+  flex-wrap: wrap;
+}
+.dicer-appearance-editor .dicer-ae-seg button {
+  flex: 1 1 auto;
+  padding: 0 10px;
+}
+.dicer-appearance-editor .dicer-ae-edge {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-radius: var(--r);
+}
+.dicer-appearance-editor .dicer-ae-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-11, 11px);
+  color: var(--dicer-muted);
+}
+.dicer-appearance-editor .dicer-ae-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: -4px;
+}
+.dicer-appearance-editor button.dicer-ae-pill {
+  --button-background-color: var(--dicer-surface);
+  --button-border-color: var(--dicer-line);
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-appearance-editor .dicer-ae-inline {
+  display: flex;
+  gap: 6px;
+}
+.dicer-appearance-editor .dicer-ae-font-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--dicer-radius);
+  background: color-mix(in srgb, var(--color-level-warning, #ee9b3a) 14%, transparent);
+  color: var(--color-level-warning, #ee9b3a);
+  font-size: var(--font-size-12, 12px);
+  line-height: 1.4;
+}
+.dicer-appearance-editor .dicer-ae-font-msg > i {
+  margin-top: 2px;
+}
+.dicer-appearance-editor .dicer-ae-font-msg[hidden] {
+  display: none;
+}
+.dicer-appearance-editor .dicer-ae-note {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.dicer-appearance-editor .dicer-ae-overrides .dicer-chip {
+  padding-left: 2px;
+}
+.dicer-appearance-editor button.dicer-ae-chip-link {
+  --button-background-color: transparent;
+  --button-border-color: transparent;
+  --button-hover-background-color: transparent;
+  --button-hover-border-color: transparent;
+  height: 20px;
+  padding: 0 4px 0 6px;
+  font-size: var(--font-size-12, 12px);
+  font-weight: 600;
+}
+.dicer-appearance-editor button.dicer-ae-same {
+  align-self: flex-start;
+}
+.dicer-appearance-editor .dicer-ae-footer {
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dicer-appearance-editor .dicer-ae-name {
+  flex: 0 1 260px;
+}
+.dicer-appearance-editor .dicer-ae-actions {
+  display: flex;
+  gap: 8px;
+}
+.dicer-appearance-editor .dicer-ae-footer button {
+  min-width: 0;
 }

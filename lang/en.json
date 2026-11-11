@@ -169,6 +169,11 @@
         "Label": "Browse dice themes",
         "Hint": "Browse built-in, world and your own dice themes with live previews, use one as your default, for a die type, a roll type, one of your characters or a damage type, and duplicate, edit, import or export your own. A GM can also publish themes to the world."
       },
+      "appearanceEditor": {
+        "Name": "Appearance editor",
+        "Label": "Design your dice",
+        "Hint": "Build a dice look layer by layer (body, inside, numbers and font, edges, glow, a look per die type) with a live turning preview, and save it as one of your themes. A GM can also save it as a world theme."
+      },
       "triggerEditor": {
         "Name": "Trigger rules",
         "Label": "Edit trigger rules",
@@ -350,6 +355,7 @@
       "Duplicate": "Duplicate into My themes",
       "Copy": "copy",
       "Edit": "Edit",
+      "Create": "New theme",
       "Export": "Export to a file",
       "ExportMine": "Export my themes",
       "NothingToExport": "You have no themes of your own to export.",
@@ -360,28 +366,157 @@
       "Published": "Theme published to the world.",
       "Delete": "Delete",
       "ConfirmDelete": "Delete this theme permanently?",
-      "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:",
-      "EditHint": "A simple editor: pick a base look, a look per die type, the impact sound and the celebration for a natural 20 and a natural 1.",
-      "Name": "Name",
-      "BaseLook": "Base look",
-      "SoundMaterial": "Impact sound",
-      "PerType": "Look per die type",
-      "SameAsBase": "Same as base",
-      "KeepCustom": "Keep current (custom)",
-      "None": "None",
-      "Effect": "Effect",
-      "Sound": "Sound",
-      "NatHigh": "Natural 20",
-      "NatLow": "Natural 1",
-      "Save": "Save",
-      "Saved": "Theme saved.",
-      "Cancel": "Cancel"
+      "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:"
     },
     "Commands": {
       "Description": "Open the Dicer settings."
     },
     "Quality": {
       "Dropped": "Dicer lowered the dice graphics quality for this session to keep rolls smooth."
+    },
+    "Appearance": {
+      "Title": "Dicer appearance editor",
+      "Preview": "Live preview of the look",
+      "DieType": "Die type shown in the preview",
+      "DragHint": "Drag to turn, double-click to reset",
+      "PreviewUnavailable": "The live preview needs the 3D dice to be running.",
+      "LookTools": "This look",
+      "CopyLook": "Copy this look",
+      "PasteLook": "Paste a look",
+      "ExportLook": "Export this look to a file",
+      "ImportLook": "Import a look from a file",
+      "Tools": {
+        "Copy": "Copy",
+        "Paste": "Paste",
+        "Export": "Export",
+        "Import": "Import"
+      },
+      "Section": {
+        "body": "Body",
+        "inside": "Inside",
+        "numbers": "Numbers",
+        "edges": "Edges",
+        "glow": "Glow",
+        "perType": "Per die type",
+        "extras": "Sound and celebrations"
+      },
+      "Body": {
+        "Type": "Material",
+        "Color": "Colour",
+        "SecondColor": "Second colour",
+        "Finish": "Finish",
+        "Roughness": "Roughness"
+      },
+      "BodyType": {
+        "opaque": "Opaque",
+        "resin": "Clear resin",
+        "metal": "Metal",
+        "marble": "Marble",
+        "pearl": "Pearl"
+      },
+      "Finish": {
+        "polished": "Polished",
+        "brushed": "Brushed",
+        "antique": "Antique"
+      },
+      "Inside": {
+        "Type": "Inside the resin",
+        "MainColor": "Main colour",
+        "SecondColor": "Second colour",
+        "Density": "Density",
+        "Shape": "Shape",
+        "ResinOnly": "Only clear resin dice have an inside. Choose Clear resin under Body to add one."
+      },
+      "InsideType": {
+        "none": "Empty",
+        "liquid": "Liquid",
+        "glitter": "Glitter",
+        "swirl": "Swirl",
+        "nebula": "Nebula",
+        "shape": "Shape"
+      },
+      "Shape": {
+        "star": "Star",
+        "heart": "Heart",
+        "skull": "Skull",
+        "sphere": "Sphere"
+      },
+      "Numbers": {
+        "Fill": "Fill",
+        "Color": "Colour",
+        "Depth": "Engraving depth",
+        "Font": "Font",
+        "Family": "Font on this computer",
+        "FamilyPlaceholder": "A font name, e.g. Georgia",
+        "File": "Font file (.ttf, .otf, .woff, .woff2)",
+        "Browse": "Choose a font file",
+        "FontInvalid": "That is not a usable font name or file path, so the serif is used. Font names use letters, digits, spaces and dashes; files end in .ttf, .otf, .woff or .woff2.",
+        "FontFailed": "This font could not be loaded, so the serif is shown instead. Check the name or the file."
+      },
+      "Fill": {
+        "paint": "Paint",
+        "gold": "Gold",
+        "silver": "Silver",
+        "enamel": "Enamel"
+      },
+      "FontKind": {
+        "serif": "Serif",
+        "sans": "Sans",
+        "css": "On this computer",
+        "file": "Font file"
+      },
+      "Edges": {
+        "Sharpness": "Sharpness"
+      },
+      "Edge": {
+        "sharp": "Sharp",
+        "crisp": "Crisp",
+        "soft": "Soft",
+        "round": "Round",
+        "veryRound": "Very round"
+      },
+      "Glow": {
+        "Color": "Colour",
+        "Intensity": "Intensity",
+        "Off": "Off"
+      },
+      "PerType": {
+        "Hint": "Give a die type its own look. Every other die type uses the default look above.",
+        "UseFor": "Use a different look for…",
+        "Editing": "Editing the {type} look",
+        "BackToDefault": "Default look",
+        "Edit": "Edit this die type's look",
+        "SameAsDefault": "Same as default",
+        "HasOwn": "Has its own look"
+      },
+      "Extras": {
+        "SoundMaterial": "Impact sound",
+        "Effect": "effect",
+        "Sound": "sound",
+        "NatHigh": "Natural 20",
+        "NatLow": "Natural 1",
+        "None": "None",
+        "Keep": "Keep current (custom)"
+      },
+      "Name": "Theme name",
+      "NamePlaceholder": "My dice",
+      "NewName": "My dice",
+      "Copy": "copy",
+      "Cancel": "Close",
+      "SaveMine": "Save as my theme",
+      "SaveWorld": "Save as world theme",
+      "SaveWorldHint": "Everyone in the world can use it (GM)",
+      "Update": "Update",
+      "Saved": "Theme saved.",
+      "Updated": "Theme updated.",
+      "NeedName": "Give the theme a name first.",
+      "NotAllowed": "Only a GM can save world themes, and only your own themes can be updated.",
+      "StoredUnusable": "Dicer could not read the stored themes, so nothing was saved. Fix or reset them in the settings first.",
+      "Copied": "Look copied.",
+      "Pasted": "Look pasted.",
+      "Imported": "Look imported.",
+      "BadLook": "That is not a Dicer look (expected the JSON of one appearance).",
+      "ClipboardUnavailable": "The clipboard is not available here."
     }
   }
 }

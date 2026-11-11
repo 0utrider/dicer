@@ -1,9 +1,13 @@
-// Visual check of the three editor windows: opens dev/editors.html in Playwright Chromium with
+// Visual check of the editor windows: opens dev/editors.html in Playwright Chromium with
 // Foundry's real stylesheet (served from the local Foundry install under /__foundry/), renders
 // the real apps with sample data and saves docs/signoff/ui/*.png at 1000x800 in the dark theme:
-// theme-browser.png, theme-browser-selected.png (a card clicked; also checks that the live die rotates), theme-edit.png, trigger-rules.png,
+// theme-browser.png, theme-browser-selected.png (a card clicked; also checks that the live die rotates),
+// appearance-editor.png (clear resin with a nebula inside, gold numbers), appearance-editor-metal.png
+// (edited in the window to antique metal, sharp edges, sans font; also checks the live preview follows
+// an edit), trigger-rules.png,
 // trigger-rules-selected.png (a rule clicked), damage-map.png, damage-map-player.png.
 // Fails on any page error. Env: DICER_VISUAL_PORT (default 5182), DICER_VISUAL_HEADED=1,
+// DICER_VISUAL_ONLY (a substring of the screenshot names to take, e.g. appearance),
 // DICER_FOUNDRY_APP (default C:/Program Files/Foundry Virtual Tabletop/resources/app).
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -54,8 +58,10 @@ async function startServer() {
   throw new Error(`vite did not start:\n${log}`);
 }
 
-async function shoot(browser, query, file, act) {
+async function shoot(browser, query, file, act, { reducedMotion = 'no-preference' } = {}) {
+  if (process.env.DICER_VISUAL_ONLY && !file.includes(process.env.DICER_VISUAL_ONLY)) return [];
   const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+  await page.emulateMedia({ reducedMotion });
   const problems = [];
   page.on('console', (m) => m.type() === 'error' && problems.push(m.text()));
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -79,6 +85,10 @@ async function shoot(browser, query, file, act) {
   console.log(`editors: saved ${OUT}/${file}${problems.length ? ` with ${problems.length} problem(s)` : ''}`);
   return problems.map((p) => `${file}: ${p}`);
 }
+
+const livePreview = async (page) => {
+  if (!(await page.evaluate(() => window.__editors.previewReady()))) throw new Error('appearance: the live preview never drew');
+};
 
 const thumbs = async (page) => {
   const n = await page.evaluate(() => window.__editors.thumbnailsReady());
@@ -109,12 +119,42 @@ async function main() {
       })),
     );
     problems.push(
-      ...(await shoot(browser, 'app=themes', 'theme-edit.png', async (page) => {
-        await page.click('.dicer-segmented [data-filter="user"]');
-        await page.click('.dicer-theme-card[data-theme="user.u1.my-ember"]');
-        await page.click('.dicer-theme-detail [data-action="edit"]');
-        await page.waitForSelector('.dicer-theme-edit');
+      ...(await shoot(browser, 'app=appearance', 'appearance-editor.png', async (page) => {
+        await livePreview(page);
+        await page.waitForTimeout(1500); // a quarter turn: the nebula and the gold 20 both show
       })),
+    );
+    problems.push(
+      ...(await shoot(
+        browser,
+        'app=appearance',
+        'appearance-editor-metal.png',
+        async (page) => {
+          // Reduced motion: the die stands still, so only an edit can change the stage.
+          await livePreview(page);
+          const stage = page.locator('.dicer-ae-stage');
+          await page.waitForTimeout(300);
+          const a = await stage.screenshot();
+          await page.waitForTimeout(400);
+          if (!a.equals(await stage.screenshot())) throw new Error('appearance: the still preview changed without an edit');
+          await page.click('[data-field="body.type"][data-value="metal"]');
+          await page.waitForTimeout(400); // debounce (80 ms) + a frame
+          if (a.equals(await stage.screenshot())) throw new Error('appearance: the preview did not follow the body type change');
+          console.log('editors: the live preview follows edits');
+          await page.click('[data-field="body.finish"][data-value="antique"]');
+          await page.fill('input[name="body.color"]', '#b08a4e');
+          await page.click('[data-field="edges.radius"][data-value="0"]');
+          await page.click('[data-field="numbers.fill"][data-value="paint"]');
+          await page.fill('input[name="numbers.color"]', '#1c140b');
+          await page.click('[data-field="numbers.fontKind"][data-value="sans"]');
+          await page.fill('input[name="name"]', 'Antique Brass');
+          await page.click('[data-section="inside"] > summary'); // a metal die has no inside: fold it away
+          await page.evaluate(() => (document.querySelector('.dicer-ae-layers').scrollTop = 0));
+          await page.mouse.move(5, 5);
+          await page.waitForTimeout(1500); // the sans atlas loads, then the die is rebuilt with it
+        },
+        { reducedMotion: 'reduce' },
+      )),
     );
     problems.push(...(await shoot(browser, 'app=triggers', 'trigger-rules.png')));
     problems.push(
