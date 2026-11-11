@@ -27,6 +27,21 @@ const SOAK_MARKS = Object.freeze([50, 500]);
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 
+/**
+ * @typedef {object} ProductAdapter
+ * @property {'dicer'|'dice-so-nice'} product
+ * @property {(formula: string) => Promise<{messageId?: string} | {done: Promise<unknown>, started?: Promise<unknown>}>} roll
+ *   Chat path: resolves {messageId}; start/completion arrive via the diceSoNiceRollStart/Complete hooks.
+ *   No-message path: resolves {done, started?}; done settles at animation completion, started at roll start
+ *   (without it firstFrame is null for that roll). A result with neither messageId nor done is a failure.
+ * @property {() => boolean} isBusy
+ * @property {() => ({geometries: number, textures: number, programs: number} | null)} resources
+ * @property {() => Promise<number | null>} heap
+ * @property {(messageId: string) => number | null} dicerFirstFrame
+ * @property {(kind: 'resize'|'contextLoss'|'hidden', ms: number) => Promise<void>} perturb
+ * @property {() => ({browser: string, gpu: string, tier: string, version: string} | Promise<object>)} [info]
+ */
+
 /** Run one scenario against a product adapter. Never throws on a failed roll. */
 export async function runScenario(scenario, adapter, opts = {}) {
   const hooks = opts.hooks ?? globalThis.Hooks;
@@ -88,12 +103,13 @@ export async function runScenario(scenario, adapter, opts = {}) {
       return;
     }
     const id = res?.messageId;
-    if (id == null) {
+    const doneP = id == null && res?.done && typeof res.done.then === 'function' ? res.done : null;
+    if (id == null && !doneP) {
       failures++;
-      notes.push('roll returned no message id');
+      notes.push('roll returned neither a message id nor done');
       return;
     }
-    const s = get(id);
+    const s = id != null ? get(id) : { started: false, frameAt: null, done: false };
     const kind = PERTURB[scenario.id] != null ? scenario.id : null;
     let perturbTimer = null;
     let perturbed = false;
@@ -111,6 +127,20 @@ export async function runScenario(scenario, adapter, opts = {}) {
     let timer = null;
     const finished = new Promise((resolve) => {
       timer = setTimeout(() => resolve(false), timeoutMs);
+      if (doneP) {
+        doneP.then(() => resolve(true), () => resolve(false));
+        if (typeof res.started?.then === 'function') {
+          res.started.then(() => {
+            if (s.started) return;
+            s.started = true;
+            win.requestAnimationFrame(() => {
+              s.frameAt = now();
+            });
+            schedulePerturb();
+          }, () => {});
+        }
+        return;
+      }
       const w = { start: schedulePerturb, done: () => resolve(true) };
       waiters.set(id, w);
       if (s.started) schedulePerturb();
@@ -118,7 +148,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
     });
     const ok = await finished;
     clearTimeout(timer);
-    waiters.delete(id);
+    if (id != null) waiters.delete(id);
     if (perturbTimer && !ok) clearTimeout(perturbTimer);
     if (s.started && s.frameAt != null) firstFrames.push(s.frameAt - t0);
     else if (s.started) firstFrames.push(null);
@@ -127,11 +157,11 @@ export async function runScenario(scenario, adapter, opts = {}) {
       notes.push(`roll ${completed + 1} timed out after ${timeoutMs} ms`);
     }
     try {
-      dicerFrames.push(adapter.dicerFirstFrame?.(id) ?? null);
+      dicerFrames.push(id != null ? (adapter.dicerFirstFrame?.(id) ?? null) : null);
     } catch {
       dicerFrames.push(null);
     }
-    state.delete(id);
+    if (id != null) state.delete(id);
   }
 
   recorder.start();

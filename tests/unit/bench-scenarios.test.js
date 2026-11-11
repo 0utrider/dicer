@@ -269,3 +269,64 @@ test('recorder longTasks is null without PerformanceObserver', async () => {
   expect(rec.stop().longTasks).toBeNull();
   expect(win.pending.size).toBe(0);
 });
+
+function noMsgAdapter({ doneAfter = 40, startAfter = 10, never = false, withStarted = true } = {}) {
+  const a = {
+    product: 'dicer',
+    rollTimes: [],
+    doneTimes: [],
+    isBusy: () => false,
+    resources: () => null,
+    heap: async () => null,
+    dicerFirstFrame: () => null,
+    perturb: async () => {},
+    async roll() {
+      a.rollTimes.push(now());
+      const done = never
+        ? new Promise(() => {})
+        : new Promise((r) => setTimeout(() => {
+            a.doneTimes.push(now());
+            r();
+          }, doneAfter));
+      const started = new Promise((r) => setTimeout(r, startAfter));
+      return withStarted ? { done, started } : { done };
+    },
+  };
+  return a;
+}
+
+test('no-message burst: roll k+1 starts after roll k done', async () => {
+  const a = noMsgAdapter();
+  const p = runScenario({ id: 'b', kind: 'burst', formula: '1d20', rolls: 5 }, a, { hooks: fakeHooks(), win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(2000);
+  const r = await p;
+  expect(r.failures).toBe(0);
+  for (let k = 1; k < 5; k++) expect(a.rollTimes[k]).toBeGreaterThanOrEqual(a.doneTimes[k - 1]);
+});
+
+test('no-message roll that never finishes times out', async () => {
+  const a = noMsgAdapter({ never: true });
+  const p = runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, a, { hooks: fakeHooks(), win: fakeWin(), now, timeoutMs: 1000 });
+  await vi.advanceTimersByTimeAsync(3000);
+  const r = await p;
+  expect(r.failures).toBe(1);
+  expect(r.notes.join(' ')).toMatch(/timed out/);
+});
+
+test('no-message started gives a firstFrame, absent started gives null', async () => {
+  const a = noMsgAdapter({ startAfter: 20 });
+  let p = runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, a, { hooks: fakeHooks(), win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(500);
+  expect((await p).firstFrame.p50).toBe(36);
+  const b = noMsgAdapter({ withStarted: false });
+  p = runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, b, { hooks: fakeHooks(), win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(500);
+  expect((await p).firstFrame).toBeNull();
+});
+
+test('a roll result with neither messageId nor done is a failure', async () => {
+  const a = noMsgAdapter();
+  a.roll = async () => ({});
+  const r = await runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, a, { hooks: fakeHooks(), win: fakeWin(), now });
+  expect(r.failures).toBe(1);
+});
