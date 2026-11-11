@@ -139,12 +139,12 @@ export class DiceBox {
     this._physics = physics;
     this._atlas = atlas;
     // The font layer (fonts/font-atlas.js) or null: the atlas of a look's numbers.font. A font
-    // not ready yet draws with the serif `atlas` and is requested; once it is ready the cached
-    // materials are rebuilt (rolls in flight keep theirs).
+    // not ready yet draws with the serif `atlas` and is requested; once it is ready only the
+    // cached materials built with a serif stand-in for it are rebuilt (rolls in flight keep theirs).
     this._fonts = fonts;
     this._offFontReady = null;
     try {
-      this._offFontReady = fonts?.onReady?.(() => this.invalidateMaterials()) ?? null;
+      this._offFontReady = fonts?.onReady?.((id) => this.invalidateFont(id)) ?? null;
     } catch (err) {
       console.warn('dicer: cannot watch the font layer', err);
     }
@@ -443,6 +443,30 @@ export class DiceBox {
   }
 
   /**
+   * A font became ready (the font layer's onReady): drops only the cached materials that drew
+   * with a serif stand-in for that font, plus any bound to a runtime atlas the font layer has
+   * since evicted (it evicts just before announcing). Every other material, the warm-up's
+   * included, stays compiled. Rolls in flight keep theirs.
+   */
+  invalidateFont(fontId) {
+    let evicted = () => false;
+    try {
+      if (typeof this._fonts?.has === 'function') evicted = (id) => this._fonts.has(id) === false;
+    } catch {
+      /* no eviction check */
+    }
+    for (const [key, m] of [...this._materials]) {
+      const entry = this._refs.get(m);
+      if (!entry) continue;
+      const hit = (fontId && entry.standIn === fontId) || (entry.fontId !== 'serif' && evicted(entry.fontId));
+      if (!hit) continue;
+      entry.stale = true;
+      this._materials.delete(key);
+      if (entry.refs <= 0) this.#disposeMaterial(m);
+    }
+  }
+
+  /**
    * Materials of the current look and flags for `types`, held until release() so an
    * invalidation during the async compile cannot dispose them. The geometry is the d20 of the
    * look's edge style: every die type shares one program per programKey, and the program does
@@ -653,7 +677,16 @@ export class DiceBox {
       // A layered material lives only while rolls hold it: its texture is theirs.
       // The font layer keeps an evicted atlas's texture until this material lets go of it.
       const releaseAtlas = font.id === 'serif' ? null : this.#holdAtlas(font.atlas);
-      this._refs.set(mat, { refs: 0, stale: false, transient: !!layered, key, releaseAtlas });
+      // fontId: the atlas it binds; standIn: the font it wanted when it drew with the serif.
+      this._refs.set(mat, {
+        refs: 0,
+        stale: false,
+        transient: !!layered,
+        key,
+        releaseAtlas,
+        fontId: font.id,
+        standIn: font.standIn ?? null,
+      });
       if (found) {
         try {
           this._onMaterial(mat, found.dsnType, appearance, found.preset);
@@ -666,8 +699,8 @@ export class DiceBox {
   }
 
   /**
-   * { atlas, id } for a numbers.font: the font layer's atlas when ready, else the serif (and the
-   * font is requested). Never throws.
+   * { atlas, id, standIn? } for a numbers.font: the font layer's atlas when ready, else the serif
+   * with standIn = the font (which is requested). Never throws.
    */
   #fontAtlas(fontId) {
     const serif = { atlas: this._atlas, id: 'serif' };
@@ -682,7 +715,7 @@ export class DiceBox {
         console.warn('dicer: the font layer threw; numbers use the serif', err);
       }
     }
-    return serif;
+    return { ...serif, standIn: fontId };
   }
 
   /** fonts.hold(atlas) -> release, or null (no hold support / a throwing layer). */

@@ -32,7 +32,10 @@ const validId = (id) => normalizeAppearance({ numbers: { font: id } }).numbers.f
 /**
  * The URL of a `file:` font path, or null. This is the security boundary for file fonts: the
  * path must pass normalizeAppearance's check, is routed with Foundry's getRoute and percent-
- * encoded with encodeURI (never decoded), and must resolve on the page's own origin.
+ * encoded with encodeURI (never decoded), and must resolve on the page's own origin. FilePicker
+ * paths are often already percent-encoded ("My%20Font.ttf"): an existing %XX escape is kept as
+ * it is rather than double-encoded to %25XX (normalizeAppearance already rejects the escapes
+ * that could change the path: %2e, %2f, %5c).
  * @param {string} path the part after "file:"
  * @param {{getRoute: (p: string) => string, origin: string}} env
  */
@@ -41,7 +44,7 @@ export function fontFileUrl(path, { getRoute, origin }) {
   try {
     const route = getRoute(path);
     if (typeof route !== 'string') return null;
-    const url = new URL(encodeURI(route), origin);
+    const url = new URL(encodeURI(route).replace(/%25([0-9A-Fa-f]{2})/g, '%$1'), origin);
     return url.origin === new URL(origin).origin ? url.href : null;
   } catch {
     return null;
@@ -304,39 +307,62 @@ export function createFontAtlases({
     return a;
   }
 
+  /** Whether `id` is ready now, without touching the LRU order (get() counts as a use). */
+  function has(id) {
+    if (!id || id === 'serif') return true;
+    if (disposed) return false;
+    return pinned.has(id) || lru.has(id);
+  }
+
   function request(id) {
     const ready = get(id);
     if (ready) return Promise.resolve(ready);
     if (disposed || failed.has(id)) return Promise.resolve(null);
     if (inflight.has(id)) return inflight.get(id);
-    const p = withTimeout(
-      Promise.resolve().then(() => produce(id)),
-      timeoutMs,
-    ).then(
+    const work = Promise.resolve().then(() => produce(id));
+    let timedOut = false;
+    const p = withTimeout(work, timeoutMs).then(
       (atlas) => {
         inflight.delete(id);
-        if (disposed) {
-          atlas?.texture?.dispose?.();
-          return null;
-        }
-        keep(id, atlas);
-        for (const cb of [...listeners]) {
-          try {
-            cb(id);
-          } catch (err) {
-            console.warn('dicer: a font-ready listener threw', err);
-          }
-        }
-        return atlas;
+        return announce(id, atlas);
       },
       (err) => {
         inflight.delete(id);
+        timedOut = /^not ready after/.test(err?.message ?? '');
         if (!disposed) fail(id, err);
         return null;
       },
     );
+    // A timeout is not permanent: the build keeps going, and if it still succeeds the failure is
+    // cleared and the font announced. A real load error stays failed.
+    work.then(
+      (atlas) => {
+        if (!timedOut) return;
+        if (disposed) return void atlas?.texture?.dispose?.();
+        failed.delete(id);
+        announce(id, atlas);
+      },
+      () => {},
+    );
     inflight.set(id, p);
     return p;
+  }
+
+  /** Keeps a produced atlas and tells the listeners; null (texture disposed) once disposed. */
+  function announce(id, atlas) {
+    if (disposed) {
+      atlas?.texture?.dispose?.();
+      return null;
+    }
+    keep(id, atlas);
+    for (const cb of [...listeners]) {
+      try {
+        cb(id);
+      } catch (err) {
+        console.warn('dicer: a font-ready listener threw', err);
+      }
+    }
+    return atlas;
   }
 
   /** cb(fontId) each time a font becomes ready; returns an unsubscribe. */
@@ -356,5 +382,5 @@ export function createFontAtlases({
     builder?.then((b) => b.dispose?.()).catch(() => {});
   }
 
-  return { get, request, onReady, hold, dispose };
+  return { get, has, request, onReady, hold, dispose };
 }

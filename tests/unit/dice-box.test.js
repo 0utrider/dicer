@@ -2064,20 +2064,74 @@ describe('per-look fonts (font layer)', () => {
     box.dispose();
   });
 
-  test('onReady rebuilds the materials once; the new ones draw with the font atlas', () => {
+  test('onReady rebuilds the stand-in materials of that font; the new ones draw with the font atlas', () => {
     const fonts = fakeFonts();
     const { box } = setup({ appearance: sansLook, fonts });
     const before = box.acquireWarmup(['d6']);
     before.release();
-    const invalidate = vi.spyOn(box, 'invalidateMaterials');
+    const invalidateAll = vi.spyOn(box, 'invalidateMaterials');
+    const dispose = vi.spyOn(before.materials[0], 'dispose');
     fonts.makeReady('css:Comic Neue');
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidateAll).not.toHaveBeenCalled(); // targeted, never a full invalidation
+    expect(dispose).toHaveBeenCalledTimes(1);
     const after = box.acquireWarmup(['d6']);
     expect(after.materials[0]).not.toBe(before.materials[0]);
     expect(createDiceMaterial.mock.calls.at(-1)[1]).toBe(fontAtlas);
     after.release();
     box.dispose();
     expect(fonts.listeners.size).toBe(0); // dispose unsubscribes
+  });
+
+  test('a font ready that no material of this box stood in for disposes nothing (I-2)', () => {
+    const fonts = fakeFonts();
+    let look = { numbers: { font: 'serif' } };
+    const { box } = setup({ getAppearance: () => look, fonts });
+    const serifWarm = box.acquireWarmup(['d6', 'd20']);
+    serifWarm.release();
+    const disposes = serifWarm.materials.map((m) => vi.spyOn(m, 'dispose'));
+    const built = createDiceMaterial.mock.calls.length;
+    fonts.makeReady('css:Editor Only'); // e.g. an editor preview or thumbnail through the shared layer
+    for (const d of disposes) expect(d).not.toHaveBeenCalled();
+    const again = box.acquireWarmup(['d6', 'd20']);
+    expect(again.materials).toEqual(serifWarm.materials); // still cached: no recompile
+    expect(createDiceMaterial.mock.calls.length).toBe(built);
+    again.release();
+    box.dispose();
+  });
+
+  test('a font ready invalidates only the materials that stood in for it (I-2)', () => {
+    const fonts = fakeFonts();
+    let look = { numbers: { font: 'serif' } };
+    const { box } = setup({ getAppearance: () => look, fonts });
+    const serifMats = box.acquireWarmup(['d6']);
+    look = sansLook;
+    const comic = box.acquireWarmup(['d6']);
+    look = { numbers: { font: 'css:Other' } };
+    const other = box.acquireWarmup(['d6']);
+    for (const w of [serifMats, comic, other]) w.release();
+    const spy = (w) => vi.spyOn(w.materials[0], 'dispose');
+    const [dSerif, dComic, dOther] = [serifMats, comic, other].map(spy);
+    fonts.makeReady('css:Comic Neue');
+    expect(dComic).toHaveBeenCalledTimes(1);
+    expect(dSerif).not.toHaveBeenCalled();
+    expect(dOther).not.toHaveBeenCalled();
+    look = { numbers: { font: 'serif' } };
+    const back = box.acquireWarmup(['d6']);
+    expect(back.materials[0]).toBe(serifMats.materials[0]);
+    back.release();
+    box.dispose();
+  });
+
+  test('a stand-in material held by a roll stays until the roll lets go, then is disposed', () => {
+    const fonts = fakeFonts();
+    const { box } = setup({ appearance: sansLook, fonts });
+    const held = box.acquireWarmup(['d6']);
+    const dispose = vi.spyOn(held.materials[0], 'dispose');
+    fonts.makeReady('css:Comic Neue');
+    expect(dispose).not.toHaveBeenCalled();
+    held.release();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    box.dispose();
   });
 
   test('the serif look never asks the font layer; the cache key separates fonts', () => {

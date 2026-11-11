@@ -308,8 +308,15 @@ describe('font file URLs (the security boundary for file: ids)', () => {
     expect(fontFileUrl('fonts/My Font.ttf', { getRoute, origin })).toBe(
       'https://vtt.example/game-prefix/fonts/My%20Font.ttf',
     );
+    // an existing escape (a FilePicker path is already encoded) is kept, not double-encoded
     expect(fontFileUrl('fonts/%41.ttf', { getRoute, origin })).toBe(
-      'https://vtt.example/game-prefix/fonts/%2541.ttf',
+      'https://vtt.example/game-prefix/fonts/%41.ttf',
+    );
+    expect(fontFileUrl('fonts/My%20Font.ttf', { getRoute, origin })).toBe(
+      'https://vtt.example/game-prefix/fonts/My%20Font.ttf',
+    );
+    expect(fontFileUrl('fonts/50%.ttf', { getRoute, origin })).toBe(
+      'https://vtt.example/game-prefix/fonts/50%25.ttf', // a bare % is still encoded
     );
     expect(fontFileUrl('fonts/Шрифт.woff2', { getRoute, origin })).toMatch(
       /^https:\/\/vtt\.example\/game-prefix\/fonts\/%D0/,
@@ -461,6 +468,68 @@ describe('createFontAtlases', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('a timeout is not permanent: a late success clears the failure and fires ready once (M-3)', async () => {
+    vi.useFakeTimers();
+    try {
+      let finish;
+      const build = vi.fn(() => new Promise((resolve) => (finish = resolve)));
+      const { fonts, warn } = make({ build });
+      const ready = vi.fn();
+      fonts.onReady(ready);
+      const p = fonts.request('css:Slow');
+      await vi.advanceTimersByTimeAsync(FONT_TIMEOUT_MS + 1);
+      expect(await p).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(fonts.has('css:Slow')).toBe(false);
+      finish(fakeBuilt());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fonts.get('css:Slow')).not.toBeNull();
+      expect(fonts.has('css:Slow')).toBe(true);
+      expect(ready).toHaveBeenCalledTimes(1);
+      expect(ready).toHaveBeenCalledWith('css:Slow');
+      expect(await fonts.request('css:Slow')).toBe(fonts.get('css:Slow'));
+      expect(build).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a timeout followed by a real load error stays failed', async () => {
+    vi.useFakeTimers();
+    try {
+      let fail;
+      const build = vi.fn(() => new Promise((_, reject) => (fail = reject)));
+      const { fonts } = make({ build });
+      const ready = vi.fn();
+      fonts.onReady(ready);
+      const p = fonts.request('css:Broken');
+      await vi.advanceTimersByTimeAsync(FONT_TIMEOUT_MS + 1);
+      expect(await p).toBeNull();
+      fail(new Error('no digits'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fonts.get('css:Broken')).toBeNull();
+      expect(await fonts.request('css:Broken')).toBeNull();
+      expect(ready).not.toHaveBeenCalled();
+      expect(build).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('has() tells readiness without changing the LRU order', async () => {
+    const { fonts } = make({ opts: { cacheSize: 2 } });
+    expect(fonts.has('serif')).toBe(true);
+    expect(fonts.has('css:A')).toBe(false);
+    await fonts.request('css:A');
+    await fonts.request('css:B');
+    expect(fonts.has('css:A')).toBe(true); // a peek: A stays least recently used
+    await fonts.request('css:C');
+    expect(fonts.has('css:A')).toBe(false);
+    expect(fonts.has('css:B')).toBe(true);
+    fonts.dispose();
+    expect(fonts.has('css:B')).toBe(false);
   });
 
   test('a bad id never reaches the builder: null and one warning', async () => {
