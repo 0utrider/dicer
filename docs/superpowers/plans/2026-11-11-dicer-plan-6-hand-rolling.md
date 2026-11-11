@@ -1,5 +1,7 @@
 # Dicer Plan 6 — Rolling by Hand Implementation Plan
 
+> **Scheduled last (owner, 2026-11-11):** this plan now runs after customization and hardening (roadmap row 8). Before executing it, re-check its file paths, interfaces and size headroom against the code as it stands then.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A player grabs the dice, shakes, flicks — and the face that physically lands up is the roll result, fed to Foundry as a dice fulfillment method so every system's attacks, saves and damage work unchanged; every other screen replays the exact same throw before the chat card appears; a dice tray lets anyone roll freely.
