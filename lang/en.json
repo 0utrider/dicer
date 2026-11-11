@@ -198,8 +198,10 @@
       "Saved": "Dicer trigger rules saved.",
       "NotGM": "Only a GM can save the world rules.",
       "Invalid": "Invalid trigger rule",
+      "Unreadable": "Some saved trigger rules could not be read. They are kept, highlighted; fix or delete them.",
+      "UnreadableRule": "This saved rule could not be read and is kept unchanged. Delete it to remove it.",
       "PreviewUnavailable": "Preview needs the 3D dice to be running.",
-      "Result": {
+      "ResultKinds": {
         "any": "Any result",
         "value": "Exactly",
         "range": "Between",
@@ -207,7 +209,7 @@
         "min": "Minimum (1)",
         "label": "Face label"
       },
-      "Outcome": {
+      "Outcomes": {
         "any": "Any outcome",
         "critical-success": "Critical success",
         "success": "Success",

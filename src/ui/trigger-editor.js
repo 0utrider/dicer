@@ -4,20 +4,21 @@
  * Mine tab: the user's own `dicer.triggers` flag. All rule <-> form logic is in ./trigger-form.js.
  */
 import { EFFECTS } from '../effects/library/effects.js';
-import { DEFAULT_RULES, normalizeRule, normalizeRules } from '../effects/rules.js';
+import { DEFAULT_RULES, normalizeRule } from '../effects/rules.js';
 import { RESULT_SOUNDS } from '../audio/sound-names.js';
 import {
   blankEntry,
   entriesOf,
   entryFromRule,
   formFromRules,
+  loadEntries,
   rawRuleFromEntry,
   rulesFromForm,
   saveTab,
   validateForm,
 } from './trigger-form.js';
 
-export { formFromRules, rulesFromForm, validateForm, saveTab };
+export { formFromRules, rulesFromForm, validateForm, saveTab, loadEntries };
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -30,7 +31,6 @@ const humanize = (id) => {
   const s = String(id).replace(/[-_]+/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
-const silent = () => {};
 
 /** What the registry offers (module rules, trigger ids, SFX modes, dice types), if the engine runs. */
 function registryContext() {
@@ -123,15 +123,18 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#ctx = registryContext();
     this.#moduleRules = this.#ctx.moduleRules ?? [];
     const settings = globalThis.game.settings;
-    const world = normalizeRules(settings.get(MODULE, 'worldTriggers'), 'world', silent);
+    const world = loadEntries(settings.get(MODULE, 'worldTriggers'), 'world');
     const off = settings.get(MODULE, 'disabledModuleTriggers');
     const disabled = new Set(Array.isArray(off) ? off : []);
     const mods = this.#moduleRules.map((r) => ({ ...r, enabled: !disabled.has(r.id) }));
-    const mine = normalizeRules(globalThis.game.user.getFlag(MODULE, 'triggers'), 'user', silent);
+    const mine = loadEntries(globalThis.game.user.getFlag(MODULE, 'triggers'), 'user');
     this.#drafts = {
-      world: formFromRules([...world, ...mods]).rules,
-      mine: formFromRules(mine).rules,
+      world: [...world.entries, ...formFromRules(mods).rules],
+      mine: mine.entries,
     };
+    // Unreadable stored rules are kept (as highlighted rows), never dropped by a save.
+    if (world.unreadable + mine.unreadable > 0)
+      globalThis.ui?.notifications?.warn(loc('DICER.Triggers.Unreadable'));
     this.#tab = this.#isGM ? 'world' : 'mine';
   }
 
@@ -148,7 +151,9 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#drafts[this.#tab] = entriesOf(expanded).map((e, i) => {
       const base = prev.find((p) => p.id === e.id) ?? prev[i] ?? {};
       const enabled = e.enabled === true || e.enabled === 'true' || e.enabled === 'on';
-      return base.source === 'module' ? { ...base, enabled } : { ...base, ...e, enabled };
+      return base.source === 'module' || base.source === 'raw'
+        ? { ...base, enabled }
+        : { ...base, ...e, enabled };
     });
   }
 
@@ -165,19 +170,22 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     };
     const rules = this.#drafts[this.#tab].map((e, index) => {
       const isModule = e.source === 'module';
+      const isRaw = e.source === 'raw';
       const trigger = triggers.get(e.die);
       const labels = trigger?.results ?? [];
       const kinds = {};
       for (const k of [...RESULT_KINDS, ...(trigger || e.resultKind === 'label' ? ['label'] : [])])
         kinds[k] = loc(`DICER.Triggers.ResultKinds.${k}`);
-      const readonly = isModule || !canEdit;
+      const readonly = isModule || isRaw || !canEdit;
       return {
         ...e,
         index,
         isModule,
+        isRaw,
         readonly,
+        canDelete: isRaw && canEdit,
         enabledLocked: !canEdit,
-        error: errors.get(index) ?? '',
+        error: isRaw ? loc('DICER.Triggers.UnreadableRule') : (errors.get(index) ?? ''),
         dieChoices: options(choices.dice, e.die),
         kindChoices: kinds,
         labelChoices: labels.length ? options(Object.fromEntries(labels.map((l) => [l, l])), e.resultLabel) : null,
@@ -315,7 +323,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#collect();
     const list = this.#drafts[this.#tab];
     const i = Number(target.dataset.index);
-    if (!list[i] || list[i].source === 'module') return;
+    if (!list[i] || list[i].source === 'module' || list[i].source === 'raw') return;
     const copy = { ...list[i], id: this.#newId(), name: `${list[i].name} ${loc('DICER.Triggers.Copy')}`.trim() };
     list.splice(i + 1, 0, copy);
     this.#errors[this.#tab].clear();

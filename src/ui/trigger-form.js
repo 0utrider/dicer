@@ -5,6 +5,8 @@
  */
 import { normalizeRule } from '../effects/rules.js';
 
+const silent = () => {};
+
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const str = (v) => (v === undefined || v === null ? '' : String(v));
 const bool = (v) => v === true || v === 'true' || v === 'on' || v === 1;
@@ -38,6 +40,7 @@ export function blankEntry(id, source = 'user') {
     soundSrc: '',
     soundVolume: '',
     macro: '',
+    rawJson: '',
   };
 }
 
@@ -76,6 +79,36 @@ export function entryFromRule(rule) {
   }
   e.macro = rule.macro ?? '';
   return e;
+}
+
+/** A stored rule that cannot be normalized, kept verbatim (source 'raw') so a save never drops it. */
+export function rawEntry(raw, index) {
+  const e = blankEntry(typeof raw?.id === 'string' && raw.id ? raw.id : `unreadable-${index}`, 'raw');
+  e.name = typeof raw?.name === 'string' ? raw.name : '';
+  let json = 'null';
+  try {
+    json = JSON.stringify(raw) ?? 'null';
+  } catch {
+    /* not JSON: kept as null */
+  }
+  e.rawJson = json;
+  return e;
+}
+
+/**
+ * Stored rules as form entries; any that fail normalization become raw entries.
+ * @returns {{entries: object[], unreadable: number}}
+ */
+export function loadEntries(stored, source) {
+  if (!Array.isArray(stored)) return { entries: [], unreadable: stored === undefined || stored === null ? 0 : 1 };
+  let unreadable = 0;
+  const entries = stored.map((raw, i) => {
+    const rule = normalizeRule(raw, source, silent);
+    if (rule) return entryFromRule(rule);
+    unreadable += 1;
+    return rawEntry(raw, i);
+  });
+  return { entries, unreadable };
 }
 
 /** @param {object[]} rules normalized rules @returns {{rules: object[]}} */
@@ -183,7 +216,16 @@ export function rawRuleFromEntry(e) {
 export function validateForm(formData, { source = 'world', moduleRules = [] } = {}) {
   const rules = [];
   const errors = [];
+  const kept = [];
   entriesOf(formData).forEach((entry, index) => {
+    if (entry.source === 'raw') {
+      try {
+        kept.push(JSON.parse(str(entry.rawJson)));
+      } catch {
+        /* unparseable: nothing to keep */
+      }
+      return;
+    }
     if (entry.source === 'module') {
       const base = moduleRules.find((r) => r.id === entry.id);
       if (base) rules.push({ ...base, enabled: bool(entry.enabled) });
@@ -195,7 +237,7 @@ export function validateForm(formData, { source = 'world', moduleRules = [] } = 
     if (rule) rules.push(rule);
     else errors.push({ index, id: str(entry.id), message: message ?? 'invalid rule' });
   });
-  return { rules, errors };
+  return { rules, errors, kept };
 }
 
 /** The valid rules of a form (see validateForm for the errors). */
@@ -213,16 +255,16 @@ export function rulesFromForm(formData, opts) {
 export async function saveTab(tab, formData, { isGM, moduleRules = [], setWorld, setDisabled, setMine }) {
   if (tab === 'world') {
     if (!isGM) return { ok: false, reason: 'not-gm', errors: [] };
-    const { rules, errors } = validateForm(formData, { source: 'world', moduleRules });
+    const { rules, errors, kept } = validateForm(formData, { source: 'world', moduleRules });
     if (errors.length) return { ok: false, reason: 'invalid', errors };
     const world = rules.filter((r) => r.source !== 'module');
     const disabled = rules.filter((r) => r.source === 'module' && !r.enabled).map((r) => r.id);
-    await setWorld(structuredClone(world));
+    await setWorld(structuredClone([...world, ...kept]));
     await setDisabled(disabled);
     return { ok: true, errors: [] };
   }
-  const { rules, errors } = validateForm(formData, { source: 'user' });
+  const { rules, errors, kept } = validateForm(formData, { source: 'user' });
   if (errors.length) return { ok: false, reason: 'invalid', errors };
-  await setMine(structuredClone(rules));
+  await setMine(structuredClone([...rules, ...kept]));
   return { ok: true, errors: [] };
 }

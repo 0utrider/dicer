@@ -13,6 +13,18 @@
 <div class="dicer-rules">
   {{#unless hasRules}}<p class="dicer-empty">{{localize "DICER.Triggers.Empty"}}</p>{{/unless}}
   {{#each rules}}
+    {{#if isRaw}}
+    <fieldset class="dicer-rule invalid">
+      <input type="hidden" name="rules.{{index}}.id" value="{{id}}">
+      <input type="hidden" name="rules.{{index}}.source" value="raw">
+      <input type="hidden" name="rules.{{index}}.rawJson" value="{{rawJson}}">
+      <p class="dicer-error">{{error}}</p>
+      <code>{{rawJson}}</code>
+      <div class="dicer-actions">
+        {{#if canDelete}}<button type="button" data-action="delete" data-index="{{index}}" data-tooltip="DICER.Triggers.Delete"><i class="fa-solid fa-trash"></i></button>{{/if}}
+      </div>
+    </fieldset>
+    {{else}}
     <fieldset class="dicer-rule {{#if isModule}}is-module{{/if}} {{#if error}}invalid{{/if}}">
       <input type="hidden" name="rules.{{index}}.id" value="{{id}}">
       <input type="hidden" name="rules.{{index}}.source" value="{{source}}">
@@ -145,6 +157,7 @@
         {{/unless}}
       </div>
     </fieldset>
+    {{/if}}
   {{/each}}
 </div>
 

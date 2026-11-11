@@ -163,3 +163,72 @@ describe('TriggerEditor', () => {
     expect(mod.TriggerEditor.DEFAULT_OPTIONS.id).toBe('dicer-trigger-editor');
   });
 });
+
+describe('stored rules that cannot be read are kept', () => {
+  it('loadEntries turns them into raw entries and counts them', () => {
+    const bad = { id: 'old', effect: { id: 'x' }, result: { kind: 'bogus' } };
+    const { entries, unreadable } = mod.loadEntries([DEFAULT_RULES[0], bad, 'junk'], 'world');
+    expect(unreadable).toBe(2);
+    expect(entries.map((e) => e.source)).toEqual(['world', 'raw', 'raw']);
+    expect(entries[1].id).toBe('old');
+  });
+
+  it('a save writes them back untouched next to the valid rules', async () => {
+    const bad = { id: 'old', effect: { id: 'x' }, result: { kind: 'bogus' } };
+    const { entries } = mod.loadEntries([DEFAULT_RULES[0], bad], 'world');
+    const setMine = vi.fn(async () => {});
+    const setWorld = vi.fn(async () => {});
+    await mod.saveTab('world', { rules: entries }, { isGM: true, setWorld, setDisabled: async () => {}, setMine });
+    expect(setWorld).toHaveBeenCalledWith([DEFAULT_RULES[0], bad]);
+    await mod.saveTab('mine', { rules: mod.loadEntries([bad], 'user').entries }, { isGM: false, setWorld, setDisabled: async () => {}, setMine });
+    expect(setMine).toHaveBeenCalledWith([bad]);
+  });
+
+  it('deleting the raw entry drops it', async () => {
+    const { entries } = mod.loadEntries([{ id: 'old', result: { kind: 'bogus' } }], 'user');
+    const setMine = vi.fn(async () => {});
+    await mod.saveTab('mine', { rules: [] }, { isGM: true, setWorld: vi.fn(), setDisabled: vi.fn(), setMine });
+    expect(entries).toHaveLength(1);
+    expect(setMine).toHaveBeenCalledWith([]);
+  });
+});
+
+describe('lang/en.json', () => {
+  it('has no duplicate keys and resolves every DICER.Triggers key the editor and template use', async () => {
+    const { readFileSync } = await import('node:fs');
+    const text = readFileSync('lang/en.json', 'utf8');
+    // Duplicate-key scan: a stack of key sets, one per object.
+    const stack = [];
+    const dups = [];
+    for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"\s*(:)?|([{}])/g)) {
+      if (m[3] === '{') stack.push(new Set());
+      else if (m[3] === '}') stack.pop();
+      else if (m[2]) {
+        const set = stack[stack.length - 1];
+        if (set.has(m[1])) dups.push(m[1]);
+        set.add(m[1]);
+      }
+    }
+    expect(dups).toEqual([]);
+    const lang = JSON.parse(text).DICER.Triggers;
+    const used = new Set();
+    for (const f of ['src/ui/trigger-editor.js', 'templates/trigger-editor.hbs']) {
+      const src = readFileSync(f, 'utf8');
+      for (const m of src.matchAll(/DICER\.Triggers\.([A-Za-z.$_-]+)/g)) used.add(m[1]);
+    }
+    const kinds = ['any', 'value', 'range', 'max', 'min', 'label'];
+    const outcomes = ['any', 'critical-success', 'success', 'failure', 'critical-failure'];
+    const sounds = ['none', 'builtin', 'file'];
+    const keys = [...used].flatMap((k) => {
+      if (k.startsWith('ResultKinds.')) return kinds.map((x) => `ResultKinds.${x}`);
+      if (k.startsWith('Outcomes.')) return outcomes.map((x) => `Outcomes.${x}`);
+      if (k.startsWith('Sound.')) return sounds.map((x) => `Sound.${x}`);
+      return [k];
+    });
+    expect(keys.length).toBeGreaterThan(30);
+    for (const k of keys) {
+      const v = k.split('.').reduce((o, p) => o?.[p], lang);
+      expect(typeof v, `DICER.Triggers.${k}`).toBe('string');
+    }
+  });
+});
