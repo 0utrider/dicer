@@ -60,14 +60,18 @@ export async function runScenario(scenario, adapter, opts = {}) {
   let resBefore = null;
   let resAfter = null;
 
-  // Per message id: whether RollStart / RollComplete fired, and the first rAF time after start.
+  // Hook state, only for tracked message ids (or any id while a roll() call is still pending).
   const state = new Map();
+  const tracked = new Set();
   const waiters = new Map();
+  let pendingRoll = false;
+  const accepts = (id) => tracked.has(id) || pendingRoll;
   const get = (id) => {
     if (!state.has(id)) state.set(id, { started: false, frameAt: null, done: false });
     return state.get(id);
   };
   const onStart = (id) => {
+    if (!accepts(id)) return;
     const s = get(id);
     if (s.started) return;
     s.started = true;
@@ -77,117 +81,180 @@ export async function runScenario(scenario, adapter, opts = {}) {
     waiters.get(id)?.start?.();
   };
   const onComplete = (id) => {
+    if (!accepts(id)) return;
     get(id).done = true;
     waiters.get(id)?.done?.();
   };
-  hooks.on('diceSoNiceRollStart', onStart);
-  hooks.on('diceSoNiceRollComplete', onComplete);
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  /** Race a value or promise against a timer that is always cleared. Resolves to TIMEOUT on expiry. */
+  const TIMEOUT = Symbol('timeout');
+  const raced = (fn, ms) => {
+    let timer = null;
+    const t = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(TIMEOUT), ms);
+    });
+    const work = Promise.resolve().then(fn);
+    return Promise.race([work, t]).finally(() => clearTimeout(timer));
+  };
+  const guarded = async (label, fn) => {
+    try {
+      const v = await raced(fn, timeoutMs);
+      if (v === TIMEOUT) {
+        notes.push(`${label} timed out after ${timeoutMs} ms`);
+        return null;
+      }
+      return v ?? null;
+    } catch (e) {
+      notes.push(`${label} failed: ${e?.message ?? e}`);
+      return null;
+    }
+  };
+
   async function waitIdle() {
-    const until = now() + timeoutMs;
-    while (adapter.isBusy?.() && now() < until) await sleep(50);
+    let waited = 0;
+    while (adapter.isBusy?.() && waited < timeoutMs) {
+      await sleep(50);
+      waited += 50;
+    }
     if (adapter.isBusy?.()) notes.push('adapter still busy before roll');
   }
 
   async function oneRoll() {
     await waitIdle();
     const t0 = now();
-    let res;
-    try {
-      res = await adapter.roll(scenario.formula);
-    } catch (e) {
-      failures++;
-      notes.push(`roll threw: ${e?.message ?? e}`);
-      return;
-    }
-    const id = res?.messageId;
-    const doneP = id == null && res?.done && typeof res.done.then === 'function' ? res.done : null;
-    if (id == null && !doneP) {
-      failures++;
-      notes.push('roll returned neither a message id nor done');
-      return;
-    }
-    const s = id != null ? get(id) : { started: false, frameAt: null, done: false };
-    const kind = PERTURB[scenario.id] != null ? scenario.id : null;
+    // One deadline for the whole roll: covers roll() itself and the wait for completion.
+    let timer = null;
+    const deadline = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(TIMEOUT), timeoutMs);
+    });
     let perturbTimer = null;
     let perturbed = false;
-    const schedulePerturb = () => {
-      if (!kind || perturbed) return;
-      perturbed = true;
-      perturbTimer = setTimeout(() => {
-        try {
-          Promise.resolve(adapter.perturb(kind, PERTURB[kind])).catch((e) => notes.push(`perturb failed: ${e?.message ?? e}`));
-        } catch (e) {
-          notes.push(`perturb failed: ${e?.message ?? e}`);
-        }
-      }, PERTURB_DELAY_MS);
-    };
-    let timer = null;
-    const finished = new Promise((resolve) => {
-      timer = setTimeout(() => resolve(false), timeoutMs);
-      if (doneP) {
-        doneP.then(() => resolve(true), () => resolve(false));
-        if (typeof res.started?.then === 'function') {
-          res.started.then(() => {
-            if (s.started) return;
-            s.started = true;
-            win.requestAnimationFrame(() => {
-              s.frameAt = now();
-            });
-            schedulePerturb();
-          }, () => {});
-        }
+    let settled = false;
+    let id = null;
+    try {
+      pendingRoll = true;
+      let res;
+      try {
+        res = await Promise.race([Promise.resolve().then(() => adapter.roll(scenario.formula)), deadline]);
+      } catch (e) {
+        failures++;
+        notes.push(`roll threw: ${e?.message ?? e}`);
+        return;
+      } finally {
+        pendingRoll = false;
+      }
+      if (res === TIMEOUT) {
+        failures++;
+        notes.push(`roll ${completed + 1} timed out after ${timeoutMs} ms (roll call)`);
         return;
       }
-      const w = { start: schedulePerturb, done: () => resolve(true) };
-      waiters.set(id, w);
-      if (s.started) schedulePerturb();
-      if (s.done) resolve(true);
-    });
-    const ok = await finished;
-    clearTimeout(timer);
-    if (id != null) waiters.delete(id);
-    if (perturbTimer && !ok) clearTimeout(perturbTimer);
-    if (s.started && s.frameAt != null) firstFrames.push(s.frameAt - t0);
-    else if (s.started) firstFrames.push(null);
-    if (!ok) {
-      failures++;
-      notes.push(`roll ${completed + 1} timed out after ${timeoutMs} ms`);
+      id = res?.messageId ?? null;
+      const doneP = id == null && res?.done && typeof res.done.then === 'function' ? res.done : null;
+      if (id == null && !doneP) {
+        failures++;
+        notes.push('roll returned neither a message id nor done');
+        return;
+      }
+      for (const k of [...state.keys()]) if (k !== id) state.delete(k);
+      if (id != null) tracked.add(id);
+      const s = id != null ? get(id) : { started: false, frameAt: null, done: false };
+      const kind = PERTURB[scenario.id] != null ? scenario.id : null;
+      const schedulePerturb = () => {
+        if (!kind || perturbed || settled) return;
+        perturbed = true;
+        perturbTimer = setTimeout(() => {
+          try {
+            Promise.resolve(adapter.perturb(kind, PERTURB[kind])).catch((e) => notes.push(`perturb failed: ${e?.message ?? e}`));
+          } catch (e) {
+            notes.push(`perturb failed: ${e?.message ?? e}`);
+          }
+        }, PERTURB_DELAY_MS);
+      };
+      const finished = new Promise((resolve) => {
+        if (doneP) {
+          doneP.then(() => resolve(true), () => resolve(false));
+          if (typeof res.started?.then === 'function') {
+            res.started.then(() => {
+              if (s.started || settled) return;
+              s.started = true;
+              win.requestAnimationFrame(() => {
+                s.frameAt = now();
+              });
+              schedulePerturb();
+            }, () => {});
+          }
+          return;
+        }
+        waiters.set(id, { start: schedulePerturb, done: () => resolve(true) });
+        if (s.started) schedulePerturb();
+        if (s.done) resolve(true);
+      });
+      const ok = (await Promise.race([finished, deadline])) === true;
+      settled = true;
+      if (s.started && s.frameAt != null) firstFrames.push(s.frameAt - t0);
+      else if (s.started) firstFrames.push(null);
+      if (!ok) {
+        failures++;
+        notes.push(`roll ${completed + 1} timed out after ${timeoutMs} ms`);
+      }
+      try {
+        dicerFrames.push(id != null ? (adapter.dicerFirstFrame?.(id) ?? null) : null);
+      } catch {
+        dicerFrames.push(null);
+      }
+    } finally {
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(perturbTimer);
+      if (id != null) {
+        waiters.delete(id);
+        tracked.delete(id);
+        state.delete(id);
+      }
     }
-    try {
-      dicerFrames.push(id != null ? (adapter.dicerFirstFrame?.(id) ?? null) : null);
-    } catch {
-      dicerFrames.push(null);
-    }
-    if (id != null) state.delete(id);
   }
 
-  recorder.start();
+  let rec = null;
   try {
+    hooks?.on('diceSoNiceRollStart', onStart);
+    hooks?.on('diceSoNiceRollComplete', onComplete);
+    recorder.start();
     for (let i = 1; i <= scenario.rolls; i++) {
       await oneRoll();
       completed = i;
       if (scenario.kind === 'soak' && (i === SOAK_MARKS[0] || i === SOAK_MARKS[1])) {
-        const h = await adapter.heap?.();
-        const r = adapter.resources?.() ?? null;
+        const h = await guarded('heap', () => adapter.heap?.());
+        const r = await guarded('resources', () => adapter.resources?.());
         if (i === SOAK_MARKS[0]) {
-          heapBefore = h ?? null;
+          heapBefore = h;
           resBefore = r;
         } else {
-          heapAfter = h ?? null;
+          heapAfter = h;
           resAfter = r;
         }
       }
     }
   } finally {
-    hooks.off('diceSoNiceRollStart', onStart);
-    hooks.off('diceSoNiceRollComplete', onComplete);
+    try {
+      hooks?.off('diceSoNiceRollStart', onStart);
+    } catch {
+      /* ignore */
+    }
+    try {
+      hooks?.off('diceSoNiceRollComplete', onComplete);
+    } catch {
+      /* ignore */
+    }
+    try {
+      rec = recorder.stop();
+    } catch {
+      rec = null;
+    }
   }
-  const rec = recorder.stop();
 
-  const lt = rec.longTasks;
+  const lt = rec?.longTasks;
   return {
     scenario: scenario.id,
     kind: scenario.kind,
@@ -195,7 +262,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
     profile: opts.profile ?? null,
     rolls: scenario.rolls,
     failures,
-    frame: summarize(rec.intervals),
+    frame: summarize(rec?.intervals ?? []),
     longTasks: Array.isArray(lt) ? { count: lt.length, maxMs: lt.length ? Math.max(...lt) : 0 } : null,
     firstFrame: summarize(firstFrames),
     dicerFirstFrame: summarize(dicerFrames.filter(finite)),

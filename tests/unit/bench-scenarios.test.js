@@ -330,3 +330,81 @@ test('a roll result with neither messageId nor done is a failure', async () => {
   const r = await runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, a, { hooks: fakeHooks(), win: fakeWin(), now });
   expect(r.failures).toBe(1);
 });
+
+test('a roll() that never settles fails and the suite finishes', async () => {
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks);
+  a.roll = () => new Promise(() => {});
+  const p = runSuite(['d20', 'mixed10'], a, { hooks, win: fakeWin(), now, timeoutMs: 1000 });
+  await vi.advanceTimersByTimeAsync(5000);
+  const s = await p;
+  expect(s.results.map((r) => r.failures)).toEqual([1, 1]);
+  expect(hooks.count('diceSoNiceRollStart')).toBe(0);
+});
+
+test('a soak heap() that never settles gives heap null and the run finishes', async () => {
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks, { startAfter: 1, completeAfter: 3, extra: { heap: () => new Promise(() => {}) } });
+  const p = runScenario(by('soak500'), a, { hooks, win: fakeWin(), now, timeoutMs: 1000 });
+  await vi.advanceTimersByTimeAsync(30000);
+  const r = await p;
+  expect(r.heap).toBeNull();
+  expect(r.rolls).toBe(500);
+  expect(r.notes.join(' ')).toMatch(/heap timed out/);
+});
+
+test('heap throw: null plus note, recorder stopped, listeners removed', async () => {
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks, { startAfter: 1, completeAfter: 3, extra: { heap: async () => { throw new Error('boom'); } } });
+  const rec = { start: vi.fn(), stop: vi.fn(() => ({ intervals: [], longTasks: null, marks: {} })), mark() {} };
+  const p = runScenario(by('soak500'), a, { hooks, win: fakeWin(), now, recorder: rec });
+  await vi.advanceTimersByTimeAsync(30000);
+  const r = await p;
+  expect(r.heap).toBeNull();
+  expect(r.notes.join(' ')).toMatch(/heap failed: boom/);
+  expect(rec.stop).toHaveBeenCalledTimes(1);
+  expect(hooks.count('diceSoNiceRollStart')).toBe(0);
+  expect(hooks.count('diceSoNiceRollComplete')).toBe(0);
+});
+
+test('recorder.start throwing still removes the listeners', async () => {
+  const hooks = fakeHooks();
+  const rec = { start() { throw new Error('nope'); }, stop: vi.fn(() => null), mark() {} };
+  await expect(runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now, recorder: rec })).rejects.toThrow('nope');
+  expect(hooks.count('diceSoNiceRollStart')).toBe(0);
+  expect(hooks.count('diceSoNiceRollComplete')).toBe(0);
+});
+
+test('no Hooks global: the no-message path still works', async () => {
+  const saved = globalThis.Hooks;
+  delete globalThis.Hooks;
+  try {
+    const a = noMsgAdapter();
+    const p = runScenario({ id: 'b', kind: 'typical', formula: '1d20', rolls: 1 }, a, { win: fakeWin(), now });
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await p).failures).toBe(0);
+  } finally {
+    if (saved) globalThis.Hooks = saved;
+  }
+});
+
+test('hook events for foreign ids are ignored', async () => {
+  const win = fakeWin();
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks, { startAfter: 20, completeAfter: 100 });
+  const p = runScenario(by('d20'), a, { hooks, win, now });
+  await vi.advanceTimersByTimeAsync(50);
+  const orig = win.requestAnimationFrame;
+  let calls = 0;
+  win.requestAnimationFrame = (cb) => {
+    calls++;
+    return orig(cb);
+  };
+  hooks.callAll('diceSoNiceRollStart', 'foreign', {});
+  hooks.callAll('diceSoNiceRollComplete', 'foreign');
+  expect(calls).toBe(0);
+  await vi.advanceTimersByTimeAsync(500);
+  const r = await p;
+  expect(r.failures).toBe(0);
+  expect(r.firstFrame.n).toBe(1);
+});
