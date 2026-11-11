@@ -397,6 +397,21 @@ function checkNote(r) {
     : `${judged}; ${other} n/a`;
 }
 
+/** Console lines world.js prints for the terminal start with this (bench.mjs relays them). */
+export const PROGRESS_PREFIX = '[dicer-bench]';
+
+/**
+ * The Runs table's tier: the tier the run started at (its first scenario's tier.before), and
+ * `start -> end` when it ended on another one (an adaptive drop). Falls back to suite.tier.
+ */
+export function runTier(suite) {
+  const results = (suite?.results ?? []).filter(Boolean);
+  const start = results.find((r) => r.tier?.before != null)?.tier.before ?? null;
+  const end = [...results].reverse().find((r) => r.tier?.after != null)?.tier.after ?? null;
+  if (start == null) return suite?.tier ?? 'n/a';
+  return end != null && end !== start ? `${start} -> ${end}` : start;
+}
+
 /** summary.md: runs, G2 target checks, then the head-to-head table. */
 export function summaryMarkdown({ date, reports, rows, errors, dsnFlag }) {
   const out = [`# Dicer benchmark ${date}`, ''];
@@ -408,7 +423,7 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag }) {
   );
   for (const { entry, suite } of reports ?? []) {
     out.push(
-      `| ${runName(entry)} | ${suite?.browser ?? 'n/a'} | ${suite?.gpu ?? 'n/a'} | ${suite?.tier ?? 'n/a'} | ${suite?.version ?? 'n/a'} |`,
+      `| ${runName(entry)} | ${suite?.browser ?? 'n/a'} | ${suite?.gpu ?? 'n/a'} | ${runTier(suite)} | ${suite?.version ?? 'n/a'} |`,
     );
   }
   for (const e of errors ?? []) out.push('', `Run error: ${e.run}: ${e.error}`);
@@ -418,6 +433,14 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag }) {
       out.push(
         '',
         `Warning: ${runName(entry)}: no Foundry scene loaded (G2 assumes one; the numbers may read better than in play)`,
+      );
+  }
+  // P9-R2: a product that skipped the warm-up animation skipped the scenarios' too.
+  for (const { entry, suite } of reports ?? []) {
+    if (suite?.warmup?.started === false)
+      out.push(
+        '',
+        `Warning: ${runName(entry)}: the warm-up roll did not animate, so its frames measure nothing (${JSON.stringify(suite.warmup.why ?? {})})`,
       );
   }
   out.push('', 'Throttled results are estimates of a low-end machine.', '');

@@ -55,7 +55,9 @@ export function checkTargets(r) {
     const { before, after } = r.resources;
     const keys = new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]);
     const diff = [...keys].filter((k) => (before?.[k] ?? 0) !== (after?.[k] ?? 0));
-    out.push({ id: 'resources', target: 0, value: diff.length, pass: diff.length === 0 });
+    // P9-R3: a tier change swaps programs and textures, so the counts no longer mean a leak.
+    const tierChanged = r.tier?.before != null && r.tier?.after != null && r.tier.before !== r.tier.after;
+    out.push({ id: 'resources', target: 0, value: diff.length, pass: tierChanged ? null : diff.length === 0 });
   }
   return out;
 }
@@ -68,6 +70,9 @@ export function compare(dicer, dsn, { requireClearlyLess = false } = {}) {
   if (d == null || s == null || !(s > 0)) return { scenario, dicerP95: d, dsnP95: s, ratio: null, pass: null };
   const ratio = d / s;
   const limit = requireClearlyLess ? TARGETS.clearlyLessRatio : 1;
+  // P9-R2: a failed roll (one that timed out, or that the product did not animate) means the
+  // two sides did not measure the same work: the ratio is shown, the verdict is n/a.
+  if ((dicer?.failures ?? 0) > 0 || (dsn?.failures ?? 0) > 0) return { scenario, dicerP95: d, dsnP95: s, ratio, pass: null };
   return { scenario, dicerP95: d, dsnP95: s, ratio, pass: ratio <= limit + EPS };
 }
 

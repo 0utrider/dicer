@@ -144,3 +144,21 @@ test('summaryText prints each scenario note on its own line, within the 40-line 
   const many = summaryText({ results: Array.from({ length: 60 }, (_, i) => r(`s${i}`, ['n'])) });
   expect(many.split(String.fromCharCode(10)).length).toBeLessThanOrEqual(40);
 });
+
+// P9-R3: a tier change swaps programs and textures; the counts no longer indicate a leak.
+test('resources check is n/a when the tier changed during the scenario', () => {
+  const resources = { before: { geometries: 9, textures: 10, programs: 3 }, after: { geometries: 11, textures: 6, programs: 5 } };
+  const changed = checkTargets(base({ kind: 'soak', resources, tier: { before: 'ultra', after: 'low' } }));
+  expect(get(changed, 'resources')).toEqual({ id: 'resources', target: 0, value: 3, pass: null });
+  const kept = checkTargets(base({ kind: 'soak', resources, tier: { before: 'ultra', after: 'ultra' } }));
+  expect(get(kept, 'resources').pass).toBe(false);
+});
+
+// P9-R2: a side with failed (unanimated) rolls did not measure the same work.
+test('compare: ratio shown, verdict n/a when either side has failures', () => {
+  const d = base({ scenario: 'd20', frame: sum(1) });
+  const s = base({ scenario: 'd20', product: 'dice-so-nice', frame: sum(4), failures: 1 });
+  expect(compare(d, s, { requireClearlyLess: true })).toEqual({ scenario: 'd20', dicerP95: 1, dsnP95: 4, ratio: 0.25, pass: null });
+  expect(compare({ ...d, failures: 2 }, { ...s, failures: 0 }).pass).toBeNull();
+  expect(compare(d, { ...s, failures: 0 }).pass).toBe(true);
+});

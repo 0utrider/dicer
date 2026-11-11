@@ -85,8 +85,12 @@ function printPlan(plan, decision) {
   console.log(`bench: reports go to ${lib.outDirName(new Date())}/`);
 }
 
-async function rpc(page, method, data) {
-  return page.evaluate(
+/**
+ * Calls a world.js export in the page. `timeoutMs`: page.evaluate has no timeout of its own, so
+ * a call that can stall on a Foundry prompt (the module switch's reload) is raced against one.
+ */
+async function rpc(page, method, data, { timeoutMs } = {}) {
+  const call = page.evaluate(
     async ({ method, data }) => {
       const api = await import('/modules/dicer/tests/live/world.js');
       if (typeof api[method] !== 'function') throw Error(`Unknown live-test RPC: ${method}`);
@@ -94,7 +98,24 @@ async function rpc(page, method, data) {
     },
     { method, data },
   );
+  if (!timeoutMs) return call;
+  let timer = null;
+  const expired = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(Error(`${method} did not finish within ${timeoutMs / 1000} s (a Foundry dialog may be open in the bench browser)`)),
+      timeoutMs,
+    );
+  });
+  call.catch(() => {}); // the page is closed after a timeout; its rejection is not news
+  try {
+    return await Promise.race([call, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
+
+/** P9-R5: the module switch (a settings write, then Foundry reloads) gets this long. */
+const SWITCH_TIMEOUT_MS = 60000;
 
 async function login(page) {
   await page.goto(`${URL_BASE}/join`);
@@ -164,6 +185,12 @@ function createHarness(chromium) {
       page.setDefaultTimeout(60000);
       const pageErrors = [];
       page.on('pageerror', (e) => pageErrors.push(errText(e)));
+      // P9-R5: world.js prints a line per scenario; show it so a long run visibly progresses.
+      page.on('console', (m) => {
+        const text = m.text();
+        if (text.startsWith(lib.PROGRESS_PREFIX))
+          console.log(`bench: ${new Date().toLocaleTimeString()} ${text.slice(lib.PROGRESS_PREFIX.length).trim()}`);
+      });
       const cdp = await context.newCDPSession(page);
       await page.exposeFunction('__benchHeap', async () => {
         await cdp.send('HeapProfiler.collectGarbage');
@@ -212,7 +239,7 @@ function createHarness(chromium) {
         return;
       }
       console.log(`bench: switching the world to ${product} (reload)`);
-      await rpc(s.page, 'setDiceModule', product);
+      await rpc(s.page, 'setDiceModule', product, { timeoutMs: SWITCH_TIMEOUT_MS });
     } finally {
       await s.close();
     }
@@ -321,7 +348,7 @@ function createHarness(chromium) {
         const active = await rpc(s.page, 'benchProduct');
         for (const step of lib.restorePlan(restore, active, { crashed })) {
           if (step.op === 'switch') {
-            await rpc(s.page, 'setDiceModule', step.product);
+            await rpc(s.page, 'setDiceModule', step.product, { timeoutMs: SWITCH_TIMEOUT_MS });
             await s.close();
             s = await openSession('pc', 'vsync');
             const now = await rpc(s.page, 'benchProduct');

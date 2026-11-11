@@ -20,6 +20,8 @@ import {
   summaryMarkdown,
   RESTORE_FILE,
   isLocalHttps,
+  runTier,
+  PROGRESS_PREFIX,
 } from '../../tests/live/bench-lib.mjs';
 
 test('a self-signed certificate is trusted only for a local https Foundry', () => {
@@ -549,4 +551,30 @@ test('world.js recoveryVerdict: a live context and a drawn frame (I3)', async ()
   expect(recoveryVerdict({ lost: true, firstFrame: 12, framesBefore: 1, framesAfter: 9 })).toBe(false);
   expect(recoveryVerdict({ lost: null, firstFrame: 12 })).toBeNull();
   expect(recoveryVerdict({ lost: false, firstFrame: null, framesBefore: null, framesAfter: null })).toBeNull();
+});
+
+test('Runs tier: the tier the run started at, and start -> end after an adaptive drop', () => {
+  const r = (before, after) => ({ tier: { before, after } });
+  expect(runTier({ tier: 'low', results: [r('ultra', 'ultra'), r('ultra', 'low'), r('low', 'low')] })).toBe('ultra -> low');
+  expect(runTier({ tier: 'ultra', results: [r('ultra', 'ultra')] })).toBe('ultra');
+  expect(runTier({ tier: null, results: [r(null, null)] })).toBe('n/a');
+  expect(runTier({ tier: 'medium', results: [] })).toBe('medium');
+  expect(runTier(null)).toBe('n/a');
+});
+
+test('summaryMarkdown warns when the warm-up roll did not animate (P9-R2)', () => {
+  const e = entry('dice-so-nice', 'pc', 'uncapped');
+  const ok = { ...report(e, [result('d20')]) };
+  ok.suite = { ...ok.suite, warmup: { completed: true, started: true } };
+  const skipped = { ...report(e, [result('d20')]) };
+  skipped.suite = { ...skipped.suite, warmup: { completed: true, started: false, why: { dsnHideNpcRolls: true } } };
+  const warn = /warm-up roll did not animate/;
+  expect(summaryMarkdown({ date: 'd', reports: [ok], rows: [], errors: [] })).not.toMatch(warn);
+  expect(summaryMarkdown({ date: 'd', reports: [skipped], rows: [], errors: [] })).toMatch(
+    /Warning: dice-so-nice-pc-uncapped: the warm-up roll did not animate.*"dsnHideNpcRolls":true/,
+  );
+});
+
+test('the progress prefix is the one world.js prints', () => {
+  expect(PROGRESS_PREFIX).toBe('[dicer-bench]');
 });

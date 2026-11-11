@@ -21,13 +21,17 @@ npm run test:live:bench              # the full matrix
 npm run test:live:bench -- --dry-run # print the matrix, launch nothing, change nothing
 ```
 
-A full run goes through 8 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run. It exits 2 before starting when the credentials are missing, Foundry cannot be reached or `restore.json` is damaged.
+A full run goes through 8 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The terminal prints a timestamped line as each run's warm-up roll and each scenario starts and ends, so a long run visibly progresses. The module switch gets 60 s; a Foundry dialog that blocks it stops the run with a message instead of hanging it. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run. It exits 2 before starting when the credentials are missing, Foundry cannot be reached or `restore.json` is damaged.
 
 What each run covers:
 
 - Dicer, `pc` `vsync`: every scenario, including the 500-roll soak, resize, context loss and hidden tab. Context loss rolls twice: the first roll loses the WebGL context mid-roll, and once the context is restored (at most 3 s) a second roll must draw.
 - Dicer, `throttled` `vsync`: `d20`, `mixed10`, `pool30`.
 - Each product in `pc` and `throttled` `uncapped`, and the effects-off pairing: `d20`, `mixed10`, `pool30`, `burst100`.
+
+Before its scenarios each run makes one unrecorded warm-up roll of every die type (`1d4+1d6+1d8+1d10+1d12+1d20`), so neither product pays its first-roll setup inside a measured scenario. Every bench roll speaks as the alias "Dice benchmark", never a token or character: DSN skips an NPC speaker's roll when its hide-NPC-rolls setting is on. Before each scenario the harness forces a full garbage collection, so garbage left by page load is not collected inside the next measurement.
+
+A chat roll that completes without `diceSoNiceRollStart` was not animated: it counts as a failed roll, and the scenario notes how many. If the warm-up roll was not animated, `summary.md` warns and lists the settings that can cause it.
 
 ## Profiles and modes
 
@@ -60,11 +64,13 @@ Everything goes to `artifacts/bench/<timestamp>/`, for example `artifacts/bench/
 
 ### Reading summary.md
 
-- **Runs**: the browser, GPU, tier and Dicer version of each run. Check the GPU column first: a software renderer means the numbers are not representative.
+- **Runs**: the browser, GPU, tier and Dicer version of each run. Check the GPU column first: a software renderer means the numbers are not representative. The tier is the one the run started at, shown as `ultra -> low` when an adaptive drop changed it during the run.
 - **G2 target checks**: one row per run, scenario and check, with the target, the measured value, Pass or Fail, and a note. Each failing row is something to tune. The checks include frame p95 (16.7 ms), longest task (50 ms), first frame (50 ms), big pool visible (100 ms), heap growth (at most 2 MiB and at most 5%), GPU geometries, textures and programs unchanged over the soak, and no failed rolls.
   - First frame and big pool visible are judged on `dicerFirstFrame`: from Dicer's message gate catching the chat message to the first drawn frame (G2's "message arriving"). The note names that measure and shows the other one, `firstFrame` (from the roll call to the first frame), which is the measure the head-to-head with DSN can share. When a run has no gate timing, `firstFrame` is judged and the note says so.
+  - The soak deletes its chat messages every 50 rolls, so the chat log does not count as heap growth. Heap and GPU resources are read at roll 50 and roll 500. When the tier changed during the soak, the resources check is n/a: a tier change swaps programs and textures.
+  - Each result's `longTasks.top` in the JSON lists the three longest tasks with `at`, their start in ms after recording began, and `firstRollAt`, when roll 1 was made. Use them to tell a stall inside a roll from one before it.
   - Resize, context loss and hidden tab are disturbances, not frame measurements: they are checked for failed rolls only, plus no renderer rebuild (resize and context loss) and `recovered` (context loss: after the restore the second roll drew on a live context).
-- **Head-to-head**: the frame p95 of Dicer and DSN per scenario, their ratio, the limit, and the failed rolls of each. For the pc defaults pairing, Dicer must be clearly less than DSN (ratio at most 0.9).
+- **Head-to-head**: the frame p95 of Dicer and DSN per scenario, their ratio, the limit, and the failed rolls of each. For the pc defaults pairing, Dicer must be clearly less than DSN (ratio at most 0.9). When either side has a failed roll the ratio is still shown, but the result is n/a: the two sides did not measure the same work.
 - **DSN effects-off user flag**: the DSN settings the harness wrote, read back. If an effect setting is missing here, DSN ran with that effect on and the pairing is less fair.
 - The last line counts failed rows, n/a rows and run errors.
 

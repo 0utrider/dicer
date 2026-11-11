@@ -321,6 +321,14 @@ const BENCH = '/modules/dicer/src/bench/';
 const SCENARIO_SETTLE_MS = 4000;
 const IDLE_WAIT_MS = 16000;
 const RESTORE_WAIT_MS = 3000;
+/**
+ * P9-R2: every bench roll speaks as a plain alias, never a token or character. DSN skips an
+ * NPC speaker's roll when hideNpcRolls is on, and resolves a player owner's appearance;
+ * neither belongs in a frame measurement, and both products get the same speaker.
+ */
+const BENCH_SPEAKER = Object.freeze({ alias: 'Dice benchmark' });
+/** Progress lines for the Node side (bench.mjs relays console lines with this prefix). */
+const progress = (text) => console.info(`[dicer-bench] ${text}`);
 
 const finiteNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -557,7 +565,7 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
   // H-R3/H-R6: the chat path ({messageId}) for both products.
   const roll = async (f) => {
     framesAtRoll = productFrames(product);
-    const m = await new Roll(f).toMessage();
+    const m = await new Roll(f).toMessage({ speaker: { ...BENCH_SPEAKER } });
     track(created, m.id);
     return { messageId: m.id };
   };
@@ -587,6 +595,8 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
   };
   // H-D5: back to back, the next roll starts when the previous message completes (no idle wait).
   const isBusy = () => false;
+  // P9-R3: the soak deletes its messages every 50 rolls, so 500 chat cards are not in the heap.
+  const cleanup = () => deleteMessages(created.splice(0));
   if (product === 'dicer') {
     const api = game.dice3d;
     const base = createDicerAdapter(api, {
@@ -598,6 +608,7 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
       ...base,
       isBusy,
       heap,
+      cleanup,
       perturb,
       verifyRecovered,
       idle: () => !base.isBusy(),
@@ -609,6 +620,7 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
     roll,
     isBusy,
     heap,
+    cleanup,
     perturb,
     verifyRecovered,
     idle: () => true,
@@ -634,6 +646,13 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
 /** Between scenarios: a fixed settle, then Dicer waits until no dice and no loop (bounded). */
 async function settle(adapter) {
   await sleep(SCENARIO_SETTLE_MS);
+  // P9-R4: a full GC now, so garbage left by page load or the last scenario is not collected
+  // as a long task inside the next one (a 500 MB Foundry heap collects in hundreds of ms).
+  try {
+    await adapter.heap?.();
+  } catch {
+    // best effort: without the binding the scenario runs as before
+  }
   const until = performance.now() + IDLE_WAIT_MS;
   while (!adapter.idle() && performance.now() < until) await sleep(100);
 }
@@ -654,13 +673,19 @@ export async function benchRun({ ids, profile }) {
   let meta = null;
   let warmup;
   try {
+    progress(`${profile}: warm-up roll`);
     warmup = await warmupRoll(created);
+    if (!warmup.started) progress(`${profile}: warning: the warm-up roll did not animate (${JSON.stringify(warmup.why)})`);
     await deleteMessages(created.splice(0));
-    for (const id of ids) {
+    for (const [n, id] of ids.entries()) {
       await settle(adapter);
       const before = rendererIdentity(product);
       try {
+        progress(`${profile}: scenario ${n + 1}/${ids.length} ${id}`);
+        const t0 = performance.now();
         const part = await runSuite([id], adapter, { profile, hooks: Hooks });
+        const r = part.results[0];
+        progress(`${profile}: ${id} done in ${((performance.now() - t0) / 1000).toFixed(0)} s, failures ${r?.failures ?? 'n/a'}`);
         if (id === 'resize' || id === 'contextLoss') {
           await sleep(1000); // a context restore lands asynchronously
           const after = rendererIdentity(product);
@@ -691,27 +716,62 @@ export async function benchRun({ ids, profile }) {
   };
 }
 
+/** Every die type the scenarios roll, so the warm-up loads each one's assets once. */
+const WARMUP_FORMULA = '1d4+1d6+1d8+1d10+1d12+1d20';
+
 /**
- * One unrecorded 1d20 chat roll before the scenarios (both products), so neither pays its
- * first-roll setup inside a measured scenario. Waits for its diceSoNiceRollComplete (16 s cap).
- * Its message id goes into `created` (the caller deletes it).
+ * One unrecorded chat roll of every die type before the scenarios (both products), so neither
+ * pays its first-roll setup inside a measured scenario. Waits for its diceSoNiceRollComplete
+ * (16 s cap). Its message id goes into `created` (the caller deletes it). `started`: the product
+ * fired diceSoNiceRollStart for it, i.e. it animated (P9-R2); `why` is what may explain a skip.
  */
 async function warmupRoll(created) {
   let id = null;
   let resolveDone;
   const done = new Promise((r) => (resolveDone = r));
   const seen = new Set();
+  const starts = new Set();
+  const startId = Hooks.on('diceSoNiceRollStart', (mid) => starts.add(mid));
   const hookId = Hooks.on('diceSoNiceRollComplete', (mid) => {
     seen.add(mid);
     if (mid === id) resolveDone(true);
   });
   try {
-    id = (await new Roll('1d20').toMessage()).id;
+    const t0 = performance.now();
+    id = (await new Roll(WARMUP_FORMULA).toMessage({ speaker: { ...BENCH_SPEAKER } })).id;
     track(created, id);
     if (seen.has(id)) resolveDone(true);
     const completed = await Promise.race([done, sleep(IDLE_WAIT_MS).then(() => false)]);
-    return { completed };
+    const started = starts.has(id);
+    return {
+      completed,
+      started,
+      ms: Math.round(performance.now() - t0),
+      ...(started ? {} : { why: skipReasons() }),
+    };
   } finally {
+    Hooks.off('diceSoNiceRollStart', startId);
     Hooks.off('diceSoNiceRollComplete', hookId);
   }
+}
+
+/** Settings that make a product skip an animation, read for the report when the warm-up did not animate. */
+function skipReasons() {
+  const get = (scope, key) => {
+    try {
+      return game.settings.get(scope, key);
+    } catch {
+      return undefined;
+    }
+  };
+  const dsnUser = game.user?.getFlag?.('dice-so-nice', 'settings') ?? null;
+  return {
+    documentHidden: document.hidden,
+    combatStarted: Boolean(game.combat?.started),
+    dsnVisibility: dsnUser?.visibility ?? null,
+    dsnHideNpcRolls: get('dice-so-nice', 'hideNpcRolls'),
+    dsnDisabledDuringCombat: get('dice-so-nice', 'disabledDuringCombat'),
+    dsnImmediatelyDisplay: get('dice-so-nice', 'immediatelyDisplayChatMessages'),
+    dsnMessageHookDisabled: game.dice3d?.messageHookDisabled ?? null,
+  };
 }
