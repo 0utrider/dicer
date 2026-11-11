@@ -5,7 +5,7 @@
  * editor, its own lazy chunk), export / import files and the GM's publish. The pure logic is in ./theme-form.js; the data actions below
  * (assign, clear, save, import, export, publish) are exported so they can be tested without a DOM.
  */
-import { chosenRef } from '../compat/user-looks.js';
+import { chosenRef, isNeverChose, mirrorLookSetting, neverChoseRef } from '../compat/user-looks.js';
 import { DIE_TYPES, findTheme, readThemeList } from '../themes/themes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { damageTypeList } from './damage-map-form.js';
@@ -81,8 +81,17 @@ export async function assignTarget(target, themeId) {
   const id = typeof themeId === 'string' && themeId ? themeId : null;
   switch (t.kind) {
     case 'default':
-      // The setting mirrors into the user flag (onLookChange); clearing means the default theme.
-      await settings().set(MODULE, 'theme', id ?? 'default');
+      if (id) {
+        // Written directly as well: the setting's onChange (which mirrors too) does not fire when
+        // the value is unchanged, e.g. re-picking the old theme after a GM push. Idempotent.
+        await mirrorLookSetting(user, id);
+        await settings().set(MODULE, 'theme', id);
+      } else {
+        // Clear: a never-chose global first, so the world default applies again (P7-R5); the
+        // setting's mirror then sees it and leaves it alone (shouldMirror).
+        await user.setFlag(MODULE, FLAG, { global: neverChoseRef() });
+        await settings().set(MODULE, 'theme', 'default');
+      }
       return true;
     case 'die':
       if (!DIE_TYPES.includes(t.key)) return false;
@@ -392,14 +401,38 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     } catch {
       /* settings not ready */
     }
-    // The default is the stored global theme (a push writes it); the client setting only when none is stored.
-    const stored = isPlainObjectLike(looks?.global) && typeof looks.global.theme === 'string' ? looks.global.theme : '';
     return themeAssignments({
-      defaultId: stored || settings()?.get(MODULE, 'theme'),
+      defaultId: this.#defaultId(looks),
       looks,
       actors: this.#actors(),
       damageOverrides: damage,
     });
+  }
+
+  /**
+   * "Your default": the stored global theme (a push writes it, P7-R6). With no stored choice (no
+   * global, or a never-chose one) the GM's world default when it names a theme that exists, as
+   * the resolver does (P7-R5); else the client setting.
+   */
+  #defaultId(looks) {
+    const global = isPlainObjectLike(looks?.global) ? looks.global : null;
+    const noChoice = !global || isNeverChose(global);
+    if (!noChoice) {
+      if (typeof global.theme === 'string' && global.theme) return global.theme;
+    } else {
+      let world = '';
+      try {
+        world = settings()?.get(MODULE, 'worldDefaultTheme') ?? '';
+      } catch {
+        world = '';
+      }
+      if (typeof world === 'string' && world && this.#find(world)) return world;
+    }
+    try {
+      return settings()?.get(MODULE, 'theme');
+    } catch {
+      return 'default';
+    }
   }
 
   async _prepareContext() {

@@ -212,6 +212,30 @@ describe('theme setting choices (P5-R10)', () => {
     expect(getAppearance().body.color).toBe('#123456');
     vi.unstubAllGlobals();
   });
+  it('getAppearance follows the resolver chain: push, world default, lock (M-2)', async () => {
+    vi.stubGlobal('Hooks', { on: () => {}, once: () => {}, callAll: () => {} });
+    const { getAppearance } = await import('../../src/main.js');
+    const color = (id) => BUILTIN_THEMES.find((t) => t.id === id).appearance.body.color;
+    let flag;
+    const store = { theme: 'ruby-classic', worldThemes: [], worldDefaultTheme: '', lockPlayerLooks: false };
+    vi.stubGlobal('game', {
+      user: { isGM: false, getFlag: (_s, k) => (k === 'appearance' ? flag : undefined) },
+      settings: { get: (_n, k) => store[k] },
+    });
+    try {
+      expect(getAppearance().body.color).toBe(color('ruby-classic'));
+      flag = { global: chosenRef('verdant') }; // a GM push; the setting is unchanged
+      expect(getAppearance().body.color).toBe(color('verdant'));
+      flag = { global: { ...themeRef('default'), chosen: null } }; // never chose
+      store.worldDefaultTheme = 'ember-core';
+      expect(getAppearance().body.color).toBe(color('ember-core'));
+      flag = { global: chosenRef('verdant') };
+      store.lockPlayerLooks = true;
+      expect(getAppearance().body.color).toBe(color('ember-core'));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('publishToWorld', () => {
@@ -296,6 +320,73 @@ describe('the browser actions', () => {
     expect(store.theme).toBe('ruby-classic');
     await mod.clearTarget('default');
     expect(store.theme).toBe('default');
+  });
+  describe('My default writes the flag itself (I-1)', () => {
+    const merging = () => {
+      user.setFlag = vi.fn(async (s, k, v) => {
+        const cur = { ...(flags[k] ?? {}) };
+        for (const [slot, ref] of Object.entries(v)) cur[slot] = ref === 'DELETE' ? undefined : { ...(cur[slot] ?? {}), ...ref };
+        flags[k] = cur;
+      });
+    };
+    const resolverFor = async () => {
+      const { createLookResolver } = await import('../../src/compat/resolve-looks.js');
+      const { createRegistry } = await import('../../src/compat/registry.js');
+      return createLookResolver({
+        registry: createRegistry({ warn: () => {} }),
+        getUser: () => user,
+        getActor: () => undefined,
+        getWorldDefaultTheme: () => store.worldDefaultTheme ?? '',
+        getLockPlayerLooks: () => Boolean(store.lockPlayerLooks),
+        warn: () => {},
+      });
+    };
+    const resolved = async () =>
+      (await resolverFor()).decorate(null, {}, 'u1')({ faces: 20, options: {}, results: [{ result: 1 }] }, { result: 1 }, 0).themeId;
+
+    it('re-picking the old setting value after a GM push marks it chosen again (the setting does not change)', async () => {
+      merging();
+      store.theme = 'ember-core';
+      flags.appearance = { global: chosenRef('verdant') }; // the GM pushed Verdant; the setting is still Ember
+      expect(await mod.assignTarget('default', 'ember-core')).toBe(true);
+      expect(store.theme).toBe('ember-core');
+      expect(flags.appearance.global).toEqual(chosenRef('ember-core'));
+      expect(await resolved()).toBe('ember-core');
+    });
+    it('Clear with a world default set gives the world default again (P7-R5)', async () => {
+      merging();
+      store.worldDefaultTheme = 'verdant';
+      store.theme = 'ruby-classic';
+      flags.appearance = { global: chosenRef('ruby-classic') };
+      expect(await resolved()).toBe('ruby-classic');
+      expect(await mod.clearTarget('default')).toBe(true);
+      expect(store.theme).toBe('default');
+      const { isNeverChose, shouldMirror } = await import('../../src/compat/user-looks.js');
+      expect(isNeverChose(flags.appearance.global)).toBe(true);
+      // the setting's onChange mirror (main.js mirrorLook) leaves the never-chose slot alone
+      expect(shouldMirror(user, 'default')).toBe(false);
+      expect(await resolved()).toBe('verdant');
+      // without a world default it is the built-in default
+      store.worldDefaultTheme = '';
+      expect(await resolved()).toBeUndefined(); // the built-in default look (no theme)
+    });
+    it('Clear then picking a theme marks it chosen; Your default shows the world default meanwhile (M-1)', async () => {
+      merging();
+      store.worldDefaultTheme = 'verdant';
+      await mod.clearTarget('default');
+      const app = new mod.ThemeBrowser();
+      app.render = vi.fn(async () => {});
+      expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['verdant']);
+      flags.appearance = undefined; // no stored global at all: the same
+      expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['verdant']);
+      store.worldDefaultTheme = 'world.gone'; // a world default that does not resolve: the setting
+      expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['default']);
+      store.worldDefaultTheme = 'verdant';
+      await mod.assignTarget('default', 'ruby-classic');
+      expect(flags.appearance.global).toEqual(chosenRef('ruby-classic'));
+      expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['ruby-classic']);
+      expect(await resolved()).toBe('ruby-classic');
+    });
   });
   it('die type and role write one slot of dicer.appearance; clear unsets it', async () => {
     await mod.assignTarget('die:d20', 'ruby-classic');

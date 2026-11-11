@@ -121,7 +121,41 @@ export function isNeverChose(ref) {
   return ['appearance', 'colorset', 'system'].every((k) => ref[k] === undefined || ref[k] === null);
 }
 
-/** The once-at-ready mirror: only when this user has no flag yet and has chosen a theme (not the registered default). */
+/**
+ * The global slot "My default" Clear writes: the built-in default as a never-chose slot (chosen
+ * nulled, since the flag update merges), so the GM's world default applies again (P7-R5).
+ */
+export const neverChoseRef = () => ({ ...themeRef('default'), chosen: null });
+
+/**
+ * Whether a change of the client `theme` setting to `themeId` should be mirrored as a deliberate
+ * choice. Not when it is the built-in default and the stored global already says "never chose":
+ * that is Clear (which writes the never-chose slot first, then resets the setting), and the
+ * mirror must not re-mark it as chosen. A real switch back to the default from another theme
+ * finds a chosen global and is mirrored.
+ */
+export function shouldMirror(user, themeId) {
+  return !(themeId === 'default' && isNeverChose(readUserLooks(user, { fill: false }).global));
+}
+
+/**
+ * The refs that make this user's own default look (DiceBox's fallback and the warm-up), in the
+ * resolver's order: under the lock only the world default; else a stored global that is a real
+ * choice, then the world default, then the client `theme` setting.
+ * @param {{theme?: string, worldDefaultTheme?: string, lock?: boolean}} settings
+ */
+export function ownDefaultRefs(user, { theme, worldDefaultTheme, lock } = {}) {
+  const world = typeof worldDefaultTheme === 'string' && worldDefaultTheme ? { theme: worldDefaultTheme } : null;
+  if (world && lock && user?.isGM !== true) return [world];
+  const refs = [];
+  const global = readUserLooks(user, { fill: false }).global;
+  if (global && !isNeverChose(global)) refs.push(global);
+  if (world) refs.push(world);
+  if (typeof theme === 'string' && theme) refs.push({ theme });
+  return refs;
+}
+
+/** The once-at-ready mirror:only when this user has no flag yet and has chosen a theme (not the registered default). */
 export async function mirrorLookIfMissing(user, themeId) {
   if (!themeId || themeId === 'default') return;
   const flag = rawFlag(user);

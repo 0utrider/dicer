@@ -156,3 +156,32 @@ describe('mirrorLookSetting', () => {
     expect(setFlag).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('My default Clear and the own-default chain (I-1, M-2)', () => {
+  test('neverChoseRef is a never-chose slot, even merged over a chosen one', async () => {
+    const { neverChoseRef, chosenRef, isNeverChose } = await import('../../src/compat/user-looks.js');
+    expect(isNeverChose(neverChoseRef())).toBe(true);
+    expect(isNeverChose({ ...chosenRef('ruby-classic'), ...neverChoseRef() })).toBe(true);
+  });
+  test('shouldMirror skips only the default over a never-chose global', async () => {
+    const { shouldMirror, neverChoseRef, chosenRef } = await import('../../src/compat/user-looks.js');
+    expect(shouldMirror(userWith({ global: neverChoseRef() }), 'default')).toBe(false);
+    expect(shouldMirror(userWith({ global: neverChoseRef() }), 'verdant')).toBe(true);
+    expect(shouldMirror(userWith({ global: chosenRef('verdant') }), 'default')).toBe(true); // a real switch back
+    expect(shouldMirror(userWith(undefined), 'default')).toBe(true);
+  });
+  test('ownDefaultRefs follows the resolver: lock, stored choice, world default, setting', async () => {
+    const { ownDefaultRefs, neverChoseRef, chosenRef } = await import('../../src/compat/user-looks.js');
+    const s = { theme: 'ember-core', worldDefaultTheme: 'verdant', lock: false };
+    expect(ownDefaultRefs(userWith({ global: chosenRef('obsidian') }), s)).toEqual([
+      chosenRef('obsidian'),
+      { theme: 'verdant' },
+      { theme: 'ember-core' },
+    ]);
+    expect(ownDefaultRefs(userWith({ global: neverChoseRef() }), s)).toEqual([{ theme: 'verdant' }, { theme: 'ember-core' }]);
+    expect(ownDefaultRefs(userWith({ global: chosenRef('obsidian') }), { ...s, lock: true })).toEqual([{ theme: 'verdant' }]);
+    const gm = { ...userWith({ global: chosenRef('obsidian') }), isGM: true };
+    expect(ownDefaultRefs(gm, { ...s, lock: true })[0]).toEqual(chosenRef('obsidian')); // the lock never binds a GM
+    expect(ownDefaultRefs(userWith(undefined), { theme: 'ember-core', worldDefaultTheme: '' })).toEqual([{ theme: 'ember-core' }]);
+  });
+});

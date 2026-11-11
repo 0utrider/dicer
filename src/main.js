@@ -21,9 +21,15 @@ import { createRegistry } from './compat/registry.js';
 import { createLookResolver } from './compat/resolve-looks.js';
 import { facesFor, atlasGlyphTest } from './compat/faces.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from './render/face-textures.js';
-import { mirrorLookSetting, mirrorLookIfMissing } from './compat/user-looks.js';
+import {
+  mirrorLookSetting,
+  mirrorLookIfMissing,
+  shouldMirror,
+  ownDefaultRefs,
+  lookRefToAppearance,
+} from './compat/user-looks.js';
 import { DEFAULT_APPEARANCE } from './look/appearance.js';
-import { findTheme, readThemeList } from './themes/themes.js';
+import { readThemeList } from './themes/themes.js';
 import { createSoundEngine } from './audio/sound-engine.js';
 import {
   createFxResolver,
@@ -109,8 +115,10 @@ const NOOP_HANDLERS = { onCreate() {}, onUpdate() {}, onRender() {}, onDelete() 
 const handlers = () => gate ?? NOOP_HANDLERS;
 
 /**
- * The chosen theme's look (DiceBox's fallback and the warm-up); an unknown id (e.g. a removed
- * theme) falls back to the default.
+ * This user's own default look (DiceBox's fallback and the warm-up), by the resolver's chain:
+ * the world default under the lock, else the stored global choice (a GM push included), the
+ * world default, then the client `theme` setting. An unknown id (e.g. a removed theme) is
+ * skipped; nothing usable gives the default.
  */
 export const getAppearance = () => {
   const quiet = () => {};
@@ -118,7 +126,16 @@ export const getAppearance = () => {
     worldThemes: readThemeList(getSetting('worldThemes'), 'world', quiet),
     userThemes: readThemeList(game.user?.getFlag?.('dicer', 'themes'), 'user', quiet),
   };
-  return findTheme(getSetting('theme'), themes)?.appearance ?? DEFAULT_APPEARANCE;
+  const refs = ownDefaultRefs(game.user, {
+    theme: getSetting('theme'),
+    worldDefaultTheme: getSetting('worldDefaultTheme'),
+    lock: getSetting('lockPlayerLooks'),
+  });
+  for (const ref of refs) {
+    const got = lookRefToAppearance(ref, registry, 0, { themes });
+    if (got) return got.appearance;
+  }
+  return DEFAULT_APPEARANCE;
 };
 
 /** A module-relative or absolute URL as the browser can fetch it. */
@@ -268,6 +285,7 @@ async function migrateFromDsn() {
 
 /** Publishes the chosen theme in the user flag so other clients draw this user's dice with it. */
 function mirrorLook(themeId) {
+  if (!shouldMirror(game.user, themeId)) return; // "My default" Clear: stays never-chose (P7-R5)
   mirrorLookSetting(game.user, themeId).catch((err) =>
     console.warn('dicer: cannot mirror the theme setting to the user flag', err),
   );
