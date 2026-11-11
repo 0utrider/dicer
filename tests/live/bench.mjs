@@ -8,6 +8,8 @@ import { dirname } from 'node:path';
 import * as lib from './bench-lib.mjs';
 
 const URL_BASE = (process.env.DICER_FOUNDRY_URL || 'http://localhost:30000').replace(/\/+$/, '');
+/** A local Foundry over https usually has a self-signed (mkcert) certificate: trust it there only. */
+const LOCAL_HTTPS = lib.isLocalHttps(URL_BASE);
 const GM_USER = process.env.DICER_GM_USER;
 const GM_PASSWORD = process.env.DICER_GM_PASSWORD;
 const HEADLESS = process.env.DICER_BENCH_HEADLESS === '1';
@@ -20,6 +22,24 @@ const errText = (e) => String(e?.message ?? e).split('\n')[0];
 function die(message) {
   console.error(`bench: ${message}`);
   process.exit(2);
+}
+
+/** Resolves when the URL answers at all (any status); a local https certificate is not checked. */
+async function reachable(url) {
+  if (!LOCAL_HTTPS) {
+    await fetch(url, { signal: AbortSignal.timeout(5000) });
+    return;
+  }
+  const { request } = await import('node:https');
+  await new Promise((resolve, reject) => {
+    const req = request(url, { method: 'GET', rejectUnauthorized: false, timeout: 5000 }, (res) => {
+      res.resume();
+      resolve();
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 async function readRestore() {
@@ -137,6 +157,7 @@ function createHarness(chromium) {
     const context = await browser.newContext({
       viewport: p.viewport,
       deviceScaleFactor: p.deviceScaleFactor,
+      ignoreHTTPSErrors: LOCAL_HTTPS,
     });
     try {
       const page = await context.newPage();
@@ -373,7 +394,7 @@ async function main() {
   if (!GM_USER || !GM_PASSWORD)
     die('set DICER_GM_USER and DICER_GM_PASSWORD (and optionally DICER_FOUNDRY_URL).');
   try {
-    await fetch(`${URL_BASE}/join`, { signal: AbortSignal.timeout(5000) });
+    await reachable(`${URL_BASE}/join`);
   } catch {
     die(
       `cannot reach Foundry at ${URL_BASE}. Start Foundry, launch the world, or set DICER_FOUNDRY_URL.`,

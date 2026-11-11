@@ -19,7 +19,18 @@ import {
   parseArgs,
   summaryMarkdown,
   RESTORE_FILE,
+  isLocalHttps,
 } from '../../tests/live/bench-lib.mjs';
+
+test('a self-signed certificate is trusted only for a local https Foundry', () => {
+  expect(isLocalHttps('https://localhost:30000')).toBe(true);
+  expect(isLocalHttps('https://127.0.0.1:30000')).toBe(true);
+  expect(isLocalHttps('https://[::1]:30000')).toBe(true);
+  expect(isLocalHttps('http://localhost:30000')).toBe(false);
+  expect(isLocalHttps('https://foundry.example.com')).toBe(false);
+  expect(isLocalHttps('https://localhost.example.com')).toBe(false);
+  expect(isLocalHttps('not a url')).toBe(false);
+});
 
 const H2H = ['d20', 'mixed10', 'pool30', 'burst100'];
 const ALL = [

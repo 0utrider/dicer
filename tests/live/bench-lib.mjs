@@ -6,6 +6,16 @@ import { checkTargets, compare } from '../../src/bench/report.js';
 import { TARGETS } from '../../src/bench/stats.js';
 
 export const RESTORE_FILE = 'artifacts/bench/restore.json';
+
+/** True for an https URL on this machine (localhost, 127.0.0.1, ::1), whose certificate is usually self-signed. */
+export function isLocalHttps(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
 const H2H = Object.freeze(['d20', 'mixed10', 'pool30', 'burst100']);
 const THROTTLED_VSYNC = Object.freeze(['d20', 'mixed10', 'pool30']);
 
