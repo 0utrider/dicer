@@ -81,11 +81,27 @@ export function lookRefToAppearance(ref, registry, index = 0, { dieType, themes,
   return null;
 }
 
-/** Mirrors the client `theme` setting into the user flag so other clients can see it. */
+/**
+ * A slot that names a theme. Foundry's flag update merges into the existing slot, and
+ * `appearance`/`colorset` outrank `theme` (lookRefToAppearance), so every competing key is
+ * nulled; otherwise a colorset left by a Dice So Nice import would keep winning.
+ */
+export const themeRef = (themeId) => ({ theme: themeId, appearance: null, colorset: null, look: null, system: null });
+
+/** A slot that is a die type (d20, d6...), as opposed to `global` or `role:<role>`. */
+const isDieSlot = (key) => /^d[a-z0-9]+$/i.test(key);
+
+/**
+ * Mirrors the client `theme` setting into the user flag so other clients can see it. The new
+ * default must reach every die, so per-die-type entries that are not themes (imported Dice So
+ * Nice colours, old looks) are dropped; per-type and per-role theme choices are kept.
+ */
 export async function mirrorLookSetting(user, themeId) {
-  const looks = readUserLooks(user);
-  looks.global = { theme: themeId };
-  await user.setFlag(FLAG_SCOPE, FLAG_KEY, looks);
+  const patch = { global: themeRef(themeId) };
+  for (const [key, ref] of Object.entries(readUserLooks(user))) {
+    if (isDieSlot(key) && !(typeof ref.theme === 'string' && ref.theme)) patch[key] = null;
+  }
+  await user.setFlag(FLAG_SCOPE, FLAG_KEY, patch);
 }
 
 /** The once-at-ready mirror: only when this user has no flag yet. */

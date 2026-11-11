@@ -7,6 +7,7 @@
 import { LOOKS } from '../look/looks.js';
 import { appearanceKey } from '../look/appearance.js';
 import { RESULT_SOUNDS } from '../audio/sound-names.js';
+import { themeRef } from '../compat/user-looks.js';
 import {
   DIE_TYPES,
   SOUND_MATERIALS,
@@ -65,7 +66,7 @@ export function assignTheme(looks, slot, themeId) {
  * operator (`foundry.data.operators.ForcedDeletion.create()`, injected; the `-=` key is deprecated).
  */
 export const slotPatch = (slot, themeId, deletion = () => globalThis.foundry?.data?.operators?.ForcedDeletion?.create?.()) =>
-  typeof themeId === 'string' && themeId ? { [slot]: { theme: themeId } } : { [slot]: deletion() };
+  typeof themeId === 'string' && themeId ? { [slot]: themeRef(themeId) } : { [slot]: deletion() };
 
 /** A damage-type map (setting value) with one type set to a theme id or removed; other entries kept. A non-object map gives null. */
 export function assignDamage(map, type, themeId) {

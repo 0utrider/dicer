@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { duplicateKeys, usedKeys, resolve } from './lang-check.js';
+import { themeRef } from '../../src/compat/user-looks.js';
 import {
   assignTheme,
   slotPatch,
@@ -44,7 +45,10 @@ describe('assignTheme / slotPatch / assignDamage', () => {
     expect(assignTheme(undefined, 'd20', null)).toEqual({});
   });
   it('the flag patch sets one slot or uses the -= unset syntax', () => {
-    expect(slotPatch('d20', 'x')).toEqual({ d20: { theme: 'x' } });
+    // Every competing key is nulled, so a merge over an imported colorset/appearance can't outrank the theme.
+    expect(slotPatch('d20', 'x')).toEqual({
+      d20: { theme: 'x', appearance: null, colorset: null, look: null, system: null },
+    });
     expect(slotPatch('role:save', null, () => 'DEL')).toEqual({ 'role:save': 'DEL' });
   });
   it('a damage map keeps other (even odd) entries', () => {
@@ -290,8 +294,8 @@ describe('the browser actions', () => {
     await mod.assignTarget('role:attack', 'verdant');
     await mod.clearTarget('role:attack');
     expect(user.setFlag.mock.calls.map((c) => c.slice(0, 3))).toEqual([
-      ['dicer', 'appearance', { d20: { theme: 'ruby-classic' } }],
-      ['dicer', 'appearance', { 'role:attack': { theme: 'verdant' } }],
+      ['dicer', 'appearance', { d20: themeRef('ruby-classic') }],
+      ['dicer', 'appearance', { 'role:attack': themeRef('verdant') }],
       ['dicer', 'appearance', { 'role:attack': 'DELETE' }],
     ]);
     expect(await mod.assignTarget('die:d3', 'x')).toBe(false);
@@ -299,7 +303,7 @@ describe('the browser actions', () => {
   });
   it('an owned actor gets global = { theme }; an unowned one is refused', async () => {
     expect(await mod.assignTarget('actor:mine', 'verdant')).toBe(true);
-    expect(actors.get('mine').setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: { theme: 'verdant' } });
+    expect(actors.get('mine').setFlag).toHaveBeenCalledWith('dicer', 'appearance', { global: themeRef('verdant') });
     expect(await mod.assignTarget('actor:theirs', 'verdant')).toBe(false);
     expect(actors.get('theirs').setFlag).not.toHaveBeenCalled();
     expect(await mod.assignTarget('actor:ghost', 'verdant')).toBe(false);

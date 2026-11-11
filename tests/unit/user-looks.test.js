@@ -92,15 +92,46 @@ describe('lookRefToAppearance with themes', () => {
   });
 });
 
+/** A user whose setFlag merges like Foundry's document update: objects merge, other values (null too) overwrite. */
+function mergingUser(flag) {
+  const user = { flags: { dicer: { appearance: structuredClone(flag) } } };
+  const merge = (into, patch) => {
+    for (const [k, v] of Object.entries(patch)) {
+      if (v && typeof v === 'object' && !Array.isArray(v) && into[k] && typeof into[k] === 'object') merge(into[k], v);
+      else into[k] = v;
+    }
+  };
+  user.getFlag = (scope, key) => user.flags[scope]?.[key];
+  user.setFlag = vi.fn(async (scope, key, value) => {
+    user.flags[scope] ??= {};
+    if (user.flags[scope][key] && typeof user.flags[scope][key] === 'object') merge(user.flags[scope][key], value);
+    else user.flags[scope][key] = value;
+  });
+  return user;
+}
+
 describe('mirrorLookSetting', () => {
-  test('sets global and keeps per-type entries', async () => {
-    const setFlag = vi.fn(async () => {});
-    const flag = { d20: { look: 'sharp-crystal' }, global: { look: 'old' } };
-    await mirrorLookSetting({ ...userWith(flag), setFlag }, 'ruby-classic');
-    expect(setFlag).toHaveBeenCalledWith('dicer', 'appearance', {
-      d20: { look: 'sharp-crystal' },
-      global: { theme: 'ruby-classic' },
+  test('a theme beats a colorset or appearance a Dice So Nice import left in the same slot', async () => {
+    const user = mergingUser({ global: { colorset: 'fire', appearance: { body: { type: 'metal' } }, look: 'old' } });
+    await mirrorLookSetting(user, 'ruby-classic');
+    const looks = readUserLooks(user);
+    expect(lookRefToAppearance(looks.global, null)).toMatchObject({ themeId: 'ruby-classic' });
+  });
+  test('the new default reaches every die: stale per-type non-theme entries are dropped, theme entries kept', async () => {
+    const user = mergingUser({
+      global: { look: 'old' },
+      d20: { colorset: 'fire' },
+      d6: { appearance: { body: { type: 'metal' } } },
+      d8: { theme: 'dragon-hoard' },
+      'role:attack': { theme: 'celestial' },
     });
+    await mirrorLookSetting(user, 'ruby-classic');
+    const looks = readUserLooks(user);
+    expect(looks.d20).toBeUndefined();
+    expect(looks.d6).toBeUndefined();
+    expect(looks.d8).toEqual({ theme: 'dragon-hoard' });
+    expect(looks['role:attack']).toEqual({ theme: 'celestial' });
+    expect(lookRefToAppearance(looks.global, null)).toMatchObject({ themeId: 'ruby-classic' });
   });
   test('mirrorLookIfMissing writes only when the flag is absent', async () => {
     const setFlag = vi.fn(async () => {});
