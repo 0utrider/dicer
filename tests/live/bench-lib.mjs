@@ -140,7 +140,8 @@ const PAIRINGS = Object.freeze([
 /**
  * Rows for the summary and the exit code.
  * - `type: 'target'`: G2 checks (Task 1's checkTargets) on Dicer vsync reports only (H-R1), plus
- *   `failures` (every roll completed) and `noRebuild` (resize must not rebuild the renderer).
+ *   `failures` (every roll completed), `noRebuild` (resize and context loss must not rebuild the
+ *   renderer) and, for contextLoss, `recovered` (the roll after the restore drew on a live context).
  * - `type: 'h2h'`: Task 1's compare on uncapped reports, clearly-less only for pc defaults.
  * @param {{entry: object, suite: {results: object[]}}[]} reports
  */
@@ -163,7 +164,19 @@ export function verdicts(reports) {
         value: f,
         pass: f == null ? null : f === 0,
       });
-      if (r.scenario === 'resize' && typeof r.rebuilt === 'boolean') {
+      // I3: checkTargets emits `recovered` when the result has it; contextLoss always gets a row.
+      if (r.scenario === 'contextLoss' && r.recovered === undefined) {
+        rows.push({
+          type: 'target',
+          run,
+          scenario: r.scenario,
+          id: 'recovered',
+          target: true,
+          value: null,
+          pass: null,
+        });
+      }
+      if ((r.scenario === 'resize' || r.scenario === 'contextLoss') && typeof r.rebuilt === 'boolean') {
         rows.push({
           type: 'target',
           run,
@@ -261,6 +274,11 @@ export function startupDecision(text) {
     const f = restore.dsnUserFlag;
     if (!f || typeof f !== 'object' || typeof f.exists !== 'boolean') return bad('dsnUserFlag');
   }
+  if (
+    'runStartedAt' in restore &&
+    !(typeof restore.runStartedAt === 'string' && Number.isFinite(Date.parse(restore.runStartedAt)))
+  )
+    return bad('runStartedAt');
   return { action: 'restore', restore };
 }
 
@@ -272,10 +290,11 @@ export function pickProductModules(cfg) {
 /**
  * Steps that put the world back. A product's world settings can only be written while it is the
  * active module (Dicer: maxDice; DSN: maxDiceNumber and its user flag), so each product's group
- * runs with that product active, the currently active one first; the module configuration last,
- * merging back only the dicer / dice-so-nice keys.
+ * runs with that product active, the currently active one first. Then (H-R11) the chat messages
+ * the GM authored since `runStartedAt` are deleted: what a crashed run left (a finished scenario
+ * deletes its own). The module configuration last, merging back only the dicer / dice-so-nice keys.
  * @param {{moduleConfiguration: object, maxDice?: number, dsnMaxDiceNumber?: number,
- *   dsnUserFlag?: {exists: boolean, value?: object}}} restore
+ *   dsnUserFlag?: {exists: boolean, value?: object}, runStartedAt?: string}} restore
  * @param {'dicer' | 'dice-so-nice' | null} active
  */
 export function restorePlan(restore, active) {
@@ -298,6 +317,8 @@ export function restorePlan(restore, active) {
     current = product;
     steps.push(...groups[product]);
   }
+  if (typeof restore?.runStartedAt === 'string')
+    steps.push({ op: 'deleteMessagesSince', since: restore.runStartedAt });
   if (restore?.moduleConfiguration)
     steps.push({
       op: 'setModuleConfiguration',
@@ -322,6 +343,23 @@ const num = (v, d = 2) => (typeof v === 'number' && Number.isFinite(v) ? v.toFix
 const verdict = (p) => (p === null || p === undefined ? 'n/a' : p ? 'PASS' : 'FAIL');
 const val = (v) => (typeof v === 'number' ? num(v) : typeof v === 'boolean' ? String(v) : 'n/a');
 
+const MEASURE_LABEL = Object.freeze({
+  firstFrame: 'firstFrame (roll call -> frame)',
+  dicerFirstFrame: 'dicerFirstFrame (gate -> frame)',
+});
+
+/** H-R10: a first-frame row names the measure judged and shows the other one. */
+function checkNote(r) {
+  if (!r.measure) return '';
+  const judged = MEASURE_LABEL[r.measure] ?? r.measure;
+  const other = r.info?.id;
+  if (!other) return judged;
+  const v = r.info.value;
+  return typeof v === 'number' && Number.isFinite(v)
+    ? `${judged}; ${MEASURE_LABEL[other] ?? other} ${num(v)}`
+    : `${judged}; ${other} n/a`;
+}
+
 /** summary.md: runs, G2 target checks, then the head-to-head table. */
 export function summaryMarkdown({ date, reports, rows, errors, dsnFlag }) {
   const out = [`# Dicer benchmark ${date}`, ''];
@@ -337,16 +375,24 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag }) {
     );
   }
   for (const e of errors ?? []) out.push('', `Run error: ${e.run}: ${e.error}`);
+  // M6: G2 measures with a Foundry scene loaded (its canvas competes for the GPU).
+  for (const { entry, settings } of reports ?? []) {
+    if (settings?.sceneLoaded === false)
+      out.push(
+        '',
+        `Warning: ${runName(entry)}: no Foundry scene loaded (G2 assumes one; the numbers may read better than in play)`,
+      );
+  }
   out.push('', 'Throttled results are estimates of a low-end machine.', '');
   out.push(
     '## G2 target checks',
     '',
-    '| Run | Scenario | Check | Target | Value | Result |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Run | Scenario | Check | Target | Value | Result | Note |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
   );
   for (const r of (rows ?? []).filter((x) => x.type === 'target')) {
     out.push(
-      `| ${r.run} | ${r.scenario} | ${r.id} | ${val(r.target)} | ${val(r.value)} | ${verdict(r.pass)} |`,
+      `| ${r.run} | ${r.scenario} | ${r.id} | ${val(r.target)} | ${val(r.value)} | ${verdict(r.pass)} | ${checkNote(r)} |`,
     );
   }
   out.push('', '## Head-to-head (uncapped, frame p95)', '');

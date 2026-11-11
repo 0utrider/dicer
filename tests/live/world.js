@@ -320,6 +320,49 @@ export async function resolveHere(def) {
 const BENCH = '/modules/dicer/src/bench/';
 const SCENARIO_SETTLE_MS = 4000;
 const IDLE_WAIT_MS = 16000;
+const RESTORE_WAIT_MS = 3000;
+
+const finiteNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * Pure (unit-tested): ids of the messages `userId` authored at or after `sinceMs` (H-R11: what a
+ * crashed bench run left in the GM's world).
+ */
+export function messageIdsSince(messages, userId, sinceMs) {
+  if (!finiteNum(sinceMs)) return [];
+  const out = [];
+  for (const m of messages ?? []) {
+    const author = m?.author?.id ?? m?._source?.author ?? null;
+    if (author === userId && Number(m?.timestamp) >= sinceMs) out.push(m.id);
+  }
+  return out;
+}
+
+/**
+ * Pure (unit-tested), I3: the roll after a context restore recovered when the context is live and
+ * that roll drew (a gate first frame, or the frame counter moved while its dice were up). null
+ * when the context or every draw signal is unknown.
+ */
+export function recoveryVerdict({ lost, firstFrame, framesBefore, framesAfter }) {
+  if (typeof lost !== 'boolean') return null;
+  if (lost) return false;
+  if (finiteNum(firstFrame)) return true;
+  if (!finiteNum(framesBefore) || !finiteNum(framesAfter)) return null;
+  return framesAfter > framesBefore;
+}
+
+/** Deletes the chat messages `ids` that still exist; resolves how many. */
+async function deleteMessages(ids) {
+  const live = [...new Set(ids)].filter((id) => game.messages?.has(id));
+  if (live.length) await (ChatMessage.implementation ?? ChatMessage).deleteDocuments(live);
+  return live.length;
+}
+
+/** H-R11 restore step: deletes this user's chat messages from `since` (ISO) on. */
+export async function deleteMessagesSince({ since }) {
+  const ids = messageIdsSince(game.messages?.contents ?? [], game.user.id, Date.parse(since));
+  return deleteMessages(ids);
+}
 
 /** The active dice product: exactly one of Dicer / DSN active, else null. */
 export function benchProduct() {
@@ -364,7 +407,8 @@ export function benchSettings() {
       }
     }
   }
-  return { product, world, client };
+  // M6: G2 measures with a Foundry scene loaded; summary.md warns when there is none.
+  return { product, world, client, sceneLoaded: Boolean(globalThis.canvas?.scene) };
 }
 
 export function getModuleConfiguration() {
@@ -444,16 +488,37 @@ function productCanvas(product) {
   return game.dice3d?.box?.renderer?.domElement ?? null;
 }
 
-/** WEBGL_lose_context on the product's canvas, restored after `ms`. */
+const productGl = (c) => (c ? (c.getContext('webgl2') ?? c.getContext('webgl')) : null);
+
+/** The product's frame counter: Dicer's renderer frames, DSN's three.js render.frame. */
+function productFrames(product) {
+  const v =
+    product === 'dicer'
+      ? game.dice3d?._debug?.frameCount
+      : game.dice3d?.box?.renderer?.info?.render?.frame;
+  return finiteNum(v) ? v : null;
+}
+
+/**
+ * WEBGL_lose_context on the product's canvas, restored after `ms`. Settles once the canvas fires
+ * webglcontextrestored (the runner rolls again only then); throws when it does not within 3 s.
+ */
 async function loseContext(product, ms) {
   const c = productCanvas(product);
   if (!c) throw Error('no dice canvas');
-  const gl = c.getContext('webgl2') ?? c.getContext('webgl');
-  const ext = gl?.getExtension('WEBGL_lose_context');
+  const ext = productGl(c)?.getExtension('WEBGL_lose_context');
   if (!ext) throw Error('WEBGL_lose_context unavailable');
   ext.loseContext();
   await sleep(ms);
+  let timer = null;
+  const restored = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), RESTORE_WAIT_MS);
+    c.addEventListener('webglcontextrestored', () => resolve(true), { once: true });
+  });
   ext.restoreContext();
+  const ok = await restored;
+  clearTimeout(timer);
+  if (!ok) throw Error(`context not restored within ${RESTORE_WAIT_MS} ms`);
 }
 
 /** Renderer identity: a resize or context restore that swaps either one rebuilt the renderer. */
@@ -464,9 +529,35 @@ function rendererIdentity(product) {
   };
 }
 
-function benchAdapter(product, createDicerAdapter) {
+/**
+ * @param {string[]} created every chat message id the adapter creates (benchRun deletes them, H-R11)
+ * @param {string} gpu the GPU name, read once per benchRun (M4)
+ */
+function benchAdapter(product, createDicerAdapter, { created, gpu }) {
+  // I3: the frame counter when the latest roll was called, for verifyRecovered.
+  let framesAtRoll = null;
   // H-R3/H-R6: the chat path ({messageId}) for both products.
-  const roll = (f) => new Roll(f).toMessage().then((m) => ({ messageId: m.id }));
+  const roll = async (f) => {
+    framesAtRoll = productFrames(product);
+    const m = await new Roll(f).toMessage();
+    created.push(m.id);
+    return { messageId: m.id };
+  };
+  const firstFrameOf = (id) => {
+    if (product !== 'dicer' || id == null) return null;
+    const v = game.dice3d?._debug?.firstFrames?.[id];
+    return finiteNum(v) ? v : null;
+  };
+  // I3: after the contextLoss recovery roll: a live context, and that roll drew.
+  const verifyRecovered = ({ messageId } = {}) => {
+    const gl = productGl(productCanvas(product));
+    return recoveryVerdict({
+      lost: gl ? gl.isContextLost() : null,
+      firstFrame: firstFrameOf(messageId),
+      framesBefore: framesAtRoll,
+      framesAfter: productFrames(product),
+    });
+  };
   // Node-side CDP: HeapProfiler.collectGarbage, then Runtime.getHeapUsage (bench.mjs binding).
   const heap = async () =>
     typeof globalThis.__benchHeap === 'function' ? globalThis.__benchHeap() : null;
@@ -482,7 +573,7 @@ function benchAdapter(product, createDicerAdapter) {
     const api = game.dice3d;
     const base = createDicerAdapter(api, {
       roll,
-      gpu: benchGpu,
+      gpu,
       version: game.modules.get('dicer')?.version ?? null,
     });
     return {
@@ -490,11 +581,9 @@ function benchAdapter(product, createDicerAdapter) {
       isBusy,
       heap,
       perturb,
+      verifyRecovered,
       idle: () => !base.isBusy(),
-      dicerFirstFrame: (id) => {
-        const v = api?._debug?.firstFrames?.[id];
-        return typeof v === 'number' && Number.isFinite(v) ? v : null;
-      },
+      dicerFirstFrame: firstFrameOf,
     };
   }
   return {
@@ -503,6 +592,7 @@ function benchAdapter(product, createDicerAdapter) {
     isBusy,
     heap,
     perturb,
+    verifyRecovered,
     idle: () => true,
     resources() {
       const info = game.dice3d?.box?.renderer?.info;
@@ -516,7 +606,7 @@ function benchAdapter(product, createDicerAdapter) {
     dicerFirstFrame: () => null,
     info: () => ({
       browser: benchBrowser(),
-      gpu: benchGpu(),
+      gpu,
       tier: null,
       version: game.modules.get('dice-so-nice')?.version ?? null,
     }),
@@ -532,32 +622,45 @@ async function settle(adapter) {
 
 /**
  * Runs scenarios `ids` against the active product with chat rolls; resolves a SuiteResult.
- * resize/contextLoss results carry `rebuilt` (canvas or generation changed) and a note.
+ * resize/contextLoss results carry `rebuilt` (canvas or generation changed) and a note. Every
+ * chat message a scenario (or the warm-up) created is deleted when it ends (H-R11).
  */
 export async function benchRun({ ids, profile }) {
   const product = benchProduct();
   if (!product) throw Error('exactly one of dicer / dice-so-nice must be active');
   const { runSuite } = await import(`${BENCH}scenarios.js`);
   const { createDicerAdapter } = await import(`${BENCH}dicer-adapter.js`);
-  const adapter = benchAdapter(product, createDicerAdapter);
-  const warmup = await warmupRoll();
+  const created = [];
+  const adapter = benchAdapter(product, createDicerAdapter, { created, gpu: benchGpu() });
   const results = [];
   let meta = null;
-  for (const id of ids) {
-    await settle(adapter);
-    const before = rendererIdentity(product);
-    const part = await runSuite([id], adapter, { profile, hooks: Hooks });
-    if (id === 'resize' || id === 'contextLoss') {
-      await sleep(1000); // a context restore lands asynchronously
-      const after = rendererIdentity(product);
-      const rebuilt = before.canvas !== after.canvas || before.generation !== after.generation;
-      for (const r of part.results) {
-        r.rebuilt = rebuilt;
-        r.notes.push(rebuilt ? 'renderer rebuilt' : 'renderer kept');
+  let warmup;
+  try {
+    warmup = await warmupRoll(created);
+    await deleteMessages(created.splice(0));
+    for (const id of ids) {
+      await settle(adapter);
+      const before = rendererIdentity(product);
+      try {
+        const part = await runSuite([id], adapter, { profile, hooks: Hooks });
+        if (id === 'resize' || id === 'contextLoss') {
+          await sleep(1000); // a context restore lands asynchronously
+          const after = rendererIdentity(product);
+          const rebuilt = before.canvas !== after.canvas || before.generation !== after.generation;
+          for (const r of part.results) {
+            r.rebuilt = rebuilt;
+            r.notes.push(rebuilt ? 'renderer rebuilt' : 'renderer kept');
+          }
+        }
+        results.push(...part.results);
+        meta = part;
+      } finally {
+        await deleteMessages(created.splice(0));
       }
     }
-    results.push(...part.results);
-    meta = part;
+  } finally {
+    // Whatever a throw left behind; a killed page leaves it to the restore (deleteMessagesSince).
+    await deleteMessages(created.splice(0)).catch(() => {});
   }
   return {
     browser: meta?.browser ?? null,
@@ -573,8 +676,9 @@ export async function benchRun({ ids, profile }) {
 /**
  * One unrecorded 1d20 chat roll before the scenarios (both products), so neither pays its
  * first-roll setup inside a measured scenario. Waits for its diceSoNiceRollComplete (16 s cap).
+ * Its message id goes into `created` (the caller deletes it).
  */
-async function warmupRoll() {
+async function warmupRoll(created) {
   let id = null;
   let resolveDone;
   const done = new Promise((r) => (resolveDone = r));
@@ -585,6 +689,7 @@ async function warmupRoll() {
   });
   try {
     id = (await new Roll('1d20').toMessage()).id;
+    created.push(id);
     if (seen.has(id)) resolveDone(true);
     const completed = await Promise.race([done, sleep(IDLE_WAIT_MS).then(() => false)]);
     return { completed };

@@ -313,6 +313,10 @@ function createHarness(chromium) {
             const back = await rpc(s.page, 'setDsnUserFlag', step.value);
             if (!lib.flagApplied(back, step.value))
               throw Error('restore: DSN user flag not restored');
+          } else if (step.op === 'deleteMessagesSince') {
+            // H-R11: the GM's chat messages since the run started (a crash left them).
+            const n = await rpc(s.page, 'deleteMessagesSince', { since: step.since });
+            if (n) console.log(`bench: deleted ${n} chat messages left by the run`);
           } else if (step.op === 'setModuleConfiguration') {
             await rpc(s.page, 'mergeModuleConfiguration', step.value);
           }
@@ -398,8 +402,11 @@ async function main() {
     }
     const s = await h.openSession('pc', 'vsync');
     try {
+      const at = new Date().toISOString();
       restore = {
-        at: new Date().toISOString(),
+        at,
+        // H-R11: before the first roll; a restore deletes the GM's chat messages from here on.
+        runStartedAt: at,
         moduleConfiguration: await rpc(s.page, 'getModuleConfiguration'),
       };
       await writeRestore(restore);
@@ -427,7 +434,7 @@ async function main() {
       try {
         await h.performRestore(restore);
         console.log(
-          'bench: world restored (module configuration, maxDice, maxDiceNumber, DSN user flag)',
+          'bench: world restored (module configuration, maxDice, maxDiceNumber, DSN user flag, run chat messages)',
         );
       } catch (e) {
         errors.push({ run: 'restore', error: errText(e) });

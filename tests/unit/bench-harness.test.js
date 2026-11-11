@@ -36,7 +36,14 @@ const ALL = [
 const sum = (p95) => ({ n: 10, mean: p95, p50: p95, p95, p99: p95, max: p95 });
 const result = (scenario, o = {}) => ({
   scenario,
-  kind: scenario === 'pool30' ? 'bigPool' : scenario.startsWith('burst') ? 'burst' : 'typical',
+  kind:
+    scenario === 'pool30'
+      ? 'bigPool'
+      : scenario.startsWith('burst')
+        ? 'burst'
+        : ['resize', 'contextLoss', 'hidden'].includes(scenario)
+          ? 'perturb'
+          : 'typical',
   product: 'dicer',
   profile: null,
   rolls: 1,
@@ -241,7 +248,7 @@ test('verdicts: G2 target checks only on Dicer vsync reports (H-R1), never on un
   expect(targets.find((r) => r.id === 'frameP95Ms').pass).toBe(false);
 });
 
-test('verdicts: roll failures and a renderer rebuilt on resize fail; a rebuild on context loss is only recorded', () => {
+test('verdicts: roll failures and a renderer rebuilt on resize or context loss fail', () => {
   const reports = [
     report(entry('dicer', 'pc', 'vsync'), [
       result('burst100', { failures: 2 }),
@@ -252,7 +259,7 @@ test('verdicts: roll failures and a renderer rebuilt on resize fail; a rebuild o
   const rows = verdicts(reports).filter((r) => r.type === 'target');
   expect(rows.find((r) => r.scenario === 'burst100' && r.id === 'failures').pass).toBe(false);
   expect(rows.find((r) => r.scenario === 'resize' && r.id === 'noRebuild').pass).toBe(false);
-  expect(rows.find((r) => r.scenario === 'contextLoss' && r.id === 'noRebuild')).toBeUndefined();
+  expect(rows.find((r) => r.scenario === 'contextLoss' && r.id === 'noRebuild').pass).toBe(false);
   expect(rows.find((r) => r.scenario === 'contextLoss' && r.id === 'failures').pass).toBe(true);
 });
 
@@ -403,4 +410,95 @@ test('summaryMarkdown: target checks, then the head-to-head table, n/a for missi
   expect(md).toMatch(
     /\| defaults \| pc \| d20 \| 8\.00 \| 10\.00 \| 0\.80 \| 0\.90 \| 0 \| 0 \| PASS \|/,
   );
+});
+
+test('verdicts: contextLoss gets noRebuild and recovered (I3); resize/hidden get no frame checks (perturb)', () => {
+  const reports = [
+    report(entry('dicer', 'pc', 'vsync'), [
+      result('contextLoss', { rolls: 2, rebuilt: false, recovered: true, frame: sum(900) }),
+      result('hidden', { frame: sum(900) }),
+    ]),
+  ];
+  const rows = verdicts(reports).filter((r) => r.type === 'target');
+  const cl = rows.filter((r) => r.scenario === 'contextLoss');
+  expect(cl.map((r) => r.id).sort()).toEqual(['failures', 'noRebuild', 'recovered']);
+  expect(cl.every((r) => r.pass === true)).toBe(true);
+  expect(rows.filter((r) => r.scenario === 'hidden').map((r) => r.id)).toEqual(['failures']);
+  const failed = verdicts([
+    report(entry('dicer', 'pc', 'vsync'), [result('contextLoss', { recovered: false, rebuilt: true })]),
+  ]).filter((r) => r.scenario === 'contextLoss');
+  expect(failed.find((r) => r.id === 'recovered').pass).toBe(false);
+  expect(failed.find((r) => r.id === 'noRebuild').pass).toBe(false);
+  // A contextLoss result without the field still gets an n/a recovered row.
+  const legacy = verdicts([report(entry('dicer', 'pc', 'vsync'), [result('contextLoss')])]);
+  expect(legacy.find((r) => r.id === 'recovered')).toMatchObject({ value: null, pass: null });
+});
+
+test('summaryMarkdown: the first-frame rows say which measure was judged and show the other (H-R10)', () => {
+  const reports = [
+    report(entry('dicer', 'pc', 'vsync'), [
+      result('d20', { firstFrame: sum(70), dicerFirstFrame: sum(30) }),
+      result('mixed10', { firstFrame: sum(40) }),
+    ]),
+  ];
+  const md = summaryMarkdown({ date: 'd', reports, rows: verdicts(reports), errors: [] });
+  expect(md).toContain('| Run | Scenario | Check | Target | Value | Result | Note |');
+  expect(md).toMatch(/\| d20 \| firstFrameMs \| 50\.00 \| 30\.00 \| PASS \| dicerFirstFrame \(gate -> frame\); firstFrame \(roll call -> frame\) 70\.00 \|/);
+  expect(md).toMatch(/\| mixed10 \| firstFrameMs \| 50\.00 \| 40\.00 \| PASS \| firstFrame \(roll call -> frame\); dicerFirstFrame n\/a \|/);
+});
+
+test('summaryMarkdown warns when a run had no Foundry scene loaded (M6)', () => {
+  const e = entry('dicer', 'pc', 'vsync');
+  const withScene = { ...report(e, [result('d20')]), settings: { sceneLoaded: true } };
+  const noScene = { ...report(e, [result('d20')]), settings: { sceneLoaded: false } };
+  const warn = /no Foundry scene loaded/;
+  expect(summaryMarkdown({ date: 'd', reports: [withScene], rows: [], errors: [] })).not.toMatch(warn);
+  expect(summaryMarkdown({ date: 'd', reports: [noScene], rows: [], errors: [] })).toMatch(
+    /Warning: dicer-pc-vsync: no Foundry scene loaded/,
+  );
+});
+
+test('restore: runStartedAt round-trips; a malformed one aborts (H-R11)', () => {
+  const cfg = { dicer: true, 'dice-so-nice': false };
+  const ok = { moduleConfiguration: cfg, runStartedAt: '2026-11-11T09:05:07.123Z' };
+  expect(startupDecision(JSON.stringify(ok))).toEqual({ action: 'restore', restore: ok });
+  for (const runStartedAt of ['yesterday', 5, null])
+    expect(startupDecision(JSON.stringify({ moduleConfiguration: cfg, runStartedAt })).action).toBe(
+      'abort',
+    );
+});
+
+test('restorePlan: deletes the run\'s GM chat messages last before the module configuration (H-R11)', () => {
+  const since = '2026-11-11T09:05:07.123Z';
+  const r = { moduleConfiguration: CFG, maxDice: 20, dsnUserFlag: FLAG, runStartedAt: since };
+  const steps = restorePlan(r, 'dicer');
+  expect(steps.slice(-2)).toEqual([
+    { op: 'deleteMessagesSince', since },
+    { op: 'setModuleConfiguration', value: PICKED },
+  ]);
+  expect(restorePlan({ moduleConfiguration: CFG }, 'dicer').some((s) => s.op === 'deleteMessagesSince')).toBe(false);
+});
+
+test('world.js messageIdsSince: only the GM\'s own messages at or after the run start (H-R11)', async () => {
+  const { messageIdsSince } = await import('../../tests/live/world.js');
+  const msgs = [
+    { id: 'a', author: { id: 'gm' }, timestamp: 1000 },
+    { id: 'b', author: { id: 'gm' }, timestamp: 999 },
+    { id: 'c', author: { id: 'player' }, timestamp: 2000 },
+    { id: 'd', _source: { author: 'gm' }, timestamp: 1500 },
+    { id: 'e', author: null, timestamp: 3000 },
+  ];
+  expect(messageIdsSince(msgs, 'gm', 1000)).toEqual(['a', 'd']);
+  expect(messageIdsSince(null, 'gm', 0)).toEqual([]);
+  expect(messageIdsSince(msgs, 'gm', NaN)).toEqual([]);
+});
+
+test('world.js recoveryVerdict: a live context and a drawn frame (I3)', async () => {
+  const { recoveryVerdict } = await import('../../tests/live/world.js');
+  expect(recoveryVerdict({ lost: false, firstFrame: 12 })).toBe(true);
+  expect(recoveryVerdict({ lost: false, firstFrame: null, framesBefore: 10, framesAfter: 40 })).toBe(true);
+  expect(recoveryVerdict({ lost: false, firstFrame: null, framesBefore: 10, framesAfter: 10 })).toBe(false);
+  expect(recoveryVerdict({ lost: true, firstFrame: 12, framesBefore: 1, framesAfter: 9 })).toBe(false);
+  expect(recoveryVerdict({ lost: null, firstFrame: 12 })).toBeNull();
+  expect(recoveryVerdict({ lost: false, firstFrame: null, framesBefore: null, framesAfter: null })).toBeNull();
 });
