@@ -7,6 +7,8 @@ export function createRecorder({ win = globalThis } = {}) {
   let last = null;
   let intervals = [];
   let longTasks = null;
+  let longTaskAt = null;
+  let startedAt = 0;
   let marks = {};
 
   const clock = () => (win.performance?.now ? win.performance.now() : Date.now());
@@ -19,6 +21,14 @@ export function createRecorder({ win = globalThis } = {}) {
     rafId = win.requestAnimationFrame(tick);
   }
 
+  /** A long task: its duration, and when it started (ms after start()) for tracing a stall. */
+  function record(e) {
+    if (!longTasks) return;
+    longTasks.push(e.duration);
+    const at = typeof e.startTime === 'number' ? e.startTime - startedAt : null;
+    longTaskAt.push({ at, ms: e.duration });
+  }
+
   function start() {
     if (running) return;
     running = true;
@@ -26,18 +36,21 @@ export function createRecorder({ win = globalThis } = {}) {
     marks = {};
     last = null;
     longTasks = null;
+    longTaskAt = null;
+    startedAt = clock();
     const PO = win.PerformanceObserver;
     if (PO && (!PO.supportedEntryTypes || PO.supportedEntryTypes.includes('longtask'))) {
       try {
-        const lt = [];
+        longTasks = [];
+        longTaskAt = [];
         observer = new PO((list) => {
-          for (const e of list.getEntries()) lt.push(e.duration);
+          for (const e of list.getEntries()) record(e);
         });
         observer.observe({ type: 'longtask' });
-        longTasks = lt;
       } catch {
         observer = null;
         longTasks = null;
+        longTaskAt = null;
       }
     }
     rafId = win.requestAnimationFrame(tick);
@@ -49,18 +62,18 @@ export function createRecorder({ win = globalThis } = {}) {
     rafId = null;
     if (observer) {
       try {
-        for (const e of observer.takeRecords?.() ?? []) longTasks?.push(e.duration);
+        for (const e of observer.takeRecords?.() ?? []) record(e);
       } catch {
         /* ignore */
       }
       observer.disconnect();
       observer = null;
     }
-    return { intervals, longTasks, marks };
+    return { intervals, longTasks, longTaskAt, marks };
   }
 
   function mark(name) {
-    marks[name] = clock();
+    marks[name] = clock() - startedAt;
   }
 
   return { start, stop, mark };

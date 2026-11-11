@@ -489,3 +489,112 @@ test('hook events for foreign ids are ignored', async () => {
   expect(r.failures).toBe(0);
   expect(r.firstFrame.n).toBe(1);
 });
+
+// P9-R2: DSN completed its rolls without diceSoNiceRollStart and the frames measured nothing.
+test('a chat roll that completes without RollStart is a failure, noted once', async () => {
+  const hooks = fakeHooks();
+  let n = 0;
+  const a = adapterFor(hooks);
+  a.roll = async () => {
+    const id = `q${++n}`;
+    setTimeout(() => hooks.callAll('diceSoNiceRollComplete', id), 5);
+    return { messageId: id };
+  };
+  const p = runScenario(by('burst20'), a, { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(5000);
+  const r = await p;
+  expect(r.failures).toBe(20);
+  expect(r.notes.filter((x) => x.includes('without diceSoNiceRollStart'))).toEqual([
+    '20 roll(s) completed without diceSoNiceRollStart: the product did not animate them',
+  ]);
+});
+
+test('an animated chat roll is not counted as unanimated', async () => {
+  const hooks = fakeHooks();
+  const p = runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(2000);
+  const r = await p;
+  expect(r.failures).toBe(0);
+  expect(r.notes.some((x) => x.includes('without diceSoNiceRollStart'))).toBe(false);
+});
+
+// P9-R3: the soak clears its chat every 50 rolls, before the heap sample at 50 and 500.
+test('soak500 calls cleanup every 50 rolls, before the heap reading', async () => {
+  const hooks = fakeHooks();
+  let rolled = 0;
+  const log = [];
+  const a = adapterFor(hooks, { startAfter: 1, completeAfter: 5 });
+  const origRoll = a.roll;
+  a.roll = async (f) => {
+    rolled++;
+    return origRoll(f);
+  };
+  a.cleanup = vi.fn(async () => log.push(['cleanup', rolled]));
+  a.heap = vi.fn(async () => {
+    log.push(['heap', rolled]);
+    return 1000;
+  });
+  const p = runScenario(by('soak500'), a, { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(20000);
+  await p;
+  expect(a.cleanup).toHaveBeenCalledTimes(10);
+  expect(log.slice(0, 2)).toEqual([['cleanup', 50], ['heap', 50]]);
+  expect(log.at(-2)).toEqual(['cleanup', 500]);
+  expect(log.at(-1)).toEqual(['heap', 500]);
+});
+
+test('only the soak calls cleanup', async () => {
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks, { startAfter: 1, completeAfter: 5 });
+  a.cleanup = vi.fn(async () => {});
+  const p = runScenario(by('burst100'), a, { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(20000);
+  await p;
+  expect(a.cleanup).not.toHaveBeenCalled();
+});
+
+// P9-R4: the longest long tasks keep their start times, for tracing the first-roll stall.
+test('longTasks keeps the 3 longest with their start times and the first roll time', async () => {
+  const hooks = fakeHooks();
+  const rec = {
+    start: vi.fn(),
+    mark: vi.fn(),
+    stop: () => ({
+      intervals: [16, 16],
+      longTasks: [60, 507, 80, 120],
+      longTaskAt: [
+        { at: 10.4, ms: 60 },
+        { at: 250.6, ms: 507 },
+        { at: 900, ms: 80 },
+        { at: 1200, ms: 120 },
+      ],
+      marks: { firstRoll: 4.2 },
+    }),
+  };
+  const p = runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now, recorder: rec });
+  await vi.advanceTimersByTimeAsync(2000);
+  const r = await p;
+  expect(rec.mark).toHaveBeenCalledWith('firstRoll');
+  expect(r.longTasks).toEqual({
+    count: 4,
+    maxMs: 507,
+    top: [
+      { at: 251, ms: 507 },
+      { at: 1200, ms: 120 },
+      { at: 900, ms: 80 },
+    ],
+    firstRollAt: 4,
+  });
+});
+
+test('recorder stamps each long task with its start, relative to start()', async () => {
+  const win = fakeWin({ observer: true });
+  const rec = createRecorder({ win });
+  rec.start();
+  const t0 = now();
+  await vi.advanceTimersByTimeAsync(40);
+  for (const o of win.observers) o.cb({ getEntries: () => [{ duration: 70, startTime: t0 + 20 }] });
+  const out = rec.stop();
+  expect(out.longTasks).toEqual([70]);
+  expect(out.longTaskAt).toEqual([{ at: 20, ms: 70 }]);
+});

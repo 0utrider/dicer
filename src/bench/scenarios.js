@@ -27,6 +27,10 @@ const PERTURB = Object.freeze({
 });
 const PERTURB_DELAY_MS = 300;
 const SOAK_MARKS = Object.freeze([50, 500]);
+/** The soak clears its chat messages this often (adapter.cleanup), so the chat log stays out of the heap. */
+const SOAK_CLEAN_EVERY = 50;
+/** The longest long tasks a result keeps with their start times, for tracing a stall. */
+const LONG_TASKS_KEPT = 3;
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -47,6 +51,8 @@ const finite = (v) => typeof v === 'number' && Number.isFinite(v);
  * @property {(ctx: {messageId: string | null}) => boolean | null} [verifyRecovered]
  *   Called after the last roll of a `recover` scenario: did that roll draw on a live context?
  *   null when the adapter cannot tell. Absent: recovered is null.
+ * @property {() => Promise<void>} [cleanup] The soak calls it every 50 rolls, before a heap or
+ *   resource sample: delete the chat messages rolled so far.
  * @property {() => ({browser: string, gpu: string, tier: string, version: string} | Promise<object>)} [info]
  *   Also read before and after each scenario for the tier (an adaptive drop is noted).
  */
@@ -63,6 +69,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
   const firstFrames = [];
   const dicerFrames = [];
   let failures = 0;
+  let unanimated = 0;
   let completed = 0;
   let heapBefore = null;
   let heapAfter = null;
@@ -142,6 +149,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
       if ((await raced(() => p, timeoutMs)) === TIMEOUT) notes.push(`perturb still running after ${timeoutMs} ms`);
     }
     await waitIdle();
+    if (index === 1) recorder.mark?.('firstRoll');
     const t0 = now();
     // One deadline for the whole roll: covers roll() itself and the wait for completion.
     let timer = null;
@@ -220,6 +228,11 @@ export async function runScenario(scenario, adapter, opts = {}) {
       if (!ok) {
         failures++;
         notes.push(`roll ${completed + 1} timed out after ${timeoutMs} ms`);
+      } else if (id != null && !s.started) {
+        // P9-R2: completed without diceSoNiceRollStart: the product skipped the animation, so
+        // the frames measured nothing. A failure, so the head-to-head cannot use the scenario.
+        failures++;
+        unanimated++;
       }
       try {
         dicerFrames.push(id != null ? (adapter.dicerFirstFrame?.(id) ?? null) : null);
@@ -255,6 +268,9 @@ export async function runScenario(scenario, adapter, opts = {}) {
       await oneRoll(i);
       completed = i;
       if (i === 1 && PERTURB[scenario.id] != null && !perturbFired) notes.push('perturb did not fire (the roll ended first)');
+      if (scenario.kind === 'soak' && i % SOAK_CLEAN_EVERY === 0 && typeof adapter.cleanup === 'function') {
+        await guarded('cleanup', () => adapter.cleanup());
+      }
       if (scenario.kind === 'soak' && (i === SOAK_MARKS[0] || i === SOAK_MARKS[1])) {
         const h = await guarded('heap', () => adapter.heap?.());
         const r = await guarded('resources', () => adapter.resources?.());
@@ -294,7 +310,18 @@ export async function runScenario(scenario, adapter, opts = {}) {
     notes.push(`tier changed ${tierBefore} -> ${tierAfter} (adaptive drop)`);
   }
 
+  if (unanimated > 0) {
+    notes.push(`${unanimated} roll(s) completed without diceSoNiceRollStart: the product did not animate them`);
+  }
+
   const lt = rec?.longTasks;
+  const top = Array.isArray(rec?.longTaskAt)
+    ? [...rec.longTaskAt]
+        .sort((a, b) => b.ms - a.ms)
+        .slice(0, LONG_TASKS_KEPT)
+        .map((t) => ({ at: finite(t.at) ? Math.round(t.at) : null, ms: Math.round(t.ms) }))
+    : null;
+  const firstRollAt = finite(rec?.marks?.firstRoll) ? Math.round(rec.marks.firstRoll) : null;
   return {
     scenario: scenario.id,
     kind: scenario.kind,
@@ -303,7 +330,10 @@ export async function runScenario(scenario, adapter, opts = {}) {
     rolls: scenario.rolls,
     failures,
     frame: summarize(rec?.intervals ?? []),
-    longTasks: Array.isArray(lt) ? { count: lt.length, maxMs: lt.length ? Math.max(...lt) : 0 } : null,
+    // top: the longest tasks, `at` ms after recording started; firstRollAt: when roll 1 was made.
+    longTasks: Array.isArray(lt)
+      ? { count: lt.length, maxMs: lt.length ? Math.max(...lt) : 0, ...(top ? { top, firstRollAt } : {}) }
+      : null,
     firstFrame: summarize(firstFrames),
     dicerFirstFrame: summarize(dicerFrames.filter(finite)),
     heap: finite(heapBefore) && finite(heapAfter) ? { before: heapBefore, after: heapAfter } : null,

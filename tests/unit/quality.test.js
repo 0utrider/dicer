@@ -278,6 +278,29 @@ describe('AdaptiveQuality: learned baseline (P2-R13)', () => {
       gpuRun(q, 1, 20);
       expect(onDrop).toHaveBeenCalledTimes(1);
     });
+
+    // P9-R1: the soak dropped an RTX 5070 Ti to low on CPU spikes (dice spawning, GC).
+    const cpuRun = (q, n, cpu, gpu = 2) => {
+      for (let i = 0; i < n; i++) q.frame(Math.max(cpu, 16.7), { interval: 16.7, cpu, gpu });
+    };
+
+    test('CPU spikes with a light GPU do not drop, however many fit in a window', () => {
+      const onDrop = vi.fn();
+      const q = new AdaptiveQuality({ onDrop });
+      cpuRun(q, 10, 1);
+      for (let round = 0; round < 20; round++) {
+        cpuRun(q, 12, 400); // a spawn or GC spike every few frames
+        cpuRun(q, 48, 3);
+      }
+      expect(onDrop).not.toHaveBeenCalled();
+    });
+
+    test('a sustained CPU cost over budget drops', () => {
+      const onDrop = vi.fn();
+      const q = new AdaptiveQuality({ onDrop });
+      cpuRun(q, 10 + 60, 25);
+      expect(onDrop).toHaveBeenCalledTimes(1);
+    });
   });
 
   test('a 60 Hz → 30 Hz cap switch mid-session costs at most one drop', () => {
