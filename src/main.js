@@ -222,6 +222,7 @@ function refreshMaterials({ replaceInFlight = false } = {}) {
   } catch (err) {
     console.error('dicer: cannot rebuild dice materials', err);
   }
+  appearanceRewarm.markWarmed();
   warmUp();
 }
 
@@ -301,7 +302,9 @@ const presetFaces = (preset) => facesFor(preset, atlasGlyphTest(digitAtlas));
 const appearanceRewarm = createAppearanceRewarm({
   rewarm: () => refreshMaterials(),
   getUserId: () => game.user?.id,
+  getAppearance: () => getAppearance(),
 });
+let updateUserHook = null;
 
 function onLookChange(key, value) {
   if (key === 'worldDefaultTheme' || key === 'lockPlayerLooks') {
@@ -430,7 +433,9 @@ Hooks.once('init', () => {
     initiative?.onCreateMessage(message);
   });
   Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
-  Hooks.on('updateUser', (user, changes) => appearanceRewarm.onUpdateUser(user, changes));
+  updateUserHook = Hooks.on('updateUser', (user, changes) =>
+    appearanceRewarm.onUpdateUser(user, changes),
+  );
   Hooks.on('updateChatMessage', (message, changes) => handlers().onUpdate(message, changes));
   Hooks.on('renderChatMessageHTML', (message, html) => handlers().onRender(message, html));
   Hooks.on('deleteChatMessage', (message) => handlers().onDelete(message));
@@ -635,6 +640,9 @@ Hooks.once('ready', async () => {
     },
   });
   if (!started) {
+    appearanceRewarm.dispose();
+    if (updateUserHook !== null) Hooks.off('updateUser', updateUserHook);
+    updateUserHook = null;
     quality?.dispose();
     quality = null;
     gate = null;

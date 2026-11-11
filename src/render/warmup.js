@@ -57,15 +57,28 @@ export function createWarmup({
  * @param {object} o
  * @param {() => unknown} o.rewarm what to run once the burst settles (main: refreshMaterials)
  * @param {() => string|undefined} o.getUserId the current user's id
+ * @param {() => unknown} [o.getAppearance] the user's resolved appearance; a pass whose result
+ *   (compared as JSON) equals the one at markWarmed() is skipped (the player's own theme change
+ *   already rebuilt, or a world-default change that does not affect this user)
  * @param {number} [o.delay]
- * @returns {{onUpdateUser: Function, onSettingChange: Function, dispose: Function}}
+ * @returns {{onUpdateUser: Function, onSettingChange: Function, markWarmed: Function, dispose: Function}}
  */
-export function createAppearanceRewarm({ rewarm, getUserId, delay = 500 }) {
+export function createAppearanceRewarm({ rewarm, getUserId, getAppearance, delay = 500 }) {
   let timer = null;
+  let warmedLook = null;
+  const lookKey = () => {
+    try {
+      return getAppearance ? JSON.stringify(getAppearance()) : null;
+    } catch {
+      return null;
+    }
+  };
   const schedule = () => {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
+      const key = lookKey();
+      if (key !== null && key === warmedLook) return;
       try {
         rewarm();
       } catch (err) {
@@ -81,6 +94,10 @@ export function createAppearanceRewarm({ rewarm, getUserId, delay = 500 }) {
       if (dicer && ('appearance' in dicer || '-=appearance' in dicer)) schedule();
     },
     onSettingChange: schedule,
+    /** Records the appearance the materials were just rebuilt for. */
+    markWarmed() {
+      warmedLook = lookKey();
+    },
     dispose() {
       if (timer !== null) clearTimeout(timer);
       timer = null;

@@ -114,6 +114,32 @@ describe('re-warm after a GM push (M-2 debt)', () => {
     expect(rewarm).toHaveBeenCalledTimes(1);
   });
 
+  test('a re-warm is skipped when the resolved appearance equals the one last warmed', async () => {
+    let look = { a: 1 };
+    const rewarm = vi.fn();
+    const rw = createAppearanceRewarm({ rewarm, getUserId: () => 'me', getAppearance: () => look });
+    rw.markWarmed(); // the player's own theme change already rebuilt for { a: 1 }
+    rw.onUpdateUser({ id: 'me' }, push);
+    rw.onSettingChange(); // a world-default change that does not affect this user
+    await vi.advanceTimersByTimeAsync(500);
+    expect(rewarm).not.toHaveBeenCalled();
+    look = { a: 2 }; // a GM push that does change it
+    rw.onUpdateUser({ id: 'me' }, push);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(rewarm).toHaveBeenCalledTimes(1);
+  });
+
+  test('before anything was warmed, or if the appearance cannot be read, it re-warms', async () => {
+    const rewarm = vi.fn();
+    const a = createAppearanceRewarm({ rewarm, getUserId: () => 'me', getAppearance: () => ({ a: 1 }) });
+    a.onSettingChange();
+    const b = createAppearanceRewarm({ rewarm, getUserId: () => 'me', getAppearance: () => { throw new Error('x'); } });
+    b.markWarmed();
+    b.onSettingChange();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(rewarm).toHaveBeenCalledTimes(2);
+  });
+
   test('dispose cancels a pending re-warm', async () => {
     const { rw, rewarm } = rig();
     rw.onSettingChange();

@@ -54,6 +54,8 @@ function setup({ ms = 2, settings = {}, ...opts } = {}) {
 const lastTier = (renderer) => renderer.applyTier.mock.calls.at(-1)[0];
 /** Enough frames over budget to trigger one drop: 10 grace + a 30-frame streak. */
 const DROP_FRAMES = 45;
+/** The GPU judge: 10 grace + a 60-frame p95 window. */
+const GPU_DROP_FRAMES = 70;
 const flushMicrotasks = () => new Promise((r) => setTimeout(r, 0));
 
 test('before the probe finishes, auto uses the medium tier and its flags', () => {
@@ -385,9 +387,9 @@ describe('P2-R13 debt: GPU-bound from the first roll', () => {
     const { qc, renderer, notify } = setup({ ms: 5 }); // high
     await qc.ready;
     // rAF interval 16.7 (60 Hz), CPU cheap, GPU 20 ms: the interval baseline never sees it as slow
-    renderer.frames(DROP_FRAMES, 20, { interval: 16.7, cpu: 2, gpu: 20 });
+    renderer.frames(GPU_DROP_FRAMES, 20, { interval: 16.7, cpu: 2, gpu: 20 });
     expect(qc.tier).toBe('medium');
-    renderer.frames(DROP_FRAMES, 20, { interval: 16.7, cpu: 2, gpu: 20 });
+    renderer.frames(GPU_DROP_FRAMES, 20, { interval: 16.7, cpu: 2, gpu: 20 });
     expect(qc.tier).toBe('low');
     expect(notify).toHaveBeenCalledTimes(1);
   });

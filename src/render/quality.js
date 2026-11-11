@@ -98,6 +98,8 @@ const BASELINE_FACTOR = 1.3;
 const MAX_INTERVAL_MS = 100;
 /** P2-R13 debt: the frame budget a GPU timer is judged against (TARGETS.frameP95Ms, 60 Hz). */
 const GPU_BUDGET_MS = 16.7;
+/** Frames in the GPU p95 window: three hitches in a window are tolerated, four are not. */
+const GPU_WINDOW = 60;
 
 /**
  * Drops a tier (session only) when frame time stays over budget. Call frame(ms, sample) once
@@ -111,7 +113,8 @@ const GPU_BUDGET_MS = 16.7;
  * learning, so a cadence change costs at most one drop. The baseline survives reset() (it
  * describes the display and host, not the tier). With a GPU time (timer query) the frame
  * time is max(cpu, gpu) instead of the interval-inflated ms: Dicer's own cost. That cost is
- * judged directly, with no baseline: the p95 of the last `window` post-grace frames over
+ * judged directly, with no baseline: the p95 of the last 60 post-grace frames (each capped at
+ * 3 x the budget, like the EMA path) over
  * gpuBudgetMs (16.7) drops a tier, so a machine that is GPU-bound from its first roll (a
  * steady 20 ms GPU frame at a 60 Hz cadence the baseline would excuse) still drops.
  */
@@ -185,11 +188,11 @@ export class AdaptiveQuality {
     this.#dropNow();
   }
 
-  /** GPU-timer path: the p95 of the last `window` frames against the GPU budget. */
+  /** GPU-timer path: the p95 of the last 60 frames against the GPU budget. */
   #gpuFrame(ms) {
-    this.#gpuFrames.push(ms);
-    if (this.#gpuFrames.length > this.#window) this.#gpuFrames.shift();
-    if (this.#gpuFrames.length < this.#window) return;
+    this.#gpuFrames.push(Math.min(ms, 3 * this.#gpuBudget));
+    if (this.#gpuFrames.length > GPU_WINDOW) this.#gpuFrames.shift();
+    if (this.#gpuFrames.length < GPU_WINDOW) return;
     const sorted = [...this.#gpuFrames].sort((a, b) => a - b);
     if (sorted[Math.ceil(0.95 * sorted.length) - 1] <= this.#gpuBudget) return;
     this.#dropNow();

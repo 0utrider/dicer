@@ -234,8 +234,50 @@ describe('AdaptiveQuality: learned baseline (P2-R13)', () => {
     const heavy = vi.fn();
     const q2 = new AdaptiveQuality({ onDrop: heavy });
     // 60 Hz cadence (the browser drops frames rather than slowing rAF), Dicer's GPU work 30 ms
-    for (let i = 0; i < 60; i++) q2.frame(16.7, { interval: 16.7, cpu: 1, gpu: 30 });
+    for (let i = 0; i < 70; i++) q2.frame(16.7, { interval: 16.7, cpu: 1, gpu: 30 });
     expect(heavy).toHaveBeenCalledTimes(1);
+  });
+
+  describe('GPU p95 judge (60-frame window, samples capped at 3 x budget)', () => {
+    const gpuRun = (q, n, gpu) => {
+      for (let i = 0; i < n; i++) q.frame(16.7, { interval: 16.7, cpu: 1, gpu });
+    };
+
+    test('a p95 of exactly 16.7 ms does not drop', () => {
+      const onDrop = vi.fn();
+      const q = new AdaptiveQuality({ onDrop });
+      gpuRun(q, 10, 1); // grace
+      gpuRun(q, 600, 16.7);
+      expect(onDrop).not.toHaveBeenCalled();
+    });
+
+    test('3 hitches in 60 frames do not drop; 4 do', () => {
+      const three = vi.fn();
+      const q = new AdaptiveQuality({ onDrop: three });
+      gpuRun(q, 10, 1);
+      for (let round = 0; round < 5; round++) {
+        gpuRun(q, 3, 400); // hitches, also capped at 3 x budget
+        gpuRun(q, 57, 10);
+      }
+      expect(three).not.toHaveBeenCalled();
+      const four = vi.fn();
+      const q4 = new AdaptiveQuality({ onDrop: four });
+      gpuRun(q4, 10, 1);
+      for (let round = 0; round < 3; round++) {
+        gpuRun(q4, 4, 400);
+        gpuRun(q4, 56, 10);
+      }
+      expect(four).toHaveBeenCalled();
+    });
+
+    test('a sustained 20 ms drops', () => {
+      const onDrop = vi.fn();
+      const q = new AdaptiveQuality({ onDrop });
+      gpuRun(q, 10 + 59, 20);
+      expect(onDrop).not.toHaveBeenCalled(); // window not full yet
+      gpuRun(q, 1, 20);
+      expect(onDrop).toHaveBeenCalledTimes(1);
+    });
   });
 
   test('a 60 Hz → 30 Hz cap switch mid-session costs at most one drop', () => {
