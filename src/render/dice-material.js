@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { layoutLabel } from './sdf-atlas.js';
 import { normalizeAppearance, programKey } from '../look/appearance.js';
+import { readableNumbers } from '../look/contrast.js';
 import {
   ENGRAVE_VERTEX_PARS,
   ENGRAVE_VERTEX,
@@ -268,20 +269,22 @@ export function createDiceMaterial(
   const mode = interiorMode(a, f);
   const c0 = new THREE.Color(a.interior.colors[0]);
   const tint = tintTarget(c0, new THREE.Color(a.body.color));
+  // Numbers readable against the die's own colour (look/contrast.js): unchanged when they read.
+  const readable = readableNumbers(a);
   const uniforms = {
     uAtlas: { value: atlas.texture ?? null },
     uLabels: { value: makeLabelTexture(shape, labels, atlas) },
     uAtlasInfo: {
       value: new THREE.Vector3(atlas.distanceRange, atlas.scaleW, atlas.scaleH),
     },
-    uFillColor: { value: new THREE.Color(a.numbers.color) },
+    uFillColor: { value: new THREE.Color(readable.fill) },
     uFillPBR: { value: new THREE.Vector2(fillMetal, fillRough) },
     uFillGloss: { value: fillGloss },
     uEngrave: { value: a.numbers.depth },
     uBodyColor2: { value: new THREE.Color(a.body.color2) },
     uVeinScale: { value: VEIN_SCALE },
     uGlowColor: { value: new THREE.Color(a.glow.color) },
-    uGlowIntensity: { value: a.glow.intensity },
+    uGlowIntensity: { value: readable.glow },
     uResinDensity: { value: shape?.kind === 'coin' ? RESIN.coinDensity : 1.0 },
     uResinFloor: { value: RESIN.floor },
     uResinRadii: { value: resinRadii(shape) },
