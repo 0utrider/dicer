@@ -57,6 +57,11 @@ const VARIANTS = [
   ['gem~malachite', 'default', 'malachite', {}, {}, { type: 'gem', preset: 'malachite', color: '#1f8a5a', color2: '#0a3a24', roughness: 0.2 }],
   ['gem~obsidian', 'default', 'obsidian', {}, {}, { type: 'gem', preset: 'obsidian', color: '#0d0c10', color2: '#4a3f5a', roughness: 0.05 }],
   ['gem~quartz', 'default', 'quartz', {}, {}, { type: 'gem', preset: 'quartz', color: '#e9e4ee', color2: '#b8b0c4', roughness: 0.15 }],
+  // wood bodies: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
+  ['wood~oak', 'default', 'oak', {}, {}, { type: 'wood', preset: 'oak', color: '#b98a52', color2: '#6e4a26', roughness: 0.55 }],
+  ['wood~walnut', 'default', 'walnut', {}, {}, { type: 'wood', preset: 'walnut', color: '#5a3a22', color2: '#2a170c', roughness: 0.5 }],
+  ['wood~cherry', 'default', 'cherry', {}, {}, { type: 'wood', preset: 'cherry', color: '#9c4a2c', color2: '#5a2414', roughness: 0.45 }],
+  ['wood~ebony', 'default', 'ebony', {}, {}, { type: 'wood', preset: 'ebony', color: '#1c1714', color2: '#3b302a', roughness: 0.35 }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only

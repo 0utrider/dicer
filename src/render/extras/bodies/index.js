@@ -2,6 +2,7 @@ import { NOISE_GLSL } from '../../shaders/noise.js';
 import { mergePatches } from '../merge.js';
 import * as iridescent from './iridescent.js';
 import * as gem from './gem.js';
+import * as wood from './wood.js';
 
 /**
  * Body modules: one per new body type, plus (later) the metal finishes and luminous.
@@ -23,6 +24,7 @@ import * as gem from './gem.js';
 const MODULES = [
   [iridescent.iridescentPatch, iridescent.USES_NOISE],
   [gem.gemPatch, gem.USES_NOISE],
+  [wood.woodPatch, wood.USES_NOISE],
 ];
 
 const isEmpty = (p) => Object.keys(p).length === 0;

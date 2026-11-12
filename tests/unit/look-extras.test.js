@@ -12,6 +12,7 @@ import { normalizeAppearance, programKey } from '../../src/look/appearance.js';
 import { bodyPatch } from '../../src/render/extras/bodies/index.js';
 import { PRESET_PARAMS, iridescentPatch } from '../../src/render/extras/bodies/iridescent.js';
 import { PRESET_PARAMS as GEM_PARAMS, gemPatch } from '../../src/render/extras/bodies/gem.js';
+import { PRESET_PARAMS as WOOD_PARAMS, woodPatch } from '../../src/render/extras/bodies/wood.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 
@@ -293,6 +294,49 @@ describe('bodies', () => {
       expect(count(fs, 'vec3 dcGc = ')).toBe(1);
       expect(at).toBeGreaterThan(fs.indexOf('#include <color_fragment>'));
       expect(at).toBeLessThan(fs.indexOf(ENGRAVE_COLOR.trim().split('\n')[0]));
+    }
+  });
+
+  test('wood: one program for the four presets; preset params distinct; params set; roughness chunk present', () => {
+    const presets = ['oak', 'walnut', 'cherry', 'ebony'];
+    const mats = presets.map((preset) =>
+      bodyMat({ type: 'wood', preset, color: '#b98a52', color2: '#6e4a26', roughness: 0.55 }),
+    );
+    const keys = new Set(mats.map((m) => m.userData.programKey));
+    expect(keys.size).toBe(1);
+    expect([...keys][0]).toMatch(/^wood\|/);
+    const vals = mats.map((m) => m.userData.uniforms.uBodyPreset.value.toArray());
+    presets.forEach((p, i) => expect(vals[i]).toEqual(WOOD_PARAMS[p]));
+    expect(new Set(vals.map(String)).size).toBe(4);
+    for (const body of TODAY) expect(woodPatch(look({ body }))).toEqual({});
+    const raw = { body: { type: 'wood', preset: 'nope', color: '#000000', color2: '#ffffff' } };
+    expect(woodPatch(raw).uniforms.uBodyPreset.value.toArray()).toEqual(WOOD_PARAMS.oak);
+    for (const m of mats) {
+      expect(m.defines.DICER_WOOD).toBe('');
+      expect(m.defines.DICER_GEM).toBeUndefined();
+      expect(m.defines.DICER_IRIDESCENT).toBeUndefined();
+      expect(m.clearcoat).toBeCloseTo(0.5);
+      expect(m.clearcoatRoughness).toBeCloseTo(0.25);
+      const fs = patched(m).fragmentShader;
+      expect(count(fs, '#ifdef DICER_WOOD')).toBeGreaterThan(0);
+      expect(count(fs, 'uniform vec4 uBodyPreset;')).toBe(1);
+      expect(count(fs, '#define DC_NOISE')).toBe(1);
+      expect(fs.indexOf('#define DC_NOISE')).toBeLessThan(fs.indexOf('uniform vec4 uBodyPreset;'));
+      // the colour chunk once, after color_fragment, before the number fill mix
+      const at = fs.indexOf('vec3 dcWc = ');
+      expect(count(fs, 'vec3 dcWc = ')).toBe(1);
+      expect(at).toBeGreaterThan(fs.indexOf('#include <color_fragment>'));
+      expect(at).toBeLessThan(fs.indexOf(ENGRAVE_COLOR.trim().split('\n')[0]));
+      // the pore roughness once, after roughnessmap_fragment, reading the pores colorPre found
+      const r = fs.indexOf('roughnessFactor = clamp( roughnessFactor + dcWpore');
+      expect(count(fs, 'roughnessFactor = clamp( roughnessFactor + dcWpore')).toBe(1);
+      expect(r).toBeGreaterThan(fs.indexOf('#include <roughnessmap_fragment>'));
+      expect(r).toBeGreaterThan(at);
+      // the varnish bevel chunk once, after the physical material is set up
+      expect(count(fs, 'material.specularColorBlended *= dcWt;')).toBe(1);
+      expect(fs.indexOf('material.specularColorBlended *= dcWt;')).toBeGreaterThan(
+        fs.indexOf('#include <lights_physical_fragment>'),
+      );
     }
   });
 });
