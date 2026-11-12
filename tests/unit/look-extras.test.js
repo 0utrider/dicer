@@ -19,10 +19,12 @@ import { BORDER, FX_COLOR } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/insides/index.js';
-import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS } from '../../src/render/shaders/interior.js';
+import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS, interiorChunk } from '../../src/render/shaders/interior.js';
 import { MARCH_RADIUS } from '../../src/render/extras/insides/foil.js';
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
 import { BO_KINDS, CARDS, CARD_RADIUS, TILT, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
+import { smokeInside } from '../../src/render/extras/insides/smoke.js';
+import { LQ, liquidExtrasInside } from '../../src/render/extras/insides/liquid-extras.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook } from '../../src/look/appearance.js';
 
@@ -722,6 +724,125 @@ describe('insides', () => {
       }
     // an unknown inclusion normalises to the default kind (flower)
     expect(botanicalInside(resin({ type: 'botanical', inclusion: 'cactus' })).uniforms.uBoKind.value).toBe(0);
+  });
+
+  test('smoke: patch interior, fake tint 0.4', () => {
+    const a = resin({ type: 'smoke', colors: ['#2a2440', '#9a8fc8'], density: 0.6 });
+    const patch = insidePatch(a, FLAGS);
+    expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+    expect(patch.interior.main).toBe(marchWithUp());
+    expect(patch.interior.pars).toContain(INTERIOR_PARS);
+    expect(count(patch.interior.pars, NOISE_GLSL)).toBe(1);
+    const { body } = smokeInside(a);
+    expect(patch.interior.pars).toContain(body);
+    expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
+    // its own plume, neither nebula's clouds nor swirl's ribbons
+    expect(body).not.toBe(interiorChunk('nebula').pars);
+    expect(interiorChunk('nebula').pars).not.toContain(body);
+    expect(interiorChunk('swirl').pars).not.toContain(body);
+    expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+    for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^max\(/);
+    const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23])\s+(dc\w+)\s*\(/g)].map((x) => x[1]);
+    for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcSm/);
+    const m = mat(a);
+    expect(m.userData.programKey).toContain('|smoke:32|');
+    const fs = patched(m).fragmentShader;
+    expect(count(fs, body)).toBe(1);
+    expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+    expect(count(fs, '#define DC_NOISE')).toBe(1);
+    // one program for every colour and density
+    const other = mat(resin({ type: 'smoke', colors: ['#e8e8f0', '#30a0ff'], density: 0.2 }));
+    expect(other.userData.programKey).toBe(m.userData.programKey);
+    expect(patched(other).fragmentShader).toBe(fs);
+    expect(() => createDiceMaterial(a, atlas, getShape('d2'), labels, FLAGS)).not.toThrow();
+    // fake mode: the tint share 0.4, no interior
+    const low = { ...FLAGS, interiorSteps: 0 };
+    const fake = insidePatch(a, low);
+    expect(Object.keys(fake)).toEqual(['uniforms']);
+    expect(fake.uniforms.uResinTint.value.w).toBeCloseTo(0.4, 6);
+    expect(patched(mat(a, low)).fragmentShader).not.toContain('dcInterior');
+  });
+
+  test('liquid + bubble / sand / both: patched, dcIUp used, keys distinct; plain liquid unpatched', () => {
+    const colors = ['#1f7fd1', '#bfe6ff'];
+    const plain = resin({ type: 'liquid', colors, density: 0.5 });
+    expect(insidePatch(plain, FLAGS)).toEqual({});
+    const plainM = mat(plain);
+    expect(plainM.userData.programKey).toContain('|liquid:32|');
+    const plainFs = patched(plainM).fragmentShader;
+    expect(plainFs).not.toContain('dcIUp');
+    expect(plainFs).not.toContain('dcLq');
+    // the liquid core of interior.js, copied (world start untouched)
+    const LIQ_LINES = [
+      'float wave = dcNoise3( p * 4.0 + 1.7 ) * 0.65 + dcNoise3( p * 9.0 - 3.1 ) * 0.35;',
+      'float coreR = mix( 0.16, 0.42, uInteriorDensity ) + 0.10 * ( wave - 0.5 );',
+      'vec3 hazeCol = uInteriorColors[ 1 ] * ( dcILight + 0.25 );',
+    ];
+    for (const l of LIQ_LINES) expect(interiorChunk('liquid').pars).toContain(l);
+    const low = { ...FLAGS, interiorSteps: 0 };
+    const plainLow = mat(plain, low);
+    const cases = [
+      [{ bubble: true }, '|liquid+b:32|'],
+      [{ sand: true }, '|liquid+s:32|'],
+      [{ bubble: true, sand: true }, '|liquid+bs:32|'],
+    ];
+    const keys = new Set([plainM.userData.programKey]);
+    const shaders = new Set([plainFs]);
+    for (const [opts, part] of cases) {
+      const a = resin({ type: 'liquid', colors, density: 0.5, ...opts });
+      const patch = insidePatch(a, FLAGS);
+      expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+      expect(patch.interior.main).toBe(marchWithUp());
+      expect(patch.interior.pars).toContain(INTERIOR_PARS);
+      expect(count(patch.interior.pars, NOISE_GLSL)).toBe(1);
+      const { body } = liquidExtrasInside(a);
+      expect(patch.interior.pars).toContain(body);
+      for (const l of LIQ_LINES) expect(body).toContain(l);
+      // gravity: the bubble up along dcIUp, the sand down (heights measured along dcIUp)
+      expect(count(body, '#define DC_LQ_BUBBLE')).toBe(opts.bubble ? 1 : 0);
+      expect(count(body, '#define DC_LQ_SAND')).toBe(opts.sand ? 1 : 0);
+      expect(body).toContain('vec3 dcLqBt = DC_LQ_REF - dot( DC_LQ_REF, dcIUp ) * dcIUp;');
+      expect(body).toContain('vec3 dcLqBc = dcIUp * DC_LQ_BH + dcLqBt * DC_LQ_BO;');
+      expect(body).toContain('dot( p, dcIUp )');
+      expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+      for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^max\(/);
+      const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23])\s+(dc\w+)\s*\(/g)].map((x) => x[1]);
+      expect(own.length).toBeGreaterThan(1);
+      for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcLq/);
+      const m = mat(a);
+      expect(m.userData.programKey).toContain(part);
+      const fs = patched(m).fragmentShader;
+      expect(count(fs, body)).toBe(1);
+      expect(count(fs, 'vec3 dcIUp;')).toBe(1);
+      expect(count(fs, UP_LINE)).toBe(1);
+      expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+      keys.add(m.userData.programKey);
+      shaders.add(fs);
+      // one program per option set, for every colour and density
+      const other = mat(resin({ type: 'liquid', colors: ['#d14a1f', '#ffe0b0'], density: 0.8, ...opts }));
+      expect(other.userData.programKey).toBe(m.userData.programKey);
+      expect(patched(other).fragmentShader).toBe(fs);
+      expect(() => createDiceMaterial(a, atlas, getShape('d2'), labels, FLAGS)).not.toThrow();
+      // fake mode: plain liquid's fake (no patch, the same tint and program)
+      expect(insidePatch(a, low)).toEqual({});
+      const lowM = mat(a, low);
+      expect(lowM.userData.programKey).toBe(plainLow.userData.programKey);
+      expect(lowM.userData.uniforms.uResinTint.value.toArray()).toEqual(plainLow.userData.uniforms.uResinTint.value.toArray());
+      expect(patched(lowM).fragmentShader).toBe(patched(plainLow).fragmentShader);
+    }
+    expect(keys.size).toBe(4);
+    expect(shaders.size).toBe(4);
+    // the bubble (radius about 0.09) just inside the volume at the top; the sand up to about 22%
+    // of the volume's height at the bottom
+    expect(LQ.radius).toBe(INTERIOR.radius); // liquid-extras' local copy
+    expect(LQ.bubbleRadius).toBeCloseTo(0.09, 6);
+    const reach = Math.hypot(LQ.bubbleHeight, LQ.bubbleOffset) + LQ.bubbleRadius;
+    expect(reach).toBeLessThan(INTERIOR.radius);
+    expect(reach).toBeGreaterThan(INTERIOR.radius - 0.1);
+    // at the top: its centre within 25 degrees of up
+    expect(LQ.bubbleOffset / LQ.bubbleHeight).toBeLessThan(Math.tan((25 * Math.PI) / 180));
+    expect(Math.hypot(...LQ.bubbleRef)).toBeCloseTo(1, 9);
+    expect((LQ.sandTop + INTERIOR.radius) / (2 * INTERIOR.radius)).toBeCloseTo(0.22, 2);
   });
 
   test('fake mode: uResinTint.w = INSIDE_TINT.foil, no interior chunk', () => {

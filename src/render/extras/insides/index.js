@@ -4,10 +4,13 @@ import { INTERIOR_PARS, INTERIOR_MARCH } from '../../shaders/interior.js';
 import * as foil from './foil.js';
 import * as eye from './eye.js';
 import * as botanical from './botanical.js';
+import * as smoke from './smoke.js';
+import * as liquidExtras from './liquid-extras.js';
 
 /**
- * Inside modules: one per new resin inside (foil, eye and botanical now; smoke and the liquid
- * bubble / sand options in later tasks). Insides combine with the resin body only.
+ * Inside modules: one per new resin inside (foil, eye, botanical, smoke), plus `liquid` for
+ * liquid with the bubble and / or sand options (plain liquid stays interior.js's, unpatched).
+ * Insides combine with the resin body only.
  *
  * Contract of a module:
  * - `<type>Inside(a) -> { body: string, uniforms?: object }`: `body` is its GLSL, defining
@@ -24,6 +27,8 @@ const MODULES = {
   foil: [foil.foilInside, foil.USES_NOISE],
   eye: [eye.eyeInside, eye.USES_NOISE],
   botanical: [botanical.botanicalInside, botanical.USES_NOISE],
+  smoke: [smoke.smokeInside, smoke.USES_NOISE],
+  liquid: [liquidExtras.liquidExtrasInside, liquidExtras.USES_NOISE], // only with bubble / sand
 };
 
 /** Share of the tint target mixed into the resin body at low tier (steps 0), per new inside. */
@@ -50,13 +55,14 @@ function tintTarget(a) {
   return l > 0 ? c0.multiplyScalar(luminance(body) / l) : body;
 }
 
-const liquidExtras = (i) => i.type === 'liquid' && (i.bubble || i.sand);
+const hasLiquidExtras = (i) => i.type === 'liquid' && (i.bubble || i.sand);
 
 /**
  * ExtrasPatch for the inside: {} unless the body is resin, interiors are on and a new inside (or
  * liquid with bubble / sand) is set.
- * - marched (steps > 0): `{ interior: { pars, main }, uniforms }`; a type without a module
- *   throws, so patchMaterial fails and createDiceMaterial draws the fallback look (it would
+ * - marched (steps > 0): `{ interior: { pars, main }, uniforms }` (liquid with bubble / sand: the
+ *   liquid-extras module's); a type without a module (none today: a safety net) throws, so
+ *   patchMaterial fails and createDiceMaterial draws the fallback look (it would
  *   otherwise call interiorChunk() with a type it does not know, outside its try/catch);
  * - fake (steps 0): `{ uniforms: { uResinTint } }` with w = INSIDE_TINT[type] (liquid keeps
  *   today's fake: {}).
@@ -65,15 +71,15 @@ export function insidePatch(a, flags) {
   const i = a.interior;
   if (a.body?.type !== 'resin' || !i || !flags.interiors) return {};
   const isNew = Object.hasOwn(INSIDE_TINT, i.type);
-  if (!isNew && !liquidExtras(i)) return {};
+  if (!isNew && !hasLiquidExtras(i)) return {};
   if (!(flags.interiorSteps > 0)) {
     if (!isNew) return {};
     const t = tintTarget(a);
     return { uniforms: { uResinTint: { value: new THREE.Vector4(t.r, t.g, t.b, INSIDE_TINT[i.type]) } } };
   }
-  const key = liquidExtras(i) ? 'liquid' : i.type;
+  const key = hasLiquidExtras(i) ? 'liquid' : i.type;
   const mod = Object.hasOwn(MODULES, key) ? MODULES[key] : null;
-  if (!mod) throw new Error(`dicer: inside "${key}${key === 'liquid' ? ' + bubble/sand' : ''}" not built yet`);
+  if (!mod) throw new Error(`dicer: inside "${key}" not built yet`);
   const [build, usesNoise] = mod;
   const { body, uniforms = {} } = build(a);
   const pars = [usesNoise ? NOISE_GLSL : '', INTERIOR_PARS, 'vec3 dcIUp;', body].filter(Boolean).join('\n');

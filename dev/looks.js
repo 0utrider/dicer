@@ -80,6 +80,11 @@ const VARIANTS = [
   ['resin~flower', 'default', 'pressed flower', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'flower', colors: ['#f28fb0', '#f6d24a'], density: 0.5 }],
   ['resin~moss', 'default', 'moss', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'moss', colors: ['#4f8a3a', '#b9d36a'], density: 0.5 }],
   ['resin~butterfly', 'default', 'butterfly', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'butterfly', colors: ['#2f7fe0', '#111a2c'], density: 0.5 }],
+  // smoke inside, liquid bubble and sand
+  ['resin~smoke', 'default', 'smoke plume', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'smoke', colors: ['#2a2440', '#9a8fc8'], density: 0.6 }],
+  ['resin~liquid-bubble', 'default', 'liquid, air bubble', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, bubble: true }],
+  ['resin~liquid-sand', 'default', 'liquid, sand', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, sand: true }],
+  ['resin~liquid-bubble-sand', 'default', 'liquid, bubble and sand', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, bubble: true, sand: true }],
   // combinations (the compile check for body x numbers x interior x flags interactions)
   ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
