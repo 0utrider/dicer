@@ -9,7 +9,8 @@ import { TIERS, flagsFor } from '../render/quality.js';
 import { buildDieGeometry, snapEdgeRadius } from '../core/chamfer.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { restingQuaternion, minY } from '../core/resting.js';
-import { appearanceKey } from '../look/appearance.js';
+import { appearanceKey, normalizeAppearance, needsLookExtras } from '../look/appearance.js';
+import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import { createTurntable } from './turntable.js';
 
 const ENV_RESOLUTION = 128;
@@ -290,9 +291,15 @@ export function createThumbnailer({
       chain = r.catch(() => null);
       return r;
     };
-    const p = isSerif(fontId)
-      ? enqueue(atlas, false)
-      : awaitAtlas(fontId).then((a) => (disposed ? null : enqueue(a, a === atlas)));
+    // A look needing the look-extras chunk waits for it too; a failed chunk draws the fallback
+    // as a stand-in that is not cached.
+    const wantsExtras = !getLookExtras() && needsLookExtras(normalizeAppearance(appearance));
+    const p =
+      isSerif(fontId) && !wantsExtras
+        ? enqueue(atlas, false)
+        : Promise.all([awaitAtlas(fontId), wantsExtras ? requestLookExtras() : true]).then(([a, x]) =>
+            disposed ? null : enqueue(a, (a === atlas && !isSerif(fontId)) || !x),
+          );
     inflight.set(key, p);
     const done = () => inflight.delete(key);
     p.then(done, done);
@@ -358,6 +365,15 @@ export function createThumbnailer({
           redraw();
         });
       }
+      const extrasWait = !getLookExtras() && needsLookExtras(normalizeAppearance(appearance));
+      if (extrasWait) {
+        // the fallback look stands in: rebuild the die once the chunk is ready
+        requestLookExtras().then((m) => {
+          if (!m || stopped || !res?.extrasWait) return;
+          free();
+          redraw();
+        });
+      }
       const held = acquireGeometry(shape, shapeType, appearance);
       const geometry = held.geometry;
       let mesh;
@@ -383,6 +399,7 @@ export function createThumbnailer({
         baseQ,
         y: mesh.position.y,
         standIn: !dieAtlas,
+        extrasWait,
       };
       return true;
     }

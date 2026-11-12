@@ -8,6 +8,7 @@ import { LOOKS } from '../../src/look/looks.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
+import { _setLookExtrasImport } from '../../src/render/extras-loader.js';
 
 vi.mock('../../src/core/chamfer.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -469,4 +470,49 @@ test('an atlas evicted and disposed while its thumbnail waits in the chain is di
   expect(disposeA).toHaveBeenCalledTimes(2); // freed again once the render let go
   t.dispose();
   expect(disposeA).toHaveBeenCalledTimes(2);
+});
+
+describe('look extras chunk', () => {
+  const extrasTheme = () => ({
+    ...theme(),
+    appearance: {
+      ...theme().appearance,
+      numbers: { ...theme().appearance.numbers, fill: 'holo', relief: 'raised' },
+    },
+  });
+  const keyOf = (i) => createDiceMaterial.mock.results[i].value.userData.programKey;
+
+  test('a thumbnail of a holo look waits for the chunk and is cached once it is drawn with it', async () => {
+    let release;
+    const gate = new Promise((r) => (release = r));
+    _setLookExtrasImport(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+    createDiceMaterial.mockClear();
+    const { t, rig } = make();
+    const p = t.thumbnail(extrasTheme(), 'd20');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(rig.renderer.render).not.toHaveBeenCalled();
+    release();
+    const url = await p;
+    expect(rig.renderer.render).toHaveBeenCalledTimes(1);
+    expect(keyOf(0)).toContain('|n:holo+r');
+    expect(await t.thumbnail(extrasTheme(), 'd20')).toBe(url);
+    expect(rig.renderer.render).toHaveBeenCalledTimes(1);
+    t.dispose();
+  });
+
+  test('a failed chunk draws the fallback thumbnail and does not cache it', async () => {
+    _setLookExtrasImport(() => Promise.reject(new Error('offline')));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    createDiceMaterial.mockClear();
+    const { t, rig } = make();
+    const a = await t.thumbnail(extrasTheme(), 'd20');
+    expect(a).toBe('blob:t1');
+    expect(keyOf(0)).not.toContain('|n:');
+    const b = await t.thumbnail(extrasTheme(), 'd20');
+    expect(b).not.toBe(a);
+    expect(rig.renderer.render).toHaveBeenCalledTimes(2);
+    t.dispose();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(a);
+    vi.restoreAllMocks();
+  });
 });
