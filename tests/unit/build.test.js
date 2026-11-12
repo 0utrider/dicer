@@ -158,7 +158,8 @@ describe('build', () => {
     // Dice designs plan 1 re-based it on purpose (4_094_135): its option lists, normalisation and
     // the look-extras loader must live in world start (spec Constraints, World-start size); plan 1
     // may spend at most 1,536 bytes of the next 2 KB.
-    const growth = worldStartBytes() - 4_094_135;    console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
+    const growth = worldStartBytes() - 4_094_135;
+    console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {

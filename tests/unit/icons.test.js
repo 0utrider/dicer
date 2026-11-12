@@ -44,20 +44,19 @@ describe('iconLabels', () => {
     });
     expect(d20[hi]).toBe('20'); // input untouched
 
-    const d10 = iconLabels(labelsOf('d10'), getShape('d10'), { crit: 'starburst', fumble: null });
-    expect(labelsOf('d10')[faceOf('d10', 10)]).toBe('0');
-    expect(d10[faceOf('d10', 10)]).toBe(ICON_CHARS.starburst);
-    expect(d10[faceOf('d10', 1)]).toBe('1');
-
-    const d6 = iconLabels(labelsOf('d6'), getShape('d6'), { crit: 'heart', fumble: null });
-    expect(labelsOf('d6')[faceOf('d6', 6)]).toBe('6.');
-    expect(d6[faceOf('d6', 6)]).toBe(ICON_CHARS.heart);
-
-    const d4 = iconLabels(labelsOf('d4'), getShape('d4'), { crit: 'flame', fumble: 'broken-shield' });
-    expect(d4[faceOf('d4', 4)]).toBe(ICON_CHARS.flame);
-    expect(d4[faceOf('d4', 1)]).toBe(ICON_CHARS['broken-shield']);
-
     expect(iconLabels(d20, getShape('d20'), { crit: null, fumble: null })).toEqual(d20);
+  });
+
+  test('only the d20 shows icons: every other die keeps its numbers', () => {
+    const icons = { crit: 'starburst', fumble: 'skull' };
+    for (const type of ['d4', 'd6', 'd8', 'd10', 'd12']) {
+      const labels = labelsOf(type);
+      expect(iconLabels(labels, getShape(type), icons)).toEqual(labels);
+    }
+    // a plain d10 and the d100 ones die share labelFor('d10', v)
+    const d10 = getShape('d10');
+    const ones = d10.values.map((v) => labelFor('d10', v));
+    expect(iconLabels(ones, d10, icons)).toEqual(ones);
   });
 
   test('keeps numbers on a coin, the d100 tens die, preset faces and ghosts', () => {

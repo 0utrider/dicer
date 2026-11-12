@@ -38,7 +38,7 @@ const VARIANTS = [
   ['default~holo', 'default', 'holographic numbers', {}, { fill: 'holo' }],
   ['default~glow', 'default', 'glow-ink numbers', {}, { fill: 'glow' }],
   ['void-star~glow', 'void-star', 'glow-ink raised numbers', {}, { fill: 'glow', relief: 'raised' }],
-  // crit icons on the shown (max) face; the d10's "0" face is checked separately
+  // crit icons: only the d20 column shows one (on its 20); other dice keep their numbers
   ...ICON_IDS.map((id) => [`icon-${id}`, 'default', `${id} crit`, {}, { icons: { crit: id } }]),
   [
     'ruby-classic~icons',

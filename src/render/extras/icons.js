@@ -56,18 +56,18 @@ export const ICON_CHARS = Object.freeze(
 );
 
 /**
- * The face labels with the crit icon on the max face and the fumble icon on the 1. Only faces
- * that carry their plain number change: a coin, the d100 tens die, preset glyph / blank /
- * layered faces and ghosts ('') keep their labels. A d10's max face is its "0" (value 10).
+ * The face labels with the crit icon on the d20's 20 and the fumble icon on its 1. Only the d20
+ * shows icons: every other die returns its labels unchanged (the d100 ones die is a plain d10,
+ * and the d4 reads its result face-down). Only faces that carry their plain number change:
+ * preset glyph / blank / layered faces and ghosts ('') keep their labels.
  */
 export function iconLabels(labels, shape, icons) {
   const values = shape?.values;
-  if (shape?.kind === 'coin' || !values?.length || !(icons?.crit || icons?.fumble)) return labels;
-  const max = Math.max(...values);
+  if (shape?.type !== 'd20' || !values?.length || !(icons?.crit || icons?.fumble)) return labels;
   return labels.map((label, i) => {
     const v = values[i];
     if (v === undefined || label !== labelFor(shape.type, v)) return label;
-    if (icons.crit && v === max) return ICON_CHARS[icons.crit];
+    if (icons.crit && v === 20) return ICON_CHARS[icons.crit];
     if (icons.fumble && v === 1) return ICON_CHARS[icons.fumble];
     return label;
   });
@@ -265,7 +265,7 @@ export function withIcons(atlas, { makeCanvas = defaultMakeCanvas, readPixels } 
 
 /**
  * ExtrasPatch for the crit/fumble icons: new labels and the icon atlas, or {} when no icon is on,
- * no label changed or the atlas cannot take icons. `compose` is the test seam.
+ * the die is not a d20 (no label changes, so no composed atlas) or the atlas cannot take icons. `compose` is the test seam.
  */
 export function iconPatch(a, ctx, compose = withIcons) {
   const icons = a.numbers.icons;

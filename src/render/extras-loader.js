@@ -36,7 +36,11 @@ export const requestLookExtras = () =>
     })
     .catch((err) => (warnLookExtras(err), null)));
 
-/** Called once when the chunk lands. Returns the unsubscribe. */
+/**
+ * Called once when the chunk lands. Returns the unsubscribe. A subscriber registering after the
+ * chunk has loaded is not called, so subscribe before the first request can resolve (main.js
+ * does, synchronously in activate).
+ */
 export const onLookExtrasReady = (cb) => (listeners.add(cb), () => listeners.delete(cb));
 
 /** Test seam: replaces the chunk import and resets the state. */
