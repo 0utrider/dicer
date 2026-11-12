@@ -13,6 +13,7 @@ import { bodyPatch } from '../../src/render/extras/bodies/index.js';
 import { PRESET_PARAMS, iridescentPatch } from '../../src/render/extras/bodies/iridescent.js';
 import { PRESET_PARAMS as GEM_PARAMS, gemPatch } from '../../src/render/extras/bodies/gem.js';
 import { PRESET_PARAMS as WOOD_PARAMS, woodPatch } from '../../src/render/extras/bodies/wood.js';
+import { LUMINOUS_MAX, luminousPatch } from '../../src/render/extras/bodies/luminous.js';
 import { LIP, metalFinishPatch } from '../../src/render/extras/bodies/metal-finishes.js';
 import { BORDER } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
@@ -427,5 +428,49 @@ describe('bodies', () => {
     expect(metalFinishPatch({ body: { type: 'metal', finish: 'worn' } }).defines).toEqual({ DICER_WORN: '' });
     // the finishes' copy of the raised border geometry (kept local: no world-start export)
     expect(LIP).toEqual({ to: BORDER.to, height: BORDER.height });
+  });
+});
+
+describe('luminous', () => {
+  const mat = (body, flags = FLAGS) => createDiceMaterial(look({ body }), atlas, s, labels, flags);
+
+  test('lum key part, the lighting chunk lands after the resin refraction on a resin body, uLuminous = luminous x LUMINOUS_MAX', () => {
+    const m = mat({ type: 'resin', luminous: 0.5 });
+    expect(m.userData.programKey).toContain('|lum');
+    const patch = luminousPatch(look({ body: { type: 'resin', luminous: 0.5 } }));
+    expect(patch.uniforms.uLuminous.value).toBeCloseTo(0.5 * LUMINOUS_MAX, 6);
+    expect(LUMINOUS_MAX).toBe(0.6);
+    const fs = patched(m).fragmentShader;
+    const refr = fs.indexOf('vec3 dcRefracted = vec3( 0.0 );');
+    const lum = fs.indexOf('float dcLumIn');
+    expect(count(fs, 'float dcLumIn')).toBe(1);
+    expect(refr).toBeGreaterThan(-1);
+    expect(lum).toBeGreaterThan(refr);
+    expect(lum).toBeGreaterThan(fs.indexOf('#include <lights_physical_fragment>'));
+    expect(lum).toBeLessThan(fs.indexOf('vec3 outgoingLight'));
+    // it merges with a body module (chunks concatenate per slot)
+    const both = bodyPatch(look({ body: { type: 'gem', luminous: 1 } }), FLAGS);
+    expect(both.chunks.lighting).toContain('dcLumIn');
+    expect(both.defines.DICER_GEM).toBe('');
+    expect(both.uniforms.uLuminous.value).toBeCloseTo(LUMINOUS_MAX, 6);
+  });
+
+  test('luminous 0 adds nothing', () => {
+    for (const type of ['opaque', 'resin', 'wood']) {
+      const a = look({ body: { type, luminous: 0 } });
+      expect(luminousPatch(a)).toEqual({});
+      expect(mat({ type, luminous: 0 }).userData.programKey).not.toContain('|lum');
+    }
+    expect(patched(mat({ type: 'opaque', luminous: 0 })).fragmentShader).not.toContain('dcLumIn');
+  });
+
+  test('luminous works with flags.glow false and engraving false; safe flags: no luminous, safe key', () => {
+    const m = mat({ type: 'opaque', luminous: 1 }, { ...FLAGS, glow: false, engraving: false });
+    expect(m.userData.programKey).toContain('|lum');
+    expect(patched(m).fragmentShader).toContain('dcLumIn');
+    const safe = mat({ type: 'opaque', luminous: 1 }, { ...FLAGS, safe: true });
+    expect(safe.userData.programKey).toMatch(/safe1/);
+    expect(safe.userData.programKey).not.toContain('|lum');
+    expect(patched(safe).fragmentShader).not.toContain('dcLumIn');
   });
 });

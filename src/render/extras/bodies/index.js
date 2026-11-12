@@ -4,6 +4,7 @@ import * as iridescent from './iridescent.js';
 import * as gem from './gem.js';
 import * as wood from './wood.js';
 import * as metalFinishes from './metal-finishes.js';
+import * as luminous from './luminous.js';
 
 /**
  * Body modules: one per new body type, plus (later) the metal finishes and luminous.
@@ -27,6 +28,7 @@ const MODULES = [
   [gem.gemPatch, gem.USES_NOISE],
   [wood.woodPatch, wood.USES_NOISE],
   [metalFinishes.metalFinishPatch, metalFinishes.USES_NOISE],
+  [luminous.luminousPatch, luminous.USES_NOISE],
 ];
 
 const isEmpty = (p) => Object.keys(p).length === 0;

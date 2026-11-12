@@ -65,6 +65,9 @@ const VARIANTS = [
   // aged metal finishes: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
   ['metal~patina', 'default', 'copper patina', {}, {}, { type: 'metal', finish: 'patina', color: '#b5653a', color2: '#3fae9a', roughness: 0.4 }],
   ['metal~worn', 'default', 'battle-worn', {}, {}, { type: 'metal', finish: 'worn', color: '#9aa0a6', color2: '#3a3d40', roughness: 0.35 }],
+  // luminous (glow in the dark): Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
+  ['opaque~luminous', 'default', 'glow in the dark', {}, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
+  ['wood~ebony~luminous', 'default', 'ebony + luminous', {}, {}, { type: 'wood', preset: 'ebony', color: '#1c1714', color2: '#3b302a', roughness: 0.35, luminous: 1 }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only
