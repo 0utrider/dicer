@@ -35,6 +35,33 @@ function patched(material) {
   return shader;
 }
 
+/**
+ * The lines the preprocessor keeps for these defines: #ifdef / #ifndef are evaluated; any other
+ * #if / #elif is treated as true with every branch kept (an over-count, never an under-count).
+ */
+function activeGlsl(text, defines) {
+  const stack = []; // per open block: { known, on, taken }
+  const live = () => stack.every((b) => b.on);
+  const out = [];
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    let m;
+    if ((m = t.match(/^#if(n?)def\s+(\w+)/))) {
+      const on = (m[2] in defines) !== (m[1] === 'n');
+      stack.push({ known: true, on, taken: on });
+    } else if (t.startsWith('#if')) stack.push({ known: false, on: true });
+    else if (t.startsWith('#elif')) {
+      const b = stack.at(-1);
+      if (b.known) b.on = false;
+    } else if (t.startsWith('#else')) {
+      const b = stack.at(-1);
+      if (b.known) b.on = !b.taken;
+    } else if (t.startsWith('#endif')) stack.pop();
+    else if (live()) out.push(line);
+  }
+  return out.join('\n');
+}
+
 beforeAll(async () => {
   _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
   await requestLookExtras();
@@ -253,6 +280,14 @@ describe('bodies', () => {
       expect(count(fs, 'uniform vec4 uBodyPreset;')).toBe(1);
       expect(count(fs, '#define DC_NOISE')).toBe(1);
       expect(fs.indexOf('#define DC_NOISE')).toBeLessThan(fs.indexOf('uniform vec4 uBodyPreset;'));
+      // the gem declares modelMatrix itself (the view ray in die-local space): exactly once in
+      // the compiled text (resin's own declaration sits behind #ifdef DICER_RESIN)
+      expect(count(activeGlsl(fs, m.defines), 'uniform mat4 modelMatrix;')).toBe(1);
+      // the bevel coat chunk once, after the physical material is set up
+      expect(count(fs, 'material.specularColorBlended *= dcGt;')).toBe(1);
+      expect(fs.indexOf('material.specularColorBlended *= dcGt;')).toBeGreaterThan(
+        fs.indexOf('#include <lights_physical_fragment>'),
+      );
       // the colour chunk once, after color_fragment, before the number fill mix
       const at = fs.indexOf('vec3 dcGc = ');
       expect(count(fs, 'vec3 dcGc = ')).toBe(1);

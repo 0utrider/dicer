@@ -34,6 +34,20 @@ uniform vec4 uBodyPreset;
 #ifndef DICER_RESIN
 uniform mat4 modelMatrix; // three uploads it per object; the vertex stage declares it too
 #endif
+// A flat fracture sheet inside the die (quartz): the plane through o with unit normal n, cut to a
+// ragged disc of radius r, met by the view ray x = p - d t below the surface (t > 0). Returns
+// x: the sheet (feathered, fading with depth, brightest seen face on, where it catches the light);
+// y: its ragged rim, the crack line.
+vec2 dcGsheet( vec3 p, vec3 d, vec3 n, vec3 o, float r ) {
+	float dn = dot( d, n );
+	float t = dot( p - o, n ) / ( abs( dn ) > 1e-3 ? dn : 1e-3 );
+	vec3 h = p - d * t;
+	float e = length( h - o ) / r + 0.4 * ( dcNoise3( h * 6.0 ) - 0.5 );
+	float feather = 0.45 + 0.55 * smoothstep( 0.3, 0.7, dcNoise3( h * vec3( 15.0, 4.0, 15.0 ) + 3.0 ) );
+	float k = step( 0.0, t ) * ( 1.0 - 0.45 * smoothstep( 0.0, 0.8, t ) );
+	return k * vec2( ( 1.0 - smoothstep( 0.8, 0.95, e ) ) * feather * ( 0.4 + 0.6 * pow( abs( dn ), 3.0 ) ),
+		1.0 - smoothstep( 0.0, 0.05, abs( e - 0.9 ) ) );
+}
 `;
 
 const COLOR = /* glsl */ `
@@ -91,18 +105,51 @@ const COLOR = /* glsl */ `
 			// a faint smoky depth everywhere, so a face seen straight on is deep glass, not a black hole
 			dcGc = mix( dcGa, dcGb, 0.14 + dcGsheen * ( 0.12 + 0.4 * ( 1.0 - dcGcos ) ) );
 		} else {
-			// Quartz: milky color with soft clouds and veils of color2 deep inside; greyer towards
-			// the core, so the thin corners and edges glow lighter.
+			// Quartz: a clear body (greyer color2, deeper towards the core) holding milky color clouds
+			// at two depths, feathery wisps along them, and a few fracture sheets deep inside that
+			// catch the light when seen face on.
 			// two cloud layers, the second twice as deep along the view ray: they part as the die turns
 			float dcGcl = 0.5 * ( dcFbm3( dcGp + 2.0, 3 ) + dcFbm3( ( dcGq - dcGd * uBodyPreset.z ) * uBodyPreset.y * 0.7 + 6.0, 3 ) );
-			float dcGvein = 1.0 - smoothstep( 0.0, 0.14, abs( dcFbm3( dcGp * 0.7 + 9.0 + 0.8 * dcGcl, 2 ) - 0.5 ) );
-			float dcGcore = 1.0 - smoothstep( 0.4, 1.0, length( dcGq ) );
-			dcGc = mix( dcGa, dcGb, clamp( 0.6 * smoothstep( 0.4, 0.7, dcGcl ) + 0.3 * dcGcore, 0.0, 1.0 ) );
-			dcGc = mix( dcGc, dcGb * 0.82, 0.6 * dcGvein );
+			float dcGmilk = smoothstep( 0.44, 0.64, dcGcl );
+			// wisps: thin ridges of a warped noise, only in and near the clouds
+			float dcGwf = dcFbm3( dcGp * 1.4 + 9.0 + 1.5 * dcGcl, 3 );
+			float dcGwisp = ( 1.0 - smoothstep( 0.0, 0.03 + dcGaa, abs( dcGwf - 0.5 ) ) ) * smoothstep( 0.4, 0.6, dcGcl );
+			vec2 dcGfr = max( max(
+				dcGsheet( vLocalPos, dcGd, vec3( 0.57, 0.69, - 0.44 ), vec3( 0.15, 0.1, - 0.1 ), 0.5 ),
+				dcGsheet( vLocalPos, dcGd, vec3( - 0.71, 0.21, 0.67 ), vec3( - 0.2, - 0.25, 0.15 ), 0.42 ) ),
+				dcGsheet( vLocalPos, dcGd, vec3( 0.12, - 0.6, - 0.79 ), vec3( 0.1, 0.3, 0.25 ), 0.36 ) );
+			float dcGcore = 1.0 - smoothstep( 0.35, 1.0, length( dcGq ) );
+			vec3 dcGmk = min( dcGa * 1.06 + 0.04, 1.0 );
+			dcGc = dcGb * ( 0.84 - 0.24 * dcGcore );
+			dcGc = mix( dcGc, dcGmk, dcGmilk );
+			dcGc = mix( dcGc, dcGmk, 0.6 * dcGwisp );
+			dcGc = mix( dcGc, min( dcGa * 1.2 + 0.12, 1.0 ), dcGfr.x );
+			dcGc = mix( dcGc, dcGb * 0.7, 0.6 * dcGfr.y );
 		}
 		// translucency: light through the thin edge, brighter at grazing view
 		dcGc = mix( dcGc, min( dcGa * 1.25 + 0.08, 1.0 ), uBodyPreset.w * dcGrim );
 		diffuseColor.rgb = clamp( dcGc, 0.0, 1.0 );
+	}
+#endif
+`;
+
+/**
+ * Bevels: a rounded bevel is a cylinder that mirrors a whole line of the studio, and a clear
+ * 1.55 coat over it turned every gem edge silver-grey. On the bevel the coat is thinner and a
+ * little rougher, and the base reflection is tinted by the stone (a coloured gloss, as light
+ * leaving a gem through its edge), so the stone colour runs over the edge.
+ */
+const COAT = /* glsl */ `
+#ifdef DICER_GEM
+	if ( vFaceId < - 0.5 ) {
+		vec3 dcGt = material.diffuseColor / max( max( material.diffuseColor.r, material.diffuseColor.g ), max( material.diffuseColor.b, 1e-3 ) );
+		material.specularColor *= dcGt;
+		material.specularColorBlended *= dcGt;
+		material.specularF90 *= 0.45;
+#ifdef USE_CLEARCOAT
+		material.clearcoat *= 0.3;
+		material.clearcoatRoughness = max( material.clearcoatRoughness, 0.2 );
+#endif
 	}
 #endif
 `;
@@ -112,7 +159,7 @@ export function gemPatch(a) {
   return {
     defines: { DICER_GEM: '' },
     uniforms: { uBodyPreset: { value: new THREE.Vector4(...(PRESET_PARAMS[a.body.preset] ?? PRESET_PARAMS.amethyst)) } },
-    chunks: { pars: PARS, colorPre: COLOR },
+    chunks: { pars: PARS, colorPre: COLOR, coat: COAT },
     params: { ...PARAMS },
   };
 }
