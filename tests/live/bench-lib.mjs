@@ -134,21 +134,18 @@ const PAIRINGS = Object.freeze([
     profile: 'pc',
     dicer: 'defaults',
     dsn: 'defaults',
-    requireClearlyLess: true,
   },
   {
     pairing: 'defaults',
     profile: 'throttled',
     dicer: 'defaults',
     dsn: 'defaults',
-    requireClearlyLess: false,
   },
   {
     pairing: 'effectsOff',
     profile: 'pc',
     dicer: 'low',
     dsn: 'effectsOff',
-    requireClearlyLess: false,
   },
 ]);
 
@@ -158,7 +155,7 @@ const PAIRINGS = Object.freeze([
  *   `failures` (every roll completed), `noRebuild` (resize and context loss must not rebuild the
  *   renderer) and, for contextLoss, `recovered` (the roll after the restore drew on a live context).
  * - `type: 'h2h'`: compareBusy (P9-R13: main-thread busy ms per second at 60 fps) on the vsync
- *   reports, clearly-less only for pc defaults; each row also shows both frame p95s.
+ *   reports, passing within 10% of DSN (P9-R20); each row also shows both frame p95s.
  * @param {{entry: object, suite: {results: object[]}}[]} reports
  */
 export function verdicts(reports) {
@@ -224,9 +221,7 @@ export function verdicts(reports) {
     for (const id of ids) {
       const dr = d?.suite?.results?.find((r) => r.scenario === id) ?? null;
       const sr = s?.suite?.results?.find((r) => r.scenario === id) ?? null;
-      const c = compareBusy(dr ?? { scenario: id }, sr ?? { scenario: id }, {
-        requireClearlyLess: p.requireClearlyLess,
-      });
+      const c = compareBusy(dr ?? { scenario: id }, sr ?? { scenario: id });
       const dicerFailures = dr?.failures ?? null;
       const dsnFailures = sr?.failures ?? null;
       // A side that dropped rolls did less work: never a valid win.
@@ -235,8 +230,7 @@ export function verdicts(reports) {
         type: 'h2h',
         pairing: p.pairing,
         profile: p.profile,
-        requireClearlyLess: p.requireClearlyLess,
-        limit: p.requireClearlyLess ? TARGETS.clearlyLessRatio : 1,
+        limit: TARGETS.h2hRatio,
         ...c,
         pass: failed ? false : c.pass,
         scenario: id,

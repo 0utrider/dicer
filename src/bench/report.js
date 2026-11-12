@@ -66,17 +66,17 @@ export function checkTargets(r) {
 
 /**
  * P9-R13 head-to-head: main-thread busy ms per second (`busy.msPerSec`, CDP TaskDuration over the
- * scenario) at the display's frame cap. Both frame p95s ride along for the table. A failed roll on
+ * scenario) at the display's frame cap, passing up to `limit` (TARGETS.h2hRatio, 1.1, P9-R20).
+ * Both frame p95s ride along for the table. A failed roll on
  * either side means unequal work: the ratio is shown, the verdict is n/a (like compare).
  */
-export function compareBusy(dicer, dsn, { requireClearlyLess = false } = {}) {
+export function compareBusy(dicer, dsn, { limit = TARGETS.h2hRatio } = {}) {
   const scenario = dicer?.scenario ?? dsn?.scenario;
   const d = dicer?.busy?.msPerSec ?? null;
   const s = dsn?.busy?.msPerSec ?? null;
   const out = { scenario, dicerBusy: d, dsnBusy: s, dicerP95: dicer?.frame?.p95 ?? null, dsnP95: dsn?.frame?.p95 ?? null };
   if (d == null || s == null || !(s > 0)) return { ...out, ratio: null, pass: null };
   const ratio = d / s;
-  const limit = requireClearlyLess ? TARGETS.clearlyLessRatio : 1;
   if ((dicer?.failures ?? 0) > 0 || (dsn?.failures ?? 0) > 0) return { ...out, ratio, pass: null };
   return { ...out, ratio, pass: ratio <= limit + EPS };
 }

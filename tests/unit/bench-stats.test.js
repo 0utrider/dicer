@@ -20,5 +20,6 @@ test('TARGETS is frozen with the G2 values', () => {
   expect(TARGETS).toEqual({
     frameP95Ms: 16.7, longTaskMs: 50, firstFrameMs: 50, bigPoolVisibleMs: 100,
     heapGrowthBytes: 2 * 1024 * 1024, heapGrowthRatio: 0.05, clearlyLessRatio: 0.9,
+    h2hRatio: 1.1,
   });
 });
