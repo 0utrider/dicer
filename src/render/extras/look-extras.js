@@ -20,6 +20,7 @@
  */
 
 import { reliefPatch } from './relief.js';
+import { fillPatch } from './fills.js';
 
 /** Build-test marker: present in this chunk, never in the world-start bundle. */
 export const EXTRAS_ID = 'dicer-look-extras';
@@ -42,7 +43,7 @@ export function mergePatches(...patches) {
   return out;
 }
 
-// Tasks 5-6 add fillPatch and iconPatch (and then take the flags and ctx arguments)
-export function patchMaterial(a) {
-  return mergePatches(reliefPatch(a));
+// Task 6 adds iconPatch (using ctx)
+export function patchMaterial(a, _flags, _ctx) {
+  return mergePatches(reliefPatch(a), fillPatch(a));
 }

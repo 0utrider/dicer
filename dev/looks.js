@@ -33,6 +33,10 @@ const VARIANTS = [
   ['default~safe', 'default', 'safe fallback', { safe: true }],
   ['default~raised', 'default', 'raised numbers', {}, { relief: 'raised' }],
   ['dwarven-brass~raised', 'dwarven-brass', 'raised numbers', {}, { relief: 'raised' }],
+  ['default~outline', 'default', 'outline numbers', {}, { fill: 'outline' }],
+  ['default~holo', 'default', 'holographic numbers', {}, { fill: 'holo' }],
+  ['default~glow', 'default', 'glow-ink numbers', {}, { fill: 'glow' }],
+  ['void-star~glow', 'void-star', 'glow-ink raised numbers', {}, { fill: 'glow', relief: 'raised' }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only
