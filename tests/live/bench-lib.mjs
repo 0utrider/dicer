@@ -410,14 +410,20 @@ export const QUICK_ROLLS = Object.freeze({ soak500: 200, burst100: 30 });
  * `error` when the filter leaves nothing.
  */
 export function planFor({ quick = false, only = null } = {}) {
-  let plan = matrix();
-  if (quick) plan = plan.filter((e) => e.profile !== 'throttled').map((e) => Object.freeze({ ...e, rolls: QUICK_ROLLS }));
-  if (only?.length) {
-    plan = plan.filter((e) => only.some((n) => runName(e).includes(n)));
-    if (!plan.length) {
-      const names = (quick ? matrix().filter((e) => e.profile !== 'throttled') : matrix()).map(runName);
-      return { plan, error: `--only ${only.join(',')} matches no run. Runs: ${names.join(', ')}` };
-    }
+  const all = matrix();
+  const names = new Set(all.map(runName));
+  // P9-R9: a term that is a whole run name selects that run only (dicer-pc-uncapped, not -low).
+  const matches = (e, n) => (names.has(n) ? runName(e) === n : runName(e).includes(n));
+  const named = (e) => only?.some((n) => matches(e, n));
+  let plan = only?.length ? all.filter(named) : all;
+  // Quick skips the throttled runs, unless --only names them (P9-R9).
+  if (quick) {
+    plan = plan
+      .filter((e) => e.profile !== 'throttled' || (only?.length && named(e) && only.some((n) => n.includes('throttled'))))
+      .map((e) => Object.freeze({ ...e, rolls: QUICK_ROLLS }));
+  }
+  if (only?.length && !plan.length) {
+    return { plan, error: `--only ${only.join(',')} matches no run. Runs: ${all.map(runName).join(', ')}` };
   }
   return { plan };
 }
@@ -485,7 +491,7 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
     const parts = [];
     if (quick)
       parts.push(
-        `quick mode (no throttled runs; ${Object.entries(QUICK_ROLLS).map(([k, v]) => `${k} ${v} rolls`).join(', ')})`,
+        `quick mode (throttled runs only when --only names them; ${Object.entries(QUICK_ROLLS).map(([k, v]) => `${k} ${v} rolls`).join(', ')})`,
       );
     if (only?.length) parts.push(`only runs matching ${only.join(', ')}`);
     out.push(`Partial run: ${parts.join('; ')}. The full benchmark is the one that decides.`, '');

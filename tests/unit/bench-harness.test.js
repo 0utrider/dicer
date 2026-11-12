@@ -651,15 +651,29 @@ test('planFor: --only keeps the runs whose name contains a term; nothing left is
     'dice-so-nice-pc-uncapped',
     'dice-so-nice-pc-uncapped-effectsOff',
   ]);
-  const none = planFor({ quick: true, only: ['throttled'] });
+  const none = planFor({ quick: true, only: ['nope'] });
   expect(none.plan).toEqual([]);
   expect(none.error).toMatch(/matches no run/);
+});
+
+// P9-R9: quick keeps a throttled run an --only term names; an exact run name matches only itself.
+test('planFor: quick keeps throttled runs named by --only, with the quick roll counts', () => {
+  const { plan } = planFor({ quick: true, only: ['throttled-uncapped'] });
+  expect(plan.map(runName)).toEqual(['dicer-throttled-uncapped', 'dice-so-nice-throttled-uncapped']);
+  expect(plan.every((e) => e.rolls === QUICK_ROLLS)).toBe(true);
+  expect(planFor({ quick: true, only: ['dice-so-nice'] }).plan.map(runName)).not.toContain('dice-so-nice-throttled-uncapped');
+});
+
+test('planFor: a term that is a whole run name selects only that run', () => {
+  expect(planFor({ only: ['dicer-pc-uncapped'] }).plan.map(runName)).toEqual(['dicer-pc-uncapped']);
+  expect(planFor({ only: ['dicer-pc-uncapped-low'] }).plan.map(runName)).toEqual(['dicer-pc-uncapped-low']);
+  expect(planFor({ only: ['dicer-pc-unc'] }).plan.map(runName)).toEqual(['dicer-pc-uncapped', 'dicer-pc-uncapped-low']);
 });
 
 test('summaryMarkdown labels a partial run first; a full run has no label', () => {
   const md = (o) => summaryMarkdown({ date: 'd', reports: [], rows: [], errors: [], ...o });
   expect(md({})).not.toMatch(/Partial run/);
-  expect(md({ quick: true })).toMatch(/Partial run: quick mode \(no throttled runs; soak500 200 rolls, burst100 30 rolls\)/);
+  expect(md({ quick: true })).toMatch(/Partial run: quick mode \(throttled runs only when --only names them; soak500 200 rolls, burst100 30 rolls\)/);
   expect(md({ only: ['dice-so-nice'] })).toMatch(/Partial run: only runs matching dice-so-nice/);
 });
 
