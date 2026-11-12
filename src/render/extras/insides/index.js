@@ -7,12 +7,13 @@ import * as botanical from './botanical.js';
 import * as smoke from './smoke.js';
 import * as liquidExtras from './liquid-extras.js';
 import * as weapons from './weapons.js';
+import * as dragon from './dragon.js';
 
 /**
  * Inside modules: one per new resin inside (foil, eye, botanical, smoke), plus `liquid` for
  * liquid with the bubble and / or sand options (plain liquid stays interior.js's, unpatched), plus
  * one per fantasy shape of type 'shape' under its shape id (weapons.js serves sword, axe and
- * shield). Insides combine with the resin body only.
+ * shield; dragon.js the dragon). Insides combine with the resin body only.
  *
  * Contract of a module:
  * - `<type>Inside(a) -> { body: string, uniforms?: object }`: `body` is its GLSL, defining
@@ -35,6 +36,7 @@ const MODULES = {
   sword: [weapons.weaponsInside, weapons.USES_NOISE],
   axe: [weapons.weaponsInside, weapons.USES_NOISE],
   shield: [weapons.weaponsInside, weapons.USES_NOISE],
+  dragon: [dragon.dragonInside, dragon.USES_NOISE],
 };
 
 /** Share of the tint target mixed into the resin body at low tier (steps 0), per new inside. */

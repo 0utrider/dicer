@@ -89,6 +89,8 @@ const VARIANTS = [
   ['resin~sword', 'default', 'floating sword', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'sword', colors: ['#5a2e1a', '#e0b040'], density: 0.5 }],
   ['resin~axe', 'default', 'floating axe', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'axe', colors: ['#6b4423', '#9aa3ad'], density: 0.5 }],
   ['resin~shield', 'default', 'floating shield', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'shield', colors: ['#8a1f1f', '#d9a93a'], density: 0.5 }],
+  ['resin~dragon-red', 'default', 'red dragon', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'dragon', colors: ['#8a1c1c', '#d9603a'], density: 0.5 }],
+  ['resin~dragon-green', 'default', 'green dragon', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'dragon', colors: ['#1f5a2e', '#6fbf5a'], density: 0.5 }],
   // combinations (the compile check for body x numbers x interior x flags interactions)
   ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],

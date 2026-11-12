@@ -28,6 +28,7 @@ import { LQ, liquidExtrasInside } from '../../src/render/extras/insides/liquid-e
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook, needsLookExtras } from '../../src/look/appearance.js';
 import { WEAPON, WE_KINDS, weaponFrame, weaponsInside } from '../../src/render/extras/insides/weapons.js';
+import { DRAGON, dragonExtent, dragonFrame, dragonInside } from '../../src/render/extras/insides/dragon.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -1231,6 +1232,147 @@ describe('insides', () => {
     expect(body('shield')).toContain('const float R = 1.15;');
     expect(body('shield')).toContain('length( vec2( rr - R, q.z - zE ) ) - 0.075');
     expect(Math.hypot(1.15, 0.1) + 0.075).toBeLessThanOrEqual(WEAPON.extent.shield);
+  });
+
+  test('dragon: patch interior, dcIUp-facing card (frame from dcIUp), inside the march sphere at density 1 over all die rest directions, dcDr prefix, no derivatives', () => {
+    const a = resin({ type: 'shape', shape: 'dragon', colors: ['#8a1c1c', '#d9603a'], density: 0.5 });
+    expect(needsLookExtras(a)).toBe(true);
+    const patch = insidePatch(a, FLAGS);
+    expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+    expect(patch.interior.main).toBe(marchWithUp());
+    expect(patch.interior.pars).toContain(INTERIOR_PARS);
+    const { body } = dragonInside(a);
+    expect(patch.interior.pars).toContain(body);
+    expect(patch.interior.pars).not.toContain(NOISE_GLSL);
+    // the card: through the centre, facing dcIUp, tested exactly against the segment (plane hit,
+    // then the disc of radius mix(DRAGON.radius, density))
+    expect(body).toContain('vec3 n = dcIUp;');
+    expect(body).toContain('float t = - dot( p, n ) / dn;');
+    expect(body).toContain('if ( t < 0.0 || t >= dt ) return vec4( 0.0 );');
+    expect(body).toContain(`float R = mix( ${DRAGON.radius.map((x) => x.toFixed(4)).join(', ')}, uInteriorDensity );`);
+    expect(body).toContain('if ( dot( q, q ) >= R * R ) return vec4( 0.0 );');
+    // the continuous, right-handed frame from dcIUp (dragonFrame in JS): no sign switch
+    expect(body).toContain(`vec3 dcDrA = vec3( ${DRAGON.axis.map((x) => x.toFixed(4)).join(', ')} );`);
+    expect(body).toContain('vec3 dcDrT = dcDrA - dot( dcDrA, n ) * n;');
+    expect(body).toContain('if ( dot( dcDrT, dcDrT ) < 1e-6 ) dcDrT = dcDrA.zxy - dot( dcDrA.zxy, n ) * n;');
+    expect(body).toContain('vec3 t2 = cross( n, t1 );');
+    expect(body).toContain('vec2 uv = vec2( dot( q, t1 ), dot( q, t2 ) ) / R;');
+    expect(body).not.toMatch(/dcIUp\.[xyz]|sign\( n|sign\( dcIUp/);
+    // two-sided, lit by dcILight and the key light; colours clamped
+    expect(body).toMatch(/nf = dot\( rd, nf \) > 0\.0 \? - nf : nf;/);
+    expect(body).toContain('dcILight');
+    expect(body).toContain('dcIKey');
+    expect(body).toContain('return vec4( min( col, vec3( 1.0 ) ) * m.a, m.a );');
+    // the parts: wings (colors[1] membranes, colors[0] bones), spine and spade, legs and claws, head
+    for (const part of ['dcDrPoly', 'DC_DR_SCAL', 'DC_DR_BONEA', 'DC_DR_SP', 'DC_DR_LEGA', 'DC_DR_CLAWA', 'DC_DR_HORNA', 'float scale', 'float plate', 'float tooth'])
+      expect(body).toContain(part);
+    expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
+    expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+    // pow() only of bases that cannot be negative
+    for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^(max\(|clamp\(|rk$)/);
+    expect(body).toMatch(/float rk = max\(/);
+    // atan never of (0, 0)
+    for (const [call] of body.matchAll(/atan\( [a-z][^;]*/g)) expect(call).toContain('1e-6');
+    // dcDr names only (besides the shared interior names)
+    const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23]|void)\s+(dc\w+)\s*[(;=]/g)].map((x) => x[1]);
+    expect(own.length).toBeGreaterThan(3);
+    for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcDr/);
+    for (const [, name] of body.matchAll(/#define (\w+)/g)) expect(name).toMatch(/^DC_DR_/);
+    for (const [, name] of body.matchAll(/const \w+ (\w+)\s*\[/g)) expect(name).toMatch(/^DC_DR_/);
+    // the program: its own key, one for every colour and density, every tier and the coin
+    const m = mat(a);
+    const key = m.userData.programKey;
+    expect(key).toContain('|shape:dragon:32|');
+    const fs = patched(m).fragmentShader;
+    expect(fs).toContain(patch.interior.pars);
+    expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+    expect(count(fs, 'vec3 dcIUp;')).toBe(1);
+    const other = mat(resin({ type: 'shape', shape: 'dragon', colors: ['#1f5a2e', '#6fbf5a'], density: 0.9 }));
+    expect(other.userData.programKey).toBe(key);
+    expect(patched(other).fragmentShader).toBe(fs);
+    for (const steps of [48, 16]) expect(() => mat(a, { ...FLAGS, interiorSteps: steps })).not.toThrow();
+    expect(() => createDiceMaterial(a, atlas, getShape('d2'), labels, FLAGS)).not.toThrow();
+    expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
+    // geometry: the dragon inside the unit card (with an anti-alias margin) and, at density 1,
+    // inside the march sphere (whatever the frame: the card is a disc through the centre)
+    const ext = dragonExtent();
+    expect(ext + DRAGON.aa[0] + DRAGON.aa[1]).toBeLessThan(1);
+    expect(ext * DRAGON.radius[1]).toBeLessThan(0.6);
+    expect(DRAGON.radius[1]).toBeLessThan(INTERIOR.radius);
+    // every die's resting ups (face normals, both signs), the coin's caps and sampled directions:
+    // the card faces up exactly, its frame orthonormal and right-handed (never mirrored), and the
+    // frame's axis is off every rest (a quick turn only far from any rest)
+    const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+    const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const unit = (v) => v.map((x) => x / Math.hypot(...v));
+    const axis = unit(DRAGON.axis);
+    expect(Math.hypot(...DRAGON.axis)).toBeCloseTo(1, 3);
+    const check = (fr, up) => {
+      fr.n.forEach((x, i) => expect(x).toBeCloseTo(up[i], 9));
+      expect(dot(fr.t1, fr.t1)).toBeCloseTo(1, 9);
+      expect(dot(fr.t1, fr.n)).toBeCloseTo(0, 9);
+      cross(fr.t1, fr.t2).forEach((x, i) => expect(x).toBeCloseTo(fr.n[i], 9));
+    };
+    const rests = [[0, 1, 0], [0, -1, 0]];
+    for (const type of ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+      const sh = getShape(type);
+      for (const fc of sh.faces) {
+        const n = [0, 0, 0];
+        fc.forEach((vi, k) => {
+          const [u, v] = [sh.vertices[vi], sh.vertices[fc[(k + 1) % fc.length]]];
+          n[0] += (u[1] - v[1]) * (u[2] + v[2]);
+          n[1] += (u[2] - v[2]) * (u[0] + v[0]);
+          n[2] += (u[0] - v[0]) * (u[1] + v[1]);
+        });
+        rests.push(unit(n), unit(n.map((x) => -x)));
+      }
+    }
+    for (const up of rests) {
+      check(dragonFrame(up), up);
+      expect(Math.abs(dot(axis, up))).toBeLessThan(0.93);
+    }
+    for (const up of [axis, axis.map((x) => -x)]) check(dragonFrame(up), up); // the fallback axis
+    // continuous tumbles: slerp paths between pseudo-random orientations (up in the die frame is
+    // R^T (0, 1, 0)); adjacent samples keep the frame within 0.05 except near the axis
+    let seed = 4242;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    const quat = () => unit([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]);
+    const slerp = (qa, qb, k) => {
+      let d = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3];
+      const bb = d < 0 ? qb.map((x) => -x) : qb;
+      d = Math.abs(d);
+      if (d > 0.9995) return unit(qa.map((x, i) => x + k * (bb[i] - x)));
+      const th = Math.acos(d);
+      return qa.map((x, i) => (Math.sin((1 - k) * th) * x + Math.sin(k * th) * bb[i]) / Math.sin(th));
+    };
+    const localUp = ([x, y, z, w]) => {
+      const qv = [-x, -y, -z];
+      const v = [0, 1, 0];
+      const tt = cross(qv, v).map((c) => 2 * c);
+      const c2 = cross(qv, tt);
+      return v.map((c, i) => c + w * tt[i] + c2[i]);
+    };
+    let jumps = 0;
+    let samples = 0;
+    for (let path = 0; path < 60; path++) {
+      const [qa, qb] = [quat(), quat()];
+      let prev = null;
+      for (let k = 0; k <= 400; k++) {
+        const up = unit(localUp(slerp(qa, qb, k / 400)));
+        const fr = dragonFrame(up);
+        check(fr, up);
+        if (prev) {
+          samples++;
+          const step = Math.max(Math.hypot(...fr.t1.map((x, i) => x - prev.t1[i])), Math.hypot(...fr.n.map((x, i) => x - prev.n[i])));
+          if (step > 0.05) {
+            expect(Math.max(Math.abs(dot(axis, fr.n)), Math.abs(dot(axis, prev.n)))).toBeGreaterThan(0.98);
+            jumps++;
+          }
+        }
+        prev = fr;
+      }
+    }
+    expect(jumps / samples).toBeLessThan(0.01);
   });
 
   test('mergePatches: interior, last wins', () => {
