@@ -3,15 +3,8 @@ import * as THREE from 'three';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { ICON_IDS, normalizeAppearance } from '../../src/look/appearance.js';
-import {
-  ICON_PATHS,
-  ICON_CHARS,
-  iconLabels,
-  atlasCharsOf,
-  composeAtlas,
-  withIcons,
-  iconPatch,
-} from '../../src/render/extras/icons.js';
+import { ICON_PATHS, ICON_CHARS, iconLabels, withIcons, iconPatch } from '../../src/render/extras/icons.js';
+import { atlasCharsOf, composeAtlas } from '../../src/render/extras/glyph-atlas.js';
 
 const PUA0 = String.fromCharCode(0xe000);
 const PUA1 = String.fromCharCode(0xe001);
