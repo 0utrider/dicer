@@ -78,7 +78,7 @@ vec3 dcEyIris( vec3 s, vec3 rd, vec3 ax, vec3 t1, vec3 t2, vec3 lightCol, float 
 	// the pupil: crisp black disc
 	float pupil = 1.0 - smoothstep( pr - 0.02, pr + 0.008, rho );
 	col = mix( col, vec3( 0.006 ), pupil );
-	// lit through the cornea; the far side of the disc in the limbus' shadow
+	// lit through the cornea (keyDif: how far the key light is above the iris plane)
 	return col * ( lightCol * ( 0.45 + 0.55 * keyDif ) + 0.06 );
 }
 vec3 dcEySclera( vec3 s, float c ) {
