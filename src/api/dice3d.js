@@ -6,6 +6,7 @@ import { readUserLooks } from '../compat/user-looks.js';
 import { measureArea } from '../foundry/area.js';
 import { moduleRulesOf } from '../effects/fx-resolver.js';
 import { getShape } from '../core/dice-shapes.js';
+import { EFFECT_IDS } from '../effects/effect-ids.js';
 import { resolveDamageTheme } from '../effects/damage-themes.js';
 import { PRESETS, normalizeAreaDef } from '../areas/area-model.js';
 import { areaDefFor, withArea } from '../areas/area-store.js';
@@ -759,6 +760,38 @@ export function createDice3dApi({
     /** Local only: showForRoll without synchronize, users, blind or a message. */
     animateRoll(roll, options = {}) {
       return api.showForRoll(roll, me(), false, null, false, null, null, options);
+    },
+
+    /**
+     * Local only: throws one die (default d20, showing its max) whose spec carries the effect
+     * `id` (a library id or a `dsn:` id) with `opts` {color, intensity, duration}. Never
+     * synchronized, no chat message, no hooks. Resolves true once the roll finished, false for
+     * an unknown id or when effects are off.
+     */
+    async previewEffect(id, opts = {}) {
+      const { die = 'd20', value, ...effectOpts } = opts ?? {};
+      if (typeof id !== 'string' || !(EFFECT_IDS.includes(id) || id.startsWith('dsn:'))) {
+        warnOnce(`previewEffect:${id}`, id);
+        return false;
+      }
+      if (getSetting('effects') === false) {
+        const loc = globalThis.game?.i18n?.localize?.bind(globalThis.game.i18n);
+        globalThis.ui?.notifications?.info(loc ? loc('DICER.Effects.PreviewOff') : 'DICER.Effects.PreviewOff');
+        return false;
+      }
+      const max = Number(String(die).slice(1));
+      const spec = {
+        type: die,
+        value: Number.isFinite(Number(value)) && value != null ? Number(value) : max,
+        fx: [{ effect: { id, ...effectOpts } }],
+      };
+      try {
+        await diceBox.roll([spec]).finished;
+        return true;
+      } catch (err) {
+        warnOnce('previewEffect', err);
+        return false;
+      }
     },
 
     /** The legacy `{throws: [{dice: [{type, result, resultLabel?, options?}]}]}` payload. */

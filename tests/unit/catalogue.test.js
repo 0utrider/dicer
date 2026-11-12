@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EFFECTS, createParticlePool } from '../../src/effects/library/index.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { TIERS } from '../../src/render/quality.js';
+import { EFFECT_IDS } from '../../src/effects/effect-ids.js';
 
 const IDS = [
   'glow-pulse',
@@ -329,4 +330,8 @@ test('shader quads add colour and alpha with alpha = brightness, so no black box
     expect(quad.material.fragmentShader).toContain('max( max( c.r, c.g ), c.b )');
     handle.stop();
   }
+});
+
+test('EFFECT_IDS lists exactly the library catalogue ids', () => {
+  expect([...EFFECT_IDS].sort()).toEqual(Object.keys(EFFECTS).sort());
 });

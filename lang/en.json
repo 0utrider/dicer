@@ -303,6 +303,9 @@
       "Close": "Close",
       "SaveFailed": "Dicer: the roll area could not be saved."
     },
+    "Effects": {
+      "PreviewOff": "Effects are turned off in Dicer's settings."
+    },
     "Bench": {
       "Title": "Dicer benchmark",
       "Intro": "Throws a few test rolls on this screen and measures how smoothly they animate. Wait for the dice to clear first. It takes under a minute.",
