@@ -26,7 +26,8 @@ import { BO_KINDS, CARDS, CARD_RADIUS, TILT, botanicalInside, cardFrames } from 
 import { smokeInside } from '../../src/render/extras/insides/smoke.js';
 import { LQ, liquidExtrasInside } from '../../src/render/extras/insides/liquid-extras.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
-import { fallbackLook } from '../../src/look/appearance.js';
+import { fallbackLook, needsLookExtras } from '../../src/look/appearance.js';
+import { WE_KINDS, weaponsInside } from '../../src/render/extras/insides/weapons.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -1017,6 +1018,98 @@ describe('insides', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  test("today's four shapes unpatched and byte-identical with the chunk loaded", async () => {
+    const FL = [{ ...FLAGS, interiorSteps: 48 }, FLAGS, { ...FLAGS, interiorSteps: 16 }, { ...FLAGS, interiorSteps: 0 }];
+    const cases = ['star', 'heart', 'skull', 'sphere'].map((shape) => resin({ type: 'shape', shape, colors: ['#5a2e1a', '#e0b040'], density: 0.5 }));
+    const run = () =>
+      cases.flatMap((a) =>
+        FL.flatMap((f) =>
+          [s, getShape('d2')].map((shape) => {
+            const m = createDiceMaterial(a, atlas, shape, labels, f);
+            return { fs: patched(m).fragmentShader, defines: { ...m.defines }, key: m.userData.programKey };
+          }),
+        ),
+      );
+    for (const a of cases) {
+      expect(needsLookExtras(a)).toBe(false); // no chunk import for them
+      for (const f of FL) expect(insidePatch(a, f)).toEqual({});
+    }
+    const loaded = run();
+    for (const m of loaded) expect(m.fs).not.toContain('dcWe');
+    _setLookExtrasImport(() => new Promise(() => {}));
+    try {
+      const missing = run();
+      missing.forEach((m, i) => {
+        expect(m.fs).toBe(loaded[i].fs);
+        expect(m.defines).toEqual(loaded[i].defines);
+        expect(m.key).toBe(loaded[i].key);
+      });
+    } finally {
+      _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+      await requestLookExtras();
+    }
+  });
+
+  test('sword/axe/shield: patch interior, distinct keys, DC_WE_KIND per shape, uShapeRot used, no derivatives, dcWe prefix', () => {
+    expect(WE_KINDS).toEqual(['sword', 'axe', 'shield']);
+    const keys = new Set();
+    WE_KINDS.forEach((shape, kind) => {
+      const a = resin({ type: 'shape', shape, colors: ['#5a2e1a', '#e0b040'], density: 0.5 });
+      expect(needsLookExtras(a)).toBe(true);
+      const patch = insidePatch(a, FLAGS);
+      expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+      expect(patch.interior.main).toBe(marchWithUp());
+      expect(patch.interior.pars).toContain(INTERIOR_PARS);
+      const { body } = weaponsInside(a);
+      expect(patch.interior.pars).toContain(body);
+      // the kind selects the shape and its zones: one define per program
+      expect(count(body, '#define DC_WE_KIND')).toBe(1);
+      expect(body).toContain(`#define DC_WE_KIND ${kind}\n`);
+      // rotated by uShapeRot (declared here: INTERIOR_PARS does not), scaled by
+      // shapeScale x mix(0.8, 1.15, density)
+      expect(INTERIOR_PARS).not.toContain('uShapeRot');
+      expect(count(body, 'uniform mat3 uShapeRot;')).toBe(1);
+      expect(body).toMatch(/uShapeRot \* p\b/);
+      expect(body).toContain(`${INTERIOR.shapeScale.toFixed(4)} * mix( 0.8, 1.15, uInteriorDensity )`);
+      // the shape march: refinement on a hit, a soft silhouette and a colors[1] haze halo
+      expect(body).toMatch(/for \( int dcWeB = 0; dcWeB < 4; dcWeB \+\+ \)/);
+      expect(body).toContain('DC_WE_AA');
+      expect(body).toMatch(/uInteriorColors\[ 1 \] \* \( dcILight \+ 0\.4 \) \* a/);
+      expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
+      expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+      // pow() only of bases that cannot be negative
+      for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^(max\(|clamp\(|rk$|rc$)/);
+      expect(body).toMatch(/float rk = max\(/);
+      expect(body).toMatch(/float rc = max\(/);
+      // dcWe names only (besides the shared interior names)
+      const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23])\s+(dc\w+)\s*[(;=]/g)].map((x) => x[1]);
+      expect(own.length).toBeGreaterThan(3);
+      for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcWe/);
+      for (const [, name] of body.matchAll(/#define (\w+)/g)) expect(name).toMatch(/^DC_WE_/);
+      const m = mat(a);
+      const key = m.userData.programKey;
+      expect(key).toContain(`|shape:${shape}:32|`);
+      keys.add(key);
+      const fs = patched(m).fragmentShader;
+      expect(fs).toContain(patch.interior.pars);
+      expect(fs).toContain(patch.interior.main);
+      expect(count(fs, 'uniform mat3 uShapeRot;')).toBe(1);
+      expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+      expect(count(fs, 'vec3 dcIUp;')).toBe(1);
+      expect(m.userData.uniforms.uShapeRot).toBeDefined();
+      // one program for every colour and density
+      const other = mat(resin({ type: 'shape', shape, colors: ['#8a1f1f', '#d9a93a'], density: 0.9 }));
+      expect(other.userData.programKey).toBe(key);
+      expect(patched(other).fragmentShader).toBe(fs);
+      // every step count and the coin
+      for (const steps of [48, 16]) expect(() => mat(a, { ...FLAGS, interiorSteps: steps })).not.toThrow();
+      expect(() => createDiceMaterial(a, atlas, getShape('d2'), labels, FLAGS)).not.toThrow();
+      // fake mode keeps today's shape tint (world-start INTERIOR_TINT.shape): no patch
+      expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
+    });
+    expect(keys.size).toBe(3);
   });
 
   test('mergePatches: interior, last wins', () => {

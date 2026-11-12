@@ -85,6 +85,10 @@ const VARIANTS = [
   ['resin~liquid-bubble', 'default', 'liquid, air bubble', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, bubble: true }],
   ['resin~liquid-sand', 'default', 'liquid, sand', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, sand: true }],
   ['resin~liquid-bubble-sand', 'default', 'liquid, bubble and sand', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, bubble: true, sand: true }],
+  // fantasy shapes (dice designs plan 3b): floating weapons in clear resin
+  ['resin~sword', 'default', 'floating sword', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'sword', colors: ['#5a2e1a', '#e0b040'], density: 0.5 }],
+  ['resin~axe', 'default', 'floating axe', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'axe', colors: ['#6b4423', '#9aa3ad'], density: 0.5 }],
+  ['resin~shield', 'default', 'floating shield', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'shield', colors: ['#8a1f1f', '#d9a93a'], density: 0.5 }],
   // combinations (the compile check for body x numbers x interior x flags interactions)
   ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
