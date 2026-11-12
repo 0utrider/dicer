@@ -209,11 +209,32 @@ export class DiceRenderer {
       this.#sceneApi.setEnvironment(this.#renderer, { resolution: this.#envResolution });
     }
     const fades = materials.map((m) => cloneForFade(m));
+    try {
+      await this.#compileApart([...materials, ...fades].map((m) => new THREE.Mesh(geometry, m)));
+    } finally {
+      // dispose() on a clone only drops its own program refs; userData is shared and untouched.
+      for (const f of fades) f.dispose();
+    }
+  }
+
+  /**
+   * Compiles the programs of objects that already live in the scene (the effect layer's
+   * particle meshes), off the hot path and without starting a loop. Shallow clones (sharing
+   * geometry and material, so the same programs) go in a private scene targeting the real one;
+   * the originals are not moved. Rejects like warmup() on a context loss or a timeout.
+   * @param {THREE.Object3D[]} objects
+   */
+  async warmObjects(objects) {
+    return this.#compileApart(objects.map((o) => o.clone(false)));
+  }
+
+  /** Compiles meshes from a private scene that is never rendered, targeting the real one. */
+  async #compileApart(meshes) {
+    if (!this.#renderer.compileAsync || !meshes.length) return;
     const tmp = new THREE.Scene();
-    for (const m of [...materials, ...fades]) {
-      const mesh = new THREE.Mesh(geometry, m);
-      mesh.frustumCulled = false;
-      tmp.add(mesh);
+    for (const m of meshes) {
+      m.frustumCulled = false;
+      tmp.add(m);
     }
     try {
       await compileGuarded(this.#renderer, tmp, this.camera, this.scene, {
@@ -222,8 +243,6 @@ export class DiceRenderer {
       });
     } finally {
       tmp.clear();
-      // dispose() on a clone only drops its own program refs; userData is shared and untouched.
-      for (const f of fades) f.dispose();
     }
   }
 

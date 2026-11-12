@@ -423,6 +423,54 @@ describe('impact effects (dust and sparks)', () => {
     }
   });
 
+  test('impact does nothing, and creates no pool, while isSafe() is true', async () => {
+    const createParticlePool = vi.fn(() => ({ emit: vi.fn(), layers: [], update: () => false, clear() {}, dispose() {} }));
+    let safe = true;
+    const { layer } = setup({
+      tier: 'high',
+      isSafe: () => safe,
+      now: () => 1000,
+      loadLibrary: async () => ({ EFFECTS: {}, createImpactFx, createParticlePool }),
+    });
+    await layer.prefetch();
+    layer.impact(hit(20));
+    expect(createParticlePool).not.toHaveBeenCalled();
+    // An injected pool sees no emit either.
+    const { layer: injected, emit } = await impactSetup({ isSafe: () => true });
+    injected.impact(hit(20));
+    expect(emit).not.toHaveBeenCalled();
+    // Out of safe mode the same impact makes the pool.
+    safe = false;
+    layer.impact(hit(20, { dieKey: 'later' }));
+    expect(createParticlePool).toHaveBeenCalledTimes(1);
+  });
+
+  test('a slow impact returns before any setting, safe-mode or matchMedia read', async () => {
+    const getSetting = vi.fn(() => undefined);
+    const matchMedia = vi.fn(() => ({ matches: false }));
+    const isSafe = vi.fn(() => false);
+    const { layer, emit } = await impactSetup({ getSetting, matchMedia, isSafe });
+    getSetting.mockClear();
+    matchMedia.mockClear();
+    isSafe.mockClear();
+    layer.impact(hit(5));
+    expect(getSetting).not.toHaveBeenCalled();
+    expect(matchMedia).not.toHaveBeenCalled();
+    expect(isSafe).not.toHaveBeenCalled();
+    layer.impact(hit(20));
+    expect(emit).toHaveBeenCalled();
+  });
+
+  test('a throwing isSafe() counts as not safe for impacts', async () => {
+    const { layer, emit } = await impactSetup({
+      isSafe: () => {
+        throw new Error('x');
+      },
+    });
+    layer.impact(hit(20));
+    expect(emit).toHaveBeenCalled();
+  });
+
   test('nothing before the library is loaded, and a bad event never throws', async () => {
     const emit = vi.fn();
     const { layer } = setup({
@@ -436,5 +484,88 @@ describe('impact effects (dust and sparks)', () => {
     await layer.prefetch();
     expect(() => layer.impact(null)).not.toThrow();
     expect(() => layer.impact({ speed: 20 })).not.toThrow();
+  });
+});
+
+describe('particle pool warm-up (prefetch)', () => {
+  function poolSetup({ settings = {}, ...rest } = {}) {
+    const meshes = [new THREE.Mesh(), new THREE.Mesh()];
+    const pool = {
+      emit: vi.fn(),
+      layers: meshes.map((mesh) => ({ mesh })),
+      update: () => false,
+      clear() {},
+      dispose() {},
+    };
+    const createParticlePool = vi.fn(() => pool);
+    const made = setup({
+      tier: 'high',
+      settings,
+      now: () => 1000,
+      loadLibrary: async () => ({ EFFECTS: {}, createImpactFx, createParticlePool }),
+      ...rest,
+    });
+    return { ...made, meshes, pool, createParticlePool };
+  }
+  const hit = { position: { x: 0, y: 0.4, z: 0 }, speed: 20, dieKey: 'r:0' };
+
+  test('prefetch creates the pool once the library is in and warms its meshes once', async () => {
+    const warm = vi.fn(async () => {});
+    const { layer, meshes, pool, createParticlePool } = poolSetup({ warm });
+    await layer.prefetch();
+    expect(createParticlePool).toHaveBeenCalledTimes(1);
+    expect(createParticlePool.mock.calls[0][1]).toBe(Math.round(2048 * TIERS.high.particleScale));
+    expect(warm).toHaveBeenCalledTimes(1);
+    expect(warm.mock.calls[0][0]).toEqual(meshes);
+    // The first impact reuses it: no second pool, no second warm-up.
+    layer.impact(hit);
+    expect(pool.emit).toHaveBeenCalled();
+    expect(createParticlePool).toHaveBeenCalledTimes(1);
+    await layer.prefetch();
+    expect(warm).toHaveBeenCalledTimes(1);
+  });
+
+  test('no pool and no warm-up while effects are off or safe mode is on', async () => {
+    for (const opts of [{ settings: { effects: false } }, { isSafe: () => true }]) {
+      const warm = vi.fn();
+      const { layer, createParticlePool } = poolSetup({ warm, ...opts });
+      await layer.prefetch();
+      expect(createParticlePool).not.toHaveBeenCalled();
+      expect(warm).not.toHaveBeenCalled();
+    }
+  });
+
+  test('a throwing or rejecting warm hook is swallowed; the pool still works', async () => {
+    const throwing = () => {
+      throw new Error('lost');
+    };
+    const rejecting = () => Promise.reject(new Error('timeout'));
+    for (const warm of [throwing, rejecting]) {
+      const { layer, pool } = poolSetup({ warm });
+      await expect(layer.prefetch()).resolves.toBeUndefined();
+      await Promise.resolve();
+      layer.impact(hit);
+      expect(pool.emit).toHaveBeenCalled();
+    }
+  });
+
+  test('a pool that cannot be created leaves prefetch and the library working', async () => {
+    const warm = vi.fn();
+    const { layer, warn } = poolSetup({
+      warm,
+      loadLibrary: async () => ({
+        EFFECTS: { a: timed('a') },
+        createImpactFx,
+        createParticlePool: () => {
+          throw new Error('no gl');
+        },
+      }),
+    });
+    await layer.prefetch();
+    expect(layer.loaded).toBe(true);
+    expect(warm).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    layer.play(makeDie(), fxOf('a'));
+    expect(layer.running).toBe(1);
   });
 });

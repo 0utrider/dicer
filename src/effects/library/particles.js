@@ -420,6 +420,8 @@ export function createImpactFx({ getPool, getTier, now }) {
   let live = []; // ms at which each live emit's particles are all gone
 
   return {
+    /** The speed below which impact() does nothing (the layer checks it before its settings). */
+    minSpeed: MIN_SPEED,
     impact(hit) {
       const speed = Number(hit?.speed);
       if (!(speed >= MIN_SPEED) || !hit.position) return;

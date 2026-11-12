@@ -282,13 +282,25 @@ describe('rebuilt looks', () => {
   });
 
   test('embers: rising FLAME embers to #ff2a00 and streaks', () => {
-    const { specs, h } = run('embers', {}, 1500);
+    const { specs, h } = run('embers', { tier: 'high' }, 1500);
     const flames = specs.filter((s) => s.kind === KIND.EMBER);
     expect(flames.length).toBeGreaterThan(0);
     expect(flames.every((s) => s.shape === 5 && s.sizeEnd === 0.3 && s.colorEnd === '#ff2a00')).toBe(true);
     const streaks = specs.filter((s) => s.kind === KIND.STREAK).reduce((n, s) => n + s.count, 0);
     expect(streaks).toBe(6);
     h.stop();
+  });
+
+  test('embers streaks and frost mist follow intensity and the tier particleScale', () => {
+    const total = (id, kind, over) => {
+      const { specs, h } = run(id, over, 1500);
+      h.stop();
+      return specs.filter((s) => s.kind === kind).reduce((n, s) => n + s.count, 0);
+    };
+    expect(total('embers', KIND.STREAK, { tier: 'ultra' })).toBe(9); // 6 x 1.5
+    expect(total('embers', KIND.STREAK, { tier: 'high', intensity: 0.5 })).toBe(3);
+    expect(total('frost', KIND.SMOKE, { tier: 'ultra' })).toBe(3); // 2 x 1.5
+    expect(total('frost', KIND.SMOKE, { tier: 'low' })).toBe(1); // at least 1
   });
 
   test('smoke: noise puffs growing 2.6x, spinning, normal blend, ending 30% darker than ctx.color', () => {
@@ -306,7 +318,7 @@ describe('rebuilt looks', () => {
   });
 
   test('frost: spinning SHARD spray and two pale mist puffs', () => {
-    const { specs, h } = run('frost', {}, 400);
+    const { specs, h } = run('frost', { tier: 'high' }, 400);
     expect(specs.some((s) => s.kind === KIND.SHARD && s.spin > 0)).toBe(true);
     const mist = specs.filter((s) => s.kind === KIND.SMOKE);
     expect(mist.reduce((n, s) => n + s.count, 0)).toBe(2);
@@ -539,10 +551,10 @@ describe('through the effect layer', () => {
   }
   const fx = (id) => [{ ruleId: 'r', effect: { id }, sound: null }];
 
-  test('the shared pool is created lazily at round(2048 x particleScale) and counted once', async () => {
+  test('the shared pool is created at prefetch at round(2048 x particleScale) and counted once', async () => {
     const { layer, scene, die } = layerFor('medium');
     await layer.prefetch();
-    expect(scene.children).toHaveLength(0);
+    expect(scene.children.filter((c) => c.geometry?.isInstancedBufferGeometry)).toHaveLength(2);
     layer.play(die, fx('frost'));
     layer.play(die, fx('embers'));
     const points = scene.children.filter((c) => c.geometry?.isInstancedBufferGeometry);

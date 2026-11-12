@@ -388,8 +388,8 @@ export const embers = Object.freeze({
       kind: KIND.EMBER,
       shape: SHAPE.FLAME,
     });
-    // Six quick sparks shooting up through them.
-    const streaks = trickle(ctx, 6, 0.6, {
+    // Six quick sparks shooting up through them (at intensity 1, full particle scale).
+    const streaks = trickle(ctx, countFor(6, ctx), 0.6, {
       origin: originOf(ctx, DIE_TOP),
       dir: { x: 0, y: 1, z: 0 },
       speed: 3.2,
@@ -494,7 +494,6 @@ export const frost = Object.freeze({
   cost: 2,
   defaults: Object.freeze({ color: '#a8e4ff', intensity: 1, duration: 1800 }),
   start(ctx) {
-    const scope = scoped(ctx.scene);
     const power = Math.max(0.2, ctx.intensity);
     const lines = frostLines(ctx.position.x, ctx.position.z, 1.6 * power, 9);
     const ribbon = createRibbon({
@@ -504,7 +503,7 @@ export const frost = Object.freeze({
       glow: 0.8,
     });
     ribbon.alpha = 0;
-    scope.add(ribbon.mesh);
+    ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
     const spread = Math.min(FROST_SPREAD_MS, ctx.duration / 2);
     const shards = trickle(ctx, countFor(22, ctx), 0.2, {
       origin: originOf(ctx, DIE_TOP),
@@ -521,7 +520,7 @@ export const frost = Object.freeze({
       spin: 7,
     });
     // A pale, low mist over the cracks (normal blend: it veils rather than glows).
-    const mist = trickle(ctx, 2, 0.1, {
+    const mist = trickle(ctx, countFor(2, ctx), 0.1, {
       origin: originOf(ctx, DIE_TOP),
       jitter: 0.5,
       dir: { x: 0, y: 1, z: 0 },
@@ -548,7 +547,6 @@ export const frost = Object.freeze({
         ribbon.alpha = Math.max(0, ctx.intensity) * envelope(e, ctx.duration);
       },
       () => {
-        scope.dispose();
         ribbon.dispose();
       },
     );
@@ -597,12 +595,11 @@ export const lightning = Object.freeze({
   cost: 2,
   defaults: Object.freeze({ color: '#b9d4ff', intensity: 1, duration: 700 }),
   start(ctx) {
-    const scope = scoped(ctx.scene);
     const arcs = ctx.intensity >= 1 ? 3 : 2;
     const SEGS = 9;
     const ribbon = createRibbon({ maxPoints: arcs * (SEGS + 1 + 5), widthPx: 3, color: ctx.color, glow: 1.0 });
     ribbon.alpha = 0;
-    scope.add(ribbon.mesh);
+    ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
     const reach = 2.4 * Math.max(0.4, Math.sqrt(ctx.intensity));
     const { x: cx, z: cz } = ctx.position;
     const sparkColor = ctx.color.clone().lerp(new THREE.Color(WHITE), 0.6);
@@ -646,7 +643,6 @@ export const lightning = Object.freeze({
         ribbon.alpha = 1.6 * Math.max(0, ctx.intensity) * flash * fade(e); // a 3 px arc needs the push
       },
       () => {
-        scope.dispose();
         ribbon.dispose();
       },
     );
@@ -816,7 +812,6 @@ const crackPart = Object.freeze({
   cost: 1,
   defaults: Object.freeze({ color: '#5a5a60', intensity: 1, duration: 1000 }),
   start(ctx) {
-    const scope = scoped(ctx.scene);
     const lines = crackLines(ctx.position.x, ctx.position.z, 1.5 * Math.max(0.3, ctx.intensity), 6);
     const ribbon = createRibbon({
       maxPoints: lines.reduce((n, l) => n + l.length, 0),
@@ -825,7 +820,7 @@ const crackPart = Object.freeze({
       glow: 0.2,
     });
     ribbon.alpha = 0;
-    scope.add(ribbon.mesh);
+    ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
     const spread = Math.min(250, ctx.duration / 2);
     return timed(
       ctx.duration,
@@ -834,7 +829,6 @@ const crackPart = Object.freeze({
         ribbon.alpha = Math.max(0, ctx.intensity) * envelope(e, ctx.duration);
       },
       () => {
-        scope.dispose();
         ribbon.dispose();
       },
     );
