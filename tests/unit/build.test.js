@@ -40,6 +40,10 @@ describe('build', () => {
     const benchAdapter = lazy.find((p) => /dicer-adapter-/.test(p)); // game.dice3d.benchmark(): adapter + runner
     const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
     const benchReport = lazy.find((p) => /report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
+    const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
+    expect(lookExtras).toBeTruthy();
+    expect(readFileSync(lookExtras, 'utf8')).toContain('dicer-look-extras');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-look-extras');
     expect(benchAdapter).toBeTruthy();
     expect(benchApp).toBeTruthy();
     expect(benchReport).toBeTruthy();
@@ -105,6 +109,7 @@ describe('build', () => {
         benchAdapter,
         benchApp,
         benchReport,
+        lookExtras,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),

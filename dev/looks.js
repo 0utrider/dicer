@@ -6,6 +6,7 @@ import { buildScene } from '../src/render/scene.js';
 import { configureRenderer } from '../src/render/renderer.js';
 import { loadDigitAtlas } from '../src/render/sdf-atlas.js';
 import { createDiceMaterial } from '../src/render/dice-material.js';
+import { requestLookExtras } from '../src/render/extras-loader.js';
 import { NOISE_GLSL } from '../src/render/shaders/noise.js';
 import { buildDieGeometry } from '../src/core/chamfer.js';
 import { getShape, labelFor } from '../src/core/dice-shapes.js';
@@ -24,7 +25,8 @@ const ROW_LABEL_PX = 170;
 
 /**
  * Rows: every curated look, plus variants with per-row flag overrides so variant programs
- * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL.
+ * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL. An optional
+ * fifth element is a numbers patch merged into the base look's appearance.numbers (dice designs).
  */
 const VARIANTS = [
   ['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }],
@@ -44,9 +46,16 @@ const FACE_ROWS = [
 ];
 const looks = [
   ...Object.entries(LOOKS).map(([id, look]) => [id, look, {}]),
-  ...VARIANTS.map(([id, base, note, flags]) => [
+  ...VARIANTS.map(([id, base, note, flags, numbers]) => [
     id,
-    { ...LOOKS[base], name: `${LOOKS[base].name} (${note})` },
+    {
+      ...LOOKS[base],
+      name: `${LOOKS[base].name} (${note})`,
+      appearance: {
+        ...LOOKS[base].appearance,
+        numbers: { ...LOOKS[base].appearance.numbers, ...numbers },
+      },
+    },
     flags,
   ]),
   ...FACE_ROWS.map(([id, base, note, preset, shown]) => [
@@ -499,6 +508,8 @@ function info() {
 
 async function init() {
   atlas = await loadDigitAtlas('/assets/fonts');
+  // The look-extras chunk first, so the extras rows draw their real looks, not the fallbacks.
+  if (!(await requestLookExtras())) report('look extras chunk failed to load');
   buildCells();
   await buildFaceCells();
   noiseProbe();

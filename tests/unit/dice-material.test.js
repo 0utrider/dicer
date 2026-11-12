@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { parseAtlas } from '../../src/render/sdf-atlas.js';
+import { parseAtlas, layoutLabel } from '../../src/render/sdf-atlas.js';
+import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
 import { createDiceMaterial, updateLabels, isolateMaterial } from '../../src/render/dice-material.js';
 import { ENGRAVE_PARS, ENGRAVE_NORMAL, ENGRAVE_COLOR } from '../../src/render/shaders/engrave.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
-import { normalizeAppearance, programKey } from '../../src/look/appearance.js';
+import { normalizeAppearance, programKey, fallbackLook } from '../../src/look/appearance.js';
 import { LOOKS } from '../../src/look/looks.js';
 
 const atlas = {
@@ -753,5 +754,112 @@ describe('fx uniform block (Plan 4 Task 8)', () => {
     expect(patched(iso).uniforms.uFxTint).toBe(b.uFxTint);
     expect(patched(m).uniforms.uFxTint).toBe(a.uFxTint);
     expect(m.userData.uniforms).toBe(a);
+  });
+});
+
+describe('look extras (lazy chunk)', () => {
+  const extrasLook = () =>
+    look({ numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' } } });
+  const loadWith = async (patchMaterial) => {
+    const mod = { ready: Promise.resolve(), patchMaterial: vi.fn(patchMaterial) };
+    const load = vi.fn(async () => mod);
+    _setLookExtrasImport(load);
+    await requestLookExtras();
+    return { mod, load };
+  };
+  afterEach(() => {
+    vi.restoreAllMocks();
+    _setLookExtrasImport(() => new Promise(() => {}));
+  });
+
+  test('a look needing extras draws its fallback and requests the chunk while it is not loaded', () => {
+    const load = vi.fn(() => new Promise(() => {}));
+    _setLookExtrasImport(load);
+    const a = extrasLook();
+    const m = createDiceMaterial(a, atlas, s, labels, FLAGS);
+    expect(m.userData.programKey).toBe(programKey(fallbackLook(a), FLAGS));
+    expect(m.userData.programKey).not.toContain('|n:');
+    expect(load).toHaveBeenCalledTimes(1);
+    createDiceMaterial(a, atlas, s, labels, FLAGS);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  test("once loaded, the patch's defines, uniforms, chunks and replace reach the program", async () => {
+    const { mod } = await loadWith(() => ({
+      defines: { DICER_X: '' },
+      uniforms: { uX: { value: 1 } },
+      chunks: { emissive: '/*x-emissive*/' },
+      replace: [['float dcDepth = ', 'float dcDepth = 1.0 * ']],
+    }));
+    const a = extrasLook();
+    const m = createDiceMaterial(a, atlas, s, labels, FLAGS);
+    expect(mod.patchMaterial).toHaveBeenCalledTimes(1);
+    const [pa, pf, ctx] = mod.patchMaterial.mock.calls[0];
+    expect(pa.numbers.fill).toBe('holo');
+    expect(pf.engraving).toBe(true);
+    expect(ctx).toEqual({ shape: s, labels, atlas });
+    const shader = patched(m);
+    const fs = shader.fragmentShader;
+    const anchor = fs.indexOf('#include <emissivemap_fragment>');
+    expect(anchor).toBeGreaterThan(-1);
+    expect(fs.indexOf('/*x-emissive*/')).toBeGreaterThan(anchor);
+    expect(fs).toContain('float dcDepth = 1.0 * ');
+    expect(m.defines.DICER_X).toBe('');
+    expect(shader.uniforms.uX.value).toBe(1);
+    expect(m.userData.programKey).toBe(programKey(a, FLAGS));
+    expect(m.userData.programKey).toContain('|n:holo+r');
+  });
+
+  test("the patch's labels and atlas replace the label texture and uAtlas", async () => {
+    const pAtlas = { ...atlas, texture: new THREE.Texture() };
+    const pLabels = [...labels].reverse();
+    await loadWith(() => ({ labels: pLabels, atlas: pAtlas }));
+    const m = createDiceMaterial(extrasLook(), atlas, s, labels, FLAGS);
+    const u = m.userData.uniforms;
+    expect(u.uAtlas.value).toBe(pAtlas.texture);
+    const data = u.uLabels.value.image.data;
+    for (let i = 0; i < pLabels.length; i++) {
+      expect(Array.from(data.subarray(i * 16, i * 16 + 16))).toEqual(
+        Array.from(layoutLabel(pLabels[i], pAtlas)),
+      );
+    }
+    expect(Array.from(data.subarray(0, 16))).not.toEqual(Array.from(layoutLabel(labels[0], atlas)));
+  });
+
+  test('a throwing patchMaterial draws the fallback look and warns once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await loadWith(() => {
+      throw new Error('bad patch');
+    });
+    const a = extrasLook();
+    const m = createDiceMaterial(a, atlas, s, labels, FLAGS);
+    createDiceMaterial(a, atlas, s, labels, FLAGS);
+    expect(m.userData.programKey).toBe(programKey(fallbackLook(a), FLAGS));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(() => patched(m)).not.toThrow();
+  });
+
+  test('safe flags never call patchMaterial', async () => {
+    const { mod } = await loadWith(() => ({ defines: { DICER_X: '' } }));
+    const safe = { ...FLAGS, safe: true };
+    const m = createDiceMaterial(extrasLook(), atlas, s, labels, safe);
+    expect(mod.patchMaterial).not.toHaveBeenCalled();
+    expect(m.userData.programKey).toBe(programKey(look({}), safe));
+    expect(m.defines.DICER_X).toBeUndefined();
+  });
+
+  test('a look without the new options never imports the chunk and builds today\'s shader', async () => {
+    const load = vi.fn(() => new Promise(() => {}));
+    _setLookExtrasImport(load);
+    const plain = look({ body: { type: 'metal' }, numbers: { fill: 'gold' } });
+    const before = createDiceMaterial(plain, atlas, s, labels, FLAGS);
+    expect(load).not.toHaveBeenCalled();
+    const { mod } = await loadWith(() => ({ defines: { DICER_X: '' }, chunks: { pars: '/*x*/' } }));
+    const after = createDiceMaterial(plain, atlas, s, labels, FLAGS);
+    expect(mod.patchMaterial).not.toHaveBeenCalled();
+    expect(patched(after).fragmentShader).toBe(patched(before).fragmentShader);
+    expect(patched(after).vertexShader).toBe(patched(before).vertexShader);
+    expect(after.defines).toEqual(before.defines);
+    expect(after.userData.programKey).toBe(programKey(plain, FLAGS));
   });
 });

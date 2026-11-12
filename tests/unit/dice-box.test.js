@@ -7,6 +7,7 @@ import { buildScene } from '../../src/render/scene.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
+import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
@@ -594,6 +595,30 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     flags.interiorSteps = 32;
     box.roll([{ type: 'd6', value: 1 }]);
     expect(meshOf(renderer).material).toBe(a);
+    box.clear();
+  });
+
+  test('a roll before the chunk loads draws the fallback; after refresh the next roll draws the real look', async () => {
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const load = vi.fn(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+    _setLookExtrasImport(load);
+    const extras = {
+      body: { type: 'opaque', color: '#ffffff' },
+      numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' } },
+    };
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => extras });
+    expect(() => box.roll([{ type: 'd20', value: 20 }])).not.toThrow();
+    const first = meshOf(renderer).material.userData.programKey;
+    expect(first).not.toContain('|n:');
+    expect(load).toHaveBeenCalledTimes(1);
+    release();
+    expect(await requestLookExtras()).not.toBeNull();
+    box.invalidateMaterials();
+    expect(() => box.roll([{ type: 'd20', value: 20 }])).not.toThrow();
+    const second = meshOf(renderer).material.userData.programKey;
+    expect(second).toContain('|n:holo+r');
+    expect(load).toHaveBeenCalledTimes(1);
     box.clear();
   });
 
