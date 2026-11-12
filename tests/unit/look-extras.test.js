@@ -965,6 +965,7 @@ describe('insides', () => {
         { type: 'liquid', bubble: true },
         { type: 'liquid', sand: true },
         { type: 'liquid', bubble: true, sand: true },
+        ...['sword', 'axe', 'shield', 'dragon', 'runes'].map((shape) => ({ type: 'shape', shape })),
       ];
       for (const it of cases) {
         for (const steps of [48, 32, 16, 0]) {
@@ -994,6 +995,25 @@ describe('insides', () => {
           }
         }
       }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('new shapes: marched without a module throws (fallback star), fake is {}, plain shapes stay {}', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const shape of ['sword', 'axe', 'shield', 'dragon', 'runes']) {
+        const a = resin({ type: 'shape', shape });
+        const built = (() => { try { return !!insidePatch(a, FLAGS).interior; } catch { return false; } })();
+        if (!built) {
+          expect(() => insidePatch(a, FLAGS)).toThrow(/not built yet/);
+          expect(mat(a, FLAGS).userData.programKey).toBe(programKey(fallbackLook(a), FLAGS));
+        }
+        expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
+        expect(insidePatch(a, { ...FLAGS, interiors: false })).toEqual({});
+      }
+      for (const shape of ['star', 'heart', 'skull', 'sphere']) expect(insidePatch(resin({ type: 'shape', shape }), FLAGS)).toEqual({});
     } finally {
       warn.mockRestore();
     }

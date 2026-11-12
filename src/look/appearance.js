@@ -13,7 +13,7 @@ const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape',
 const INCLUSIONS = ['flower', 'moss', 'butterfly'];
 // the new insides (drawn by the look-extras chunk) and what they draw while it is missing
 const NEW_INSIDES = { foil: { type: 'glitter' }, eye: { type: 'shape', shape: 'sphere' }, botanical: { type: 'swirl' }, smoke: { type: 'swirl' } };
-const SHAPES = ['star', 'heart', 'skull', 'sphere'];
+const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes']; // those after the first four: look-extras chunk
 const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 const RELIEFS = ['engraved', 'raised'];
 /** Crit/fumble icons a die can show instead of the number. */
@@ -190,7 +190,7 @@ export const needsLookExtras = (a) =>
   !!BODY_PRESETS[a.body.type] ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
   a.body.luminous > 0 ||
-  (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || LIQUID_EXTRA(a) !== ''));
+  (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || LIQUID_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
 
 /** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */
 export const fallbackLook = (a) =>
@@ -206,6 +206,7 @@ export const fallbackLook = (a) =>
         },
         interior: {
           ...a.interior,
+          shape: SHAPES.indexOf(a.interior.shape) > 3 ? 'star' : a.interior.shape,
           ...NEW_INSIDES[a.interior.type],
           bubble: false,
           sand: false,

@@ -452,3 +452,36 @@ describe('dice designs plan 3: insides', () => {
     expect(fallbackLook(holo).interior).toMatchObject({ type: 'shape', shape: 'heart' });
   });
 });
+
+describe('dice designs plan 3b: fantasy shapes', () => {
+  const NEW = ['sword', 'axe', 'shield', 'dragon', 'runes'];
+  const sh = (shape, b) => normalizeAppearance({ body: { type: 'resin', ...b }, interior: { type: 'shape', shape } });
+  test('the five fantasy shapes normalise; unknown shapes still fall back', () => {
+    for (const shape of [...NEW, 'star', 'heart', 'skull', 'sphere']) expect(sh(shape).interior.shape).toBe(shape);
+    for (const shape of ['bow', 3, null]) expect(sh(shape).interior.shape).toBe(DEFAULT_APPEARANCE.interior.shape);
+  });
+  test('programKey shape:<name> for each; every look in LOOKS and DAMAGE_THEMES keeps its programKey', () => {
+    for (const shape of NEW) expect(programKey(sh(shape), F)).toBe(`resin|-|shape:${shape}:32|eng1|glow0|fx1|safe0`);
+    expect(programKey(sh('sword'), { ...F, safe: true })).toBe(programKey(normalizeAppearance({}), { ...F, safe: true }));
+    const keys = {};
+    for (const [id, l] of Object.entries(LOOKS)) keys[`look:${id}`] = programKey(l.appearance, F);
+    for (const [k, t] of Object.entries(DAMAGE_THEMES)) keys[`dmg:${k}`] = programKey(t.appearance, F);
+    expect(keys).toEqual(BASE_KEYS);
+  });
+  test('needsLookExtras true only for the new shapes on resin; fallbackLook maps them to star', () => {
+    for (const shape of NEW) {
+      expect(needsLookExtras(sh(shape))).toBe(true);
+      expect(fallbackLook(sh(shape)).interior).toMatchObject({ type: 'shape', shape: 'star' });
+      expect(needsLookExtras(fallbackLook(sh(shape)))).toBe(false);
+      expect(needsLookExtras(normalizeAppearance({ body: { type: 'opaque' }, interior: { type: 'shape', shape } }))).toBe(false);
+      expect(needsLookExtras(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'glitter', shape } }))).toBe(false);
+    }
+    for (const shape of ['star', 'heart', 'skull', 'sphere']) {
+      const a = sh(shape);
+      expect(needsLookExtras(a)).toBe(false);
+      expect(fallbackLook(a)).toBe(a);
+    }
+    expect(fallbackLook(sh('sword', { luminous: 0.5 })).interior.shape).toBe('star');
+    expect(fallbackLook(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'eye', shape: 'sword' } })).interior.shape).toBe('sphere');
+  });
+});

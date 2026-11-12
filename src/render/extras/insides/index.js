@@ -56,12 +56,16 @@ function tintTarget(a) {
 }
 
 const hasLiquidExtras = (i) => i.type === 'liquid' && (i.bubble || i.sand);
+// the fantasy shapes of type 'shape' (plan 3b), each a module in MODULES under its shape id; plain
+// star, heart, skull and sphere stay interior.js's, unpatched
+const FANTASY_SHAPES = ['sword', 'axe', 'shield', 'dragon', 'runes'];
+const isFantasy = (i) => i.type === 'shape' && FANTASY_SHAPES.includes(i.shape);
 
 /**
  * ExtrasPatch for the inside: {} unless the body is resin, interiors are on and a new inside (or
  * liquid with bubble / sand) is set.
  * - marched (steps > 0): `{ interior: { pars, main }, uniforms }` (liquid with bubble / sand: the
- *   liquid-extras module's); a type without a module (none today: a safety net) throws, so
+ *   liquid-extras module's); a type or fantasy shape without a module (a safety net) throws, so
  *   patchMaterial fails and createDiceMaterial draws the fallback look (it would
  *   otherwise call interiorChunk() with a type it does not know, outside its try/catch);
  * - fake (steps 0): `{ uniforms: { uResinTint } }` with w = INSIDE_TINT[type] (liquid keeps
@@ -71,13 +75,13 @@ export function insidePatch(a, flags) {
   const i = a.interior;
   if (a.body?.type !== 'resin' || !i || !flags.interiors) return {};
   const isNew = Object.hasOwn(INSIDE_TINT, i.type);
-  if (!isNew && !hasLiquidExtras(i)) return {};
+  if (!isNew && !hasLiquidExtras(i) && !isFantasy(i)) return {};
   if (!(flags.interiorSteps > 0)) {
     if (!isNew) return {};
     const t = tintTarget(a);
     return { uniforms: { uResinTint: { value: new THREE.Vector4(t.r, t.g, t.b, INSIDE_TINT[i.type]) } } };
   }
-  const key = hasLiquidExtras(i) ? 'liquid' : i.type;
+  const key = hasLiquidExtras(i) ? 'liquid' : isFantasy(i) ? i.shape : i.type;
   const mod = Object.hasOwn(MODULES, key) ? MODULES[key] : null;
   if (!mod) throw new Error(`dicer: inside "${key}" not built yet`);
   const [build, usesNoise] = mod;
