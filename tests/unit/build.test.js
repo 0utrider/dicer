@@ -146,12 +146,13 @@ describe('build', () => {
     // as it stood (4_090_248, about 105 KB under the 4 MiB budget) after the single-mesh blob
     // shadows (+565 bytes) spent the last of the allowance; the next 2 KB must again be noticed.
     // The preview buttons re-based it on purpose (4_092_397): api._throwLook lives in the
-    // world-start API (the editors call it through game.dice3d). Dice designs plan 1 re-based it on
-    // purpose (4_092_397): its option lists, normalisation and the look-extras loader must live in
-    // world start (spec Constraints, World-start size); plan 1 may spend at most 1,536 bytes of the
-    // next 2 KB.
-    const growth = worldStartBytes() - 4_092_397;
-    console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
+    // world-start API (the editors call it through game.dice3d). The readable-numbers fix
+    // re-based it on purpose (+1_738, 4_094_135): every die's material picks its number colour
+    // against the die's own colour, so the contrast rule lives in the world-start renderer.
+    // Dice designs plan 1 re-based it on purpose (4_094_135): its option lists, normalisation and
+    // the look-extras loader must live in world start (spec Constraints, World-start size); plan 1
+    // may spend at most 1,536 bytes of the next 2 KB.
+    const growth = worldStartBytes() - 4_094_135;    console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {

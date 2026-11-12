@@ -12,6 +12,9 @@
 export const DEPTH_SCALE = 0.02;
 /** Width of the sloped wall band at the glyph edge, in face units. */
 export const WALL_BAND = 0.035;
+/** Ink rim just outside a glyph (face units) and how much it darkens the lit resin body there. */
+export const RIM_WIDTH = 0.03;
+export const RIM_DARK = 0.6;
 /** Corner radius of the 6/9 mark's box, in face units. */
 export const BOX_ROUND = 0.012;
 
@@ -92,6 +95,8 @@ export const ENGRAVE_COLOR = /* glsl */ `
 		dcGrad = dcD0 >= dcD1 ? dcG0 : dcG1;
 	}
 	float dcMask = smoothstep( - dcAA, dcAA, dcD );
+	// Ink rim: a band just outside the glyph (dcD is -1 outside its rect, so no rim there).
+	float dcRim = ( 1.0 - dcMask ) * smoothstep( ${(-RIM_WIDTH).toFixed(4)}, ${(-0.3 * RIM_WIDTH).toFixed(4)}, dcD );
 	float dcBand = max( ${WALL_BAND.toFixed(4)}, 2.0 * dcAA );
 	float dcDepth = uEngrave * ${DEPTH_SCALE.toFixed(4)};
 #ifdef DICER_ENGRAVE
@@ -197,7 +202,7 @@ export const FACE_LAYER_COLOR = /* glsl */ `
  */
 export const DECAL_OPAQUE = [
   [
-    'totalDiffuse = mix( totalDiffuse, dcRefracted, 1.0 - dcMask );',
-    'totalDiffuse = mix( totalDiffuse, dcRefracted, 1.0 - max( dcMask, dcDecal ) );',
+    `totalDiffuse = mix( totalDiffuse, dcRefracted * ( 1.0 - ${RIM_DARK.toFixed(2)} * dcRim ), 1.0 - dcMask );`,
+    `totalDiffuse = mix( totalDiffuse, dcRefracted * ( 1.0 - ${RIM_DARK.toFixed(2)} * dcRim ), 1.0 - max( dcMask, dcDecal ) );`,
   ],
 ];
