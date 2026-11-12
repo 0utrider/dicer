@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { EFFECTS, createParticlePool } from '../../src/effects/library/index.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
+import { KIND } from '../../src/effects/library/particles.js';
 import { TIERS } from '../../src/render/quality.js';
 import { EFFECT_IDS } from '../../src/effects/effect-ids.js';
 
@@ -208,7 +209,7 @@ test('shake asks the layer for a shake and is done at once', () => {
 });
 
 describe('composites degrade with the tier budget (P4-R10)', () => {
-  test('celebrate on low shows the burst and ring within budget 2, not the whole stack', () => {
+  test('celebrate on low (effectBudget 2) starts light-burst and the flare, not the whole stack', () => {
     const scene = new THREE.Scene();
     const pool = createParticlePool(scene, 64);
     const base = scene.children.length;
@@ -217,8 +218,8 @@ describe('composites degrade with the tier budget (P4-R10)', () => {
     const h = EFFECTS.celebrate.start(ctx);
     h.update(0);
     h.update(300);
-    expect(scene.children.length - base).toBe(2); // burst + shockwave (1 + 1 = budget 2)
-    expect(emit).not.toHaveBeenCalled(); // no sparkles
+    expect(scene.children.length - base).toBe(2); // light-burst + the free floor glow
+    expect(emit).not.toHaveBeenCalled(); // no sparks, no glitter
     h.stop();
     expect(scene.children.length).toBe(base);
   });
@@ -232,7 +233,7 @@ describe('composites degrade with the tier budget (P4-R10)', () => {
     const h = EFFECTS.celebrate.start(ctx);
     h.update(0);
     h.update(300);
-    expect(scene.children.length - base).toBe(2); // burst + shockwave
+    expect(scene.children.length - base).toBe(3); // light-burst + floor glow + shockwave
     expect(emit).toHaveBeenCalled();
     expect(shakes).toHaveLength(1);
     h.stop();
@@ -258,6 +259,96 @@ describe('composites degrade with the tier budget (P4-R10)', () => {
     const h = EFFECTS.celebrate.start(ctx);
     h.update(0);
     expect(h.update(ctx.duration + 1)).toBe(false);
+  });
+});
+
+describe('staged celebrate and fumble', () => {
+  const kinds = (emit) => emit.mock.calls.map(([s]) => s.kind);
+  const meshes = (scene, base) => scene.children.slice(base).filter((c) => c.isMesh);
+
+  test('celebrate stages: flare at 0, burst parts at 120, glitter at 200', () => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 2048);
+    const base = scene.children.length;
+    const shakes = [];
+    const ctx = ctxFor(EFFECTS.celebrate, { scene, pool, shakes });
+    const emit = vi.spyOn(pool, 'emit');
+    const h = EFFECTS.celebrate.start(ctx);
+    h.update(0);
+    h.update(100);
+    expect(ctx.die.uniforms.uFxFlare.value.length()).toBeGreaterThan(0); // number-flare on the die
+    expect(meshes(scene, base)).toHaveLength(0);
+    expect(emit).not.toHaveBeenCalled();
+    expect(shakes).toHaveLength(0);
+    h.update(130);
+    expect(meshes(scene, base)).toHaveLength(3); // light-burst, floor glow, shockwave
+    expect(kinds(emit)).toEqual([KIND.STREAK]);
+    expect(emit.mock.calls[0][0].colorEnd).toBe('#ff9a3c');
+    expect(shakes).toEqual([[0.3, 280]]);
+    h.update(190);
+    expect(kinds(emit)).not.toContain(KIND.FLAKE);
+    h.update(260);
+    h.update(360);
+    expect(kinds(emit)).toContain(KIND.FLAKE);
+    h.stop();
+    expect(scene.children.length).toBe(base);
+  });
+
+  test('fumble stages: smoke at 0, crack at 80, fizzle at 150', () => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 2048);
+    const base = scene.children.length;
+    const shakes = [];
+    const ctx = ctxFor(EFFECTS.fumble, { scene, pool, shakes });
+    const emit = vi.spyOn(pool, 'emit');
+    const h = EFFECTS.fumble.start(ctx);
+    h.update(0);
+    h.update(60);
+    expect(kinds(emit)).toEqual([KIND.SMOKE]);
+    expect(emit.mock.calls[0][0].colorEnd).toBe('#3a3a40');
+    expect(meshes(scene, base)).toHaveLength(0);
+    expect(shakes).toHaveLength(0);
+    h.update(100);
+    expect(meshes(scene, base)).toHaveLength(1); // the crack ribbon
+    expect(shakes).toEqual([[0.15, 220]]);
+    expect(kinds(emit)).not.toContain(KIND.STREAK);
+    h.update(200);
+    expect(kinds(emit)).toContain(KIND.STREAK); // the fizzle
+    h.stop();
+    expect(scene.children.length).toBe(base);
+  });
+
+  test('on the low tier (effectBudget 2) celebrate still starts light-burst and fumble smoke', () => {
+    const c = ctxFor(EFFECTS.celebrate, { tier: 'low' });
+    const hc = EFFECTS.celebrate.start(c);
+    hc.update(0);
+    hc.update(200);
+    expect(meshes(c.scene, 0).length).toBeGreaterThan(0);
+    expect(c.die.uniforms.uFxFlare.value.length()).toBeGreaterThan(0);
+    hc.stop();
+    const f = ctxFor(EFFECTS.fumble, { tier: 'low' });
+    const emit = vi.spyOn(f.particles, 'emit');
+    const hf = EFFECTS.fumble.start(f);
+    hf.update(0);
+    hf.update(60);
+    hf.update(300);
+    expect(kinds(emit)).toEqual([KIND.SMOKE]);
+    expect(meshes(f.scene, 0).filter((m) => m.material.uniforms?.uWidthPx)).toHaveLength(0);
+    hf.stop();
+  });
+
+  test('celebrate and fumble end and update() turns false by their duration', () => {
+    for (const id of ['celebrate', 'fumble']) {
+      const ctx = ctxFor(EFFECTS[id]);
+      const h = EFFECTS[id].start(ctx);
+      let now = 0;
+      let alive = true;
+      while (alive && now <= ctx.duration) {
+        alive = h.update(now);
+        now += 50;
+      }
+      expect(h.update(ctx.duration + 1), id).toBe(false);
+    }
   });
 });
 

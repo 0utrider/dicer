@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DIE_EFFECTS, NOOP, envelope, timed } from './die-effects.js';
 import { KIND } from './particles.js';
 import { composite } from './timeline.js';
+import { createRibbon } from './ribbon.js';
 
 /**
  * The particle and mesh effects. World units: one die edge is 1 (so a size of 0.2 is a fifth
@@ -264,6 +265,7 @@ export const smoke = Object.freeze({
       life: 1.3,
       color: ctx.color,
       size: 0.55 * Math.sqrt(Math.max(0.2, ctx.intensity)),
+      colorEnd: '#3a3a40',
       kind: KIND.SMOKE,
       blend: 'normal',
     });
@@ -447,15 +449,169 @@ export const shake = Object.freeze({
 const tinyShake = (id, amount, ms) =>
   Object.freeze({ ...shake, id, defaults: Object.freeze({ ...shake.defaults, intensity: amount, duration: ms }) });
 
+/**
+ * Private composite parts (not in CATALOGUE / EFFECT_IDS): { id, cost, defaults, start(ctx) }.
+ * Everything they add to the scene is removed at their end and on stop().
+ */
+
+/** The floor glow as a free (cost 0) part: it only lights the table under the die. */
+const floorGlowPart = Object.freeze({
+  id: 'floor-glow',
+  cost: 0,
+  defaults: Object.freeze({ color: '#ffe27a', intensity: 1, duration: 700 }),
+  start: (ctx) => floorGlow(ctx, { radius: 3, peak: 1.2, ms: ctx.duration }),
+});
+
+/** A one-off burst of streak sparks flying out of the die. */
+const sparkBurstPart = Object.freeze({
+  id: 'spark-burst',
+  cost: 1,
+  defaults: Object.freeze({ color: '#ffe27a', intensity: 1, duration: 600 }),
+  start(ctx) {
+    ctx.particles?.emit({
+      count: countFor(24, ctx),
+      origin: originOf(ctx, DIE_Y),
+      dir: { x: 0, y: 1, z: 0 },
+      speed: 5,
+      spread: 1.2,
+      life: 0.6,
+      color: ctx.color,
+      colorEnd: '#ff9a3c',
+      size: 0.1 * Math.sqrt(Math.max(0.2, ctx.intensity)),
+      kind: KIND.STREAK,
+    });
+    return NOOP;
+  },
+});
+
+/** Glitter flakes drifting down from above the die. */
+const glitterPart = Object.freeze({
+  id: 'glitter',
+  cost: 1,
+  defaults: Object.freeze({ color: '#ffe27a', intensity: 1, duration: 1200 }),
+  start(ctx) {
+    if (!ctx.particles) return NOOP;
+    const emit = trickle(ctx, countFor(30, ctx), 0.5, {
+      origin: originOf(ctx, DIE_Y + 2.5),
+      dir: { x: 0, y: -1, z: 0 },
+      speed: 0.4,
+      spread: 1.3,
+      gravity: -2.5,
+      life: 1.4,
+      color: '#ffffff',
+      colorEnd: ctx.color,
+      size: 0.12 * Math.sqrt(Math.max(0.2, ctx.intensity)),
+      kind: KIND.FLAKE,
+      spin: 4,
+    });
+    return timed(ctx.duration, emit, () => {});
+  },
+});
+
+/** Grey cracks spreading over the table from the die: a ribbon of random jagged rays. */
+function crackLines(cx, cz, radius, rays) {
+  const lines = [];
+  const at = (ang, r) => ({ x: cx + Math.cos(ang) * r, y: FLOOR_Y, z: cz + Math.sin(ang) * r });
+  for (let i = 0; i < rays; i++) {
+    let ang = (i / rays) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const line = [at(ang, 0.25)];
+    const steps = 4;
+    for (let s = 1; s <= steps; s++) {
+      ang += (Math.random() - 0.5) * 0.35;
+      const r = 0.25 + (((radius - 0.25) * s) / steps) * (0.85 + Math.random() * 0.3);
+      const p = at(ang, r);
+      line.push(p);
+      if (s === 2) {
+        const ba = ang + (Math.random() < 0.5 ? -0.7 : 0.7);
+        lines.push([p, { x: p.x + Math.cos(ba) * radius * 0.3, y: FLOOR_Y, z: p.z + Math.sin(ba) * radius * 0.3 }]);
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** The first `k` (0..1) of a polyline, by point: whole points plus one interpolated tip. */
+function prefixOf(line, k) {
+  const f = clamp01(k) * (line.length - 1);
+  const whole = Math.floor(f);
+  const out = line.slice(0, whole + 1);
+  const frac = f - whole;
+  if (frac > 0 && whole + 1 < line.length) {
+    const a = line[whole];
+    const b = line[whole + 1];
+    out.push({ x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac, z: a.z + (b.z - a.z) * frac });
+  }
+  return out;
+}
+
+const crackPart = Object.freeze({
+  id: 'crack',
+  cost: 1,
+  defaults: Object.freeze({ color: '#5a5a60', intensity: 1, duration: 1000 }),
+  start(ctx) {
+    const scope = scoped(ctx.scene);
+    const lines = crackLines(ctx.position.x, ctx.position.z, 1.5 * Math.max(0.3, ctx.intensity), 6);
+    const ribbon = createRibbon({
+      maxPoints: lines.reduce((n, l) => n + l.length, 0),
+      widthPx: 3,
+      color: ctx.color,
+      glow: 0.2,
+    });
+    ribbon.alpha = 0;
+    scope.add(ribbon.mesh);
+    const spread = Math.min(250, ctx.duration / 2);
+    return timed(
+      ctx.duration,
+      (e) => {
+        ribbon.setPolylines(lines.map((l) => prefixOf(l, e / spread)));
+        ribbon.alpha = clamp01(ctx.intensity) * envelope(e, ctx.duration);
+      },
+      () => {
+        scope.dispose();
+        ribbon.dispose();
+      },
+    );
+  },
+});
+
+/** A few dim embers dropping off the die once it has gone cold. */
+const fizzlePart = Object.freeze({
+  id: 'fizzle',
+  cost: 1,
+  defaults: Object.freeze({ color: '#c8a070', intensity: 1, duration: 600 }),
+  start(ctx) {
+    ctx.particles?.emit({
+      count: countFor(8, ctx),
+      origin: originOf(ctx, DIE_Y + 0.3),
+      dir: { x: 0, y: 1, z: 0 },
+      speed: 1.2,
+      spread: 1.3,
+      gravity: -6,
+      life: 0.6,
+      color: ctx.color,
+      colorEnd: '#402010',
+      size: 0.08 * Math.sqrt(Math.max(0.2, ctx.intensity)),
+      kind: KIND.STREAK,
+      alpha: 0.6,
+    });
+    return NOOP;
+  },
+});
+
+// Parts are in budget priority order after the essential one (index 0).
 export const celebrate = composite({
   id: 'celebrate',
   defaults: { color: '#ffe27a', intensity: 1, duration: 1400 },
   parts: [
-    { mod: lightBurst },
-    { mod: shockwave },
-    { mod: DIE_EFFECTS['number-flare'] },
-    { mod: sparkles },
-    { mod: tinyShake('celebrate-shake', 0.3, 280) },
+    { mod: lightBurst, at: 120 },
+    { mod: DIE_EFFECTS['number-flare'], at: 0 },
+    { mod: floorGlowPart, at: 120 },
+    { mod: shockwave, at: 120 },
+    { mod: sparkBurstPart, at: 120 },
+    { mod: glitterPart, at: 200 },
+    { mod: DIE_EFFECTS['glow-pulse'], at: 0 },
+    { mod: tinyShake('celebrate-shake', 0.3, 280), at: 120 },
   ],
 });
 
@@ -463,9 +619,11 @@ export const fumble = composite({
   id: 'fumble',
   defaults: { color: '#8c8c92', intensity: 1, duration: 1500 },
   parts: [
-    { mod: smoke },
-    { mod: DIE_EFFECTS['color-shift'], color: '#3a3a40', intensity: 0.8 },
-    { mod: tinyShake('fumble-shake', 0.15, 220) },
+    { mod: smoke, at: 0 },
+    { mod: DIE_EFFECTS['color-shift'], at: 0, color: '#3a3a40', intensity: 0.8 },
+    { mod: crackPart, at: 80 },
+    { mod: fizzlePart, at: 150 },
+    { mod: tinyShake('fumble-shake', 0.15, 220), at: 80 },
   ],
 });
 
