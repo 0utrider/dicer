@@ -250,28 +250,34 @@ export const embers = Object.freeze({
   },
 });
 
+/** Smoke puffs that fade to `endColor` (default: the effect's own colour). */
+const smokeStart = (endColor) => (ctx) => {
+  if (!ctx.particles) return NOOP;
+  const emit = trickle(ctx, countFor(16, ctx), 0.5, {
+    origin: originOf(ctx, 0.3),
+    dir: { x: 0, y: 1, z: 0 },
+    speed: 0.7,
+    spread: 1.2,
+    gravity: 0.15,
+    life: 1.3,
+    color: ctx.color,
+    colorEnd: endColor ?? ctx.color,
+    size: 0.55 * Math.sqrt(Math.max(0.2, ctx.intensity)),
+    kind: KIND.SMOKE,
+    blend: 'normal',
+  });
+  return timed(ctx.duration, emit, () => {});
+};
+
 export const smoke = Object.freeze({
   id: 'smoke',
   cost: 2,
   defaults: Object.freeze({ color: '#8c8c92', intensity: 1, duration: 1500 }),
-  start(ctx) {
-    if (!ctx.particles) return NOOP;
-    const emit = trickle(ctx, countFor(16, ctx), 0.5, {
-      origin: originOf(ctx, 0.3),
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 0.7,
-      spread: 1.2,
-      gravity: 0.15,
-      life: 1.3,
-      color: ctx.color,
-      size: 0.55 * Math.sqrt(Math.max(0.2, ctx.intensity)),
-      colorEnd: '#3a3a40',
-      kind: KIND.SMOKE,
-      blend: 'normal',
-    });
-    return timed(ctx.duration, emit, () => {});
-  },
+  start: smokeStart(),
 });
+
+/** Fumble's own smoke: same puffs, but they always darken to grey (not in CATALOGUE). */
+const fumbleSmoke = Object.freeze({ ...smoke, id: 'fumble-smoke', start: smokeStart('#3a3a40') });
 
 /** Radial crack lines on the floor: a jagged ray per sector with a branch halfway out. */
 function crackGeometry(cx, cz, radius, rays) {
@@ -619,7 +625,7 @@ export const fumble = composite({
   id: 'fumble',
   defaults: { color: '#8c8c92', intensity: 1, duration: 1500 },
   parts: [
-    { mod: smoke, at: 0 },
+    { mod: fumbleSmoke, at: 0 },
     { mod: DIE_EFFECTS['color-shift'], at: 0, color: '#3a3a40', intensity: 0.8 },
     { mod: crackPart, at: 80 },
     { mod: fizzlePart, at: 150 },

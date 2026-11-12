@@ -262,6 +262,18 @@ describe('composites degrade with the tier budget (P4-R10)', () => {
   });
 });
 
+test('standalone smoke fades to its own (custom) colour, not a fixed grey', () => {
+  const color = new THREE.Color('#12ab34');
+  const ctx = ctxFor(EFFECTS.smoke, { color, options: { color: '#12ab34' } });
+  const emit = vi.spyOn(ctx.particles, 'emit');
+  const h = EFFECTS.smoke.start(ctx);
+  h.update(0);
+  h.update(300);
+  expect(emit).toHaveBeenCalled();
+  expect(emit.mock.calls[0][0].colorEnd).toBe(color);
+  h.stop();
+});
+
 describe('staged celebrate and fumble', () => {
   const kinds = (emit) => emit.mock.calls.map(([s]) => s.kind);
   const meshes = (scene, base) => scene.children.slice(base).filter((c) => c.isMesh);
