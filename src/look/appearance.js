@@ -4,7 +4,10 @@ const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl'];
 const FINISHES = ['polished', 'brushed', 'antique'];
 const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
 const SHAPES = ['star', 'heart', 'skull', 'sphere'];
-const FILLS = ['paint', 'gold', 'silver', 'enamel'];
+const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
+const RELIEFS = ['engraved', 'raised'];
+/** Crit/fumble icons a die can show instead of the number. */
+export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame']);
 /** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
 export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 /** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
@@ -18,7 +21,7 @@ function deepFreeze(o) {
 export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05 },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star' },
-  numbers: { fill: 'gold', color: '#e2b04a', depth: 0.5, font: 'serif' },
+  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif' },
   edges: { radius: 0.5, style: 'rounded' },
   glow: { color: '#ffffff', intensity: 0 },
 });
@@ -83,6 +86,7 @@ export function normalizeAppearance(input) {
     const g = isObj(i.glow) ? i.glow : {};
     const it = isObj(i.interior) ? i.interior : {};
     const cols = Array.isArray(it.colors) ? it.colors : [];
+    const ic = isObj(n.icons) ? n.icons : {};
 
     const body = {
       type: pick(b.type, BODY_TYPES, D.body.type),
@@ -104,6 +108,8 @@ export function normalizeAppearance(input) {
       interior,
       numbers: {
         fill: pick(n.fill, FILLS, D.numbers.fill),
+        relief: pick(n.relief, RELIEFS, D.numbers.relief),
+        icons: { crit: pick(ic.crit, ICON_IDS, null), fumble: pick(ic.fumble, ICON_IDS, null) },
         color: color(n.color, D.numbers.color),
         depth: num(n.depth, 0, 1, D.numbers.depth),
         font: font(n.font, D.numbers.font),
@@ -150,5 +156,26 @@ export function programKey(a, flags) {
   const finish = a.body.type === 'metal' ? a.body.finish : '-';
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
   const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
-  return [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'].join('|');
+  const parts = [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'];
+  const { fill, relief } = a.numbers;
+  if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
+  return parts.join('|');
 }
+
+/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons). */
+export const needsLookExtras = (a) =>
+  FILLS.indexOf(a.numbers.fill) > 3 || a.numbers.relief === 'raised' || !!(a.numbers.icons.crit || a.numbers.icons.fumble);
+
+/** The look a die draws while the chunk is missing (and for safe flags): plain fill, engraved, numbers. */
+export const fallbackLook = (a) =>
+  needsLookExtras(a)
+    ? {
+        ...a,
+        numbers: {
+          ...a.numbers,
+          fill: { outline: 'paint', holo: 'gold', glow: 'paint' }[a.numbers.fill] || a.numbers.fill,
+          relief: 'engraved',
+          icons: { crit: null, fumble: null },
+        },
+      }
+    : a;

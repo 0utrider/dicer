@@ -4,6 +4,8 @@ import {
   EDGE_STEPS,
   FONT_IDS_BUILTIN,
   appearanceKey,
+  fallbackLook,
+  needsLookExtras,
   normalizeAppearance,
   programKey,
 } from '../../src/look/appearance.js';
@@ -235,4 +237,46 @@ describe('Plan 7: edge sharpness and font', () => {
       expect(normalizeAppearance(n)).toEqual(n);
     }
   });
+});
+
+const F = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32, safe: false };
+test('numbers.relief: engraved | raised, anything else engraved', () => {
+  expect(normalizeAppearance({ numbers: { relief: 'raised' } }).numbers.relief).toBe('raised');
+  for (const r of [undefined, 'emboss', 3, null]) expect(normalizeAppearance({ numbers: { relief: r } }).numbers.relief).toBe('engraved');
+});
+test('numbers.icons: known ids kept, anything else null', () => {
+  expect(normalizeAppearance({ numbers: { icons: { crit: 'crown', fumble: 'skull' } } }).numbers.icons).toEqual({ crit: 'crown', fumble: 'skull' });
+  expect(normalizeAppearance({ numbers: { icons: { crit: 'dragon', fumble: 7 } } }).numbers.icons).toEqual({ crit: null, fumble: null });
+  expect(normalizeAppearance({ numbers: { icons: 'crown' } }).numbers.icons).toEqual({ crit: null, fumble: null });
+  expect(normalizeAppearance({}).numbers.icons).toEqual({ crit: null, fumble: null });
+});
+test('the new fills normalise; an unknown fill still falls back to gold', () => {
+  for (const f of ['outline', 'holo', 'glow']) expect(normalizeAppearance({ numbers: { fill: f } }).numbers.fill).toBe(f);
+  expect(normalizeAppearance({ numbers: { fill: 'neon' } }).numbers.fill).toBe('gold');
+});
+test('old looks keep their program key: no n: part for any curated look or old fill', () => {
+  for (const { appearance } of Object.values(LOOKS)) expect(programKey(normalizeAppearance(appearance), F)).not.toMatch(/\|n:/);
+  expect(programKey(normalizeAppearance({}), F)).toBe('resin|-|nebula:32|eng1|glow0|fx1|safe0');
+  expect(programKey(normalizeAppearance({ body: 'metal', fillMetallic: true }), F)).not.toMatch(/\|n:/); // legacy flat
+});
+test('programKey gets n:<fill>[+r] only for outline/holo/glow or raised; icons never', () => {
+  const k = (numbers) => programKey(normalizeAppearance({ numbers }), F);
+  expect(k({ fill: 'holo' })).toMatch(/\|safe0\|n:holo$/);
+  expect(k({ fill: 'paint', relief: 'raised' })).toMatch(/\|n:paint\+r$/);
+  expect(k({ fill: 'glow', relief: 'raised' })).toMatch(/\|n:glow\+r$/);
+  expect(k({ fill: 'gold', icons: { crit: 'crown' } })).toBe(k({ fill: 'gold' }));
+  expect(appearanceKey(normalizeAppearance({ numbers: { icons: { crit: 'crown' } } }))).not.toBe(appearanceKey(normalizeAppearance({})));
+  expect(programKey(normalizeAppearance({ numbers: { fill: 'holo', relief: 'raised' } }), { ...F, safe: true })).toBe(programKey(normalizeAppearance({}), { ...F, safe: true }));
+});
+test('needsLookExtras and fallbackLook', () => {
+  const plain = normalizeAppearance({});
+  expect(needsLookExtras(plain)).toBe(false);
+  expect(fallbackLook(plain)).toBe(plain);
+  const fancy = normalizeAppearance({ numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' }, color: '#123456', depth: 0.7, font: 'sans' } });
+  expect(needsLookExtras(fancy)).toBe(true);
+  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', depth: 0.7, font: 'sans' });
+  expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'outline' } })).numbers.fill).toBe('paint');
+  expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'glow' } })).numbers.fill).toBe('paint');
+  expect(needsLookExtras(normalizeAppearance({ numbers: { icons: { fumble: 'skull' } } }))).toBe(true);
+  expect(fancy.numbers.fill).toBe('holo'); // not mutated
 });
