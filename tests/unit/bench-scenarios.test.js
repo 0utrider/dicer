@@ -598,3 +598,27 @@ test('recorder stamps each long task with its start, relative to start()', async
   expect(out.longTasks).toEqual([70]);
   expect(out.longTaskAt).toEqual([{ at: 20, ms: 70 }]);
 });
+
+// P9-R6: quick mode's roll overrides; the soak's second sample moves to its last roll.
+test('runSuite rolls overrides: a 200-roll soak samples at 50 and 200 and reports 200 rolls', async () => {
+  const hooks = fakeHooks();
+  let rolled = 0;
+  const marks = [];
+  const a = adapterFor(hooks, { startAfter: 1, completeAfter: 5 });
+  const origRoll = a.roll;
+  a.roll = async (f) => {
+    rolled++;
+    return origRoll(f);
+  };
+  a.heap = vi.fn(async () => {
+    marks.push(rolled);
+    return 1000;
+  });
+  const p = runSuite(['soak500', 'burst100'], a, { hooks, win: fakeWin(), now, rolls: { soak500: 200, burst100: 30 } });
+  await vi.advanceTimersByTimeAsync(20000);
+  const s = await p;
+  expect(marks).toEqual([50, 200]);
+  expect(s.results.map((r) => r.rolls)).toEqual([200, 30]);
+  expect(s.results[0].heap).toEqual({ before: 1000, after: 1000 });
+  expect(rolled).toBe(230);
+});

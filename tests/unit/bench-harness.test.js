@@ -22,6 +22,8 @@ import {
   isLocalHttps,
   runTier,
   PROGRESS_PREFIX,
+  planFor,
+  QUICK_ROLLS,
 } from '../../tests/live/bench-lib.mjs';
 
 test('a self-signed certificate is trusted only for a local https Foundry', () => {
@@ -394,8 +396,8 @@ test('outDirName is an ISO date without colons', () => {
 });
 
 test('parseArgs', () => {
-  expect(parseArgs(['--dry-run'])).toEqual({ dryRun: true });
-  expect(parseArgs([])).toEqual({ dryRun: false });
+  expect(parseArgs(['--dry-run'])).toEqual({ dryRun: true, quick: false, only: null });
+  expect(parseArgs([])).toEqual({ dryRun: false, quick: false, only: null });
 });
 
 test('summaryMarkdown: target checks, then the head-to-head table, n/a for missing values', () => {
@@ -577,4 +579,52 @@ test('summaryMarkdown warns when the warm-up roll did not animate (P9-R2)', () =
 
 test('the progress prefix is the one world.js prints', () => {
   expect(PROGRESS_PREFIX).toBe('[dicer-bench]');
+});
+
+// P9-R6: --quick and --only make shorter, clearly labelled partial runs.
+test('parseArgs: --quick and --only, with errors for a missing name or an unknown flag', () => {
+  expect(parseArgs(['--quick'])).toEqual({ dryRun: false, quick: true, only: null });
+  expect(parseArgs(['--only', 'dice-so-nice,dicer-pc-vsync'])).toEqual({
+    dryRun: false,
+    quick: false,
+    only: ['dice-so-nice', 'dicer-pc-vsync'],
+  });
+  expect(parseArgs(['--only=dicer', '--dry-run']).only).toEqual(['dicer']);
+  expect(parseArgs(['--only']).error).toMatch(/--only needs run names/);
+  expect(parseArgs(['--only', '--quick']).error).toMatch(/--only needs run names/);
+  expect(parseArgs(['--fast']).error).toMatch(/unknown option --fast/);
+});
+
+test('planFor: quick drops the throttled runs and carries the roll overrides', () => {
+  expect(planFor().plan.map(runName)).toEqual(matrix().map(runName));
+  const { plan } = planFor({ quick: true });
+  expect(plan.map(runName)).toEqual([
+    'dicer-pc-vsync',
+    'dicer-pc-uncapped',
+    'dicer-pc-uncapped-low',
+    'dice-so-nice-pc-uncapped',
+    'dice-so-nice-pc-uncapped-effectsOff',
+  ]);
+  expect(plan.every((e) => e.rolls === QUICK_ROLLS)).toBe(true);
+  expect(QUICK_ROLLS).toEqual({ soak500: 200, burst100: 30 });
+  expect(planFor().plan.every((e) => e.rolls === undefined)).toBe(true);
+});
+
+test('planFor: --only keeps the runs whose name contains a term; nothing left is an error', () => {
+  expect(planFor({ only: ['dice-so-nice'] }).plan.every((e) => e.product === 'dice-so-nice')).toBe(true);
+  expect(planFor({ only: ['dicer'] }).plan.every((e) => e.product === 'dicer')).toBe(true);
+  expect(planFor({ quick: true, only: ['dice-so-nice'] }).plan.map(runName)).toEqual([
+    'dice-so-nice-pc-uncapped',
+    'dice-so-nice-pc-uncapped-effectsOff',
+  ]);
+  const none = planFor({ quick: true, only: ['throttled'] });
+  expect(none.plan).toEqual([]);
+  expect(none.error).toMatch(/matches no run/);
+});
+
+test('summaryMarkdown labels a partial run first; a full run has no label', () => {
+  const md = (o) => summaryMarkdown({ date: 'd', reports: [], rows: [], errors: [], ...o });
+  expect(md({})).not.toMatch(/Partial run/);
+  expect(md({ quick: true })).toMatch(/Partial run: quick mode \(no throttled runs; soak500 200 rolls, burst100 30 rolls\)/);
+  expect(md({ only: ['dice-so-nice'] })).toMatch(/Partial run: only runs matching dice-so-nice/);
 });

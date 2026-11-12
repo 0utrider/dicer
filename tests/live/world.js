@@ -662,7 +662,7 @@ async function settle(adapter) {
  * resize/contextLoss results carry `rebuilt` (canvas or generation changed) and a note. Every
  * chat message a scenario (or the warm-up) created is deleted when it ends (H-R11).
  */
-export async function benchRun({ ids, profile }) {
+export async function benchRun({ ids, profile, rolls = null }) {
   const product = benchProduct();
   if (!product) throw Error('exactly one of dicer / dice-so-nice must be active');
   const { runSuite } = await import(`${BENCH}scenarios.js`);
@@ -683,7 +683,7 @@ export async function benchRun({ ids, profile }) {
       try {
         progress(`${profile}: scenario ${n + 1}/${ids.length} ${id}`);
         const t0 = performance.now();
-        const part = await runSuite([id], adapter, { profile, hooks: Hooks });
+        const part = await runSuite([id], adapter, { profile, hooks: Hooks, rolls });
         const r = part.results[0];
         progress(`${profile}: ${id} done in ${((performance.now() - t0) / 1000).toFixed(0)} s, failures ${r?.failures ?? 'n/a'}`);
         if (id === 'resize' || id === 'contextLoss') {

@@ -271,7 +271,9 @@ export async function runScenario(scenario, adapter, opts = {}) {
       if (scenario.kind === 'soak' && i % SOAK_CLEAN_EVERY === 0 && typeof adapter.cleanup === 'function') {
         await guarded('cleanup', () => adapter.cleanup());
       }
-      if (scenario.kind === 'soak' && (i === SOAK_MARKS[0] || i === SOAK_MARKS[1])) {
+      // Heap and resources at roll 50 and at the soak's last roll (500, or fewer in quick mode).
+      const lastMark = Math.max(SOAK_MARKS[0] + 1, scenario.rolls);
+      if (scenario.kind === 'soak' && (i === SOAK_MARKS[0] || i === lastMark)) {
         const h = await guarded('heap', () => adapter.heap?.());
         const r = await guarded('resources', () => adapter.resources?.());
         if (i === SOAK_MARKS[0]) {
@@ -344,12 +346,17 @@ export async function runScenario(scenario, adapter, opts = {}) {
   };
 }
 
-/** Run scenarios by id, in order, and shape a SuiteResult. */
+/**
+ * Run scenarios by id, in order, and shape a SuiteResult. `opts.rolls`: per-id roll counts that
+ * replace the spec's (the harness's quick mode); a result's `rolls` is the count actually made.
+ */
 export async function runSuite(ids, adapter, opts = {}) {
   const results = [];
   for (const id of ids) {
-    const sc = SCENARIOS.find((s) => s.id === id);
-    if (!sc) throw new Error(`unknown scenario: ${id}`);
+    const spec = SCENARIOS.find((s) => s.id === id);
+    if (!spec) throw new Error(`unknown scenario: ${id}`);
+    const n = opts.rolls?.[id];
+    const sc = Number.isInteger(n) && n > 0 ? { ...spec, rolls: n } : spec;
     results.push(await runScenario(sc, adapter, opts));
   }
   let info = null;

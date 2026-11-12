@@ -372,8 +372,52 @@ export function outDirName(date) {
     .replace(/:/g, '-')}`;
 }
 
+/**
+ * `--dry-run`, `--quick`, `--only <names>` (or `--only=<names>`, comma-separated). `error` is set
+ * for an `--only` without names or an unknown flag.
+ */
 export function parseArgs(argv) {
-  return { dryRun: (argv ?? []).includes('--dry-run') };
+  const args = [...(argv ?? [])];
+  const out = { dryRun: false, quick: false, only: null };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--quick') out.quick = true;
+    else if (a === '--only' || a.startsWith('--only=')) {
+      const raw = a === '--only' ? args[++i] : a.slice('--only='.length);
+      const names = String(raw ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s && !s.startsWith('--'));
+      if (!names.length) return { ...out, error: '--only needs run names, e.g. --only dice-so-nice' };
+      out.only = names;
+    } else return { ...out, error: `unknown option ${a} (known: --dry-run, --quick, --only)` };
+  }
+  return out;
+}
+
+/**
+ * P9-R6 quick mode: fewer rolls where the count only buys precision. The soak keeps enough
+ * rolls to tell a leak (heap at roll 50 and at its last roll); the bursts keep 30 back to back.
+ */
+export const QUICK_ROLLS = Object.freeze({ soak500: 200, burst100: 30 });
+
+/**
+ * The runs to make: the matrix, without the throttled runs in quick mode (each run then carries
+ * `rolls`, the QUICK_ROLLS overrides), and only the runs whose name contains one of `only`.
+ * `error` when the filter leaves nothing.
+ */
+export function planFor({ quick = false, only = null } = {}) {
+  let plan = matrix();
+  if (quick) plan = plan.filter((e) => e.profile !== 'throttled').map((e) => Object.freeze({ ...e, rolls: QUICK_ROLLS }));
+  if (only?.length) {
+    plan = plan.filter((e) => only.some((n) => runName(e).includes(n)));
+    if (!plan.length) {
+      const names = (quick ? matrix().filter((e) => e.profile !== 'throttled') : matrix()).map(runName);
+      return { plan, error: `--only ${only.join(',')} matches no run. Runs: ${names.join(', ')}` };
+    }
+  }
+  return { plan };
 }
 
 const num = (v, d = 2) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : 'n/a');
@@ -413,8 +457,18 @@ export function runTier(suite) {
 }
 
 /** summary.md: runs, G2 target checks, then the head-to-head table. */
-export function summaryMarkdown({ date, reports, rows, errors, dsnFlag }) {
+export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = false, only = null }) {
   const out = [`# Dicer benchmark ${date}`, ''];
+  // P9-R6: a partial run says so first, so it is not read as the full benchmark.
+  if (quick || only?.length) {
+    const parts = [];
+    if (quick)
+      parts.push(
+        `quick mode (no throttled runs; ${Object.entries(QUICK_ROLLS).map(([k, v]) => `${k} ${v} rolls`).join(', ')})`,
+      );
+    if (only?.length) parts.push(`only runs matching ${only.join(', ')}`);
+    out.push(`Partial run: ${parts.join('; ')}. The full benchmark is the one that decides.`, '');
+  }
   out.push(
     '## Runs',
     '',
