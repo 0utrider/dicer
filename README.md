@@ -103,7 +103,8 @@ To look at all 22 themes and throw each one with its celebration, run `npm run d
 In the theme browser press **New theme** (or duplicate a theme and edit it). The appearance editor shows a live die that turns as you edit. You can change:
 
 - **Material**: opaque, clear resin, metal, marble or pearl, with colours and roughness (a finish only for metal). Only clear resin has an **Inside** (a nebula, glitter and so on).
-- **Numbers**: paint, gold, silver or enamel, a colour, the engraving depth and a font.
+- **Numbers**: paint, gold, silver, enamel, **outline** (only the rim of each number is filled), **holo foil** (a rainbow that shifts as the die turns) or **glow ink** (numbers that light up, best on a dark die), a colour, the depth and a font. Numbers can be **engraved** into the die or **raised** from it. A colour that would be hard to read against the die is made lighter or darker automatically.
+- **Crit and fumble icons**: a starburst, crown, skull, broken shield, heart or flame in place of the 20 and the 1. Only d20s show icons; every other die keeps its numbers.
 - **Edges**: five steps of sharpness, from sharp to very round.
 - **Glow**, a look **per die type**, and the **sound and celebrations**.
 
@@ -112,6 +113,7 @@ Every look is saved as a theme, so it can be your default, be used for one die t
 ### Fonts
 
 - **Serif** is the built-in DM Serif Display and **Sans** is Atkinson Hyperlegible Bold, a clear face made for reading. Both are open fonts and ship with Dicer.
+- Six more built-in styles: **Blackletter** (UnifrakturMaguntia), **Norse** (Germania One), **Uncial** (Uncial Antiqua), **Sci-fi** (Orbitron), **Handwritten** (Caveat) and **Art Deco** (Limelight). All are under the SIL Open Font License 1.1 (licences in `assets/fonts/`). Their digits load the first time a die uses them.
 - **On this computer** uses a font installed on your computer (or loaded by the page's CSS). Other players see it only if they have it too.
 - **Font file** uses a `.ttf`, `.otf`, `.woff` or `.woff2` file in Foundry's data folder, so every player gets the same digits.
 - The digits of a computer font or a font file are built in the background the first time they are needed and then kept. Until they are ready the dice show the serif digits. A font that cannot be loaded falls back to the serif digits and writes one warning to the console.
