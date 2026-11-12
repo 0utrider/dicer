@@ -392,3 +392,63 @@ describe('dice designs plan 2: bodies', () => {
     expect(needsLookExtras(fallbackLook(body({ type: 'gem', luminous: 1 })))).toBe(false);
   });
 });
+
+const ins = (i, b) => normalizeAppearance({ body: { type: 'resin', ...b }, interior: i });
+describe('dice designs plan 3: insides', () => {
+  test('new interior types, inclusion, bubble and sand normalise; unknown values fall back', () => {
+    for (const type of ['foil', 'eye', 'botanical', 'smoke']) expect(ins({ type }).interior.type).toBe(type);
+    expect(ins({ type: 'jelly' }).interior.type).toBe(DEFAULT_APPEARANCE.interior.type);
+    expect(DEFAULT_APPEARANCE.interior).toMatchObject({ inclusion: 'flower', bubble: false, sand: false });
+    for (const inclusion of ['flower', 'moss', 'butterfly']) expect(ins({ inclusion }).interior.inclusion).toBe(inclusion);
+    for (const inclusion of ['fern', 3, null]) expect(ins({ inclusion }).interior.inclusion).toBe('flower');
+    expect(ins({ bubble: true, sand: true }).interior).toMatchObject({ bubble: true, sand: true });
+    for (const v of [1, 'true', null, {}]) expect(ins({ bubble: v, sand: v }).interior).toMatchObject({ bubble: false, sand: false });
+    // stored whatever the type
+    expect(ins({ type: 'nebula', bubble: true, inclusion: 'moss' }).interior).toMatchObject({ bubble: true, inclusion: 'moss' });
+    const a = ins({ type: 'eye', inclusion: 'butterfly', sand: true });
+    expect(normalizeAppearance(a)).toEqual(a);
+  });
+  test('liquid with bubble/sand gets liquid+b / +s / +bs in programKey; non-liquid insides ignore them', () => {
+    const k = (i) => programKey(ins({ type: 'liquid', ...i }), F);
+    expect(k({})).toBe('resin|-|liquid:32|eng1|glow0|fx1|safe0');
+    expect(k({ bubble: true })).toBe('resin|-|liquid+b:32|eng1|glow0|fx1|safe0');
+    expect(k({ sand: true })).toBe('resin|-|liquid+s:32|eng1|glow0|fx1|safe0');
+    expect(k({ bubble: true, sand: true })).toBe('resin|-|liquid+bs:32|eng1|glow0|fx1|safe0');
+    for (const type of ['nebula', 'glitter', 'swirl', 'shape', 'foil', 'eye', 'botanical', 'smoke']) {
+      expect(programKey(ins({ type, bubble: true, sand: true }), F)).toBe(programKey(ins({ type }), F));
+    }
+    expect(needsLookExtras(ins({ type: 'nebula', bubble: true, sand: true }))).toBe(false);
+    expect(programKey(ins({ type: 'foil' }), F)).toContain('|foil:32|');
+    expect(programKey(ins({ type: 'liquid', bubble: true }), { ...F, interiors: false })).toContain('|none|');
+    expect(programKey(ins({ type: 'liquid', bubble: true }), { ...F, safe: true })).toBe(programKey(normalizeAppearance({}), { ...F, safe: true }));
+  });
+  test('a new inside on a non-resin body is none and needs no extras', () => {
+    for (const type of ['opaque', 'metal', 'marble', 'pearl']) {
+      const a = normalizeAppearance({ body: { type }, interior: { type: 'foil', bubble: true, sand: true } });
+      expect(a.interior.type).toBe('none');
+      expect(needsLookExtras(a)).toBe(false);
+      expect(programKey(a, F)).toContain('|none|');
+      expect(fallbackLook(a)).toBe(a);
+    }
+  });
+  test('needsLookExtras: resin with a new inside, or liquid with bubble or sand', () => {
+    for (const type of ['foil', 'eye', 'botanical', 'smoke']) expect(needsLookExtras(ins({ type }))).toBe(true);
+    expect(needsLookExtras(ins({ type: 'liquid' }))).toBe(false);
+    expect(needsLookExtras(ins({ type: 'liquid', bubble: true }))).toBe(true);
+    expect(needsLookExtras(ins({ type: 'liquid', sand: true }))).toBe(true);
+    expect(needsLookExtras(ins({ type: 'glitter', inclusion: 'moss' }))).toBe(false);
+  });
+  test('fallbackLook maps foil→glitter, eye→shape:sphere, botanical→swirl, smoke→swirl, bubble/sand→false', () => {
+    const fb = (i) => fallbackLook(ins(i)).interior;
+    expect(fb({ type: 'foil' }).type).toBe('glitter');
+    expect(fb({ type: 'eye', shape: 'star' })).toMatchObject({ type: 'shape', shape: 'sphere' });
+    expect(fb({ type: 'botanical' }).type).toBe('swirl');
+    expect(fb({ type: 'smoke' }).type).toBe('swirl');
+    expect(fb({ type: 'liquid', bubble: true, sand: true })).toMatchObject({ type: 'liquid', bubble: false, sand: false });
+    expect(fb({ type: 'foil', colors: ['#112233', '#445566'], density: 0.3 })).toMatchObject({ colors: ['#112233', '#445566'], density: 0.3 });
+    for (const type of ['foil', 'eye', 'botanical', 'smoke']) expect(needsLookExtras(fallbackLook(ins({ type })))).toBe(false);
+    // a look that needs the chunk only for another reason keeps its shape and today's type
+    const holo = normalizeAppearance({ interior: { type: 'shape', shape: 'heart' }, numbers: { fill: 'holo' } });
+    expect(fallbackLook(holo).interior).toMatchObject({ type: 'shape', shape: 'heart' });
+  });
+});

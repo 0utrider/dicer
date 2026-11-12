@@ -9,7 +9,10 @@ export const BODY_PRESETS = Object.freeze({
 const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
 const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
 const AGED = ['patina', 'worn']; // metal finishes drawn by the look-extras chunk
-const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
+const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke'];
+const INCLUSIONS = ['flower', 'moss', 'butterfly'];
+// the new insides (drawn by the look-extras chunk) and what they draw while it is missing
+const NEW_INSIDES = { foil: { type: 'glitter' }, eye: { type: 'shape', shape: 'sphere' }, botanical: { type: 'swirl' }, smoke: { type: 'swirl' } };
 const SHAPES = ['star', 'heart', 'skull', 'sphere'];
 const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 const RELIEFS = ['engraved', 'raised'];
@@ -27,7 +30,7 @@ function deepFreeze(o) {
 
 export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null, luminous: 0 },
-  interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star' },
+  interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false },
   numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif' },
   edges: { radius: 0.5, style: 'rounded' },
   glow: { color: '#ffffff', intensity: 0 },
@@ -111,6 +114,9 @@ export function normalizeAppearance(input) {
       colors: [color(cols[0], D.interior.colors[0]), color(cols[1], D.interior.colors[1])],
       density: num(it.density, 0, 1, D.interior.density),
       shape: pick(it.shape, SHAPES, D.interior.shape),
+      inclusion: pick(it.inclusion, INCLUSIONS, D.interior.inclusion),
+      bubble: it.bubble === true,
+      sand: it.sand === true,
     };
     if (body.type !== 'resin') interior.type = 'none';
     const radius = edgeRadius(e, D.edges.radius);
@@ -161,9 +167,8 @@ export function programKey(a, flags) {
   const steps = flags.interiorSteps;
   const active =
     a.body.type === 'resin' && !!flags.interiors && steps > 0 && a.interior.type !== 'none';
-  const interior = active
-    ? `${a.interior.type}${a.interior.type === 'shape' ? ':' + a.interior.shape : ''}:${steps}`
-    : 'none';
+  const { type, shape } = a.interior;
+  const interior = active ? `${type}${type === 'shape' ? ':' + shape : ''}${LIQUID_EXTRA(a)}:${steps}` : 'none';
   const finish = a.body.type === 'metal' ? a.body.finish : '-';
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
   const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
@@ -174,6 +179,9 @@ export function programKey(a, flags) {
   return parts.join('|');
 }
 
+// liquid's bubble / sand programs: '+b', '+s', '+bs'; nothing for other insides
+const LIQUID_EXTRA = ({ interior: i }) => (i.type === 'liquid' && (i.bubble || i.sand) ? `+${i.bubble ? 'b' : ''}${i.sand ? 's' : ''}` : '');
+
 /** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, bodies, finishes, luminous). */
 export const needsLookExtras = (a) =>
   FILLS.indexOf(a.numbers.fill) > 3 ||
@@ -181,7 +189,8 @@ export const needsLookExtras = (a) =>
   !!(a.numbers.icons.crit || a.numbers.icons.fumble) ||
   !!BODY_PRESETS[a.body.type] ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
-  a.body.luminous > 0;
+  a.body.luminous > 0 ||
+  (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || LIQUID_EXTRA(a) !== ''));
 
 /** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */
 export const fallbackLook = (a) =>
@@ -194,6 +203,12 @@ export const fallbackLook = (a) =>
           finish: AGED.includes(a.body.finish) ? 'antique' : a.body.finish,
           luminous: 0,
           preset: null,
+        },
+        interior: {
+          ...a.interior,
+          ...NEW_INSIDES[a.interior.type],
+          bubble: false,
+          sand: false,
         },
         numbers: {
           ...a.numbers,

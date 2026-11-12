@@ -903,3 +903,63 @@ describe('look extras params', () => {
     expect(m.clearcoat).toBe(0.25);
   });
 });
+
+describe('dice designs plan 3: insides', () => {
+  afterEach(() => _setLookExtrasImport(() => new Promise(() => {})));
+  const foil = () => look({ body: { type: 'resin' }, interior: { type: 'foil' } });
+
+  test("a patch's interior replaces interiorChunk in the march", async () => {
+    const mod = {
+      ready: Promise.resolve(),
+      patchMaterial: vi.fn(() => ({ interior: { pars: '// PARS-X', main: '// MAIN-X' } })),
+    };
+    _setLookExtrasImport(vi.fn(async () => mod));
+    await requestLookExtras();
+    const m = createDiceMaterial(foil(), atlas, s, labels, FLAGS);
+    const fs = patched(m).fragmentShader;
+    expect(fs).toContain('// PARS-X');
+    expect(fs).toContain('// MAIN-X');
+    expect(fs).not.toContain('dcInterior');
+    expect(m.userData.programKey).toContain('|foil:32|');
+    // without p.interior a built-in type still uses interiorChunk
+    mod.patchMaterial.mockReturnValue({});
+    const g = createDiceMaterial(look({ body: { type: 'resin' }, interior: { type: 'liquid', bubble: true } }), atlas, s, labels, FLAGS);
+    expect(patched(g).fragmentShader).toContain('dcInterior');
+  });
+
+  test('a new inside without the chunk loaded builds its built-in fallback without throwing', () => {
+    _setLookExtrasImport(vi.fn(() => new Promise(() => {})));
+    for (const type of ['foil', 'eye', 'botanical', 'smoke']) {
+      const a = look({ body: { type: 'resin' }, interior: { type, bubble: true } });
+      let m;
+      expect(() => (m = createDiceMaterial(a, atlas, s, labels, FLAGS))).not.toThrow();
+      expect(m.userData.programKey).toBe(programKey(fallbackLook(a), FLAGS));
+      expect(patched(m).fragmentShader).toContain('dcInterior');
+    }
+    expect(() => createDiceMaterial(foil(), atlas, s, labels, { ...FLAGS, interiorSteps: 0 })).not.toThrow();
+  });
+});
+
+test('interiorChunk output is unchanged', async () => {
+  const { createHash } = await import('node:crypto');
+  const { interiorChunk, INTERIOR_PARS, INTERIOR_MARCH } = await import('../../src/render/shaders/interior.js');
+  const h = (x) => createHash('sha256').update(x).digest('hex').slice(0, 16);
+  // sha256 prefixes of [pars, main], taken at the base commit (before the exports were added)
+  const BASE = {
+    liquid: ['a38ee2ef70aa3254', 'f6954184a5c938a9'],
+    glitter: ['0ce31e051b620718', 'f6954184a5c938a9'],
+    swirl: ['db982d8ba221b80c', 'f6954184a5c938a9'],
+    nebula: ['0182401ce4351775', 'f6954184a5c938a9'],
+    'shape:star': ['7c57e53538518e1f', 'f6954184a5c938a9'],
+    'shape:heart': ['9bd78f6d8deaff6f', 'f6954184a5c938a9'],
+    'shape:skull': ['21a4e6bfdc5c6490', 'f6954184a5c938a9'],
+    'shape:sphere': ['ab073cd43c43888d', 'f6954184a5c938a9'],
+  };
+  for (const [k, [pars, main]] of Object.entries(BASE)) {
+    const [t, sh] = k.split(':');
+    const c = interiorChunk(t, sh);
+    expect([h(c.pars), h(c.main)]).toEqual([pars, main]);
+  }
+  expect(interiorChunk('liquid').main).toBe(INTERIOR_MARCH);
+  expect(interiorChunk('liquid').pars).toContain(INTERIOR_PARS);
+});

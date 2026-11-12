@@ -345,7 +345,7 @@ ${FX_EMISSIVE}`;
   if (mode === 'march') {
     material.defines.DICER_INTERIOR = '';
     material.defines.DICER_STEPS = f.interiorSteps;
-    const interior = interiorChunk(a.interior.type, a.interior.shape);
+    const interior = p.interior ?? interiorChunk(a.interior.type, a.interior.shape);
     chunks.pars = `${chunks.pars}
 ${interior.pars}`;
     chunks.lighting = chunks.lighting.replace(INTERIOR_HOOK, interior.main);
