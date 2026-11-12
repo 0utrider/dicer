@@ -515,6 +515,10 @@
         "SecondColor": "Second colour",
         "Density": "Density",
         "Shape": "Shape",
+        "IrisColor": "Iris colour",
+        "Inclusion": "Inclusion",
+        "Bubble": "Air bubble",
+        "Sand": "Sand",
         "ResinOnly": "Only clear resin dice have an inside. Choose Clear resin under Body to add one."
       },
       "InsideType": {
@@ -523,7 +527,16 @@
         "glitter": "Glitter",
         "swirl": "Swirl",
         "nebula": "Nebula",
-        "shape": "Shape"
+        "shape": "Shape",
+        "foil": "Foil flakes",
+        "eye": "Floating eye",
+        "botanical": "Inclusion",
+        "smoke": "Smoke"
+      },
+      "Inclusion": {
+        "flower": "Flower",
+        "moss": "Moss",
+        "butterfly": "Butterfly"
       },
       "Shape": {
         "star": "Star",

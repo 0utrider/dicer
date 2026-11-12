@@ -1089,6 +1089,21 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   grid-template-columns: 1fr 1fr;
   gap: 8px 12px;
 }
+.dicer-appearance-editor .dicer-ae-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+.dicer-appearance-editor .dicer-ae-toggle input {
+  margin: 0;
+  accent-color: var(--dicer-accent);
+}
+.dicer-appearance-editor .dicer-ae-toggle:has(input:checked) {
+  color: var(--color-text-emphatic);
+  font-weight: 600;
+}
 .dicer-appearance-editor .dicer-ae-chips {
   display: flex;
   flex-wrap: wrap;

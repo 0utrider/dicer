@@ -21,7 +21,9 @@ export const BODY_PRESET_LISTS = {
   gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
   wood: ['oak', 'walnut', 'cherry', 'ebony'],
 };
-export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
+export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke'];
+// Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
+export const INCLUSION_LIST = ['flower', 'moss', 'butterfly'];
 export const SHAPES = ['star', 'heart', 'skull', 'sphere'];
 export const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 export const RELIEFS = ['engraved', 'raised'];
@@ -64,7 +66,12 @@ export function formFromAppearance(raw) {
   const inside = a.body.type === 'resin' ? a.interior : rawInside;
   return {
     body: { ...a.body },
-    interior: { type: inside.type, color1: inside.colors[0], color2: inside.colors[1], density: inside.density, shape: inside.shape },
+    interior: { type: inside.type, color1: inside.colors[0], color2: inside.colors[1], density: inside.density,
+      shape: inside.shape,
+      inclusion: inside.inclusion,
+      bubble: inside.bubble,
+      sand: inside.sand,
+    },
     numbers: {
       fill: a.numbers.fill,
       relief: a.numbers.relief,
@@ -91,7 +98,7 @@ export function appearanceFromForm(form) {
   const g = isObj(f.glow) ? f.glow : {};
   return normalizeAppearance({
     body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset, luminous: n(b.luminous) },
-    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape },
+    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand },
     numbers: {
       fill: num.fill,
       relief: num.relief,
@@ -123,6 +130,9 @@ export function visibleSections(look) {
     inside: resin,
     insideDetails: resin && inside !== 'none' && INTERIOR_TYPES.includes(inside),
     insideShape: resin && inside === 'shape',
+    inclusion: resin && inside === 'botanical',
+    liquidOptions: resin && inside === 'liquid',
+    irisLabel: resin && inside === 'eye',
     // the aged metal finishes' verdigris / grime colour is the second colour
     color2: TWO_TONE.includes(body) || (body === 'metal' && (look?.body?.finish === 'patina' || look?.body?.finish === 'worn')),
     finish: body === 'metal',

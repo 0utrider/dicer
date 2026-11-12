@@ -85,10 +85,26 @@
             </div>
             {{#if show.insideDetails}}
               <div class="dicer-ae-row">
-                <div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Inside.MainColor"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.interior.color1}}" data-color-for="interior.color1" aria-label="{{localize "DICER.Appearance.Inside.MainColor"}}"><input type="text" name="interior.color1" value="{{form.interior.color1}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Inside.MainColor"}}"></span></div>
+                <div class="dicer-field dicer-ae-color"><span>{{#if show.irisLabel}}{{localize "DICER.Appearance.Inside.IrisColor"}}{{else}}{{localize "DICER.Appearance.Inside.MainColor"}}{{/if}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.interior.color1}}" data-color-for="interior.color1" aria-label="{{#if show.irisLabel}}{{localize "DICER.Appearance.Inside.IrisColor"}}{{else}}{{localize "DICER.Appearance.Inside.MainColor"}}{{/if}}"><input type="text" name="interior.color1" value="{{form.interior.color1}}" maxlength="7" spellcheck="false" aria-label="{{#if show.irisLabel}}{{localize "DICER.Appearance.Inside.IrisColor"}}{{else}}{{localize "DICER.Appearance.Inside.MainColor"}}{{/if}}"></span></div>
                 <div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Inside.SecondColor"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.interior.color2}}" data-color-for="interior.color2" aria-label="{{localize "DICER.Appearance.Inside.SecondColor"}}"><input type="text" name="interior.color2" value="{{form.interior.color2}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Inside.SecondColor"}}"></span></div>
               </div>
               <label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Inside.Density"}}<output data-for="interior.density">{{pct.density}}</output></span><input type="range" name="interior.density" min="0" max="1" step="0.01" value="{{form.interior.density}}"></label>
+              {{#if show.inclusion}}
+                <div class="dicer-field">
+                  <span>{{localize "DICER.Appearance.Inside.Inclusion"}}</span>
+                  <div class="dicer-ae-chips" role="radiogroup" aria-label="{{localize "DICER.Appearance.Inside.Inclusion"}}">
+                    {{#each inclusions}}
+                      <button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" role="radio" aria-checked="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="interior.inclusion" data-value="{{id}}"><i class="fa-solid {{icon}}"></i><span>{{label}}</span></button>
+                    {{/each}}
+                  </div>
+                </div>
+              {{/if}}
+              {{#if show.liquidOptions}}
+                <div class="dicer-ae-row dicer-ae-toggles">
+                  <label class="dicer-ae-toggle"><input type="checkbox" name="interior.bubble" {{#if form.interior.bubble}}checked{{/if}}><span>{{localize "DICER.Appearance.Inside.Bubble"}}</span></label>
+                  <label class="dicer-ae-toggle"><input type="checkbox" name="interior.sand" {{#if form.interior.sand}}checked{{/if}}><span>{{localize "DICER.Appearance.Inside.Sand"}}</span></label>
+                </div>
+              {{/if}}
               {{#if show.insideShape}}
                 <div class="dicer-field">
                   <span>{{localize "DICER.Appearance.Inside.Shape"}}</span>

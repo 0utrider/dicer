@@ -19,6 +19,7 @@ import {
   FINISHES,
   BODY_PRESET_LISTS,
   INTERIOR_TYPES,
+  INCLUSION_LIST,
   SHAPES,
   FILLS,
   RELIEFS,
@@ -55,7 +56,8 @@ const humanize = (id) => {
 };
 const pct = (v, scale = 1) => `${Math.round((Number(v) || 0) * 100 * scale) / scale}%`;
 
-const INSIDE_ICONS = { none: 'fa-ban', liquid: 'fa-droplet', glitter: 'fa-wand-sparkles', swirl: 'fa-hurricane', nebula: 'fa-cloud', shape: 'fa-shapes' };
+const INSIDE_ICONS = { none: 'fa-ban', liquid: 'fa-droplet', glitter: 'fa-wand-sparkles', swirl: 'fa-hurricane', nebula: 'fa-cloud', shape: 'fa-shapes', foil: 'fa-certificate', eye: 'fa-eye', botanical: 'fa-seedling', smoke: 'fa-smog' };
+const INCLUSION_ICONS = { flower: 'fa-fan', moss: 'fa-leaf', butterfly: 'fa-bugs' };
 const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sphere: 'fa-circle' };
 const EDGE_NAMES = ['sharp', 'crisp', 'soft', 'round', 'veryRound'];
 /** px radius of the one rounded corner each edge-step icon draws (22 px box): clearly apart. */
@@ -255,6 +257,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       bodyPresets: active(BODY_PRESET_LISTS[form.body.type] ?? [], form.body.preset, 'DICER.Appearance.Preset.'),
       finishes: active(FINISHES, form.body.finish, 'DICER.Appearance.Finish.'),
       insideTypes: active(INTERIOR_TYPES, form.interior.type, 'DICER.Appearance.InsideType.', INSIDE_ICONS),
+      inclusions: active(INCLUSION_LIST, form.interior.inclusion, 'DICER.Appearance.Inclusion.', INCLUSION_ICONS),
       shapes: active(SHAPES, form.interior.shape, 'DICER.Appearance.Shape.', SHAPE_ICONS),
       fills: active(FILLS, form.numbers.fill, 'DICER.Appearance.Fill.'),
       reliefs: active(RELIEFS, form.numbers.relief, 'DICER.Appearance.Relief.'),
@@ -438,7 +441,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       return;
     }
     let path = el.name;
-    let value = el.value;
+    let value = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.colorFor) {
       path = el.dataset.colorFor;
       const text = this.element.querySelector(`input[name="${path}"]`);

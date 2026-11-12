@@ -12,6 +12,8 @@ import {
   FILLS,
   RELIEFS,
   ICON_CHOICES,
+  INTERIOR_TYPES,
+  INCLUSION_LIST,
   FONT_KINDS,
   formFromAppearance,
   appearanceFromForm,
@@ -160,6 +162,53 @@ describe('bodies, presets, finishes and luminous in the form', () => {
       expect(visibleSections({ body: { type: 'metal', finish } }).color2).toBe(finish === 'patina' || finish === 'worn');
     }
     expect(visibleSections({ body: { type: 'opaque', finish: 'patina' } }).color2).toBe(false);
+  });
+});
+
+describe('the new insides in the form', () => {
+  const NEW_TYPES = ['foil', 'eye', 'botanical', 'smoke'];
+  it('form round-trips every new inside, inclusion, bubble and sand', () => {
+    for (const type of NEW_TYPES)
+      for (const inclusion of ['flower', 'moss', 'butterfly']) {
+        const look = { body: { type: 'resin' }, interior: { type, inclusion } };
+        const a = normalizeAppearance(look);
+        expect(a.interior).toMatchObject({ type, inclusion });
+        expect(appearanceFromForm(formFromAppearance(look))).toEqual(a);
+      }
+    for (const bubble of [false, true])
+      for (const sand of [false, true]) {
+        const look = { body: { type: 'resin' }, interior: { type: 'liquid', bubble, sand } };
+        const a = normalizeAppearance(look);
+        expect(a.interior).toMatchObject({ bubble, sand });
+        expect(appearanceFromForm(formFromAppearance(look))).toEqual(a);
+        // real booleans through setField, not strings
+        let f = setField(formFromAppearance(look), 'interior.bubble', !bubble);
+        f = setField(f, 'interior.sand', !sand);
+        expect(f.interior).toMatchObject({ bubble: !bubble, sand: !sand });
+        expect(appearanceFromForm(f).interior).toMatchObject({ bubble: !bubble, sand: !sand });
+      }
+  });
+  it("the form's lists are exactly what normalisation accepts", () => {
+    expect(INTERIOR_TYPES).toEqual(['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', ...NEW_TYPES]);
+    for (const type of INTERIOR_TYPES) expect(normalizeAppearance({ body: { type: 'resin' }, interior: { type } }).interior.type).toBe(type);
+    expect(INCLUSION_LIST).toEqual(['flower', 'moss', 'butterfly']);
+    for (const inclusion of INCLUSION_LIST) expect(normalizeAppearance({ interior: { inclusion } }).interior.inclusion).toBe(inclusion);
+    expect(normalizeAppearance({ interior: { inclusion: 'bogus' } }).interior.inclusion).toBe('flower');
+  });
+  it('keeps the new fields through a non-resin body (resin -> metal -> resin)', () => {
+    const look = { body: { type: 'resin' }, interior: { type: 'liquid', bubble: true, sand: true } };
+    let f = setField(formFromAppearance(look), 'body.type', 'metal');
+    expect(f.interior).toMatchObject({ bubble: true, sand: true });
+    f = setField(setField(formFromAppearance({ body: { type: 'metal' }, interior: { type: 'botanical', inclusion: 'moss' } }), 'body.type', 'metal'), 'body.type', 'resin');
+    expect(appearanceFromForm(f).interior).toMatchObject({ type: 'botanical', inclusion: 'moss' });
+  });
+  it('visibleSections: inclusion chips only for botanical; bubble and sand only for liquid', () => {
+    for (const type of INTERIOR_TYPES) {
+      const v = visibleSections({ body: { type: 'resin' }, interior: { type } });
+      expect(v.inclusion, type).toBe(type === 'botanical');
+      expect(v.liquidOptions, type).toBe(type === 'liquid');
+    }
+    expect(visibleSections({ body: { type: 'metal' }, interior: { type: 'botanical' } })).toMatchObject({ inclusion: false, liquidOptions: false });
   });
 });
 
@@ -492,6 +541,33 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('inclusion chips only for botanical; bubble and sand only for liquid; iris label for the eye', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const resin = { body: { type: 'resin' }, interior: { type: 'liquid' } };
+    const app = await open({ base: { id: 't', name: 'T', appearance: resin, perType: {}, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    expect(labels('[data-field="interior.type"]')).toEqual(INTERIOR_TYPES.map((t) => L(`InsideType.${t}`)));
+    expect(q(app, '[data-field="interior.inclusion"]')).toBeNull();
+    expect(q(app, 'input[name="interior.bubble"]')).toBeTruthy();
+    expect(q(app, 'input[name="interior.sand"]')).toBeTruthy();
+    expect(labels('[data-section="inside"] .dicer-ae-color > span:first-child')[0]).toBe(L('Inside.MainColor'));
+    // the toggles round-trip as real booleans
+    const bubble = q(app, 'input[name="interior.bubble"]');
+    bubble.checked = true;
+    bubble.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(app.theme().appearance.interior.bubble).toBe(true);
+    await click(app, '[data-field="interior.type"][data-value="botanical"]');
+    expect(q(app, 'input[name="interior.bubble"]')).toBeNull();
+    expect(labels('[data-field="interior.inclusion"]')).toEqual(INCLUSION_LIST.map((i) => L(`Inclusion.${i}`)));
+    await click(app, '[data-field="interior.inclusion"][data-value="moss"]');
+    expect(app.theme().appearance.interior.inclusion).toBe('moss');
+    expect(q(app, '[data-field="interior.inclusion"][data-value="moss"]').getAttribute('aria-checked')).toBe('true');
+    await click(app, '[data-field="interior.type"][data-value="eye"]');
+    expect(q(app, '[data-field="interior.inclusion"]')).toBeNull();
+    expect(labels('[data-section="inside"] .dicer-ae-color > span:first-child')[0]).toBe(L('Inside.IrisColor'));
+    await app.close();
+  });
+
   it('the Throw button throws the working look (appearance + perType as edited) on the table', async () => {
     const _throwLook = vi.fn(async () => {});
     globalThis.game.dice3d._throwLook = _throwLook;
@@ -806,7 +882,8 @@ describe('lang/en.json', () => {
       'BodyType.': BODY_TYPES,
       'Finish.': FINISHES,
       'Preset.': Object.values(BODY_PRESETS).flat(),
-      'InsideType.': ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'],
+      'InsideType.': INTERIOR_TYPES,
+      'Inclusion.': INCLUSION_LIST,
       'Shape.': ['star', 'heart', 'skull', 'sphere'],
       'Fill.': ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'],
       'FontKind.': [...FONT_IDS_BUILTIN, 'css', 'file'],

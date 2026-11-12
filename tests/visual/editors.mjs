@@ -170,6 +170,29 @@ async function main() {
       );
     if (Object.keys(bodyShots).length === 3 && new Set(Object.values(bodyShots)).size !== 3)
       problems.push('appearance-body: two body types drew the same stage');
+    // The new insides: the chips and options each shows, and the live preview follows each pick.
+    const insideShots = {};
+    for (const [type, expected] of [['eye', { inclusion: 0, bubble: 0 }], ['botanical', { inclusion: 3, bubble: 0 }], ['liquid', { inclusion: 0, bubble: 1 }]])
+      problems.push(
+        ...(await shoot(browser, 'app=appearance', `appearance-inside-${type}.png`, async (page) => {
+          await livePreview(page);
+          await page.click('[data-section="inside"]:not([open]) > summary').catch(() => {});
+          await page.click(`[data-field="interior.type"][data-value="${type}"]`);
+          if (type === 'liquid') await page.check('input[name="interior.bubble"]');
+          await page.waitForTimeout(1200); // debounce + the chunk-built program
+          await page.mouse.move(5, 5);
+          const got = await page.evaluate(() => ({
+            inclusion: document.querySelectorAll('[data-field="interior.inclusion"]').length,
+            bubble: document.querySelectorAll('input[name="interior.bubble"]:checked').length,
+          }));
+          if (got.inclusion !== expected.inclusion || got.bubble !== expected.bubble)
+            throw new Error(`appearance-inside-${type}: unexpected options ${JSON.stringify(got)}`);
+          insideShots[type] = (await page.locator('.dicer-ae-stage').screenshot()).toString('base64');
+          await page.locator('[data-section="inside"]').scrollIntoViewIfNeeded();
+        }, { reducedMotion: 'reduce' })),
+      );
+    if (Object.keys(insideShots).length === 3 && new Set(Object.values(insideShots)).size !== 3)
+      problems.push('appearance-inside: two insides drew the same stage');
     // A font from the computer (Georgia) drawn on the die.
     problems.push(
       ...(await shoot(browser, 'app=appearance&theme=user.u1.georgia-gold', 'appearance-editor-font.png', async (page) => {
