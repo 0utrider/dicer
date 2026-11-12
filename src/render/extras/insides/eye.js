@@ -61,7 +61,8 @@ vec3 dcEyIris( vec3 s, vec3 rd, vec3 ax, vec3 t1, vec3 t2, vec3 lightCol, float 
 	float wav = dcNoise3( vec3( dir * 5.0, 11.0 ) );
 	float cr = 0.3 + 0.12 * ( wav - 0.5 );
 	float inner = 1.0 - smoothstep( cr - 0.05, cr + 0.05, u );
-	float coll = exp( - pow( ( u - cr ) / 0.06, 2.0 ) );
+	float dcEyCd = ( u - cr ) / 0.06; // squared by hand: pow() of a negative base is undefined
+	float coll = exp( - dcEyCd * dcEyCd );
 	vec3 base = uInteriorColors[ 0 ];
 	vec3 warm = min( base * vec3( 1.25, 1.0, 0.55 ) + vec3( 0.16, 0.1, 0.0 ), vec3( 1.0 ) );
 	vec3 col = mix( base, warm, inner * 0.75 );
@@ -74,7 +75,8 @@ vec3 dcEyIris( vec3 s, vec3 rd, vec3 ax, vec3 t1, vec3 t2, vec3 lightCol, float 
 	col *= 1.0 - 0.55 * crypt;
 	// darker limbal ring and the pupillary ruff
 	col *= mix( 1.0, 0.12, smoothstep( 0.78, 1.0, rho ) );
-	col = mix( col, base * 0.25 + vec3( 0.04, 0.025, 0.01 ), exp( - pow( u / 0.06, 2.0 ) ) * 0.8 );
+	float dcEyRd = u / 0.06;
+	col = mix( col, base * 0.25 + vec3( 0.04, 0.025, 0.01 ), exp( - dcEyRd * dcEyRd ) * 0.8 );
 	// the pupil: crisp black disc
 	float pupil = 1.0 - smoothstep( pr - 0.02, pr + 0.008, rho );
 	col = mix( col, vec3( 0.006 ), pupil );
@@ -117,7 +119,7 @@ vec3 dcEyShade( vec3 s, vec3 rd ) {
 	vec3 r = reflect( rd, s );
 	float rk = max( dot( r, dcIKey ), 0.0 );
 	float rc = max( dot( r, normalize( dcEyAx + 0.5 * dcIKey ) ), 0.0 );
-	float fres = 0.04 + 0.96 * pow( 1.0 - facing, 5.0 );
+	float fres = 0.04 + 0.96 * pow( max( 1.0 - facing, 0.0 ), 5.0 );
 	col += vec3( 1.0 ) * ( 2.5 * pow( rk, 160.0 ) + 0.12 * pow( rk, 16.0 ) + 1.6 * smoothstep( 0.994, 0.998, rc ) + 0.1 * pow( rc, 30.0 ) );
 	col += dcILight * fres * 0.7 * smoothstep( - 0.2, 1.0, dot( r, dcEyAx ) );
 	return min( col, vec3( 1.0 ) );

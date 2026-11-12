@@ -586,6 +586,18 @@ describe('insides', () => {
     expect(patch.interior.pars).toContain(body);
     // the pupil axis is the die's current world up (set from dcRm before the march loop)
     expect(body).toContain('vec3 dcEyAx = dcIUp;');
+    // ... and it feeds the shading frame: the tangent frame, the height along the axis (cornea /
+    // sclera split), the iris disc and the catchlight
+    expect(body).toMatch(/vec3 t1 = normalize\( cross\( dcEyAx,/);
+    expect(body).toContain('vec3 t2 = cross( dcEyAx, t1 );');
+    expect(body).toContain('float c = dot( s, dcEyAx );');
+    expect(body).toMatch(/dcEyIris\( s, rd, dcEyAx, t1, t2,/);
+    expect(body).toContain('vec2 q = vec2( dot( xi, t1 ), dot( xi, t2 ) )');
+    expect(body).toContain('normalize( dcEyAx + 0.5 * dcIKey )');
+    // dcIUp is read only through dcEyAx (no second, unrelated axis)
+    expect(count(body, 'dcIUp')).toBe(1);
+    // pow() only of bases that cannot be negative (undefined in GLSL ES): max(...) or a max'd name
+    for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^(max\(|rk$|rc$)/);
     expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
     expect(body).toMatch(/DC_EY_AA/); // soft silhouette
     expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
