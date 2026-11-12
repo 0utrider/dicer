@@ -26,6 +26,8 @@ export class DiceRenderer {
   #cap;
   #tick = null;
   #handle = null;
+  // P9-R18: the tick answered 'hold': the last frame stays on screen, no frame is pending.
+  #holding = false;
   #lost = [];
   #restored = [];
   #sceneApi;
@@ -82,6 +84,7 @@ export class DiceRenderer {
       // PMREM targets are not re-uploaded by three after a restore: rebuild on next startLoop.
       this.#sceneApi.resetEnvironment();
       this.#restored.forEach((cb) => cb());
+      this.requestFrame(); // a held frame was lost with the context
     };
     canvas.addEventListener('webglcontextlost', this.#onLost);
     canvas.addEventListener('webglcontextrestored', this.#onRestored);
@@ -106,6 +109,21 @@ export class DiceRenderer {
   }
   get isLooping() {
     return this.#tick !== null;
+  }
+  /** P9-R18: dice at rest on screen, the loop paused until startLoop or requestFrame. */
+  get isHolding() {
+    return this.#holding;
+  }
+
+  /**
+   * P9-R18: while held, draw one more frame (the tick runs and may hold again); nothing while
+   * looping (the loop draws anyway) or idle (nothing is shown). For changes to resting dice: a
+   * resize, a tier or material change, a restored context.
+   */
+  requestFrame() {
+    if (!this.#holding || this.#handle !== null || !this.#tick) return;
+    this.#holding = false;
+    this.#handle = this.#raf((now) => this.#frame(now));
   }
   /** Rendered frames since construction (benchmark probe; one integer add per frame). */
   get frameCount() {
@@ -145,6 +163,7 @@ export class DiceRenderer {
       this.#renderer.transmissionResolutionScale = tier.transmissionScale;
     }
     this.#renderer.setPixelRatio(this.#pixelRatio());
+    this.requestFrame();
   }
 
   /** cb(info) when a shader fails to compile or link; info = { gl, program, vertexShader, fragmentShader, log }. */
@@ -217,12 +236,18 @@ export class DiceRenderer {
     s.height = `${height}px`;
     this.#renderer.setPixelRatio(this.#pixelRatio());
     this.#renderer.setSize(width, height, false);
+    this.requestFrame(); // setSize cleared the drawing buffer
   }
 
-  /** Runs rAF while tick(nowMs) returns true. Calling while looping just swaps the tick. */
+  /**
+   * Runs rAF while tick(nowMs) returns true; 'hold' draws that frame and pauses with the dice
+   * shown (P9-R18), anything falsy draws it and hides. Calling while looping just swaps the
+   * tick; calling while held resumes.
+   */
   startLoop(tick) {
     this.#tick = tick;
     if (this.#handle !== null) return;
+    this.#holding = false;
     // Lazy GPU-only step; the fake renderer used in tests is not a real WebGLRenderer.
     if (this.#renderer.isWebGLRenderer) this.#sceneApi.setEnvironment(this.#renderer, { resolution: this.#envResolution });
     this.#canvas.style.display = '';
@@ -252,7 +277,10 @@ export class DiceRenderer {
         const sample = { interval, cpu, gpu: this.#pollGpuTime() };
         for (const cb of this.#frameTime) cb(ms, sample);
       } finally {
-        if (again && this.#tick) this.#handle = this.#raf((t) => this.#frame(t));
+        if (again === 'hold' && this.#tick) {
+          this.#holding = true;
+          this.#lastFrameAt = null; // the pause is not a slow frame for the adaptive quality
+        } else if (again && this.#tick) this.#handle = this.#raf((t) => this.#frame(t));
         else this.hide();
       }
     }
@@ -338,6 +366,7 @@ export class DiceRenderer {
     if (this.#handle !== null) this.#caf(this.#handle);
     this.#handle = null;
     this.#tick = null;
+    this.#holding = false;
     this.#lastFrameAt = null;
     this.#dropQueries(); // idle: no query left pending, and no stale GPU time for the next roll
   }

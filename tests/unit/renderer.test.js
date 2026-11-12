@@ -452,3 +452,83 @@ describe('probes (Plan 8 Task 2)', () => {
     }
   });
 });
+
+// P9-R18: a tick that returns 'hold' (dice at rest, nothing animating) gets that frame drawn,
+// then no more frames, with the dice left on screen; the fade or a change wakes it.
+describe('hold', () => {
+  test('hold draws the frame, schedules nothing more, keeps the canvas shown and the loop active', () => {
+    const { r, fake, frames, step, container } = setup();
+    r.startLoop(() => 'hold');
+    step();
+    expect(fake.render).toHaveBeenCalledTimes(1);
+    expect(frames.length).toBe(0);
+    expect(container.querySelector('#dicer-canvas').style.display).not.toBe('none');
+    expect(r.isLooping).toBe(true);
+    expect(r.isHolding).toBe(true);
+  });
+
+  test('startLoop wakes a held loop', () => {
+    const { r, fake, frames, step } = setup();
+    let answer = 'hold';
+    r.startLoop(() => answer);
+    step();
+    answer = true;
+    r.startLoop(() => answer);
+    expect(frames.length).toBe(1);
+    expect(r.isHolding).toBe(false);
+    step();
+    expect(fake.render).toHaveBeenCalledTimes(2);
+    expect(frames.length).toBe(1);
+  });
+
+  test('requestFrame draws one frame while held, and nothing when looping or hidden', () => {
+    const { r, fake, frames, step } = setup();
+    r.requestFrame(); // hidden: nothing
+    expect(frames.length).toBe(0);
+    const tick = vi.fn(() => 'hold');
+    r.startLoop(tick);
+    step();
+    r.requestFrame();
+    r.requestFrame(); // one frame, not two
+    expect(frames.length).toBe(1);
+    step();
+    expect(tick).toHaveBeenCalledTimes(2);
+    expect(fake.render).toHaveBeenCalledTimes(2);
+    expect(frames.length).toBe(0);
+    r.startLoop(() => true);
+    r.requestFrame(); // looping: the loop already draws
+    expect(frames.length).toBe(1);
+  });
+
+  test('a resize, a tier change or a context restore while held redraws once', () => {
+    const { r, fake, frames, step, container } = setup();
+    r.startLoop(() => 'hold');
+    step();
+    r.setArea({ left: 0, top: 0, width: 640, height: 480 });
+    expect(frames.length).toBe(1); // setSize cleared the drawing buffer
+    step();
+    r.applyTier(TIERS.low);
+    expect(frames.length).toBe(1);
+    step();
+    container.querySelector('#dicer-canvas').dispatchEvent(new Event('webglcontextrestored'));
+    expect(frames.length).toBe(1);
+    step();
+    expect(fake.render).toHaveBeenCalledTimes(4);
+  });
+
+  test('the frame after a hold reports no rAF interval (the gap is not a slow frame)', () => {
+    const { r, step } = setup();
+    const samples = [];
+    r.onFrameTime((ms, s) => samples.push(s));
+    let answer = true;
+    r.startLoop(() => answer);
+    step();
+    step();
+    answer = 'hold';
+    step();
+    answer = true;
+    r.requestFrame();
+    step();
+    expect(samples.at(-1).interval).toBeUndefined();
+  });
+});
