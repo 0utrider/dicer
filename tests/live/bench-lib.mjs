@@ -393,6 +393,12 @@ export function parseArgs(argv) {
     if (a === '--dry-run') out.dryRun = true;
     else if (a === '--quick') out.quick = true;
     else if (a === '--profile') out.profile = true;
+    else if (a.startsWith('--profile=')) {
+      // P9-R15: --profile=<scenario> profiles that scenario instead of burst100.
+      const id = a.slice('--profile='.length).trim();
+      if (!id) return { ...out, error: '--profile= needs a scenario, e.g. --profile=pool30' };
+      out.profile = id;
+    }
     else if (a === '--only' || a.startsWith('--only=')) {
       const raw = a === '--only' ? args[++i] : a.slice('--only='.length);
       const names = String(raw ?? '')
@@ -420,9 +426,13 @@ export const QUICK_ROLLS = Object.freeze({ soak500: 200, burst100: 30 });
 export function planFor({ quick = false, only = null, profile = false } = {}) {
   const { plan, error } = selectRuns({ quick, only });
   if (!profile) return { plan, ...(error ? { error } : {}) };
-  // P9-R10: --profile records a CPU profile of each run's burst100.
+  // P9-R10: --profile records a CPU profile of each run's burst100; P9-R15: or of the scenario named.
+  const id = profile === true ? PROFILE_SCENARIO : profile;
+  if (!SCENARIOS.some((s) => s.id === id)) {
+    return { plan, error: `--profile=${id}: no such scenario. Scenarios: ${SCENARIOS.map((s) => s.id).join(', ')}` };
+  }
   return {
-    plan: plan.map((e) => (e.ids.includes(PROFILE_SCENARIO) ? Object.freeze({ ...e, profileScenario: PROFILE_SCENARIO }) : e)),
+    plan: plan.map((e) => (e.ids.includes(id) ? Object.freeze({ ...e, profileScenario: id }) : e)),
     ...(error ? { error } : {}),
   };
 }

@@ -795,3 +795,14 @@ test('summaryMarkdown warns when a scenario was frame-starved', () => {
     'Warning: dice-so-nice-throttled-vsync: frames came about once a second during d20, burst100 (window minimized or covered?), so those results are not valid',
   );
 });
+
+// P9-R15: --profile=<scenario> profiles that scenario instead of burst100.
+test('parseArgs and planFor: --profile=pool30 profiles pool30; an unknown scenario is an error', () => {
+  expect(parseArgs(['--profile=pool30']).profile).toBe('pool30');
+  expect(parseArgs(['--profile']).profile).toBe(true);
+  expect(parseArgs(['--profile=']).error).toMatch(/--profile= needs a scenario/);
+  const { plan } = planFor({ profile: 'pool30', only: ['throttled'] });
+  expect(plan.map((e) => e.profileScenario)).toEqual(['pool30', 'pool30']);
+  expect(planFor({ profile: 'soak500' }).plan.filter((e) => e.profileScenario).map(runName)).toEqual(['dicer-pc-vsync']);
+  expect(planFor({ profile: 'nope' }).error).toMatch(/--profile=nope: no such scenario/);
+});
