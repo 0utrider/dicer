@@ -448,6 +448,9 @@ describe('luminous', () => {
     expect(lum).toBeGreaterThan(refr);
     expect(lum).toBeGreaterThan(fs.indexOf('#include <lights_physical_fragment>'));
     expect(lum).toBeLessThan(fs.indexOf('vec3 outgoingLight'));
+    expect(fs).toContain('vec3 dcLumC = dcLumB * ( max( dcLumMax, 0.6 ) / dcLumMax );');
+    expect(fs).toContain('totalEmissiveRadiance += dcLumC * uLuminous');
+    expect(fs).toContain('dot( diffuseColor.rgb, vec3( 0.2126');
     // it merges with a body module (chunks concatenate per slot)
     const both = bodyPatch(look({ body: { type: 'gem', luminous: 1 } }), FLAGS);
     expect(both.chunks.lighting).toContain('dcLumIn');
