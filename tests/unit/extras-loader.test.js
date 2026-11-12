@@ -91,7 +91,7 @@ test('the real chunk honours the contract', async () => {
   _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
   const mod = await requestLookExtras();
   expect(mod.EXTRAS_ID).toBe('dicer-look-extras');
-  expect(mod.patchMaterial({}, {}, { shape: null, labels: [], atlas: null })).toEqual(
+  expect(mod.patchMaterial({ numbers: { relief: 'engraved' } }, {}, { shape: null, labels: [], atlas: null })).toEqual(
     expect.any(Object),
   );
 });

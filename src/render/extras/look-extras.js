@@ -19,6 +19,8 @@
  * }
  */
 
+import { reliefPatch } from './relief.js';
+
 /** Build-test marker: present in this chunk, never in the world-start bundle. */
 export const EXTRAS_ID = 'dicer-look-extras';
 
@@ -40,7 +42,7 @@ export function mergePatches(...patches) {
   return out;
 }
 
-// eslint-disable-next-line no-unused-vars -- Tasks 4-6 add reliefPatch, fillPatch and iconPatch
-export function patchMaterial(a, flags, ctx) {
-  return mergePatches();
+// Tasks 5-6 add fillPatch and iconPatch (and then take the flags and ctx arguments)
+export function patchMaterial(a) {
+  return mergePatches(reliefPatch(a));
 }

@@ -31,6 +31,8 @@ const ROW_LABEL_PX = 170;
 const VARIANTS = [
   ['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }],
   ['default~safe', 'default', 'safe fallback', { safe: true }],
+  ['default~raised', 'default', 'raised numbers', {}, { relief: 'raised' }],
+  ['dwarven-brass~raised', 'dwarven-brass', 'raised numbers', {}, { relief: 'raised' }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only
