@@ -221,8 +221,10 @@ export function createFxResolver({
         const value = result?.result;
         const faces = term?.faces;
         const dsnType = (typeof look?.dsnType === 'string' && look.dsnType) || dsnTypeOf(term);
+        // A Fate die stays 'df' even when a DSN preset aliases it onto the d6: a "d6 max" rule
+        // must never fire on a +1.
         const base =
-          faces === 100 ? null : (safe(() => shapeFor(term), null) ?? dieTypeForFaces(faces));
+          faces === 100 || dsnType === 'df' ? null : (safe(() => shapeFor(term), null) ?? dieTypeForFaces(faces));
         const type = faces === 100 ? 'd100' : (base ?? dsnType);
         // Foundry's DiceTerm#minValue (FateDie: -1); JSON or legacy terms may lack it.
         const min = Number.isInteger(term?.minValue) ? term.minValue : dsnType === 'df' ? -1 : 1;

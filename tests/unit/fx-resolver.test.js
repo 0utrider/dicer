@@ -102,6 +102,20 @@ test('a Fate +1 matches max, -1 matches min, 0 neither; d3, d5, d7 and d20 keep 
   );
 });
 
+test('a Fate die a DSN preset aliases onto the d6 never matches d6 rules', () => {
+  class FateDie {
+    static DENOMINATION = 'f';
+    faces = 3;
+    minValue = -1;
+    results = [{ result: 1, active: true }];
+  }
+  const rule = (die) => [{ id: die, die, result: { kind: 'max' }, effect: { id: 'sparkles' } }];
+  const ids = (die) =>
+    plan(make({ getWorldRules: () => rule(die), shapeFor: () => 'd6' }), { dice: [new FateDie()] }).map((d) => d.fx?.length ?? 0);
+  expect(ids('d6')).toEqual([0]);
+  expect(ids('df')).toEqual([1]);
+});
+
 test("another user's roll with showOthersEffects off: no fx; effects off: no fx at all", () => {
   settings.showOthersEffects = false;
   expect(plan(make(), d20(20), { author: { id: 'bob' } })[0].fx).toBeUndefined();

@@ -118,8 +118,10 @@ function slerpUnit(a, b, t) {
 }
 
 /**
- * Shared polyhedron setup: per-face frames plus the Minkowski parameters (shrink factor s and
- * profile radius rho). Used by buildDieGeometry and minkowskiHull, so the maths lives once.
+ * Shared polyhedron setup: per-face frames plus the Minkowski parameters (the profile radius rho
+ * and the shrunk vertices S: where each vertex's face planes meet once each is moved rho inward;
+ * for equal face distances that is the uniform scale s = (rIn - rho) / rIn of V, otherwise a
+ * per-vertex solve over the incident planes). Used by buildDieGeometry and minkowskiHull, so the maths lives once.
  */
 function polyhedronFrame(shape, chamfer) {
   const V = shape.vertices.map((v) => new THREE.Vector3(v[0], v[1], v[2]));
@@ -385,8 +387,10 @@ function resolveOptions(opts) {
 
 /**
  * The exact Minkowski solid that buildDieGeometry's rounded mesh approximates: the shrunk
- * polyhedron s * V plus a sphere of radius rho (P2-R4: the physics collider is
- * roundConvexHull(points, radius)). Polyhedra only.
+ * polyhedron (every face plane moved rho inward: s * V for face-transitive solids, a per-vertex
+ * solve of the incident planes when the face distances differ, as on the crystal d4) plus a
+ * sphere of radius rho (P2-R4: the physics collider is roundConvexHull(points, radius)).
+ * Polyhedra only.
  * @param {object} shape ShapeDef from getShape()
  * @param {{chamfer?: number, style?: 'rounded'|'sharp'}} [opts] same options as buildDieGeometry
  * @returns {{ points: number[][], radius: number }}
