@@ -52,6 +52,11 @@ const VARIANTS = [
   ['iridescent~chameleon', 'default', 'chameleon', {}, {}, { type: 'iridescent', preset: 'chameleon', color: '#1a9e8f', color2: '#6a2bd1', roughness: 0.15 }],
   ['iridescent~opal', 'default', 'opal', {}, {}, { type: 'iridescent', preset: 'opal', color: '#e8eef0', color2: '#7fd6e8', roughness: 0.2 }],
   ['iridescent~dichroic', 'default', 'dichroic glass', {}, {}, { type: 'iridescent', preset: 'dichroic', color: '#102030', color2: '#ff6a3d', roughness: 0.05 }],
+  // gem bodies: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
+  ['gem~amethyst', 'default', 'amethyst', {}, {}, { type: 'gem', preset: 'amethyst', color: '#7b3fb5', color2: '#2a0f45', roughness: 0.1 }],
+  ['gem~malachite', 'default', 'malachite', {}, {}, { type: 'gem', preset: 'malachite', color: '#1f8a5a', color2: '#0a3a24', roughness: 0.2 }],
+  ['gem~obsidian', 'default', 'obsidian', {}, {}, { type: 'gem', preset: 'obsidian', color: '#0d0c10', color2: '#4a3f5a', roughness: 0.05 }],
+  ['gem~quartz', 'default', 'quartz', {}, {}, { type: 'gem', preset: 'quartz', color: '#e9e4ee', color2: '#b8b0c4', roughness: 0.15 }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only

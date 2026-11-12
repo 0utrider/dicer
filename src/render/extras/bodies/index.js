@@ -1,6 +1,7 @@
 import { NOISE_GLSL } from '../../shaders/noise.js';
 import { mergePatches } from '../merge.js';
 import * as iridescent from './iridescent.js';
+import * as gem from './gem.js';
 
 /**
  * Body modules: one per new body type, plus (later) the metal finishes and luminous.
@@ -19,7 +20,10 @@ import * as iridescent from './iridescent.js';
  *   normal?, coat?) and its MeshPhysical `params`; colours come from diffuseColor (body.color)
  *   and uBodyColor2 (body.color2), never constants.
  */
-const MODULES = [[iridescent.iridescentPatch, iridescent.USES_NOISE]];
+const MODULES = [
+  [iridescent.iridescentPatch, iridescent.USES_NOISE],
+  [gem.gemPatch, gem.USES_NOISE],
+];
 
 const isEmpty = (p) => Object.keys(p).length === 0;
 
