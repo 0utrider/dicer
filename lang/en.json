@@ -542,7 +542,12 @@
         "star": "Star",
         "heart": "Heart",
         "skull": "Skull",
-        "sphere": "Sphere"
+        "sphere": "Sphere",
+        "sword": "Sword",
+        "axe": "Axe",
+        "shield": "Shield",
+        "dragon": "Dragon",
+        "runes": "Magic circle"
       },
       "Numbers": {
         "Fill": "Fill",

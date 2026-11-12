@@ -24,7 +24,7 @@ export const BODY_PRESET_LISTS = {
 export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke'];
 // Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
 export const INCLUSION_LIST = ['flower', 'moss', 'butterfly'];
-export const SHAPES = ['star', 'heart', 'skull', 'sphere'];
+export const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
 export const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 export const RELIEFS = ['engraved', 'raised'];
 // A literal list, not ICON_IDS: importing that name would add an export to the world-start chunk

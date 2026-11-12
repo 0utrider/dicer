@@ -58,7 +58,7 @@ const pct = (v, scale = 1) => `${Math.round((Number(v) || 0) * 100 * scale) / sc
 
 const INSIDE_ICONS = { none: 'fa-ban', liquid: 'fa-droplet', glitter: 'fa-wand-sparkles', swirl: 'fa-hurricane', nebula: 'fa-cloud', shape: 'fa-shapes', foil: 'fa-certificate', eye: 'fa-eye', botanical: 'fa-seedling', smoke: 'fa-smog' };
 const INCLUSION_ICONS = { flower: 'fa-fan', moss: 'fa-leaf', butterfly: 'fa-bugs' };
-const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sphere: 'fa-circle' };
+const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sphere: 'fa-circle', sword: 'fa-sword', axe: 'fa-axe', shield: 'fa-shield', dragon: 'fa-dragon', runes: 'fa-hexagon' };
 const EDGE_NAMES = ['sharp', 'crisp', 'soft', 'round', 'veryRound'];
 /** px radius of the one rounded corner each edge-step icon draws (22 px box): clearly apart. */
 const EDGE_ICON_RADIUS = [0, 5, 10, 15, 22];

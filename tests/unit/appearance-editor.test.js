@@ -14,6 +14,7 @@ import {
   ICON_CHOICES,
   INTERIOR_TYPES,
   INCLUSION_LIST,
+  SHAPES,
   FONT_KINDS,
   formFromAppearance,
   appearanceFromForm,
@@ -33,6 +34,8 @@ import {
 } from '../../src/ui/appearance-form.js';
 
 vi.mock('../../src/themes/thumbnailer.js', () => ({ createThumbnailer: vi.fn() }));
+
+const NINE_SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
 
 const resinNebula = {
   body: { type: 'resin', color: '#203040', color2: '#405060', finish: 'polished', roughness: 0.2 },
@@ -218,12 +221,18 @@ describe('form <-> appearance', () => {
       expect(appearanceFromForm(formFromAppearance(look))).toEqual(normalizeAppearance(look));
     }
   });
+  it("the form's shape list equals SHAPES in the look module (that list is not exported)", () => {
+    const src = readFileSync('src/look/appearance.js', 'utf8');
+    const literal = /^const SHAPES = (\[[^\]]*\]);/m.exec(src)[1];
+    expect(SHAPES).toEqual(JSON.parse(literal.replace(/'/g, '"')));
+    expect(SHAPES).toEqual(NINE_SHAPES);
+  });
   it('round-trips every edge step, fill, inside type, shape and font kind', () => {
     for (const radius of EDGE_STEPS) expect(appearanceFromForm(formFromAppearance({ edges: { radius } })).edges.radius).toBe(radius);
     for (const fill of ['paint', 'gold', 'silver', 'enamel'])
       expect(appearanceFromForm(formFromAppearance({ numbers: { fill } })).numbers.fill).toBe(fill);
     for (const type of ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'])
-      for (const shape of ['star', 'heart', 'skull', 'sphere']) {
+      for (const shape of NINE_SHAPES) {
         const look = { body: { type: 'resin' }, interior: { type, shape } };
         expect(appearanceFromForm(formFromAppearance(look)).interior).toEqual(normalizeAppearance(look).interior);
       }
@@ -538,6 +547,21 @@ describe('the appearance editor', () => {
     expect(app.element.textContent).toContain(L('Numbers.IconsHint'));
     await click(app, '[data-field="numbers.critIcon"][data-value="crown"]');
     expect(app.theme().appearance.numbers.icons.crit).toBe('crown');
+    await app.close();
+  });
+
+  it('the shape chips list nine shapes with their labels', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const app = await open({ base: { id: 't', name: 'T', appearance: { body: { type: 'resin' }, interior: { type: 'shape', shape: 'sword' } }, perType: {}, rules: [] } });
+    const chips = [...app.element.querySelectorAll('[data-field="interior.shape"]')];
+    expect(chips.map((e) => e.dataset.value)).toEqual(NINE_SHAPES);
+    expect(chips.map((e) => e.textContent.trim())).toEqual(
+      ['Star', 'Heart', 'Skull', 'Sphere', 'Sword', 'Axe', 'Shield', 'Dragon', 'Magic circle'],
+    );
+    expect(chips.map((e) => e.textContent.trim())).toEqual(NINE_SHAPES.map((s) => L(`Shape.${s}`)));
+    expect(q(app, '[data-field="interior.shape"][data-value="sword"]').getAttribute('aria-pressed')).toBe('true');
+    await click(app, '[data-field="interior.shape"][data-value="runes"]');
+    expect(app.theme().appearance.interior.shape).toBe('runes');
     await app.close();
   });
 
@@ -884,7 +908,7 @@ describe('lang/en.json', () => {
       'Preset.': Object.values(BODY_PRESETS).flat(),
       'InsideType.': INTERIOR_TYPES,
       'Inclusion.': INCLUSION_LIST,
-      'Shape.': ['star', 'heart', 'skull', 'sphere'],
+      'Shape.': NINE_SHAPES,
       'Fill.': ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'],
       'FontKind.': [...FONT_IDS_BUILTIN, 'css', 'file'],
       'Relief.': ['engraved', 'raised'],

@@ -193,6 +193,26 @@ async function main() {
       );
     if (Object.keys(insideShots).length === 3 && new Set(Object.values(insideShots)).size !== 3)
       problems.push('appearance-inside: two insides drew the same stage');
+    // The floating-shape chips: nine shapes (the fantasy five included), and the preview follows each pick.
+    const shapeShots = {};
+    problems.push(
+      ...(await shoot(browser, 'app=appearance', 'appearance-inside-shape.png', async (page) => {
+        await livePreview(page);
+        await page.click('[data-section="inside"]:not([open]) > summary').catch(() => {});
+        await page.click('[data-field="interior.type"][data-value="shape"]');
+        const chips = await page.locator('[data-field="interior.shape"]').count();
+        if (chips !== 9) throw new Error(`appearance-inside-shape: ${chips} shape chips, expected 9`);
+        for (const shape of ['star', 'sword', 'axe', 'shield', 'dragon', 'runes']) {
+          await page.click(`[data-field="interior.shape"][data-value="${shape}"]`);
+          await page.waitForTimeout(1200); // debounce + the chunk-built program
+          await page.mouse.move(5, 5);
+          shapeShots[shape] = (await page.locator('.dicer-ae-stage').screenshot()).toString('base64');
+        }
+        await page.locator('[data-field="interior.shape"][data-value="runes"]').scrollIntoViewIfNeeded();
+      }, { reducedMotion: 'reduce' })),
+    );
+    if (Object.keys(shapeShots).length === 6 && new Set(Object.values(shapeShots)).size !== 6)
+      problems.push('appearance-inside-shape: two shapes drew the same stage');
     // A font from the computer (Georgia) drawn on the die.
     problems.push(
       ...(await shoot(browser, 'app=appearance&theme=user.u1.georgia-gold', 'appearance-editor-font.png', async (page) => {
