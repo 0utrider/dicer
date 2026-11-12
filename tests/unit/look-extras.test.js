@@ -29,6 +29,7 @@ import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook, needsLookExtras } from '../../src/look/appearance.js';
 import { WEAPON, WE_KINDS, weaponFrame, weaponsInside } from '../../src/render/extras/insides/weapons.js';
 import { DRAGON, dragonExtent, dragonFrame, dragonInside } from '../../src/render/extras/insides/dragon.js';
+import { RUNES, RU_STEM, RU_STROKES, runeGlyphs, runesFrame, runesInside } from '../../src/render/extras/insides/runes.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -1360,6 +1361,176 @@ describe('insides', () => {
       for (let k = 0; k <= 400; k++) {
         const up = unit(localUp(slerp(qa, qb, k / 400)));
         const fr = dragonFrame(up);
+        check(fr, up);
+        if (prev) {
+          samples++;
+          const step = Math.max(Math.hypot(...fr.t1.map((x, i) => x - prev.t1[i])), Math.hypot(...fr.n.map((x, i) => x - prev.n[i])));
+          if (step > 0.05) {
+            expect(Math.max(Math.abs(dot(axis, fr.n)), Math.abs(dot(axis, prev.n)))).toBeGreaterThan(0.98);
+            jumps++;
+          }
+        }
+        prev = fr;
+      }
+    }
+    expect(jumps / samples).toBeLessThan(0.01);
+  });
+
+  test('runes: patch interior, dcIUp-facing card, emissive term present and clamped, 12-16 glyph sectors, dcRu prefix, no derivatives', () => {
+    const a = resin({ type: 'shape', shape: 'runes', colors: ['#7fd0ff', '#c8a2ff'], density: 0.5 });
+    expect(needsLookExtras(a)).toBe(true);
+    const patch = insidePatch(a, FLAGS);
+    expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+    expect(patch.interior.main).toBe(marchWithUp());
+    expect(patch.interior.pars).toContain(INTERIOR_PARS);
+    const { body } = runesInside(a);
+    expect(patch.interior.pars).toContain(body);
+    expect(patch.interior.pars).not.toContain(NOISE_GLSL);
+    const f4 = (x) => x.toFixed(4);
+    // the card: through the centre, facing dcIUp, tested exactly against the segment (plane hit,
+    // then the disc of radius mix(RUNES.radius, density))
+    expect(body).toContain('vec3 n = dcIUp;');
+    expect(body).toContain('float h0 = dot( p, n );');
+    expect(body).toContain('float dcRuDn = abs( dn ) < 1e-4 ? 1e-4 : dn;');
+    expect(body).toContain('float t = - h0 / dcRuDn;');
+    expect(body).toContain('if ( abs( dn ) >= 1e-4 && t >= 0.0 && t < dt ) {');
+    expect(body).toContain(`float R = mix( ${RUNES.radius.map(f4).join(', ')}, uInteriorDensity );`);
+    expect(body).toContain('if ( dot( q, q ) < R * R ) {');
+    // the continuous, right-handed frame from dcIUp (runesFrame in JS): no sign switch
+    expect(body).toContain(`vec3 dcRuA = vec3( ${RUNES.axis.map(f4).join(', ')} );`);
+    expect(body).toContain('vec3 dcRuT = dcRuA - dot( dcRuA, n ) * n;');
+    expect(body).toContain('if ( dot( dcRuT, dcRuT ) < 1e-6 ) dcRuT = dcRuA.zxy - dot( dcRuA.zxy, n ) * n;');
+    expect(body).toContain('vec3 t2 = cross( n, t1 );');
+    expect(body).toContain('vec2 uv = vec2( dot( q, t1 ), dot( q, t2 ) ) / R;');
+    expect(body).not.toMatch(/dcIUp\.[xyz]|sign\( n|sign\( dcIUp/);
+    // emissive: colors[0] x the glow gain (colors[1] for the sigil), not lit by the key light,
+    // every segment clamped to <= 1 per channel after the emission is added
+    expect(RUNES.glow).toBe(1.6);
+    expect(body).toContain('vec3 dcRuG0 = uInteriorColors[ 0 ] * 1.6000;');
+    expect(body).toContain('vec3 dcRuG1 = uInteriorColors[ 1 ] * 1.6000;');
+    expect(body).not.toContain('dcIKey');
+    expect(body).toContain('acc.rgb += ');
+    expect(body.trimEnd()).toMatch(/return vec4\( min\( acc\.rgb, vec3\( 1\.0 \) \), clamp\( acc\.a, 0\.0, 1\.0 \) \);\n}$/);
+    // the halo: exponential in the height above / below the plane, only inside the circle
+    expect(body).toContain('float dcRuHalo(');
+    expect(body).toMatch(/exp\( - [^;]*\/ w \)/);
+    // glyphs: 12-16 sectors, each from 2-4 strokes (the stem plus hashed branches), all distinct,
+    // angular (straight segments on a 3x3 grid)
+    expect(RUNES.glyphs).toBeGreaterThanOrEqual(12);
+    expect(RUNES.glyphs).toBeLessThanOrEqual(16);
+    expect(body).toContain(`#define DC_RU_N ${RUNES.glyphs}`);
+    const glyphs = runeGlyphs();
+    expect(glyphs).toHaveLength(RUNES.glyphs);
+    expect(new Set(glyphs).size).toBe(RUNES.glyphs);
+    for (const m of glyphs) {
+      const strokes = 1 + [...Array(RU_STROKES.length).keys()].filter((k) => (m >> k) & 1).length;
+      expect(strokes).toBeGreaterThanOrEqual(2);
+      expect(strokes).toBeLessThanOrEqual(4);
+    }
+    expect(body).toContain(`const int DC_RU_GLYPH[ ${RUNES.glyphs} ] = int[ ${RUNES.glyphs} ]( ${glyphs.join(', ')} );`);
+    for (const [p, q] of [RU_STEM, ...RU_STROKES]) for (const c of [...p, ...q]) expect([-1, 0, 1]).toContain(c);
+    // bounded cost: one glyph per point (the sector's), only inside the band, after the disc test
+    expect([...body.matchAll(/DC_RU_GLYPH\[ (?!\d)/g)]).toHaveLength(1);
+    const band = body.indexOf('if ( r > RU_IN && r < RU_OUT ) {'.replace('RU_IN', f4(RUNES.band[0])).replace('RU_OUT', f4(RUNES.band[1])));
+    expect(band).toBeGreaterThan(0);
+    expect(body.indexOf('atan(')).toBeGreaterThan(band);
+    // the glyphs fit the band between the rings (with the stroke and the anti-alias widths), and
+    // never reach the next sector
+    const [rIn, rOut] = RUNES.band;
+    const rc = (rIn + rOut) / 2;
+    const reach = RUNES.glyphSize[1] + RUNES.stroke + RUNES.aa[0];
+    expect(rc - reach).toBeGreaterThan(RUNES.rings[2][0] + RUNES.rings[2][1] + RUNES.aa[0]);
+    expect(rc + reach).toBeLessThan(RUNES.rings[1][0] - RUNES.rings[1][1] - RUNES.aa[0]);
+    expect(rc - reach).toBeGreaterThan(rIn);
+    expect(rc + reach).toBeLessThan(rOut);
+    expect(RUNES.glyphSize[0] + RUNES.stroke + RUNES.aa[0]).toBeLessThan((rc - RUNES.glyphSize[1]) * Math.sin(Math.PI / RUNES.glyphs) * 0.8);
+    // inside the card and the march sphere at density 1
+    expect(RUNES.rings[0][0] + RUNES.rings[0][1] + RUNES.aa[0] + RUNES.aa[1]).toBeLessThan(1);
+    expect(RUNES.radius[1]).toBeLessThanOrEqual(0.6);
+    expect(RUNES.radius[1]).toBeLessThan(INTERIOR.radius);
+    // the sigil in colors[1]: a hexagram with a small inner ring
+    expect(body).toContain('DC_RU_SIGA');
+    expect(body).toMatch(/dcRuG1 \*/);
+    // GLSL rules
+    expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
+    expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+    expect(body).not.toMatch(/\bpow\(/);
+    for (const [call] of body.matchAll(/atan\( [a-z][^;]*/g)) expect(call).toContain('1e-6');
+    const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23]|void)\s+(dc\w+)\s*[(;=]/g)].map((x) => x[1]);
+    expect(own.length).toBeGreaterThan(3);
+    for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcRu/);
+    for (const [, name] of body.matchAll(/#define (\w+)/g)) expect(name).toMatch(/^DC_RU_/);
+    for (const [, name] of body.matchAll(/const \w+ (\w+)\s*\[/g)) expect(name).toMatch(/^DC_RU_/);
+    // the program: its own key, one for every colour and density, every tier and the coin
+    const m = mat(a);
+    const key = m.userData.programKey;
+    expect(key).toContain('|shape:runes:32|');
+    const fs = patched(m).fragmentShader;
+    expect(fs).toContain(patch.interior.pars);
+    expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+    const other = mat(resin({ type: 'shape', shape: 'runes', colors: ['#ff9a3a', '#ffd27a'], density: 0.9 }));
+    expect(other.userData.programKey).toBe(key);
+    expect(patched(other).fragmentShader).toBe(fs);
+    for (const steps of [48, 16]) expect(() => mat(a, { ...FLAGS, interiorSteps: steps })).not.toThrow();
+    expect(() => createDiceMaterial(a, atlas, getShape('d2'), labels, FLAGS)).not.toThrow();
+    expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
+    // the frame over every die rest, the coin's caps and tumble paths (as the dragon's)
+    const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+    const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const unit = (v) => v.map((x) => x / Math.hypot(...v));
+    const axis = unit(RUNES.axis);
+    expect(Math.hypot(...RUNES.axis)).toBeCloseTo(1, 3);
+    const check = (fr, up) => {
+      fr.n.forEach((x, i) => expect(x).toBeCloseTo(up[i], 9));
+      expect(dot(fr.t1, fr.t1)).toBeCloseTo(1, 9);
+      expect(dot(fr.t1, fr.n)).toBeCloseTo(0, 9);
+      cross(fr.t1, fr.t2).forEach((x, i) => expect(x).toBeCloseTo(fr.n[i], 9));
+    };
+    const rests = [[0, 1, 0], [0, -1, 0]];
+    for (const type of ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+      const sh = getShape(type);
+      for (const fc of sh.faces) {
+        const n = [0, 0, 0];
+        fc.forEach((vi, k) => {
+          const [u, v] = [sh.vertices[vi], sh.vertices[fc[(k + 1) % fc.length]]];
+          n[0] += (u[1] - v[1]) * (u[2] + v[2]);
+          n[1] += (u[2] - v[2]) * (u[0] + v[0]);
+          n[2] += (u[0] - v[0]) * (u[1] + v[1]);
+        });
+        rests.push(unit(n), unit(n.map((x) => -x)));
+      }
+    }
+    for (const up of rests) {
+      check(runesFrame(up), up);
+      expect(Math.abs(dot(axis, up))).toBeLessThan(0.93);
+    }
+    for (const up of [axis, axis.map((x) => -x)]) check(runesFrame(up), up);
+    let seed = 777;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    const quat = () => unit([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]);
+    const slerp = (qa, qb, k) => {
+      let d = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3];
+      const bb = d < 0 ? qb.map((x) => -x) : qb;
+      d = Math.abs(d);
+      if (d > 0.9995) return unit(qa.map((x, i) => x + k * (bb[i] - x)));
+      const th = Math.acos(d);
+      return qa.map((x, i) => (Math.sin((1 - k) * th) * x + Math.sin(k * th) * bb[i]) / Math.sin(th));
+    };
+    const localUp = ([x, y, z, w]) => {
+      const qv = [-x, -y, -z];
+      const v = [0, 1, 0];
+      const tt = cross(qv, v).map((c) => 2 * c);
+      const c2 = cross(qv, tt);
+      return v.map((c, i) => c + w * tt[i] + c2[i]);
+    };
+    let jumps = 0;
+    let samples = 0;
+    for (let path = 0; path < 60; path++) {
+      const [qa, qb] = [quat(), quat()];
+      let prev = null;
+      for (let k = 0; k <= 400; k++) {
+        const up = unit(localUp(slerp(qa, qb, k / 400)));
+        const fr = runesFrame(up);
         check(fr, up);
         if (prev) {
           samples++;
