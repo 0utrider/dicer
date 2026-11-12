@@ -102,7 +102,7 @@ To look at all 22 themes and throw each one with its celebration, run `npm run d
 
 In the theme browser press **New theme** (or duplicate a theme and edit it). The appearance editor shows a live die that turns as you edit. You can change:
 
-- **Material**: opaque, clear resin, metal, marble or pearl, with colours and roughness (a finish only for metal). Only clear resin has an **Inside** (a nebula, glitter and so on).
+- **Material**: opaque, clear resin, metal, marble, pearl, **iridescent** (chameleon, opal or dichroic glass: the colour shifts as the die turns), **gemstone** (amethyst, malachite, obsidian or quartz) or **wood** (oak, walnut, cherry or ebony), with colours and roughness. Picking a style fills in matching colours, which you can still change. Metal has a finish: polished, brushed, antique, **copper patina** or **battle-worn**. Any material can **glow in the dark**: it glows faintly in its own colour, most on the sides in shadow. Only clear resin has an **Inside** (a nebula, glitter and so on).
 - **Numbers**: paint, gold, silver, enamel, **outline** (only the rim of each number is filled), **holo foil** (a rainbow that shifts as the die turns) or **glow ink** (numbers that light up, best on a dark die), a colour, the depth and a font. Numbers can be **engraved** into the die or **raised** from it. A colour that would be hard to read against the die is made lighter or darker automatically.
 - **Crit and fumble icons**: a starburst, crown, skull, broken shield, heart or flame in place of the 20 and the 1. Only d20s show icons; every other die keeps its numbers.
 - **Edges**: five steps of sharpness, from sharp to very round.
