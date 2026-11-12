@@ -3,7 +3,8 @@ import * as THREE from 'three';
 /**
  * Iridescent body (chameleon, opal, dichroic): the colour turns from body.color towards
  * body.color2 with view angle, the short way round the hue wheel (a YIQ chroma rotation).
- * One program for the three presets: the preset is the uBodyPreset uniform.
+ * One program for the three presets: the preset is the uBodyPreset uniform (an unknown preset
+ * draws as chameleon, the first). Returns {} for any other body type.
  *
  * PRESET_PARAMS: [turn, width, flash, streak]
  * - turn: how far the hue travels from color (0) to color2 (1) by the end of the transition
@@ -38,7 +39,7 @@ vec3 dcHueTurn( vec3 a, vec3 b, float t ) {
 	float h = ha + d * t;
 	float u = clamp( t, 0.0, 1.0 );
 	float c = mix( length( ya.yz ), length( yb.yz ), u );
-	return max( DC_RGB * vec3( mix( ya.x, yb.x, u ), c * cos( h ), c * sin( h ) ), 0.0 );
+	return clamp( DC_RGB * vec3( mix( ya.x, yb.x, u ), c * cos( h ), c * sin( h ) ), 0.0, 1.0 );
 }
 // c with its hue turned by a (radians), chroma x k, luma at least y
 vec3 dcHueRot( vec3 c, float a, float k, float y ) {
@@ -47,7 +48,7 @@ vec3 dcHueRot( vec3 c, float a, float k, float y ) {
 	float co = cos( a );
 	q.yz = k * vec2( co * q.y - s * q.z, s * q.y + co * q.z );
 	q.x = max( q.x, y );
-	return max( DC_RGB * q, 0.0 );
+	return clamp( DC_RGB * q, 0.0, 1.0 );
 }
 `;
 
@@ -64,45 +65,61 @@ const COLOR = /* glsl */ `
 		dcIrT = uBodyPreset.x * ( smoothstep( 0.42 - uBodyPreset.y, 0.42 + uBodyPreset.y, dcIg ) + 0.6 * max( dcIg - 0.42 - uBodyPreset.y, 0.0 ) );
 		vec3 dcIc = dcHueTurn( diffuseColor.rgb, uBodyColor2, dcIrT );
 		if ( uBodyPreset.z > 0.0 ) {
-			// Opal play of colour: soft Voronoi grains in die-local space, each a glow of color2
-			// turned round the hue wheel with a rainbow drift inside it. A grain lights when the view
-			// meets its own lattice angle, a mix of the facing angle and the view-space normal, so
-			// turning the die lights other grains and slides their hues.
-			vec3 dcOq = vLocalPos * 4.2;
+			// Opal play of colour: warped Voronoi cells in die-local space (jagged borders), each cut
+			// by two random planes into angular shards of varying size, every shard a saturated turn of
+			// color2 round the hue wheel. A shard lights when the view meets its own lattice angle (a
+			// mix of the facing angle and the view-space normal), so turning the die relights other
+			// shards and slides their hues; most stay dim. A varying milky veil lies over them all.
+			vec3 dcOw = vLocalPos * 13.0;
+			vec3 dcOq = vLocalPos * 4.6 + 0.45 * ( vec3( dcNoise3( dcOw ), dcNoise3( dcOw + 19.3 ), dcNoise3( dcOw + 37.9 ) ) - 0.5 );
 			vec3 dcOi = floor( dcOq );
 			vec3 dcOf = fract( dcOq );
 			float dcOd = 9.0;
 			float dcOd2 = 9.0;
 			vec3 dcOid = dcOi;
+			vec3 dcOv = vec3( 0.0 ); // from the nearest feature point to this point
 			for ( int z = - 1; z <= 1; z ++ ) for ( int y = - 1; y <= 1; y ++ ) for ( int x = - 1; x <= 1; x ++ ) {
 				vec3 dcOc = dcOi + vec3( x, y, z );
 				vec3 dcOr = vec3( x, y, z ) + vec3( dcHash13( dcOc ), dcHash13( dcOc + 17.1 ), dcHash13( dcOc + 41.7 ) ) - dcOf;
 				float dcOdd = dot( dcOr, dcOr );
-				if ( dcOdd < dcOd ) { dcOd2 = dcOd; dcOd = dcOdd; dcOid = dcOc; }
+				if ( dcOdd < dcOd ) { dcOd2 = dcOd; dcOd = dcOdd; dcOid = dcOc; dcOv = - dcOr; }
 				else dcOd2 = min( dcOd2, dcOdd );
 			}
-			float dcOh1 = dcHash13( dcOid + 7.3 );
-			float dcOh2 = dcHash13( dcOid + 23.9 );
-			float dcOh3 = dcHash13( dcOid + 59.1 );
-			float dcOph = 6.2832 * dcOh1 + 7.0 * dcIcos + 6.0 * ( dcIn.x * ( dcOh2 - 0.5 ) + dcIn.y * ( dcOh3 - 0.5 ) );
-			float dcOfl = smoothstep( 0.2, 0.85, 0.5 + 0.5 * cos( dcOph ) ) * ( 1.0 - smoothstep( 0.25, 0.62, sqrt( dcOd ) ) )
-				* smoothstep( 0.0, 0.18, sqrt( dcOd2 ) - sqrt( dcOd ) ); // no hard cut where the next grain begins
-			float dcOhue = dcOh2 + 0.4 * dcIcos + 0.7 * ( dcNoise3( vLocalPos * 11.0 + dcOh3 * 9.0 ) - 0.5 );
-			vec3 dcOcol = dcHueRot( uBodyColor2, 6.2832 * dcOhue, 2.4, 0.55 );
+			// two fracture planes per cell through points near its centre: up to four shards
+			vec3 dcOa = vec3( dcHash13( dcOid + 3.1 ), dcHash13( dcOid + 5.7 ), dcHash13( dcOid + 8.3 ) ) - 0.5;
+			vec3 dcOb = vec3( dcHash13( dcOid + 11.9 ), dcHash13( dcOid + 13.3 ), dcHash13( dcOid + 15.1 ) ) - 0.5;
+			float dcOs = step( 0.0, dot( dcOv, dcOa ) - 0.1 * dcOa.x ) + 2.0 * step( 0.0, dot( dcOv, dcOb ) + 0.1 * dcOb.y );
+			vec3 dcOsid = dcOid + dcOs * vec3( 0.37, 0.71, 0.13 );
+			float dcOh1 = dcHash13( dcOsid + 7.3 );
+			float dcOh2 = dcHash13( dcOsid + 23.9 );
+			float dcOh3 = dcHash13( dcOsid + 59.1 );
+			float dcOph = 6.2832 * dcOh1 + 8.0 * dcIcos + 7.0 * ( dcIn.x * ( dcOh2 - 0.5 ) + dcIn.y * ( dcOh3 - 0.5 ) );
+			float dcOfl = pow( 0.5 + 0.5 * cos( dcOph ), 4.0 ); // most shards dim, a few bright
+			// thin milky seams along the jagged cell borders
+			float dcOseam = smoothstep( 0.0, 0.07, sqrt( dcOd2 ) - sqrt( dcOd ) );
+			// the veil: thick milk in places, thin in others
+			float dcOveil = smoothstep( 0.25, 0.75, dcNoise3( vLocalPos * 2.4 + 11.0 ) );
+			float dcOvis = ( 0.1 + 0.9 * dcOfl ) * ( 1.0 - 0.8 * dcOveil ) * dcOseam;
+			vec3 dcOcol = dcHueRot( uBodyColor2, 6.2832 * ( dcOh2 + 0.3 * dcIcos ), 3.2, 0.3 + 0.3 * dcOfl );
 			// milky haze: a faint cloud of color2 through the white
-			dcIc = mix( dcIc, mix( dcIc, uBodyColor2, 0.35 ), smoothstep( 0.1, 0.45, dcIdrift ) );
-			dcIc = mix( dcIc, dcOcol, 0.95 * uBodyPreset.z * dcOfl );
+			dcIc = mix( dcIc, mix( dcIc, uBodyColor2, 0.3 ), 0.6 * dcOveil );
+			dcIc = mix( dcIc, dcOcol, uBodyPreset.z * dcOvis );
 		}
 		if ( uBodyPreset.w > 0.0 ) {
-			// Dichroic streaks: a few thin, nearly straight bands of the far side of the flip, their
-			// hue sliding with the view angle.
-			float dcSu = dot( vLocalPos, vec3( 0.62, 0.28, 0.73 ) ) * 4.5 + 0.35 * dcNoise3( vLocalPos * 2.2 + 7.0 );
+			// Dichroic streaks: a few thin straight bands of the far side of the flip, their hue
+			// sliding with the view angle. Straight: the band coordinate is linear in die-local space,
+			// so on a flat face every streak is a straight line. On a face nearly parallel to the band
+			// planes the coordinate barely changes and a line would widen into a contour blob, so the
+			// streaks fade out where its slope along the surface is low.
+			float dcSu = dot( vLocalPos, vec3( 0.62, 0.28, 0.73 ) ) * 4.5;
+			float dcSslope = length( fwidth( vLocalPos ) ) > 0.0 ? fwidth( dcSu ) / length( fwidth( vLocalPos ) ) : 0.0;
 			// thin lines on about one band in three, each broken into runs by a slow noise
 			float dcSl = ( 1.0 - smoothstep( 0.012, 0.04, abs( fract( dcSu ) - 0.5 ) ) )
 				* step( 0.62, dcHash13( vec3( floor( dcSu ), 3.7, 1.1 ) ) )
-				* smoothstep( 0.4, 0.55, dcNoise3( vLocalPos * 1.6 + 2.0 ) );
+				* smoothstep( 0.4, 0.55, dcNoise3( vLocalPos * 1.6 + 2.0 ) )
+				* smoothstep( 2.0, 3.0, dcSslope );
 			vec3 dcScol = dcHueTurn( diffuseColor.rgb, uBodyColor2, 1.0 - min( dcIrT, 1.0 ) + 0.35 * dcIcos );
-			dcIc = mix( dcIc, dcScol * 1.3, uBodyPreset.w * dcSl );
+			dcIc = mix( dcIc, min( dcScol * 1.3, 1.0 ), uBodyPreset.w * dcSl );
 		}
 		diffuseColor.rgb = dcIc;
 	}
@@ -127,9 +144,10 @@ const COAT = /* glsl */ `
 `;
 
 export function iridescentPatch(a) {
+  if (a.body?.type !== 'iridescent') return {};
   return {
     defines: { DICER_IRIDESCENT: '' },
-    uniforms: { uBodyPreset: { value: new THREE.Vector4(...PRESET_PARAMS[a.body.preset]) } },
+    uniforms: { uBodyPreset: { value: new THREE.Vector4(...(PRESET_PARAMS[a.body.preset] ?? PRESET_PARAMS.chameleon)) } },
     chunks: { pars: PARS, colorPre: COLOR, roughness: ROUGHNESS, coat: COAT },
     params: params(new THREE.Color(a.body.color2)),
   };

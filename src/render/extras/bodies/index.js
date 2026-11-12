@@ -1,35 +1,44 @@
 import { NOISE_GLSL } from '../../shaders/noise.js';
-import { mergePatches } from '../look-extras.js';
+import { mergePatches } from '../merge.js';
 import * as iridescent from './iridescent.js';
 
 /**
- * Body modules: one per new body type (later also the metal finishes and luminous).
+ * Body modules: one per new body type, plus (later) the metal finishes and luminous.
  *
- * Contract of a body module:
- * - `PRESET_PARAMS: Record<presetId, number[4]>`: per-preset shape parameters (the meanings are
- *   the module's own, documented there), uploaded as the vec4 uniform uBodyPreset;
- * - `<body>Patch(a) -> ExtrasPatch` with `defines: { DICER_<BODY>: '' }`, the uBodyPreset
- *   uniform, `chunks` (pars, colorPre, roughness?, normal?, coat?) and its MeshPhysical `params`;
- *   colours come from diffuseColor (body.color) and uBodyColor2 (body.color2), never constants;
- * - `USES_NOISE = true` when its GLSL calls the noise library (dcHash13, dcNoise3, dcFbm3).
+ * Contract of a module:
+ * - `<name>Patch(a) -> ExtrasPatch`: called for EVERY look; it checks its own condition (body
+ *   type, metal finish, luminous > 0) and returns {} when it does not apply;
+ * - `USES_NOISE = true` when its GLSL calls the noise library (dcHash13, dcNoise3, dcFbm3);
+ * - a preset module (a body type with presets) also exports
+ *   `PRESET_PARAMS: Record<presetId, number[4]>` (meanings documented in the module), uploaded as
+ *   the vec4 uniform uBodyPreset; it guards an unknown preset with its first preset
+ *   (`PRESET_PARAMS[a.body.preset] ?? PRESET_PARAMS.<first>`). A look has one body type, so
+ *   only one preset module (one uBodyPreset) applies per look; finish and luminous modules may
+ *   apply beside it and must not use uBodyPreset;
+ * - its patch: `defines: { DICER_<NAME>: '' }`, uniforms, `chunks` (pars, colorPre, roughness?,
+ *   normal?, coat?) and its MeshPhysical `params`; colours come from diffuseColor (body.color)
+ *   and uBodyColor2 (body.color2), never constants.
  */
-const BODIES = { iridescent: [iridescent, iridescent.iridescentPatch] };
+const MODULES = [[iridescent.iridescentPatch, iridescent.USES_NOISE]];
+
+const isEmpty = (p) => Object.keys(p).length === 0;
 
 /**
- * ExtrasPatch for the body: {} for today's bodies. NOISE_GLSL is prepended once when a merged
- * module uses it (world start's bodyChunks only adds it for marble and antique metal, which
- * never combine with a new body, so it is never compiled twice).
+ * ExtrasPatch for the body: {} for today's bodies. NOISE_GLSL is prepended once when an applying
+ * module uses it (world start's bodyChunks only adds it for marble and antique metal, which never
+ * combine with a new body, so it is never compiled twice).
  */
 export function bodyPatch(a, _flags) {
   const parts = [];
   let noise = false;
-  const body = BODIES[a.body?.type];
-  if (body) {
-    parts.push(body[1](a));
-    noise ||= !!body[0].USES_NOISE;
+  for (const [patch, usesNoise] of MODULES) {
+    const p = patch(a);
+    if (isEmpty(p)) continue;
+    parts.push(p);
+    noise ||= !!usesNoise;
   }
   if (!parts.length) return {};
-  const p = mergePatches(...parts);
-  if (noise) p.chunks.pars = `${NOISE_GLSL}\n${p.chunks.pars ?? ''}`;
-  return p;
+  const out = mergePatches(...parts);
+  if (noise) out.chunks.pars = `${NOISE_GLSL}\n${out.chunks.pars ?? ''}`;
+  return out;
 }

@@ -10,7 +10,9 @@ import { stripGlslParts } from '../../build/glsl-minify-plugin.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { normalizeAppearance, programKey } from '../../src/look/appearance.js';
 import { bodyPatch } from '../../src/render/extras/bodies/index.js';
-import { PRESET_PARAMS } from '../../src/render/extras/bodies/iridescent.js';
+import { PRESET_PARAMS, iridescentPatch } from '../../src/render/extras/bodies/iridescent.js';
+import { mergePatches } from '../../src/render/extras/merge.js';
+import * as lookExtras from '../../src/render/extras/look-extras.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -185,6 +187,13 @@ describe('bodies', () => {
       _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
       await requestLookExtras();
     }
+  });
+
+  test('body modules check their own type; an unknown preset draws as the first; mergePatches lives in merge.js', () => {
+    for (const body of TODAY) expect(iridescentPatch(look({ body }))).toEqual({});
+    const raw = { body: { type: 'iridescent', preset: 'nope', color: '#000000', color2: '#ffffff' } };
+    expect(iridescentPatch(raw).uniforms.uBodyPreset.value.toArray()).toEqual(PRESET_PARAMS.chameleon);
+    expect(lookExtras.mergePatches).toBe(mergePatches);
   });
 
   test('iridescent: one program for all three presets (same key), uBodyPreset differs, params set, fragment compiles the DICER_IRIDESCENT chunk once', () => {
