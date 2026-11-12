@@ -92,6 +92,25 @@ const VARIANTS = [
   ['combo~amethyst-holo', 'default', 'amethyst, holo numbers', {}, { fill: 'holo' }, { type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }],
   ['combo~chameleon-glow', 'default', 'chameleon, glow-ink', {}, { fill: 'glow' }, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
   ['combo~oak-flat', 'default', 'oak, engraving off', { engraving: false }, {}, { type: 'wood', preset: 'oak', ...PRESET_COLORS.oak }],
+  // plan 3 insides with plan 1 numbers and plan 2 luminous
+  [
+    'resin~eye+outline-raised-luminous',
+    'default',
+    'eye, outline raised, luminous',
+    {},
+    { fill: 'outline', relief: 'raised' },
+    { type: 'resin', color: '#e6eef2', color2: '#b8c8d4', roughness: 0.05, luminous: 0.6 },
+    { type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 },
+  ],
+  [
+    'resin~foil+holo',
+    'default',
+    'foil, holo numbers',
+    {},
+    { fill: 'holo' },
+    { type: 'resin', color: '#2b4a66', color2: '#0f2236', roughness: 0.05 },
+    { type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.5 },
+  ],
   ['combo~luminous-safe', 'default', 'luminous, safe fallback', { safe: true }, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
   ['combo~patina-effects-off', 'default', 'patina, safe', { safe: true }, {}, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
 ];

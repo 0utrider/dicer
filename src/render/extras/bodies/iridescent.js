@@ -94,7 +94,7 @@ const COLOR = /* glsl */ `
 			float dcOh2 = dcHash13( dcOsid + 23.9 );
 			float dcOh3 = dcHash13( dcOsid + 59.1 );
 			float dcOph = 6.2832 * dcOh1 + 8.0 * dcIcos + 7.0 * ( dcIn.x * ( dcOh2 - 0.5 ) + dcIn.y * ( dcOh3 - 0.5 ) );
-			float dcOfl = pow( 0.5 + 0.5 * cos( dcOph ), 4.0 ); // most shards dim, a few bright
+			float dcOfl = pow( max( 0.5 + 0.5 * cos( dcOph ), 0.0 ), 4.0 ); // most shards dim, a few bright
 			// thin milky seams along the jagged cell borders
 			float dcOseam = smoothstep( 0.0, 0.07, sqrt( dcOd2 ) - sqrt( dcOd ) );
 			// the veil: thick milk in places, thin in others
@@ -112,7 +112,9 @@ const COLOR = /* glsl */ `
 			// planes the coordinate barely changes and a line would widen into a contour blob, so the
 			// streaks fade out where its slope along the surface is low.
 			float dcSu = dot( vLocalPos, vec3( 0.62, 0.28, 0.73 ) ) * 4.5;
-			float dcSslope = length( fwidth( vLocalPos ) ) > 0.0 ? fwidth( dcSu ) / length( fwidth( vLocalPos ) ) : 0.0;
+			float dcSfu = fwidth( dcSu );
+				float dcSfp = length( fwidth( vLocalPos ) );
+				float dcSslope = dcSfp > 0.0 ? dcSfu / dcSfp : 0.0;
 			// thin lines on about one band in three, each broken into runs by a slow noise
 			float dcSl = ( 1.0 - smoothstep( 0.012, 0.04, abs( fract( dcSu ) - 0.5 ) ) )
 				* step( 0.62, dcHash13( vec3( floor( dcSu ), 3.7, 1.1 ) ) )

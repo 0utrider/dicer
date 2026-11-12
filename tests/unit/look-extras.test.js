@@ -20,7 +20,7 @@ import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/insides/index.js';
 import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS, interiorChunk } from '../../src/render/shaders/interior.js';
-import { MARCH_RADIUS } from '../../src/render/extras/insides/foil.js';
+import { MARCH_RADIUS, FOIL, FOIL_WALK } from '../../src/render/extras/insides/foil.js';
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
 import { BO_KINDS, CARDS, CARD_RADIUS, TILT, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
 import { smokeInside } from '../../src/render/extras/insides/smoke.js';
@@ -235,6 +235,18 @@ describe('bodies', () => {
     const raw = { body: { type: 'iridescent', preset: 'nope', color: '#000000', color2: '#ffffff' } };
     expect(iridescentPatch(raw).uniforms.uBodyPreset.value.toArray()).toEqual(PRESET_PARAMS.chameleon);
     expect(lookExtras.mergePatches).toBe(mergePatches);
+  });
+
+  test('iridescent GLSL edges: pow base clamped, fwidth hoisted out of the ternary', () => {
+    const fs = patched(bodyMat({ type: 'iridescent', preset: 'opal', color: '#1a9e8f', color2: '#6a2bd1' })).fragmentShader;
+    const opal = fs.split('\n').find((l) => l.includes('dcOfl ='));
+    expect(opal).toContain('pow( max( 0.5 + 0.5 * cos( dcOph ), 0.0 ), 4.0 )');
+    const slope = fs.split('\n').find((l) => l.includes('dcSslope ='));
+    expect(slope).not.toContain('fwidth');
+    expect(fs).toMatch(/float dcSfu = fwidth\( dcSu \);/);
+    expect(fs.indexOf('dcSfu = fwidth')).toBeLessThan(fs.indexOf('dcSslope ='));
+    const seg = fs.slice(fs.indexOf('float dcSu ='), fs.indexOf('float dcSl ='));
+    expect(seg.match(/fwidth\(/g).length).toBe(2); // the float and the vec3, each once, outside the ternary
   });
 
   test('iridescent: one program for all three presets (same key), uBodyPreset differs, params set, fragment compiles the DICER_IRIDESCENT chunk once', () => {
@@ -579,6 +591,53 @@ describe('insides', () => {
     expect(insidePatch(a, { ...FLAGS, interiors: false })).toEqual({});
   });
 
+  test('foil: the cell walk is a 3D DDA with a constant bound that covers the longest segment, each cell once', () => {
+    // longest segment: the chord of the march sphere over the fewest steps (16)
+    const dtMax = (2 * INTERIOR.radius) / FOIL.minSteps;
+    expect(FOIL_WALK).toBe(1 + 3 * Math.ceil(dtMax * FOIL.cells));
+    expect(FOIL_WALK).toBeLessThanOrEqual(5);
+    const fs = patched(mat(resin({ type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 }))).fragmentShader;
+    expect(fs).toContain(`#define DC_FO_WALK ${FOIL_WALK}`);
+    expect(fs).not.toContain('0.5 * dt ) ) * DC_FO_CELLS');
+    // reference walk (the GLSL's algorithm) against dense sampling of the segment
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    for (let n = 0; n < 2000; n++) {
+      const off = n % 2 ? 0.5 : 0;
+      const p = [0, 1, 2].map(() => (rnd() - 0.5) * 1.2);
+      let d = [0, 1, 2].map(() => rnd() - 0.5);
+      if (n % 7 === 0) d[1] = 0; // an axis-parallel segment
+      const l = Math.hypot(...d);
+      d = d.map((x) => x / l);
+      const dt = n % 5 === 0 ? dtMax : rnd() * dtMax;
+      const s = p.map((x) => x * FOIL.cells - off);
+      const dd = d.map((x) => x * FOIL.cells);
+      const c = s.map(Math.floor);
+      const safe = dd.map((x) => (Math.abs(x) < 1e-6 ? 1e-6 : x));
+      const tm = safe.map((x, i) => (c[i] + (safe[i] >= 0 ? 1 : 0) - s[i]) / x);
+      const td = safe.map((x) => 1 / Math.abs(x));
+      const visited = [];
+      for (let i = 0; i < FOIL_WALK; i++) {
+        visited.push(c.join(','));
+        if (Math.min(...tm) >= dt) break;
+        const mn = Math.min(...tm);
+        for (let k = 0; k < 3; k++) {
+          if (tm[k] <= mn) {
+            c[k] += Math.sign(safe[k]);
+            tm[k] += td[k];
+          }
+        }
+      }
+      expect(new Set(visited).size).toBe(visited.length);
+      for (let k = 0; k <= 200; k++) {
+        const q = s.map((x, i) => x + dd[i] * dt * (k / 200));
+        expect(visited).toContain(q.map(Math.floor).join(','));
+      }
+      // and the walk ended inside the bound: the segment's end cell was reached
+      expect(Math.min(...tm)).toBeGreaterThanOrEqual(dt - 1e-9);
+    }
+  });
+
   test('eye: dcIUp is used for the pupil axis; one program; patch interior present; fake tint 0.2', () => {
     const a = resin({ type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 });
     const patch = insidePatch(a, FLAGS);
@@ -845,6 +904,24 @@ describe('insides', () => {
     expect(LQ.bubbleOffset / LQ.bubbleHeight).toBeLessThan(Math.tan((25 * Math.PI) / 180));
     expect(Math.hypot(...LQ.bubbleRef)).toBeCloseTo(1, 9);
     expect((LQ.sandTop + INTERIOR.radius) / (2 * INTERIOR.radius)).toBeCloseTo(0.22, 2);
+  });
+
+  test('liquid bubble: the segment liquid is split at the bubble hit, front to back (liquid, bubble, liquid, sand)', () => {
+    const { body } = liquidExtrasInside(
+      resin({ type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, bubble: true, sand: true }),
+    );
+    expect(body).toContain('vec4 dcLqBubble( vec3 o, vec3 rd, float dt, float b, float oo, float m2, out float th )');
+    const main = body.slice(body.indexOf('vec4 dcInterior('));
+    const before = main.indexOf('dcLqLiquid( p, min( la, lim )');
+    const bubble = main.indexOf('( 1.0 - acc.a ) * front');
+    const after = main.indexOf('dcLqLiquid( p + rd * lb');
+    const sand = main.indexOf('( 1.0 - acc.a ) * back');
+    expect(before).toBeGreaterThan(0);
+    expect(bubble).toBeGreaterThan(before);
+    expect(after).toBeGreaterThan(bubble);
+    expect(sand).toBeGreaterThan(after);
+    // bounded: lengths clamped to [0, dt]
+    expect(main).toContain('max( lim - lb, 0.0 )');
   });
 
   test('fake mode: uResinTint.w = INSIDE_TINT.foil, no interior chunk', () => {
