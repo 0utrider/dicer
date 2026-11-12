@@ -4,7 +4,7 @@ Lightweight 3D dice for Foundry VTT v14 (three.js rendering, Rapier physics in a
 
 ## What Plan 1 delivers
 
-- 3D dice for chat rolls: d2, d4, d6, d8, d10, d12, d20 and d100 (tens d10 plus ones d10).
+- 3D dice for chat rolls: d2, d3, d4, d5, d6, d7, d8, d10, d12, d14, d16, d20 and d100 (tens d10 plus ones d10), plus Fate/Fudge dice (dF, `4dF`).
 - A rolled message stays hidden (`dsn-hide`) until its dice land, then `diceSoNiceRollComplete` fires exactly once (15 s watchdog).
 - A minimal Dice So Nice compatible `game.dice3d` (`isEnabled`, `showForRoll`, `waitFor3DAnimationByMessageID`, `messageHookDisabled`).
 - Zero idle cost: no render loop and a hidden canvas when no dice are on screen.
@@ -103,9 +103,9 @@ To look at all 22 themes and throw each one with its celebration, run `npm run d
 In the theme browser press **New theme** (or duplicate a theme and edit it). The appearance editor shows a live die that turns as you edit. You can change:
 
 - **Material**: opaque, clear resin, metal, marble, pearl, **iridescent** (chameleon, opal or dichroic glass: the colour shifts as the die turns), **gemstone** (amethyst, malachite, obsidian or quartz) or **wood** (oak, walnut, cherry or ebony), with colours and roughness. Picking a style fills in matching colours, which you can still change. Metal has a finish: polished, brushed, antique, **copper patina** or **battle-worn**. Any material can **glow in the dark**: it glows faintly in its own colour, most on the sides in shadow. Only clear resin has an **Inside**: a nebula, glitter, swirl, liquid core or floating shape (a star, heart, skull or sphere, or a sword, axe, shield, dragon or glowing magic circle), **foil flakes** that flash as the die turns, a **floating eye** that always looks up, a pressed **flower**, **moss** or **butterfly**, or a **smoke** plume. A liquid core can also have an **air bubble** that floats to the top and **sand** that settles to the bottom.
-- **Numbers**: paint, gold, silver, enamel, **outline** (only the rim of each number is filled), **holo foil** (a rainbow that shifts as the die turns) or **glow ink** (numbers that light up, best on a dark die), a colour, the depth and a font. Numbers can be **engraved** into the die or **raised** from it. A colour that would be hard to read against the die is made lighter or darker automatically.
+- **Numbers**: paint, gold, silver, enamel, **outline** (only the rim of each number is filled), **holo foil** (a rainbow that shifts as the die turns) or **glow ink** (numbers that light up, best on a dark die), a colour, the depth and a font. Numbers can be **engraved** into the die or **raised** from it. The d6 can show **pips** (dots) instead of numbers, and the d2 coin can show **heads and tails** or a **sun and moon** instead of 1 and 2. A colour that would be hard to read against the die is made lighter or darker automatically.
 - **Crit and fumble icons**: a starburst, crown, skull, broken shield, heart or flame in place of the 20 and the 1. Only d20s show icons; every other die keeps its numbers.
-- **Edges**: five steps of sharpness, from sharp to very round.
+- **Edges**: five steps of sharpness, from sharp to very round. The d4 can be **classic** (the usual pyramid with the numbers at the corners) or **crystal** (a stretched double pyramid, like a crystal).
 - **Glow**, a look **per die type**, and the **sound and celebrations**.
 
 Every look is saved as a theme, so it can be your default, be used for one die type, one kind of roll or one character, be exported, and (GM) be published to the world.
