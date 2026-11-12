@@ -34,7 +34,7 @@ describe('build', () => {
     const themeForm = lazy.find((p) => /theme-form-/.test(p)); // theme helpers + thumbnailer, shared by the theme browser and the appearance editor
     const damageForm = lazy.find((p) => /damage-map-form-/.test(p)); // shared by the damage map editor and the theme browser
     const soundNames = lazy.find((p) => /sound-names-/.test(p)); // the built-in sound list, shared by the synth and the editor
-    const points = lazy.find((p) => /Points-/.test(p)); // three's Points, shared by the effects and model-loader chunks
+    const points = lazy.find((p) => /LineSegments-/.test(p)); // three's LineSegments/InterleavedBuffer, shared by the effects and model-loader chunks
     const fontBuilder = lazy.find((p) => /font-builder-/.test(p)); // runtime font atlases (P7-D3)
     const fontWorker = lazy.find((p) => /font-worker-/.test(p));
     const benchAdapter = lazy.find((p) => /dicer-adapter-/.test(p)); // game.dice3d.benchmark(): adapter + runner

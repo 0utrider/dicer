@@ -284,7 +284,7 @@ describe('through the effect layer', () => {
     expect(scene.children).toHaveLength(0);
     layer.play(die, fx('frost'));
     layer.play(die, fx('embers'));
-    const points = scene.children.filter((c) => c.isPoints);
+    const points = scene.children.filter((c) => c.geometry?.isInstancedBufferGeometry);
     expect(points).toHaveLength(2);
     expect(points[0].geometry.getAttribute('aOrigin').count).toBe(1024);
     layer.dispose();
