@@ -557,6 +557,8 @@
         "CritIcon": "Icon on the 20",
         "FumbleIcon": "Icon on the 1",
         "IconsHint": "Only d20s show icons; every other die keeps its numbers.",
+        "Pips": "Pips on the d6",
+        "Coin": "Coin faces",
         "Font": "Font",
         "Family": "Font on this computer",
         "FamilyPlaceholder": "A font name, e.g. Georgia",
@@ -598,6 +600,16 @@
         "deco": "Art Deco",
         "css": "On this computer",
         "file": "Font file"
+      },
+      "Coin": {
+        "numbers": "1 and 2",
+        "heads-tails": "Heads and tails",
+        "sun-moon": "Sun and moon"
+      },
+      "Shapes": {
+        "D4": "d4 shape",
+        "classic": "Classic",
+        "crystal": "Crystal"
       },
       "Edges": {
         "Sharpness": "Sharpness"

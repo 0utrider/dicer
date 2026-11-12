@@ -247,6 +247,8 @@ export function themeFromForm(form, base) {
   const appearance =
     typeof f.base === 'string' && Object.hasOwn(LOOKS, f.base) ? plain(LOOKS[f.base].appearance) : src.appearance;
   const perType = {};
+  // Looks of dice the form has no field for (d3, d5, d7, d14, d16, dF) pass through unchanged.
+  if (isObj(src.perType)) for (const [t, look] of Object.entries(src.perType)) if (!DIE_TYPES.includes(t)) perType[t] = look;
   for (const t of DIE_TYPES) {
     const v = f.perType?.[t];
     if (typeof v === 'string' && Object.hasOwn(LOOKS, v)) perType[t] = plain(LOOKS[v].appearance);

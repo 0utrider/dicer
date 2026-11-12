@@ -25,6 +25,9 @@ export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', '
 // Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
 export const INCLUSION_LIST = ['flower', 'moss', 'butterfly'];
 export const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
+// Literal lists (the unit test pins them to what normalisation accepts).
+export const D4_SHAPES = ['classic', 'crystal'];
+export const COIN_CHOICES = ['numbers', 'heads-tails', 'sun-moon'];
 export const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 export const RELIEFS = ['engraved', 'raised'];
 // A literal list, not ICON_IDS: importing that name would add an export to the world-start chunk
@@ -79,9 +82,12 @@ export function formFromAppearance(raw) {
       fumbleIcon: a.numbers.icons.fumble ?? 'none',
       color: a.numbers.color,
       depth: a.numbers.depth,
+      pips: a.numbers.pips,
+      coin: a.numbers.coin,
       ...fontParts(a.numbers.font),
     },
     edges: { radius: a.edges.radius },
+    shapes: { d4: a.shapes.d4 },
     glow: { ...a.glow },
   };
 }
@@ -106,8 +112,11 @@ export function appearanceFromForm(form) {
       color: num.color,
       depth: n(num.depth),
       font: fontIdOf(num),
+      pips: num.pips === true,
+      coin: num.coin,
     },
     edges: { radius: n(e.radius) },
+    shapes: { d4: isObj(f.shapes) ? f.shapes.d4 : undefined },
     glow: { color: g.color, intensity: n(g.intensity) },
   });
 }
@@ -195,9 +204,15 @@ export function removeOverride(forms, type) {
   const { [type]: _gone, ...rest } = forms;
   return rest;
 }
-/** forms -> { appearance, perType } of a theme. */
-export function looksFromForms(forms) {
+/**
+ * forms -> { appearance, perType } of a theme. `base` (the theme being edited) supplies the per-type
+ * looks of dice the editor has no tab for (d3, d5, d7, d14, d16, dF): they pass through unchanged.
+ */
+export function looksFromForms(forms, base = null) {
   const perType = {};
+  if (isObj(base?.perType)) {
+    for (const [t, look] of Object.entries(base.perType)) if (!DIE_TYPES.includes(t)) perType[t] = plain(look);
+  }
   for (const t of DIE_TYPES) if (forms[t]) perType[t] = appearanceFromForm(forms[t]);
   return { appearance: appearanceFromForm(forms.default), perType };
 }

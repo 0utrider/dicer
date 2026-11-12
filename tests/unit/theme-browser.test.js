@@ -117,6 +117,13 @@ describe('the simple edit form', () => {
     expect(f.nat20).toEqual({ effect: 'sparkles', sound: 'chime' });
     expect(f.nat1).toEqual({ effect: '', sound: '' });
   });
+  it('per-type looks of dice the form has no field for pass through unchanged', () => {
+    const d7 = { body: { type: 'metal' }, extra: 1 };
+    const withD7 = { ...base, perType: { ...base.perType, d7, df: { glow: { color: '#112233', intensity: 1 } } } };
+    const back = themeFromForm(formFromTheme(withD7), withD7);
+    expect(JSON.stringify(back.perType.d7)).toBe(JSON.stringify(d7));
+    expect(back.perType.df).toEqual(withD7.perType.df);
+  });
   it('an untouched form gives back an equivalent theme', () => {
     const back = themeFromForm(formFromTheme(base), base);
     const norm = normalizeTheme(back, 'user');

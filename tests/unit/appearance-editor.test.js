@@ -15,6 +15,8 @@ import {
   INTERIOR_TYPES,
   INCLUSION_LIST,
   SHAPES,
+  D4_SHAPES,
+  COIN_CHOICES,
   FONT_KINDS,
   formFromAppearance,
   appearanceFromForm,
@@ -99,6 +101,42 @@ describe('relief, icons, new fills and fonts in the form', () => {
     const f = setField(formFromAppearance({}), 'numbers.fontKind', 'norse');
     expect(appearanceFromForm(f).numbers.font).toBe('norse');
     expect(fontInvalid(f)).toBe(false);
+  });
+});
+
+describe('crystal d4, pips and coin faces in the form', () => {
+  it('round trip of shapes.d4, pips, coin', () => {
+    for (const d4 of ['classic', 'crystal'])
+      for (const pips of [false, true])
+        for (const coin of ['numbers', 'heads-tails', 'sun-moon']) {
+          const a = normalizeAppearance({ shapes: { d4 }, numbers: { pips, coin } });
+          expect(a.shapes.d4).toBe(d4);
+          expect(a.numbers).toMatchObject({ pips, coin });
+          const f = formFromAppearance(a);
+          expect(f.shapes.d4).toBe(d4);
+          expect(f.numbers).toMatchObject({ pips, coin });
+          expect(appearanceFromForm(f)).toEqual(a);
+        }
+    const f = setField(setField(setField(formFromAppearance({}), 'shapes.d4', 'crystal'), 'numbers.pips', true), 'numbers.coin', 'sun-moon');
+    expect(appearanceFromForm(f)).toMatchObject({ shapes: { d4: 'crystal' }, numbers: { pips: true, coin: 'sun-moon' } });
+  });
+  it('lists pinned to normalisation', () => {
+    expect(D4_SHAPES).toEqual(['classic', 'crystal']);
+    expect(COIN_CHOICES).toEqual(['numbers', 'heads-tails', 'sun-moon']);
+    for (const id of D4_SHAPES) expect(normalizeAppearance({ shapes: { d4: id } }).shapes.d4).toBe(id);
+    for (const id of COIN_CHOICES) expect(normalizeAppearance({ numbers: { coin: id } }).numbers.coin).toBe(id);
+    expect(normalizeAppearance({ shapes: { d4: 'nope' } }).shapes.d4).toBe('classic');
+    expect(normalizeAppearance({ numbers: { coin: 'nope' } }).numbers.coin).toBe('numbers');
+  });
+  it('saving keeps the per-type looks of dice the editor has no tab for', () => {
+    const d7 = { body: { type: 'metal' }, numbers: { fill: 'paint' }, weird: 1 };
+    const df = { glow: { color: '#112233', intensity: 0.5 } };
+    const theme = { id: 'x', name: 'X', appearance: {}, perType: { d7, df, d6: { body: { type: 'wood' } } } };
+    const out = looksFromForms(formsFromTheme(theme), theme);
+    expect(JSON.stringify(out.perType.d7)).toBe(JSON.stringify(d7));
+    expect(JSON.stringify(out.perType.df)).toBe(JSON.stringify(df));
+    expect(out.perType.d6.body.type).toBe('wood');
+    expect(looksFromForms(formsFromTheme(theme)).perType.d7).toBeUndefined();
   });
 });
 
@@ -550,6 +588,31 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('controls render with their labels', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: { d7: { body: { type: 'wood' } }, df: { numbers: { fill: 'paint' } } }, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    expect(labels('[data-field="shapes.d4"]')).toEqual([L('Shapes.classic'), L('Shapes.crystal')]);
+    expect(app.element.textContent).toContain(L('Shapes.D4'));
+    expect(labels('[data-field="numbers.coin"]')).toEqual(COIN_CHOICES.map((c) => L(`Coin.${c}`)));
+    expect(app.element.textContent).toContain(L('Numbers.Pips'));
+    expect(q(app, 'input[name="numbers.pips"]')).toBeTruthy();
+    // real booleans from the checkbox, chips set the look
+    const pips = q(app, 'input[name="numbers.pips"]');
+    pips.checked = true;
+    pips.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(app.theme().appearance.numbers.pips).toBe(true);
+    await click(app, '[data-field="numbers.coin"][data-value="sun-moon"]');
+    await click(app, '[data-field="shapes.d4"][data-value="crystal"]');
+    const t = app.theme();
+    expect(t.appearance.numbers.coin).toBe('sun-moon');
+    expect(t.appearance.shapes.d4).toBe('crystal');
+    // dice with no tab keep their looks through a save
+    expect(t.perType.d7).toEqual({ body: { type: 'wood' } });
+    expect(t.perType.df).toEqual({ numbers: { fill: 'paint' } });
+    await app.close();
+  });
+
   it('the shape chips list nine shapes with their labels', async () => {
     const L = (k) => localize(`DICER.Appearance.${k}`);
     const app = await open({ base: { id: 't', name: 'T', appearance: { body: { type: 'resin' }, interior: { type: 'shape', shape: 'sword' } }, perType: {}, rules: [] } });
@@ -912,6 +975,8 @@ describe('lang/en.json', () => {
       'Fill.': ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'],
       'FontKind.': [...FONT_IDS_BUILTIN, 'css', 'file'],
       'Relief.': ['engraved', 'raised'],
+      'Shapes.': ['D4', 'classic', 'crystal'],
+      'Coin.': ['numbers', 'heads-tails', 'sun-moon'],
       'Icon.': ['none', ...ICON_IDS],
       'Edge.': ['sharp', 'crisp', 'soft', 'round', 'veryRound'],
     });

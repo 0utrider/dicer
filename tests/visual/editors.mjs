@@ -213,6 +213,27 @@ async function main() {
     );
     if (Object.keys(shapeShots).length === 6 && new Set(Object.values(shapeShots)).size !== 6)
       problems.push('appearance-inside-shape: two shapes drew the same stage');
+    // The crystal d4, pips on the d6 and the coin faces: the controls show, take a pick and keep it.
+    problems.push(
+      ...(await shoot(browser, 'app=appearance', 'appearance-numbers-edges.png', async (page) => {
+        await livePreview(page);
+        await page.click('[data-field="numbers.coin"][data-value="sun-moon"]');
+        await page.check('input[name="numbers.pips"]');
+        await page.click('[data-field="shapes.d4"][data-value="crystal"]');
+        const got = await page.evaluate(() => ({
+          coin: document.querySelectorAll('[data-field="numbers.coin"]').length,
+          coinOn: document.querySelector('[data-field="numbers.coin"][data-value="sun-moon"]')?.getAttribute('aria-checked'),
+          pips: document.querySelector('input[name="numbers.pips"]')?.checked,
+          d4: document.querySelector('[data-field="shapes.d4"][data-value="crystal"]')?.getAttribute('aria-pressed'),
+          d4Count: document.querySelectorAll('[data-field="shapes.d4"]').length,
+        }));
+        if (got.coin !== 3 || got.coinOn !== 'true' || got.pips !== true || got.d4 !== 'true' || got.d4Count !== 2)
+          throw new Error(`appearance-numbers-edges: unexpected controls ${JSON.stringify(got)}`);
+        await page.waitForTimeout(600);
+        await page.mouse.move(5, 5);
+        await page.locator('[data-field="shapes.d4"][data-value="crystal"]').scrollIntoViewIfNeeded();
+      }, { reducedMotion: 'reduce' })),
+    );
     // A font from the computer (Georgia) drawn on the die.
     problems.push(
       ...(await shoot(browser, 'app=appearance&theme=user.u1.georgia-gold', 'appearance-editor-font.png', async (page) => {

@@ -153,6 +153,15 @@
             </div>
             <p class="dicer-hint">{{localize "DICER.Appearance.Numbers.IconsHint"}}</p>
           </div>
+          <div class="dicer-ae-row dicer-ae-toggles">
+            <label class="dicer-ae-toggle"><input type="checkbox" name="numbers.pips" {{#if form.numbers.pips}}checked{{/if}}><span>{{localize "DICER.Appearance.Numbers.Pips"}}</span></label>
+          </div>
+          <div class="dicer-field">
+            <span>{{localize "DICER.Appearance.Numbers.Coin"}}</span>
+            <div class="dicer-ae-chips" role="radiogroup" aria-label="{{localize "DICER.Appearance.Numbers.Coin"}}">
+              {{#each coins}}<button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" role="radio" aria-checked="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="numbers.coin" data-value="{{id}}">{{label}}</button>{{/each}}
+            </div>
+          </div>
           <div class="dicer-field">
             <span>{{localize "DICER.Appearance.Numbers.Font"}}</span>
             <div class="dicer-ae-chips" role="radiogroup" aria-label="{{localize "DICER.Appearance.Numbers.Font"}}">
@@ -193,6 +202,12 @@
               {{/each}}
             </div>
             <div class="dicer-ae-scale"><span>{{localize "DICER.Appearance.Edge.sharp"}}</span><span>{{localize "DICER.Appearance.Edge.veryRound"}}</span></div>
+          </div>
+          <div class="dicer-field">
+            <span>{{localize "DICER.Appearance.Shapes.D4"}}</span>
+            <div class="dicer-segmented dicer-ae-seg">
+              {{#each d4Shapes}}<button type="button" class="{{#if active}}active{{/if}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="shapes.d4" data-value="{{id}}">{{label}}</button>{{/each}}
+            </div>
           </div>
         </div>
       </details>

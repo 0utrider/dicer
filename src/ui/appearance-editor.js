@@ -24,6 +24,8 @@ import {
   FILLS,
   RELIEFS,
   ICON_CHOICES,
+  D4_SHAPES,
+  COIN_CHOICES,
   FONT_KINDS,
   EDGE_STEPS,
   FONT_SUGGESTIONS,
@@ -213,7 +215,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   theme() {
     const keepAll = Object.fromEntries(DIE_TYPES.map((t) => [t, '']));
     const raw = themeFromForm({ name: this.#name, base: KEEP, perType: keepAll, ...this.#extras }, this.#base);
-    const { appearance, perType } = looksFromForms(this.#forms);
+    const { appearance, perType } = looksFromForms(this.#forms, this.#base);
     // An empty name stays empty, so the save refuses it (NeedName) instead of reusing the base's.
     return { ...raw, name: this.#name.trim(), appearance, perType };
   }
@@ -259,6 +261,8 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       insideTypes: active(INTERIOR_TYPES, form.interior.type, 'DICER.Appearance.InsideType.', INSIDE_ICONS),
       inclusions: active(INCLUSION_LIST, form.interior.inclusion, 'DICER.Appearance.Inclusion.', INCLUSION_ICONS),
       shapes: active(SHAPES, form.interior.shape, 'DICER.Appearance.Shape.', SHAPE_ICONS),
+      d4Shapes: active(D4_SHAPES, form.shapes.d4, 'DICER.Appearance.Shapes.'),
+      coins: active(COIN_CHOICES, form.numbers.coin, 'DICER.Appearance.Coin.'),
       fills: active(FILLS, form.numbers.fill, 'DICER.Appearance.Fill.'),
       reliefs: active(RELIEFS, form.numbers.relief, 'DICER.Appearance.Relief.'),
       critIcons: active(ICON_CHOICES, form.numbers.critIcon, 'DICER.Appearance.Icon.'),
