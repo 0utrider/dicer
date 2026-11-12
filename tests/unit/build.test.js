@@ -141,8 +141,10 @@ describe('build', () => {
     // as it stood (4_090_248, about 105 KB under the 4 MiB budget) after the single-mesh blob
     // shadows (+565 bytes) spent the last of the allowance; the next 2 KB must again be noticed.
     // The preview buttons re-based it on purpose (4_092_397): api._throwLook lives in the
-    // world-start API (the editors call it through game.dice3d).
-    const growth = worldStartBytes() - 4_092_397;
+    // world-start API (the editors call it through game.dice3d). The readable-numbers fix
+    // re-based it on purpose (+1_738, 4_094_135): every die's material picks its number colour
+    // against the die's own colour, so the contrast rule lives in the world-start renderer.
+    const growth = worldStartBytes() - 4_094_135;
     console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });
