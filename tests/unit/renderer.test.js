@@ -101,18 +101,69 @@ test('camera fit: the floor rectangle exactly fills the view', () => {
   expect(camera.position.y).toBeCloseTo(5 / Math.tan(THREE.MathUtils.degToRad(10)));
 });
 
-test('shadowFor reuses released planes', () => {
-  const { scene, shadowFor, releaseShadow } = buildScene();
-  const die = new THREE.Mesh();
-  const a = shadowFor(die);
-  const b = shadowFor(die);
+// P9-R16: every blob shadow is one quad of a single mesh: one draw call for all of them (30 dice
+// drew 30 extra planes, about half of the pool's draw calls).
+const shadowMeshes = (scene) => scene.children.filter((c) => c.userData?.dicerShadows);
+/** Centre (x, y, z) and half-size of live quad i, from the mesh's corner positions. */
+const quad = (mesh, i) => {
+  const a = mesh.geometry.attributes.position.array;
+  const o = i * 12;
+  return { x: (a[o] + a[o + 3]) / 2, y: a[o + 1], z: (a[o + 2] + a[o + 8]) / 2, h: (a[o + 3] - a[o]) / 2 };
+};
+const sphereDie = (x, z, r = 0.5) => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r));
+  m.geometry.computeBoundingSphere();
+  m.position.set(x, 2, z);
+  return m;
+};
+
+test('all shadows share one mesh; its draw range follows shadowFor and releaseShadow', () => {
+  const { scene, shadowFor, releaseShadow, updateShadows } = buildScene();
+  const a = shadowFor(sphereDie(1, 2));
+  const b = shadowFor(sphereDie(-3, 4));
+  const c = shadowFor(sphereDie(5, -6));
   expect(a).not.toBe(b);
-  expect(a.material).toBe(b.material);
+  expect(shadowMeshes(scene)).toHaveLength(1);
+  const [mesh] = shadowMeshes(scene);
+  expect(mesh.geometry.drawRange.count).toBe(18);
+  expect(mesh.frustumCulled).toBe(false);
+  expect(mesh.renderOrder).toBe(-1);
   releaseShadow(a);
-  expect(scene.children).not.toContain(a);
-  const c = shadowFor(die);
-  expect(c).toBe(a);
-  expect(scene.children).toContain(c);
+  releaseShadow(a); // twice is a no-op
+  expect(mesh.geometry.drawRange.count).toBe(12);
+  updateShadows();
+  // The two live shadows sit under their dice, on the floor, as big as the old planes (r * 2.6).
+  const lives = [quad(mesh, 0), quad(mesh, 1)].sort((u, v) => u.x - v.x);
+  expect(lives[0]).toMatchObject({ x: -3, z: 4 });
+  expect(lives[1]).toMatchObject({ x: 5, z: -6 });
+  expect(lives[0].y).toBeCloseTo(0.01);
+  expect(2 * lives[0].h).toBeCloseTo(0.5 * 2.6);
+  releaseShadow(b);
+  releaseShadow(c);
+  expect(mesh.geometry.drawRange.count).toBe(0);
+  expect(shadowMeshes(scene)).toEqual([]); // out of the scene while no shadow is live
+});
+
+test('a shadow quad faces up, so the default front-face culling keeps it', () => {
+  const { scene, shadowFor } = buildScene();
+  shadowFor(sphereDie(0, 0));
+  const [mesh] = shadowMeshes(scene);
+  const p = mesh.geometry.attributes.position.array;
+  const [i0, i1, i2] = mesh.geometry.index.array;
+  const v = (i) => new THREE.Vector3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+  const n = new THREE.Vector3().crossVectors(v(i1).sub(v(i0)), v(i2).sub(v(i0)));
+  expect(n.y).toBeGreaterThan(0);
+});
+
+test('the shadow mesh grows past its first capacity and keeps every live shadow', () => {
+  const { scene, shadowFor, updateShadows } = buildScene();
+  for (let i = 0; i < 70; i++) shadowFor(sphereDie(i, 0, 1));
+  updateShadows();
+  expect(shadowMeshes(scene)).toHaveLength(1);
+  const [mesh] = shadowMeshes(scene);
+  expect(mesh.geometry.drawRange.count).toBe(70 * 6);
+  const xs = new Set(Array.from({ length: 70 }, (_, i) => Math.round(quad(mesh, i).x)));
+  expect(xs.size).toBe(70);
 });
 
 test('context restore resets the environment so the next startLoop rebuilds it', () => {
@@ -149,6 +200,7 @@ test('dispose clears environment and removes shadow planes', () => {
   expect(r.scene.children).not.toContain(a);
   expect(r.scene.children).not.toContain(b);
   expect(r.scene.children.filter((c) => c.userData && 'follow' in c.userData)).toEqual([]);
+  expect(shadowMeshes(r.scene)).toEqual([]);
 });
 
 test('startLoop passes the default environment resolution to setEnvironment', () => {

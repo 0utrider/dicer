@@ -6,7 +6,7 @@ export const DEFAULT_ENV_RESOLUTION = 256;
 export const FOV_DEG = 20;
 const SHADOW_Y = 0.01;
 
-/** Radial-gradient blob texture, built once and shared by every shadow plane. */
+/** Radial-gradient blob texture, built once and shared by every shadow instance. */
 function makeShadowTexture() {
   const size = 64;
   const data = new Uint8Array(size * size * 4);
@@ -95,21 +95,59 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
     scene.environment = null;
   }
 
-  // Shadow pool: one shared texture, material and geometry; planes reused after release.
+  // P9-R16: every blob shadow is one quad of a single mesh, so all of them cost one draw call
+  // (30 dice used to draw 30 extra planes, about half of the pool's draw calls). The quads'
+  // corners are rewritten each frame; an InstancedMesh would do the same but adds ~3.6 KB of
+  // three.js to the world-start bundle. A shadow handle is {follow, index}; releasing one moves
+  // the last live shadow into its slot.
   let shadowTex = null;
   let shadowMat = null;
-  let shadowGeo = null;
-  const free = [];
-  const active = new Set();
+  let shadowMesh = null;
+  let shadowCap = 0;
+  const live = [];
+
+  function shadowCapacity(n) {
+    if (shadowCap >= n) return;
+    shadowCap = Math.max(32, 2 * shadowCap);
+    const geo = new THREE.BufferGeometry();
+    const uv = new Float32Array(shadowCap * 8);
+    const index = new Uint32Array(shadowCap * 6);
+    for (let q = 0; q < shadowCap; q++) {
+      uv.set([0, 1, 1, 1, 1, 0, 0, 0], q * 8);
+      const v = q * 4; // corners x-z-, x+z-, x+z+, x-z+, wound to face up
+      index.set([v, v + 3, v + 2, v, v + 2, v + 1], q * 6);
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(shadowCap * 12), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(new THREE.BufferAttribute(index, 1));
+    if (shadowMesh) {
+      scene.remove(shadowMesh);
+      shadowMesh.geometry.dispose();
+      shadowMesh.geometry = geo;
+    } else {
+      shadowMesh = new THREE.Mesh(geo, shadowMat);
+      shadowMesh.renderOrder = -1;
+      shadowMesh.frustumCulled = false; // the quads spread over the floor
+      shadowMesh.userData.dicerShadows = true;
+    }
+  }
 
   function updateShadows() {
-    for (const plane of active) {
-      const m = plane.userData.follow;
-      if (!m) continue;
-      const r = m.geometry?.boundingSphere?.radius ?? 1;
-      plane.position.set(m.position.x, SHADOW_Y, m.position.z);
-      plane.scale.setScalar(r * 2.6);
+    if (!shadowMesh) return;
+    const pos = shadowMesh.geometry.attributes.position;
+    const a = pos.array;
+    for (let i = 0; i < live.length; i++) {
+      const m = live[i].follow;
+      const h = (m.geometry?.boundingSphere?.radius ?? 1) * 1.3; // half of the old plane's r * 2.6
+      const x = m.position.x;
+      const z = m.position.z;
+      a.set([x - h, SHADOW_Y, z - h, x + h, SHADOW_Y, z - h, x + h, SHADOW_Y, z + h, x - h, SHADOW_Y, z + h], i * 12);
     }
+    pos.needsUpdate = true;
+    shadowMesh.geometry.setDrawRange(0, live.length * 6);
+    // In the scene only while a shadow is live, like the planes it replaces.
+    if (live.length && !shadowMesh.parent) scene.add(shadowMesh);
+    else if (!live.length) scene.remove(shadowMesh);
   }
 
   function shadowFor(mesh) {
@@ -120,39 +158,38 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
         transparent: true,
         depthWrite: false,
       });
-      shadowGeo = new THREE.PlaneGeometry(1, 1);
-      shadowGeo.rotateX(-Math.PI / 2);
     }
-    let plane = free.pop();
-    if (!plane) {
-      plane = new THREE.Mesh(shadowGeo, shadowMat);
-      plane.renderOrder = -1;
-    }
-    plane.userData.follow = mesh;
-    plane.visible = true;
-    active.add(plane);
-    scene.add(plane);
+    shadowCapacity(live.length + 1);
+    const handle = { follow: mesh, index: live.length };
+    live.push(handle);
     updateShadows();
-    return plane;
+    return handle;
   }
 
-  function releaseShadow(plane) {
-    if (!active.delete(plane)) return;
-    plane.userData.follow = null;
-    plane.visible = false;
-    scene.remove(plane);
-    free.push(plane);
+  function releaseShadow(handle) {
+    const i = handle?.index ?? -1;
+    if (live[i] !== handle) return;
+    const last = live.pop();
+    if (last !== handle) {
+      live[i] = last;
+      last.index = i;
+    }
+    handle.index = -1;
+    handle.follow = null;
+    updateShadows();
   }
 
   function dispose() {
-    for (const plane of [...active]) releaseShadow(plane);
-    for (const plane of free) scene.remove(plane);
+    live.length = 0;
+    if (shadowMesh) {
+      scene.remove(shadowMesh);
+      shadowMesh.geometry.dispose();
+    }
     resetEnvironment();
     shadowTex?.dispose();
     shadowMat?.dispose();
-    shadowGeo?.dispose();
-    shadowTex = shadowMat = shadowGeo = null;
-    free.length = 0;
+    shadowTex = shadowMat = shadowMesh = null;
+    shadowCap = 0;
   }
 
   return {
