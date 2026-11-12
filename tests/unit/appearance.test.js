@@ -136,7 +136,14 @@ describe('Plan 7: edge sharpness and font', () => {
     expect(normalizeAppearance({}).edges).toEqual({ radius: 0.5, style: 'rounded' });
     expect(normalizeAppearance({}).numbers.font).toBe('serif');
     expect(EDGE_STEPS).toEqual([0, 0.25, 0.5, 0.75, 1]);
-    expect(FONT_IDS_BUILTIN).toEqual(['serif', 'sans']);
+  });
+  test('FONT_IDS_BUILTIN lists the eight built-in fonts and each normalises to itself', () => {
+    expect(FONT_IDS_BUILTIN).toEqual([
+      'serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco',
+    ]);
+    for (const id of FONT_IDS_BUILTIN) {
+      expect(normalizeAppearance({ numbers: { font: id } }).numbers.font).toBe(id);
+    }
   });
   test.each([
     [0, 0], [0.25, 0.25], [0.5, 0.5], [0.75, 0.75], [1, 1],

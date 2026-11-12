@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { parseAtlas, layoutLabel } from '../../src/render/sdf-atlas.js';
 import { ENGRAVE_PARS } from '../../src/render/shaders/engrave.js';
 
@@ -108,4 +108,21 @@ test('the bundled sans atlas (Atkinson Hyperlegible Bold, P7-D5) has 0-9 and the
   for (const c of '0123456789.') expect(sans.glyphs.has(c)).toBe(true);
   expect(sans.distanceRange).toBe(8);
   expect(layoutLabel('6.', sans)[8 + 4]).toBe(-1);
+});
+
+test('every bundled digits-<id>.json has 0-9 and the "." mark, size 64, distanceRange 8, and its png and OFL text exist', () => {
+  const files = readdirSync('assets/fonts');
+  const ids = files.map((f) => /^digits-(.+)\.json$/.exec(f)?.[1]).filter(Boolean);
+  for (const id of ['sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco']) {
+    expect(ids).toContain(id);
+  }
+  for (const id of ids) {
+    const json = JSON.parse(readFileSync(`assets/fonts/digits-${id}.json`, 'utf8'));
+    const atlas = parseAtlas(json);
+    for (const c of '0123456789.') expect(atlas.glyphs.has(c), `${id} ${c}`).toBe(true);
+    expect(json.info.size).toBe(64);
+    expect(atlas.distanceRange).toBe(8);
+    expect(files).toContain(`digits-${id}.png`);
+  }
+  expect(files.filter((f) => /^OFL.*\.txt$/.test(f)).length).toBeGreaterThanOrEqual(ids.length);
 });

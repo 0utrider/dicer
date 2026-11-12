@@ -1,0 +1,139 @@
+{
+  "info": {
+    "face": "UnifrakturMaguntia-Book",
+    "size": 64
+  },
+  "common": {
+    "lineHeight": 66,
+    "base": 50,
+    "scaleW": 256,
+    "scaleH": 128
+  },
+  "distanceField": {
+    "fieldType": "msdf",
+    "distanceRange": 8
+  },
+  "chars": [
+    {
+      "id": 48,
+      "char": "0",
+      "x": 0,
+      "y": 0,
+      "width": 36,
+      "height": 53,
+      "xoffset": -3,
+      "yoffset": 1,
+      "xadvance": 30
+    },
+    {
+      "id": 51,
+      "char": "3",
+      "x": 38,
+      "y": 0,
+      "width": 35,
+      "height": 53,
+      "xoffset": -3,
+      "yoffset": 2,
+      "xadvance": 30
+    },
+    {
+      "id": 53,
+      "char": "5",
+      "x": 75,
+      "y": 0,
+      "width": 35,
+      "height": 53,
+      "xoffset": -3,
+      "yoffset": 1,
+      "xadvance": 30
+    },
+    {
+      "id": 54,
+      "char": "6",
+      "x": 0,
+      "y": 55,
+      "width": 34,
+      "height": 53,
+      "xoffset": -2,
+      "yoffset": 1,
+      "xadvance": 29
+    },
+    {
+      "id": 56,
+      "char": "8",
+      "x": 36,
+      "y": 55,
+      "width": 35,
+      "height": 53,
+      "xoffset": -3,
+      "yoffset": 1,
+      "xadvance": 30
+    },
+    {
+      "id": 57,
+      "char": "9",
+      "x": 73,
+      "y": 55,
+      "width": 34,
+      "height": 53,
+      "xoffset": -3,
+      "yoffset": 1,
+      "xadvance": 29
+    },
+    {
+      "id": 49,
+      "char": "1",
+      "x": 109,
+      "y": 55,
+      "width": 27,
+      "height": 52,
+      "xoffset": -3,
+      "yoffset": 2,
+      "xadvance": 21
+    },
+    {
+      "id": 50,
+      "char": "2",
+      "x": 112,
+      "y": 0,
+      "width": 35,
+      "height": 52,
+      "xoffset": -3,
+      "yoffset": 2,
+      "xadvance": 29
+    },
+    {
+      "id": 52,
+      "char": "4",
+      "x": 138,
+      "y": 54,
+      "width": 36,
+      "height": 52,
+      "xoffset": -3,
+      "yoffset": 2,
+      "xadvance": 29
+    },
+    {
+      "id": 55,
+      "char": "7",
+      "x": 149,
+      "y": 0,
+      "width": 34,
+      "height": 52,
+      "xoffset": -3,
+      "yoffset": 2,
+      "xadvance": 28
+    },
+    {
+      "id": 46,
+      "char": ".",
+      "x": 0,
+      "y": 110,
+      "width": 38,
+      "height": 13,
+      "xoffset": -5,
+      "yoffset": 53,
+      "xadvance": 29
+    }
+  ]
+}

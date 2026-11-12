@@ -10,7 +10,7 @@
 // caller draws with the serif meanwhile, and onReady tells it to rebuild its materials.
 import * as THREE from 'three';
 import { parseAtlas } from '../render/sdf-atlas.js';
-import { normalizeAppearance } from '../look/appearance.js';
+import { FONT_IDS_BUILTIN, normalizeAppearance } from '../look/appearance.js';
 
 /** A font that is not ready this long after it was requested is given up on (null, one warning). */
 export const FONT_TIMEOUT_MS = 8000;
@@ -166,14 +166,14 @@ function withTimeout(promise, ms) {
 /**
  * @param {object} o
  * @param {object} o.serif the bundled serif atlas (loadDigitAtlas), always ready
- * @param {(name: 'sans') => Promise<object>} o.loadBundled loads a bundled prebuilt atlas
+ * @param {(name: string) => Promise<object>} o.loadBundled loads a bundled prebuilt atlas (any built-in id but serif)
  * @param {() => Worker} [o.createWorker] the font worker (createFontWorker); without it every
  *   runtime font is built on the main thread in idle slices
  * @param {(source: object) => Promise<{json, width, height, field}>} [o.build] test seam: replaces
  *   the lazy font-builder chunk
  * @param {(msg: string, err?: unknown) => void} [o.warn]
  * @param {number} [o.cacheSize] runtime atlases kept in memory (least recently used evicted and
- *   its texture disposed); serif and sans are never evicted
+ *   its texture disposed); the built-in fonts are never evicted
  * @param {{get: Function, set: Function}} [o.store] persistent cache (IndexedDB)
  * @param {(p: string) => string} [o.getRoute] Foundry's getRoute
  * @param {string} [o.origin] the page origin file fonts must stay on
@@ -227,7 +227,7 @@ export function createFontAtlases({
   }
 
   async function produce(id) {
-    if (id === 'sans') return loadBundled('sans');
+    if (FONT_IDS_BUILTIN.includes(id)) return loadBundled(id);
     const source = fontSource(id, { getRoute, origin });
     if (!source) throw new Error('not a usable font id');
     const key = `${GENERATOR_VERSION}|${id}`;
@@ -248,7 +248,7 @@ export function createFontAtlases({
   }
 
   function keep(id, atlas) {
-    if (id === 'sans') return void pinned.set(id, atlas);
+    if (FONT_IDS_BUILTIN.includes(id)) return void pinned.set(id, atlas);
     lru.set(id, atlas);
     for (const [old, a] of lru) {
       if (lru.size <= cacheSize) break;

@@ -11,7 +11,7 @@ export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-sh
 /** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
 export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 /** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
-export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans']);
+export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco']);
 
 function deepFreeze(o) {
   for (const v of Object.values(o)) if (v && typeof v === 'object') deepFreeze(v);

@@ -60,6 +60,9 @@ describe('build', () => {
     expect(readFileSync(fontWorker, 'utf8')).toContain('nodigits');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('nodigits');
     expect(WORLD_START_ASSETS.some((p) => p.includes('digits-sans'))).toBe(false);
+    expect(
+      WORLD_START_ASSETS.some((p) => /digits-(blackletter|norse|uncial|scifi|handwritten|deco)/.test(p)),
+    ).toBe(false);
     expect(synth).toBeTruthy();
     expect(editor).toBeTruthy();
     expect(soundNames).toBeTruthy();
