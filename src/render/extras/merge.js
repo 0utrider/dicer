@@ -1,6 +1,6 @@
 /**
  * Merges patches: defines/uniforms/params assigned, chunk slots joined by '\n', replace
- * concatenated; the last labels/atlas win.
+ * concatenated; the last labels/atlas/interior win.
  * Its own module so look-extras.js and bodies/index.js share it without an import cycle.
  */
 export function mergePatches(...patches) {
@@ -14,6 +14,7 @@ export function mergePatches(...patches) {
     out.replace.push(...(p.replace ?? []));
     if (p.labels) out.labels = p.labels;
     if (p.atlas) out.atlas = p.atlas;
+    if (p.interior) out.interior = p.interior;
     if (p.params) out.params = { ...out.params, ...p.params };
   }
   return out;

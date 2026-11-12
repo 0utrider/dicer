@@ -30,7 +30,7 @@ const ROW_LABEL_PX = 170;
  * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL. An optional
  * fifth element is a numbers patch merged into the base look's appearance.numbers (dice designs),
  * a sixth a body patch merged into appearance.body, a seventh an interior patch (dice designs
- * plan 2 bodies). The flags element covers per-row engraving / safe.
+ * plans 2 and 3). The flags element covers per-row engraving / safe.
  */
 const VARIANTS = [
   ['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }],
@@ -70,6 +70,9 @@ const VARIANTS = [
   // luminous (glow in the dark)
   ['opaque~luminous', 'default', 'glow in the dark', {}, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
   ['wood~ebony~luminous', 'default', 'ebony + luminous', {}, {}, { type: 'wood', preset: 'ebony', ...PRESET_COLORS.ebony, luminous: 1 }],
+  // foil insides (dice designs plan 3)
+  ['resin~foil-gold', 'default', 'gold and copper foil', {}, {}, { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 }, { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 }],
+  ['resin~foil-silver', 'default', 'silver foil', {}, {}, { type: 'resin', color: '#2b4a66', color2: '#0f2236', roughness: 0.05 }, { type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.5 }],
   // combinations (the compile check for body x numbers x interior x flags interactions)
   ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],

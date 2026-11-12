@@ -18,6 +18,11 @@ import { LIP, metalFinishPatch } from '../../src/render/extras/bodies/metal-fini
 import { BORDER, FX_COLOR } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
+import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/insides/index.js';
+import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS } from '../../src/render/shaders/interior.js';
+import { MARCH_RADIUS } from '../../src/render/extras/insides/foil.js';
+import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
+import { fallbackLook } from '../../src/look/appearance.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -488,5 +493,164 @@ describe('luminous', () => {
     expect(safe.userData.programKey).toMatch(/safe1/);
     expect(safe.userData.programKey).not.toContain('|lum');
     expect(patched(safe).fragmentShader).not.toContain('dcLumIn');
+  });
+});
+
+describe('insides', () => {
+  const UP_LINE = 'dcIUp = normalize( transpose( dcRm ) * vec3( 0.0, 1.0, 0.0 ) * dcIs );';
+  const resin = (interior, body = {}) => look({ body: { type: 'resin', ...body }, interior });
+  const mat = (a, flags = FLAGS) => createDiceMaterial(a, atlas, s, labels, flags);
+  const TODAY = [
+    { type: 'liquid' },
+    { type: 'glitter' },
+    { type: 'swirl' },
+    { type: 'nebula' },
+    ...['star', 'heart', 'skull', 'sphere'].map((shape) => ({ type: 'shape', shape })),
+  ];
+
+  test("today's insides get no inside patch and keep today's shader with the chunk loaded", async () => {
+    const FL = [FLAGS, { ...FLAGS, interiorSteps: 16 }, { ...FLAGS, interiorSteps: 0 }];
+    const run = () =>
+      TODAY.flatMap((it) =>
+        FL.map((f) => {
+          const m = mat(resin(it), f);
+          return { fs: patched(m).fragmentShader, defines: { ...m.defines }, key: m.userData.programKey };
+        }),
+      );
+    for (const it of TODAY) {
+      for (const f of FL) expect(insidePatch(resin(it), f)).toEqual({});
+      // also when the look needs the chunk for another reason (luminous)
+      expect(insidePatch(resin(it, { luminous: 1 }), FLAGS)).toEqual({});
+      expect(lookExtras.patchMaterial(resin(it, { luminous: 1 }), FLAGS, {}).interior).toBeUndefined();
+    }
+    const loaded = run();
+    _setLookExtrasImport(() => new Promise(() => {}));
+    try {
+      const missing = run();
+      missing.forEach((m, i) => {
+        expect(m.fs).toBe(loaded[i].fs);
+        expect(m.defines).toEqual(loaded[i].defines);
+        expect(m.key).toBe(loaded[i].key);
+        expect(m.fs).not.toContain('dcIUp');
+      });
+    } finally {
+      _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+      await requestLookExtras();
+    }
+  });
+
+  test('foil: interior pars/main come from the patch; dcIUp declared once; the up line inserted once after dcIKey; NOISE_GLSL once', () => {
+    const a = resin({ type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 });
+    const patch = insidePatch(a, FLAGS);
+    expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+    expect(patch.interior.main).toBe(marchWithUp());
+    expect(patch.interior.pars).toContain(INTERIOR_PARS);
+    expect(count(patch.interior.pars, NOISE_GLSL)).toBe(1);
+    // the up line: once, directly after the dcIKey line, before the loop
+    const main = marchWithUp();
+    expect(count(main, UP_LINE)).toBe(1);
+    const keyLine = main.split('\n').findIndex((l) => l.trim().startsWith('dcIKey = '));
+    expect(main.split('\n')[keyLine + 1].trim()).toBe(UP_LINE);
+    expect(main.replace(UP_LINE, '').replace(/\n[ \t]*\n/, '\n')).toBe(INTERIOR_MARCH);
+    const m = mat(a);
+    expect(m.userData.programKey).toContain('|foil:32|');
+    expect(m.defines.DICER_INTERIOR).toBe('');
+    const fs = patched(m).fragmentShader;
+    expect(fs).toContain(patch.interior.pars);
+    expect(fs).toContain(patch.interior.main);
+    expect(count(fs, 'vec3 dcIUp;')).toBe(1);
+    expect(count(fs, UP_LINE)).toBe(1);
+    expect(fs.indexOf(UP_LINE)).toBeGreaterThan(fs.indexOf('dcIKey = normalize'));
+    expect(fs.indexOf(UP_LINE)).toBeLessThan(fs.indexOf('for ( int dcIi = 0;'));
+    expect(count(fs, '#define DC_NOISE')).toBe(1);
+    expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+    expect(fs).toContain('dcFoShard');
+    expect(MARCH_RADIUS).toBe(INTERIOR.radius); // foil's local copy
+    // one program for every colour and density
+    const other = mat(resin({ type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.2 }));
+    expect(other.userData.programKey).toBe(m.userData.programKey);
+    expect(patched(other).fragmentShader).toBe(fs);
+    // a non-resin body hides it (normalisation forces none)
+    expect(insidePatch(look({ body: { type: 'opaque' }, interior: { type: 'foil' } }), FLAGS)).toEqual({});
+    expect(insidePatch(a, { ...FLAGS, interiors: false })).toEqual({});
+  });
+
+  test('fake mode: uResinTint.w = INSIDE_TINT.foil, no interior chunk', () => {
+    expect(INSIDE_TINT).toEqual({ foil: 0.15, eye: 0.2, botanical: 0.25, smoke: 0.4 });
+    const low = { ...FLAGS, interiorSteps: 0 };
+    const a = resin({ type: 'foil', colors: ['#ffcf5a', '#d9814a'] }, { color: '#304050' });
+    const patch = insidePatch(a, low);
+    expect(Object.keys(patch)).toEqual(['uniforms']);
+    const m = mat(a, low);
+    expect(m.userData.programKey).toContain('|none|');
+    expect(m.defines.DICER_INTERIOR).toBeUndefined();
+    const fs = patched(m).fragmentShader;
+    expect(fs).not.toContain('dcInterior');
+    expect(fs).not.toContain('dcIUp');
+    const t = m.userData.uniforms.uResinTint.value;
+    expect(t.w).toBeCloseTo(INSIDE_TINT.foil, 6);
+    // the target is createDiceMaterial's: colors[0]'s hue at the body's luminance (linear)
+    const lum = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const c0 = new THREE.Color('#ffcf5a');
+    const want = c0.clone().multiplyScalar(lum(new THREE.Color('#304050')) / lum(c0));
+    expect([t.x, t.y, t.z].map((v) => +v.toFixed(6))).toEqual([want.r, want.g, want.b].map((v) => +v.toFixed(6)));
+    // a glitter look's tint is untouched (same body, same colours)
+    const g = mat(resin({ type: 'glitter', colors: ['#ffcf5a', '#d9814a'] }, { color: '#304050' }), low);
+    expect(g.userData.uniforms.uResinTint.value.toArray().slice(0, 3)).toEqual([t.x, t.y, t.z]);
+    // every new inside has a share at low, built or not
+    for (const type of Object.keys(INSIDE_TINT)) {
+      const p = insidePatch(resin({ type }), low);
+      expect(p.uniforms.uResinTint.value.w).toBeCloseTo(INSIDE_TINT[type], 6);
+    }
+  });
+
+  test('every new inside and liquid option draws (its patch or the fallback look), never throws, at every step count', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const cases = [
+        ...['foil', 'eye', 'botanical', 'smoke'].map((type) => ({ type })),
+        { type: 'liquid', bubble: true },
+        { type: 'liquid', sand: true },
+        { type: 'liquid', bubble: true, sand: true },
+      ];
+      for (const it of cases) {
+        for (const steps of [48, 32, 16, 0]) {
+          for (const shape of [s, getShape('d2')]) {
+            const f = { ...FLAGS, interiorSteps: steps };
+            const a = resin(it);
+            let m;
+            expect(() => (m = createDiceMaterial(a, atlas, shape, labels, f))).not.toThrow();
+            const fs = patched(m).fragmentShader;
+            let patch = null;
+            try {
+              patch = insidePatch(a, f);
+            } catch {
+              // a type without a module: the material must be the fallback look's
+            }
+            if (patch?.interior) {
+              expect(fs).toContain(patch.interior.main);
+              expect(m.userData.programKey).toBe(programKey(a, f));
+            } else if (patch) {
+              expect(steps).toBe(0);
+              expect(fs).not.toContain('dcInterior');
+            } else {
+              expect(steps).toBeGreaterThan(0);
+              expect(m.userData.programKey).toBe(programKey(fallbackLook(a), f));
+              expect(fs).toContain('dcInterior');
+            }
+          }
+        }
+      }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('mergePatches: interior, last wins', () => {
+    const i1 = { pars: '1', main: '1' };
+    const i2 = { pars: '2', main: '2' };
+    expect(mergePatches({ interior: i1 }, {}).interior).toBe(i1);
+    expect(mergePatches({ interior: i1 }, { interior: i2 }).interior).toBe(i2);
+    expect(mergePatches({}).interior).toBeUndefined();
   });
 });

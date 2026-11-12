@@ -645,6 +645,30 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     box.clear();
   });
 
+  test('a foil look rolled before the chunk loads draws glitter, then foil after it loads', async () => {
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const load = vi.fn(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+    _setLookExtrasImport(load);
+    const foil = {
+      body: { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 },
+      interior: { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 },
+    };
+    const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => foil, getFlags: () => flags });
+    expect(() => box.roll([{ type: 'd20', value: 7 }])).not.toThrow();
+    const first = meshOf(renderer).material.userData.programKey;
+    expect(first).toContain('|glitter:32|');
+    release();
+    expect(await requestLookExtras()).not.toBeNull();
+    box.invalidateMaterials();
+    expect(() => box.roll([{ type: 'd20', value: 7 }])).not.toThrow();
+    const second = meshOf(renderer).material.userData.programKey;
+    expect(second).toContain('|foil:32|');
+    expect(load).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
   test('the geometry edge radius follows the look of each roll', () => {
     buildDieGeometry.mockClear();
     let look = ruby;
