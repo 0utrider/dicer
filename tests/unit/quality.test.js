@@ -398,3 +398,29 @@ describe('GPU-path judge matches the sorting reference', () => {
     expect(drops).toEqual(ref);
   });
 });
+
+// P9-R19: a frame with the GPU timer on but no fresh result (gpuPending) is not judged: it neither
+// adds a sample nor clears the GPU window (which the EMA path would).
+describe('gpuPending frames', () => {
+  test('one slow GPU sample followed by pending frames cannot fill the window', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    for (let i = 0; i < 10; i++) q.frame(16.7, { interval: 16.7, cpu: 1, gpu: 2 });
+    for (let i = 0; i < 200; i++) {
+      if (i % 20 === 0) q.frame(30, { interval: 16.7, cpu: 1, gpu: 30 });
+      else q.frame(16.7, { interval: 16.7, cpu: 1, gpuPending: true });
+    }
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  test('pending frames between real samples do not reset the GPU window', () => {
+    const onDrop = vi.fn();
+    const q = new AdaptiveQuality({ onDrop });
+    for (let i = 0; i < 10 + 60; i++) {
+      q.frame(25, { interval: 16.7, cpu: 1, gpu: 25 });
+      q.frame(16.7, { interval: 16.7, cpu: 1, gpuPending: true });
+    }
+    expect(onDrop).toHaveBeenCalledTimes(1);
+    expect(q.lastDrop).toMatchObject({ path: 'gpu', gpuSlow: true });
+  });
+});

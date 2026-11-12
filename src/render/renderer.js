@@ -39,7 +39,6 @@ export class DiceRenderer {
   #onRestored;
   #gpu = undefined; // { gl, ext } | null (no timer) | undefined (not looked up yet)
   #queries = [];
-  #gpuMs = null;
   #compileTimeoutMs;
   #frameCount = 0;
   #generation = 0;
@@ -274,7 +273,8 @@ export class DiceRenderer {
         const cpu = performance.now() - t0;
         const interval = prev !== null && Number.isFinite(now - prev) ? Math.min(now - prev, 100) : undefined;
         const ms = interval === undefined ? cpu : Math.max(cpu, interval);
-        const sample = { interval, cpu, gpu: this.#pollGpuTime() };
+        const { gpu, pending } = this.#pollGpuTime();
+        const sample = { interval, cpu, gpu, ...(pending ? { gpuPending: true } : {}) };
         for (const cb of this.#frameTime) cb(ms, sample);
       } finally {
         if (again === 'hold' && this.#tick) {
@@ -327,27 +327,34 @@ export class DiceRenderer {
   }
 
   /**
-   * Latest resolved GPU ms (a few frames behind; non-blocking), or null. A disjoint event
-   * (e.g. a GPU clock change) invalidates every pending result.
+   * {gpu, pending}: the GPU ms of a query that resolved now (a few frames behind; non-blocking),
+   * else pending; gpu null without a timer. A disjoint event (e.g. a GPU clock change)
+   * invalidates every pending result.
    */
   #pollGpuTime() {
+    // P9-R19: a GPU time is reported once, on the frame its query resolves. The latest result
+    // used to be repeated on every frame until the next one arrived (a few frames later), so one
+    // slow GPU frame counted several times in the quality window and could drop a tier.
     const t = this.#gpu;
-    if (!t || !this.#queries.length) return this.#gpuMs;
-    const { gl, ext } = t;
-    try {
-      if (gl.getParameter(ext.GPU_DISJOINT_EXT)) {
+    if (!t) return { gpu: null, pending: false }; // no timer: the EMA path judges
+    let fresh;
+    if (this.#queries.length) {
+      const { gl, ext } = t;
+      try {
+        if (gl.getParameter(ext.GPU_DISJOINT_EXT)) {
+          this.#dropQueries();
+        } else {
+          while (this.#queries.length && gl.getQueryParameter(this.#queries[0], gl.QUERY_RESULT_AVAILABLE)) {
+            const q = this.#queries.shift();
+            fresh = Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6;
+            gl.deleteQuery(q);
+          }
+        }
+      } catch {
         this.#dropQueries();
-        return null;
       }
-      while (this.#queries.length && gl.getQueryParameter(this.#queries[0], gl.QUERY_RESULT_AVAILABLE)) {
-        const q = this.#queries.shift();
-        this.#gpuMs = Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6;
-        gl.deleteQuery(q);
-      }
-    } catch {
-      this.#dropQueries();
     }
-    return this.#gpuMs;
+    return Number.isFinite(fresh) ? { gpu: fresh, pending: false } : { gpu: undefined, pending: true };
   }
 
   #dropQueries() {
@@ -359,7 +366,6 @@ export class DiceRenderer {
         // context lost: nothing to free
       }
     }
-    this.#gpuMs = null;
   }
 
   #stop() {

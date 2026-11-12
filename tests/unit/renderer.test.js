@@ -388,12 +388,35 @@ describe('GPU frame time (P2-R13)', () => {
     r.startLoop(() => --n > 0);
     for (const t of [0, 16, 32, 48]) frames.splice(0).forEach((f) => f(t));
     expect(gl.beginQuery).toHaveBeenCalledTimes(4);
-    expect(samples[0]).toMatchObject({ interval: undefined, gpu: null });
+    expect(samples[0]).toMatchObject({ interval: undefined, gpuPending: true }); // nothing resolved yet
     expect(samples[1].interval).toBe(16);
     expect(samples[1].gpu).toBeCloseTo(3); // query 0 resolved
     expect(samples[3].gpu).toBeCloseTo(5);
     expect(gl.live.size).toBe(0);
     expect(r.isLooping).toBe(false);
+  });
+
+  // P9-R19: the latest GPU time used to be reported on every frame until the next query resolved,
+  // so one slow GPU frame counted several times in the 60-frame window and could drop a tier.
+  test('each resolved GPU time is reported once; frames between results are gpuPending', () => {
+    const { r, fake, frames } = setup();
+    const gl = timerGl();
+    let frame = 0;
+    // results arrive only every third frame
+    gl.getQueryParameter = (q, p) => (p === 1 ? frame % 3 === 0 && q.id < frame - 1 : 20e6);
+    fake.getContext = () => gl;
+    const samples = [];
+    r.onFrameTime((ms, s) => samples.push(s));
+    r.startLoop(() => true);
+    for (let t = 0; t < 10; t++) {
+      frame = t;
+      frames.splice(0).forEach((cb) => cb(t * 16));
+    }
+    const timed = samples.filter((s) => Number.isFinite(s.gpu));
+    expect(timed.length).toBeLessThanOrEqual(3);
+    expect(timed.length).toBeGreaterThan(0);
+    expect(samples.filter((s) => s.gpuPending).length).toBe(samples.length - timed.length);
+    for (const s of samples) expect(s.gpuPending === true).toBe(!Number.isFinite(s.gpu));
   });
 
   test('without the extension gpu is null and render is called directly', () => {

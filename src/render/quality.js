@@ -172,12 +172,15 @@ export class AdaptiveQuality {
    * @param {{interval?: number, cpu?: number, gpu?: number|null}} [sample] the parts: the
    *   rAF interval feeds the baseline; a GPU time replaces ms with max(cpu, gpu)
    */
-  frame(ms, { interval, cpu, gpu } = {}) {
+  frame(ms, { interval, cpu, gpu, gpuPending } = {}) {
     if (Number.isFinite(interval) && interval > 0) {
       this.#ring[this.#ringNext] = Math.min(interval, MAX_INTERVAL_MS);
       this.#ringNext = (this.#ringNext + 1) % BASELINE_FRAMES;
       this.#ringSize = Math.min(this.#ringSize + 1, BASELINE_FRAMES);
     }
+    // P9-R19: the GPU timer is on but no result resolved this frame: nothing to judge, and the
+    // GPU window must not be cleared (the EMA path below would).
+    if (gpuPending) return;
     const timed = Number.isFinite(gpu) && gpu >= 0;
     if (this.#grace > 0) {
       this.#grace--; // P2-R10: ignore the frames right after construction, reset() or a tier change
