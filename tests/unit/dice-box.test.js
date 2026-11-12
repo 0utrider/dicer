@@ -2523,3 +2523,31 @@ describe('the crystal d4 look', () => {
     box.clear();
   });
 });
+
+describe('a DSN preset model or faces keep the d4 classic', () => {
+  const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
+
+  test('a d4 with a model and a crystal look stays classic (hull, geometry, reader, model rotation)', () => {
+    buildDieGeometry.mockClear();
+    const { physics, box } = setup();
+    box.roll([{ type: 'd4', value: 2, dsnType: 'd4', model: 'm/dice_4.glb', appearance: crystal }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4']);
+    const die = box._rolls.values().next().value.dice[0];
+    expect(die.shapeType).toBe('d4');
+    expect(die.shape).toBe(getShape('d4'));
+    expect(die.modelRotation).toBe(MODEL_ROTATIONS.d4);
+    box.clear();
+  });
+
+  test('a d4 with preset faces and a crystal look keeps its faces and the classic shape', () => {
+    const { physics, box } = setup();
+    const faces = { key: 'k', labels: getShape('d4').values.map((v) => ({ kind: 'glyph', text: 'g' + v })) };
+    box.roll([{ type: 'd4', value: 2, faces, appearance: crystal }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    const die = box._rolls.values().next().value.dice[0];
+    expect(die.faces).toBe(faces);
+    expect(die.shape).toBe(getShape('d4'));
+    box.clear();
+  });
+});
