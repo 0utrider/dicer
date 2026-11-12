@@ -15,7 +15,7 @@ import { PRESET_PARAMS as GEM_PARAMS, gemPatch } from '../../src/render/extras/b
 import { PRESET_PARAMS as WOOD_PARAMS, woodPatch } from '../../src/render/extras/bodies/wood.js';
 import { LUMINOUS_MAX, luminousPatch } from '../../src/render/extras/bodies/luminous.js';
 import { LIP, metalFinishPatch } from '../../src/render/extras/bodies/metal-finishes.js';
-import { BORDER } from '../../src/render/shaders/bodies.js';
+import { BORDER, FX_COLOR } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 
@@ -388,6 +388,19 @@ describe('bodies', () => {
     expect(wfs.indexOf('roughnessFactor', w)).toBeGreaterThan(wfs.indexOf('#include <roughnessmap_fragment>'));
     // worn keeps the plain metalness line
     expect(count(wfs, METAL_LINE)).toBe(1);
+  });
+
+  test('the colour-shift effect tint runs after the patina / worn colour code', () => {
+    const copper = { type: 'metal', color: '#b5653a', color2: '#3fae9a', roughness: 0.4 };
+    for (const [finish, marker] of [
+      ['patina', 'float dcPatina = 0.0;'],
+      ['worn', 'float dcWoScr = 0.0;'],
+    ]) {
+      const fs = patched(bodyMat({ ...copper, finish })).fragmentShader;
+      expect(count(fs, FX_COLOR.trim())).toBe(1);
+      expect(fs.indexOf(FX_COLOR.trim())).toBeGreaterThan(fs.indexOf('#ifdef DICER_' + finish.toUpperCase()));
+      expect(fs.indexOf(FX_COLOR.trim())).toBeGreaterThan(fs.indexOf(marker));
+    }
   });
 
   test("patina's metalness pair applies exactly once, also with raised + outline numbers, and survives GLSL stripping", () => {
