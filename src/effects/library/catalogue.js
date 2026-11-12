@@ -113,6 +113,32 @@ void main() {
 }
 `;
 
+/**
+ * An additive radial glow decal on the table: colour ctx.color, brightness peak x intensity,
+ * eased in over 60 ms then fading out over `ms`. Returns an effect handle (a composite part or
+ * a self-contained effect); stop() or reaching `ms` removes and disposes the mesh.
+ */
+export function floorGlow(ctx, { radius, peak, ms }) {
+  const scope = scoped(ctx.scene);
+  const material = quadMaterial(BURST_FRAGMENT, ctx.color);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
+  mesh.scale.setScalar(2 * Math.max(0.01, radius));
+  mesh.renderOrder = 1;
+  scope.add(mesh);
+  const level = Math.max(0, peak) * Math.max(0, ctx.intensity);
+  material.uniforms.uAlpha.value = 0;
+  return timed(
+    ms,
+    (e) => {
+      const rise = clamp01(e / 60);
+      material.uniforms.uAlpha.value = level * rise * rise * (3 - 2 * rise) * (1 - e / ms) ** 2;
+    },
+    () => scope.dispose(),
+  );
+}
+
 export const lightBurst = Object.freeze({
   id: 'light-burst',
   cost: 1,

@@ -335,3 +335,24 @@ test('shader quads add colour and alpha with alpha = brightness, so no black box
 test('EFFECT_IDS lists exactly the library catalogue ids', () => {
   expect([...EFFECT_IDS].sort()).toEqual(Object.keys(EFFECTS).sort());
 });
+
+test('floorGlow adds one floor mesh coloured and scaled by ctx and removes it at ms', async () => {
+  const { floorGlow } = await import('../../src/effects/library/catalogue.js');
+  const ctx = ctxFor(EFFECTS.shockwave, { intensity: 2, color: new THREE.Color('#40a0ff') });
+  const before = ctx.scene.children.length;
+  const handle = floorGlow(ctx, { radius: 2, peak: 0.5, ms: 400 });
+  expect(ctx.scene.children.length).toBe(before + 1);
+  const mesh = ctx.scene.children[ctx.scene.children.length - 1];
+  expect(mesh.position.y).toBeCloseTo(0.02);
+  expect(mesh.scale.x).toBeCloseTo(4);
+  expect(mesh.material.uniforms.uColor.value.getHex()).toBe(new THREE.Color('#40a0ff').getHex());
+  expect(handle.update(1000)).toBe(true);
+  expect(handle.update(1100)).toBe(true);
+  expect(mesh.material.uniforms.uAlpha.value).toBeGreaterThan(0);
+  expect(mesh.material.uniforms.uAlpha.value).toBeLessThanOrEqual(1);
+  expect(handle.update(1400)).toBe(false);
+  expect(ctx.scene.children.length).toBe(before);
+  const again = floorGlow(ctx, { radius: 1, peak: 1, ms: 400 });
+  again.stop();
+  expect(ctx.scene.children.length).toBe(before);
+});
