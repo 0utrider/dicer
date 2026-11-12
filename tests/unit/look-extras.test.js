@@ -18,7 +18,7 @@ import { LIP, metalFinishPatch } from '../../src/render/extras/bodies/metal-fini
 import { BORDER, FX_COLOR } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
-import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/insides/index.js';
+import { insidePatch, INSIDE_TINT, marchWithUp, MODULES } from '../../src/render/extras/insides/index.js';
 import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS, SHAPE_ROT, interiorChunk } from '../../src/render/shaders/interior.js';
 import { MARCH_RADIUS, FOIL, FOIL_WALK } from '../../src/render/extras/insides/foil.js';
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
@@ -28,6 +28,7 @@ import { LQ, liquidExtrasInside } from '../../src/render/extras/insides/liquid-e
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook, needsLookExtras } from '../../src/look/appearance.js';
 import { WEAPON, WE_KINDS, weaponFrame, weaponsInside } from '../../src/render/extras/insides/weapons.js';
+import { CARD_AXIS, upFrame, upFrameGLSL } from '../../src/render/extras/insides/frame.js';
 import { DRAGON, dragonExtent, dragonFrame, dragonInside } from '../../src/render/extras/insides/dragon.js';
 import { RUNES, RU_STEM, RU_STROKES, runeGlyphs, runesFrame, runesInside } from '../../src/render/extras/insides/runes.js';
 
@@ -1003,22 +1004,66 @@ describe('insides', () => {
     }
   });
 
-  test('new shapes: marched without a module throws (fallback star), fake is {}, plain shapes stay {}', () => {
+  test('new shapes: marched builds the module, fake is {}, plain shapes stay {}', () => {
+    for (const shape of ['sword', 'axe', 'shield', 'dragon', 'runes']) {
+      const a = resin({ type: 'shape', shape });
+      expect(insidePatch(a, FLAGS).interior.pars).toContain('dcInterior');
+      expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
+      expect(insidePatch(a, { ...FLAGS, interiors: false })).toEqual({});
+    }
+    for (const shape of ['star', 'heart', 'skull', 'sphere']) expect(insidePatch(resin({ type: 'shape', shape }), FLAGS)).toEqual({});
+  });
+
+  test('the shared up frame: one axis for dragon and runes, the same frame in JS and GLSL', () => {
+    expect(DRAGON.axis).toBe(CARD_AXIS);
+    expect(RUNES.axis).toBe(CARD_AXIS);
+    for (const up of [[0, 1, 0], [0.6, 0.8, 0], [0, 0, 1], CARD_AXIS]) {
+      const fr = upFrame(up, CARD_AXIS);
+      expect(dragonFrame(up)).toEqual(fr);
+      expect(runesFrame(up)).toEqual(fr);
+      expect(Math.hypot(...fr.t1)).toBeCloseTo(1, 6);
+      expect(fr.t1[0] * up[0] + fr.t1[1] * up[1] + fr.t1[2] * up[2]).toBeCloseTo(0, 4); // (CARD_AXIS is unit only to 4 places)
+    }
+    const gl = upFrameGLSL('dcXx', 'vec3( 1.0, 0.0, 0.0 )');
+    expect(gl).toContain('vec3 dcXxA = vec3( 1.0, 0.0, 0.0 );');
+    expect(gl).toContain('vec3 dcXxT = dcXxA - dot( dcXxA, dcXxN ) * dcXxN;');
+    expect(gl).toContain('if ( dot( dcXxT, dcXxT ) < 1e-6 ) dcXxT = dcXxA.zxy - dot( dcXxA.zxy, dcXxN ) * dcXxN;');
+    expect(gl).toContain('dcXxT1 = normalize( dcXxT );');
+    expect(gl).toContain('dcXxT2 = cross( dcXxN, dcXxT1 );');
+  });
+
+  test('safety net: a non-built-in shape without a module throws, and the material draws the star fallback', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved = MODULES.dragon;
     try {
-      for (const shape of ['sword', 'axe', 'shield', 'dragon', 'runes']) {
-        const a = resin({ type: 'shape', shape });
-        const built = (() => { try { return !!insidePatch(a, FLAGS).interior; } catch { return false; } })();
-        if (!built) {
-          expect(() => insidePatch(a, FLAGS)).toThrow(/not built yet/);
-          expect(mat(a, FLAGS).userData.programKey).toBe(programKey(fallbackLook(a), FLAGS));
-        }
-        expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
-        expect(insidePatch(a, { ...FLAGS, interiors: false })).toEqual({});
-      }
-      for (const shape of ['star', 'heart', 'skull', 'sphere']) expect(insidePatch(resin({ type: 'shape', shape }), FLAGS)).toEqual({});
+      delete MODULES.dragon; // a shape in the world-start list that the chunk does not know
+      const a = resin({ type: 'shape', shape: 'dragon' });
+      expect(() => insidePatch(a, FLAGS)).toThrow(/no inside module/);
+      expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
+      let m;
+      expect(() => (m = mat(a, FLAGS))).not.toThrow();
+      expect(m.userData.programKey).toBe(programKey(fallbackLook(a), FLAGS));
+      expect(fallbackLook(a).interior.shape).toBe('star');
+      expect(patched(m).fragmentShader).toContain('dcInterior');
+      // a shape id nothing knows throws the same way
+      expect(() => insidePatch({ ...a, interior: { ...a.interior, shape: 'ghost' } }, FLAGS)).toThrow(/no inside module/);
     } finally {
+      MODULES.dragon = saved;
       warn.mockRestore();
+    }
+  });
+
+  test('the built-in list is the keys of interior.js SDF_NAME; the modules are the world-start SHAPES minus them', () => {
+    const sdf = /const SDF_NAME = \{([^}]*)\}/.exec(readFileSync('src/render/shaders/interior.js', 'utf8'))[1];
+    const builtIn = [...sdf.matchAll(/(\w+):/g)].map((x) => x[1]);
+    expect(builtIn).toEqual(['star', 'heart', 'skull', 'sphere']);
+    const src = readFileSync('src/look/appearance.js', 'utf8');
+    const shapes = JSON.parse(/^const SHAPES = (\[[^\]]*\]);/m.exec(src)[1].replace(/'/g, '"'));
+    const fantasy = shapes.filter((x) => !builtIn.includes(x));
+    expect(Object.keys(MODULES).filter((k) => shapes.includes(k)).sort()).toEqual([...fantasy].sort());
+    for (const shape of shapes) {
+      const a = resin({ type: 'shape', shape });
+      expect(!!insidePatch(a, FLAGS).interior).toBe(fantasy.includes(shape));
     }
   });
 
@@ -1254,10 +1299,11 @@ describe('insides', () => {
     expect(body).toContain('if ( dot( q, q ) >= R * R ) return vec4( 0.0 );');
     // the continuous, right-handed frame from dcIUp (dragonFrame in JS): no sign switch
     expect(body).toContain(`vec3 dcDrA = vec3( ${DRAGON.axis.map((x) => x.toFixed(4)).join(', ')} );`);
-    expect(body).toContain('vec3 dcDrT = dcDrA - dot( dcDrA, n ) * n;');
-    expect(body).toContain('if ( dot( dcDrT, dcDrT ) < 1e-6 ) dcDrT = dcDrA.zxy - dot( dcDrA.zxy, n ) * n;');
-    expect(body).toContain('vec3 t2 = cross( n, t1 );');
-    expect(body).toContain('vec2 uv = vec2( dot( q, t1 ), dot( q, t2 ) ) / R;');
+    expect(body).toContain('vec3 dcDrN = n;');
+    expect(body).toContain('vec3 dcDrT = dcDrA - dot( dcDrA, dcDrN ) * dcDrN;');
+    expect(body).toContain('if ( dot( dcDrT, dcDrT ) < 1e-6 ) dcDrT = dcDrA.zxy - dot( dcDrA.zxy, dcDrN ) * dcDrN;');
+    expect(body).toContain('dcDrT2 = cross( dcDrN, dcDrT1 );');
+    expect(body).toContain('vec2 uv = vec2( dot( q, dcDrT1 ), dot( q, dcDrT2 ) ) / R;');
     expect(body).not.toMatch(/dcIUp\.[xyz]|sign\( n|sign\( dcIUp/);
     // two-sided, lit by dcILight and the key light; colours clamped
     expect(body).toMatch(/nf = dot\( rd, nf \) > 0\.0 \? - nf : nf;/);
@@ -1398,10 +1444,11 @@ describe('insides', () => {
     expect(body).toContain('if ( dot( q, q ) < R * R ) {');
     // the continuous, right-handed frame from dcIUp (runesFrame in JS): no sign switch
     expect(body).toContain(`vec3 dcRuA = vec3( ${RUNES.axis.map(f4).join(', ')} );`);
-    expect(body).toContain('vec3 dcRuT = dcRuA - dot( dcRuA, n ) * n;');
-    expect(body).toContain('if ( dot( dcRuT, dcRuT ) < 1e-6 ) dcRuT = dcRuA.zxy - dot( dcRuA.zxy, n ) * n;');
-    expect(body).toContain('vec3 t2 = cross( n, t1 );');
-    expect(body).toContain('vec2 uv = vec2( dot( q, t1 ), dot( q, t2 ) ) / R;');
+    expect(body).toContain('vec3 dcRuN = n;');
+    expect(body).toContain('vec3 dcRuT = dcRuA - dot( dcRuA, dcRuN ) * dcRuN;');
+    expect(body).toContain('if ( dot( dcRuT, dcRuT ) < 1e-6 ) dcRuT = dcRuA.zxy - dot( dcRuA.zxy, dcRuN ) * dcRuN;');
+    expect(body).toContain('dcRuT2 = cross( dcRuN, dcRuT1 );');
+    expect(body).toContain('vec2 uv = vec2( dot( q, dcRuT1 ), dot( q, dcRuT2 ) ) / R;');
     expect(body).not.toMatch(/dcIUp\.[xyz]|sign\( n|sign\( dcIUp/);
     // emissive: colors[0] x the glow gain (colors[1] for the sigil), not lit by the key light,
     // every segment clamped to <= 1 per channel after the emission is added

@@ -27,7 +27,7 @@ import * as runes from './runes.js';
  * insidePatch builds pars as [NOISE_GLSL if needed, INTERIOR_PARS, 'vec3 dcIUp;', body] and uses
  * marchWithUp() as the march, so every inside gets dcIUp whether it reads it or not.
  */
-const MODULES = {
+export const MODULES = {
   foil: [foil.foilInside, foil.USES_NOISE],
   eye: [eye.eyeInside, eye.USES_NOISE],
   botanical: [botanical.botanicalInside, botanical.USES_NOISE],
@@ -66,16 +66,18 @@ function tintTarget(a) {
 }
 
 const hasLiquidExtras = (i) => i.type === 'liquid' && (i.bubble || i.sand);
-// the fantasy shapes of type 'shape' (plan 3b), each a module in MODULES under its shape id; plain
-// star, heart, skull and sphere stay interior.js's, unpatched
-const FANTASY_SHAPES = ['sword', 'axe', 'shield', 'dragon', 'runes'];
-const isFantasy = (i) => i.type === 'shape' && FANTASY_SHAPES.includes(i.shape);
+// the closed list of shapes interior.js draws itself (the keys of its SDF_NAME, pinned by a test):
+// every other shape of type 'shape' (plan 3b: sword, axe, shield, dragon, runes) is a module in
+// MODULES under its shape id
+const BUILT_IN_SHAPES = ['star', 'heart', 'skull', 'sphere'];
+const isFantasy = (i) => i.type === 'shape' && !BUILT_IN_SHAPES.includes(i.shape);
 
 /**
  * ExtrasPatch for the inside: {} unless the body is resin, interiors are on and a new inside (or
  * liquid with bubble / sand) is set.
  * - marched (steps > 0): `{ interior: { pars, main }, uniforms }` (liquid with bubble / sand: the
- *   liquid-extras module's); a type or fantasy shape without a module (a safety net) throws, so
+ *   liquid-extras module's); a shape other than the four built-in ones without a module (a safety
+ *   net, e.g. a shape added to the world-start list but not here) throws, so
  *   patchMaterial fails and createDiceMaterial draws the fallback look (it would
  *   otherwise call interiorChunk() with a type it does not know, outside its try/catch);
  * - fake (steps 0): `{ uniforms: { uResinTint } }` with w = INSIDE_TINT[type] (liquid keeps
@@ -93,7 +95,7 @@ export function insidePatch(a, flags) {
   }
   const key = hasLiquidExtras(i) ? 'liquid' : isFantasy(i) ? i.shape : i.type;
   const mod = Object.hasOwn(MODULES, key) ? MODULES[key] : null;
-  if (!mod) throw new Error(`dicer: inside "${key}" not built yet`);
+  if (!mod) throw new Error(`dicer: no inside module for "${key}"`);
   const [build, usesNoise] = mod;
   const { body, uniforms = {} } = build(a);
   const pars = [usesNoise ? NOISE_GLSL : '', INTERIOR_PARS, 'vec3 dcIUp;', body].filter(Boolean).join('\n');
