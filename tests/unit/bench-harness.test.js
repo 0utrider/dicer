@@ -25,6 +25,8 @@ import {
   planFor,
   QUICK_ROLLS,
   dropText,
+  profileSummary,
+  bucketOf,
 } from '../../tests/live/bench-lib.mjs';
 
 test('a self-signed certificate is trusted only for a local https Foundry', () => {
@@ -411,8 +413,8 @@ test('outDirName is an ISO date without colons', () => {
 });
 
 test('parseArgs', () => {
-  expect(parseArgs(['--dry-run'])).toEqual({ dryRun: true, quick: false, only: null });
-  expect(parseArgs([])).toEqual({ dryRun: false, quick: false, only: null });
+  expect(parseArgs(['--dry-run'])).toEqual({ dryRun: true, quick: false, only: null, profile: false });
+  expect(parseArgs([])).toEqual({ dryRun: false, quick: false, only: null, profile: false });
 });
 
 test('summaryMarkdown: target checks, then the head-to-head table, n/a for missing values', () => {
@@ -617,11 +619,12 @@ test('the progress prefix is the one world.js prints', () => {
 
 // P9-R6: --quick and --only make shorter, clearly labelled partial runs.
 test('parseArgs: --quick and --only, with errors for a missing name or an unknown flag', () => {
-  expect(parseArgs(['--quick'])).toEqual({ dryRun: false, quick: true, only: null });
+  expect(parseArgs(['--quick'])).toEqual({ dryRun: false, quick: true, only: null, profile: false });
   expect(parseArgs(['--only', 'dice-so-nice,dicer-pc-vsync'])).toEqual({
     dryRun: false,
     quick: false,
     only: ['dice-so-nice', 'dicer-pc-vsync'],
+    profile: false,
   });
   expect(parseArgs(['--only=dicer', '--dry-run']).only).toEqual(['dicer']);
   expect(parseArgs(['--only']).error).toMatch(/--only needs run names/);
@@ -694,4 +697,66 @@ test('summaryMarkdown lists each quality drop as a note (P9-R8)', () => {
   expect(summaryMarkdown({ date: 'd', reports: [rep], rows: [], errors: [] })).toContain(
     'Note: dicer-pc-vsync: soak500: quality dropped ultra -> high 2 s in (GPU timer',
   );
+});
+
+// P9-R10: --profile records a CPU profile of burst100 and summarizes its self time.
+test('parseArgs: --profile', () => {
+  expect(parseArgs(['--profile', '--quick'])).toEqual({ dryRun: false, quick: true, only: null, profile: true });
+});
+
+test('planFor: --profile marks the runs that make burst100', () => {
+  const { plan } = planFor({ profile: true, only: ['throttled-uncapped'] });
+  expect(plan.map((e) => e.profileScenario)).toEqual(['burst100', 'burst100']);
+  expect(planFor({ only: ['throttled-uncapped'] }).plan.every((e) => e.profileScenario === undefined)).toBe(true);
+});
+
+test('bucketOf sorts a call frame into dicer, dice-so-nice, foundry, other module, gc, browser', () => {
+  const b = (url, functionName = 'f') => bucketOf({ url, functionName });
+  expect(b('https://localhost:30000/modules/dicer/dist/dicer.js')).toBe('dicer');
+  expect(b('https://localhost:30000/modules/dicer/dist/chunks/effects-ab12.js')).toBe('dicer');
+  expect(b('https://localhost:30000/modules/dice-so-nice/main.js')).toBe('dice-so-nice');
+  expect(b('https://localhost:30000/modules/lib-wrapper/lib.js')).toBe('other modules');
+  expect(b('https://localhost:30000/systems/pf2e/pf2e.mjs')).toBe('system');
+  expect(b('https://localhost:30000/scripts/foundry.mjs')).toBe('foundry');
+  expect(b('', '(garbage collector)')).toBe('gc');
+  expect(b('', '(program)')).toBe('browser');
+  expect(b('', 'requestAnimationFrame')).toBe('browser');
+});
+
+test('profileSummary: self time per bucket and the hottest functions, idle excluded', () => {
+  const D = 'https://h/modules/dicer/dist/dicer.js';
+  const node = (id, functionName, url, lineNumber = 0, children = []) => ({ id, callFrame: { functionName, url, lineNumber, columnNumber: 0 }, children });
+  const profile = {
+    nodes: [
+      node(1, '(root)', '', 0, [2, 3, 4, 5]),
+      node(2, 'render', D, 99),
+      node(3, '(idle)', ''),
+      node(4, '(garbage collector)', ''),
+      node(5, 'tick', 'https://h/scripts/foundry.mjs', 9),
+    ],
+    samples: [2, 2, 3, 4, 5, 2],
+    timeDeltas: [1000, 1000, 5000, 500, 1500, 2000],
+  };
+  const s = profileSummary(profile, { top: 2 });
+  expect(s.totalMs).toBe(6);
+  expect(s.buckets).toEqual([
+    { bucket: 'dicer', ms: 4, pct: 66.7 },
+    { bucket: 'foundry', ms: 1.5, pct: 25 },
+    { bucket: 'gc', ms: 0.5, pct: 8.3 },
+  ]);
+  expect(s.top).toEqual([
+    { name: 'render', where: 'dicer.js:100', bucket: 'dicer', ms: 4, pct: 66.7 },
+    { name: 'tick', where: 'foundry.mjs:10', bucket: 'foundry', ms: 1.5, pct: 25 },
+  ]);
+  expect(profileSummary(null)).toBeNull();
+});
+
+test('summaryMarkdown shows each run CPU profile', () => {
+  const e = entry('dicer', 'throttled', 'uncapped');
+  const rep = { ...report(e, [result('burst100')]), cpu: { scenario: 'burst100', totalMs: 6, buckets: [{ bucket: 'dicer', ms: 4, pct: 66.7 }], top: [{ name: 'render', where: 'dicer.js:100', bucket: 'dicer', ms: 4, pct: 66.7 }] } };
+  const md = summaryMarkdown({ date: 'd', reports: [rep], rows: [], errors: [] });
+  expect(md).toContain('## CPU profile (self time)');
+  expect(md).toContain('- dicer-throttled-uncapped, burst100: 6.0 ms sampled; dicer 4.0 ms (66.7%)');
+  expect(md).toContain('| dicer-throttled-uncapped | render | dicer.js:100 | dicer | 4.0 | 66.7 |');
+  expect(summaryMarkdown({ date: 'd', reports: [report(e, [result('burst100')])], rows: [], errors: [] })).not.toContain('CPU profile');
 });

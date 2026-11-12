@@ -665,7 +665,7 @@ async function settle(adapter) {
  * resize/contextLoss results carry `rebuilt` (canvas or generation changed) and a note. Every
  * chat message a scenario (or the warm-up) created is deleted when it ends (H-R11).
  */
-export async function benchRun({ ids, profile, rolls = null }) {
+export async function benchRun({ ids, profile, rolls = null, profileScenario = null }) {
   const product = benchProduct();
   if (!product) throw Error('exactly one of dicer / dice-so-nice must be active');
   const { runSuite } = await import(`${BENCH}scenarios.js`);
@@ -688,13 +688,21 @@ export async function benchRun({ ids, profile, rolls = null }) {
       try {
         progress(`${profile}: scenario ${n + 1}/${ids.length} ${id}`);
         const t0 = performance.now();
-        const part = await runSuite([id], adapter, {
-          profile,
-          hooks: Hooks,
-          rolls,
-          minAnimatedMs: MIN_ANIMATED_MS,
-          doc: document,
-        });
+        // P9-R10 --profile: the CDP sampling profiler runs for this one scenario (bench.mjs binding).
+        const profiling = id === profileScenario && typeof globalThis.__benchProfile === 'function';
+        if (profiling) await globalThis.__benchProfile('start');
+        let part;
+        try {
+          part = await runSuite([id], adapter, {
+            profile,
+            hooks: Hooks,
+            rolls,
+            minAnimatedMs: MIN_ANIMATED_MS,
+            doc: document,
+          });
+        } finally {
+          if (profiling) await globalThis.__benchProfile('stop');
+        }
         // P9-R8: each adaptive drop during the scenario, with the judge numbers behind it.
         const drops = (game.dice3d?._debug?.qualityDrops ?? []).filter((d) => d.at >= t0);
         if (part.results[0] && drops.length) {
