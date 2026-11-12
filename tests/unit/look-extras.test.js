@@ -22,6 +22,7 @@ import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/i
 import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS } from '../../src/render/shaders/interior.js';
 import { MARCH_RADIUS } from '../../src/render/extras/insides/foil.js';
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
+import { BO_KINDS, CARD_RADIUS, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook } from '../../src/look/appearance.js';
 
@@ -626,6 +627,75 @@ describe('insides', () => {
     expect(Object.keys(fake)).toEqual(['uniforms']);
     expect(fake.uniforms.uResinTint.value.w).toBeCloseTo(0.2, 6);
     expect(patched(mat(a, low)).fragmentShader).not.toContain('dcInterior');
+  });
+
+  test('botanical: one program for the three kinds (same key), uBoKind 0/1/2, fake tint 0.25', () => {
+    // the local kind list matches appearance.js INCLUSIONS (not exported: no world-start cost)
+    const src = readFileSync('src/look/appearance.js', 'utf8');
+    const lit = src.match(/const INCLUSIONS = (\[[^\]]*\]);/)[1];
+    expect(BO_KINDS).toEqual(JSON.parse(lit.replace(/'/g, '"')));
+    const colors = { flower: ['#f28fb0', '#f6d24a'], moss: ['#4f8a3a', '#b9d36a'], butterfly: ['#2f7fe0', '#111a2c'] };
+    const mats = BO_KINDS.map((inclusion, k) => {
+      const a = resin({ type: 'botanical', inclusion, colors: colors[inclusion], density: 0.5 });
+      expect(a.interior.inclusion).toBe(inclusion);
+      const patch = insidePatch(a, FLAGS);
+      expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+      expect(patch.interior.main).toBe(marchWithUp());
+      expect(patch.uniforms.uBoKind.value).toBe(k);
+      expect(botanicalInside(a).uniforms.uBoKind.value).toBe(k);
+      const m = mat(a);
+      expect(m.userData.programKey).toContain('|botanical:32|');
+      expect(m.userData.uniforms.uBoKind.value).toBe(k);
+      expect(() => createDiceMaterial(a, atlas, getShape('d2'), labels, FLAGS)).not.toThrow();
+      // fake mode: the tint share 0.25, no interior
+      const low = { ...FLAGS, interiorSteps: 0 };
+      const fake = insidePatch(a, low);
+      expect(Object.keys(fake)).toEqual(['uniforms']);
+      expect(fake.uniforms.uResinTint.value.w).toBeCloseTo(0.25, 6);
+      expect(patched(mat(a, low)).fragmentShader).not.toContain('dcInterior');
+      return m;
+    });
+    // one program: same key and the same shader text for every kind, colour and density
+    const fs = patched(mats[0]).fragmentShader;
+    for (const m of mats) {
+      expect(m.userData.programKey).toBe(mats[0].userData.programKey);
+      expect(patched(m).fragmentShader).toBe(fs);
+    }
+    const { body } = botanicalInside(resin({ type: 'botanical' }));
+    expect(count(fs, body)).toBe(1);
+    expect(count(fs, 'uniform int uBoKind;')).toBe(1);
+    expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+    expect(count(fs, '#define DC_NOISE')).toBe(1);
+    expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+    // pow() only of bases that cannot be negative (undefined in GLSL ES)
+    for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^max\(/);
+    // dcBo names only (besides the shared interior names)
+    const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23])\s+(dc\w+)\s*\(/g)].map((x) => x[1]);
+    expect(own.length).toBeGreaterThan(3);
+    for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcBo/);
+    // the cards (at density 1, their largest) stay inside the march sphere and never cross
+    const frames = cardFrames();
+    expect(frames.length).toBe(6);
+    const rad = (i) => frames[i].size * (i < 3 ? CARD_RADIUS.flower[1] : CARD_RADIUS.butterfly[1]);
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    frames.forEach((fr, i) => {
+      expect(Math.hypot(...fr.c) + rad(i)).toBeLessThan(0.6);
+      expect(dot(fr.n, fr.t1)).toBeCloseTo(0, 6);
+      expect(dot(fr.n, fr.t2)).toBeCloseTo(0, 6);
+    });
+    for (const [i, j] of [[0, 1], [0, 2], [1, 2], [3, 4], [3, 5], [4, 5]]) {
+      // no point of card i's disc on card j's plane within card j's disc
+      const [A, B] = [frames[i], frames[j]];
+      for (let u = -1; u <= 1; u += 0.02)
+        for (let v = -1; v <= 1; v += 0.02) {
+          if (u * u + v * v > 1) continue;
+          const q = [0, 1, 2].map((k) => A.c[k] + rad(i) * (u * A.t1[k] + v * A.t2[k]) - B.c[k]);
+          const sd = dot(q, B.n);
+          if (dot(q, q) - sd * sd < rad(j) ** 2) expect(Math.abs(sd)).toBeGreaterThan(0.01);
+        }
+    }
+    // an unknown inclusion normalises to the default kind (flower)
+    expect(botanicalInside(resin({ type: 'botanical', inclusion: 'cactus' })).uniforms.uBoKind.value).toBe(0);
   });
 
   test('fake mode: uResinTint.w = INSIDE_TINT.foil, no interior chunk', () => {

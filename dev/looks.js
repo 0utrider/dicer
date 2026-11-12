@@ -76,6 +76,10 @@ const VARIANTS = [
   // eye insides
   ['resin~eye-green', 'default', 'green eye', {}, {}, { type: 'resin', color: '#e6eef2', color2: '#b8c8d4', roughness: 0.05 }, { type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 }],
   ['resin~eye-red', 'default', 'red eye', {}, {}, { type: 'resin', color: '#3a1a22', color2: '#1a0a10', roughness: 0.05 }, { type: 'eye', colors: ['#c8322a', '#ffe6dc'], density: 0.6 }],
+  // botanical insides
+  ['resin~flower', 'default', 'pressed flower', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'flower', colors: ['#f28fb0', '#f6d24a'], density: 0.5 }],
+  ['resin~moss', 'default', 'moss', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'moss', colors: ['#4f8a3a', '#b9d36a'], density: 0.5 }],
+  ['resin~butterfly', 'default', 'butterfly', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'butterfly', colors: ['#2f7fe0', '#111a2c'], density: 0.5 }],
   // combinations (the compile check for body x numbers x interior x flags interactions)
   ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
