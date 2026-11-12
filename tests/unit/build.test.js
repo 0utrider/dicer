@@ -162,7 +162,9 @@ describe('build', () => {
     // bytes of the next 2 KB.
     // Dice designs plan 3 re-based it on purpose (4_096_369): plan 3 may spend at most 768 bytes
     // of the next 2 KB.
-    const growth = worldStartBytes() - 4_096_369;
+    // Dice designs plan 4 re-based it on purpose (4_097_080): plan 4 may spend at most 1,536 bytes
+    // of the next 2 KB.
+    const growth = worldStartBytes() - 4_097_080;
     console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });
