@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { PhysicsClient } from '../../src/physics/physics-client.js';
+import { computeHulls } from '../../src/physics/hulls.js';
 
 class FakeWorker {
   constructor() {
@@ -152,4 +153,15 @@ test('throw passes a per-throw area through, and omits it when absent', () => {
   const throws = w.sent.filter((s) => s.m.type === 'throw').map((s) => s.m);
   expect(throws[0]).toMatchObject({ type: 'throw', seed: 1, area });
   expect('area' in throws[1]).toBe(false);
+});
+
+test('the physics client sends hulls for d14, d16 and d4crystal at init', () => {
+  const w = new FakeWorker();
+  new PhysicsClient(() => w, { hulls: computeHulls() });
+  const { hulls } = w.sent[0].m;
+  for (const t of ['d14', 'd16', 'd4crystal']) {
+    expect(hulls[t].points, t).toBeInstanceOf(Float32Array);
+    expect(hulls[t].points.length, t).toBeGreaterThan(0);
+    expect(hulls[t].radius, t).toBeGreaterThan(0);
+  }
 });

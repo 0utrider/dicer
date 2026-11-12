@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
+import * as THREE from 'three';
 import { beforeAll, expect, test } from 'vitest';
+import { getShape } from '../../src/core/dice-shapes.js';
+import { faceNormals, readTopFace } from '../../src/core/face-reader.js';
 import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
 import { fitDieCapacity } from '../../src/areas/area-model.js';
@@ -98,6 +101,48 @@ test('every die type settles inside the area', () => {
       expect(Math.abs(last.data[base + d * FLOATS_PER_DIE + 2])).toBeLessThan(area.halfDepth);
     }
   }
+});
+
+test('d14, d16 and d4crystal bodies use their hulls and settle inside the area', () => {
+  for (const type of ['d14', 'd16', 'd4crystal']) {
+    const { res, chunks } = run(Array(12).fill(type), 9);
+    expect(res.settledStep, type).toBeLessThan(MAX_STEPS);
+    const last = chunks.at(-1);
+    const base = (last.steps - 1) * 12 * FLOATS_PER_DIE;
+    for (let d = 0; d < 12; d++) {
+      expect(Math.abs(last.data[base + d * FLOATS_PER_DIE])).toBeLessThan(area.halfWidth);
+      expect(Math.abs(last.data[base + d * FLOATS_PER_DIE + 2])).toBeLessThan(area.halfDepth);
+    }
+  }
+});
+
+test('the worker tells the coin by type: d2 is the only coin shape', () => {
+  // sim.js checks type === 'd2' so the worker bundle does not carry dice-shapes.
+  for (const t of [...Object.keys(hulls), 'd2']) expect(getShape(t).kind === 'coin', t).toBe(t === 'd2');
+  const src = readFileSync('src/physics/sim.js', 'utf8');
+  expect(src).not.toMatch(/dice-shapes/);
+});
+
+/** Settled up-component of the crystal's read face for one single-die throw. */
+function crystalRest(seed, stage) {
+  const shape = getShape('d4crystal');
+  const { res, chunks } = runEv(['d4crystal'], seed, stage);
+  expect(res.settledStep, `seed ${seed}`).toBeLessThan(MAX_STEPS);
+  const last = chunks.at(-1);
+  const o = (last.steps - 1) * FLOATS_PER_DIE;
+  const q = new THREE.Quaternion(...last.data.slice(o + 3, o + 7));
+  const top = readTopFace(shape, q);
+  expect(shape.readFaces).toContain(top);
+  return new THREE.Vector3().copy(faceNormals(shape)[top]).applyQuaternion(q).y;
+}
+
+test('a d4crystal dropped from 20 random orientations rests on a long face', () => {
+  // A wide stage, so the drop lands in the open: by a wall the long crystal can lean on it.
+  const open = { halfWidth: 40, halfDepth: 40 };
+  for (let seed = 1; seed <= 20; seed++) expect(crystalRest(seed, open), `seed ${seed}`).toBeGreaterThan(0.99);
+  // In the usual stage it never stands on a tip (that would put every long face sideways); a
+  // few lean on a wall or are called settled mid-roll between two long faces (like a d8 today).
+  for (let seed = 1; seed <= 100; seed++) expect(crystalRest(seed, area), `seed ${seed}`).toBeGreaterThan(0.7);
 });
 
 test('hulls are round convex hulls: shrunk points plus a border radius (P2-R4)', () => {

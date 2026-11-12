@@ -49,6 +49,14 @@ test('d10 labels and d100 tens labels', () => {
   expect(labelFor('d10', 100, 'd100tens')).toBe('00');
   expect(labelFor('d10', 90, 'd100tens')).toBe('90');
 });
+test('crystal caps carry no label', () => {
+  const s = getShape('d4crystal');
+  const labels = s.values.map((v) => labelFor('d4crystal', v));
+  expect(labels).toEqual(['1', '2', '4', '3', '', '', '', '', '', '', '', '']);
+  expect(labelFor('d10', 0, 'd100tens')).toBe('00'); // the d100 tens zero still reads 00
+  expect(labelFor('d14', 9)).toBe('9.');
+  expect(labelFor('d16', 16)).toBe('16');
+});
 test('dieTypeForFaces', () => {
   expect(dieTypeForFaces(20)).toBe('d20');
   expect(dieTypeForFaces(14)).toBe('d14');

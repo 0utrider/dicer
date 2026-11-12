@@ -175,6 +175,7 @@ function buildD4Crystal() {
     faces: [...sides, ...normals].map((n) => faceFromNormal(vertices, norm(n))),
     values: [1, 2, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0],
     readFaces: [0, 1, 2, 3],
+    labelUp: [0, 1, 0], // numbers stand along the long axis (chamfer.js face V axis)
     readMode: 'up',
   };
 }
@@ -225,9 +226,13 @@ export function dsnTypeOf(term) {
   return Number.isInteger(term?.faces) && term.faces > 0 ? `d${term.faces}` : null;
 }
 
-/** Text drawn on a face. 6 and 9 carry a "." suffix (rendered as an underline mark). */
+/**
+ * Text drawn on a face. 6 and 9 carry a "." suffix (rendered as an underline mark); value 0
+ * (the crystal d4's caps) is blank.
+ */
 export function labelFor(type, value, variant) {
   if (variant === 'd100tens') return value === 100 || value === 0 ? '00' : String(value);
+  if (value === 0) return '';
   if (type === 'd10' && value === 10) return '0';
   if (value === 6 || value === 9) return `${value}.`;
   return String(value);

@@ -15,7 +15,7 @@ import { createTurntable } from './turntable.js';
 
 const ENV_RESOLUTION = 128;
 /** The face shown on top per type (6 and 9 show the underline mark). */
-const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d20: 20, d2: 2 };
+const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d14: 14, d16: 16, d20: 20, d2: 2, d4crystal: 4 };
 const FOV = 26;
 const VIEW_DISTANCE = 4.6;
 const VIEW_ANGLE = THREE.MathUtils.degToRad(52);

@@ -19,9 +19,9 @@ import { TIERS, flagsFor } from '../src/render/quality.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from '../src/render/face-textures.js';
 import { facesFor, atlasGlyphTest } from '../src/compat/faces.js';
 
-export const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd2'];
+export const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd2', 'd14', 'd16', 'd4crystal'];
 /** The face shown on top per type (6 and 9 show the underline mark). */
-const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d20: 20, d2: 2 };
+const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d20: 20, d2: 2, d14: 14, d16: 16, d4crystal: 4 };
 const CELL = 128;
 const ROW_LABEL_PX = 170;
 
