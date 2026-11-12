@@ -45,7 +45,10 @@ export function profiles() {
  */
 export function modes() {
   return {
-    vsync: { args: [] },
+    // P9-R14: Windows' native occlusion tracking stops a covered window drawing (about a frame a
+    // second) while the page still reports itself visible; off, a covered window keeps its frames.
+    // A minimized window still stops: the README says to keep it up.
+    vsync: { args: ['--disable-features=CalculateNativeWinOcclusion'] },
   };
 }
 
@@ -596,6 +599,12 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
     for (const r of suite?.results ?? []) {
       for (const d of r?.qualityDrops ?? []) out.push('', `Note: ${runName(entry)}: ${r.scenario}: ${dropText(d)}`);
     }
+    const starved = (suite?.results ?? []).filter((r) => r?.starved === true).map((r) => r.scenario);
+    if (starved.length)
+      out.push(
+        '',
+        `Warning: ${runName(entry)}: frames came about once a second during ${starved.join(', ')} (window minimized or covered?), so those results are not valid`,
+      );
     const hidden = (suite?.results ?? []).filter((r) => r?.pageHidden === true).map((r) => r.scenario);
     if (w?.hidden === true) hidden.unshift('warm-up');
     if (hidden.length)

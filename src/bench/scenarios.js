@@ -31,6 +31,8 @@ const SOAK_MARKS = Object.freeze([50, 500]);
 const SOAK_CLEAN_EVERY = 50;
 /** The longest long tasks a result keeps with their start times, for tracing a stall. */
 const LONG_TASKS_KEPT = 3;
+/** P9-R14: a median frame interval above this means the window was not drawing (~1 fps). */
+const STARVED_FRAME_MS = 250;
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -338,6 +340,17 @@ export async function runScenario(scenario, adapter, opts = {}) {
   if (tooFast > 0) {
     notes.push(`${tooFast} roll(s) finished under ${minAnimatedMs} ms after the roll call: too fast to have animated`);
   }
+  // P9-R14: a minimized or covered window on Windows gets about a frame a second while the page
+  // still reports itself visible: the scenario measured an idle page. Judged on the frames
+  // themselves; the hidden scenario starves them on purpose.
+  const frameMedian = summarize(rec?.intervals ?? [])?.p50 ?? null;
+  const starved = scenario.id !== 'hidden' && finite(frameMedian) && frameMedian > STARVED_FRAME_MS;
+  if (starved) {
+    failures++;
+    notes.push(
+      `frames came about every ${Math.round(frameMedian)} ms (median): the window was probably minimized or covered, so these results are not valid`,
+    );
+  }
   if (doc?.hidden) pageHidden = true;
   if (pageHidden) {
     failures++;
@@ -371,6 +384,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
     tier: { before: tierBefore, after: tierAfter },
     ...(scenario.recover ? { recovered } : {}),
     ...(doc ? { pageHidden } : {}),
+    ...(scenario.id !== 'hidden' ? { starved } : {}),
     notes,
   };
 }

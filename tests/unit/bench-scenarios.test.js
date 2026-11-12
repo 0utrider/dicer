@@ -706,3 +706,35 @@ test('a visible page, and the hidden scenario itself, are not flagged', async ()
   expect(r.pageHidden).toBeUndefined();
   expect(doc.listeners.size).toBe(0);
 });
+
+// P9-R14: a minimized or covered window on Windows gets ~1 frame a second while still reporting
+// itself visible; such a scenario measured an idle page and must not count.
+test('a scenario whose frames came less often than every 250 ms fails once and is marked starved', async () => {
+  const hooks = fakeHooks();
+  const rec = { start() {}, stop: () => ({ intervals: [1000, 1000, 1001, 999], longTasks: [], longTaskAt: [], marks: {} }), mark() {} };
+  const p = runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now, recorder: rec });
+  await vi.advanceTimersByTimeAsync(2000);
+  const r = await p;
+  expect(r.failures).toBe(1);
+  expect(r.starved).toBe(true);
+  expect(r.notes).toContain(
+    'frames came about every 1000 ms (median): the window was probably minimized or covered, so these results are not valid',
+  );
+});
+
+test('normal frames, and the hidden scenario itself, are not starved', async () => {
+  const hooks = fakeHooks();
+  const ok = { start() {}, stop: () => ({ intervals: [16.7, 16.6, 16.8], longTasks: [], longTaskAt: [], marks: {} }), mark() {} };
+  let p = runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now, recorder: ok });
+  await vi.advanceTimersByTimeAsync(2000);
+  let r = await p;
+  expect(r.failures).toBe(0);
+  expect(r.starved).toBe(false);
+  const slow = { start() {}, stop: () => ({ intervals: [1000, 1000, 1000], longTasks: [], longTaskAt: [], marks: {} }), mark() {} };
+  const a = adapterFor(hooks, { startAfter: 10, completeAfter: 800 });
+  p = runScenario(by('hidden'), a, { hooks, win: fakeWin(), now, recorder: slow });
+  await vi.advanceTimersByTimeAsync(3000);
+  r = await p;
+  expect(r.failures).toBe(0);
+  expect(r.starved).toBeUndefined();
+});

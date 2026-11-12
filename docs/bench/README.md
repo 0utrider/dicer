@@ -46,6 +46,8 @@ Each adaptive quality drop during a Dicer scenario is recorded in that result's 
 
 **Keep the benchmark window visible for the whole run.** A minimized or hidden page gets about one frame a second, and DSN skips its animations there. A scenario during which the page was hidden at any point counts one failure, has `pageHidden: true`, and `summary.md` warns about it. The `hidden` scenario hides the page on purpose and is exempt.
 
+A **minimized** window is worse: on Windows Chrome stops drawing it (about a frame a second) while the page still reports itself visible, so the hidden-page check cannot see it. Any scenario whose median frame interval is over 250 ms counts one failure, has `starved: true`, and `summary.md` warns ("window minimized or covered?"); a frame-starved page does almost no work, so its busy time would otherwise look light. The benchmark browser starts with Windows' window-occlusion tracking off (`--disable-features=CalculateNativeWinOcclusion`), so a window that is merely covered by another one keeps drawing; a minimized one does not.
+
 ## Profiles and modes
 
 | Profile     | What it simulates                                                           |

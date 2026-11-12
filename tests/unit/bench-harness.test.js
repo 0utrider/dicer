@@ -108,7 +108,7 @@ test('profiles: pc and throttled (CPU 4x, 1920x1080, dpr 1, Dicer medium); vsync
   expect(p.pc.dicerQuality).toBeNull();
   const m = modes();
   expect(Object.keys(m)).toEqual(['vsync']);
-  expect(m.vsync.args).toEqual([]);
+  expect(m.vsync.args).toEqual(['--disable-features=CalculateNativeWinOcclusion']);
 });
 
 test('matrix contains every pairing and nothing else', () => {
@@ -785,4 +785,13 @@ test('summaryMarkdown shows per-frame GPU work per canvas', () => {
   expect(md).toContain('| dicer-throttled-vsync | burst100 | dice | 2400x1350 | 42.0 | 9000 | 3.0 | 2.0 |');
   expect(md).toContain('| dicer-throttled-vsync | burst100 | foundry | 1920x1080 | 15.0 | 30 | 0.0 | 1.0 |');
   expect(summaryMarkdown({ date: 'd', reports: [report(e, [result('burst100')])], rows: [], errors: [] })).not.toContain('GPU work per frame');
+});
+
+// P9-R14: summary warning for starved scenarios; the vsync browser keeps drawing when covered.
+test('summaryMarkdown warns when a scenario was frame-starved', () => {
+  const e = entry('dice-so-nice', 'throttled', 'vsync');
+  const rep = report(e, [{ ...result('d20'), starved: true }, { ...result('burst100'), starved: true }]);
+  expect(summaryMarkdown({ date: 'd', reports: [rep], rows: [], errors: [] })).toContain(
+    'Warning: dice-so-nice-throttled-vsync: frames came about once a second during d20, burst100 (window minimized or covered?), so those results are not valid',
+  );
 });
