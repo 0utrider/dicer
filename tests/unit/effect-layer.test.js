@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { TIERS } from '../../src/render/quality.js';
-import { EFFECTS } from '../../src/effects/library/index.js';
+import { EFFECTS, createImpactFx } from '../../src/effects/library/index.js';
 
 /** A cost-c effect that runs for `duration` ms from its first update; records its lifecycle. */
 function timed(id, cost = 1, log = []) {
@@ -351,5 +351,90 @@ describe('safe mode', () => {
     safe = false;
     layer.play(makeDie(), fxOf('a'));
     expect(log.filter((e) => e[0] === 'start').map((e) => e[1])).toEqual(['dsn:x', 'a']);
+  });
+});
+
+describe('impact effects (dust and sparks)', () => {
+  const KINDS = { SMOKE: 2, STREAK: 6 };
+  const RING = 7;
+  async function impactSetup({ settings = {}, ...rest } = {}) {
+    const emit = vi.fn();
+    const clock = { t: 1000 };
+    const pool = { emit, update: () => false, clear() {}, dispose() {} };
+    const made = setup({ tier: 'high', settings,
+      particles: pool,
+      now: () => clock.t,
+      loadLibrary: async () => ({ EFFECTS: {}, createImpactFx }),
+      ...rest,
+    });
+    await made.layer.prefetch();
+    return { ...made, emit, clock };
+  }
+  const hit = (speed, extra = {}) => ({ position: { x: 1, y: 0.4, z: -2 }, speed, dieKey: 'r:0', ...extra });
+
+  test('impact below speed 11 emits nothing; at 14 a dust ring; at 20 dust and sparks', async () => {
+    const { layer, emit } = await impactSetup();
+    layer.impact(hit(10.9));
+    expect(emit).not.toHaveBeenCalled();
+    layer.impact(hit(14, { dieKey: 'a' }));
+    expect(emit).toHaveBeenCalledTimes(1);
+    const dust = emit.mock.calls[0][0];
+    expect(dust).toMatchObject({ kind: KINDS.SMOKE, shape: RING, blend: 'normal', color: '#d8cfc0', alpha: 0.35 });
+    expect(dust.count).toBe(Math.round(3 + 5 * (3 / 7)));
+    expect(dust.origin).toEqual({ x: 1, y: 0.05, z: -2 });
+    layer.impact(hit(20, { dieKey: 'b' }));
+    expect(emit).toHaveBeenCalledTimes(3);
+    const sparks = emit.mock.calls[2][0];
+    expect(sparks).toMatchObject({ kind: KINDS.STREAK, color: '#fff3d0' });
+    expect(sparks.count).toBe(Math.round(2 + 4 * 1));
+    expect(emit.mock.calls[1][0].count).toBe(8);
+  });
+
+  test('counts follow the tier particleScale and a THREE.Vector3 position is copied', async () => {
+    const { layer, emit } = await impactSetup({ tier: 'low' });
+    const p = new THREE.Vector3(3, 1, 4);
+    layer.impact({ position: p, speed: 18 });
+    p.set(9, 9, 9);
+    expect(emit.mock.calls[0][0].origin).toEqual({ x: 3, y: 0.05, z: 4 });
+    expect(emit.mock.calls[0][0].count).toBe(Math.round(8 * TIERS.low.particleScale));
+  });
+
+  test('impact debounces per die for 120 ms and caps 12 live emits', async () => {
+    const { layer, emit, clock } = await impactSetup();
+    layer.impact(hit(14));
+    clock.t += 119;
+    layer.impact(hit(14));
+    expect(emit).toHaveBeenCalledTimes(1);
+    clock.t += 2;
+    layer.impact(hit(14));
+    expect(emit).toHaveBeenCalledTimes(2);
+    for (let i = 0; i < 20; i++) layer.impact(hit(14, { dieKey: `k${i}` }));
+    expect(emit).toHaveBeenCalledTimes(12); // 2 + 10 more, then capped
+    clock.t += 700; // their longest life has passed
+    layer.impact(hit(14, { dieKey: 'late' }));
+    expect(emit).toHaveBeenCalledTimes(13);
+  });
+
+  test('impactEffects false, effects false or reduced motion stops impacts', async () => {
+    for (const opts of [{ settings: { impactEffects: false } }, { settings: { effects: false } }, { reduced: true }]) {
+      const { layer, emit } = await impactSetup(opts);
+      layer.impact(hit(20));
+      expect(emit).not.toHaveBeenCalled();
+    }
+  });
+
+  test('nothing before the library is loaded, and a bad event never throws', async () => {
+    const emit = vi.fn();
+    const { layer } = setup({
+      tier: 'high',
+      particles: { emit },
+      now: () => 0,
+      loadLibrary: async () => ({ EFFECTS: {}, createImpactFx }),
+    });
+    layer.impact(hit(20));
+    expect(emit).not.toHaveBeenCalled();
+    await layer.prefetch();
+    expect(() => layer.impact(null)).not.toThrow();
+    expect(() => layer.impact({ speed: 20 })).not.toThrow();
   });
 });

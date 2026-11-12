@@ -396,7 +396,7 @@ export function registerSettings({
     default: true,
   });
   // Trigger effects (P4-D2): the roller's rules decide; each viewer filters what they see.
-  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'screenShake']) {
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'screenShake', 'impactEffects']) {
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),

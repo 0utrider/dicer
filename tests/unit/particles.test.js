@@ -149,6 +149,18 @@ describe('v2 renderer: instanced quads with procedural shapes', () => {
     expect(a.aDrag.getX(0)).toBeCloseTo(2.5);
   });
 
+  test('alpha is stored per particle (0..1) and defaults to 1', () => {
+    const pool = createParticlePool(new THREE.Scene(), 16);
+    pool.emit(spec({ alpha: 0.35 }));
+    pool.emit(spec());
+    pool.emit(spec({ alpha: 7 }));
+    const a = additive(pool).attrs;
+    expect(a.aAlpha.getX(0)).toBeCloseTo(0.35);
+    expect(a.aAlpha.getX(1)).toBe(1);
+    expect(a.aAlpha.getX(2)).toBe(1);
+    expect(additive(pool).material.vertexShader).toContain('aAlpha');
+  });
+
   test('omitted v2 fields take the defaults of the kind and shape', () => {
     const pool = createParticlePool(new THREE.Scene(), 64);
     const cases = [

@@ -28,6 +28,7 @@ export const SHAKE_PX = 6;
  * @param {() => {effectBudget: number, particleScale: number}} o.getTier quality TIERS entry
  * @param {(key: string) => unknown} [o.getSetting]
  * @param {() => Promise<{EFFECTS: Record<string, object>}>} [o.loadLibrary]
+ * @param {() => number} [o.now] the ms clock impact effects use (the pool's own default clock)
  * @param {(id: string) => void} [o.onPlay] called once per effect that actually started (debug counters)
  * @param {(die: object) => object|null} [o.isolate] DiceBox.isolate: the die's own uniforms
  * @param {() => boolean} [o.isSafe] the safe flags are on: library shaders are skipped, DSN effects run
@@ -46,12 +47,14 @@ export function createEffectLayer({
   isSafe = () => false,
   particles = null,
   matchMedia = (q) => globalThis.matchMedia?.(q),
+  now = () => performance.now(),
   onPlay = () => {},
   warn = (...a) => console.warn(...a),
   debug = (...a) => console.debug(...a),
 }) {
   let library = null; // id -> module, once loaded
   let createPool = null; // the library's createParticlePool, once loaded
+  let impactFx = null; // the library's impact emitter (library/impact.js), once loaded
   let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
   let loadFailed = false;
@@ -92,6 +95,7 @@ export function createEffectLayer({
         if (!disposed) {
           library = effects;
           createPool = typeof mod.createParticlePool === 'function' ? mod.createParticlePool : null;
+          impactFx = typeof mod.createImpactFx === 'function' ? mod.createImpactFx({ getPool, getTier, now }) : null;
         }
       })
       .catch((err) => {
@@ -306,6 +310,21 @@ export function createEffectLayer({
       for (const p of keep) start(die, p.f, p.mod);
     },
 
+    /**
+     * Dust and sparks where a die hits the table (the emitter is in the library chunk). Free of
+     * budget: the pool's own life keeps the loop running. Never throws.
+     * @param {{position: {x: number, z: number}, speed: number, surface?: string, dieKey?: string}} hit
+     */
+    impact(hit) {
+      if (disposed || !impactFx) return;
+      try {
+        if (setting('effects') === false || setting('impactEffects') === false || reducedMotion()) return;
+        impactFx.impact(hit);
+      } catch (err) {
+        warnOnce('impact', 'impact effect failed', err);
+      }
+    },
+
     /** Advances every running effect; true while any runs (or the canvas shakes). */
     update(nowMs) {
       for (let i = 0; i < running.length;) {
@@ -341,6 +360,7 @@ export function createEffectLayer({
     clear() {
       for (let i = running.length - 1; i >= 0; i--) stopAt(i);
       cost = 0;
+      impactFx?.clear();
       stopShake();
       pool?.clear?.();
     },

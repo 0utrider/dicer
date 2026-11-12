@@ -63,7 +63,7 @@ const PACKED = [
   ['iC', [['aColor', 3], ['aSize', 1]]],
   ['iD', [['aColorEnd', 3], ['aSizeEnd', 1]]],
   ['iE', [['aKind', 1], ['aGravity', 1], ['aShape', 1], ['aStretch', 1]]],
-  ['iF', [['aSpin', 1], ['aDrag', 1], ['aSeed', 1], ['aSpare', 1]]],
+  ['iF', [['aSpin', 1], ['aDrag', 1], ['aSeed', 1], ['aAlpha', 1]]],
 ];
 
 const VERTEX = /* glsl */ `
@@ -73,7 +73,7 @@ attribute vec4 iB; // velocity.xyz, life
 attribute vec4 iC; // color.rgb, size
 attribute vec4 iD; // colorEnd.rgb, sizeEnd
 attribute vec4 iE; // kind, gravity, shape, stretch
-attribute vec4 iF; // spin, drag, seed, -
+attribute vec4 iF; // spin, drag, seed, alpha
 #define aOrigin iA.xyz
 #define aBirth iA.w
 #define aVelocity iB.xyz
@@ -89,6 +89,7 @@ attribute vec4 iF; // spin, drag, seed, -
 #define aSpin iF.x
 #define aDrag iF.y
 #define aSeed iF.z
+#define aAlpha iF.w
 uniform float uTime;
 uniform vec2 uViewport;
 varying vec3 vColor;
@@ -145,7 +146,7 @@ void main() {
 	else if ( kind == 2 ) alpha *= 0.55;
 	else if ( kind == 3 ) alpha = 1.0 - smoothstep( 0.7, 1.0, k );
 	else if ( kind == 5 ) alpha *= 0.5 + 0.5 * sin( t * 30.0 + aBirth * 11.0 );
-	vAlpha = alpha;
+	vAlpha = alpha * aAlpha;
 	vColor = mix( aColor, aColorEnd, k );
 	vQ = aCorner;
 	vShape = aShape;
@@ -251,7 +252,7 @@ export function createParticlePool(scene, capacity) {
    * Emits `spec.count` particles. v1 fields: count, origin, dir, speed, spread, life, size,
    * kind, gravity, color, blend ('normal' for the second layer), now. v2 fields (each defaults
    * from the kind, then the shape): shape, colorEnd, sizeEnd, stretch, spin (rad/s, random sign),
-   * drag.
+   * drag, alpha (0..1, default 1: scales the final alpha of both layers).
    */
   function emit(spec = {}) {
     if (disposed) return;
@@ -274,6 +275,7 @@ export function createParticlePool(scene, capacity) {
     const stretch = num(spec.stretch, STRETCH);
     const spin = num(spec.spin, SPIN[shape] ?? 0);
     const drag = Math.max(0, num(spec.drag, DRAG[kind] ?? DRAG[0]));
+    const alpha = Math.min(1, Math.max(0, num(spec.alpha, 1)));
     setColor(tint, spec.color, '#ffffff');
     setColor(tintEnd, spec.colorEnd, tint);
     const a = layer.attrs;
@@ -336,6 +338,7 @@ export function createParticlePool(scene, capacity) {
       a.aSpin.setX(idx, Math.random() < 0.5 ? -spin : spin);
       a.aDrag.setX(idx, drag);
       a.aSeed.setX(idx, Math.random());
+      a.aAlpha.setX(idx, alpha);
       deathMs = Math.max(deathMs, nowMs + l * 1000);
     }
     mark(layer, first, run);
@@ -390,6 +393,95 @@ export function createParticlePool(scene, capacity) {
         l.geometry.dispose();
         l.material.dispose();
       }
+    },
+  };
+}
+
+/** The sound engine's medium hit, the spark threshold, the per-die debounce, the live-emit cap. */
+const MIN_SPEED = 11;
+const SPARK_SPEED = 18;
+const DEBOUNCE_MS = 120;
+const LIVE_MAX = 12;
+const LIFE_MS = 600; // the longest particle life an impact emits (the dust)
+const PRUNE_AT = 256;
+
+/**
+ * Dust and sparks where a die hits the table. The effect layer gates it (settings, reduced
+ * motion) and calls impact(); this decides the rest: speed threshold, per-die debounce, the cap
+ * of live emits, and the emits themselves. Free of effect budget.
+ *
+ * @param {object} o
+ * @param {() => object|null} o.getPool the layer's shared particle pool
+ * @param {() => {particleScale: number}} o.getTier
+ * @param {() => number} o.now ms clock (the same as the pool's emit default)
+ */
+export function createImpactFx({ getPool, getTier, now }) {
+  const last = new Map(); // dieKey -> ms of its last impact effect
+  let live = []; // ms at which each live emit's particles are all gone
+
+  return {
+    impact(hit) {
+      const speed = Number(hit?.speed);
+      if (!(speed >= MIN_SPEED) || !hit.position) return;
+      const t = now();
+      const key = hit.dieKey;
+      if (key !== undefined && t - (last.get(key) ?? -Infinity) < DEBOUNCE_MS) return;
+      live = live.filter((until) => until > t);
+      if (live.length >= LIVE_MAX) return;
+      const pool = getPool();
+      if (!pool) return;
+      const x = Number(hit.position.x) || 0; // copied now: the die keeps moving
+      const z = Number(hit.position.z) || 0;
+      if (key !== undefined) {
+        if (last.size > PRUNE_AT) for (const [k, v] of last) if (t - v >= DEBOUNCE_MS) last.delete(k);
+        last.set(key, t);
+      }
+      const scale = Number(getTier()?.particleScale);
+      const k = scale > 0 ? scale : 1;
+      const s = Math.min(1, Math.max(0, (speed - MIN_SPEED) / 7));
+      const up = { x: 0, y: 1, z: 0 };
+      const dust = Math.round((3 + 5 * s) * k);
+      if (dust > 0) {
+        pool.emit({
+          count: dust,
+          origin: { x, y: 0.05, z },
+          dir: up,
+          speed: 0.5,
+          spread: 1.4,
+          gravity: 0,
+          life: 0.6,
+          size: 0.5,
+          sizeEnd: 2,
+          kind: KIND.SMOKE,
+          shape: SHAPE.RING,
+          blend: 'normal',
+          color: '#d8cfc0',
+          alpha: 0.35,
+          now: t,
+        });
+        live.push(t + LIFE_MS);
+      }
+      const sparks = Math.round((2 + 4 * s) * k);
+      if (speed >= SPARK_SPEED && sparks > 0) {
+        pool.emit({
+          count: sparks,
+          origin: { x, y: 0.1, z },
+          dir: up,
+          speed: 3.5,
+          spread: 1.2,
+          gravity: -6,
+          life: 0.35,
+          size: 0.08,
+          kind: KIND.STREAK,
+          color: '#fff3d0',
+          now: t,
+        });
+        live.push(t + LIFE_MS);
+      }
+    },
+    clear() {
+      live = [];
+      last.clear();
     },
   };
 }

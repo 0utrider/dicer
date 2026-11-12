@@ -152,6 +152,10 @@
         "Name": "Screen shake",
         "Hint": "Let effects shake the dice briefly. Only the dice move, never the map. Off when your system asks for reduced motion."
       },
+      "impactEffects": {
+        "Name": "Impact effects",
+        "Hint": "Small dust and sparks where dice hit the table."
+      },
       "perPlayerAreas": {
         "Name": "Per-player roll areas",
         "Hint": "Throw each player's dice in the area the GM gave them, on every screen. Off throws everyone's dice in the default area."
