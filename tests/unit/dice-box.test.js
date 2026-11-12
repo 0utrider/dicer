@@ -175,14 +175,16 @@ test('landed resolves after playback lands; finished after timeBeforeHide + fade
   renderer.tick(500);
   await flushMicrotasks();
   expect(isLanded()).toBe(false);
-  expect(renderer.tick(2000)).toBe(true);
+  expect(renderer.tick(2000)).toBe('hold'); // P9-R18: landed and at rest: drawn, then held
   await flushMicrotasks();
   expect(isLanded()).toBe(true);
   expect(isFinished()).toBe(false);
 
   vi.advanceTimersByTime(1999);
-  expect(renderer.tick(2100)).toBe(true);
+  expect(renderer.tick(2100)).toBe('hold');
+  const wakes = renderer.startLoop.mock.calls.length;
   vi.advanceTimersByTime(1);
+  expect(renderer.startLoop.mock.calls.length).toBe(wakes + 1); // the fade wakes the held loop
   expect(renderer.tick(2200)).toBe(true); // fade starts
   const mesh = dieGroups(renderer)[0].children[0];
   expect(mesh.material.transparent).toBe(true);
@@ -255,7 +257,7 @@ test('two concurrent rolls each resolve landed independently, and the loop keeps
   expect(bLanded()).toBe(false);
   expect(box.activeRolls).toBe(1);
 
-  expect(renderer.tick(4000)).toBe(true);
+  expect(renderer.tick(4000)).toBe('hold'); // a finished, b landed: nothing moves
   await flushMicrotasks();
   expect(bLanded()).toBe(true);
   vi.advanceTimersByTime(2000);
@@ -2251,4 +2253,46 @@ describe('armFirstFrame (Plan 8 Task 2)', () => {
     frame();
     expect(cb).not.toHaveBeenCalled();
   });
+});
+
+// P9-R18: the loop holds only while every shown roll rests and no effect runs.
+test('a running effect keeps the loop going through the linger, then it holds', async () => {
+  let running = true;
+  const effects = { update: vi.fn(() => running), play: vi.fn(), clear: vi.fn() };
+  const { renderer, physics, box } = setup({ effects });
+  box.roll([{ type: 'd6', value: 3 }]);
+  physics.flush();
+  renderer.tick(16);
+  expect(renderer.tick(2000)).toBe(true); // landed, but an effect is still animating
+  expect(renderer.tick(2050)).toBe(true);
+  running = false;
+  expect(renderer.tick(2100)).toBe('hold');
+});
+
+test('a roll still playing keeps the loop going while another rests', async () => {
+  const { renderer, physics, box } = setup();
+  box.roll([{ type: 'd6', value: 3 }]);
+  physics.flush(0);
+  renderer.tick(0);
+  expect(renderer.tick(2000)).toBe('hold');
+  box.roll([{ type: 'd6', value: 4 }]);
+  physics.flush(1);
+  expect(renderer.tick(2016)).toBe(true);
+});
+
+test('removing a roll, or re-skinning resting dice, asks a held renderer for a frame', async () => {
+  const { renderer, physics, box } = setup();
+  renderer.requestFrame = vi.fn();
+  const { finished } = box.roll([{ type: 'd6', value: 3 }]);
+  physics.flush();
+  renderer.tick(16);
+  expect(renderer.tick(2000)).toBe('hold');
+  renderer.requestFrame.mockClear();
+  box.invalidateMaterials({ replaceInFlight: true });
+  expect(renderer.requestFrame).toHaveBeenCalledTimes(1);
+  box.invalidateMaterials();
+  expect(renderer.requestFrame).toHaveBeenCalledTimes(1); // new rolls only: nothing shown changes
+  box.clear();
+  await finished;
+  expect(renderer.requestFrame).toHaveBeenCalled();
 });

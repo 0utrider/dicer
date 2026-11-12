@@ -475,6 +475,7 @@ export class DiceBox {
     if (replaceInFlight) {
       const flags = this.#flags();
       for (const roll of this._rolls) this.#rematerialize(roll, flags);
+      this._renderer.requestFrame?.(); // P9-R18: resting dice changed look while held
     }
     for (const [m, entry] of [...this._refs])
       if (entry.stale && entry.refs <= 0) this.#disposeMaterial(m);
@@ -1211,7 +1212,16 @@ export class DiceBox {
     // Effects outlive their roll (a burst may still be settling): the loop runs while they do.
     const effects = this.#effectsCall((e) => e.update(now)) === true;
     // A roll still waiting for its assets draws nothing: it restarts the loop when they are in.
-    for (const roll of this._rolls) if (!roll.assetsPending) return true;
+    let shown = false;
+    let moving = effects;
+    for (const roll of this._rolls) {
+      if (roll.assetsPending) continue;
+      shown = true;
+      if (roll.phase !== 'lingering') moving = true;
+    }
+    // P9-R18: every shown roll at rest and no effect running: this frame is drawn, then the loop
+    // holds with the dice on screen. The linger timer's startLoop (the fade) or a new roll wakes it.
+    if (shown) return moving ? true : 'hold';
     return effects;
   }
 
@@ -1271,6 +1281,9 @@ export class DiceBox {
       });
     }
     for (const plane of roll.shadows) this._renderer.sceneApi.releaseShadow(plane);
+    // P9-R18: a roll removed while the loop holds (outside a frame) must not stay drawn: the next
+    // frame redraws without it, or hides when nothing is left.
+    this._renderer.requestFrame?.();
     for (const m of roll.fades ?? []) m.dispose();
     roll.fades = null;
     for (const m of roll.materials) this.#release(m);
