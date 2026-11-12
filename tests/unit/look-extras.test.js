@@ -9,6 +9,8 @@ import { OUTLINE_WIDTH, GLOW_INK } from '../../src/render/extras/fills.js';
 import { stripGlslParts } from '../../build/glsl-minify-plugin.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { normalizeAppearance, programKey } from '../../src/look/appearance.js';
+import { bodyPatch } from '../../src/render/extras/bodies/index.js';
+import { PRESET_PARAMS } from '../../src/render/extras/bodies/iridescent.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -149,5 +151,69 @@ describe('new number fills', () => {
     expect(count(fs, 'float dcMask = smoothstep( - dcAA, dcAA, dcD ) * ( 1.0 - smoothstep(')).toBe(1);
     expect(count(fs, 'float dcRim = ( 1.0 - smoothstep( - dcAA, dcAA, dcD ) ) * smoothstep(')).toBe(1);
     expect(applied + 2).toBe(5);
+  });
+});
+
+describe('bodies', () => {
+  const TODAY = [
+    { type: 'opaque' },
+    { type: 'resin' },
+    { type: 'metal', finish: 'polished' },
+    { type: 'metal', finish: 'brushed' },
+    { type: 'metal', finish: 'antique' },
+    { type: 'marble' },
+    { type: 'pearl' },
+  ];
+  const bodyMat = (body) => createDiceMaterial(look({ body }), atlas, s, labels, FLAGS);
+
+  test("today's bodies get no body patch and keep today's shader with the chunk loaded", async () => {
+    const loaded = TODAY.map((body) => {
+      expect(bodyPatch(look({ body }), FLAGS)).toEqual({});
+      const m = bodyMat(body);
+      return { fs: patched(m).fragmentShader, defines: { ...m.defines }, key: m.userData.programKey };
+    });
+    _setLookExtrasImport(() => new Promise(() => {}));
+    try {
+      TODAY.forEach((body, i) => {
+        const m = bodyMat(body);
+        expect(patched(m).fragmentShader).toBe(loaded[i].fs);
+        expect(m.defines).toEqual(loaded[i].defines);
+        expect(m.userData.programKey).toBe(loaded[i].key);
+        expect(loaded[i].fs).not.toContain('DICER_IRIDESCENT');
+      });
+    } finally {
+      _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+      await requestLookExtras();
+    }
+  });
+
+  test('iridescent: one program for all three presets (same key), uBodyPreset differs, params set, fragment compiles the DICER_IRIDESCENT chunk once', () => {
+    const presets = ['chameleon', 'opal', 'dichroic'];
+    const mats = presets.map((preset) =>
+      bodyMat({ type: 'iridescent', preset, color: '#1a9e8f', color2: '#6a2bd1' }),
+    );
+    const keys = new Set(mats.map((m) => m.userData.programKey));
+    expect(keys.size).toBe(1);
+    expect([...keys][0]).toMatch(/^iridescent\|/);
+    const vals = mats.map((m) => m.userData.uniforms.uBodyPreset.value.toArray());
+    presets.forEach((p, i) => expect(vals[i]).toEqual(PRESET_PARAMS[p]));
+    expect(new Set(vals.map(String)).size).toBe(3);
+    for (const m of mats) {
+      expect(m.defines.DICER_IRIDESCENT).toBe('');
+      expect(m.clearcoat).toBe(1);
+      expect(m.clearcoatRoughness).toBeCloseTo(0.05);
+      expect(m.sheen).toBeCloseTo(0.3);
+      expect(m.sheenColor.getHexString()).toBe('6a2bd1');
+      const fs = patched(m).fragmentShader;
+      expect(count(fs, '#ifdef DICER_IRIDESCENT')).toBeGreaterThan(0);
+      expect(count(fs, 'uniform vec4 uBodyPreset;')).toBe(1);
+      expect(count(fs, '#define DC_NOISE')).toBe(1);
+      expect(fs.indexOf('#define DC_NOISE')).toBeLessThan(fs.indexOf('uniform vec4 uBodyPreset;'));
+      // the colour chunk sits after color_fragment, before the number fill mix
+      const at = fs.indexOf('vec3 dcIc = ');
+      expect(count(fs, 'vec3 dcIc = ')).toBe(1);
+      expect(at).toBeGreaterThan(fs.indexOf('#include <color_fragment>'));
+      expect(at).toBeLessThan(fs.indexOf(ENGRAVE_COLOR.trim().split('\n')[0]));
+    }
   });
 });

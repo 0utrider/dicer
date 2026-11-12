@@ -23,13 +23,18 @@
 import { reliefPatch } from './relief.js';
 import { fillPatch } from './fills.js';
 import { iconPatch } from './icons.js';
+import { bodyPatch } from './bodies/index.js';
 
 /** Build-test marker: present in this chunk, never in the world-start bundle. */
 export const EXTRAS_ID = 'dicer-look-extras';
 
 export const ready = Promise.resolve();
 
-/** Merges patches: defines/uniforms assigned, chunk slots joined by '\n', replace concatenated; the last labels/atlas win. */
+/**
+ * Merges patches: defines/uniforms/params assigned, chunk slots joined by '\n', replace
+ * concatenated; the last labels/atlas win. A function declaration: bodies/index.js imports it
+ * back (an import cycle that only calls it after both modules have loaded).
+ */
 export function mergePatches(...patches) {
   const out = { defines: {}, uniforms: {}, chunks: {}, replace: [] };
   for (const p of patches) {
@@ -41,10 +46,11 @@ export function mergePatches(...patches) {
     out.replace.push(...(p.replace ?? []));
     if (p.labels) out.labels = p.labels;
     if (p.atlas) out.atlas = p.atlas;
+    if (p.params) out.params = { ...out.params, ...p.params };
   }
   return out;
 }
 
-export function patchMaterial(a, _flags, ctx) {
-  return mergePatches(reliefPatch(a), fillPatch(a), iconPatch(a, ctx));
+export function patchMaterial(a, flags, ctx) {
+  return mergePatches(bodyPatch(a, flags), reliefPatch(a), fillPatch(a), iconPatch(a, ctx));
 }

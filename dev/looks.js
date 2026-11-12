@@ -27,7 +27,8 @@ const ROW_LABEL_PX = 170;
 /**
  * Rows: every curated look, plus variants with per-row flag overrides so variant programs
  * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL. An optional
- * fifth element is a numbers patch merged into the base look's appearance.numbers (dice designs).
+ * fifth element is a numbers patch merged into the base look's appearance.numbers (dice designs),
+ * a sixth a body patch merged into appearance.body (dice designs plan 2 bodies).
  */
 const VARIANTS = [
   ['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }],
@@ -47,6 +48,10 @@ const VARIANTS = [
     {},
     { icons: { crit: 'starburst', fumble: 'broken-shield' }, relief: 'raised', fill: 'holo' },
   ],
+  // iridescent bodies: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
+  ['iridescent~chameleon', 'default', 'chameleon', {}, {}, { type: 'iridescent', preset: 'chameleon', color: '#1a9e8f', color2: '#6a2bd1', roughness: 0.15 }],
+  ['iridescent~opal', 'default', 'opal', {}, {}, { type: 'iridescent', preset: 'opal', color: '#e8eef0', color2: '#7fd6e8', roughness: 0.2 }],
+  ['iridescent~dichroic', 'default', 'dichroic glass', {}, {}, { type: 'iridescent', preset: 'dichroic', color: '#102030', color2: '#ff6a3d', roughness: 0.05 }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only
@@ -62,7 +67,7 @@ const FACE_ROWS = [
 ];
 const looks = [
   ...Object.entries(LOOKS).map(([id, look]) => [id, look, {}]),
-  ...VARIANTS.map(([id, base, note, flags, numbers]) => [
+  ...VARIANTS.map(([id, base, note, flags, numbers, body]) => [
     id,
     {
       ...LOOKS[base],
@@ -70,6 +75,7 @@ const looks = [
       appearance: {
         ...LOOKS[base].appearance,
         numbers: { ...LOOKS[base].appearance.numbers, ...numbers },
+        body: { ...LOOKS[base].appearance.body, ...body },
       },
     },
     flags,
@@ -114,7 +120,7 @@ looks.forEach(([id, look, rowFlags], row) => {
   r.className = 'row';
   r.style.gridArea = `${row + 2} / 1`;
   const a = look.appearance;
-  const detail = [a.body.type, a.body.type === 'metal' ? a.body.finish : null, a.numbers.fill];
+  const detail = [a.body.type, a.body.type === 'metal' ? a.body.finish : a.body.preset, a.numbers.fill];
   if (a.interior.type !== 'none') detail.push(a.interior.type);
   if (a.edges.style !== 'rounded') detail.push(a.edges.style);
   if (rowFlags.engraving === false) detail.push('no engraving');

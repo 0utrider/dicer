@@ -119,8 +119,11 @@ test('mergePatches joins chunks, assigns defines and uniforms, concatenates repl
       replace: [['z', 'w']],
       labels: ['2'],
       atlas: atlasB,
+      params: { sheen: 0.3 },
     },
+    { params: { clearcoat: 1 } },
   );
+  expect(m.params).toEqual({ sheen: 0.3, clearcoat: 1 });
   expect(m.defines).toEqual({ A: '', B: '1' });
   expect(m.uniforms).toEqual({ uA: u1, uB: u2 });
   expect(m.chunks).toEqual({ pars: 'p1\np2', emissive: 'e1' });

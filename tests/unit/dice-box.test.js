@@ -622,6 +622,29 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     box.clear();
   });
 
+  test('an iridescent look rolled before the chunk loads draws pearl, then iridescent after it loads', async () => {
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const load = vi.fn(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+    _setLookExtrasImport(load);
+    const irid = { body: { type: 'iridescent', preset: 'opal', color: '#e8eef0', color2: '#7fd6e8' } };
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => irid });
+    expect(() => box.roll([{ type: 'd8', value: 3 }])).not.toThrow();
+    const first = meshOf(renderer).material;
+    expect(first.userData.programKey).toMatch(/^pearl\|/);
+    expect(first.userData.uniforms.uBodyPreset).toBeUndefined();
+    release();
+    expect(await requestLookExtras()).not.toBeNull();
+    box.invalidateMaterials();
+    expect(() => box.roll([{ type: 'd8', value: 3 }])).not.toThrow();
+    const second = meshOf(renderer).material;
+    expect(second.userData.programKey).toMatch(/^iridescent\|/);
+    expect(second.defines.DICER_IRIDESCENT).toBe('');
+    expect(second.userData.uniforms.uBodyPreset).toBeDefined();
+    expect(load).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
   test('the geometry edge radius follows the look of each roll', () => {
     buildDieGeometry.mockClear();
     let look = ruby;
