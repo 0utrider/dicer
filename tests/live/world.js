@@ -646,6 +646,38 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
   };
 }
 
+/** P9-R13: Chrome's main-thread task counters (bench.mjs binding), or null without it. */
+async function benchMetrics() {
+  try {
+    return typeof globalThis.__benchMetrics === 'function' ? await globalThis.__benchMetrics() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** P9-R13: main-thread busy ms per second between two readings: {msPerSec, scriptMsPerSec, seconds}. */
+function busyBetween(a, b) {
+  const secs = b?.at - a?.at;
+  const task = b?.task - a?.task;
+  if (!(secs > 0) || !Number.isFinite(task)) return null;
+  const script = b.script - a.script;
+  return {
+    msPerSec: Math.round((task * 10000) / secs) / 10,
+    scriptMsPerSec: Number.isFinite(script) ? Math.round((script * 10000) / secs) / 10 : null,
+    seconds: Math.round(secs * 10) / 10,
+  };
+}
+
+/** P9-R12: a WebGL counter that tells the product's dice canvas from Foundry's board. */
+function glCounter(product, createGlCounter) {
+  const dice = productCanvas(product);
+  const app = globalThis.canvas?.app;
+  const board = app?.canvas ?? app?.view ?? null;
+  return createGlCounter({
+    classify: (c) => (c && c === dice ? 'dice' : c && c === board ? 'foundry' : 'other'),
+  });
+}
+
 /** Between scenarios: a fixed settle, then Dicer waits until no dice and no loop (bounded). */
 async function settle(adapter) {
   await sleep(SCENARIO_SETTLE_MS);
@@ -670,6 +702,7 @@ export async function benchRun({ ids, profile, rolls = null, profileScenario = n
   if (!product) throw Error('exactly one of dicer / dice-so-nice must be active');
   const { runSuite } = await import(`${BENCH}scenarios.js`);
   const { createDicerAdapter } = await import(`${BENCH}dicer-adapter.js`);
+  const { createGlCounter } = await import(`${BENCH}gl-counter.js`);
   const created = [];
   const adapter = benchAdapter(product, createDicerAdapter, { created, gpu: benchGpu() });
   const results = [];
@@ -690,8 +723,13 @@ export async function benchRun({ ids, profile, rolls = null, profileScenario = n
         const t0 = performance.now();
         // P9-R10 --profile: the CDP sampling profiler runs for this one scenario (bench.mjs binding).
         const profiling = id === profileScenario && typeof globalThis.__benchProfile === 'function';
+        // P9-R12: and the WebGL work per canvas (dice, Foundry board, other) over the same scenario.
+        const gl = id === profileScenario ? glCounter(product, createGlCounter) : null;
         if (profiling) await globalThis.__benchProfile('start');
+        gl?.start();
+        const before = await benchMetrics();
         let part;
+        let glCounts = null;
         try {
           part = await runSuite([id], adapter, {
             profile,
@@ -701,8 +739,13 @@ export async function benchRun({ ids, profile, rolls = null, profileScenario = n
             doc: document,
           });
         } finally {
+          const after = await benchMetrics();
+          const busy = busyBetween(before, after);
+          if (busy && part?.results?.[0]) part.results[0].busy = busy;
+          glCounts = gl?.stop() ?? null;
           if (profiling) await globalThis.__benchProfile('stop');
         }
+        if (glCounts && part.results[0]) part.results[0].gl = glCounts;
         // P9-R8: each adaptive drop during the scenario, with the judge numbers behind it.
         const drops = (game.dice3d?._debug?.qualityDrops ?? []).filter((d) => d.at >= t0);
         if (part.results[0] && drops.length) {

@@ -1,4 +1,4 @@
-import { checkTargets, compare, summaryText } from '../../src/bench/report.js';
+import { checkTargets, compare, compareBusy, summaryText } from '../../src/bench/report.js';
 
 const MB = 1024 * 1024;
 const sum = (p95) => ({ n: 10, mean: p95, p50: p95, p95, p99: p95, max: p95 });
@@ -169,4 +169,17 @@ test('compare: ratio shown, verdict n/a when either side has failures', () => {
   expect(compare(d, s, { requireClearlyLess: true })).toEqual({ scenario: 'd20', dicerP95: 1, dsnP95: 4, ratio: 0.25, pass: null });
   expect(compare({ ...d, failures: 2 }, { ...s, failures: 0 }).pass).toBeNull();
   expect(compare(d, { ...s, failures: 0 }).pass).toBe(true);
+});
+
+// P9-R13: the head-to-head compares main-thread busy ms per second at the display cap.
+test('compareBusy: ratio on busy time, clearly-less limit, n/a without both or with failures', () => {
+  const r = (msPerSec, o = {}) => base({ busy: { msPerSec }, frame: sum(6), ...o });
+  expect(compareBusy(r(90), r(100), { requireClearlyLess: true })).toMatchObject({
+    dicerBusy: 90, dsnBusy: 100, ratio: 0.9, pass: true, dicerP95: 6, dsnP95: 6,
+  });
+  expect(compareBusy(r(95), r(100), { requireClearlyLess: true }).pass).toBe(false);
+  expect(compareBusy(r(100), r(100)).pass).toBe(true);
+  expect(compareBusy(r(101), r(100)).pass).toBe(false);
+  expect(compareBusy(base({ frame: sum(1) }), r(100))).toMatchObject({ ratio: null, pass: null });
+  expect(compareBusy(r(50, { failures: 1 }), r(100))).toMatchObject({ ratio: 0.5, pass: null });
 });

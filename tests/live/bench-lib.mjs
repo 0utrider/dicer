@@ -2,7 +2,7 @@
 // effects-off settings, the verdicts, the restore decision and the summary. No I/O, no browser:
 // unit-tested in tests/unit/bench-harness.test.js.
 import { SCENARIOS } from '../../src/bench/scenarios.js';
-import { checkTargets, compare } from '../../src/bench/report.js';
+import { checkTargets, compareBusy } from '../../src/bench/report.js';
 import { TARGETS } from '../../src/bench/stats.js';
 
 export const RESTORE_FILE = 'artifacts/bench/restore.json';
@@ -17,7 +17,8 @@ export function isLocalHttps(url) {
   }
 }
 const H2H = Object.freeze(['d20', 'mixed10', 'pool30', 'burst100']);
-const THROTTLED_VSYNC = Object.freeze(['d20', 'mixed10', 'pool30']);
+// P9-R13: burst100 too, so the throttled run is also the low-end head-to-head partner.
+const THROTTLED_VSYNC = Object.freeze(['d20', 'mixed10', 'pool30', 'burst100']);
 
 /** The two machine profiles. The throttled one is the G2 low-end estimate. */
 export function profiles() {
@@ -37,11 +38,17 @@ export function profiles() {
   };
 }
 
-/** Browser modes (H-D2): vsync for the 60 fps targets, uncapped for the head-to-head. */
+/**
+ * Browser modes. P9-R13: only vsync. The head-to-head used to run uncapped (no frame cap), but
+ * uncapped frame intervals reward a product that skips redraws, not one that does less work: it
+ * now runs at the display cap and compares main-thread busy time per second.
+ */
 export function modes() {
   return {
-    vsync: { args: [] },
-    uncapped: { args: ['--disable-gpu-vsync', '--disable-frame-rate-limit'] },
+    // P9-R14: Windows' native occlusion tracking stops a covered window drawing (about a frame a
+    // second) while the page still reports itself visible; off, a covered window keeps its frames.
+    // A minimized window still stops: the README says to keep it up.
+    vsync: { args: ['--disable-features=CalculateNativeWinOcclusion'] },
   };
 }
 
@@ -67,12 +74,10 @@ export function matrix() {
   return [
     mk('dicer', 'pc', 'vsync', 'defaults', all),
     mk('dicer', 'throttled', 'vsync', 'defaults', THROTTLED_VSYNC),
-    mk('dicer', 'pc', 'uncapped', 'defaults', H2H),
-    mk('dicer', 'throttled', 'uncapped', 'defaults', H2H),
-    mk('dicer', 'pc', 'uncapped', 'low', H2H),
-    mk('dice-so-nice', 'pc', 'uncapped', 'defaults', H2H),
-    mk('dice-so-nice', 'throttled', 'uncapped', 'defaults', H2H),
-    mk('dice-so-nice', 'pc', 'uncapped', 'effectsOff', H2H),
+    mk('dicer', 'pc', 'vsync', 'low', H2H),
+    mk('dice-so-nice', 'pc', 'vsync', 'defaults', H2H),
+    mk('dice-so-nice', 'throttled', 'vsync', 'defaults', H2H),
+    mk('dice-so-nice', 'pc', 'vsync', 'effectsOff', H2H),
   ];
 }
 
@@ -152,14 +157,16 @@ const PAIRINGS = Object.freeze([
  * - `type: 'target'`: G2 checks (Task 1's checkTargets) on Dicer vsync reports only (H-R1), plus
  *   `failures` (every roll completed), `noRebuild` (resize and context loss must not rebuild the
  *   renderer) and, for contextLoss, `recovered` (the roll after the restore drew on a live context).
- * - `type: 'h2h'`: Task 1's compare on uncapped reports, clearly-less only for pc defaults.
+ * - `type: 'h2h'`: compareBusy (P9-R13: main-thread busy ms per second at 60 fps) on the vsync
+ *   reports, clearly-less only for pc defaults; each row also shows both frame p95s.
  * @param {{entry: object, suite: {results: object[]}}[]} reports
  */
 export function verdicts(reports) {
   const rows = [];
   const list = Array.isArray(reports) ? reports : [];
   for (const { entry, suite } of list) {
-    if (entry.product !== 'dicer' || entry.mode !== 'vsync') continue;
+    // G2 targets judge Dicer at its defaults; the Low run exists only for the effects-off pairing.
+    if (entry.product !== 'dicer' || entry.mode !== 'vsync' || entry.variant !== 'defaults') continue;
     const run = runName(entry);
     for (const r of suite?.results ?? []) {
       for (const c of checkTargets(r))
@@ -204,7 +211,7 @@ export function verdicts(reports) {
       (x) =>
         x.entry.product === product &&
         x.entry.profile === profile &&
-        x.entry.mode === 'uncapped' &&
+        x.entry.mode === 'vsync' &&
         x.entry.variant === variant,
     );
   for (const p of PAIRINGS) {
@@ -217,7 +224,7 @@ export function verdicts(reports) {
     for (const id of ids) {
       const dr = d?.suite?.results?.find((r) => r.scenario === id) ?? null;
       const sr = s?.suite?.results?.find((r) => r.scenario === id) ?? null;
-      const c = compare(dr ?? { scenario: id }, sr ?? { scenario: id }, {
+      const c = compareBusy(dr ?? { scenario: id }, sr ?? { scenario: id }, {
         requireClearlyLess: p.requireClearlyLess,
       });
       const dicerFailures = dr?.failures ?? null;
@@ -386,6 +393,12 @@ export function parseArgs(argv) {
     if (a === '--dry-run') out.dryRun = true;
     else if (a === '--quick') out.quick = true;
     else if (a === '--profile') out.profile = true;
+    else if (a.startsWith('--profile=')) {
+      // P9-R15: --profile=<scenario> profiles that scenario instead of burst100.
+      const id = a.slice('--profile='.length).trim();
+      if (!id) return { ...out, error: '--profile= needs a scenario, e.g. --profile=pool30' };
+      out.profile = id;
+    }
     else if (a === '--only' || a.startsWith('--only=')) {
       const raw = a === '--only' ? args[++i] : a.slice('--only='.length);
       const names = String(raw ?? '')
@@ -413,9 +426,13 @@ export const QUICK_ROLLS = Object.freeze({ soak500: 200, burst100: 30 });
 export function planFor({ quick = false, only = null, profile = false } = {}) {
   const { plan, error } = selectRuns({ quick, only });
   if (!profile) return { plan, ...(error ? { error } : {}) };
-  // P9-R10: --profile records a CPU profile of each run's burst100.
+  // P9-R10: --profile records a CPU profile of each run's burst100; P9-R15: or of the scenario named.
+  const id = profile === true ? PROFILE_SCENARIO : profile;
+  if (!SCENARIOS.some((s) => s.id === id)) {
+    return { plan, error: `--profile=${id}: no such scenario. Scenarios: ${SCENARIOS.map((s) => s.id).join(', ')}` };
+  }
   return {
-    plan: plan.map((e) => (e.ids.includes(PROFILE_SCENARIO) ? Object.freeze({ ...e, profileScenario: PROFILE_SCENARIO }) : e)),
+    plan: plan.map((e) => (e.ids.includes(id) ? Object.freeze({ ...e, profileScenario: id }) : e)),
     ...(error ? { error } : {}),
   };
 }
@@ -426,7 +443,7 @@ export const PROFILE_SCENARIO = 'burst100';
 function selectRuns({ quick, only }) {
   const all = matrix();
   const names = new Set(all.map(runName));
-  // P9-R9: a term that is a whole run name selects that run only (dicer-pc-uncapped, not -low).
+  // P9-R9: a term that is a whole run name selects that run only (dicer-pc-vsync, not -low).
   const matches = (e, n) => (names.has(n) ? runName(e) === n : runName(e).includes(n));
   const named = (e) => only?.some((n) => matches(e, n));
   let plan = only?.length ? all.filter(named) : all;
@@ -592,6 +609,12 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
     for (const r of suite?.results ?? []) {
       for (const d of r?.qualityDrops ?? []) out.push('', `Note: ${runName(entry)}: ${r.scenario}: ${dropText(d)}`);
     }
+    const starved = (suite?.results ?? []).filter((r) => r?.starved === true).map((r) => r.scenario);
+    if (starved.length)
+      out.push(
+        '',
+        `Warning: ${runName(entry)}: frames came about once a second during ${starved.join(', ')} (window minimized or covered?), so those results are not valid`,
+      );
     const hidden = (suite?.results ?? []).filter((r) => r?.pageHidden === true).map((r) => r.scenario);
     if (w?.hidden === true) hidden.unshift('warm-up');
     if (hidden.length)
@@ -612,15 +635,16 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
       `| ${r.run} | ${r.scenario} | ${r.id} | ${val(r.target)} | ${val(r.value)} | ${verdict(r.pass)} | ${checkNote(r)} |`,
     );
   }
-  out.push('', '## Head-to-head (uncapped, frame p95)', '');
+  // P9-R13: judged on main-thread busy time per second at 60 fps; the frame p95s are shown only.
+  out.push('', '## Head-to-head (60 fps, main-thread busy ms per second)', '');
   out.push(
-    '| Pairing | Profile | Scenario | Dicer p95 (ms) | DSN p95 (ms) | Ratio | Limit | Dicer fail | DSN fail | Result |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Pairing | Profile | Scenario | Dicer busy (ms/s) | DSN busy (ms/s) | Ratio | Limit | Dicer p95 (ms) | DSN p95 (ms) | Dicer fail | DSN fail | Result |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   );
   const count = (v) => (typeof v === 'number' ? String(v) : 'n/a');
   for (const r of (rows ?? []).filter((x) => x.type === 'h2h')) {
     out.push(
-      `| ${r.pairing} | ${r.profile} | ${r.scenario} | ${num(r.dicerP95)} | ${num(r.dsnP95)} | ${num(r.ratio)} | ${num(r.limit)} | ${count(r.dicerFailures)} | ${count(r.dsnFailures)} | ${verdict(r.pass)} |`,
+      `| ${r.pairing} | ${r.profile} | ${r.scenario} | ${num(r.dicerBusy, 1)} | ${num(r.dsnBusy, 1)} | ${num(r.ratio)} | ${num(r.limit)} | ${num(r.dicerP95)} | ${num(r.dsnP95)} | ${count(r.dicerFailures)} | ${count(r.dsnFailures)} | ${verdict(r.pass)} |`,
     );
   }
   // P9-R10: --profile. Per run: the sampled total and buckets, then one table of hot functions.
@@ -636,6 +660,28 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
       for (const t of cpu.top)
         out.push(`| ${runName(entry)} | ${t.name} | ${t.where} | ${t.bucket} | ${num(t.ms, 1)} | ${num(t.pct, 1)} |`);
     }
+  }
+  // P9-R12: WebGL work per canvas per frame, over the profiled scenario.
+  const glRows = [];
+  for (const { entry, suite } of reports ?? []) {
+    for (const r of suite?.results ?? []) {
+      const f = r?.gl?.frames;
+      if (!(f > 0)) continue;
+      for (const [kind, t] of Object.entries(r.gl.byCanvas ?? {})) {
+        const size = t.width && t.height ? `${t.width}x${t.height}` : 'n/a';
+        glRows.push(
+          `| ${runName(entry)} | ${r.scenario} | ${kind} | ${size} | ${num(t.draws / f, 1)} | ${Math.round(t.triangles / f)} | ${num(t.fbBinds / f, 1)} | ${num(t.clears / f, 1)} |`,
+        );
+      }
+    }
+  }
+  if (glRows.length) {
+    out.push('', '## GPU work per frame (WebGL calls per animation frame, per canvas)', '');
+    out.push(
+      '| Run | Scenario | Canvas | Size | Draws | Triangles | Render-target binds | Clears |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      ...glRows,
+    );
   }
   const keys = Object.entries(dsnFlag?.exists ? (dsnFlag.value ?? {}) : {});
   out.push('', "## DSN effects-off user flag (flags['dice-so-nice'].settings, read back)", '');
