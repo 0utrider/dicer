@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { facesFor, atlasGlyphTest } from '../../src/compat/faces.js';
+import { facesFor, atlasGlyphTest, FATE_FACES } from '../../src/compat/faces.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { getShape } from '../../src/core/dice-shapes.js';
 
@@ -54,6 +54,14 @@ test('the atlas test needs every character in the atlas and at most two glyphs',
   expect(digitsOnly('100')).toBe(false);
   expect(digitsOnly('A')).toBe(false);
   expect(digitsOnly('')).toBe(false);
+});
+
+test('the built-in Fate faces sit on the d6: 1, 2 plus; 3, 4 blank; 5, 6 minus', () => {
+  const plus = { kind: 'text', text: '+' };
+  const minus = { kind: 'text', text: '−' };
+  const byValue = { 1: plus, 2: plus, 3: { kind: 'blank' }, 4: { kind: 'blank' }, 5: minus, 6: minus };
+  expect(FATE_FACES.labels).toEqual(getShape('d6').values.map((v) => byValue[v]));
+  expect(typeof FATE_FACES.key).toBe('string');
 });
 
 test('a throwing atlas test classifies as text', () => {

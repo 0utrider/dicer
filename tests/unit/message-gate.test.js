@@ -193,7 +193,7 @@ test("flags['dice-so-nice'].skip → not animated", () => {
 
 test('no animatable dice (planThrow returns empty) → not hidden, MessageProcessed false', () => {
   const el = li('m1');
-  const msg = message('m1', { rolls: [{ dice: [{ faces: 7, results: [{ result: 3 }] }] }] });
+  const msg = message('m1', { rolls: [{ dice: [{ faces: 9, results: [{ result: 3 }] }] }] });
   gate.onCreate(msg);
   expect(diceBox.roll).not.toHaveBeenCalled();
   expect(el.classList.contains('dsn-hide')).toBe(false);

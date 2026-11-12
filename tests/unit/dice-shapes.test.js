@@ -1,4 +1,4 @@
-import { getShape, dieTypeForFaces, labelFor } from '../../src/core/dice-shapes.js';
+import { getShape, dieTypeForFaces, labelFor, resultOf } from '../../src/core/dice-shapes.js';
 import { faceNormals } from '../../src/core/face-reader.js';
 import { computeHulls } from '../../src/physics/hulls.js';
 // Today's shapes and hulls, frozen before dice designs plan 4 (G2: they must not change).
@@ -56,6 +56,23 @@ test('crystal caps carry no label', () => {
   expect(labelFor('d10', 0, 'd100tens')).toBe('00'); // the d100 tens zero still reads 00
   expect(labelFor('d14', 9)).toBe('9.');
   expect(labelFor('d16', 16)).toBe('16');
+});
+test('labelFor variants; 6./9. marks only on drawn 6 and 9', () => {
+  const faces = (n) => Array.from({ length: n }, (_, i) => i + 1);
+  expect(faces(6).map((f) => labelFor('d6', f, 'd3'))).toEqual(['1', '2', '3', '1', '2', '3']);
+  expect(faces(10).map((f) => labelFor('d10', f, 'd5'))).toEqual(['1', '2', '3', '4', '5', '1', '2', '3', '4', '5']);
+  expect(faces(14).map((f) => labelFor('d14', f, 'd7'))).toEqual(
+    ['1', '2', '3', '4', '5', '6.', '7', '1', '2', '3', '4', '5', '6.', '7'],
+  );
+  expect(faces(6).map((f) => labelFor('d6', f, 'dF'))).toEqual(['', '', '', '', '', '']);
+  expect(faces(6).map((f) => resultOf(f, 'dF'))).toEqual([1, 1, 0, 0, -1, -1]);
+  expect(faces(14).map((f) => resultOf(f, 'd7'))).toEqual([1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7]);
+  expect([resultOf(40, 'd100tens'), resultOf(7), resultOf(10, 'd5')]).toEqual([40, 7, 5]);
+  // Plain dice are unchanged: 6 and 9 marked, d10's 10 reads 0.
+  expect(labelFor('d6', 6)).toBe('6.');
+  expect(labelFor('d14', 6)).toBe('6.');
+  expect(labelFor('d10', 10)).toBe('0');
+  expect(labelFor('d14', 13)).toBe('13');
 });
 test('dieTypeForFaces', () => {
   expect(dieTypeForFaces(20)).toBe('d20');

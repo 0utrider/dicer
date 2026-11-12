@@ -3,9 +3,9 @@ import { facesFor } from '../../src/compat/faces.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { findTheme } from '../../src/themes/themes.js';
-import { themeRef, chosenRef, mirrorLookSetting } from '../../src/compat/user-looks.js';
+import { themeRef, chosenRef, mirrorLookSetting, colorsetNameToAppearance } from '../../src/compat/user-looks.js';
 import { slotPatch } from '../../src/ui/theme-form.js';
-import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
+import { DEFAULT_APPEARANCE, normalizeAppearance } from '../../src/look/appearance.js';
 import { colorsetToAppearance, BUILTIN_COLORSETS } from '../../src/compat/colorset-map.js';
 
 const user = (flag) => ({
@@ -325,6 +325,36 @@ describe('themes in the look chain (Plan 5)', () => {
   };
   const msg = (pf2eType) => ({ flags: { pf2e: { context: { type: pf2eType } } } });
   const lookOn = (resolver, message, t, authorId) => resolver.decorate(message, {}, authorId)(t, RES, 0);
+
+  test('perType.d7 and perType.df looks apply', () => {
+    const fate = Object.assign(Object.create({ constructor: { DENOMINATION: 'f' } }), term(3));
+    const mine = {
+      id: 'mine',
+      name: 'Mine',
+      appearance: RUBY,
+      perType: { d3: CRYSTAL, d5: CRYSTAL, d7: CRYSTAL, df: CRYSTAL, d14: hoard.appearance, d16: CRYSTAL },
+    };
+    const { resolver } = makeT({ users: { u: userT({ global: { theme: 'mine' } }, [mine]) } });
+    const got = (t) => look(resolver, t, 'u');
+    expect(got(fate).dsnType).toBe('df');
+    expect(got(fate).appearance).toEqual(normalizeAppearance(CRYSTAL));
+    for (const n of [3, 5, 7, 16]) expect(got(term(n)).appearance).toEqual(normalizeAppearance(CRYSTAL));
+    // A d7 looks up d7, never the d14 it is thrown on.
+    expect(got(term(14)).appearance).toEqual(normalizeAppearance(hoard.appearance));
+    expect(got(term(7)).appearance).not.toEqual(got(term(14)).appearance);
+    expect(got(term(20)).appearance).toEqual(normalizeAppearance(RUBY)); // the fallback is unchanged
+  });
+
+  test('a DSN preset for df gives a Fate die its colorset', () => {
+    const registry = createRegistry({ warn: () => {} });
+    registry.addColorset({ name: 'fateset', foreground: '#ffffff', background: '#123456' });
+    registry.addDicePreset({ type: 'df', labels: ['-', '', '+'], colorset: 'fateset' }, 'd6');
+    const r = createLookResolver({ registry, getUser: () => undefined, warn: () => {} });
+    const fate = Object.assign(Object.create({ constructor: { DENOMINATION: 'f' } }), term(3));
+    const out = look(r, fate, 'u');
+    expect(out.dsnType).toBe('df');
+    expect(out.appearance).toEqual(colorsetNameToAppearance('fateset', registry, 0));
+  });
 
   test('a global theme ref resolves per die type, with its id and sound material', () => {
     const { resolver } = makeT({ users: { u: userT({ global: { theme: 'dragon-hoard' } }) } });

@@ -19,6 +19,12 @@ function hash(text) {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
+/** The Fate die's faces on Dicer's d6 (text faces drawn from face layers): 1, 2 +; 3, 4 blank; 5, 6 −. */
+export const FATE_FACES = {
+  key: 'dicer|df',
+  labels: getShape('d6').values.map((v) => (v > 2 && v < 5 ? { kind: 'blank' } : { kind: 'text', text: v < 3 ? '+' : '−' })),
+};
+
 /** @returns {import('../throw/throw-planner.js').FaceLabel} */
 export function classifyLabel(label, atlasHasGlyphs) {
   const text = String(label ?? '');

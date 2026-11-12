@@ -227,12 +227,23 @@ export function dsnTypeOf(term) {
 }
 
 /**
+ * The Foundry result face `value` of a relabelled die stands for: dF faces 1, 2 / 3, 4 / 5, 6 give
+ * +1 / 0 / -1; a d3 / d5 / d7 face f gives ((f - 1) mod n) + 1. Any other die: the value itself.
+ */
+export function resultOf(value, variant) {
+  const n = +variant?.slice(1);
+  return variant === 'dF' ? (value < 3) - (value > 4) : n ? ((value - 1) % n) + 1 : value;
+}
+
+/**
  * Text drawn on a face. 6 and 9 carry a "." suffix (rendered as an underline mark); value 0
- * (the crystal d4's caps) is blank.
+ * (the crystal d4's caps) is blank. A relabelled die (variant d3 / d5 / d7) draws face f as
+ * ((f - 1) mod n) + 1; a Fate die (dF) draws no numbers (its faces come from FATE_FACES).
  */
 export function labelFor(type, value, variant) {
   if (variant === 'd100tens') return value === 100 || value === 0 ? '00' : String(value);
-  if (value === 0) return '';
+  if (value === 0 || variant === 'dF') return '';
+  value = resultOf(value, variant);
   if (type === 'd10' && value === 10) return '0';
   if (value === 6 || value === 9) return `${value}.`;
   return String(value);

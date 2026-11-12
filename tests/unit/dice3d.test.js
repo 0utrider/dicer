@@ -93,8 +93,8 @@ test('showForRoll resolves false for blind', async () => {
   expect(diceBox.roll).not.toHaveBeenCalled();
 });
 
-test('showForRoll resolves false for a roll with only d7s', async () => {
-  await expect(api.showForRoll(roll(7, 3))).resolves.toBe(false);
+test('showForRoll resolves false for a roll with only d9s', async () => {
+  await expect(api.showForRoll(roll(9, 3))).resolves.toBe(false);
   expect(diceBox.roll).not.toHaveBeenCalled();
 });
 
@@ -740,7 +740,7 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
 
   test('RollComplete fires once when nothing animated or the throw fails', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await a.showForRoll(roll(7, 3), me, false, null, false, 'none');
+    await a.showForRoll(roll(9, 3), me, false, null, false, 'none');
     diceBox.roll.mockImplementationOnce(() => {
       throw new Error('boom');
     });

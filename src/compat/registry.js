@@ -9,7 +9,7 @@ import { cssToHex } from './colors.js';
 const MODES = ['default', 'preferred', 'exclusive'];
 /** A `dN` type with more faces than this is not a die Dicer can label: warned and skipped. */
 export const MAX_FACES = 1000;
-const BUILTIN_TYPES = [2, 4, 6, 8, 10, 12, 20].map(dieTypeForFaces);
+const BUILTIN_TYPES = [2, 4, 6, 8, 10, 12, 14, 16, 20].map(dieTypeForFaces);
 const STANDARD = 'standard';
 const APPEARANCE_COLORS = ['foreground', 'background', 'outline', 'edge'];
 const APPEARANCE_STRINGS = ['colorset', 'system', 'texture', 'material', 'font'];

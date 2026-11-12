@@ -11,6 +11,7 @@ import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
+import { FATE_FACES } from '../../src/compat/faces.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
@@ -355,6 +356,35 @@ test('tens dice use their own label set and map onto d10 faces 1..10', () => {
   expect(tens.geometry).toBe(ones.geometry);
   expect(physics.streams[0].req.dice).toEqual([{ type: 'd10' }, { type: 'd10' }]);
   expect(Number.isInteger(physics.streams[0].req.seed)).toBe(true);
+  box.clear();
+});
+
+test('a d7 and a d14 in one roll get different label sets', () => {
+  createDiceMaterial.mockClear();
+  const { box, renderer } = setup();
+  box.roll([
+    { type: 'd14', value: 8, variant: 'd7' },
+    { type: 'd14', value: 8 },
+    { type: 'd6', value: 5, variant: 'd3' },
+    { type: 'd10', value: 10, variant: 'd5' },
+  ]);
+  const [d7, d14] = dieGroups(renderer).map((g) => g.children[0]);
+  expect(d7.material).not.toBe(d14.material);
+  expect(d7.geometry).toBe(d14.geometry);
+  const values = (t) => getShape(t).values;
+  const labelSets = createDiceMaterial.mock.calls.map((c) => c[3]);
+  expect(labelSets).toEqual([
+    values('d14').map((v) => labelFor('d14', v, 'd7')),
+    values('d14').map((v) => labelFor('d14', v)),
+    values('d6').map((v) => labelFor('d6', v, 'd3')),
+    values('d10').map((v) => labelFor('d10', v, 'd5')),
+  ]);
+  expect(labelSets[0]).not.toEqual(labelSets[1]);
+  // The die turns to the planned face itself (face 8 shows a 1 on the d7).
+  const dice = box._rolls.values().next().value.dice;
+  expect(dice.map((d) => d.targetValue)).toEqual([8, 8, 5, 10]);
+  // The die reports the Foundry result (dice events, DSN sfx), not the face it turned to.
+  expect(dice.map((d) => d.value)).toEqual([1, 8, 2, 5]);
   box.clear();
 });
 
@@ -1054,6 +1084,32 @@ describe('image and text faces', () => {
     ]);
     expect(faceTextures.acquire).not.toHaveBeenCalled();
     for (const call of createDiceMaterial.mock.calls) expect(call[5]).toBeFalsy();
+    box.clear();
+  });
+
+  test('a Fate die uses the Fate faces', async () => {
+    const faceTextures = fakeFaceTextures();
+    faceTextures.result.layers = Int16Array.from(
+      FATE_FACES.labels.map((l, i) => (l.kind === 'text' ? i : -1)),
+    );
+    const { renderer, physics, box } = setup({ faceTextures });
+    box.roll([
+      { type: 'd6', value: 5, variant: 'dF', faces: FATE_FACES },
+      { type: 'd6', value: 5 },
+    ]);
+    expect(faceTextures.acquire).toHaveBeenCalledWith(FATE_FACES);
+    // Before (or without) its layers a Fate die shows no numbers at all.
+    expect(createDiceMaterial.mock.calls[0][3].every((l) => l === '')).toBe(true);
+    physics.flush();
+    faceTextures.resolve();
+    await flushMicrotasks();
+    const call = createDiceMaterial.mock.calls.find((c) => c[5]);
+    expect(call[5]).toBe(faceTextures.result);
+    expect(call[3].every((l) => l === '')).toBe(true); // + and − from layers, blanks blank
+    const [fate, plain] = meshes(renderer).map((m) => m.material);
+    expect(fate).not.toBe(plain);
+    const [die] = box._rolls.values().next().value.dice;
+    expect([die.targetValue, die.value]).toEqual([5, -1]);
     box.clear();
   });
 

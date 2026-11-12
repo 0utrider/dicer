@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getShape, labelFor } from '../core/dice-shapes.js';
+import { getShape, labelFor, resultOf } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
 import {
   createDiceMaterial,
@@ -695,8 +695,7 @@ export class DiceBox {
     if (!mat) {
       const shape = getShape(type);
       const labels = shape.values.map((v, i) => {
-        const dflt = () =>
-          variant === 'd100tens' ? labelFor(type, v * 10, variant) : labelFor(type, v);
+        const dflt = () => labelFor(type, variant === 'd100tens' ? v * 10 : v, variant);
         if (ghost) return '';
         const face = faces?.labels?.[i];
         if (!face) return dflt();
@@ -929,7 +928,8 @@ export class DiceBox {
       // The system's DiceSystem instance (api.js), if any: it gets this die's dice events.
       // A ghost has no system, so it never fires one.
       systemInstance: system ? this.#systemOf(system) : null,
-      value: ghost ? undefined : spec.value,
+      // The Foundry result (a relabelled die's face 8 on a d7 is a 1), for dice events and sfx.
+      value: ghost ? undefined : resultOf(spec.value, spec.variant),
       // Trigger effects: never on a ghost; a d100 plays them once, on its ones die.
       fx:
         !ghost && spec.variant !== 'd100tens' && Array.isArray(spec.fx) && spec.fx.length
