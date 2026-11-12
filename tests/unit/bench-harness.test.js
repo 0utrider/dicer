@@ -24,6 +24,7 @@ import {
   PROGRESS_PREFIX,
   planFor,
   QUICK_ROLLS,
+  dropText,
 } from '../../tests/live/bench-lib.mjs';
 
 test('a self-signed certificate is trusted only for a local https Foundry', () => {
@@ -381,6 +382,20 @@ test('restorePlan: DSN maxDiceNumber and the user flag need DSN active; the acti
   ]);
 });
 
+// P9-R8: DSN's immediatelyDisplayChatMessages fires diceSoNiceRollComplete at once; runs turn it off.
+test('restorePlan: DSN immediatelyDisplayChatMessages is restored with DSN active', () => {
+  const r = { moduleConfiguration: CFG, dsnMaxDiceNumber: 25, dsnImmediateDisplay: true };
+  expect(restorePlan(r, 'dicer')).toEqual([
+    { op: 'switch', product: 'dice-so-nice' },
+    { op: 'setDsnMaxDiceNumber', value: 25 },
+    { op: 'setDsnImmediateDisplay', value: true },
+    { op: 'setModuleConfiguration', value: PICKED },
+  ]);
+  expect(restorePlan({ dsnImmediateDisplay: false }, 'dice-so-nice')).toEqual([
+    { op: 'setDsnImmediateDisplay', value: false },
+  ]);
+});
+
 test('pickProductModules keeps only the dicer and dice-so-nice keys, as booleans', () => {
   expect(pickProductModules({ dicer: true, foo: true })).toEqual({
     dicer: true,
@@ -646,4 +661,23 @@ test('summaryMarkdown labels a partial run first; a full run has no label', () =
   expect(md({})).not.toMatch(/Partial run/);
   expect(md({ quick: true })).toMatch(/Partial run: quick mode \(no throttled runs; soak500 200 rolls, burst100 30 rolls\)/);
   expect(md({ only: ['dice-so-nice'] })).toMatch(/Partial run: only runs matching dice-so-nice/);
+});
+
+test('dropText names the judge that fired and its numbers (P9-R8)', () => {
+  expect(dropText({ at: 1004000, from: 'ultra', to: 'high', path: 'gpu', gpuP95: 18.24, cpuMedian: 4.1, gpuSlow: true, cpuSlow: false })).toBe(
+    'quality dropped ultra -> high 1004 s in (GPU timer: GPU p95 18.2 ms, CPU median 4.1 ms; GPU over budget)',
+  );
+  expect(dropText({ at: 0, from: 'high', to: 'medium', path: 'ema', ema: 25, baseline: null, streak: 30 })).toBe(
+    'quality dropped high -> medium 0 s in (frame EMA 25.0 ms, baseline n/a, 30 slow frames)',
+  );
+  expect(dropText({ from: 'a', to: 'b' })).toBe('quality dropped a -> b (reason unknown)');
+});
+
+test('summaryMarkdown lists each quality drop as a note (P9-R8)', () => {
+  const e = entry('dicer', 'pc', 'vsync');
+  const d = { at: 2000, from: 'ultra', to: 'high', path: 'gpu', gpuP95: 20, cpuMedian: 3, gpuSlow: true, cpuSlow: false };
+  const rep = report(e, [{ ...result('soak500'), qualityDrops: [d] }]);
+  expect(summaryMarkdown({ date: 'd', reports: [rep], rows: [], errors: [] })).toContain(
+    'Note: dicer-pc-vsync: soak500: quality dropped ultra -> high 2 s in (GPU timer',
+  );
 });

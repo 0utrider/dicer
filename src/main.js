@@ -623,6 +623,7 @@ Hooks.once('ready', async () => {
         getAtlas: () => digitAtlas,
         getFonts: () => fontAtlases,
         getTier: () => quality?.tier,
+        getQualityDrops: () => quality?.drops ?? [],
       });
       dice3d = api;
       game.dice3d = api;

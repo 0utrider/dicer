@@ -37,6 +37,10 @@ Before its scenarios each run makes one unrecorded warm-up roll of every die typ
 
 A chat roll that completes without `diceSoNiceRollStart` was not animated: it counts as a failed roll, and the scenario notes how many. So does a roll over less than 300 ms after the roll call: DSN on a hidden page fires its start hook, then completes at once. If the warm-up roll was not animated, `summary.md` warns and lists the settings that can cause it.
 
+DSN runs turn DSN's world setting "immediately display chat messages" off and put it back afterwards, like `maxDiceNumber`. With it on, DSN fires `diceSoNiceRollComplete` before the dice land, so the next roll started at once and nothing was measured.
+
+Each adaptive quality drop during a Dicer scenario is recorded in that result's `qualityDrops`: when it happened, the tiers, which check fired (the GPU timer's GPU p95 / CPU median, or the frame EMA), and the numbers behind it. `summary.md` lists each one as a note. A scenario whose tier changed reports its heap growth and resource counts as n/a, because the new tier rebuilds textures and materials.
+
 **Keep the benchmark window visible for the whole run.** A minimized or hidden page gets about one frame a second, and DSN skips its animations there. A scenario during which the page was hidden at any point counts one failure, has `pageHidden: true`, and `summary.md` warns about it. The `hidden` scenario hides the page on purpose and is exempt.
 
 ## Profiles and modes

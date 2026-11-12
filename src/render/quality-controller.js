@@ -11,6 +11,7 @@ import { runProbe } from './gpu-probe.js';
 /** The tier used for `auto` until the probe has answered (rolls never wait for it). */
 const PENDING_AUTO_TIER = 'medium';
 const NOTIFIED_KEY = 'dicer.quality.dropNotified';
+const MAX_DROPS_LOGGED = 10;
 
 /** In-memory Storage stand-in: "once per session" means once per page load by default. */
 function memoryStorage() {
@@ -39,6 +40,7 @@ function memoryStorage() {
  * @param {(message: string) => void} [o.notify] shows the localized drop notice
  * @param {(key: string) => string} [o.localize]
  * @param {{getItem, setItem}} [o.storage] remembers that the drop notice was shown
+ * @param {() => number} [o.now] the clock stamped on each drop (performance.now)
  */
 export function createQualityController({
   renderer,
@@ -48,7 +50,10 @@ export function createQualityController({
   notify = () => {},
   localize = (k) => globalThis.game?.i18n?.localize?.(k) ?? k,
   storage = memoryStorage(),
+  now = () => globalThis.performance?.now?.() ?? Date.now(),
 }) {
+  // P9-R8: the last adaptive drops, {at, from, to, ...AdaptiveQuality.lastDrop}, for the benchmark.
+  const drops = [];
   let autoTier = null;
   // P2-R11: an adaptive drop sets a ceiling (tier index; null = none) that a user quality pick
   // clears; a shader failure forces low for the rest of the session.
@@ -100,7 +105,10 @@ export function createQualityController({
   function onDrop() {
     if (disposed || tier === 'low') return;
     adaptiveCeiling = Math.max(0, TIER_ORDER.indexOf(tier) - 1);
+    const from = tier;
     if (!apply()) return;
+    drops.push({ at: Math.round(now()), from, to: tier, ...adaptive.lastDrop });
+    if (drops.length > MAX_DROPS_LOGGED) drops.shift();
     emit('drop');
     notifyOnce();
   }
@@ -185,6 +193,10 @@ export function createQualityController({
     },
     get config() {
       return TIERS[tier];
+    },
+    /** P9-R8: the session's adaptive drops (a copy, last 10), oldest first. */
+    get drops() {
+      return drops.map((d) => ({ ...d }));
     },
     /** Material feature flags: client toggles combined with the tier (flagsFor), or SAFE. */
     flags() {

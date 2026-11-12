@@ -301,6 +301,27 @@ describe('AdaptiveQuality: learned baseline (P2-R13)', () => {
       cpuRun(q, 10 + 60, 25);
       expect(onDrop).toHaveBeenCalledTimes(1);
     });
+
+    // P9-R8: why a drop fired, for the benchmark report.
+    test('lastDrop says which judge fired and the numbers behind it (GPU timer path)', () => {
+      const q = new AdaptiveQuality({});
+      expect(q.lastDrop).toBeNull();
+      cpuRun(q, 10 + 60, 25);
+      expect(q.lastDrop).toEqual({ path: 'gpu', gpuP95: 2, cpuMedian: 25, gpuSlow: false, cpuSlow: true });
+      const g = new AdaptiveQuality({});
+      cpuRun(g, 10 + 60, 1, 30);
+      expect(g.lastDrop).toMatchObject({ path: 'gpu', gpuP95: 30, gpuSlow: true, cpuSlow: false });
+    });
+  });
+
+  test('lastDrop on the EMA path: ema, the frozen baseline and the streak', () => {
+    const q = new AdaptiveQuality({});
+    grace(q);
+    for (let i = 0; i < 30; i++) q.frame(40);
+    expect(q.lastDrop).toMatchObject({ path: 'ema', streak: 30, baseline: null });
+    expect(q.lastDrop.ema).toBeGreaterThan(20);
+    q.reset();
+    expect(q.lastDrop).not.toBeNull(); // kept for the report across the tier change
   });
 
   test('a 60 Hz → 30 Hz cap switch mid-session costs at most one drop', () => {

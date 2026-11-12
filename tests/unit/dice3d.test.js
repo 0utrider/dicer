@@ -1135,17 +1135,20 @@ test('_debug probes: frameCount, generation, resources, tier, canvas, firstFrame
     getSetting: (k) => settings[k],
     renderer,
     getTier: () => 'medium',
+    getQualityDrops: () => [{ at: 5, from: 'ultra', to: 'high', path: 'gpu' }],
   });
   expect(a._debug.frameCount).toBe(4);
   expect(a._debug.generation).toBe(2);
   expect(a._debug.resources).toEqual({ geometries: 1, textures: 2, programs: 3 });
   expect(a._debug.tier).toBe('medium');
+  expect(a._debug.qualityDrops).toEqual([{ at: 5, from: 'ultra', to: 'high', path: 'gpu' }]);
   expect(a._debug.canvas).toBe(canvas);
   expect(a._debug.firstFrames).toEqual({ m1: 12 });
   // Missing pieces never throw.
   expect(api._debug.frameCount).toBe(0);
   expect(api._debug.resources).toEqual({ geometries: 0, textures: 0, programs: 0 });
   expect(api._debug.tier).toBeNull();
+  expect(api._debug.qualityDrops).toEqual([]);
   expect(api._debug.canvas).toBeNull();
   expect(api._debug.firstFrames).toEqual({});
 });

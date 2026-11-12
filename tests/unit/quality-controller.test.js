@@ -118,6 +118,23 @@ test('an adaptive drop re-applies the lower tier and notifies once; a second dro
   expect(notify).toHaveBeenCalledTimes(1);
 });
 
+// P9-R8: the benchmark reports why a session dropped.
+test('drops logs each adaptive drop: when, from and to, and the judge numbers', async () => {
+  let t = 1000;
+  const { qc, renderer } = setup({ ms: 5, now: () => t }); // high
+  await qc.ready;
+  expect(qc.drops).toEqual([]);
+  renderer.frames(DROP_FRAMES, 100);
+  t = 2500;
+  renderer.frames(DROP_FRAMES, 100);
+  expect(qc.drops).toEqual([
+    expect.objectContaining({ at: 1000, from: 'high', to: 'medium', path: 'ema' }),
+    expect.objectContaining({ at: 2500, from: 'medium', to: 'low', path: 'ema' }),
+  ]);
+  qc.drops.length = 0; // a copy: callers cannot clear the log
+  expect(qc.drops).toHaveLength(2);
+});
+
 describe('P2-R11: adaptive ceiling and shader-forced low', () => {
   test('auto→high, a drop → medium; the user then picks medium → medium, ultra → ultra', async () => {
     const { qc, renderer, values } = setup({ ms: 5 });

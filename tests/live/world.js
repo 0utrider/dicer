@@ -695,6 +695,12 @@ export async function benchRun({ ids, profile, rolls = null }) {
           minAnimatedMs: MIN_ANIMATED_MS,
           doc: document,
         });
+        // P9-R8: each adaptive drop during the scenario, with the judge numbers behind it.
+        const drops = (game.dice3d?._debug?.qualityDrops ?? []).filter((d) => d.at >= t0);
+        if (part.results[0] && drops.length) {
+          part.results[0].qualityDrops = drops.map((d) => ({ ...d, at: Math.round(d.at - t0) }));
+          progress(`${profile}: ${id}: quality dropped ${drops.map((d) => `${d.from} -> ${d.to} (${d.path})`).join(', ')}`);
+        }
         if (part.results[0]?.pageHidden)
           progress(`${profile}: warning: the page was hidden during ${id}; keep the benchmark window visible`);
         const r = part.results[0];

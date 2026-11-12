@@ -125,6 +125,14 @@ test('summaryText caps at 40 lines', () => {
   expect(summaryText(suite({ results: many })).split('\n').length).toBeLessThanOrEqual(40);
 });
 
+// P9-R8: a tier change rebuilds textures and materials, so heap growth no longer means a leak.
+test('heap growth is n/a when the tier changed during the scenario', () => {
+  const heap = { before: 1e8, after: 1e8 + 5e6 };
+  expect(get(checkTargets(base({ heap, tier: { before: 'ultra', after: 'low' } })), 'heapGrowth').pass).toBeNull();
+  expect(get(checkTargets(base({ heap, tier: { before: 'ultra', after: 'ultra' } })), 'heapGrowth').pass).toBe(false);
+  expect(get(checkTargets(base({ heap })), 'heapGrowth').pass).toBe(false);
+});
+
 test('non-finite heap readings are n/a, not a spurious FAIL', () => {
   for (const heap of [{ before: NaN, after: 5 }, { before: 5, after: undefined }, { before: Infinity, after: 1 }]) {
     const c = get(checkTargets(base({ heap })), 'heapGrowth');
