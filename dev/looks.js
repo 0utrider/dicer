@@ -12,6 +12,7 @@ import { buildDieGeometry } from '../src/core/chamfer.js';
 import { getShape, labelFor } from '../src/core/dice-shapes.js';
 import { restingQuaternion, minY } from '../src/core/resting.js';
 import { LOOKS } from '../src/look/looks.js';
+import { ICON_IDS } from '../src/look/appearance.js';
 import { runProbe } from '../src/render/gpu-probe.js';
 import { TIERS, flagsFor } from '../src/render/quality.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from '../src/render/face-textures.js';
@@ -37,6 +38,15 @@ const VARIANTS = [
   ['default~holo', 'default', 'holographic numbers', {}, { fill: 'holo' }],
   ['default~glow', 'default', 'glow-ink numbers', {}, { fill: 'glow' }],
   ['void-star~glow', 'void-star', 'glow-ink raised numbers', {}, { fill: 'glow', relief: 'raised' }],
+  // crit icons on the shown (max) face; the d10's "0" face is checked separately
+  ...ICON_IDS.map((id) => [`icon-${id}`, 'default', `${id} crit`, {}, { icons: { crit: id } }]),
+  [
+    'ruby-classic~icons',
+    'ruby-classic',
+    'icons, raised holo',
+    {},
+    { icons: { crit: 'starburst', fumble: 'broken-shield' }, relief: 'raised', fill: 'holo' },
+  ],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only

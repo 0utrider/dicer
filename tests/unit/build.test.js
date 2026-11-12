@@ -36,6 +36,7 @@ describe('build', () => {
     const soundNames = lazy.find((p) => /sound-names-/.test(p)); // the built-in sound list, shared by the synth and the editor
     const points = lazy.find((p) => /(LineSegments|InterleavedBufferAttribute)-/.test(p)); // three's InterleavedBuffer(Attribute), shared by the effects and model-loader chunks (named after its first export)
     const fontBuilder = lazy.find((p) => /font-builder-/.test(p)); // runtime font atlases (P7-D3)
+    const sdfBuilder = lazy.find((p) => /sdf-builder-/.test(p)); // the SDF builder, shared by font-builder and look-extras (icons)
     const fontWorker = lazy.find((p) => /font-worker-/.test(p));
     const benchAdapter = lazy.find((p) => /dicer-adapter-/.test(p)); // game.dice3d.benchmark(): adapter + runner
     const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
@@ -52,9 +53,10 @@ describe('build', () => {
     expect(readFileSync(benchReport, 'utf8')).toContain('Dicer benchmark');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Dicer benchmark');
     expect(fontBuilder).toBeTruthy();
+    expect(sdfBuilder).toBeTruthy();
     expect(fontWorker).toBeTruthy();
     // The SDF builder lives in the lazy chunks only; dicer.js just names the worker's URL.
-    expect(readFileSync(fontBuilder, 'utf8')).toContain('nodigits');
+    expect(readFileSync(sdfBuilder, 'utf8')).toContain('nodigits');
     expect(readFileSync(fontWorker, 'utf8')).toContain('nodigits');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('nodigits');
     expect(WORLD_START_ASSETS.some((p) => p.includes('digits-sans'))).toBe(false);
@@ -105,6 +107,7 @@ describe('build', () => {
         soundNames,
         points,
         fontBuilder,
+        sdfBuilder,
         fontWorker,
         benchAdapter,
         benchApp,
