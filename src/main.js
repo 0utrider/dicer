@@ -502,6 +502,8 @@ Hooks.once('ready', async () => {
         onPlay: debugCounters.countFx,
         isSafe: () => quality.flags().safe === true,
         isolate: (die) => box?.isolate(die) ?? null,
+        // The particle pool's programs compile at prefetch (idle), not on the first impact.
+        warm: (objects) => renderer.warmObjects(objects),
         // Dice So Nice special effects: `registry` is made later (activate), so read it lazily.
         dsnSfx: createDsnSfx({
           registry: {

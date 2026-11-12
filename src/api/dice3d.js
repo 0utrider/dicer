@@ -6,6 +6,7 @@ import { readUserLooks } from '../compat/user-looks.js';
 import { measureArea } from '../foundry/area.js';
 import { moduleRulesOf } from '../effects/fx-resolver.js';
 import { getShape } from '../core/dice-shapes.js';
+import { EFFECT_IDS } from '../effects/effect-ids.js';
 import { resolveDamageTheme } from '../effects/damage-themes.js';
 import { PRESETS, normalizeAreaDef } from '../areas/area-model.js';
 import { areaDefFor, withArea } from '../areas/area-store.js';
@@ -167,6 +168,27 @@ export function createDice3dApi({
     warned.add(name);
     console.warn(`dicer: game.dice3d.${name} ignored a malformed call`, detail);
   };
+
+  /**
+   * One local die for a preview: a d100 shows as a d10, an unknown type as a d20, and the value
+   * is one of the shape's faces (its max when missing or not a face). Returns diceBox.roll's result.
+   */
+  function throwPreviewDie({ type = 'd20', value, fx, appearance, soundMaterial }) {
+    let die = type === 'd100' ? 'd10' : type;
+    let shape;
+    try {
+      shape = getShape(die);
+    } catch {
+      die = 'd20';
+      shape = getShape(die);
+    }
+    const face = shape.values.includes(value) ? value : Math.max(...shape.values);
+    const spec = { type: die, value: face };
+    if (fx) spec.fx = [fx];
+    if (appearance) spec.appearance = appearance;
+    if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
+    return diceBox.roll([spec]);
+  }
 
   const me = () => {
     try {
@@ -761,6 +783,33 @@ export function createDice3dApi({
       return api.showForRoll(roll, me(), false, null, false, null, null, options);
     },
 
+    /**
+     * Local only: throws one die (default d20, showing its max) whose spec carries the effect
+     * `id` (a library id or a `dsn:` id) with `opts` {color, intensity, duration}. Never
+     * synchronized, no chat message, no hooks. Resolves true once the roll finished, false for
+     * an unknown id or when effects are off.
+     */
+    async previewEffect(id, opts = {}) {
+      const { die = 'd20', value, ...effectOpts } = opts ?? {};
+      if (typeof id !== 'string' || !(EFFECT_IDS.includes(id) || id.startsWith('dsn:'))) {
+        warnOnce(`previewEffect:${id}`, id);
+        return false;
+      }
+      if (getSetting('effects') === false) {
+        const loc = globalThis.game?.i18n?.localize?.bind(globalThis.game.i18n);
+        globalThis.ui?.notifications?.info(loc ? loc('DICER.Effects.PreviewOff') : 'DICER.Effects.PreviewOff');
+        return false;
+      }
+      try {
+        const fx = { effect: { id, ...effectOpts } };
+        await throwPreviewDie({ type: die, value, fx }).finished;
+        return true;
+      } catch (err) {
+        warnOnce('previewEffect', err);
+        return false;
+      }
+    },
+
     /** The legacy `{throws: [{dice: [{type, result, resultLabel?, options?}]}]}` payload. */
     show(data, user = undefined, synchronize = false, users = null, blind = false) {
       const roll = legacyRoll(data);
@@ -911,23 +960,9 @@ export function createDice3dApi({
     /** Local only: throws one die whose spec carries `fx`. Never broadcast, no chat message, no hooks. */
     _preview: {
       value(fx, { type = 'd20', value, appearance, soundMaterial } = {}) {
-        let die = type === 'd100' ? 'd10' : type;
-        let shape;
+        // appearance / soundMaterial: a damage theme's look for the damage map editor's preview.
         try {
-          shape = getShape(die);
-        } catch {
-          die = 'd20';
-          shape = getShape(die);
-        }
-        const values = shape.values;
-        const face = values.includes(value) ? value : Math.max(...values);
-        try {
-          // appearance / soundMaterial: a damage theme's look for the damage map editor's preview.
-          const spec = { type: die, value: face };
-          if (fx) spec.fx = [fx];
-          if (appearance) spec.appearance = appearance;
-          if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
-          return diceBox.roll([spec]).landed;
+          return throwPreviewDie({ type, value, fx, appearance, soundMaterial }).landed;
         } catch (err) {
           warnOnce('_preview', err);
           return Promise.resolve();

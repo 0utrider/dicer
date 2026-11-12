@@ -287,6 +287,39 @@ describe('quality hooks', () => {
     await pending;
   });
 
+  test('warmObjects compiles clones of live objects in a private scene; the originals stay put', async () => {
+    const { r, fake, frames } = setup();
+    const mats = [new THREE.ShaderMaterial(), new THREE.ShaderMaterial()];
+    const meshes = mats.map((m) => {
+      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), m);
+      mesh.visible = false;
+      r.scene.add(mesh);
+      return mesh;
+    });
+    fake.compileAsync = vi.fn(async (scene) => {
+      fake.seen = scene.children.map((c) => [c.material, c.geometry, c === meshes[0] || c === meshes[1]]);
+    });
+    const before = r.scene.children.length;
+    await r.warmObjects(meshes);
+    expect(fake.compileAsync).toHaveBeenCalledTimes(1);
+    expect(fake.compileAsync.mock.calls[0][0]).not.toBe(r.scene);
+    expect(fake.compileAsync.mock.calls[0][2]).toBe(r.scene);
+    expect(fake.seen).toEqual(meshes.map((m) => [m.material, m.geometry, false]));
+    expect(r.scene.children.length).toBe(before);
+    for (const m of meshes) expect(m.parent).toBe(r.scene);
+    expect(frames.length).toBe(0);
+  });
+
+  test('warmObjects rejects on a lost context without compiling; nothing to warm is a no-op', async () => {
+    const { r, fake } = setup();
+    fake.compileAsync = vi.fn(async () => {});
+    await r.warmObjects([]);
+    expect(fake.compileAsync).not.toHaveBeenCalled();
+    fake.getContext = () => ({ isContextLost: () => true });
+    await expect(r.warmObjects([new THREE.Mesh()])).rejects.toMatchObject({ reason: 'context-lost' });
+    expect(fake.compileAsync).not.toHaveBeenCalled();
+  });
+
   test('onFrameTime reports the rAF interval when it exceeds CPU time, none for the first frame', () => {
     const { r, frames } = setup();
     const cb = vi.fn();

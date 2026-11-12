@@ -1,4 +1,5 @@
 import { createDice3dApi, createDebugCounters, materialReadyNotifier } from '../../src/api/dice3d.js';
+import { getShape } from '../../src/core/dice-shapes.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { buildScene } from '../../src/render/scene.js';
@@ -1151,4 +1152,60 @@ test('_debug probes: frameCount, generation, resources, tier, canvas, firstFrame
   expect(api._debug.qualityDrops).toEqual([]);
   expect(api._debug.canvas).toBeNull();
   expect(api._debug.firstFrames).toEqual({});
+});
+
+describe('previewEffect', () => {
+  const finish = async () => {
+    await Promise.resolve();
+    diceBox.rolls.at(-1).resolve();
+  };
+  test('throws one local d20 showing 20 whose die carries the effect', async () => {
+    const socketEmits = [];
+    const socket = { emit: (...a) => socketEmits.push(a), on() {} };
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], socket });
+    const p = a.previewEffect('celebrate', { color: '#ff0000', intensity: 2 });
+    await finish();
+    expect(await p).toBe(true);
+    expect(diceBox.rolls.map((r) => r.specs)).toEqual([
+      [expect.objectContaining({ type: 'd20', value: 20, fx: [{ effect: { id: 'celebrate', color: '#ff0000', intensity: 2 } }] })],
+    ]);
+    expect(socketEmits).toHaveLength(0);
+    expect(gate.waitFor).not.toHaveBeenCalled();
+  });
+
+  test('honours die and value, refuses an unknown id and the effects setting', async () => {
+    const p = api.previewEffect('sparkles', { die: 'd6', value: 3 });
+    await finish();
+    expect(await p).toBe(true);
+    expect(diceBox.rolls.at(-1).specs[0]).toMatchObject({ type: 'd6', value: 3, fx: [{ effect: { id: 'sparkles' } }] });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await api.previewEffect('nope')).toBe(false);
+    expect(await api.previewEffect('nope')).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+    const n = diceBox.rolls.length;
+    const info = vi.fn();
+    vi.stubGlobal('ui', { notifications: { info } });
+    settings.effects = false;
+    expect(await api.previewEffect('sparkles')).toBe(false);
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(diceBox.rolls).toHaveLength(n);
+    vi.unstubAllGlobals();
+  });
+
+  test('accepts a dsn: id; a d100 shows as a d10 on a real face', async () => {
+    const p = api.previewEffect('dsn:flame', { die: 'd100' });
+    await finish();
+    expect(await p).toBe(true);
+    const spec = diceBox.rolls.at(-1).specs[0];
+    expect(spec).toMatchObject({ type: 'd10', fx: [{ effect: { id: 'dsn:flame' } }] });
+    expect(spec.value).toBe(Math.max(...getShape('d10').values));
+  });
+
+  test('an unknown die type falls back to a d20 showing 20', async () => {
+    const p = api.previewEffect('sparkles', { die: 'd7', value: 99 });
+    await finish();
+    expect(await p).toBe(true);
+    expect(diceBox.rolls.at(-1).specs[0]).toMatchObject({ type: 'd20', value: 20 });
+  });
 });

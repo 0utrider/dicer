@@ -1,11 +1,17 @@
 import * as THREE from 'three';
+import { SHAPE, SHAPE_GLSL } from './shapes.js';
 
 /**
- * The shared GPU particle pool. Two THREE.Points (additive and normal blending) whose motion
- * and fade are computed in the vertex shader from per-particle attributes, so the CPU only
- * writes the ranges of newly emitted particles (never every particle per frame):
+ * The shared GPU particle pool. Two instanced meshes (additive and normal blending), one draw
+ * each: a unit quad drawn once per particle slot, its motion, size, colour and fade computed in
+ * the vertex shader from per-instance attributes, so the CPU only writes the ranges of newly
+ * emitted particles (never every particle per frame):
  *
- *   position = origin + v * (1 - e^(-k t)) / k + 1/2 g t^2   (k = drag of the particle's kind)
+ *   position = origin + v * (1 - e^(-k t)) / k + 1/2 g t^2   (k = drag of the particle)
+ *
+ * Each quad faces the camera (it is built in screen space around the projected centre), takes a
+ * procedural shape (shapes.js, no textures), lerps colour and size from birth to death, spins,
+ * and a STREAK is stretched along its on-screen motion.
  *
  * Capacity (additive layer) is the constructor argument, normally round(2048 x particleScale);
  * the normal-blend layer is a quarter of it. A full layer overwrites its oldest particles.
@@ -13,48 +19,87 @@ import * as THREE from 'three';
  * (performance.now() by default, the same clock as the render loop's update(nowMs)).
  */
 
-/** Particle kinds (aKind). */
-export const KIND = Object.freeze({ SPARK: 0, EMBER: 1, SMOKE: 2, SHARD: 3, SPIRAL: 4, GLINT: 5 });
-const DRAG = [0.6, 0.9, 1.6, 0.25, 0.8, 0.5];
+/** Particle kinds (aKind): the motion and fade behaviour. */
+export const KIND = Object.freeze({
+  SPARK: 0,
+  EMBER: 1,
+  SMOKE: 2,
+  SHARD: 3,
+  SPIRAL: 4,
+  GLINT: 5,
+  STREAK: 6,
+  FLAKE: 7,
+});
+const DRAG = [0.6, 0.9, 1.6, 0.25, 0.8, 0.5, 0.6, 1.4];
+/** Each kind's default shape. */
+const KIND_SHAPE = [SHAPE.DOT, SHAPE.FLAME, SHAPE.SMOKE, SHAPE.SHARD, SHAPE.DOT, SHAPE.GLINT, SHAPE.STREAK, SHAPE.FLAKE];
+/** Per-shape defaults: size multiplier at death and spin (rad/s). */
+const SIZE_END = { [SHAPE.SMOKE]: 2.6, [SHAPE.FLAME]: 0.3 };
+const SPIN = { [SHAPE.SHARD]: 6, [SHAPE.SMOKE]: 0.6, [SHAPE.FLAKE]: 3 };
+const STRETCH = 0.06;
+const SHAPES = Object.values(SHAPE);
 
-const ATTRS = [
-  ['aOrigin', 3],
-  ['aVelocity', 3],
-  ['aBirth', 1],
-  ['aLife', 1],
-  ['aColor', 3],
-  ['aSize', 1],
-  ['aKind', 1],
-  ['aGravity', 1],
+/**
+ * Additive blending on the premultiplied-alpha dice canvas (the same factors as catalogue.js's
+ * ADDITIVE_PREMULTIPLIED; the shader writes alpha = its brightest channel).
+ */
+const ADDITIVE = {
+  blending: THREE.CustomBlending,
+  blendEquation: THREE.AddEquation,
+  blendSrc: THREE.OneFactor,
+  blendDst: THREE.OneFactor,
+  blendSrcAlpha: THREE.OneFactor,
+  blendDstAlpha: THREE.OneFactor,
+};
+
+/**
+ * Per-instance data, packed four floats per GPU attribute (iA..iF + aCorner = 7 vertex
+ * attributes: one per field would be 15, and ANGLE's D3D11 backend fails to link past ~15).
+ * Each packed buffer also carries named views (aOrigin, aBirth, ...) for the CPU side.
+ */
+const PACKED = [
+  ['iA', [['aOrigin', 3], ['aBirth', 1]]],
+  ['iB', [['aVelocity', 3], ['aLife', 1]]],
+  ['iC', [['aColor', 3], ['aSize', 1]]],
+  ['iD', [['aColorEnd', 3], ['aSizeEnd', 1]]],
+  ['iE', [['aKind', 1], ['aGravity', 1], ['aShape', 1], ['aStretch', 1]]],
+  ['iF', [['aSpin', 1], ['aDrag', 1], ['aSeed', 1], ['aAlpha', 1]]],
 ];
 
 const VERTEX = /* glsl */ `
-attribute vec3 aOrigin;
-attribute vec3 aVelocity;
-attribute float aBirth;
-attribute float aLife;
-attribute vec3 aColor;
-attribute float aSize;
-attribute float aKind;
-attribute float aGravity;
+attribute vec2 aCorner;
+attribute vec4 iA; // origin.xyz, birth
+attribute vec4 iB; // velocity.xyz, life
+attribute vec4 iC; // color.rgb, size
+attribute vec4 iD; // colorEnd.rgb, sizeEnd
+attribute vec4 iE; // kind, gravity, shape, stretch
+attribute vec4 iF; // spin, drag, seed, alpha
+#define aOrigin iA.xyz
+#define aBirth iA.w
+#define aVelocity iB.xyz
+#define aLife iB.w
+#define aColor iC.rgb
+#define aSize iC.w
+#define aColorEnd iD.rgb
+#define aSizeEnd iD.w
+#define aKind iE.x
+#define aGravity iE.y
+#define aShape iE.z
+#define aStretch iE.w
+#define aSpin iF.x
+#define aDrag iF.y
+#define aSeed iF.z
+#define aAlpha iF.w
 uniform float uTime;
-uniform float uHeightPx;
-uniform float uDrag[6];
+uniform vec2 uViewport;
 varying vec3 vColor;
 varying float vAlpha;
-varying float vKind;
-void main() {
-	float t = uTime - aBirth;
-	float k = clamp( t / aLife, 0.0, 1.0 );
-	if ( t < 0.0 || t >= aLife ) {
-		gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
-		gl_PointSize = 0.0;
-		return;
-	}
-	int kind = int( aKind + 0.5 );
-	float d = max( uDrag[ kind ], 0.0001 );
-	float travel = ( 1.0 - exp( - d * t ) ) / d;
-	vec3 disp = aVelocity * travel;
+varying vec2 vQ;
+varying float vShape;
+varying float vSeed;
+vec3 travel( float t, int kind ) {
+	float d = max( aDrag, 0.0001 );
+	vec3 disp = aVelocity * ( ( 1.0 - exp( - d * t ) ) / d );
 	if ( kind == 4 ) {
 		float a = 3.2 * t;
 		float c = cos( a );
@@ -64,73 +109,124 @@ void main() {
 	vec3 p = aOrigin + disp;
 	p.y += 0.5 * aGravity * t * t;
 	if ( kind == 3 ) p.y = max( p.y, 0.03 );
-	vec4 mv = modelViewMatrix * vec4( p, 1.0 );
-	gl_Position = projectionMatrix * mv;
-	float size = aSize;
+	return p;
+}
+void main() {
+	float t = uTime - aBirth;
+	vec4 mv = vec4( 0.0 );
+	int kind = int( aKind + 0.5 );
+	if ( t >= 0.0 && t < aLife ) mv = modelViewMatrix * vec4( travel( t, kind ), 1.0 );
+	if ( mv.z > -0.0001 ) {
+		// Unborn, dead or behind the camera: all four corners on one point, so no fragments.
+		gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
+		return;
+	}
+	float k = t / aLife;
+	int shape = int( aShape + 0.5 );
+	float seed = aSeed;
+	vec4 clip = projectionMatrix * mv;
+	vec2 halfPx = vec2( max( 0.5, aSize * mix( 1.0, aSizeEnd, k ) * projectionMatrix[1][1] * uViewport.y * 0.25 / - mv.z ) );
+	vec2 axis = vec2( 1.0, 0.0 );
+	if ( shape == 1 ) {
+		// STREAK: the long axis follows the on-screen motion over the last 16 ms.
+		vec4 prev = projectionMatrix * ( modelViewMatrix * vec4( travel( max( t - 0.016, 0.0 ), kind ), 1.0 ) );
+		vec2 delta = ( clip.xy / clip.w - prev.xy / max( prev.w, 0.0001 ) ) * 0.5 * uViewport;
+		float px = length( delta );
+		if ( px > 0.001 ) axis = delta / px;
+		halfPx.x *= 1.0 + aStretch * px;
+	} else if ( aSpin != 0.0 ) {
+		float a = aSpin * t + seed * 6.2831853;
+		axis = vec2( cos( a ), sin( a ) );
+	}
+	vec2 offPx = axis * ( aCorner.x * halfPx.x ) + vec2( - axis.y, axis.x ) * ( aCorner.y * halfPx.y );
+	clip.xy += offPx / ( 0.5 * uViewport ) * clip.w;
+	gl_Position = clip;
 	float alpha = 1.0 - k;
 	if ( kind == 1 ) alpha *= 0.65 + 0.35 * sin( t * 38.0 + aBirth * 17.0 );
-	else if ( kind == 2 ) { size *= 1.0 + 1.6 * k; alpha *= 0.55; }
+	else if ( kind == 2 ) alpha *= 0.55;
 	else if ( kind == 3 ) alpha = 1.0 - smoothstep( 0.7, 1.0, k );
 	else if ( kind == 5 ) alpha *= 0.5 + 0.5 * sin( t * 30.0 + aBirth * 11.0 );
-	vAlpha = alpha;
-	vColor = aColor;
-	vKind = aKind;
-	gl_PointSize = max( 1.0, size * projectionMatrix[1][1] * uHeightPx * 0.5 / - mv.z );
+	vAlpha = alpha * aAlpha;
+	vColor = mix( aColor, aColorEnd, k );
+	vQ = aCorner;
+	vShape = aShape;
+	vSeed = seed;
 }
 `;
 const FRAGMENT = /* glsl */ `
 varying vec3 vColor;
 varying float vAlpha;
-varying float vKind;
+varying vec2 vQ;
+varying float vShape;
+varying float vSeed;
+${SHAPE_GLSL}
 void main() {
-	vec2 q = gl_PointCoord * 2.0 - 1.0;
-	float a;
-	if ( vKind > 2.5 && vKind < 3.5 ) {
-		a = step( max( abs( q.x ), abs( q.y ) ), 0.8 );
-	} else {
-		a = 1.0 - smoothstep( 0.35, 1.0, length( q ) );
-	}
-	gl_FragColor = vec4( vColor, a * vAlpha );
+	float a = shapeAlpha( int( vShape + 0.5 ), vQ, vSeed ) * vAlpha;
+#ifdef ADDITIVE
+	vec3 c = vColor * a;
+	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
+#else
+	gl_FragColor = vec4( vColor, a );
+#endif
 }
 `;
 
 function makeLayer(scene, capacity, additive) {
-  const geometry = new THREE.BufferGeometry();
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  geometry.setAttribute('aCorner', new THREE.Float32BufferAttribute([-1, -1, 1, -1, 1, 1, -1, 1], 2));
+  geometry.instanceCount = capacity;
+  // The shader places every vertex; the mesh is never culled, so the bounds are only bookkeeping.
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
   const attrs = {};
-  for (const [name, size] of ATTRS) {
-    const a = new THREE.BufferAttribute(new Float32Array(capacity * size), size);
-    a.setUsage(THREE.DynamicDrawUsage);
-    geometry.setAttribute(name, a);
-    attrs[name] = a;
+  const buffers = [];
+  for (const [packed, fields] of PACKED) {
+    const buffer = new THREE.InstancedInterleavedBuffer(new Float32Array(capacity * 4), 4, 1);
+    buffer.setUsage(THREE.DynamicDrawUsage);
+    buffers.push(buffer);
+    geometry.setAttribute(packed, new THREE.InterleavedBufferAttribute(buffer, 4, 0));
+    let offset = 0;
+    for (const [name, size] of fields) {
+      // Views share the packed buffer (one GL buffer); unused by the shader, so never bound.
+      const view = new THREE.InterleavedBufferAttribute(buffer, size, offset);
+      offset += size;
+      geometry.setAttribute(name, view);
+      attrs[name] = view;
+    }
   }
-  // The shader places every vertex itself; `position` only has to exist for three's bookkeeping.
-  geometry.setAttribute('position', attrs.aOrigin);
-  geometry.setDrawRange(0, capacity);
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uHeightPx: { value: 600 },
-      uDrag: { value: DRAG.slice() },
+      uViewport: { value: new THREE.Vector2(800, 600) },
     },
+    defines: additive ? { ADDITIVE: '' } : {},
     vertexShader: VERTEX,
     fragmentShader: FRAGMENT,
     transparent: true,
     depthWrite: false,
-    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    ...(additive ? ADDITIVE : { blending: THREE.NormalBlending }),
   });
-  const points = new THREE.Points(geometry, material);
-  points.frustumCulled = false;
-  points.visible = false;
-  points.renderOrder = 2;
-  const size = new THREE.Vector2();
-  points.onBeforeRender = (renderer) => {
-    material.uniforms.uHeightPx.value = renderer.getDrawingBufferSize(size).y;
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  mesh.renderOrder = 2;
+  mesh.onBeforeRender = (renderer) => {
+    renderer.getDrawingBufferSize(material.uniforms.uViewport.value);
   };
-  scene.add(points);
-  return { capacity, attrs, geometry, material, points, head: 0 };
+  scene.add(mesh);
+  return { capacity, attrs, buffers, geometry, material, mesh, head: 0 };
 }
 
 const rand = (a, b) => a + Math.random() * (b - a);
+const num = (v, fallback) => (Number.isFinite(v) ? v : fallback);
+
+function setColor(target, value, fallback) {
+  try {
+    target.set(value ?? fallback);
+  } catch {
+    target.set(fallback);
+  }
+}
 
 /**
  * @param {THREE.Object3D} scene
@@ -143,15 +239,21 @@ export function createParticlePool(scene, capacity) {
   let deathMs = -Infinity; // the latest death time over every live particle
   let disposed = false;
   const tint = new THREE.Color();
+  const tintEnd = new THREE.Color();
 
   const mark = (layer, start, count) => {
-    for (const [name] of ATTRS) {
-      const a = layer.attrs[name];
-      a.addUpdateRange(start * a.itemSize, count * a.itemSize);
-      a.needsUpdate = true;
+    for (const b of layer.buffers) {
+      b.addUpdateRange(start * b.stride, count * b.stride);
+      b.needsUpdate = true;
     }
   };
 
+  /**
+   * Emits `spec.count` particles. v1 fields: count, origin, dir, speed, spread, life, size,
+   * kind, gravity, color, blend ('normal' for the second layer), now. v2 fields (each defaults
+   * from the kind, then the shape): shape, colorEnd, sizeEnd, stretch, spin (rad/s, random sign),
+   * drag, alpha (0..1, default 1: scales the final alpha of both layers).
+   */
   function emit(spec = {}) {
     if (disposed) return;
     const n = Math.max(0, Math.floor(Number(spec.count) || 0));
@@ -168,11 +270,14 @@ export function createParticlePool(scene, capacity) {
     const size = Number(spec.size) || 0.2;
     const kind = spec.kind ?? KIND.SPARK;
     const gravity = Number(spec.gravity) || 0;
-    try {
-      tint.set(spec.color ?? '#ffffff');
-    } catch {
-      tint.set('#ffffff');
-    }
+    const shape = SHAPES.includes(spec.shape) ? spec.shape : (KIND_SHAPE[kind] ?? SHAPE.DOT);
+    const sizeEnd = num(spec.sizeEnd, SIZE_END[shape] ?? 1);
+    const stretch = num(spec.stretch, STRETCH);
+    const spin = num(spec.spin, SPIN[shape] ?? 0);
+    const drag = Math.max(0, num(spec.drag, DRAG[kind] ?? DRAG[0]));
+    const alpha = Math.min(1, Math.max(0, num(spec.alpha, 1)));
+    setColor(tint, spec.color, '#ffffff');
+    setColor(tintEnd, spec.colorEnd, tint);
     const a = layer.attrs;
     const dl = Math.hypot(dir.x, dir.y, dir.z) || 1;
     const dx = dir.x / dl;
@@ -226,20 +331,29 @@ export function createParticlePool(scene, capacity) {
       a.aSize.setX(idx, size * rand(0.7, 1.2));
       a.aKind.setX(idx, kind);
       a.aGravity.setX(idx, gravity);
+      a.aShape.setX(idx, shape);
+      a.aColorEnd.setXYZ(idx, tintEnd.r, tintEnd.g, tintEnd.b);
+      a.aSizeEnd.setX(idx, sizeEnd);
+      a.aStretch.setX(idx, stretch);
+      a.aSpin.setX(idx, Math.random() < 0.5 ? -spin : spin);
+      a.aDrag.setX(idx, drag);
+      a.aSeed.setX(idx, Math.random());
+      a.aAlpha.setX(idx, alpha);
       deathMs = Math.max(deathMs, nowMs + l * 1000);
     }
     mark(layer, first, run);
     layer.dirty = true;
-    layer.points.visible = true;
+    layer.mesh.visible = true;
   }
 
   /** Makes every slot of a layer dead for any future epoch (once: skipped if already dead). */
   function kill(layer) {
     if (!layer.dirty) return;
     layer.dirty = false;
-    layer.attrs.aLife.array.fill(0);
-    layer.attrs.aLife.addUpdateRange(0, layer.capacity);
-    layer.attrs.aLife.needsUpdate = true;
+    const life = layer.attrs.aLife;
+    for (let i = 0; i < layer.capacity; i++) life.setX(i, 0);
+    life.data.addUpdateRange(0, life.data.array.length);
+    life.data.needsUpdate = true;
   }
 
   // A new epoch restarts the shader clock at 0, so stale births would otherwise come alive again.
@@ -248,7 +362,7 @@ export function createParticlePool(scene, capacity) {
     deathMs = -Infinity;
     for (const l of layers) {
       kill(l);
-      l.points.visible = false;
+      l.mesh.visible = false;
     }
   }
 
@@ -275,10 +389,101 @@ export function createParticlePool(scene, capacity) {
       if (disposed) return;
       disposed = true;
       for (const l of layers) {
-        scene.remove(l.points);
+        scene.remove(l.mesh);
         l.geometry.dispose();
         l.material.dispose();
       }
+    },
+  };
+}
+
+/** The sound engine's medium hit, the spark threshold, the per-die debounce, the live-emit cap. */
+const MIN_SPEED = 11;
+const SPARK_SPEED = 18;
+const DEBOUNCE_MS = 120;
+const LIVE_MAX = 12;
+const LIFE_MS = 600; // the longest particle life an impact emits (the dust)
+const PRUNE_AT = 256;
+
+/**
+ * Dust and sparks where a die hits the table. The effect layer gates it (settings, reduced
+ * motion) and calls impact(); this decides the rest: speed threshold, per-die debounce, the cap
+ * of live emits, and the emits themselves. Free of effect budget.
+ *
+ * @param {object} o
+ * @param {() => object|null} o.getPool the layer's shared particle pool
+ * @param {() => {particleScale: number}} o.getTier
+ * @param {() => number} o.now ms clock (the same as the pool's emit default)
+ */
+export function createImpactFx({ getPool, getTier, now }) {
+  const last = new Map(); // dieKey -> ms of its last impact effect
+  let live = []; // ms at which each live emit's particles are all gone
+
+  return {
+    /** The speed below which impact() does nothing (the layer checks it before its settings). */
+    minSpeed: MIN_SPEED,
+    impact(hit) {
+      const speed = Number(hit?.speed);
+      if (!(speed >= MIN_SPEED) || !hit.position) return;
+      const t = now();
+      const key = hit.dieKey;
+      if (key !== undefined && t - (last.get(key) ?? -Infinity) < DEBOUNCE_MS) return;
+      live = live.filter((until) => until > t);
+      if (live.length >= LIVE_MAX) return;
+      const pool = getPool();
+      if (!pool) return;
+      const x = Number(hit.position.x) || 0; // copied now: the die keeps moving
+      const z = Number(hit.position.z) || 0;
+      if (key !== undefined) {
+        if (last.size > PRUNE_AT) for (const [k, v] of last) if (t - v >= DEBOUNCE_MS) last.delete(k);
+        last.set(key, t);
+      }
+      const scale = Number(getTier()?.particleScale);
+      const k = scale > 0 ? scale : 1;
+      const s = Math.min(1, Math.max(0, (speed - MIN_SPEED) / 7));
+      const up = { x: 0, y: 1, z: 0 };
+      const dust = Math.round((3 + 5 * s) * k);
+      if (dust > 0) {
+        pool.emit({
+          count: dust,
+          origin: { x, y: 0.05, z },
+          dir: up,
+          speed: 0.5,
+          spread: 1.4,
+          gravity: 0,
+          life: 0.6,
+          size: 0.5,
+          sizeEnd: 2,
+          kind: KIND.SMOKE,
+          shape: SHAPE.RING,
+          blend: 'normal',
+          color: '#d8cfc0',
+          alpha: 0.35,
+          now: t,
+        });
+        live.push(t + LIFE_MS);
+      }
+      const sparks = Math.round((2 + 4 * s) * k);
+      if (speed >= SPARK_SPEED && sparks > 0) {
+        pool.emit({
+          count: sparks,
+          origin: { x, y: 0.1, z },
+          dir: up,
+          speed: 3.5,
+          spread: 1.2,
+          gravity: -6,
+          life: 0.35,
+          size: 0.08,
+          kind: KIND.STREAK,
+          color: '#fff3d0',
+          now: t,
+        });
+        live.push(t + LIFE_MS);
+      }
+    },
+    clear() {
+      live = [];
+      last.clear();
     },
   };
 }

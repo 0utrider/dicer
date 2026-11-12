@@ -2296,3 +2296,26 @@ test('removing a roll, or re-skinning resting dice, asks a held renderer for a f
   await finished;
   expect(renderer.requestFrame).toHaveBeenCalled();
 });
+
+describe('impact effects', () => {
+  test('each playback impact event reaches effects.impact with the die position', () => {
+    const effects = { update: vi.fn(() => false), play: vi.fn(), clear: vi.fn(), impact: vi.fn() };
+    const { renderer, physics, box } = setup({ effects, getSurface: () => 'wood' });
+    physics.events = [new Float32Array([5, 0, -1, 9]), new Float32Array([45, 1, 0, 12, 55, 0, -2, 20])];
+    box.roll([
+      { type: 'd6', value: 3 },
+      { type: 'd6', value: 4, ghost: true },
+    ]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(800);
+    renderer.tick(950);
+    expect(effects.impact).toHaveBeenCalledTimes(2);
+    const [a, b] = effects.impact.mock.calls.map((c) => c[0]);
+    expect(a).toMatchObject({ speed: 12, surface: 'wood' });
+    expect(b).toMatchObject({ speed: 20, surface: 'wood' });
+    expect(a.position).toBeDefined();
+    expect(typeof a.position.x).toBe('number');
+    expect(a.dieKey).not.toBe(b.dieKey);
+  });
+});

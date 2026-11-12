@@ -28,9 +28,13 @@ export const SHAKE_PX = 6;
  * @param {() => {effectBudget: number, particleScale: number}} o.getTier quality TIERS entry
  * @param {(key: string) => unknown} [o.getSetting]
  * @param {() => Promise<{EFFECTS: Record<string, object>}>} [o.loadLibrary]
+ * @param {() => number} [o.now] the ms clock impact effects use (the pool's own default clock)
  * @param {(id: string) => void} [o.onPlay] called once per effect that actually started (debug counters)
  * @param {(die: object) => object|null} [o.isolate] DiceBox.isolate: the die's own uniforms
  * @param {() => boolean} [o.isSafe] the safe flags are on: library shaders are skipped, DSN effects run
+ * @param {(objects: THREE.Object3D[]) => unknown} [o.warm] compiles these objects' programs off the
+ *   hot path (main.js: DiceRenderer.warmObjects, a guarded compileAsync); called once with the
+ *   particle pool's meshes when prefetch() made the pool. May throw or reject: ignored.
  * @param {{effectFor(id: string): object|null}} [o.dsnSfx] resolves `dsn:` ids (Dice So Nice
  *   special effects, third-party code that is not in the library chunk)
  */
@@ -45,13 +49,16 @@ export function createEffectLayer({
   dsnSfx = null,
   isSafe = () => false,
   particles = null,
+  warm = () => {},
   matchMedia = (q) => globalThis.matchMedia?.(q),
+  now = () => performance.now(),
   onPlay = () => {},
   warn = (...a) => console.warn(...a),
   debug = (...a) => console.debug(...a),
 }) {
   let library = null; // id -> module, once loaded
   let createPool = null; // the library's createParticlePool, once loaded
+  let impactFx = null; // the library's impact emitter (createImpactFx in library/particles.js), once loaded
   let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
   let loadFailed = false;
@@ -92,6 +99,8 @@ export function createEffectLayer({
         if (!disposed) {
           library = effects;
           createPool = typeof mod.createParticlePool === 'function' ? mod.createParticlePool : null;
+          impactFx = typeof mod.createImpactFx === 'function' ? mod.createImpactFx({ getPool, getTier, now }) : null;
+          prewarmPool();
         }
       })
       .catch((err) => {
@@ -99,6 +108,35 @@ export function createEffectLayer({
         warnOnce('library', 'cannot load the effects library; effects are off', err);
       });
     return loading;
+  }
+
+  /**
+   * The gates every library entry point shares: 'off' (the effects setting), 'safe' (a Dicer
+   * shader failed: library shaders are skipped, DSN effects still run) or 'on'. A throwing
+   * isSafe() probe counts as not safe.
+   */
+  function gate() {
+    if (setting('effects') === false) return 'off';
+    try {
+      if (isSafe() === true) return 'safe';
+    } catch {
+      // not safe
+    }
+    return 'on';
+  }
+
+  /**
+   * Makes the particle pool once the library is in (an idle-time prefetch) and hands its meshes
+   * to warm(), so the first impact or particle effect does not compile two programs mid-throw.
+   * Never throws; without a warm-up the pool still works, compiled on first use.
+   */
+  function prewarmPool() {
+    if (gate() !== 'on' || !getPool()) return;
+    try {
+      Promise.resolve(warm(pool.layers.map((l) => l.mesh))).catch(() => {});
+    } catch {
+      // the pool still compiles on first use
+    }
   }
 
   function reducedMotion() {
@@ -266,14 +304,9 @@ export function createEffectLayer({
     /** Starts a landed die's effects (fx: Task 7 Fx[]); never throws. */
     play(die, fxIn) {
       if (disposed || !Array.isArray(fxIn) || !fxIn.length) return;
-      if (setting('effects') === false) return;
-      let safeMode = false;
-      try {
-        safeMode = isSafe() === true;
-      } catch {
-        // a throwing probe counts as not safe
-      }
-      const fx = safeMode
+      const g = gate();
+      if (g === 'off') return;
+      const fx = g === 'safe'
         ? fxIn.filter((f) => String(f?.effect?.id ?? '').startsWith('dsn:'))
         : fxIn;
       if (!fx.length) return;
@@ -304,6 +337,24 @@ export function createEffectLayer({
       }
       keep.sort((a, b) => a.i - b.i);
       for (const p of keep) start(die, p.f, p.mod);
+    },
+
+    /**
+     * Dust and sparks where a die hits the table (the emitter is in the library chunk). Free of
+     * budget: the pool's own life keeps the loop running. Never throws.
+     * Skipped in safe mode like every library effect (the pool's shaders are library shaders).
+     * @param {{position: {x: number, y?: number, z: number}, speed: number, surface?: string, dieKey?: string}} hit
+     */
+    impact(hit) {
+      if (disposed || !impactFx) return;
+      try {
+        // The cheap threshold first: a 30-die pool sends many events per frame.
+        if (!(Number(hit?.speed) >= (Number(impactFx.minSpeed) || 0))) return;
+        if (gate() !== 'on' || setting('impactEffects') === false || reducedMotion()) return;
+        impactFx.impact(hit);
+      } catch (err) {
+        warnOnce('impact', 'impact effect failed', err);
+      }
     },
 
     /** Advances every running effect; true while any runs (or the canvas shakes). */
@@ -341,6 +392,7 @@ export function createEffectLayer({
     clear() {
       for (let i = running.length - 1; i >= 0; i--) stopAt(i);
       cost = 0;
+      impactFx?.clear();
       stopShake();
       pool?.clear?.();
     },

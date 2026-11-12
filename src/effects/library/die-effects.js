@@ -124,6 +124,64 @@ void main() {
 }
 `;
 
+// A soft round halo on a camera-facing quad (alpha = brightest channel, as for the shell).
+const HALO_VERTEX = /* glsl */ `
+varying vec2 vUv;
+void main() {
+	vUv = uv;
+	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}
+`;
+const HALO_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uAlpha;
+varying vec2 vUv;
+void main() {
+	float r = length( vUv * 2.0 - 1.0 );
+	float glow = exp( - r * r * 4.0 ) * ( 1.0 - smoothstep( 0.55, 1.0, r ) );
+	vec3 c = uColor * ( glow * uAlpha );
+	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
+}
+`;
+const HALO_SIZE = 3.2; // die edges across
+const HALO_BEHIND = 0.7; // pushed this far away from the camera, so the die covers its centre
+const HALO_SHARE = 0.45; // halo brightness relative to the shell's strength
+
+// Additive colour and alpha on the premultiplied canvas: see catalogue.js ADDITIVE_PREMULTIPLIED.
+const ADDITIVE = Object.freeze({
+  blending: THREE.CustomBlending,
+  blendEquation: THREE.AddEquation,
+  blendSrc: THREE.OneFactor,
+  blendDst: THREE.OneFactor,
+  blendSrcAlpha: THREE.OneFactor,
+  blendDstAlpha: THREE.OneFactor,
+});
+
+/** The halo mesh behind a die at `position`, facing `camera`; null without a scene. */
+function haloBehind(ctx) {
+  if (!ctx.scene?.add || !ctx.position) return null;
+  const material = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: ctx.color.clone() }, uAlpha: { value: 0 } },
+    vertexShader: HALO_VERTEX,
+    fragmentShader: HALO_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    ...ADDITIVE,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+  mesh.position.copy(ctx.position);
+  const cam = ctx.camera;
+  if (cam?.quaternion) {
+    mesh.quaternion.copy(cam.quaternion);
+    const away = mesh.position.clone().sub(cam.getWorldPosition?.(new THREE.Vector3()) ?? cam.position);
+    if (away.lengthSq() > 1e-8) mesh.position.addScaledVector(away.normalize(), HALO_BEHIND);
+  }
+  mesh.scale.setScalar(HALO_SIZE);
+  mesh.renderOrder = 0;
+  ctx.scene.add(mesh);
+  return mesh;
+}
+
 export const glowPulse = Object.freeze({
   id: 'glow-pulse',
   cost: 1,
@@ -138,19 +196,15 @@ export const glowPulse = Object.freeze({
       vertexShader: GLOW_VERTEX,
       fragmentShader: GLOW_FRAGMENT,
       side: THREE.BackSide,
-      blending: THREE.CustomBlending, // additive colour and alpha: see ADDITIVE_PREMULTIPLIED
-      blendEquation: THREE.AddEquation,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
-      blendSrcAlpha: THREE.OneFactor,
-      blendDstAlpha: THREE.OneFactor,
       transparent: true,
       depthWrite: false,
+      ...ADDITIVE,
     });
     const shell = new THREE.Mesh(geometry, material); // the die's geometry: never disposed here
     shell.scale.setScalar(GLOW_SCALE);
     shell.renderOrder = 1;
     parent.add(shell);
+    const halo = haloBehind(ctx);
     const strength = material.uniforms.uStrength;
     const base = Math.max(0, ctx.intensity);
     return timed(
@@ -158,10 +212,16 @@ export const glowPulse = Object.freeze({
       (e) => {
         const pulse = 1 + 0.5 * Math.sin((2 * Math.PI * e) / GLOW_PERIOD_MS);
         strength.value = base * pulse * envelope(e, ctx.duration);
+        if (halo) halo.material.uniforms.uAlpha.value = HALO_SHARE * strength.value; // in phase
       },
       () => {
         parent.remove(shell);
         material.dispose();
+        if (halo) {
+          halo.removeFromParent();
+          halo.geometry.dispose();
+          halo.material.dispose();
+        }
       },
     );
   },

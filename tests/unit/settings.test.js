@@ -220,6 +220,12 @@ describe('effects settings', () => {
     expect(r.screenShake).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
     expect(r.screenShake.name).toBe('DICER.Settings.screenShake.Name');
   });
+  test('impactEffects is a client Boolean, default on', () => {
+    const r = capture();
+    expect(r.impactEffects).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r.impactEffects.name).toBe('DICER.Settings.impactEffects.Name');
+    expect(r.impactEffects.hint).toBe('DICER.Settings.impactEffects.Hint');
+  });
   test('turning effects on or off refreshes materials through onLookChange (the fx program key)', () => {
     const onLookChange = vi.fn();
     capture({ onLookChange }).effects.onChange(false);
@@ -239,7 +245,7 @@ describe('effects settings', () => {
 
 test('every effects setting has its English name and hint', () => {
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings;
-  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake']) {
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake', 'impactEffects']) {
     expect(typeof en[key]?.Name).toBe('string');
     expect(typeof en[key]?.Hint).toBe('string');
   }

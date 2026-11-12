@@ -1235,12 +1235,19 @@ export class DiceBox {
       for (const { die, other, speed } of events) {
         const d = roll.dice[die];
         if (!d) continue;
+        const dieKey = `${roll.id}:${die}`;
+        // An impact reveals no result, so ghost dice get their dust too. Before the sound: a
+        // throwing sound hook must not skip it. The position is copied (the die keeps moving).
+        const pos = d.outer?.position;
+        this.#effectsCall((e) =>
+          e.impact?.({ position: { x: pos?.x ?? 0, y: pos?.y ?? 0, z: pos?.z ?? 0 }, speed, surface, dieKey }),
+        );
         this._onImpact({
           material: d.soundMaterial,
           surface,
           speed,
           other,
-          dieKey: `${roll.id}:${die}`,
+          dieKey,
           dieType: d.type,
         });
       }
