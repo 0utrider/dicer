@@ -75,11 +75,14 @@ vec4 dcLqLiquid( vec3 p, float dt, float dent ) {
 }
 // the bubble's front surface if the segment meets it (o: segment start from the bubble's centre;
 // b = dot( o, rd ), oo = dot( o, o ), m2: the squared distance from the centre to the ray)
-vec4 dcLqBubble( vec3 o, vec3 rd, float dt, float b, float oo, float m2 ) {
+// th: the distance along the segment to the hit (dt where there is none)
+vec4 dcLqBubble( vec3 o, vec3 rd, float dt, float b, float oo, float m2, out float th ) {
+	th = dt;
 	float m = sqrt( m2 );
 	if ( m >= DC_LQ_BR + DC_LQ_AA || oo < DC_LQ_BR * DC_LQ_BR ) return vec4( 0.0 );
-	float th = m < DC_LQ_BR ? - b - sqrt( DC_LQ_BR * DC_LQ_BR - m2 ) : - b;
-	if ( th < 0.0 || th >= dt ) return vec4( 0.0 );
+	float t0 = m < DC_LQ_BR ? - b - sqrt( DC_LQ_BR * DC_LQ_BR - m2 ) : - b;
+	if ( t0 < 0.0 || t0 >= dt ) return vec4( 0.0 );
+	th = t0;
 	float cover = 1.0 - smoothstep( DC_LQ_BR - DC_LQ_AA, DC_LQ_BR + DC_LQ_AA, m );
 	vec3 n = ( o + rd * th ) / max( length( o + rd * th ), 1e-4 );
 	float cv = abs( dot( n, rd ) );
@@ -120,9 +123,13 @@ vec4 dcLqSand( vec3 x, vec3 rd, bool top ) {
 	return vec4( min( rad, vec3( 1.0 ) ), 1.0 );
 }
 vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
-	float len = dt; // the segment's length in the liquid
+	float len = dt; // the segment's length in the liquid (no bubble hit)
+	float lim = dt; // where the liquid ends (the sand's top)
 	float dent = 0.0;
-	vec4 front = vec4( 0.0 ); // the bubble's surface, in front of the segment's liquid
+	float la = dt; // with a bubble hit: the liquid runs 0 .. la, the bubble, then lb .. lim
+	float lb = dt;
+	bool split = false;
+	vec4 front = vec4( 0.0 ); // the bubble's surface
 	vec4 back = vec4( 0.0 ); // the sand, behind it
 #ifdef DC_LQ_BUBBLE
 	// the bubble's centre: up, and a little to the side (along a die-local axis projected off up;
@@ -136,11 +143,15 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float oo = dot( o, o );
 	float m2 = max( oo - b * b, 0.0 );
 	dent = 0.14 * ( 1.0 - smoothstep( DC_LQ_BR, DC_LQ_BR + 0.18, sqrt( oo ) ) );
-	if ( m2 < DC_LQ_BR * DC_LQ_BR ) {
+	front = dcLqBubble( o, rd, dt, b, oo, m2, la );
+	if ( front.a > 0.0 ) {
+		// the bubble is hit at la: liquid before it, the bubble, then the liquid beyond its far side
+		split = true;
+		lb = clamp( - b + sqrt( max( DC_LQ_BR * DC_LQ_BR - m2, 0.0 ) ), la, dt );
+	} else if ( m2 < DC_LQ_BR * DC_LQ_BR ) {
 		float hc = sqrt( DC_LQ_BR * DC_LQ_BR - m2 );
 		len -= max( min( - b + hc, dt ) - max( - b - hc, 0.0 ), 0.0 ); // no liquid in the air
 	}
-	front = dcLqBubble( o, rd, dt, b, oo, m2 );
 #endif
 #ifdef DC_LQ_SAND
 	float hp = dot( p, dcIUp );
@@ -149,10 +160,18 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	if ( he < DC_LQ_ST ) {
 		float ts = dt * ( hp - DC_LQ_ST ) / ( hp - he ); // hp > DC_LQ_ST > he: no division by 0
 		len = min( len, ts );
+		lim = min( lim, ts );
 		back = dcLqSand( p + rd * ts, rd, true );
 	}
 #endif
-	vec4 acc = front + ( 1.0 - front.a ) * dcLqLiquid( p, max( len, 0.0 ), dent );
+	vec4 acc;
+	if ( split && la < lim ) { // (a bubble beyond the sand's top is hidden by the sand)
+		acc = dcLqLiquid( p, min( la, lim ), dent );
+		acc += ( 1.0 - acc.a ) * front;
+		acc += ( 1.0 - acc.a ) * dcLqLiquid( p + rd * lb, max( lim - lb, 0.0 ), dent );
+	} else {
+		acc = dcLqLiquid( p, max( len, 0.0 ), dent );
+	}
 	return acc + ( 1.0 - acc.a ) * back;
 }
 `;

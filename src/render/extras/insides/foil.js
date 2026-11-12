@@ -6,9 +6,10 @@
  * cell holds one). A shard is a flat, star-shaped polygon: FOIL.sides vertices at jittered angles
  * with hashed radii (torn, notched outlines), stretched along one in-plane axis. It is tested
  * exactly against the march segment (plane hit, then point-in-polygon), like glitter's flakes, so
- * it counts once whatever the step length. The cells of the segment's start, middle and end are
- * visited, and the centre stays in [cellMin, cellMax] of its cell with the radius at most
- * 0.3 cell, so a shard always lies whole in its own cell.
+ * it counts once per segment. The segment's cells are walked front to back by a 3D DDA (each cell
+ * once, at most FOIL_WALK of them: the longest segment, at the fewest steps, is short against a
+ * cell), so no cell it crosses is skipped. The centre stays in [cellMin, cellMax] of its cell
+ * with the radius at most 0.38 cell, so a shard always lies whole in its own cell.
  *
  * Crumpling: each of the polygon's triangles (centre to edge) is a facet with its own tilted
  * normal, so a shard catches the light in patches. Shading is metallic: a dim reflection of the
@@ -29,16 +30,26 @@ export const FOIL = Object.freeze({
   second: 0.3,
   /** facet tilt (crumpling) */
   tilt: 0.55,
+  /** the fewest march steps of any tier with interiors (quality.js medium): bounds the segment length */
+  minSteps: 16,
 });
 
 /** The march sphere radius (shaders/interior.js INTERIOR.radius; a local copy: no world-start import). */
 export const MARCH_RADIUS = 0.62;
+
+/**
+ * The most cells one march segment can cross: the longest segment is the march sphere's diameter
+ * over the fewest steps; along each axis it spans at most ceil(length x cells) boundaries, so a
+ * walk visits at most 1 + 3 x that many cells (4 at the values above).
+ */
+export const FOIL_WALK = 1 + 3 * Math.ceil(((2 * MARCH_RADIUS) / FOIL.minSteps) * FOIL.cells);
 
 const f = (x) => x.toFixed(4);
 
 const BODY = /* glsl */ `
 #define DC_FO_CELLS ${f(FOIL.cells)}
 #define DC_FO_SIDES ${FOIL.sides}
+#define DC_FO_WALK ${FOIL_WALK}
 vec3 dcFoHash3( vec3 p ) {
 	return vec3( dcHash13( p ), dcHash13( p + 19.19 ), dcHash13( p + 47.77 ) );
 }
@@ -95,15 +106,25 @@ vec4 dcFoShard( vec3 cell0, float off, vec3 p, vec3 rd, float dt ) {
 	vec3 rad = col * ( env + 0.03 ) + mix( col, vec3( 1.0 ), 0.3 ) * ( 3.0 * flash + 0.35 * sheen );
 	return vec4( min( rad, vec3( 1.0 ) ) * 0.95, 0.95 );
 }
-// the shards of one grid (offset off, in cells) met by the segment: the cells of its start,
-// middle and end
+// the shards of one grid (offset off, in cells) met by the segment: every cell it crosses, front to
+// back (3D DDA: tm is the distance along the segment to the next boundary per axis)
 vec4 dcFoGrid( float off, vec3 p, vec3 rd, float dt ) {
-	vec3 c0 = floor( p * DC_FO_CELLS - off );
-	vec3 cm = floor( ( p + rd * ( 0.5 * dt ) ) * DC_FO_CELLS - off );
-	vec3 c1 = floor( ( p + rd * dt ) * DC_FO_CELLS - off );
-	vec4 acc = dcFoShard( c0, off, p, rd, dt );
-	if ( any( notEqual( cm, c0 ) ) && any( notEqual( cm, c1 ) ) ) acc += ( 1.0 - acc.a ) * dcFoShard( cm, off, p, rd, dt );
-	if ( any( notEqual( c1, c0 ) ) ) acc += ( 1.0 - acc.a ) * dcFoShard( c1, off, p, rd, dt );
+	vec3 s = p * DC_FO_CELLS - off;
+	vec3 d = rd * DC_FO_CELLS;
+	d = mix( d, vec3( 1e-6 ), lessThan( abs( d ), vec3( 1e-6 ) ) ); // no division by 0
+	vec3 c = floor( s );
+	vec3 tm = ( c + step( 0.0, d ) - s ) / d;
+	vec3 td = 1.0 / abs( d );
+	vec3 sg = sign( d );
+	vec4 acc = vec4( 0.0 );
+	for ( int i = 0; i < DC_FO_WALK; i ++ ) {
+		acc += ( 1.0 - acc.a ) * dcFoShard( c, off, p, rd, dt );
+		float tn = min( tm.x, min( tm.y, tm.z ) );
+		if ( tn >= dt ) break;
+		vec3 m = step( tm, vec3( tn ) ); // the axes crossed at tn
+		c += m * sg;
+		tm += m * td;
+	}
 	return acc;
 }
 // two interleaved grids (offset half a cell): twice the shards, each still whole in its cell
