@@ -154,7 +154,10 @@
           <div class="dicer-grid">
             <label class="dicer-field">
               <span>{{localize "DICER.Triggers.Effect"}}</span>
-              <select name="rules.{{index}}.effectId" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions effectChoices selected=effectId}}</select>{{#if hasEffect}}<button type="button" class="dicer-icon" data-action="previewEffect" data-index="{{index}}" data-tooltip="DICER.Triggers.PreviewEffect" aria-label="{{localize "DICER.Triggers.PreviewEffect"}}"><i class="fa-solid fa-play"></i></button>{{/if}}
+              <span class="dicer-with-action">
+                <select name="rules.{{index}}.effectId" data-refresh {{#if readonly}}disabled{{/if}}>{{selectOptions effectChoices selected=effectId}}</select>
+                {{#if hasEffect}}<button type="button" class="dicer-icon" data-action="previewEffect" data-index="{{index}}" data-tooltip="DICER.Triggers.PreviewEffect" aria-label="{{localize "DICER.Triggers.PreviewEffect"}}"><i class="fa-solid fa-play"></i></button>{{/if}}
+              </span>
             </label>
             {{#if hasEffect}}
               <div class="dicer-field">
