@@ -969,6 +969,24 @@ export function createDice3dApi({
         }
       },
     },
+    /** Local only: throws one die of each type with a theme's look (the editor and browser Throw buttons). */
+    _throwLook: {
+      value(theme) {
+        try {
+          const specs = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((type) => {
+            const values = getShape(type).values;
+            const spec = { type, value: values[Math.floor(Math.random() * values.length)] };
+            const appearance = theme?.perType?.[type] ?? theme?.appearance;
+            if (appearance) spec.appearance = appearance;
+            return spec;
+          });
+          return diceBox.roll(specs).landed;
+        } catch (err) {
+          warnOnce('_throwLook', err);
+          return Promise.resolve();
+        }
+      },
+    },
     /** What the damage map editor needs: DSN colorset names, DSN damage defaults, a theme resolver. */
     _damageContext: {
       value() {

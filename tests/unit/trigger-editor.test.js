@@ -258,6 +258,32 @@ describe('the rule list', () => {
       expect(ctx.canMove).toBe(true);
     });
 
+    it('the effect play button previews only the edited effect (no sound) and is absent without an effect', async () => {
+      const { readFileSync } = await import('node:fs');
+      const html = readFileSync('templates/trigger-editor.hbs', 'utf8');
+      expect(html).toMatch(/\{\{#if hasEffect\}\}<button[^>]*data-action="previewEffect"[^>]*data-index="\{\{index\}\}"/);
+      const { editor, ctx } = await make();
+      expect(ctx.rules[0].hasEffect).toBe(true);
+      const _preview = vi.fn(async () => {});
+      globalThis.game.dice3d._preview = _preview;
+      const form = flatten(ctx.rules);
+      form['rules.0.effectColor'] = '#123456';
+      form['rules.0.effectIntensity'] = '2';
+      form['rules.0.effectDuration'] = '1500';
+      globalThis.__form = form;
+      await actions.previewEffect.call(editor, {}, { dataset: { index: '0' } });
+      expect(_preview).toHaveBeenCalledTimes(1);
+      const [fx] = _preview.mock.calls[0];
+      expect(fx.sound).toBeNull();
+      expect(fx.effect).toMatchObject({ color: '#123456', intensity: 2, duration: 1500 });
+      // a rule with no effect: no button, and the action does nothing
+      form['rules.0.effectId'] = '';
+      globalThis.__form = form;
+      await actions.previewEffect.call(editor, {}, { dataset: { index: '0' } });
+      expect(_preview).toHaveBeenCalledTimes(1);
+      expect((await editor._prepareContext()).rules[0].hasEffect).toBe(false);
+    });
+
     it('selecting, adding, moving and deleting keep the selection on the rule acted on', async () => {
       const { editor, ctx } = await make();
       globalThis.__form = flatten(ctx.rules);

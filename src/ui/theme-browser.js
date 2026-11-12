@@ -326,6 +326,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       apply: ThemeBrowser.#onApply,
       clear: ThemeBrowser.#onClear,
       duplicate: ThemeBrowser.#onDuplicate,
+      throwTheme: ThemeBrowser.#onThrowTheme,
       edit: ThemeBrowser.#onEdit,
       create: ThemeBrowser.#onCreate,
       exportOne: ThemeBrowser.#onExportOne,
@@ -616,6 +617,18 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   /** The place an Apply / Clear button acts on: its own data-target (an assignment chip), else the detail panel's select. */
   static #targetOf(target) {
     return target.dataset.target ?? target.closest('.dicer-theme-detail')?.querySelector('.dicer-target')?.value;
+  }
+
+  /** Rolls one of each die with the theme on the table (local only). */
+  static async #onThrowTheme(event, target) {
+    const theme = ThemeBrowser.#themeOf(this, target);
+    if (!theme) return;
+    const api = globalThis.game?.dice3d;
+    if (typeof api?._throwLook !== 'function') {
+      notify('warn', loc('DICER.Appearance.PreviewUnavailable'));
+      return;
+    }
+    await api._throwLook(theme);
   }
 
   static async #onFilter(event, target) {

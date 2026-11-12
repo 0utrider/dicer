@@ -615,6 +615,19 @@ describe('the browser actions', () => {
       store.lockPlayerLooks = false;
       expect((await make()._prepareContext()).locked).toBe(false);
     });
+    it('Throw rolls the selected theme on the table through game.dice3d._throwLook', async () => {
+      const _throwLook = vi.fn(async () => {});
+      globalThis.game.dice3d = { _throwLook };
+      const app = make();
+      await app._prepareContext();
+      expect(readFileSync('templates/theme-browser.hbs', 'utf8')).toContain('data-action="throwTheme"');
+      await actions.throwTheme.call(app, {}, { dataset: { theme: 'ruby-classic' } });
+      expect(_throwLook).toHaveBeenCalledTimes(1);
+      expect(_throwLook.mock.calls[0][0].id).toBe('ruby-classic');
+      globalThis.game.dice3d = undefined;
+      await actions.throwTheme.call(app, {}, { dataset: { theme: 'ruby-classic' } });
+      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith('DICER.Appearance.PreviewUnavailable');
+    });
     it('a locked player cannot use a theme even by calling the actions', async () => {
       store.worldDefaultTheme = 'verdant';
       store.lockPlayerLooks = true;

@@ -97,6 +97,7 @@
 
         <div class="dicer-detail-section dicer-detail-actions">
           <button type="button" data-action="duplicate" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.Duplicate"><i class="fa-solid fa-clone"></i> {{localize "DICER.Themes.DuplicateShort"}}</button>
+          <button type="button" data-action="throwTheme" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.ThrowHint"><i class="fa-solid fa-dice"></i> {{localize "DICER.Themes.Throw"}}</button>
           {{#if detail.canEdit}}<button type="button" data-action="edit" data-theme="{{detail.id}}"><i class="fa-solid fa-pen"></i> {{localize "DICER.Themes.Edit"}}</button>{{/if}}
           <button type="button" data-action="exportOne" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.Export"><i class="fa-solid fa-download"></i> {{localize "DICER.Themes.ExportShort"}}</button>
           {{#if detail.canPush}}<button type="button" data-action="push" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.PushHint"><i class="fa-solid fa-users"></i> {{localize "DICER.Themes.PushShort"}}</button>{{/if}}

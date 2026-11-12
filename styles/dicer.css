@@ -717,6 +717,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   grid-column: span 2;
 }
 .dicer-trigger-editor .dicer-pair,
+.dicer-trigger-editor .dicer-with-action,
 .dicer-trigger-editor .dicer-color,
 .dicer-trigger-editor .dicer-file {
   display: flex;
@@ -970,6 +971,13 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-appearance-editor .dicer-ae-drag {
   text-align: center;
+}
+.dicer-trigger-editor .dicer-with-action select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dicer-appearance-editor .dicer-ae-throw {
+  width: 100%;
 }
 .dicer-appearance-editor .dicer-ae-tools {
   display: grid;
