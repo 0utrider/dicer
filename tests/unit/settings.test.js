@@ -1,4 +1,4 @@
-import { registerSettings, migrateLookSetting } from '../../src/settings.js';
+import { registerSettings, migrateLookSetting, getSetting, clearSettingCache } from '../../src/settings.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { readFileSync } from 'node:fs';
 import { LOOKS } from '../../src/look/looks.js';
@@ -68,7 +68,7 @@ test('theme is a client String whose choices map every built-in theme id to its 
 test('the old look setting stays registered, hidden, only so its value can migrate; every LOOKS id is a theme', () => {
   const { look } = capture();
   expect(look).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'default' });
-  expect(look.onChange).toBeUndefined();
+  expect(() => look.onChange('default')).not.toThrow(); // only clears the read cache (P9-R17)
   for (const id of Object.keys(LOOKS)) expect(BUILTIN_THEMES.some((t) => t.id === id)).toBe(true);
 });
 
@@ -341,8 +341,9 @@ describe('roll area settings (Plan 5 Task 3)', () => {
     r.gmPrivateArea.onChange({ preset: 'corner' });
     expect(onRollAreasChange).toHaveBeenCalledTimes(2);
     for (const key of ['areaScale', 'gmPrivateCorner', 'perPlayerAreas']) {
-      expect(r[key].onChange).toBeUndefined();
+      r[key].onChange(1); // only clears the read cache (P9-R17)
     }
+    expect(onRollAreasChange).toHaveBeenCalledTimes(2);
   });
 
   test('the area change hook source does not throw without its callback', () => {
@@ -413,5 +414,65 @@ describe('GM controls settings (P7-D4)', () => {
     } finally {
       delete globalThis.game;
     }
+  });
+});
+
+// P9-R17: Foundry's settings lookup is slow and the roll loop read sound settings on every impact
+// (a quarter of Dicer's loop time in the 30-die profile). Simple values are remembered until that
+// setting's onChange, which Foundry fires on every client, world settings included.
+describe('getSetting cache', () => {
+  function world(values) {
+    const registered = {};
+    const get = vi.fn((ns, key) => values[key]);
+    globalThis.game = {
+      settings: { register: (ns, key, cfg) => (registered[key] = cfg), get },
+      user: { isGM: true },
+    };
+    clearSettingCache();
+    registerSettings();
+    return { registered, get };
+  }
+  afterEach(() => {
+    clearSettingCache();
+    delete globalThis.game;
+  });
+
+  test('a simple value is read from Foundry once, then again after that setting changes', () => {
+    const values = { sounds: true, soundVolume: 0.6 };
+    const { registered, get } = world(values);
+    expect(getSetting('sounds')).toBe(true);
+    expect(getSetting('sounds')).toBe(true);
+    expect(getSetting('soundVolume')).toBe(0.6);
+    expect(get).toHaveBeenCalledTimes(2);
+    values.sounds = false;
+    registered.sounds.onChange(false);
+    expect(getSetting('sounds')).toBe(false);
+    expect(getSetting('soundVolume')).toBe(0.6); // other keys stay cached
+    expect(get).toHaveBeenCalledTimes(3);
+  });
+
+  test('the setting callbacks still run, after the cache is cleared', () => {
+    const values = { sounds: true };
+    const registered = {};
+    globalThis.game = {
+      settings: { register: (ns, key, cfg) => (registered[key] = cfg), get: (ns, key) => values[key] },
+    };
+    clearSettingCache();
+    let seen;
+    registerSettings({ onSoundChange: () => (seen = getSetting('sounds')) });
+    expect(getSetting('sounds')).toBe(true);
+    values.sounds = false;
+    registered.sounds.onChange(false);
+    expect(seen).toBe(false); // the callback reads the new value, not the cached one
+  });
+
+  test('object values and unregistered keys are read fresh every time', () => {
+    const values = { worldThemes: [], notOurs: 1 };
+    const { get } = world(values);
+    expect(getSetting('worldThemes')).not.toBe(undefined);
+    getSetting('worldThemes');
+    getSetting('notOurs');
+    getSetting('notOurs');
+    expect(get).toHaveBeenCalledTimes(4);
   });
 });
