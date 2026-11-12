@@ -66,6 +66,12 @@ function legacyFaces(type) {
   return m ? Number(m[1]) : undefined;
 }
 
+/** A legacy 'df' die as a Roll-like term: dsnTypeOf gives 'df', like Foundry's FateDie. */
+class LegacyFateTerm {
+  static DENOMINATION = 'f';
+  minValue = -1;
+}
+
 /** The legacy show() payload as a Roll-like `{dice: [{faces, results, options}]}`, or null. */
 function legacyRoll(data) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.throws)) return null;
@@ -73,11 +79,13 @@ function legacyRoll(data) {
   for (const t of data.throws) {
     for (const d of Array.isArray(t?.dice) ? t.dice : []) {
       if (!d || typeof d !== 'object' || !Number.isFinite(d.result)) continue;
-      dice.push({
+      const entry = {
         faces: legacyFaces(d.type),
         results: [{ result: d.result, active: true }],
         options: d.options && typeof d.options === 'object' ? d.options : {},
-      });
+      };
+      // A Fate die: a term of Foundry's FateDie shape (DENOMINATION 'f', -1 / 0 / +1), not a d3.
+      dice.push(String(d.type).toLowerCase() === 'df' ? Object.assign(new LegacyFateTerm(), entry, { faces: 3 }) : entry);
     }
   }
   return { dice };
@@ -973,7 +981,7 @@ export function createDice3dApi({
     _throwLook: {
       value(theme) {
         try {
-          const specs = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((type) => {
+          const specs = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((type) => {
             const values = getShape(type).values;
             const spec = { type, value: values[Math.floor(Math.random() * values.length)] };
             const appearance = theme?.perType?.[type] ?? theme?.appearance;

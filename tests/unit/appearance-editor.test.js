@@ -767,6 +767,17 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('the coin previews (a d2 button) but is no per-type look', async () => {
+    const app = await open({ themeId: 'user.u1.mine' });
+    expect(q(app, '.dicer-ae-dice button[data-type="d2"]')).toBeTruthy();
+    expect(q(app, '[data-action="editType"][data-type="d2"]')).toBeNull();
+    await click(app, '.dicer-ae-dice button[data-type="d2"]');
+    expect(q(app, '.dicer-ae-dice button.active').dataset.type).toBe('d2');
+    expect(thumbs.preview.mock.calls[0][2]).toBe('d20');
+    expect(app.theme().perType).toEqual({});
+    await app.close();
+  });
+
   it('per die type: "use a different look for" a type edits its own copy; "same as default" removes it', async () => {
     const app = await open({ themeId: 'user.u1.mine' });
     await click(app, '[data-action="editType"][data-type="d20"]');

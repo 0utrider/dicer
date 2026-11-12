@@ -47,6 +47,8 @@ import {
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
+/** The preview dice: the per-type looks plus the coin, which only previews (it wears the default look). */
+const PREVIEW_DICE = [...DIE_TYPES, 'd2'];
 const MODULE = 'dicer';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const notify = (kind, message) => globalThis.ui?.notifications?.[kind]?.(message);
@@ -254,7 +256,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       editingType: this.#editing,
       editingLabel: loc('DICER.Appearance.PerType.Editing').replace('{type}', this.#editing),
       hasPreview: Boolean(this.#context().atlas),
-      dice: DIE_TYPES.map((type) => ({ type, active: type === this.#dieType, overridden: overridden(type) })),
+      dice: PREVIEW_DICE.map((type) => ({ type, active: type === this.#dieType, overridden: overridden(type) })),
       bodyTypes: active(BODY_TYPES, form.body.type, 'DICER.Appearance.BodyType.'),
       bodyPresets: active(BODY_PRESET_LISTS[form.body.type] ?? [], form.body.preset, 'DICER.Appearance.Preset.'),
       finishes: active(FINISHES, form.body.finish, 'DICER.Appearance.Finish.'),
@@ -498,7 +500,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onPreviewDie(event, target) {
     const type = target.dataset.type;
-    if (!DIE_TYPES.includes(type) || type === this.#dieType) return;
+    if (!PREVIEW_DICE.includes(type) || type === this.#dieType) return;
     this.#dieType = type;
     for (const b of this.element.querySelectorAll('.dicer-ae-dice button')) {
       const on = b.dataset.type === type;
