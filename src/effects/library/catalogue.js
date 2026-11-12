@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DIE_EFFECTS, NOOP, envelope, timed } from './die-effects.js';
 import { KIND } from './particles.js';
+import { composite } from './timeline.js';
 
 /**
  * The particle and mesh effects. World units: one die edge is 1 (so a size of 0.2 is a fifth
@@ -442,83 +443,6 @@ export const shake = Object.freeze({
     return { update: () => false, stop() {} };
   },
 });
-
-/** A part's context: the composite's, with the part's own colour, intensity and duration. */
-function partContext(ctx, composite, part) {
-  const d = part.mod.defaults;
-  const color = ctx.options.color ? ctx.color : new THREE.Color(part.color ?? d.color);
-  const scale = ctx.duration / composite.defaults.duration;
-  return Object.create(ctx, {
-    color: { value: color },
-    intensity: { value: (part.intensity ?? d.intensity) * ctx.intensity },
-    duration: { value: Math.min(ctx.duration, d.duration * scale) },
-    options: { value: { ...ctx.options, color: ctx.options.color } },
-  });
-}
-
-/**
- * A composite starts its parts directly (not through the layer), so the layer budgets it as a
- * single effect whose declared cost is its cheapest essential part (P4-R10): on low a nat 20 or
- * a fumble still shows something. Extra parts, in priority order, start only while
- * essential + extras <= ctx.tier.effectBudget; free (cost 0) parts always start. It ends when
- * every part has, or at ctx.duration.
- */
-function composite({ id, defaults, parts }) {
-  const [essential] = parts;
-  const mod = {
-    id,
-    cost: essential.mod.cost,
-    defaults: Object.freeze(defaults),
-    start(ctx) {
-      const budget = Number.isFinite(ctx.tier?.effectBudget) ? ctx.tier.effectBudget : Infinity;
-      let used = essential.mod.cost;
-      const handles = [];
-      parts.forEach((part, i) => {
-        const c = part.mod.cost;
-        if (i > 0 && c > 0 && used + c > budget) return;
-        let handle;
-        try {
-          handle = part.mod.start(partContext(ctx, mod, part));
-        } catch (err) {
-          if (i === 0) throw err;
-          return;
-        }
-        if (!handle) return;
-        if (i > 0) used += c;
-        handles.push(handle);
-      });
-      let t0 = null;
-      let done = false;
-      const stop = () => {
-        if (done) return;
-        done = true;
-        for (const h of handles) {
-          try {
-            h.stop?.();
-          } catch {
-            /* a part failing to stop must not leave the others running */
-          }
-        }
-      };
-      return {
-        update(now) {
-          if (done) return false;
-          t0 ??= now;
-          if (now - t0 >= ctx.duration) {
-            stop();
-            return false;
-          }
-          let alive = false;
-          for (const h of handles) alive = h.update(now) === true || alive;
-          if (!alive) stop();
-          return alive;
-        },
-        stop,
-      };
-    },
-  };
-  return Object.freeze(mod);
-}
 
 const tinyShake = (id, amount, ms) =>
   Object.freeze({ ...shake, id, defaults: Object.freeze({ ...shake.defaults, intensity: amount, duration: ms }) });
