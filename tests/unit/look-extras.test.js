@@ -628,11 +628,15 @@ describe('insides', () => {
           }
         }
       }
-      expect(new Set(visited).size).toBe(visited.length);
+      const seen = new Set(visited);
+      expect(seen.size).toBe(visited.length);
+      // one assertion per segment: every densely sampled cell along it was visited
+      const missed = [];
       for (let k = 0; k <= 200; k++) {
-        const q = s.map((x, i) => x + dd[i] * dt * (k / 200));
-        expect(visited).toContain(q.map(Math.floor).join(','));
+        const cell = s.map((x, i) => Math.floor(x + dd[i] * dt * (k / 200))).join(',');
+        if (!seen.has(cell)) missed.push(cell);
       }
+      expect(missed).toEqual([]);
       // and the walk ended inside the bound: the segment's end cell was reached
       expect(Math.min(...tm)).toBeGreaterThanOrEqual(dt - 1e-9);
     }
