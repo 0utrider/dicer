@@ -21,6 +21,7 @@ import * as lookExtras from '../../src/render/extras/look-extras.js';
 import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/insides/index.js';
 import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS } from '../../src/render/shaders/interior.js';
 import { MARCH_RADIUS } from '../../src/render/extras/insides/foil.js';
+import { eyeInside } from '../../src/render/extras/insides/eye.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook } from '../../src/look/appearance.js';
 
@@ -573,6 +574,46 @@ describe('insides', () => {
     // a non-resin body hides it (normalisation forces none)
     expect(insidePatch(look({ body: { type: 'opaque' }, interior: { type: 'foil' } }), FLAGS)).toEqual({});
     expect(insidePatch(a, { ...FLAGS, interiors: false })).toEqual({});
+  });
+
+  test('eye: dcIUp is used for the pupil axis; one program; patch interior present; fake tint 0.2', () => {
+    const a = resin({ type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 });
+    const patch = insidePatch(a, FLAGS);
+    expect(Object.keys(patch).sort()).toEqual(['interior', 'uniforms']);
+    expect(patch.interior.main).toBe(marchWithUp());
+    expect(patch.interior.pars).toContain(INTERIOR_PARS);
+    const { body } = eyeInside(a);
+    expect(patch.interior.pars).toContain(body);
+    // the pupil axis is the die's current world up (set from dcRm before the march loop)
+    expect(body).toContain('vec3 dcEyAx = dcIUp;');
+    expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
+    expect(body).toMatch(/DC_EY_AA/); // soft silhouette
+    expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+    // dcEy names only (besides the shared interior names)
+    const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat3)\s+(dc\w+)\s*\(/g)].map((x) => x[1]);
+    for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcEy/);
+    const m = mat(a);
+    expect(m.userData.programKey).toContain('|eye:32|');
+    const fs = patched(m).fragmentShader;
+    expect(fs).toContain(patch.interior.pars);
+    expect(fs).toContain(patch.interior.main);
+    expect(count(fs, 'vec3 dcIUp;')).toBe(1);
+    expect(count(fs, UP_LINE)).toBe(1);
+    expect(fs.indexOf(UP_LINE)).toBeLessThan(fs.indexOf('for ( int dcIi = 0;'));
+    expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+    expect(count(fs, '#define DC_NOISE')).toBeLessThanOrEqual(1);
+    // one program for every colour and density
+    const other = mat(resin({ type: 'eye', colors: ['#c8322a', '#ffe6dc'], density: 0.6 }));
+    expect(other.userData.programKey).toBe(m.userData.programKey);
+    expect(patched(other).fragmentShader).toBe(fs);
+    // also on the coin
+    expect(() => createDiceMaterial(a, atlas, getShape('d2'), labels, FLAGS)).not.toThrow();
+    // fake mode: the tint share 0.2, no interior
+    const low = { ...FLAGS, interiorSteps: 0 };
+    const fake = insidePatch(a, low);
+    expect(Object.keys(fake)).toEqual(['uniforms']);
+    expect(fake.uniforms.uResinTint.value.w).toBeCloseTo(0.2, 6);
+    expect(patched(mat(a, low)).fragmentShader).not.toContain('dcInterior');
   });
 
   test('fake mode: uResinTint.w = INSIDE_TINT.foil, no interior chunk', () => {

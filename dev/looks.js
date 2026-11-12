@@ -73,6 +73,9 @@ const VARIANTS = [
   // foil insides (dice designs plan 3)
   ['resin~foil-gold', 'default', 'gold and copper foil', {}, {}, { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 }, { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 }],
   ['resin~foil-silver', 'default', 'silver foil', {}, {}, { type: 'resin', color: '#2b4a66', color2: '#0f2236', roughness: 0.05 }, { type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.5 }],
+  // eye insides
+  ['resin~eye-green', 'default', 'green eye', {}, {}, { type: 'resin', color: '#e6eef2', color2: '#b8c8d4', roughness: 0.05 }, { type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 }],
+  ['resin~eye-red', 'default', 'red eye', {}, {}, { type: 'resin', color: '#3a1a22', color2: '#1a0a10', roughness: 0.05 }, { type: 'eye', colors: ['#c8322a', '#ffe6dc'], density: 0.6 }],
   // combinations (the compile check for body x numbers x interior x flags interactions)
   ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],

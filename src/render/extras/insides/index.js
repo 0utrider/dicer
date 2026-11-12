@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { NOISE_GLSL } from '../../shaders/noise.js';
 import { INTERIOR_PARS, INTERIOR_MARCH } from '../../shaders/interior.js';
 import * as foil from './foil.js';
+import * as eye from './eye.js';
 
 /**
- * Inside modules: one per new resin inside (foil now; eye, botanical, smoke and the liquid
+ * Inside modules: one per new resin inside (foil and eye now; botanical, smoke and the liquid
  * bubble / sand options in later tasks). Insides combine with the resin body only.
  *
  * Contract of a module:
@@ -20,6 +21,7 @@ import * as foil from './foil.js';
  */
 const MODULES = {
   foil: [foil.foilInside, foil.USES_NOISE],
+  eye: [eye.eyeInside, eye.USES_NOISE],
 };
 
 /** Share of the tint target mixed into the resin body at low tier (steps 0), per new inside. */
