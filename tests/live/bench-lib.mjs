@@ -637,6 +637,28 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
         out.push(`| ${runName(entry)} | ${t.name} | ${t.where} | ${t.bucket} | ${num(t.ms, 1)} | ${num(t.pct, 1)} |`);
     }
   }
+  // P9-R12: WebGL work per canvas per frame, over the profiled scenario.
+  const glRows = [];
+  for (const { entry, suite } of reports ?? []) {
+    for (const r of suite?.results ?? []) {
+      const f = r?.gl?.frames;
+      if (!(f > 0)) continue;
+      for (const [kind, t] of Object.entries(r.gl.byCanvas ?? {})) {
+        const size = t.width && t.height ? `${t.width}x${t.height}` : 'n/a';
+        glRows.push(
+          `| ${runName(entry)} | ${r.scenario} | ${kind} | ${size} | ${num(t.draws / f, 1)} | ${Math.round(t.triangles / f)} | ${num(t.fbBinds / f, 1)} | ${num(t.clears / f, 1)} |`,
+        );
+      }
+    }
+  }
+  if (glRows.length) {
+    out.push('', '## GPU work per frame (WebGL calls per animation frame, per canvas)', '');
+    out.push(
+      '| Run | Scenario | Canvas | Size | Draws | Triangles | Render-target binds | Clears |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      ...glRows,
+    );
+  }
   const keys = Object.entries(dsnFlag?.exists ? (dsnFlag.value ?? {}) : {});
   out.push('', "## DSN effects-off user flag (flags['dice-so-nice'].settings, read back)", '');
   out.push(

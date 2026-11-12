@@ -760,3 +760,21 @@ test('summaryMarkdown shows each run CPU profile', () => {
   expect(md).toContain('| dicer-throttled-uncapped | render | dicer.js:100 | dicer | 4.0 | 66.7 |');
   expect(summaryMarkdown({ date: 'd', reports: [report(e, [result('burst100')])], rows: [], errors: [] })).not.toContain('CPU profile');
 });
+
+// P9-R12: the per-frame WebGL work per canvas, from the profiled scenario.
+test('summaryMarkdown shows per-frame GPU work per canvas', () => {
+  const e = entry('dicer', 'throttled', 'uncapped');
+  const gl = {
+    frames: 100,
+    byCanvas: {
+      dice: { draws: 4200, triangles: 900000, fbBinds: 300, clears: 200, width: 2400, height: 1350 },
+      foundry: { draws: 1500, triangles: 3000, fbBinds: 0, clears: 100, width: 1920, height: 1080 },
+    },
+  };
+  const rep = report(e, [{ ...result('burst100'), gl }]);
+  const md = summaryMarkdown({ date: 'd', reports: [rep], rows: [], errors: [] });
+  expect(md).toContain('## GPU work per frame');
+  expect(md).toContain('| dicer-throttled-uncapped | burst100 | dice | 2400x1350 | 42.0 | 9000 | 3.0 | 2.0 |');
+  expect(md).toContain('| dicer-throttled-uncapped | burst100 | foundry | 1920x1080 | 15.0 | 30 | 0.0 | 1.0 |');
+  expect(summaryMarkdown({ date: 'd', reports: [report(e, [result('burst100')])], rows: [], errors: [] })).not.toContain('GPU work per frame');
+});
