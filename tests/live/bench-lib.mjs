@@ -490,11 +490,20 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
       );
   }
   // P9-R2: a product that skipped the warm-up animation skipped the scenarios' too.
+  // P9-R7: also a warm-up that was over at once, and a page hidden during the warm-up or a scenario.
   for (const { entry, suite } of reports ?? []) {
-    if (suite?.warmup?.started === false)
+    const w = suite?.warmup;
+    if (w?.started === false || w?.tooFast === true)
       out.push(
         '',
-        `Warning: ${runName(entry)}: the warm-up roll did not animate, so its frames measure nothing (${JSON.stringify(suite.warmup.why ?? {})})`,
+        `Warning: ${runName(entry)}: the warm-up roll did not animate${w.tooFast ? ` (over in ${w.ms} ms)` : ''}, so its frames measure nothing (${JSON.stringify(w.why ?? {})})`,
+      );
+    const hidden = (suite?.results ?? []).filter((r) => r?.pageHidden === true).map((r) => r.scenario);
+    if (w?.hidden === true) hidden.unshift('warm-up');
+    if (hidden.length)
+      out.push(
+        '',
+        `Warning: ${runName(entry)}: the page was hidden during ${hidden.join(', ')}, so those results are not valid (keep the benchmark window visible)`,
       );
   }
   out.push('', 'Throttled results are estimates of a low-end machine.', '');

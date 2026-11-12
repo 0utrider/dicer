@@ -577,6 +577,25 @@ test('summaryMarkdown warns when the warm-up roll did not animate (P9-R2)', () =
   );
 });
 
+test('summaryMarkdown warns on a too-fast warm-up and a hidden page (P9-R7)', () => {
+  const e = entry('dice-so-nice', 'pc', 'uncapped');
+  const fast = { ...report(e, [result('d20')]) };
+  fast.suite = { ...fast.suite, warmup: { completed: true, started: true, tooFast: true, ms: 15, why: { documentHidden: true } } };
+  expect(summaryMarkdown({ date: 'd', reports: [fast], rows: [], errors: [] })).toMatch(
+    /Warning: dice-so-nice-pc-uncapped: the warm-up roll did not animate \(over in 15 ms\).*"documentHidden":true/,
+  );
+  const hid = { ...report(e, [{ ...result('d20'), pageHidden: true }, { ...result('burst20'), pageHidden: false }]) };
+  hid.suite = { ...hid.suite, warmup: { completed: true, started: true, hidden: true } };
+  expect(summaryMarkdown({ date: 'd', reports: [hid], rows: [], errors: [] })).toMatch(
+    /Warning: dice-so-nice-pc-uncapped: the page was hidden during warm-up, d20, so those results are not valid/,
+  );
+  const ok = { ...report(e, [{ ...result('d20'), pageHidden: false }]) };
+  ok.suite = { ...ok.suite, warmup: { completed: true, started: true, tooFast: false, hidden: false } };
+  const md = summaryMarkdown({ date: 'd', reports: [ok], rows: [], errors: [] });
+  expect(md).not.toMatch(/page was hidden/);
+  expect(md).not.toMatch(/did not animate/);
+});
+
 test('the progress prefix is the one world.js prints', () => {
   expect(PROGRESS_PREFIX).toBe('[dicer-bench]');
 });

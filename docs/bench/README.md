@@ -35,7 +35,9 @@ What each run covers:
 
 Before its scenarios each run makes one unrecorded warm-up roll of every die type (`1d4+1d6+1d8+1d10+1d12+1d20`), so neither product pays its first-roll setup inside a measured scenario. Every bench roll speaks as the alias "Dice benchmark", never a token or character: DSN skips an NPC speaker's roll when its hide-NPC-rolls setting is on. Before each scenario the harness forces a full garbage collection, so garbage left by page load is not collected inside the next measurement.
 
-A chat roll that completes without `diceSoNiceRollStart` was not animated: it counts as a failed roll, and the scenario notes how many. If the warm-up roll was not animated, `summary.md` warns and lists the settings that can cause it.
+A chat roll that completes without `diceSoNiceRollStart` was not animated: it counts as a failed roll, and the scenario notes how many. So does a roll over less than 300 ms after the roll call: DSN on a hidden page fires its start hook, then completes at once. If the warm-up roll was not animated, `summary.md` warns and lists the settings that can cause it.
+
+**Keep the benchmark window visible for the whole run.** A minimized or hidden page gets about one frame a second, and DSN skips its animations there. A scenario during which the page was hidden at any point counts one failure, has `pageHidden: true`, and `summary.md` warns about it. The `hidden` scenario hides the page on purpose and is exempt.
 
 ## Profiles and modes
 
