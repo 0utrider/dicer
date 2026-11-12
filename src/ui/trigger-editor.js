@@ -127,6 +127,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       up: TriggerEditor.#onUp,
       down: TriggerEditor.#onDown,
       preview: TriggerEditor.#onPreview,
+      previewEffect: TriggerEditor.#onPreviewEffect,
       reset: TriggerEditor.#onReset,
       pickFile: TriggerEditor.#onPickFile,
     },
@@ -435,11 +436,11 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.#move(target, 1);
   }
 
-  /** Plays the rule's effect and sound on a local test die. Nothing is broadcast. */
-  static async #onPreview(event, target) {
+  /** The rule behind a preview button, from the current form; null (after telling the user) when it is invalid or the 3D API is missing. */
+  #previewRule(target) {
     this.#collect();
     const entry = this.#drafts[this.#tab][Number(target.dataset.index)];
-    if (!entry) return;
+    if (!entry) return null;
     let message = null;
     const source = entry.source === 'module' ? 'module' : this.#tab === 'world' ? 'world' : 'user';
     const rule =
@@ -448,13 +449,21 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         : normalizeRule(rawRuleFromEntry(entry), source, (m) => (message = m));
     if (!rule) {
       globalThis.ui?.notifications?.error(`${loc('DICER.Triggers.Invalid')}: ${message ?? ''}`);
-      return;
+      return null;
     }
     const api = globalThis.game?.dice3d;
     if (typeof api?._preview !== 'function') {
       globalThis.ui?.notifications?.warn(loc('DICER.Triggers.PreviewUnavailable'));
-      return;
+      return null;
     }
+    return { rule, api };
+  }
+
+  /** Plays the rule's effect and sound on a local test die. Nothing is broadcast. */
+  static async #onPreview(event, target) {
+    const found = this.#previewRule(target);
+    if (!found) return;
+    const { rule, api } = found;
     const { type, value } = previewTarget(rule);
     await api._preview(
       {
@@ -466,6 +475,18 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         value,
         type,
       },
+      { type, value },
+    );
+  }
+
+  /** Plays only the rule's effect (no sound, no macro) on a local test die. */
+  static async #onPreviewEffect(event, target) {
+    const found = this.#previewRule(target);
+    if (!found?.rule.effect) return;
+    const { rule, api } = found;
+    const { type, value } = previewTarget(rule);
+    await api._preview(
+      { ruleId: rule.id, effect: rule.effect, sound: null, macro: null, slowMotion: false, value, type },
       { type, value },
     );
   }

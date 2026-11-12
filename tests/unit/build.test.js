@@ -140,7 +140,9 @@ describe('build', () => {
     // the benchmark reads must live in the world-start renderer. P9-R16 re-based it on the bundle
     // as it stood (4_090_248, about 105 KB under the 4 MiB budget) after the single-mesh blob
     // shadows (+565 bytes) spent the last of the allowance; the next 2 KB must again be noticed.
-    const growth = worldStartBytes() - 4_090_248;
+    // The preview buttons re-based it on purpose (4_092_397): api._throwLook lives in the
+    // world-start API (the editors call it through game.dice3d).
+    const growth = worldStartBytes() - 4_092_397;
     console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });

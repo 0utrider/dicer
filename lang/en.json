@@ -209,6 +209,7 @@
     },
     "Triggers": {
       "Title": "Dicer trigger rules",
+      "PreviewEffect": "Preview this effect",
       "World": "World",
       "Mine": "Mine",
       "WorldHint": "World rules apply to every player's rolls. Module rules come from other modules and can be switched off, not edited.",
@@ -367,6 +368,8 @@
     },
     "Themes": {
       "Title": "Dicer themes",
+      "Throw": "Throw",
+      "ThrowHint": "Roll one of each die with this theme on the table (only you see it).",
       "Filter": "Show",
       "Filter_all": "All",
       "Source": {
@@ -441,6 +444,8 @@
     },
     "Appearance": {
       "Title": "Dicer appearance editor",
+      "Throw": "Throw",
+      "ThrowHint": "Roll one of each die with this look on the table (only you see it).",
       "Preview": "Live preview of the look",
       "DieType": "Die type shown in the preview",
       "DragHint": "Drag to turn, double-click to reset",

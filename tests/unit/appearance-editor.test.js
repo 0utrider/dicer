@@ -351,6 +351,21 @@ describe('the appearance editor', () => {
     el.dispatchEvent(new Event(evt, { bubbles: true }));
   };
 
+  it('the Throw button throws the working look (appearance + perType as edited) on the table', async () => {
+    const _throwLook = vi.fn(async () => {});
+    globalThis.game.dice3d._throwLook = _throwLook;
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    await click(app, '[data-action="throwLook"]');
+    expect(_throwLook).toHaveBeenCalledTimes(1);
+    const theme = _throwLook.mock.calls[0][0];
+    expect(theme.appearance.body.type).toBe(metal.body.type);
+    expect(theme.perType).toBeDefined();
+    delete globalThis.game.dice3d._throwLook;
+    await click(app, '[data-action="throwLook"]');
+    expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith('The live preview needs the 3D dice to be running.');
+    await app.close();
+  });
+
   it('renders one root with the layer sections; the inside is a note for a non-resin body', async () => {
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
     const root = q(app, '.window-content');

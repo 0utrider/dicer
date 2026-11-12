@@ -117,6 +117,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     actions: {
       setField: AppearanceEditor.#onSetField,
       previewDie: AppearanceEditor.#onPreviewDie,
+      throwLook: AppearanceEditor.#onThrowLook,
       editType: AppearanceEditor.#onEditType,
       sameAsDefault: AppearanceEditor.#onSameAsDefault,
       pickFont: AppearanceEditor.#onPickFont,
@@ -468,6 +469,16 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     this.#form = setField(this.#form, field, value);
     this.#scheduler.schedule(this.#previewTheme());
     await this.render();
+  }
+
+  /** Rolls one of each die with the working look on the table (local only). */
+  static async #onThrowLook() {
+    const api = globalThis.game?.dice3d;
+    if (typeof api?._throwLook !== 'function') {
+      globalThis.ui?.notifications?.warn(loc('DICER.Appearance.PreviewUnavailable'));
+      return;
+    }
+    await api._throwLook(this.#previewTheme());
   }
 
   static async #onPreviewDie(event, target) {

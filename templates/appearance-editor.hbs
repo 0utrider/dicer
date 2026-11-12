@@ -11,6 +11,7 @@
           <button type="button" class="{{#if active}}active{{/if}} {{#if overridden}}has-own{{/if}}" data-action="previewDie" data-type="{{type}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}"{{#if overridden}} data-tooltip="DICER.Appearance.PerType.HasOwn"{{/if}}>{{type}}</button>
         {{/each}}
       </nav>
+      <button type="button" class="dicer-ae-throw" data-action="throwLook" data-tooltip="DICER.Appearance.ThrowHint"><i class="fa-solid fa-dice"></i> {{localize "DICER.Appearance.Throw"}}</button>
       <p class="dicer-hint dicer-ae-drag">{{#if hasPreview}}<i class="fa-solid fa-hand-pointer"></i> {{localize "DICER.Appearance.DragHint"}}{{else}}{{localize "DICER.Appearance.PreviewUnavailable"}}{{/if}}</p>
       <div class="dicer-ae-tools" role="group" aria-labelledby="dicer-ae-tools-h">
         <h4 id="dicer-ae-tools-h">{{localize "DICER.Appearance.LookTools"}}</h4>

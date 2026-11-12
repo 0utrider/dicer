@@ -971,6 +971,52 @@ describe('trigger editor helpers (Task 12)', () => {
   });
 });
 
+describe('_throwLook', () => {
+  const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+  const theme = { id: 'x', appearance: { body: { type: 'plain' } }, perType: { d6: { body: { type: 'resin' } } } };
+
+  test('is not enumerable', () => {
+    expect(Object.keys(api)).not.toContain('_throwLook');
+    expect(typeof api._throwLook).toBe('function');
+  });
+
+  test('throws one roll of the six types in order with perType / default looks and valid faces', () => {
+    const p = api._throwLook(theme);
+    expect(p).toBeInstanceOf(Promise);
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    const specs = diceBox.roll.mock.calls[0][0];
+    expect(specs.map((s) => s.type)).toEqual(TYPES);
+    for (const s of specs) {
+      expect(getShape(s.type).values).toContain(s.value);
+      expect(s.appearance).toEqual(s.type === 'd6' ? theme.perType.d6 : theme.appearance);
+    }
+  });
+
+  test('omits appearance when the theme has none', () => {
+    api._throwLook({ id: 'x' });
+    for (const s of diceBox.roll.mock.calls[0][0]) expect('appearance' in s).toBe(false);
+  });
+
+  test('never emits a socket message or creates chat', () => {
+    const socket = { on: vi.fn(), off: vi.fn(), emit: vi.fn() };
+    const callAll = vi.fn();
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], socket, hooks: { callAll, on() {} } });
+    a._throwLook(theme);
+    expect(socket.emit).not.toHaveBeenCalled();
+    expect(callAll).not.toHaveBeenCalled();
+  });
+
+  test('a theme that makes it throw warns and resolves', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    diceBox.roll.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    await expect(api._throwLook(theme)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});
+
 describe('damage map editor helpers (Task 13)', () => {
   test('_preview passes a spec override (appearance, soundMaterial) to the one local die', () => {
     const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k] });
