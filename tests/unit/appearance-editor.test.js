@@ -2,9 +2,13 @@
 import { readFileSync } from 'node:fs';
 import Handlebars from 'handlebars';
 import { duplicateKeys, usedKeys, resolve } from './lang-check.js';
-import { normalizeAppearance, EDGE_STEPS } from '../../src/look/appearance.js';
+import { normalizeAppearance, EDGE_STEPS, ICON_IDS, FONT_IDS_BUILTIN } from '../../src/look/appearance.js';
 import { BUILTIN_THEMES, normalizeTheme, readThemeList, findTheme } from '../../src/themes/themes.js';
 import {
+  FILLS,
+  RELIEFS,
+  ICON_CHOICES,
+  FONT_KINDS,
   formFromAppearance,
   appearanceFromForm,
   visibleSections,
@@ -37,6 +41,57 @@ const metal = {
   edges: { radius: 0 },
   glow: { color: '#ffffff', intensity: 0 },
 };
+
+describe('relief, icons, new fills and fonts in the form', () => {
+  const FILL7 = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
+  it('form round-trips relief, icons, every fill and every built-in font', () => {
+    for (const fill of FILL7)
+      for (const relief of ['engraved', 'raised']) {
+        const a = normalizeAppearance({ numbers: { fill, relief, icons: { crit: 'crown', fumble: 'skull' } } });
+        expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+      }
+    for (const font of FONT_IDS_BUILTIN) {
+      const a = normalizeAppearance({ numbers: { font } });
+      expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+    }
+    for (const icon of ICON_IDS) {
+      const a = normalizeAppearance({ numbers: { icons: { crit: icon, fumble: icon } } });
+      expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+    }
+  });
+  it("'none' icon picks give null icons", () => {
+    const f = formFromAppearance({});
+    expect(f.numbers.critIcon).toBe('none');
+    expect(f.numbers.fumbleIcon).toBe('none');
+    expect(appearanceFromForm(f).numbers.icons).toEqual({ crit: null, fumble: null });
+    const picked = setField(setField(f, 'numbers.critIcon', 'flame'), 'numbers.relief', 'raised');
+    const a = appearanceFromForm(picked);
+    expect(a.numbers.icons).toEqual({ crit: 'flame', fumble: null });
+    expect(a.numbers.relief).toBe('raised');
+  });
+  it("the form's option lists are exactly what normalisation accepts", () => {
+    const num = (k, v) => normalizeAppearance({ numbers: { [k]: v } }).numbers[k];
+    for (const id of FILLS) expect(num('fill', id)).toBe(id);
+    for (const id of RELIEFS) expect(num('relief', id)).toBe(id);
+    for (const id of FONT_IDS_BUILTIN) expect(num('font', id)).toBe(id);
+    for (const id of ICON_IDS) expect(normalizeAppearance({ numbers: { icons: { crit: id } } }).numbers.icons.crit).toBe(id);
+    expect(num('fill', 'nope')).not.toBe('nope');
+    expect(num('relief', 'nope')).not.toBe('nope');
+    expect(num('font', 'nope')).not.toBe('nope');
+    expect(normalizeAppearance({ numbers: { icons: { crit: 'nope' } } }).numbers.icons.crit).toBeNull();
+    expect(FILLS).toEqual(FILL7);
+    expect(ICON_CHOICES).toEqual(['none', ...ICON_IDS]);
+    expect(FONT_KINDS).toEqual([...FONT_IDS_BUILTIN, 'css', 'file']);
+  });
+  it('numberColor shows for paint, enamel, outline, holo and glow, not for gold or silver', () => {
+    for (const fill of FILL7) expect(visibleSections({ numbers: { fill } }).numberColor).toBe(!['gold', 'silver'].includes(fill));
+  });
+  it('a built-in font is a valid kind, not a computer font', () => {
+    const f = setField(formFromAppearance({}), 'numbers.fontKind', 'norse');
+    expect(appearanceFromForm(f).numbers.font).toBe('norse');
+    expect(fontInvalid(f)).toBe(false);
+  });
+});
 
 describe('form <-> appearance', () => {
   it('round-trips every layer (resin with an inside, metal with a finish)', () => {
@@ -351,6 +406,22 @@ describe('the appearance editor', () => {
     el.dispatchEvent(new Event(evt, { bubbles: true }));
   };
 
+  it('the numbers section renders relief, icon and font chips with their labels', async () => {
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    expect(labels('[data-field="numbers.relief"]')).toEqual([L('Relief.engraved'), L('Relief.raised')]);
+    for (const field of ['numbers.critIcon', 'numbers.fumbleIcon'])
+      expect(labels(`[data-field="${field}"]`)).toEqual(['none', ...ICON_IDS].map((i) => L(`Icon.${i}`)));
+    expect(labels('[data-field="numbers.fontKind"]')).toHaveLength(10);
+    expect(labels('[data-field="numbers.fontKind"]')).toContain(L('FontKind.norse'));
+    expect(labels('[data-field="numbers.fill"]')).toHaveLength(7);
+    expect(app.element.textContent).toContain(L('Numbers.IconsHint'));
+    await click(app, '[data-field="numbers.critIcon"][data-value="crown"]');
+    expect(app.theme().appearance.numbers.icons.crit).toBe('crown');
+    await app.close();
+  });
+
   it('the Throw button throws the working look (appearance + perType as edited) on the table', async () => {
     const _throwLook = vi.fn(async () => {});
     globalThis.game.dice3d._throwLook = _throwLook;
@@ -641,8 +712,10 @@ describe('lang/en.json', () => {
       'Finish.': ['polished', 'brushed', 'antique'],
       'InsideType.': ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'],
       'Shape.': ['star', 'heart', 'skull', 'sphere'],
-      'Fill.': ['paint', 'gold', 'silver', 'enamel'],
-      'FontKind.': ['serif', 'sans', 'css', 'file'],
+      'Fill.': ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'],
+      'FontKind.': [...FONT_IDS_BUILTIN, 'css', 'file'],
+      'Relief.': ['engraved', 'raised'],
+      'Icon.': ['none', ...ICON_IDS],
       'Edge.': ['sharp', 'crisp', 'soft', 'round', 'veryRound'],
     });
     expect(keys.length).toBeGreaterThan(30);

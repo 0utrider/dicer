@@ -15,8 +15,14 @@ export const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl'];
 export const FINISHES = ['polished', 'brushed', 'antique'];
 export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
 export const SHAPES = ['star', 'heart', 'skull', 'sphere'];
-export const FILLS = ['paint', 'gold', 'silver', 'enamel'];
-export const FONT_KINDS = ['serif', 'sans', 'css', 'file'];
+export const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
+export const RELIEFS = ['engraved', 'raised'];
+// A literal list, not ICON_IDS: importing that name would add an export to the world-start chunk
+// (the unit test pins this list to what normalisation accepts).
+export const ICON_CHOICES = ['none', 'starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame'];
+// Literal, like ICON_CHOICES (the unit test pins it to FONT_IDS_BUILTIN).
+const BUILTIN_FONTS = ['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco'];
+export const FONT_KINDS = [...BUILTIN_FONTS, 'css', 'file'];
 export { EDGE_STEPS };
 /** Fonts most computers have, offered as suggestions for "a font on this computer". */
 export const FONT_SUGGESTIONS = ['Georgia', 'Impact', 'Palatino Linotype', 'Trebuchet MS', 'Verdana', 'Courier New', 'Times New Roman'];
@@ -27,7 +33,7 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
 function fontParts(font) {
-  if (font === 'sans' || font === 'serif') return { fontKind: font, fontFamily: '', fontFile: '' };
+  if (BUILTIN_FONTS.includes(font)) return { fontKind: font, fontFamily: '', fontFile: '' };
   if (typeof font === 'string' && font.startsWith('css:')) return { fontKind: 'css', fontFamily: font.slice(4), fontFile: '' };
   if (typeof font === 'string' && font.startsWith('file:')) return { fontKind: 'file', fontFamily: '', fontFile: font.slice(5) };
   return { fontKind: 'serif', fontFamily: '', fontFile: '' };
@@ -36,7 +42,7 @@ function fontParts(font) {
 /** The font id a form names ('serif' | 'sans' | 'css:<family>' | 'file:<path>'), not yet validated. */
 export function fontIdOf(numbers = {}) {
   const kind = numbers.fontKind;
-  if (kind === 'sans') return 'sans';
+  if (BUILTIN_FONTS.includes(kind)) return kind;
   if (kind === 'css') return `css:${String(numbers.fontFamily ?? '').trim()}`;
   if (kind === 'file') return `file:${String(numbers.fontFile ?? '').trim()}`;
   return 'serif';
@@ -51,7 +57,15 @@ export function formFromAppearance(raw) {
   return {
     body: { ...a.body },
     interior: { type: inside.type, color1: inside.colors[0], color2: inside.colors[1], density: inside.density, shape: inside.shape },
-    numbers: { fill: a.numbers.fill, color: a.numbers.color, depth: a.numbers.depth, ...fontParts(a.numbers.font) },
+    numbers: {
+      fill: a.numbers.fill,
+      relief: a.numbers.relief,
+      critIcon: a.numbers.icons.crit ?? 'none',
+      fumbleIcon: a.numbers.icons.fumble ?? 'none',
+      color: a.numbers.color,
+      depth: a.numbers.depth,
+      ...fontParts(a.numbers.font),
+    },
     edges: { radius: a.edges.radius },
     glow: { ...a.glow },
   };
@@ -70,7 +84,14 @@ export function appearanceFromForm(form) {
   return normalizeAppearance({
     body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness) },
     interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape },
-    numbers: { fill: num.fill, color: num.color, depth: n(num.depth), font: fontIdOf(num) },
+    numbers: {
+      fill: num.fill,
+      relief: num.relief,
+      icons: { crit: num.critIcon, fumble: num.fumbleIcon },
+      color: num.color,
+      depth: n(num.depth),
+      font: fontIdOf(num),
+    },
     edges: { radius: n(e.radius) },
     glow: { color: g.color, intensity: n(g.intensity) },
   });
@@ -79,7 +100,7 @@ export function appearanceFromForm(form) {
 /** True when the form names a computer font / font file that is not a usable id (it would fall back to the serif). */
 export function fontInvalid(form) {
   const id = fontIdOf(form?.numbers);
-  if (id === 'serif' || id === 'sans') return false;
+  if (BUILTIN_FONTS.includes(id)) return false;
   return appearanceFromForm(form).numbers.font !== id;
 }
 
@@ -96,7 +117,7 @@ export function visibleSections(look) {
     insideShape: resin && inside === 'shape',
     color2: TWO_TONE.includes(body),
     finish: body === 'metal',
-    numberColor: fill === 'paint' || fill === 'enamel',
+    numberColor: fill !== 'gold' && fill !== 'silver',
     fontFamily: kind === 'css',
     fontFile: kind === 'file',
   };

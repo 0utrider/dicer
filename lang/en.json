@@ -514,7 +514,11 @@
       "Numbers": {
         "Fill": "Fill",
         "Color": "Colour",
-        "Depth": "Engraving depth",
+        "Depth": "Depth",
+        "Relief": "Relief",
+        "CritIcon": "Icon on the highest face",
+        "FumbleIcon": "Icon on the 1",
+        "IconsHint": "Icons replace the number on those faces. Coins and the tens die of a d100 keep their numbers.",
         "Font": "Font",
         "Family": "Font on this computer",
         "FamilyPlaceholder": "A font name, e.g. Georgia",
@@ -527,11 +531,33 @@
         "paint": "Paint",
         "gold": "Gold",
         "silver": "Silver",
-        "enamel": "Enamel"
+        "enamel": "Enamel",
+        "outline": "Outline",
+        "holo": "Holo foil",
+        "glow": "Glow ink"
+      },
+      "Relief": {
+        "engraved": "Engraved",
+        "raised": "Raised"
+      },
+      "Icon": {
+        "none": "Off",
+        "starburst": "Starburst",
+        "crown": "Crown",
+        "skull": "Skull",
+        "broken-shield": "Broken shield",
+        "heart": "Heart",
+        "flame": "Flame"
       },
       "FontKind": {
         "serif": "Serif",
         "sans": "Sans",
+        "blackletter": "Blackletter",
+        "norse": "Norse",
+        "uncial": "Uncial",
+        "scifi": "Sci-fi",
+        "handwritten": "Handwritten",
+        "deco": "Art Deco",
         "css": "On this computer",
         "file": "Font file"
       },
