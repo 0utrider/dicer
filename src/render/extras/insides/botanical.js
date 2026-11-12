@@ -1,16 +1,22 @@
 /**
- * Botanical inside: a pressed flower, a clump of moss or a butterfly cast in the resin, like the
- * real resin dice with dried specimens. One program for the three kinds: uBoKind (0 flower,
+ * Botanical inside: a pressed flower, a cushion of moss or a butterfly cast in the resin, like
+ * the real resin dice with dried specimens. One program for the three kinds: uBoKind (0 flower,
  * 1 moss, 2 butterfly, the appearance.js INCLUSIONS order) selects a branch, and as a uniform
  * the branch is coherent.
  *
- * Flower and butterfly: "cards", flat specimens at fixed positions and tilts (CARDS: three
- * flowers, or a large and two small butterflies), spread so one faces the eye whatever face
- * the die rests on. Each card is tested exactly against the march segment (plane hit, then the
- * card's 2D shape at the hit point), like glitter's flakes and foil's shards, so it counts once
- * whatever the step count and never flickers between tiers. Hits within one segment are
- * composited in depth order. The shape's edge is anti-aliased by a fixed width in card units,
- * wider at grazing angles (no derivatives: the march is non-uniform control flow).
+ * Flower and butterfly: "cards", flat specimens floating level (CARDS: three flowers, or a large
+ * and two small butterflies). Each card's centre is fixed in die-local space; its normal is the
+ * die's current world up (dcIUp, set before the march loop, as the eye's pupil axis) tilted by a
+ * small fixed tilt (TILT, under 25 degrees), so the camera above the table sees the specimens
+ * face-on whatever face the die rests on. The cards of a kind share that normal: parallel cards
+ * never cross, whatever the die's rotation. A card's in-plane orientation is a die-local
+ * reference axis (ref) projected into its plane, so it turns with the die (and only spins round
+ * where up meets that axis; a fallback axis takes over exactly there).
+ * Each card is tested exactly against the march segment (plane hit, then the card's 2D shape at
+ * the hit point), like glitter's flakes and foil's shards, so it counts once whatever the step
+ * count and never flickers between tiers. Hits within one segment are composited in depth order.
+ * The shape's edge is anti-aliased by a fixed width in card units, wider at grazing angles (no
+ * derivatives: the march is non-uniform control flow).
  * - flower: 5 or 6 rounded, slightly wavy petals in colors[0] (deeper at the base, paler and
  *   more translucent at the tips, with fine streaks and a crease between petals), cupped a
  *   little, round a domed, granular centre in colors[1] with a ring of stamens;
@@ -22,82 +28,113 @@
  * key light shines through the thin tissue from behind (translucency, strongest at the edges,
  * where the cards are also a little see-through).
  *
- * Moss: not a card. A soft, fuzzy clump of overlapping domes on a flat bed in the lower centre
- * of the die (die-local, not gravity-aligned: a pressed specimen), built from fbm density with
- * upright fibres at the surface; colors[0] in the body, darker inside, colors[1] at the tips.
- * Long segments are sub-sampled inside the clump so the fuzz survives the lowest marched tier.
+ * Moss: not a card. A soft cushion settled just below the centre (along -dcIUp, so it sits
+ * low whatever face the die rests on): a squashed dome with a flat base and a gently undulating
+ * surface, its outer shell made of many fine strands radiating from the dome (noise fine across,
+ * stretched along the radius) that thin out outwards; colors[0], darker in the hollows and
+ * inside, with speckled colors[1] strand tips. Long segments are sub-sampled inside the cushion
+ * so the fuzz survives the lowest marched tier.
  *
- * density sets the card size (flower, butterfly) or the clump size (moss).
+ * density sets the card size (flower, butterfly) or the cushion size (moss).
  */
-export const USES_NOISE = true; // dcNoise3, dcFbm3
+export const USES_NOISE = true; // dcNoise3, dcFbm3, dcHash13
 
 /** The inclusion kinds in uBoKind order (appearance.js INCLUSIONS; a local copy, pinned by a test). */
 export const BO_KINDS = Object.freeze(['flower', 'moss', 'butterfly']);
 
 /**
- * The cards (canonical interior frame; the march sphere has radius 0.62): centre, normal,
- * in-plane rotation (radians), size share and a variant (flower: < 0.5 five petals, else six).
- * Flowers 0-2, butterflies 3-5 (a large one and two small). Picked by eye: one card roughly
- * along each axis (one faces the eye whatever face the die rests on), the large card in the
- * coin's caps, no card crossing another or reaching past the march sphere (tests).
+ * The cards (canonical interior frame; the march sphere has radius 0.62): die-local centre,
+ * in-plane reference axis (ref: the flower's rotation, the butterfly's body), size share and a
+ * variant (flower: < 0.5 five petals, else six). Flowers 0-2, butterflies 3-5. The refs avoid
+ * the dice's face normals (where a card would spin round). The large butterfly sits a little off
+ * the centre, so the number on the top face does not hide its body. Tests: inside the march sphere.
  */
 export const CARDS = Object.freeze([
-  { c: [0.03, 0.06, 0.04], n: [0.25, 1, 0.2], rot: 0.3, size: 1, v: 0.2 },
-  { c: [-0.2, -0.25, -0.05], n: [-0.85, 0.5, 0.3], rot: 1.9, size: 0.55, v: 0.7 },
-  { c: [0.1, 0.33, -0.1], n: [0.35, 0.5, -0.85], rot: 4.1, size: 0.5, v: 0.35 },
-  { c: [0.03, 0.05, 0.04], n: [0.2, 1, 0.3], rot: 0.5, size: 1, v: 0 },
-  { c: [-0.24, -0.22, -0.08], n: [-0.9, 0.35, 0.4], rot: 2.4, size: 0.45, v: 0 },
-  { c: [0.18, -0.24, -0.2], n: [0.3, 0.3, -0.9], rot: 5.2, size: 0.4, v: 0 },
+  { c: [0.03, 0.06, 0.04], ref: [0.83, 0.21, 0.52], size: 1, v: 0.2 },
+  { c: [-0.2, -0.25, -0.05], ref: [0.18, 0.43, 0.88], size: 0.55, v: 0.7 },
+  { c: [0.1, 0.33, -0.1], ref: [-0.61, 0.25, 0.75], size: 0.5, v: 0.35 },
+  { c: [0.09, 0.0, -0.1], ref: [0.27, 0.36, 0.89], size: 1, v: 0 },
+  { c: [-0.24, -0.22, 0.08], ref: [0.92, -0.12, 0.37], size: 0.4, v: 0 },
+  { c: [0.2, 0.26, 0.16], ref: [-0.35, 0.22, 0.91], size: 0.32, v: 0 },
 ]);
+
+/**
+ * The shared tilt of each kind's cards off the die's up, in the up frame built from the first
+ * card's ref (tan of the angle along each axis): flower about 12, butterfly about 10 degrees.
+ */
+export const TILT = Object.freeze({ flower: [0.18, 0.12], butterfly: [-0.1, 0.14] });
 
 /** Card radius (canonical) at density 0 and 1, before the card's size share. */
-export const CARD_RADIUS = Object.freeze({ flower: [0.28, 0.44], butterfly: [0.34, 0.5] });
+export const CARD_RADIUS = Object.freeze({ flower: [0.28, 0.44], butterfly: [0.32, 0.46] });
 
-/** The moss domes (clump space, canonical frame): centre and radius; squashed 1.45x in height. */
-export const DOMES = Object.freeze([
-  [0.0, -0.4, 0.02, 0.27],
-  [0.18, -0.42, -0.1, 0.2],
-  [-0.16, -0.43, 0.12, 0.19],
-  [-0.06, -0.42, -0.19, 0.17],
-  [0.12, -0.44, 0.17, 0.14],
-  [-0.22, -0.45, -0.06, 0.12],
-]);
+/**
+ * The moss cushion: its base this far below the centre along up, its radius at density 0 and 1
+ * (canonical), and its squash (height = radius / squash).
+ */
+export const MOSS = Object.freeze({ drop: 0.3, radius: [0.32, 0.46], squash: 1.6 });
 
 const f = (x) => x.toFixed(4);
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const norm = (v) => {
   const l = Math.hypot(...v);
   return v.map((x) => x / l);
 };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const vec3 = (v) => `vec3( ${v.map(f).join(', ')} )`;
+const REFS = CARDS.map((x) => norm(x.ref));
+/** a projected into the plane of unit normal n, unit (the GLSL dcBoPerp): alt where a is along n */
+function perp(a, n) {
+  let t = a.map((x, i) => x - dot(a, n) * n[i]);
+  if (Math.hypot(...t) < 1e-3) {
+    const alt = [a[2], a[0], a[1]];
+    t = alt.map((x, i) => x - dot(alt, n) * n[i]);
+  }
+  return norm(t);
+}
 
-/** Each card's unit normal and in-plane axes (t1, t2), rotated by rot. */
-export function cardFrames() {
-  return CARDS.map(({ c, n, rot, size, v }) => {
-    const nn = norm(n);
-    const u = norm(cross(nn, Math.abs(nn[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
-    const w = cross(nn, u);
-    const [cs, sn] = [Math.cos(rot), Math.sin(rot)];
-    const t1 = u.map((x, i) => cs * x + sn * w[i]);
-    const t2 = w.map((x, i) => cs * x - sn * u[i]);
-    return { c, n: nn, t1, t2, size, v };
+/**
+ * The JS mirror of the cards' GLSL frames for an up direction (unit, canonical frame): per card
+ * its centre, the shared unit normal and the in-plane axes t1, t2. kind: 'flower' or 'butterfly'.
+ */
+export function cardFrames(up, kind) {
+  const base = kind === 'butterfly' ? 3 : 0;
+  const b1 = perp(REFS[base], up);
+  const b2 = cross(up, b1);
+  const [ja, jb] = TILT[kind];
+  const n = norm(up.map((x, i) => x + ja * b1[i] + jb * b2[i]));
+  return [0, 1, 2].map((k) => {
+    const t1 = perp(REFS[base + k], n);
+    return { c: CARDS[base + k].c, n, t1, t2: cross(n, t1), size: CARDS[base + k].size };
   });
 }
 
-const FR = cardFrames();
 const arr = (type, xs) => `${type}[ ${xs.length} ]( ${xs.join(', ')} )`;
+const N = CARDS.length;
 
 const BODY = /* glsl */ `
 uniform int uBoKind; // 0 flower, 1 moss, 2 butterfly
-const vec3 DC_BO_C[ ${FR.length} ] = ${arr('vec3', FR.map((x) => vec3(x.c)))};
-const vec3 DC_BO_N[ ${FR.length} ] = ${arr('vec3', FR.map((x) => vec3(x.n)))};
-const vec3 DC_BO_T1[ ${FR.length} ] = ${arr('vec3', FR.map((x) => vec3(x.t1)))};
-const vec3 DC_BO_T2[ ${FR.length} ] = ${arr('vec3', FR.map((x) => vec3(x.t2)))};
-const float DC_BO_S[ ${FR.length} ] = ${arr('float', FR.map((x) => f(x.size)))};
-const float DC_BO_V[ ${FR.length} ] = ${arr('float', FR.map((x) => f(x.v)))};
-const vec4 DC_BO_DOME[ ${DOMES.length} ] = ${arr('vec4', DOMES.map((d) => `vec4( ${d.map(f).join(', ')} )`))};
+const vec3 DC_BO_C[ ${N} ] = ${arr('vec3', CARDS.map((x) => vec3(x.c)))};
+const vec3 DC_BO_REF[ ${N} ] = ${arr('vec3', REFS.map(vec3))};
+const float DC_BO_S[ ${N} ] = ${arr('float', CARDS.map((x) => f(x.size)))};
+const float DC_BO_V[ ${N} ] = ${arr('float', CARDS.map((x) => f(x.v)))};
+// a projected into the plane of unit normal n, unit; a fallback axis where a is along n
+vec3 dcBoPerp( vec3 a, vec3 n ) {
+	vec3 t = a - dot( a, n ) * n;
+	if ( dot( t, t ) < 1e-6 ) {
+		vec3 alt = a.zxy;
+		t = alt - dot( alt, n ) * n;
+	}
+	return normalize( t );
+}
 mat2 dcBoRot( float a ) { return mat2( cos( a ), sin( a ), - sin( a ), cos( a ) ); }
 float dcBoSq( float x ) { return x * x; }
+// approximate signed distance to the ellipse of radii r (the value over its gradient), so edges
+// anti-alias evenly all round
+float dcBoEll( vec2 p, vec2 r ) {
+	float k0 = length( p / r );
+	float k1 = length( p / ( r * r ) );
+	return k0 * ( k0 - 1.0 ) / max( k1, 1e-5 );
+}
 // a pressed flower on the unit card: albedo and coverage; ex = (in-plane normal tilt, translucency)
 vec4 dcBoFlower( vec2 uv, float aa, float v, out vec3 ex ) {
 	float k = v < 0.5 ? 5.0 : 6.0;
@@ -105,7 +142,7 @@ vec4 dcBoFlower( vec2 uv, float aa, float v, out vec3 ex ) {
 	float r = length( uv );
 	vec2 dir = uv / max( r, 1e-4 );
 	float sec = 6.2831853 / k;
-	float fa = atan( uv.y, uv.x ) / sec;
+	float fa = atan( uv.y, abs( uv.x ) < 1e-6 ? 1e-6 : uv.x ) / sec; // (never atan( 0, 0 ))
 	float ia = floor( fa + 0.5 ); // the nearest petal and the next nearest
 	float ib = ia + ( fa > ia ? 1.0 : - 1.0 );
 	vec2 pa = dcBoRot( - ia * sec ) * uv;
@@ -113,8 +150,8 @@ vec4 dcBoFlower( vec2 uv, float aa, float v, out vec3 ex ) {
 	// petals: ellipses along x, broader towards the tip (obovate), with a wavy edge
 	float ga = W * ( 0.5 + 0.65 * clamp( pa.x / 0.95, 0.0, 1.0 ) );
 	float gb = W * ( 0.5 + 0.65 * clamp( pb.x / 0.95, 0.0, 1.0 ) );
-	float da = ( length( vec2( ( pa.x - 0.52 ) / 0.43, pa.y / ga ) ) - 1.0 ) * 0.3;
-	float db = ( length( vec2( ( pb.x - 0.52 ) / 0.43, pb.y / gb ) ) - 1.0 ) * 0.3;
+	float da = dcBoEll( vec2( pa.x - 0.52, pa.y ), vec2( 0.43, ga ) );
+	float db = dcBoEll( vec2( pb.x - 0.52, pb.y ), vec2( 0.43, gb ) );
 	float wav = 0.035 * ( dcNoise3( vec3( uv * 6.0, v * 13.0 ) ) - 0.5 );
 	da += wav;
 	db += wav;
@@ -175,13 +212,13 @@ vec4 dcBoButterfly( vec2 uv, float aa, out vec3 ex ) {
 	// forewing: from the root up and out, broadening towards the apex
 	vec2 fq = dcBoRot( - 0.6 ) * ( w - vec2( 0.45, 0.3 ) );
 	float fb = mix( 0.13, 0.3, clamp( fq.x / 0.5 * 0.5 + 0.5, 0.0, 1.0 ) );
-	float df = ( length( vec2( fq.x / 0.52, fq.y / fb ) ) - 1.0 ) * 0.2;
+	float df = dcBoEll( fq, vec2( 0.52, fb ) );
 	// hindwing: rounder, down and out
 	vec2 hq = dcBoRot( 0.75 ) * ( w - vec2( 0.29, - 0.27 ) );
-	float dh = ( length( vec2( hq.x / 0.36, hq.y / 0.27 ) ) - 1.0 ) * 0.25;
+	float dh = dcBoEll( hq, vec2( 0.36, 0.27 ) );
 	// scalloped margins (scallops between the vein ends)
 	vec2 rw = w - vec2( 0.03, 0.0 );
-	float ang = atan( rw.y, rw.x );
+	float ang = atan( rw.y, abs( rw.x ) < 1e-6 ? 1e-6 : rw.x ); // (never atan( 0, 0 ))
 	float rr = length( rw );
 	df += 0.008 * cos( ang * 22.0 );
 	dh += 0.012 * cos( ang * 18.0 );
@@ -195,14 +232,14 @@ vec4 dcBoButterfly( vec2 uv, float aa, out vec3 ex ) {
 	// veins: rays from the root, with the discal cell's outline on the forewing
 	float vn = fore ? 22.0 : 18.0;
 	float vl = abs( fract( ang * vn / 6.2831853 ) - 0.5 ) * 6.2831853 / vn * rr;
-	float vein = ( 1.0 - smoothstep( 0.004, 0.011, vl ) ) * smoothstep( 0.12, 0.3, rr );
+	float vein = ( 1.0 - smoothstep( 0.006, 0.014, vl ) ) * smoothstep( 0.12, 0.3, rr );
 	float cell = fore ? 1.0 - smoothstep( 0.005, 0.012, abs( length( ( w - vec2( 0.27, 0.15 ) ) / vec2( 0.2, 0.075 ) ) - 1.0 ) * 0.075 ) : 0.0;
-	alb = mix( alb, c1, 0.75 * max( vein, cell ) );
+	alb = mix( alb, c1, 0.9 * max( vein, cell ) );
 	// the dark margin (broad at the forewing's apex) with a row of pale dots
 	// (the forewing lies over the hindwing: its own margin runs across it)
 	float dTop = df < 0.0 ? df : dh;
-	float band = ( 1.0 - smoothstep( 0.05, 0.08, - dTop ) ) * smoothstep( 0.2, 0.35, rr );
-	float apex = fore ? smoothstep( 0.62, 0.8, length( w - vec2( 0.05, 0.05 ) ) ) : 0.0;
+	float band = ( 1.0 - smoothstep( 0.055, 0.068, - dTop ) ) * smoothstep( 0.2, 0.35, rr );
+	float apex = fore ? smoothstep( 0.68, 0.74, length( w - vec2( 0.05, 0.05 ) ) ) : 0.0;
 	alb = mix( alb, c1, max( band, apex ) * 0.92 );
 	vec2 cellUV = vec2( ( fract( ang * vn / 12.5663706 ) - 0.5 ) * 12.5663706 / vn * rr, - dTop - 0.035 );
 	float dots = ( 1.0 - smoothstep( 0.012, 0.02, length( cellUV ) ) ) * smoothstep( 0.4, 0.5, rr );
@@ -214,13 +251,13 @@ vec4 dcBoButterfly( vec2 uv, float aa, out vec3 ex ) {
 	alb = mix( alb, pale, ( 1.0 - smoothstep( 0.018, 0.028, es ) ) * ( fore ? 0.0 : 1.0 ) );
 	float fs = length( w - vec2( 0.53, 0.5 ) );
 	alb = mix( alb, c1, ( 1.0 - smoothstep( 0.035, 0.045, fs ) ) * ( fore ? 0.85 : 0.0 ) );
-	float edge = 1.0 - smoothstep( 0.0, 0.06, - d );
-	float alpha = wcov * mix( 0.97, 0.8, edge );
+	float edge = 1.0 - smoothstep( 0.0, 0.03, - d );
+	float alpha = wcov * mix( 0.97, 0.86, edge );
 	// the wings raised a little: a shallow V along the body
 	vec2 tilt = vec2( sign( uv.x ) * 0.3, 0.0 );
 	float thin = mix( 0.45, 0.9, edge );
 	// the body: abdomen and thorax, a head and two clubbed antennae
-	float db = ( length( vec2( uv.x / 0.042, ( uv.y + 0.12 ) / 0.36 ) ) - 1.0 ) * 0.042;
+	float db = dcBoEll( vec2( uv.x, uv.y + 0.12 ), vec2( 0.05, 0.36 ) );
 	db = min( db, length( uv - vec2( 0.0, 0.28 ) ) - 0.045 );
 	float ant = min( dcBoSeg( w, vec2( 0.012, 0.31 ), vec2( 0.17, 0.72 ) ) - 0.008, length( w - vec2( 0.17, 0.72 ) ) - 0.022 );
 	float bcov = 1.0 - smoothstep( - aa * 0.5, aa * 0.5, min( db, ant ) );
@@ -228,13 +265,13 @@ vec4 dcBoButterfly( vec2 uv, float aa, out vec3 ex ) {
 	bc += 0.12 * ( 1.0 - smoothstep( 0.0, 0.03, abs( uv.x ) ) ) * step( - 0.45, uv.y ); // a soft sheen along the back
 	alb = mix( alb, bc, bcov );
 	alpha = mix( alpha, 1.0, bcov );
-	ex = vec3( mix( tilt, vec2( uv.x / 0.042, 0.0 ) * 0.5, bcov ), mix( thin, 0.0, bcov ) );
+	ex = vec3( mix( tilt, vec2( uv.x / 0.05, 0.0 ) * 0.5, bcov ), mix( thin, 0.0, bcov ) );
 	return vec4( min( alb, vec3( 1.0 ) ), max( alpha, 0.0 ) );
 }
-// card i if the segment crosses it: premultiplied radiance and opacity, th = the hit distance
-vec4 dcBoCard( int i, vec3 p, vec3 rd, float dt, out float th ) {
+// card i (unit normal n, shared by the kind) if the segment crosses it: premultiplied radiance
+// and opacity, th = the hit distance
+vec4 dcBoCard( int i, vec3 n, vec3 p, vec3 rd, float dt, out float th ) {
 	th = 1e9;
-	vec3 n = DC_BO_N[ i ];
 	float dn = dot( rd, n );
 	if ( abs( dn ) < 1e-4 ) return vec4( 0.0 );
 	float t = dot( DC_BO_C[ i ] - p, n ) / dn;
@@ -243,8 +280,10 @@ vec4 dcBoCard( int i, vec3 p, vec3 rd, float dt, out float th ) {
 	float R = DC_BO_S[ i ] * ( bfly ? mix( ${f(CARD_RADIUS.butterfly[0])}, ${f(CARD_RADIUS.butterfly[1])}, uInteriorDensity )
 		: mix( ${f(CARD_RADIUS.flower[0])}, ${f(CARD_RADIUS.flower[1])}, uInteriorDensity ) );
 	vec3 q = p + rd * t - DC_BO_C[ i ];
-	vec2 uv = vec2( dot( q, DC_BO_T1[ i ] ), dot( q, DC_BO_T2[ i ] ) ) / R;
-	if ( dot( uv, uv ) >= 1.0 ) return vec4( 0.0 );
+	if ( dot( q, q ) >= R * R ) return vec4( 0.0 );
+	vec3 t1 = dcBoPerp( DC_BO_REF[ i ], n );
+	vec3 t2 = cross( n, t1 );
+	vec2 uv = vec2( dot( q, t1 ), dot( q, t2 ) ) / R;
 	float aa = 0.018 + 0.03 * ( 1.0 - abs( dn ) );
 	vec3 ex;
 	// (the butterfly drawn at 1 / 1.15: its forewing tips inside the card)
@@ -252,7 +291,7 @@ vec4 dcBoCard( int i, vec3 p, vec3 rd, float dt, out float th ) {
 	if ( m.a <= 0.0 ) return vec4( 0.0 );
 	th = t;
 	// two-sided: the side facing the eye, tilted by the specimen's relief
-	vec3 nf = normalize( n + ex.x * DC_BO_T1[ i ] + ex.y * DC_BO_T2[ i ] );
+	vec3 nf = normalize( n + ex.x * t1 + ex.y * t2 );
 	nf = dot( rd, nf ) > 0.0 ? - nf : nf;
 	float kd = dot( nf, dcIKey );
 	float wrap = clamp( ( kd + 0.35 ) / 1.35, 0.0, 1.0 );
@@ -266,13 +305,19 @@ vec4 dcBoCard( int i, vec3 p, vec3 rd, float dt, out float th ) {
 	return vec4( min( col, vec3( 1.0 ) ) * m.a, m.a );
 }
 vec4 dcBoCards( vec3 p, vec3 rd, float dt ) {
-	int b = uBoKind == 2 ? 3 : 0;
+	bool bfly = uBoKind == 2;
+	int b = bfly ? 3 : 0;
+	// the kind's shared normal: up, tilted in the up frame built from the first card's ref
+	vec3 b1 = dcBoPerp( DC_BO_REF[ b ], dcIUp );
+	vec3 b2 = cross( dcIUp, b1 );
+	vec2 tl = bfly ? vec2( ${TILT.butterfly.map(f).join(', ')} ) : vec2( ${TILT.flower.map(f).join(', ')} );
+	vec3 n = normalize( dcIUp + tl.x * b1 + tl.y * b2 );
 	float t0;
 	float t1;
 	float t2;
-	vec4 a0 = dcBoCard( b, p, rd, dt, t0 );
-	vec4 a1 = dcBoCard( b + 1, p, rd, dt, t1 );
-	vec4 a2 = dcBoCard( b + 2, p, rd, dt, t2 );
+	vec4 a0 = dcBoCard( b, n, p, rd, dt, t0 );
+	vec4 a1 = dcBoCard( b + 1, n, p, rd, dt, t1 );
+	vec4 a2 = dcBoCard( b + 2, n, p, rd, dt, t2 );
 	// front to back: sort the (at most three) hits by distance
 	vec4 dcBoTa;
 	float dcBoTt;
@@ -283,56 +328,52 @@ vec4 dcBoCards( vec3 p, vec3 rd, float dt ) {
 	acc += ( 1.0 - acc.a ) * a1;
 	return acc + ( 1.0 - acc.a ) * a2;
 }
-// the moss at x (canonical frame, sz: the clump size): premultiplied radiance and opacity over h
-vec4 dcBoMossAt( vec3 x, float sz, float h ) {
-	// clump space: scaled about the bed point, so the clump grows up and out from the bed
-	vec3 bed = vec3( 0.0, - 0.46, 0.0 );
-	vec3 y = ( x - bed ) / sz + bed;
-	if ( y.y < - 0.5 || y.y > - 0.08 || dot( y.xz, y.xz ) > 0.26 ) return vec4( 0.0 );
-	// overlapping domes (squashed spheres): the nearest (e, its centre) and the next (e2: crevices)
-	vec3 sq = vec3( 1.0, 1.45, 1.0 );
-	float e = 1e3;
-	float e2 = 1e3;
-	vec3 dc = vec3( 0.0, - 0.5, 0.0 );
-	for ( int i = 0; i < 6; i ++ ) {
-		float ei = length( ( y - DC_BO_DOME[ i ].xyz ) * sq ) / DC_BO_DOME[ i ].w;
-		if ( ei < e ) { e2 = e; e = ei; dc = DC_BO_DOME[ i ].xyz; }
-		else e2 = min( e2, ei );
-	}
-	// lumpy, then fuzzy: upright fibres (noise stretched along y) near the surface
-	float lump = dcFbm3( y * 7.0 + 3.0, 3 );
-	float fib = dcNoise3( vec3( y.xz * 60.0, y.y * 9.0 ) );
-	float fib2 = dcNoise3( vec3( y.xz * 130.0, y.y * 20.0 + 7.0 ) );
-	float sur = smoothstep( 0.55, 1.0, e );
-	float ef = e + 0.45 * ( lump - 0.5 ) - sur * ( 0.32 * ( fib - 0.5 ) + 0.18 * ( fib2 - 0.5 ) );
-	float dens = 1.0 - smoothstep( 0.82, 1.0, ef );
-	dens *= smoothstep( - 0.5, - 0.47, y.y ); // the flat bed
+// the moss at x (canonical frame; Rc: the cushion radius): premultiplied radiance and opacity over h
+vec4 dcBoMossAt( vec3 x, float Rc, float h ) {
+	// cushion space: from the centre of its flat base (below the die's centre), height along up
+	vec3 q = x + ${f(MOSS.drop)} * dcIUp;
+	float hy = dot( q, dcIUp );
+	if ( hy < - 0.02 ) return vec4( 0.0 );
+	vec3 qs = q + ${f(MOSS.squash - 1)} * hy * dcIUp; // squashed: a low dome
+	float rho = length( qs );
+	if ( rho > Rc * 1.15 ) return vec4( 0.0 );
+	vec3 d = qs / max( rho, 1e-4 ); // the direction out of the dome (its strands grow along it)
+	// the surface: a gentle undulation (small hummocks and hollows), no broad lobes
+	float und = dcFbm3( d * 4.5 + 2.0, 2 );
+	float Rs = Rc * ( 0.94 + 0.12 * und );
+	float u = rho / Rs;
+	// strands: noise fine across the dome, stretched along its radius, thinning out in the shell
+	float s1 = dcNoise3( d * 75.0 + vec3( rho * 7.0 ) );
+	float s2 = dcNoise3( d * 150.0 + vec3( rho * 12.0 + 5.0 ) );
+	float strand = 0.65 * s1 + 0.35 * s2;
+	float shell = smoothstep( 0.86, 1.08, u );
+	float dens = mix( 1.0, smoothstep( 0.5, 0.62, strand - 0.35 * ( shell - 0.5 ) ), smoothstep( 0.84, 0.9, u ) );
+	dens *= 1.0 - smoothstep( 1.04, 1.12, u );
+	dens *= smoothstep( - 0.02, 0.0, hy ); // the flat base
 	if ( dens <= 0.0 ) return vec4( 0.0 );
-	// colour: deep inside, colors[0] in the body, colors[1] at the fibre tips
-	float tip = smoothstep( 0.65, 0.98, ef ) * smoothstep( 0.4, 0.7, fib );
+	// colour: dark inside and in the hollows, colors[0] in the cushion, speckled colors[1] tips
 	vec3 c0 = uInteriorColors[ 0 ];
-	vec3 col = mix( c0 * 0.45, c0, smoothstep( 0.35, 0.85, ef ) );
+	vec3 col = mix( c0 * 0.3, c0, smoothstep( 0.8, 1.0, u ) );
+	col *= mix( 0.55, 1.15, und );
+	col *= 0.75 + 0.5 * s2;
+	float tip = smoothstep( 0.62, 0.74, s2 ) * smoothstep( 0.92, 1.02, u );
 	col = mix( col, uInteriorColors[ 1 ], tip );
-	col *= 0.7 + 0.6 * lump;
-	// shade in the crevices between domes
-	col *= mix( 0.55, 1.0, smoothstep( 0.0, 0.25, e2 - e ) );
-	// light: from above and from the key light (each dome's surface faces out of it), darker low down
-	vec3 nrm = normalize( ( y - dc ) * sq + vec3( 0.0, 1e-3, 0.0 ) );
-	float kd = clamp( ( dot( nrm, dcIKey ) + 0.4 ) / 1.4, 0.0, 1.0 );
-	float low = smoothstep( - 0.5, - 0.3, y.y );
-	vec3 rad = col * ( dcILight * ( 0.2 + 0.7 * kd ) * ( 0.5 + 0.5 * low ) + 0.08 );
-	float a = dcIAlpha( dens * 70.0, h ) * dcIEdge( x );
+	// light: the key light on the dome (its own normal), the inner light, darker low down
+	float kd = clamp( ( dot( normalize( q + 1e-4 * dcIUp ), dcIKey ) + 0.4 ) / 1.4, 0.0, 1.0 );
+	float low = smoothstep( 0.0, 0.12, hy );
+	vec3 rad = col * ( dcILight * ( 0.2 + 0.7 * kd ) * ( 0.55 + 0.45 * low ) + 0.08 );
+	float a = dcIAlpha( dens * 80.0, h ) * dcIEdge( x );
 	return vec4( min( rad, vec3( 1.0 ) ) * a, a );
 }
 vec4 dcBoMoss( vec3 p, vec3 rd, float dt ) {
-	float sz = mix( 0.75, 1.15, uInteriorDensity );
+	float Rc = mix( ${f(MOSS.radius[0])}, ${f(MOSS.radius[1])}, uInteriorDensity );
 	// sub-samples on long segments, so the fuzz survives the lowest marched tier
 	int ns = int( clamp( ceil( dt / 0.03 ), 1.0, 4.0 ) );
 	float h = dt / float( ns );
 	vec4 acc = vec4( 0.0 );
 	for ( int i = 0; i < 4; i ++ ) {
 		if ( i >= ns ) break;
-		acc += ( 1.0 - acc.a ) * dcBoMossAt( p + rd * ( h * ( float( i ) + 0.5 ) ), sz, h );
+		acc += ( 1.0 - acc.a ) * dcBoMossAt( p + rd * ( h * ( float( i ) + 0.5 ) ), Rc, h );
 	}
 	return acc;
 }

@@ -22,7 +22,7 @@ import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/i
 import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS } from '../../src/render/shaders/interior.js';
 import { MARCH_RADIUS } from '../../src/render/extras/insides/foil.js';
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
-import { BO_KINDS, CARD_RADIUS, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
+import { BO_KINDS, CARDS, CARD_RADIUS, TILT, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook } from '../../src/look/appearance.js';
 
@@ -673,27 +673,53 @@ describe('insides', () => {
     const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23])\s+(dc\w+)\s*\(/g)].map((x) => x[1]);
     expect(own.length).toBeGreaterThan(3);
     for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcBo/);
-    // the cards (at density 1, their largest) stay inside the march sphere and never cross
-    const frames = cardFrames();
-    expect(frames.length).toBe(6);
-    const rad = (i) => frames[i].size * (i < 3 ? CARD_RADIUS.flower[1] : CARD_RADIUS.butterfly[1]);
+    // the cards follow the die's up: one shared normal per kind (dcIUp tilted by TILT), built in
+    // the shader from dcIUp before the cards are tested
+    expect(body).toContain('vec3 b1 = dcBoPerp( DC_BO_REF[ b ], dcIUp );');
+    expect(body).toContain('vec3 n = normalize( dcIUp + tl.x * b1 + tl.y * b2 );');
+    expect(count(body, 'dcBoCard( b')).toBe(3);
+    expect(body).toMatch(/vec3 q = x \+ [\d.]+ \* dcIUp;/); // the moss settles below the centre along up
+    for (const t of Object.values(TILT)) expect(Math.atan(Math.hypot(...t))).toBeLessThan((25 * Math.PI) / 180);
+    // over every resting up of every die (face normals, both signs; the coin's caps), sampled
+    // directions all round and the refs themselves (the fallback axis): the cards of a kind are
+    // parallel (so they never cross), their normal within 25 degrees of up, their frames
+    // orthonormal; at density 1, their largest, they stay inside the march sphere
     const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    frames.forEach((fr, i) => {
-      expect(Math.hypot(...fr.c) + rad(i)).toBeLessThan(0.6);
-      expect(dot(fr.n, fr.t1)).toBeCloseTo(0, 6);
-      expect(dot(fr.n, fr.t2)).toBeCloseTo(0, 6);
-    });
-    for (const [i, j] of [[0, 1], [0, 2], [1, 2], [3, 4], [3, 5], [4, 5]]) {
-      // no point of card i's disc on card j's plane within card j's disc
-      const [A, B] = [frames[i], frames[j]];
-      for (let u = -1; u <= 1; u += 0.02)
-        for (let v = -1; v <= 1; v += 0.02) {
-          if (u * u + v * v > 1) continue;
-          const q = [0, 1, 2].map((k) => A.c[k] + rad(i) * (u * A.t1[k] + v * A.t2[k]) - B.c[k]);
-          const sd = dot(q, B.n);
-          if (dot(q, q) - sd * sd < rad(j) ** 2) expect(Math.abs(sd)).toBeGreaterThan(0.01);
-        }
+    const unit = (v) => v.map((x) => x / Math.hypot(...v));
+    const ups = [[0, 1, 0], [0, -1, 0], ...CARDS.map((c) => unit(c.ref))];
+    for (const type of ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+      const sh = getShape(type);
+      for (const fc of sh.faces) {
+        const n = [0, 0, 0];
+        fc.forEach((vi, k) => {
+          const [a, b] = [sh.vertices[vi], sh.vertices[fc[(k + 1) % fc.length]]];
+          n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+          n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+          n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+        });
+        ups.push(unit(n), unit(n.map((x) => -x)));
+      }
     }
+    for (let k = 0; k < 200; k++) {
+      const y = 1 - (2 * (k + 0.5)) / 200;
+      const r = Math.sqrt(1 - y * y);
+      ups.push([r * Math.cos(2.39996 * k), y, r * Math.sin(2.39996 * k)]);
+    }
+    const cos25 = Math.cos((25 * Math.PI) / 180);
+    for (const up of ups)
+      for (const kind of ['flower', 'butterfly']) {
+        const frames = cardFrames(up, kind);
+        expect(frames.length).toBe(3);
+        for (const fr of frames) {
+          expect(fr.n).toEqual(frames[0].n);
+          expect(dot(fr.n, up)).toBeGreaterThan(cos25);
+          expect(dot(fr.n, fr.n)).toBeCloseTo(1, 9);
+          expect(dot(fr.t1, fr.t1)).toBeCloseTo(1, 9);
+          expect(dot(fr.n, fr.t1)).toBeCloseTo(0, 9);
+          expect(dot(fr.n, fr.t2)).toBeCloseTo(0, 9);
+          expect(Math.hypot(...fr.c) + fr.size * CARD_RADIUS[kind][1]).toBeLessThan(0.6);
+        }
+      }
     // an unknown inclusion normalises to the default kind (flower)
     expect(botanicalInside(resin({ type: 'botanical', inclusion: 'cactus' })).uniforms.uBoKind.value).toBe(0);
   });
