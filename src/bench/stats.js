@@ -8,6 +8,9 @@ export const TARGETS = Object.freeze({
   heapGrowthBytes: 2 * 1024 * 1024,
   heapGrowthRatio: 0.05,
   clearlyLessRatio: 0.9,
+  // P9-R20 (owner's decision): the head-to-head passes within 10% of DSN, the margin the
+  // benchmark resolves (identical runs vary by up to about 20%).
+  h2hRatio: 1.1,
 });
 
 function rank(sorted, p) {

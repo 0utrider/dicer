@@ -199,36 +199,25 @@ test('caps: Dicer maxDice 30 (H-R7), DSN maxDiceNumber 35 (range 20-100 step 5)'
   expect(DSN_MAX_DICE % 5).toBe(0);
 });
 
-test('verdicts: pc-defaults 9.5 vs 10 fails (needs clearly less), throttled with the same numbers passes', () => {
+// P9-R20 (owner's decision): every pairing passes within 10% of DSN; no clearly-less rule.
+test('verdicts: every pairing allows Dicer up to 1.10x DSN busy time', () => {
   const reports = [
-    report(entry('dicer', 'pc', 'vsync'), [result('d20', { busy: busy(9.5) })]),
+    report(entry('dicer', 'pc', 'vsync'), [result('d20', { busy: busy(10.5) })]),
     report(entry('dice-so-nice', 'pc', 'vsync'), [
       result('d20', { product: 'dice-so-nice', busy: busy(10) }),
     ]),
-    report(entry('dicer', 'throttled', 'vsync'), [result('d20', { busy: busy(9.5) })]),
+    report(entry('dicer', 'throttled', 'vsync'), [result('d20', { busy: busy(11.5) })]),
     report(entry('dice-so-nice', 'throttled', 'vsync'), [
       result('d20', { product: 'dice-so-nice', busy: busy(10) }),
     ]),
   ];
   const h2h = verdicts(reports).filter((r) => r.type === 'h2h');
-  const pc = h2h.find((r) => r.profile === 'pc');
-  const thr = h2h.find((r) => r.profile === 'throttled');
-  expect(pc).toMatchObject({
-    pairing: 'defaults',
-    scenario: 'd20',
-    requireClearlyLess: true,
-    pass: false,
-  });
-  expect(thr).toMatchObject({
-    pairing: 'defaults',
-    scenario: 'd20',
-    requireClearlyLess: false,
-    pass: true,
-  });
+  expect(h2h.find((r) => r.profile === 'pc')).toMatchObject({ pairing: 'defaults', scenario: 'd20', limit: 1.1, pass: true });
+  expect(h2h.find((r) => r.profile === 'throttled')).toMatchObject({ pairing: 'defaults', scenario: 'd20', limit: 1.1, pass: false });
   expect(h2h).toHaveLength(2);
 });
 
-test('verdicts: effects-off pairing compares DSN effects-off with Dicer low, not clearly-less', () => {
+test('verdicts: effects-off pairing compares DSN effects-off with Dicer low', () => {
   const reports = [
     report(entry('dicer', 'pc', 'vsync', 'low'), [result('pool30', { busy: busy(9.5) })]),
     report(entry('dice-so-nice', 'pc', 'vsync', 'effectsOff'), [
@@ -240,7 +229,7 @@ test('verdicts: effects-off pairing compares DSN effects-off with Dicer low, not
     pairing: 'effectsOff',
     profile: 'pc',
     scenario: 'pool30',
-    requireClearlyLess: false,
+    limit: 1.1,
     pass: true,
   });
 });
@@ -449,7 +438,7 @@ test('summaryMarkdown: target checks, then the head-to-head table, n/a for missi
   expect(md).not.toContain('NaN');
   expect(md).toContain('glow');
   expect(md).toMatch(
-    /\| defaults \| pc \| d20 \| 80\.0 \| 100\.0 \| 0\.80 \| 0\.90 \| 8\.00 \| 10\.00 \| 0 \| 0 \| PASS \|/,
+    /\| defaults \| pc \| d20 \| 80\.0 \| 100\.0 \| 0\.80 \| 1\.10 \| 8\.00 \| 10\.00 \| 0 \| 0 \| PASS \|/,
   );
   expect(md).toContain('## Head-to-head (60 fps, main-thread busy ms per second)');
 });

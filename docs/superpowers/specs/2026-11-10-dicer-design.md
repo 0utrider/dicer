@@ -72,7 +72,7 @@ These are hard targets, measured by the benchmark harness in §7.
 | Window resize | No renderer rebuild; just resize the drawing buffer. |
 | WebGL context loss (iPad backgrounding, GPU reset) | Recover automatically on restore. The chat reveal still happens. |
 | Download size | Loaded at world start ≤ 4 MB at default quality. Theme-specific assets (sounds, interior textures, custom fonts) and high-quality environment maps are loaded on demand, only when a theme that uses them is in play. |
-| Head-to-head | On the same machine, at the closest matching visual settings, Dicer is never slower than DSN 6.4.5 on any harness scenario. |
+| Head-to-head | On the same machine, at the closest matching visual settings, Dicer is no more than 10% slower than DSN 6.4.5 on any harness scenario (owner's decision, P9-R20). |
 
 **What "matching" means (designer's call):**
 - The head-to-head compares **each product's default settings at its own auto-picked tier**, with the same dice and the same scene. This is what a table actually experiences.
@@ -95,7 +95,7 @@ These are hard targets, measured by the benchmark harness in §7.
 - **Real numbers:** the harness runs on the owner's gaming PC.
 - **Simulated low end:** the low-end targets are checked there too, using a throttled profile: Chromium CPU throttling at 4×, the GPU limited by forcing the Low/Medium tier, a 1080p window, and pixel ratio 1. Low-end results from this profile are **estimates**, and the README says so.
 - **Real low-end check:** before a public 1.0, ask testers on Iris Xe-class laptops and an iPad to run the bundled benchmark macro and report results. The benchmark must be runnable by any user from a macro or settings button and give a shareable summary.
-- **Absolute speed:** on the gaming PC, Dicer must use clearly less frame time than DSN at defaults (p95). The "never slower than DSN" rule applies to both profiles.
+- **Absolute speed (owner's decision, P9-R20):** within 10% of DSN on both profiles, measured as main-thread busy time. The earlier bars ("never slower" on every scenario, and clearly less on the gaming PC) were stricter than the benchmark can resolve: identical runs vary by up to about 20%, and by the end of hardening Dicer and DSN were at parity, within about ±10% on every scenario, with both holding the display's full frame rate.
 
 ### G3. Looks: "boutique dice product photo"
 The bar: next to a photo of real premium dice, the rendered dice should read as the same kind of object.

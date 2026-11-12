@@ -172,14 +172,15 @@ test('compare: ratio shown, verdict n/a when either side has failures', () => {
 });
 
 // P9-R13: the head-to-head compares main-thread busy ms per second at the display cap.
-test('compareBusy: ratio on busy time, clearly-less limit, n/a without both or with failures', () => {
+// P9-R20 (owner's decision): within 10% of DSN passes, the margin the benchmark can resolve.
+test('compareBusy: ratio on busy time, 1.10 limit, n/a without both or with failures', () => {
   const r = (msPerSec, o = {}) => base({ busy: { msPerSec }, frame: sum(6), ...o });
-  expect(compareBusy(r(90), r(100), { requireClearlyLess: true })).toMatchObject({
+  expect(compareBusy(r(90), r(100))).toMatchObject({
     dicerBusy: 90, dsnBusy: 100, ratio: 0.9, pass: true, dicerP95: 6, dsnP95: 6,
   });
-  expect(compareBusy(r(95), r(100), { requireClearlyLess: true }).pass).toBe(false);
-  expect(compareBusy(r(100), r(100)).pass).toBe(true);
-  expect(compareBusy(r(101), r(100)).pass).toBe(false);
+  expect(compareBusy(r(110), r(100)).pass).toBe(true);
+  expect(compareBusy(r(111), r(100)).pass).toBe(false);
+  expect(compareBusy(r(101), r(100), { limit: 1 }).pass).toBe(false);
   expect(compareBusy(base({ frame: sum(1) }), r(100))).toMatchObject({ ratio: null, pass: null });
   expect(compareBusy(r(50, { failures: 1 }), r(100))).toMatchObject({ ratio: 0.5, pass: null });
 });

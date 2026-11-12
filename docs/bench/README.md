@@ -61,9 +61,9 @@ The head-to-head compares **main-thread busy time per second** at that frame cap
 
 The head-to-head makes three comparisons:
 
-- Dicer defaults against DSN defaults on `pc`: Dicer must be clearly lighter (busy-time ratio at most 0.9).
-- Dicer defaults against DSN defaults on `throttled`: Dicer must not be slower.
-- DSN with its effects turned off against Dicer quality `low`, on `pc`: Dicer must not be slower.
+- Dicer defaults against DSN defaults on `pc`: Dicer must not be more than 10% busier (busy-time ratio at most 1.10, the owner's P9-R20 decision; identical runs vary by up to about 20%).
+- Dicer defaults against DSN defaults on `throttled`: the same 1.10 limit.
+- DSN with its effects turned off against Dicer quality `low`, on `pc`: the same 1.10 limit.
 
 Reports are named `<product>-<profile>-<mode>[-<variant>]`, for example `dicer-pc-vsync-low` or `dice-so-nice-pc-vsync-effectsOff`.
 
@@ -82,7 +82,7 @@ Everything goes to `artifacts/bench/<timestamp>/`, for example `artifacts/bench/
   - The soak deletes its chat messages every 50 rolls, so the chat log does not count as heap growth. Heap and GPU resources are read at roll 50 and roll 500. When the tier changed during the soak, the resources check is n/a: a tier change swaps programs and textures.
   - Each result's `longTasks.top` in the JSON lists the three longest tasks with `at`, their start in ms after recording began, and `firstRollAt`, when roll 1 was made. Use them to tell a stall inside a roll from one before it.
   - Resize, context loss and hidden tab are disturbances, not frame measurements: they are checked for failed rolls only, plus no renderer rebuild (resize and context loss) and `recovered` (context loss: after the restore the second roll drew on a live context).
-- **Head-to-head**: the main-thread busy ms per second of Dicer and DSN per scenario, their ratio, the limit, both frame p95s (for smoothness, not judged), and the failed rolls of each. For the pc defaults pairing, Dicer must be clearly less than DSN (ratio at most 0.9). Each result in the JSON carries `busy: {msPerSec, scriptMsPerSec, seconds}`. When either side has a failed roll the ratio is still shown, but the result is n/a: the two sides did not measure the same work.
+- **Head-to-head**: the main-thread busy ms per second of Dicer and DSN per scenario, their ratio, the limit, both frame p95s (for smoothness, not judged), and the failed rolls of each. Every pairing passes at a ratio of at most 1.10. Each result in the JSON carries `busy: {msPerSec, scriptMsPerSec, seconds}`. When either side has a failed roll the ratio is still shown, but the result is n/a: the two sides did not measure the same work.
 - **DSN effects-off user flag**: the DSN settings the harness wrote, read back. If an effect setting is missing here, DSN ran with that effect on and the pairing is less fair.
 - The last line counts failed rows, n/a rows and run errors.
 
