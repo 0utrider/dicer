@@ -7,6 +7,7 @@ import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { normalizeAppearance, programKey } from '../../src/look/appearance.js';
 import { LOOKS } from '../../src/look/looks.js';
+import { readableNumbers } from '../../src/look/contrast.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -178,8 +179,34 @@ test('uniforms: atlas, fill colour, engrave depth', () => {
   );
   const u = m.userData.uniforms;
   expect(u.uAtlas.value).toBe(atlas.texture);
-  expect(u.uFillColor.value.getHexString()).toBe(new THREE.Color('#ffcc00').getHexString());
+  // gold on a white body does not read, so the fill is the readable one, not the raw colour
+  const want = readableNumbers(opaque({ numbers: { fill: 'gold', color: '#ffcc00', depth: 0.8 } }));
+  expect(u.uFillColor.value.getHexString()).toBe(new THREE.Color(want.fill).getHexString());
+  expect(want.fill).not.toBe('#ffcc00');
+  expect(u.uGlowIntensity.value).toBeCloseTo(want.glow);
   expect(u.uEngrave.value).toBeCloseTo(0.8);
+});
+
+test('numbers that already read keep their exact colour', () => {
+  const m = createDiceMaterial(
+    look({ body: { type: 'opaque', color: '#101830' }, numbers: { fill: 'gold', color: '#ffcc00' } }),
+    atlas,
+    s,
+    labels,
+  );
+  expect(m.userData.uniforms.uFillColor.value.getHexString()).toBe(new THREE.Color('#ffcc00').getHexString());
+});
+
+// A glowing resin inside (Ember Core) washed the numbers out: a thin dark ink rim just outside each
+// glyph (from the glyph's signed distance, inside its rect only) darkens the refracted body there.
+test('numbers get an ink rim on resin: defined from the glyph distance, applied to the refracted body', async () => {
+  const { RIM_WIDTH, RIM_DARK } = await import('../../src/render/shaders/engrave.js');
+  const { RESIN_REFRACTION } = await import('../../src/render/shaders/bodies.js');
+  expect(RIM_WIDTH).toBeGreaterThan(0);
+  expect(RIM_DARK).toBeGreaterThan(0);
+  expect(RIM_DARK).toBeLessThan(1);
+  expect(ENGRAVE_COLOR).toMatch(/float dcRim = \( 1\.0 - dcMask \) \* smoothstep\(/);
+  expect(RESIN_REFRACTION).toMatch(/dcRefracted \* \( 1\.0 - [0-9.]+ \* dcRim \)/);
 });
 
 test('shader modules export the engraving GLSL and the noise library', () => {
@@ -686,7 +713,7 @@ describe('face layers (image and text faces)', () => {
     const plain = patched(createDiceMaterial(resin, atlas, d6, d6Labels, FLAGS));
     expect(layered.fragmentShader).toContain('1.0 - max( dcMask, dcDecal ) )');
     expect(plain.fragmentShader).not.toContain('dcDecal');
-    expect(plain.fragmentShader).toContain('dcRefracted, 1.0 - dcMask );');
+    expect(plain.fragmentShader).toContain('* dcRim ), 1.0 - dcMask );');
   });
 
   test('uFaceLayer holds the layer and the text tint per face', () => {

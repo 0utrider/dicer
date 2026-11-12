@@ -13,6 +13,7 @@
  * interior march uses vLocalPos / vLocalCam too.
  */
 import { NOISE_GLSL } from './noise.js';
+import { RIM_DARK } from './engrave.js';
 
 /** Raised border band across aEdgeDist (face units) and its bump height. */
 export const BORDER = Object.freeze({ from: 0.06, to: 0.14, height: 0.012 });
@@ -372,7 +373,9 @@ export const RESIN_REFRACTION = /* glsl */ `
 ${INTERIOR_HOOK}
 		dcRefracted *= 1.0 - dcRFin;
 	}
-	totalDiffuse = mix( totalDiffuse, dcRefracted, 1.0 - dcMask );
+	// The ink rim (engrave.js) darkens the refracted body around each number, so a bright inside
+	// (a glowing liquid) cannot wash the numbers out.
+	totalDiffuse = mix( totalDiffuse, dcRefracted * ( 1.0 - ${RIM_DARK.toFixed(2)} * dcRim ), 1.0 - dcMask );
 #endif
 `;
 
