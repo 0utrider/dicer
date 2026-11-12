@@ -20,6 +20,22 @@ test('setPolylines writes 2 vertices per point and degenerate joins between line
   expect(degenerate.length).toBe(4); // the two repeated vertices touch 4 strip triangles
   expect(Math.max(...idx.slice(0, 36))).toBe(11);
   expect(r.mesh.frustumCulled).toBe(false);
+  // Neighbours: line 2's first vertex has prev = itself, next = the following point; ends mirror.
+  const prev = g.attributes.aPrev.array;
+  const next = g.attributes.aNext.array;
+  expect(Array.from(prev.slice(18, 21))).toEqual(Array.from(pos.slice(18, 21)));
+  expect(Array.from(next.slice(18, 21))).toEqual([1, 0.5, 2]);
+  expect(Array.from(prev.slice(24, 27))).toEqual([0, 0.5, 2]); // interior point (vertex 8): prev
+  expect(Array.from(next.slice(24, 27))).toEqual([2, 0.5, 2]);
+  expect(Array.from(next.slice(15, 18))).toEqual(Array.from(pos.slice(15, 18))); // line 1 last point
+  r.dispose();
+});
+
+test('glow fragment uses defined GLSL (ordered smoothstep edges, clamped pow base)', () => {
+  const r = createRibbon({ maxPoints: 4, widthPx: 6, color: new THREE.Color('#fff') });
+  const f = r.mesh.material.fragmentShader;
+  expect(f).toContain('1.0 - smoothstep( 0.0, 0.35, w )');
+  expect(f).not.toContain('pow(');
   r.dispose();
 });
 
@@ -40,6 +56,8 @@ test('width scales with the drawing buffer height', () => {
   const u = r.mesh.material.uniforms;
   expect(u.uHeightPx.value).toBe(2160);
   expect(u.uViewport.value.x).toBe(3840);
+  expect(u.uWidthPx.value).toBe(6);
+  expect(r.mesh.material.vertexShader).toContain('uHeightPx / 1080.0');
   r.dispose();
 });
 

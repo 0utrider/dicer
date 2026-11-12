@@ -62,8 +62,9 @@ uniform float uGlow;
 varying float vW;
 void main() {
 	float w = abs( vW );
-	float core = smoothstep( 0.35, 0.0, w );
-	float halo = pow( 1.0 - w, 2.0 ) * uGlow;
+	float core = 1.0 - smoothstep( 0.0, 0.35, w );
+	float k = max( 0.0, 1.0 - w );
+	float halo = k * k * uGlow;
 	vec3 c = ( uColor * ( core + halo ) + vec3( core * 0.6 ) ) * uAlpha;
 	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 }
