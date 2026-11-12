@@ -100,6 +100,10 @@ const MAX_INTERVAL_MS = 100;
 const GPU_BUDGET_MS = 16.7;
 /** Frames in the GPU p95 window: three hitches in a window are tolerated, four are not. */
 const GPU_WINDOW = 60;
+/** Sorted-window indices the judge reads: the GPU p95 (57th of 60) and the CPU median (30th). */
+const GPU_P95_INDEX = Math.ceil(0.95 * GPU_WINDOW) - 1;
+const CPU_MEDIAN_INDEX = (GPU_WINDOW >> 1) - 1;
+const kth = (a, k) => Array.from(a).sort((x, y) => x - y)[k];
 
 /**
  * Drops a tier (session only) when frame time stays over budget. Call frame(ms, sample) once
@@ -133,8 +137,15 @@ export class AdaptiveQuality {
   #ringNext = 0;
   #frozen = null;
   #gpuBudget;
-  #gpuFrames = [];
-  #cpuFrames = [];
+  // P9-R11: the GPU-path window as two rings plus running counts of frames over budget, so a
+  // frame costs O(1): sorted[k] > budget exactly when more than k samples are over it. The
+  // sorted numbers are computed only when a drop fires (for lastDrop).
+  #gpuRing = new Float64Array(GPU_WINDOW);
+  #cpuRing = new Float64Array(GPU_WINDOW);
+  #winSize = 0;
+  #winNext = 0;
+  #gpuOver = 0;
+  #cpuOver = 0;
   #lastDrop = null;
 
   constructor({ budgetMs = 20, window = 30, gpuBudgetMs = GPU_BUDGET_MS, onDrop } = {}) {
@@ -176,8 +187,7 @@ export class AdaptiveQuality {
       this.#gpuFrame(gpu, Number.isFinite(cpu) ? cpu : 0);
       return;
     }
-    this.#gpuFrames.length = 0;
-    this.#cpuFrames.length = 0;
+    this.#clearWindow();
     ms = Math.min(ms, 3 * this.#budget); // one hitch must not count as a sustained slowdown
     this.#ema = this.#ema === null ? ms : this.#ema + 0.1 * (ms - this.#ema);
     const base = this.#streak > 0 ? this.#frozen : this.baseline;
@@ -194,19 +204,29 @@ export class AdaptiveQuality {
 
   /** GPU-timer path: GPU p95 and CPU median of the last 60 frames against the budget. */
   #gpuFrame(gpu, cpu) {
-    const cap = 3 * this.#gpuBudget;
-    this.#gpuFrames.push(Math.min(gpu, cap));
-    this.#cpuFrames.push(Math.min(cpu, cap));
-    if (this.#gpuFrames.length > GPU_WINDOW) this.#gpuFrames.shift();
-    if (this.#cpuFrames.length > GPU_WINDOW) this.#cpuFrames.shift();
-    if (this.#gpuFrames.length < GPU_WINDOW) return;
-    const g = [...this.#gpuFrames].sort((a, b) => a - b);
-    const c = [...this.#cpuFrames].sort((a, b) => a - b);
-    const gpuP95 = g[Math.ceil(0.95 * g.length) - 1];
-    const cpuMedian = c[(c.length >> 1) - 1];
-    const gpuSlow = gpuP95 > this.#gpuBudget;
-    const cpuSlow = cpuMedian > this.#gpuBudget;
-    if (gpuSlow || cpuSlow) this.#dropNow({ path: 'gpu', gpuP95, cpuMedian, gpuSlow, cpuSlow });
+    const budget = this.#gpuBudget;
+    const cap = 3 * budget;
+    const gr = this.#gpuRing;
+    const cr = this.#cpuRing;
+    const i = this.#winNext;
+    // a full window: the oldest sample (at i) leaves it
+    if (this.#winSize === GPU_WINDOW) this.#gpuOver -= gr[i] > budget, this.#cpuOver -= cr[i] > budget;
+    else this.#winSize++;
+    this.#gpuOver += (gr[i] = Math.min(gpu, cap)) > budget;
+    this.#cpuOver += (cr[i] = Math.min(cpu, cap)) > budget;
+    this.#winNext = (i + 1) % GPU_WINDOW;
+    if (this.#winSize < GPU_WINDOW) return;
+    const gpuSlow = this.#gpuOver > GPU_WINDOW - 1 - GPU_P95_INDEX;
+    const cpuSlow = this.#cpuOver > GPU_WINDOW - 1 - CPU_MEDIAN_INDEX;
+    if (gpuSlow || cpuSlow)
+      this.#dropNow({ path: 'gpu', gpuP95: kth(gr, GPU_P95_INDEX), cpuMedian: kth(cr, CPU_MEDIAN_INDEX), gpuSlow, cpuSlow });
+  }
+
+  #clearWindow() {
+    this.#winSize = 0;
+    this.#winNext = 0;
+    this.#gpuOver = 0;
+    this.#cpuOver = 0;
   }
 
   /** P9-R8: why the last drop fired (null before any); kept across reset() for the report. */
@@ -220,8 +240,7 @@ export class AdaptiveQuality {
     this.#ema = null;
     this.#streak = 0;
     this.#frozen = null;
-    this.#gpuFrames.length = 0;
-    this.#cpuFrames.length = 0;
+    this.#clearWindow();
     this.#grace = GRACE_FRAMES;
     this.#onDrop?.(this.#dropped);
   }
@@ -232,8 +251,7 @@ export class AdaptiveQuality {
     this.#streak = 0;
     this.#frozen = null;
     this.#dropped = 0;
-    this.#gpuFrames.length = 0;
-    this.#cpuFrames.length = 0;
+    this.#clearWindow();
     this.#grace = GRACE_FRAMES;
   }
 }

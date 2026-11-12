@@ -76,6 +76,7 @@ function printPlan(plan, decision) {
       e.product === 'dicer' ? `maxDice ${lib.DICER_MAX_DICE}` : null,
       e.product === 'dice-so-nice' ? `maxDiceNumber ${lib.DSN_MAX_DICE}, immediate display off` : null,
       flag ? (flag.exists ? 'dsn user flag = effects off' : 'dsn user flag unset') : null,
+      e.profileScenario ? `CPU profile of ${e.profileScenario}` : null,
     ].filter(Boolean);
     const ids = e.ids.map((id) => (e.rolls?.[id] ? `${id} (${e.rolls[id]} rolls)` : id));
     console.log(`  ${i + 1}. ${lib.runName(e)}: ${ids.join(', ')} (${extra.join(', ')})`);
@@ -117,6 +118,8 @@ async function rpc(page, method, data, { timeoutMs } = {}) {
 
 /** P9-R5: the module switch (a settings write, then Foundry reloads) gets this long. */
 const SWITCH_TIMEOUT_MS = 60000;
+/** P9-R10: CPU profile sampling interval (microseconds). */
+const PROFILE_INTERVAL_US = 200;
 
 async function login(page) {
   await page.goto(`${URL_BASE}/join`);
@@ -222,7 +225,25 @@ function createHarness(chromium) {
       await login(page);
       if (!(await rpc(page, 'isGM'))) throw Error(`"${GM_USER}" is not a GM.`);
       await page.waitForFunction(READY, null, { timeout: 60000, polling: 250 });
-      return { context, page, cdp, pageErrors, close: () => context.close().catch(() => {}) };
+      // P9-R10 --profile: world.js starts and stops the CDP sampling profiler around one scenario;
+      // the profile stays node-side (it is megabytes), runEntry takes it.
+      let cpuProfile = null;
+      await page.exposeFunction('__benchProfile', async (op) => {
+        if (op === 'start') {
+          await cdp.send('Profiler.enable');
+          await cdp.send('Profiler.setSamplingInterval', { interval: PROFILE_INTERVAL_US });
+          await cdp.send('Profiler.start');
+        } else if (op === 'stop') {
+          cpuProfile = (await cdp.send('Profiler.stop')).profile;
+          await cdp.send('Profiler.disable');
+        }
+      });
+      const takeProfile = () => {
+        const p = cpuProfile;
+        cpuProfile = null;
+        return p;
+      };
+      return { context, page, cdp, pageErrors, takeProfile, close: () => context.close().catch(() => {}) };
     } catch (e) {
       await context.close().catch(() => {});
       throw e;
@@ -324,7 +345,14 @@ function createHarness(chromium) {
       const settings = await rpc(s.page, 'benchSettings');
       await s.cdp.send('Emulation.setCPUThrottlingRate', { rate: p.cpuThrottle });
       await sleep(SETTLE_MS);
-      const suite = await rpc(s.page, 'benchRun', { ids: entry.ids, profile: lib.runName(entry), rolls: entry.rolls ?? null });
+      const suite = await rpc(s.page, 'benchRun', {
+        ids: entry.ids,
+        profile: lib.runName(entry),
+        rolls: entry.rolls ?? null,
+        profileScenario: entry.profileScenario ?? null,
+      });
+      const cpuProfile = entry.profileScenario ? s.takeProfile() : null;
+      const summary = lib.profileSummary(cpuProfile);
       return {
         at: new Date().toISOString(),
         entry,
@@ -332,6 +360,9 @@ function createHarness(chromium) {
         dsnFlag,
         pageErrors: s.pageErrors,
         suite,
+        ...(summary ? { cpu: { scenario: entry.profileScenario, ...summary } } : {}),
+        // Written to <run>.cpuprofile by main, never into the JSON report.
+        ...(cpuProfile ? { cpuProfile } : {}),
       };
     } finally {
       await s.cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {});
@@ -499,10 +530,12 @@ async function main() {
       console.log(`bench: ${name}: ${entry.ids.join(', ')}`);
       try {
         await h.ensureProduct(entry.product);
-        const rep = await h.runEntry(entry, restore);
+        const { cpuProfile, ...rep } = await h.runEntry(entry, restore);
         if (lib.dsnFlagFor(entry)?.exists) dsnFlag = rep.dsnFlag;
         reports.push(rep);
         await writeFile(`${outDir}/${name}.json`, JSON.stringify(rep, null, 2));
+        // P9-R10: opens in Chrome DevTools (Performance panel) or speedscope.
+        if (cpuProfile) await writeFile(`${outDir}/${name}.cpuprofile`, JSON.stringify(cpuProfile));
       } catch (e) {
         errors.push({ run: name, error: h.interrupted ? 'interrupted' : errText(e) });
         console.error(`bench: ${name} failed: ${errText(e)}`);

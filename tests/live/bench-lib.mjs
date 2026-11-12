@@ -380,11 +380,12 @@ export function outDirName(date) {
  */
 export function parseArgs(argv) {
   const args = [...(argv ?? [])];
-  const out = { dryRun: false, quick: false, only: null };
+  const out = { dryRun: false, quick: false, only: null, profile: false };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--dry-run') out.dryRun = true;
     else if (a === '--quick') out.quick = true;
+    else if (a === '--profile') out.profile = true;
     else if (a === '--only' || a.startsWith('--only=')) {
       const raw = a === '--only' ? args[++i] : a.slice('--only='.length);
       const names = String(raw ?? '')
@@ -393,7 +394,7 @@ export function parseArgs(argv) {
         .filter((s) => s && !s.startsWith('--'));
       if (!names.length) return { ...out, error: '--only needs run names, e.g. --only dice-so-nice' };
       out.only = names;
-    } else return { ...out, error: `unknown option ${a} (known: --dry-run, --quick, --only)` };
+    } else return { ...out, error: `unknown option ${a} (known: --dry-run, --quick, --only, --profile)` };
   }
   return out;
 }
@@ -409,7 +410,20 @@ export const QUICK_ROLLS = Object.freeze({ soak500: 200, burst100: 30 });
  * `rolls`, the QUICK_ROLLS overrides), and only the runs whose name contains one of `only`.
  * `error` when the filter leaves nothing.
  */
-export function planFor({ quick = false, only = null } = {}) {
+export function planFor({ quick = false, only = null, profile = false } = {}) {
+  const { plan, error } = selectRuns({ quick, only });
+  if (!profile) return { plan, ...(error ? { error } : {}) };
+  // P9-R10: --profile records a CPU profile of each run's burst100.
+  return {
+    plan: plan.map((e) => (e.ids.includes(PROFILE_SCENARIO) ? Object.freeze({ ...e, profileScenario: PROFILE_SCENARIO }) : e)),
+    ...(error ? { error } : {}),
+  };
+}
+
+/** P9-R10: the scenario --profile records (back-to-back rolls, the steady per-frame cost). */
+export const PROFILE_SCENARIO = 'burst100';
+
+function selectRuns({ quick, only }) {
   const all = matrix();
   const names = new Set(all.map(runName));
   // P9-R9: a term that is a whole run name selects that run only (dicer-pc-uncapped, not -low).
@@ -462,6 +476,55 @@ export function runTier(suite) {
   const end = [...results].reverse().find((r) => r.tier?.after != null)?.tier.after ?? null;
   if (start == null) return suite?.tier ?? 'n/a';
   return end != null && end !== start ? `${start} -> ${end}` : start;
+}
+
+/** P9-R10: which part of the page a CPU profile call frame belongs to. */
+export function bucketOf({ url = '', functionName = '' } = {}) {
+  if (functionName === '(garbage collector)') return 'gc';
+  if (!url) return 'browser'; // (program), native and DOM calls
+  if (/\/modules\/dicer\//.test(url)) return 'dicer';
+  if (/\/modules\/dice-so-nice\//.test(url)) return 'dice-so-nice';
+  if (/\/modules\//.test(url)) return 'other modules';
+  if (/\/systems\//.test(url)) return 'system';
+  return 'foundry';
+}
+
+const round1 = (v) => Math.round(v * 10) / 10;
+
+/**
+ * P9-R10: self time of a Chrome .cpuprofile (CDP Profiler.stop), idle excluded: per bucket and the
+ * `top` hottest functions (name, file:line, 1-based). ms and pct rounded to 0.1. null without one.
+ */
+export function profileSummary(profile, { top = 15 } = {}) {
+  if (!profile?.nodes || !profile.samples || !profile.timeDeltas) return null;
+  const byId = new Map(profile.nodes.map((n) => [n.id, n]));
+  const self = new Map(); // node id -> microseconds
+  profile.samples.forEach((id, i) => self.set(id, (self.get(id) ?? 0) + (profile.timeDeltas[i] ?? 0)));
+  const fns = new Map();
+  const buckets = new Map();
+  let total = 0;
+  for (const [id, us] of self) {
+    const f = byId.get(id)?.callFrame ?? {};
+    if (f.functionName === '(idle)' || f.functionName === '(root)') continue;
+    total += us;
+    const bucket = bucketOf(f);
+    buckets.set(bucket, (buckets.get(bucket) ?? 0) + us);
+    const file = String(f.url ?? '').split(/[/?#]/).filter(Boolean).pop() ?? '';
+    const where = file ? `${file}:${(f.lineNumber ?? 0) + 1}` : '';
+    const key = `${f.functionName}|${where}`;
+    const cur = fns.get(key) ?? { name: f.functionName || '(anonymous)', where, bucket, us: 0 };
+    cur.us += us;
+    fns.set(key, cur);
+  }
+  const shape = (us) => ({ ms: round1(us / 1000), pct: total ? round1((100 * us) / total) : 0 });
+  return {
+    totalMs: round1(total / 1000),
+    buckets: [...buckets].sort((a, b) => b[1] - a[1]).map(([bucket, us]) => ({ bucket, ...shape(us) })),
+    top: [...fns.values()]
+      .sort((a, b) => b.us - a.us)
+      .slice(0, top)
+      .map(({ name, where, bucket, us }) => ({ name, where, bucket, ...shape(us) })),
+  };
 }
 
 /**
@@ -559,6 +622,20 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
     out.push(
       `| ${r.pairing} | ${r.profile} | ${r.scenario} | ${num(r.dicerP95)} | ${num(r.dsnP95)} | ${num(r.ratio)} | ${num(r.limit)} | ${count(r.dicerFailures)} | ${count(r.dsnFailures)} | ${verdict(r.pass)} |`,
     );
+  }
+  // P9-R10: --profile. Per run: the sampled total and buckets, then one table of hot functions.
+  const profiled = (reports ?? []).filter((r) => r?.cpu);
+  if (profiled.length) {
+    out.push('', '## CPU profile (self time)', '');
+    for (const { entry, cpu } of profiled) {
+      const parts = cpu.buckets.map((b) => `${b.bucket} ${num(b.ms, 1)} ms (${num(b.pct, 1)}%)`).join(', ');
+      out.push(`- ${runName(entry)}, ${cpu.scenario}: ${num(cpu.totalMs, 1)} ms sampled; ${parts}`);
+    }
+    out.push('', '| Run | Function | Where | Part | Self ms | % |', '| --- | --- | --- | --- | --- | --- |');
+    for (const { entry, cpu } of profiled) {
+      for (const t of cpu.top)
+        out.push(`| ${runName(entry)} | ${t.name} | ${t.where} | ${t.bucket} | ${num(t.ms, 1)} | ${num(t.pct, 1)} |`);
+    }
   }
   const keys = Object.entries(dsnFlag?.exists ? (dsnFlag.value ?? {}) : {});
   out.push('', "## DSN effects-off user flag (flags['dice-so-nice'].settings, read back)", '');

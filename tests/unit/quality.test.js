@@ -332,3 +332,69 @@ describe('AdaptiveQuality: learned baseline (P2-R13)', () => {
     expect(onDrop.mock.calls.length).toBeLessThanOrEqual(1);
   });
 });
+
+// P9-R11: the GPU-path judge keeps running counts instead of sorting two 60-frame windows on
+// every frame (13% of Dicer's JS time in the low-end profile). It must decide exactly as the
+// sorting judge did: GPU p95 (sorted[56] of 60) over budget, or CPU median (sorted[29]) over it.
+describe('GPU-path judge matches the sorting reference', () => {
+  /** The pre-P9-R11 judge, frame by frame: the frame index of each drop. */
+  function referenceDrops(frames, budget = 16.7) {
+    const cap = 3 * budget;
+    let g = [];
+    let c = [];
+    let grace = 10;
+    const drops = [];
+    frames.forEach(([gpu, cpu], i) => {
+      if (grace > 0) {
+        grace--;
+        return;
+      }
+      g.push(Math.min(gpu, cap));
+      c.push(Math.min(cpu, cap));
+      if (g.length > 60) g.shift();
+      if (c.length > 60) c.shift();
+      if (g.length < 60) return;
+      const gs = [...g].sort((a, b) => a - b);
+      const cs = [...c].sort((a, b) => a - b);
+      if (gs[Math.ceil(0.95 * 60) - 1] > budget || cs[29] > budget) {
+        drops.push({ i, gpuP95: gs[56], cpuMedian: cs[29] });
+        g = [];
+        c = [];
+        grace = 10;
+      }
+    });
+    return drops;
+  }
+
+  function seeded(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 2 ** 32;
+    };
+  }
+
+  test.each([1, 2, 3, 4, 5, 6, 7, 8])('random frame mix %i: same drops, same numbers', (seed) => {
+    const rnd = seeded(seed);
+    const frames = Array.from({ length: 3000 }, () => {
+      const gpu = rnd() < 0.08 ? 10 + rnd() * 60 : rnd() * 16; // a few GPU spikes
+      const cpu = rnd() < 0.45 + 0.1 * Math.sin(seed) ? 12 + rnd() * 10 : rnd() * 8; // CPU near budget
+      return [gpu, cpu];
+    });
+    frames.push(...Array.from({ length: 70 }, () => [16.7, 16.7]), ...Array.from({ length: 70 }, () => [16.71, 1])); // exact edges
+    const drops = [];
+    let i = 0;
+    const q = new AdaptiveQuality({});
+    const seen = new AdaptiveQuality({
+      onDrop: () => drops.push({ i, gpuP95: seen.lastDrop.gpuP95, cpuMedian: seen.lastDrop.cpuMedian }),
+    });
+    for (; i < frames.length; i++) {
+      const [gpu, cpu] = frames[i];
+      seen.frame(Math.max(gpu, cpu), { interval: 16.7, cpu, gpu });
+    }
+    expect(q.dropped).toBe(0);
+    const ref = referenceDrops(frames);
+    expect(ref.length).toBeGreaterThan(0);
+    expect(drops).toEqual(ref);
+  });
+});
