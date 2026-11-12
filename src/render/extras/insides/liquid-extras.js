@@ -17,8 +17,8 @@
  * - sand: a settled layer at the bottom along -dcIUp, filling the march sphere up to LQ.sandTop
  *   (about 22% of its height), with a flat top. The top plane is tested exactly against each
  *   segment; a segment that starts in the sand (where the ray enters the sphere below the plane)
- *   shows the bowl's side. It is opaque, so it ends the march. Fine hashed grains in colors[1],
- *   slightly darker, each its own shade (a few dark and a few pale ones), faintly mottled, lit
+ *   shows the bowl's side. It is opaque, so it ends the march. Fine hashed grains in a warm sand
+ *   tone tinted 25% towards colors[1] (sand whatever the liquid's colours), each its own shade (a few dark and a few pale ones), faintly mottled, lit
  *   per grain and darker deeper down; a few grains glint in the key light.
  *
  * The options are #defines (DC_LQ_BUBBLE, DC_LQ_SAND): each combination is its own program (the
@@ -104,7 +104,8 @@ vec4 dcLqSand( vec3 x, vec3 rd, bool top ) {
 	vec3 cell = floor( x * 130.0 );
 	float g = dcHash13( cell );
 	float g2 = dcHash13( cell + 7.7 );
-	vec3 base = uInteriorColors[ 1 ] * 0.72;
+	// a warm sand tone tinted a little towards colors[1]: sand whatever the liquid's colours
+	vec3 base = mix( vec3( 0.78, 0.66, 0.46 ), uInteriorColors[ 1 ], 0.25 );
 	// grain to grain: each its own shade, a few dark and a few pale grains, faint mottling
 	vec3 col = base * ( 0.7 + 0.45 * g );
 	col = mix( col, base * 0.45, step( 0.88, g2 ) );

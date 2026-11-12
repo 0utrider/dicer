@@ -801,6 +801,8 @@ describe('insides', () => {
       // gravity: the bubble up along dcIUp, the sand down (heights measured along dcIUp)
       expect(count(body, '#define DC_LQ_BUBBLE')).toBe(opts.bubble ? 1 : 0);
       expect(count(body, '#define DC_LQ_SAND')).toBe(opts.sand ? 1 : 0);
+      // the sand: a warm sand tone tinted 25% towards colors[1], whatever the liquid's colours
+      expect(body).toContain('vec3 base = mix( vec3( 0.78, 0.66, 0.46 ), uInteriorColors[ 1 ], 0.25 );');
       expect(body).toContain('vec3 dcLqBt = DC_LQ_REF - dot( DC_LQ_REF, dcIUp ) * dcIUp;');
       expect(body).toContain('vec3 dcLqBc = dcIUp * DC_LQ_BH + dcLqBt * DC_LQ_BO;');
       expect(body).toContain('dot( p, dcIUp )');
