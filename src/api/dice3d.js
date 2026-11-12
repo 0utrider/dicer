@@ -169,6 +169,27 @@ export function createDice3dApi({
     console.warn(`dicer: game.dice3d.${name} ignored a malformed call`, detail);
   };
 
+  /**
+   * One local die for a preview: a d100 shows as a d10, an unknown type as a d20, and the value
+   * is one of the shape's faces (its max when missing or not a face). Returns diceBox.roll's result.
+   */
+  function throwPreviewDie({ type = 'd20', value, fx, appearance, soundMaterial }) {
+    let die = type === 'd100' ? 'd10' : type;
+    let shape;
+    try {
+      shape = getShape(die);
+    } catch {
+      die = 'd20';
+      shape = getShape(die);
+    }
+    const face = shape.values.includes(value) ? value : Math.max(...shape.values);
+    const spec = { type: die, value: face };
+    if (fx) spec.fx = [fx];
+    if (appearance) spec.appearance = appearance;
+    if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
+    return diceBox.roll([spec]);
+  }
+
   const me = () => {
     try {
       return currentUser();
@@ -779,14 +800,9 @@ export function createDice3dApi({
         globalThis.ui?.notifications?.info(loc ? loc('DICER.Effects.PreviewOff') : 'DICER.Effects.PreviewOff');
         return false;
       }
-      const max = Number(String(die).slice(1));
-      const spec = {
-        type: die,
-        value: Number.isFinite(Number(value)) && value != null ? Number(value) : max,
-        fx: [{ effect: { id, ...effectOpts } }],
-      };
       try {
-        await diceBox.roll([spec]).finished;
+        const fx = { effect: { id, ...effectOpts } };
+        await throwPreviewDie({ type: die, value, fx }).finished;
         return true;
       } catch (err) {
         warnOnce('previewEffect', err);
@@ -944,23 +960,9 @@ export function createDice3dApi({
     /** Local only: throws one die whose spec carries `fx`. Never broadcast, no chat message, no hooks. */
     _preview: {
       value(fx, { type = 'd20', value, appearance, soundMaterial } = {}) {
-        let die = type === 'd100' ? 'd10' : type;
-        let shape;
+        // appearance / soundMaterial: a damage theme's look for the damage map editor's preview.
         try {
-          shape = getShape(die);
-        } catch {
-          die = 'd20';
-          shape = getShape(die);
-        }
-        const values = shape.values;
-        const face = values.includes(value) ? value : Math.max(...values);
-        try {
-          // appearance / soundMaterial: a damage theme's look for the damage map editor's preview.
-          const spec = { type: die, value: face };
-          if (fx) spec.fx = [fx];
-          if (appearance) spec.appearance = appearance;
-          if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
-          return diceBox.roll([spec]).landed;
+          return throwPreviewDie({ type, value, fx, appearance, soundMaterial }).landed;
         } catch (err) {
           warnOnce('_preview', err);
           return Promise.resolve();

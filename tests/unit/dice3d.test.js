@@ -1,4 +1,5 @@
 import { createDice3dApi, createDebugCounters, materialReadyNotifier } from '../../src/api/dice3d.js';
+import { getShape } from '../../src/core/dice-shapes.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { buildScene } from '../../src/render/scene.js';
@@ -1192,10 +1193,19 @@ describe('previewEffect', () => {
     vi.unstubAllGlobals();
   });
 
-  test('accepts a dsn: id and defaults the value to the die max', async () => {
+  test('accepts a dsn: id; a d100 shows as a d10 on a real face', async () => {
     const p = api.previewEffect('dsn:flame', { die: 'd100' });
     await finish();
     expect(await p).toBe(true);
-    expect(diceBox.rolls.at(-1).specs[0]).toMatchObject({ type: 'd100', value: 100 });
+    const spec = diceBox.rolls.at(-1).specs[0];
+    expect(spec).toMatchObject({ type: 'd10', fx: [{ effect: { id: 'dsn:flame' } }] });
+    expect(spec.value).toBe(Math.max(...getShape('d10').values));
+  });
+
+  test('an unknown die type falls back to a d20 showing 20', async () => {
+    const p = api.previewEffect('sparkles', { die: 'd7', value: 99 });
+    await finish();
+    expect(await p).toBe(true);
+    expect(diceBox.rolls.at(-1).specs[0]).toMatchObject({ type: 'd20', value: 20 });
   });
 });
