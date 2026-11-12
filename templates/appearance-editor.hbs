@@ -46,6 +46,14 @@
               {{/each}}
             </div>
           </div>
+          {{#if show.preset}}
+            <div class="dicer-field">
+              <span>{{localize "DICER.Appearance.Body.Preset"}}</span>
+              <div class="dicer-ae-chips" role="radiogroup" aria-label="{{localize "DICER.Appearance.Body.Preset"}}">
+                {{#each bodyPresets}}<button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" role="radio" aria-checked="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="body.preset" data-value="{{id}}">{{label}}</button>{{/each}}
+              </div>
+            </div>
+          {{/if}}
           <div class="dicer-ae-row">
             <div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Body.Color"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.body.color}}" data-color-for="body.color" aria-label="{{localize "DICER.Appearance.Body.Color"}}"><input type="text" name="body.color" value="{{form.body.color}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Body.Color"}}"></span></div>
             {{#if show.color2}}<div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Body.SecondColor"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.body.color2}}" data-color-for="body.color2" aria-label="{{localize "DICER.Appearance.Body.SecondColor"}}"><input type="text" name="body.color2" value="{{form.body.color2}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Body.SecondColor"}}"></span></div>{{else}}<label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Body.Roughness"}}<output data-for="body.roughness">{{pct.roughness}}</output></span><input type="range" name="body.roughness" min="0" max="1" step="0.01" value="{{form.body.roughness}}"></label>{{/if}}
@@ -59,6 +67,7 @@
             </div>
           {{/if}}
           {{#if show.color2}}<label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Body.Roughness"}}<output data-for="body.roughness">{{pct.roughness}}</output></span><input type="range" name="body.roughness" min="0" max="1" step="0.01" value="{{form.body.roughness}}"></label>{{/if}}
+          <label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Body.Luminous"}}<output data-for="body.luminous">{{pct.luminous}}</output></span><input type="range" name="body.luminous" min="0" max="1" step="0.05" value="{{form.body.luminous}}"></label>
         </div>
       </details>
 

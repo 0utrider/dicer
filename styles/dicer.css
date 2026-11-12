@@ -1169,6 +1169,19 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
     radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95) 0 9%, transparent 42%),
     conic-gradient(from 210deg, var(--c), var(--c2), color-mix(in srgb, var(--c) 40%, white 60%), var(--c));
 }
+.dicer-appearance-editor .dicer-ae-swatch-iridescent {
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.6) 0 8%, transparent 30%),
+    conic-gradient(from 20deg, var(--c), var(--c2), color-mix(in srgb, var(--c) 50%, var(--c2) 50%), var(--c));
+}
+.dicer-appearance-editor .dicer-ae-swatch-gem {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0 22%, transparent 22% 50%, rgba(0, 0, 0, 0.3) 50% 74%, transparent 74%),
+    linear-gradient(45deg, var(--c2) 0%, var(--c) 55%, color-mix(in srgb, var(--c) 55%, white 45%) 100%);
+}
+.dicer-appearance-editor .dicer-ae-swatch-wood {
+  background: repeating-radial-gradient(circle at 70% 60%, var(--c) 0 2px, var(--c2) 2px 3.5px);
+}
 .dicer-appearance-editor .dicer-ae-fill-paint {
   background: var(--c);
 }

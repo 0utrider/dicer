@@ -2,9 +2,13 @@
 import { readFileSync } from 'node:fs';
 import Handlebars from 'handlebars';
 import { duplicateKeys, usedKeys, resolve } from './lang-check.js';
-import { normalizeAppearance, EDGE_STEPS, ICON_IDS, FONT_IDS_BUILTIN } from '../../src/look/appearance.js';
+import { normalizeAppearance, EDGE_STEPS, ICON_IDS, FONT_IDS_BUILTIN, BODY_PRESETS } from '../../src/look/appearance.js';
+import { PRESET_COLORS } from '../../src/look/body-colors.js';
 import { BUILTIN_THEMES, normalizeTheme, readThemeList, findTheme } from '../../src/themes/themes.js';
 import {
+  BODY_TYPES,
+  FINISHES,
+  BODY_PRESET_LISTS,
   FILLS,
   RELIEFS,
   ICON_CHOICES,
@@ -90,6 +94,64 @@ describe('relief, icons, new fills and fonts in the form', () => {
     const f = setField(formFromAppearance({}), 'numbers.fontKind', 'norse');
     expect(appearanceFromForm(f).numbers.font).toBe('norse');
     expect(fontInvalid(f)).toBe(false);
+  });
+});
+
+describe('bodies, presets, finishes and luminous in the form', () => {
+  it('form round-trips every new body type, preset, finish and luminous', () => {
+    for (const [type, presets] of Object.entries(BODY_PRESETS))
+      for (const preset of presets) {
+        const a = normalizeAppearance({ body: { type, preset, luminous: 0.5 } });
+        expect(a.body).toMatchObject({ type, preset, luminous: 0.5 });
+        expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+      }
+    for (const finish of ['patina', 'worn']) {
+      const a = normalizeAppearance({ body: { type: 'metal', finish } });
+      expect(a.body.finish).toBe(finish);
+      expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+    }
+    // string slider values read as numbers
+    expect(appearanceFromForm(setField(formFromAppearance({}), 'body.luminous', '0.65')).body.luminous).toBe(0.65);
+  });
+  it('picking a preset applies its PRESET_COLORS; picking a new type picks its first preset', () => {
+    let f = setField(formFromAppearance({}), 'body.type', 'wood');
+    expect(f.body).toMatchObject({ type: 'wood', preset: 'oak', ...PRESET_COLORS.oak });
+    f = setField(f, 'body.preset', 'ebony');
+    expect(f.body).toMatchObject({ preset: 'ebony', ...PRESET_COLORS.ebony });
+    // the user can still change every colour afterwards
+    f = setField(setField(f, 'body.color', '#123456'), 'body.roughness', '0.9');
+    expect(appearanceFromForm(f).body).toMatchObject({ type: 'wood', preset: 'ebony', color: '#123456', roughness: 0.9 });
+    // re-picking the same type keeps the chosen preset and edited colours
+    f = setField(f, 'body.type', 'wood');
+    expect(f.body).toMatchObject({ preset: 'ebony', color: '#123456' });
+    // a type without presets has none
+    f = setField(f, 'body.type', 'opaque');
+    expect(appearanceFromForm(f).body.preset).toBeNull();
+    for (const [type, presets] of Object.entries(BODY_PRESETS))
+      expect(setField(formFromAppearance({}), 'body.type', type).body).toMatchObject({ preset: presets[0], ...PRESET_COLORS[presets[0]] });
+    // the aged finishes apply their colours (a change of finish only)
+    f = setField(formFromAppearance({ body: { type: 'metal' } }), 'body.finish', 'patina');
+    expect(f.body).toMatchObject({ finish: 'patina', ...PRESET_COLORS.patina });
+    f = setField(setField(f, 'body.color', '#010203'), 'body.finish', 'patina');
+    expect(f.body.color).toBe('#010203');
+    expect(setField(f, 'body.finish', 'worn').body).toMatchObject({ finish: 'worn', ...PRESET_COLORS.worn });
+    expect(setField(f, 'body.finish', 'brushed').body.color).toBe('#010203');
+  });
+  it("the form's body lists are exactly what normalisation accepts", () => {
+    expect(BODY_PRESET_LISTS).toEqual(BODY_PRESETS);
+    expect(BODY_TYPES).toEqual(['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood']);
+    expect(FINISHES).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn']);
+    for (const type of BODY_TYPES) expect(normalizeAppearance({ body: { type } }).body.type).toBe(type);
+    for (const finish of FINISHES) expect(normalizeAppearance({ body: { type: 'metal', finish } }).body.finish).toBe(finish);
+    for (const id of [...Object.values(BODY_PRESETS).flat(), 'patina', 'worn']) expect(PRESET_COLORS[id]).toBeTruthy();
+  });
+  it('visibleSections: presets for the new bodies, a second colour for them, luminous always', () => {
+    for (const type of BODY_TYPES) {
+      const v = visibleSections({ body: { type } });
+      expect(v.preset).toBe(Object.hasOwn(BODY_PRESETS, type));
+      expect(v.luminous).toBe(true);
+      expect(v.color2).toBe(['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'].includes(type));
+    }
   });
 });
 
@@ -451,6 +513,31 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('the material section renders preset chips only for types with presets, five finishes for metal, and the luminous range', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    expect(labels('[data-field="body.type"]')).toHaveLength(8);
+    expect(labels('[data-field="body.finish"]')).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn'].map((f) => L(`Finish.${f}`)));
+    expect(q(app, '[data-field="body.preset"]')).toBeNull();
+    expect(q(app, 'input[name="body.luminous"]')).toBeTruthy();
+    expect(q(app, 'input[name="body.luminous"]').getAttribute('max')).toBe('1');
+    expect(app.element.textContent).toContain(L('Body.Luminous'));
+    await click(app, '[data-field="body.type"][data-value="wood"]');
+    expect(labels('[data-field="body.preset"]')).toEqual(BODY_PRESETS.wood.map((p) => L(`Preset.${p}`)));
+    expect(q(app, '[data-field="body.preset"][data-value="oak"]').getAttribute('aria-checked')).toBe('true');
+    expect(q(app, '[data-field="body.finish"]')).toBeNull();
+    expect(app.element.textContent).toContain(L('Body.Preset'));
+    await click(app, '[data-field="body.preset"][data-value="cherry"]');
+    expect(app.theme().appearance.body).toMatchObject({ type: 'wood', preset: 'cherry', ...PRESET_COLORS.cherry });
+    expect(q(app, 'input[name="body.color"]').value).toBe(PRESET_COLORS.cherry.color);
+    type(app, 'body.luminous', '0.4');
+    expect(app.theme().appearance.body.luminous).toBe(0.4);
+    await click(app, '[data-field="body.type"][data-value="opaque"]');
+    expect(q(app, '[data-field="body.preset"]')).toBeNull();
+    await app.close();
+  });
+
   it('a body chip switches the stack (resin shows the inside, hides the finish) and previews the change', async () => {
     vi.useFakeTimers();
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
@@ -708,8 +795,9 @@ describe('lang/en.json', () => {
     expect(duplicateKeys()).toEqual([]);
     const lang = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Appearance;
     const keys = usedKeys('Appearance', ['src/ui/appearance-editor.js', 'templates/appearance-editor.hbs'], {
-      'BodyType.': ['opaque', 'resin', 'metal', 'marble', 'pearl'],
-      'Finish.': ['polished', 'brushed', 'antique'],
+      'BodyType.': BODY_TYPES,
+      'Finish.': FINISHES,
+      'Preset.': Object.values(BODY_PRESETS).flat(),
       'InsideType.': ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'],
       'Shape.': ['star', 'heart', 'skull', 'sphere'],
       'Fill.': ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'],
@@ -719,10 +807,14 @@ describe('lang/en.json', () => {
       'Edge.': ['sharp', 'crisp', 'soft', 'round', 'veryRound'],
     });
     expect(keys.length).toBeGreaterThan(30);
+    expect([BODY_TYPES.length, Object.values(BODY_PRESETS).flat().length, FINISHES.length]).toEqual([8, 11, 5]);
+    expect(keys).toEqual(expect.arrayContaining(['Body.Preset', 'Body.Luminous']));
     for (const k of keys) expect(typeof resolve(lang, k), `DICER.Appearance.${k}`).toBe('string');
     // dynamic keys built from lists
     for (const [group, ids] of Object.entries({
-      BodyType: ['opaque', 'resin', 'metal', 'marble', 'pearl'],
+      BodyType: BODY_TYPES,
+      Finish: FINISHES,
+      Preset: Object.values(BODY_PRESETS).flat(),
       Section: ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras'],
     }))
       for (const id of ids) expect(typeof lang[group][id], `${group}.${id}`).toBe('string');

@@ -9,10 +9,18 @@
  */
 import { normalizeAppearance, EDGE_STEPS } from '../look/appearance.js';
 import { DIE_TYPES } from '../themes/themes.js';
+import { PRESET_COLORS } from '../look/body-colors.js';
 import { upsertTheme, userThemeId, worldThemeId, mergeEdited } from './theme-form.js';
 
-export const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl'];
-export const FINISHES = ['polished', 'brushed', 'antique'];
+export const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
+export const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
+// Literal copy of BODY_PRESETS (importing it would add an export to the world-start chunk; the unit
+// test pins it to the real one).
+export const BODY_PRESET_LISTS = {
+  iridescent: ['chameleon', 'opal', 'dichroic'],
+  gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
+  wood: ['oak', 'walnut', 'cherry', 'ebony'],
+};
 export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
 export const SHAPES = ['star', 'heart', 'skull', 'sphere'];
 export const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
@@ -28,7 +36,7 @@ export { EDGE_STEPS };
 export const FONT_SUGGESTIONS = ['Georgia', 'Impact', 'Palatino Linotype', 'Trebuchet MS', 'Verdana', 'Courier New', 'Times New Roman'];
 export const LOOK_KIND = 'dicer-look';
 /** Body types with a second colour (marble veins, pearl sheen, resin tint). */
-const TWO_TONE = ['marble', 'pearl', 'resin'];
+const TWO_TONE = ['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'];
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
@@ -82,7 +90,7 @@ export function appearanceFromForm(form) {
   const e = isObj(f.edges) ? f.edges : {};
   const g = isObj(f.glow) ? f.glow : {};
   return normalizeAppearance({
-    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness) },
+    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset, luminous: n(b.luminous) },
     interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape },
     numbers: {
       fill: num.fill,
@@ -117,6 +125,8 @@ export function visibleSections(look) {
     insideShape: resin && inside === 'shape',
     color2: TWO_TONE.includes(body),
     finish: body === 'metal',
+    preset: Object.hasOwn(BODY_PRESET_LISTS, body),
+    luminous: true,
     numberColor: fill !== 'gold' && fill !== 'silver',
     fontFamily: kind === 'css',
     fontFile: kind === 'file',
@@ -136,8 +146,18 @@ export function setField(form, path, value) {
   if (path === 'numbers.fill' && Object.hasOwn(METAL_FILL_COLORS, value) && out.numbers?.fill !== value) {
     out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), color: METAL_FILL_COLORS[value] };
   }
+  // A new body type starts from its first preset; a preset (and the aged finishes) apply their colours.
+  // Only a change applies them: re-picking keeps what the user edited.
+  if (path === 'body.type' && out.body?.type !== value) {
+    const first = BODY_PRESET_LISTS[value]?.[0] ?? null;
+    out.body = { ...(isObj(out.body) ? out.body : {}), preset: first, ...(first ? PRESET_COLORS[first] : {}) };
+  } else if (path === 'body.preset' && Object.hasOwn(PRESET_COLORS, value)) {
+    out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
+  } else if (path === 'body.finish' && (value === 'patina' || value === 'worn') && out.body?.finish !== value) {
+    out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
+  }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'luminous'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

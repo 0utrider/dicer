@@ -17,6 +17,7 @@ import { KEEP, formFromTheme, themeFromForm } from './theme-form.js';
 import {
   BODY_TYPES,
   FINISHES,
+  BODY_PRESET_LISTS,
   INTERIOR_TYPES,
   SHAPES,
   FILLS,
@@ -251,6 +252,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       hasPreview: Boolean(this.#context().atlas),
       dice: DIE_TYPES.map((type) => ({ type, active: type === this.#dieType, overridden: overridden(type) })),
       bodyTypes: active(BODY_TYPES, form.body.type, 'DICER.Appearance.BodyType.'),
+      bodyPresets: active(BODY_PRESET_LISTS[form.body.type] ?? [], form.body.preset, 'DICER.Appearance.Preset.'),
       finishes: active(FINISHES, form.body.finish, 'DICER.Appearance.Finish.'),
       insideTypes: active(INTERIOR_TYPES, form.interior.type, 'DICER.Appearance.InsideType.', INSIDE_ICONS),
       shapes: active(SHAPES, form.interior.shape, 'DICER.Appearance.Shape.', SHAPE_ICONS),
@@ -270,6 +272,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       })),
       pct: {
         roughness: pct(form.body.roughness),
+        luminous: pct(form.body.luminous),
         density: pct(form.interior.density),
         depth: pct(form.numbers.depth),
         intensity: pct(form.glow.intensity),

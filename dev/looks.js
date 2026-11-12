@@ -13,6 +13,7 @@ import { getShape, labelFor } from '../src/core/dice-shapes.js';
 import { restingQuaternion, minY } from '../src/core/resting.js';
 import { LOOKS } from '../src/look/looks.js';
 import { ICON_IDS } from '../src/look/appearance.js';
+import { PRESET_COLORS } from '../src/look/body-colors.js';
 import { runProbe } from '../src/render/gpu-probe.js';
 import { TIERS, flagsFor } from '../src/render/quality.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from '../src/render/face-textures.js';
@@ -48,26 +49,26 @@ const VARIANTS = [
     {},
     { icons: { crit: 'starburst', fumble: 'broken-shield' }, relief: 'raised', fill: 'holo' },
   ],
-  // iridescent bodies: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
-  ['iridescent~chameleon', 'default', 'chameleon', {}, {}, { type: 'iridescent', preset: 'chameleon', color: '#1a9e8f', color2: '#6a2bd1', roughness: 0.15 }],
-  ['iridescent~opal', 'default', 'opal', {}, {}, { type: 'iridescent', preset: 'opal', color: '#e8eef0', color2: '#7fd6e8', roughness: 0.2 }],
-  ['iridescent~dichroic', 'default', 'dichroic glass', {}, {}, { type: 'iridescent', preset: 'dichroic', color: '#102030', color2: '#ff6a3d', roughness: 0.05 }],
-  // gem bodies: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
-  ['gem~amethyst', 'default', 'amethyst', {}, {}, { type: 'gem', preset: 'amethyst', color: '#7b3fb5', color2: '#2a0f45', roughness: 0.1 }],
-  ['gem~malachite', 'default', 'malachite', {}, {}, { type: 'gem', preset: 'malachite', color: '#1f8a5a', color2: '#0a3a24', roughness: 0.2 }],
-  ['gem~obsidian', 'default', 'obsidian', {}, {}, { type: 'gem', preset: 'obsidian', color: '#0d0c10', color2: '#4a3f5a', roughness: 0.05 }],
-  ['gem~quartz', 'default', 'quartz', {}, {}, { type: 'gem', preset: 'quartz', color: '#e9e4ee', color2: '#b8b0c4', roughness: 0.15 }],
-  // wood bodies: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
-  ['wood~oak', 'default', 'oak', {}, {}, { type: 'wood', preset: 'oak', color: '#b98a52', color2: '#6e4a26', roughness: 0.55 }],
-  ['wood~walnut', 'default', 'walnut', {}, {}, { type: 'wood', preset: 'walnut', color: '#5a3a22', color2: '#2a170c', roughness: 0.5 }],
-  ['wood~cherry', 'default', 'cherry', {}, {}, { type: 'wood', preset: 'cherry', color: '#9c4a2c', color2: '#5a2414', roughness: 0.45 }],
-  ['wood~ebony', 'default', 'ebony', {}, {}, { type: 'wood', preset: 'ebony', color: '#1c1714', color2: '#3b302a', roughness: 0.35 }],
-  // aged metal finishes: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
-  ['metal~patina', 'default', 'copper patina', {}, {}, { type: 'metal', finish: 'patina', color: '#b5653a', color2: '#3fae9a', roughness: 0.4 }],
-  ['metal~worn', 'default', 'battle-worn', {}, {}, { type: 'metal', finish: 'worn', color: '#9aa0a6', color2: '#3a3d40', roughness: 0.35 }],
-  // luminous (glow in the dark): Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
+  // iridescent bodies
+  ['iridescent~chameleon', 'default', 'chameleon', {}, {}, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
+  ['iridescent~opal', 'default', 'opal', {}, {}, { type: 'iridescent', preset: 'opal', ...PRESET_COLORS.opal }],
+  ['iridescent~dichroic', 'default', 'dichroic glass', {}, {}, { type: 'iridescent', preset: 'dichroic', ...PRESET_COLORS.dichroic }],
+  // gem bodies
+  ['gem~amethyst', 'default', 'amethyst', {}, {}, { type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }],
+  ['gem~malachite', 'default', 'malachite', {}, {}, { type: 'gem', preset: 'malachite', ...PRESET_COLORS.malachite }],
+  ['gem~obsidian', 'default', 'obsidian', {}, {}, { type: 'gem', preset: 'obsidian', ...PRESET_COLORS.obsidian }],
+  ['gem~quartz', 'default', 'quartz', {}, {}, { type: 'gem', preset: 'quartz', ...PRESET_COLORS.quartz }],
+  // wood bodies
+  ['wood~oak', 'default', 'oak', {}, {}, { type: 'wood', preset: 'oak', ...PRESET_COLORS.oak }],
+  ['wood~walnut', 'default', 'walnut', {}, {}, { type: 'wood', preset: 'walnut', ...PRESET_COLORS.walnut }],
+  ['wood~cherry', 'default', 'cherry', {}, {}, { type: 'wood', preset: 'cherry', ...PRESET_COLORS.cherry }],
+  ['wood~ebony', 'default', 'ebony', {}, {}, { type: 'wood', preset: 'ebony', ...PRESET_COLORS.ebony }],
+  // aged metal finishes
+  ['metal~patina', 'default', 'copper patina', {}, {}, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
+  ['metal~worn', 'default', 'battle-worn', {}, {}, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
+  // luminous (glow in the dark)
   ['opaque~luminous', 'default', 'glow in the dark', {}, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
-  ['wood~ebony~luminous', 'default', 'ebony + luminous', {}, {}, { type: 'wood', preset: 'ebony', color: '#1c1714', color2: '#3b302a', roughness: 0.35, luminous: 1 }],
+  ['wood~ebony~luminous', 'default', 'ebony + luminous', {}, {}, { type: 'wood', preset: 'ebony', ...PRESET_COLORS.ebony, luminous: 1 }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only
