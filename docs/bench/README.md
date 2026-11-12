@@ -21,20 +21,20 @@ npm run test:live:bench              # the full matrix
 npm run test:live:bench -- --dry-run # print the matrix, launch nothing, change nothing
 npm run test:live:bench -- --quick   # a shorter partial run, for checking a fix
 npm run test:live:bench -- --only dice-so-nice   # only the runs whose name contains this
-npm run test:live:bench -- --quick --profile --only throttled-uncapped   # where the frame time goes
+npm run test:live:bench -- --quick --profile --only throttled   # the low-end head-to-head, and where the time goes
 ```
 
-`--quick` skips the throttled runs, unless an `--only` term containing "throttled" names them (`--quick --only throttled-uncapped` is the low-end head-to-head with the quick roll counts), and makes fewer rolls where the count only buys precision: the soak makes 200 rolls (heap and resources at roll 50 and roll 200, still enough to show a leak) and `burst100` makes 30. `--only` takes one or more comma-separated parts of run names (see Profiles and modes for the names); a whole run name selects only that run (`dicer-pc-uncapped` does not also pick `dicer-pc-uncapped-low`). For example `--only dicer-pc-vsync` or `--only dice-so-nice,dicer-pc-uncapped`. The two combine, and `--dry-run` shows what either one would run. `summary.md` of a partial run says so in its first line: the full run is the one that decides.
+`--quick` skips the throttled runs, unless an `--only` term containing "throttled" names them (`--quick --only throttled` is the low-end head-to-head with the quick roll counts), and makes fewer rolls where the count only buys precision: the soak makes 200 rolls (heap and resources at roll 50 and roll 200, still enough to show a leak) and `burst100` makes 30. `--only` takes one or more comma-separated parts of run names (see Profiles and modes for the names); a whole run name selects only that run (`dicer-pc-vsync` does not also pick `dicer-pc-vsync-low`). For example `--only dicer-pc-vsync` or `--only dice-so-nice,dicer-pc-vsync`. The two combine, and `--dry-run` shows what either one would run. `summary.md` of a partial run says so in its first line: the full run is the one that decides.
 
 `--profile` records a CPU profile (CDP sampling profiler, 200 µs) of each run's `burst100` and writes it next to the report as `<run>.cpuprofile`, which opens in the Chrome DevTools Performance panel or speedscope. `summary.md` gets a "CPU profile (self time)" section: per run the sampled total split into dicer, dice-so-nice, foundry, system, other modules, gc and browser, then the hottest functions. The profiler adds some overhead, so a profiled `burst100` frame time is a little high; compare two profiled runs with each other, not with an unprofiled one. The same scenario also counts WebGL work per canvas (the dice canvas, Foundry's board, anything else): `summary.md` gets a "GPU work per frame" table with each canvas's size and, per animation frame, its draw calls, triangles, render-target binds (extra passes such as shadows or transmission) and clears.
 
-A full run goes through 8 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The terminal prints a timestamped line as each run's warm-up roll and each scenario starts and ends, so a long run visibly progresses. The module switch gets 60 s; a Foundry dialog that blocks it stops the run with a message instead of hanging it. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run. It exits 2 before starting when the credentials are missing, Foundry cannot be reached or `restore.json` is damaged.
+A full run goes through 6 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The terminal prints a timestamped line as each run's warm-up roll and each scenario starts and ends, so a long run visibly progresses. The module switch gets 60 s; a Foundry dialog that blocks it stops the run with a message instead of hanging it. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run. It exits 2 before starting when the credentials are missing, Foundry cannot be reached or `restore.json` is damaged.
 
 What each run covers:
 
 - Dicer, `pc` `vsync`: every scenario, including the 500-roll soak, resize, context loss and hidden tab. Context loss rolls twice: the first roll loses the WebGL context mid-roll, and once the context is restored (at most 3 s) a second roll must draw.
-- Dicer, `throttled` `vsync`: `d20`, `mixed10`, `pool30`.
-- Each product in `pc` and `throttled` `uncapped`, and the effects-off pairing: `d20`, `mixed10`, `pool30`, `burst100`.
+- Dicer, `throttled` `vsync`: `d20`, `mixed10`, `pool30`, `burst100`.
+- Dicer quality `low`, `pc` `vsync` (the effects-off partner), and DSN in `pc`, `throttled` and `pc` with effects off, all `vsync`: `d20`, `mixed10`, `pool30`, `burst100`. The two Dicer defaults runs above are DSN's defaults partners.
 
 Before its scenarios each run makes one unrecorded warm-up roll of every die type (`1d4+1d6+1d8+1d10+1d12+1d20`), so neither product pays its first-roll setup inside a measured scenario. Every bench roll speaks as the alias "Dice benchmark", never a token or character: DSN skips an NPC speaker's roll when its hide-NPC-rolls setting is on. Before each scenario the harness forces a full garbage collection, so garbage left by page load is not collected inside the next measurement.
 
@@ -53,20 +53,17 @@ Each adaptive quality drop during a Dicer scenario is recorded in that result's 
 | `pc`        | The machine as it is: no CPU throttle, 1920x1080, device pixel ratio 1.     |
 | `throttled` | A low-end machine: CPU 4x slower, 1920x1080, DPR 1, Dicer quality `medium`. |
 
-| Mode       | What it measures                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------ |
-| `vsync`    | The browser at its normal refresh rate. The frame, long-task and first-frame targets are checked here.       |
-| `uncapped` | The browser with the frame cap removed. Used for the head-to-head: how much work each module does per frame. |
+Every run uses `vsync` mode: the browser at its normal refresh rate. The frame, long-task and first-frame targets are checked on Dicer's defaults runs.
 
-Uncapped intervals are not a 60 fps measure, so the G2 targets are not applied to them.
+The head-to-head compares **main-thread busy time per second** at that frame cap: Chrome's own count of how long the page's main thread was busy (CDP `Performance.getMetrics`, `TaskDuration`), read before and after each scenario and divided by its length. It counts everything on the page (the dice module, Foundry, other modules, garbage collection), as a table experiences it. Until P9-R13 the head-to-head compared frame intervals with the frame cap removed, but that rewards a product that skips redraws (DSN redraws its canvas on about 40% of uncapped frames, Dicer on every one), not one that does less work. It does not measure GPU time: Chrome has no per-page GPU counter. On a weak GPU Dicer's heavier shaders could matter, which is what the real low-end testers are for.
 
 The head-to-head makes three comparisons:
 
-- Dicer defaults against DSN defaults on `pc`: Dicer must be clearly faster (frame p95 ratio at most 0.9).
+- Dicer defaults against DSN defaults on `pc`: Dicer must be clearly lighter (busy-time ratio at most 0.9).
 - Dicer defaults against DSN defaults on `throttled`: Dicer must not be slower.
 - DSN with its effects turned off against Dicer quality `low`, on `pc`: Dicer must not be slower.
 
-Reports are named `<product>-<profile>-<mode>[-<variant>]`, for example `dicer-pc-uncapped-low` or `dice-so-nice-pc-uncapped-effectsOff`.
+Reports are named `<product>-<profile>-<mode>[-<variant>]`, for example `dicer-pc-vsync-low` or `dice-so-nice-pc-vsync-effectsOff`.
 
 ## Output
 
@@ -83,7 +80,7 @@ Everything goes to `artifacts/bench/<timestamp>/`, for example `artifacts/bench/
   - The soak deletes its chat messages every 50 rolls, so the chat log does not count as heap growth. Heap and GPU resources are read at roll 50 and roll 500. When the tier changed during the soak, the resources check is n/a: a tier change swaps programs and textures.
   - Each result's `longTasks.top` in the JSON lists the three longest tasks with `at`, their start in ms after recording began, and `firstRollAt`, when roll 1 was made. Use them to tell a stall inside a roll from one before it.
   - Resize, context loss and hidden tab are disturbances, not frame measurements: they are checked for failed rolls only, plus no renderer rebuild (resize and context loss) and `recovered` (context loss: after the restore the second roll drew on a live context).
-- **Head-to-head**: the frame p95 of Dicer and DSN per scenario, their ratio, the limit, and the failed rolls of each. For the pc defaults pairing, Dicer must be clearly less than DSN (ratio at most 0.9). When either side has a failed roll the ratio is still shown, but the result is n/a: the two sides did not measure the same work.
+- **Head-to-head**: the main-thread busy ms per second of Dicer and DSN per scenario, their ratio, the limit, both frame p95s (for smoothness, not judged), and the failed rolls of each. For the pc defaults pairing, Dicer must be clearly less than DSN (ratio at most 0.9). Each result in the JSON carries `busy: {msPerSec, scriptMsPerSec, seconds}`. When either side has a failed roll the ratio is still shown, but the result is n/a: the two sides did not measure the same work.
 - **DSN effects-off user flag**: the DSN settings the harness wrote, read back. If an effect setting is missing here, DSN ran with that effect on and the pairing is less fair.
 - The last line counts failed rows, n/a rows and run errors.
 

@@ -76,6 +76,8 @@ const result = (scenario, o = {}) => ({
   notes: [],
   ...o,
 });
+// P9-R13: main-thread busy time per second, the head-to-head measure.
+const busy = (msPerSec) => ({ msPerSec, scriptMsPerSec: msPerSec / 2, seconds: 4 });
 const entry = (product, profile, mode, variant = 'defaults') =>
   matrix().find(
     (e) =>
@@ -93,7 +95,7 @@ const report = (e, results) => ({
   },
 });
 
-test('profiles: pc and throttled (CPU 4x, 1920x1080, dpr 1, Dicer medium); modes vsync and uncapped (H-D2)', () => {
+test('profiles: pc and throttled (CPU 4x, 1920x1080, dpr 1, Dicer medium); vsync is the only mode (P9-R13)', () => {
   const p = profiles();
   expect(Object.keys(p).sort()).toEqual(['pc', 'throttled']);
   expect(p.throttled).toMatchObject({
@@ -105,9 +107,8 @@ test('profiles: pc and throttled (CPU 4x, 1920x1080, dpr 1, Dicer medium); modes
   expect(p.pc.cpuThrottle).toBe(1);
   expect(p.pc.dicerQuality).toBeNull();
   const m = modes();
-  expect(Object.keys(m).sort()).toEqual(['uncapped', 'vsync']);
+  expect(Object.keys(m)).toEqual(['vsync']);
   expect(m.vsync.args).toEqual([]);
-  expect(m.uncapped.args).toEqual(['--disable-gpu-vsync', '--disable-frame-rate-limit']);
 });
 
 test('matrix contains every pairing and nothing else', () => {
@@ -120,20 +121,13 @@ test('matrix contains every pairing and nothing else', () => {
       profile: 'throttled',
       mode: 'vsync',
       variant: 'defaults',
-      ids: ['d20', 'mixed10', 'pool30'],
+      ids: ['d20', 'mixed10', 'pool30', 'burst100'],
     },
-    { product: 'dicer', profile: 'pc', mode: 'uncapped', variant: 'defaults', ids: H2H },
-    { product: 'dicer', profile: 'throttled', mode: 'uncapped', variant: 'defaults', ids: H2H },
-    { product: 'dice-so-nice', profile: 'pc', mode: 'uncapped', variant: 'defaults', ids: H2H },
-    {
-      product: 'dice-so-nice',
-      profile: 'throttled',
-      mode: 'uncapped',
-      variant: 'defaults',
-      ids: H2H,
-    },
-    { product: 'dicer', profile: 'pc', mode: 'uncapped', variant: 'low', ids: H2H },
-    { product: 'dice-so-nice', profile: 'pc', mode: 'uncapped', variant: 'effectsOff', ids: H2H },
+    // P9-R13: the head-to-head runs at 60 fps; the Dicer vsync runs above are the defaults partners.
+    { product: 'dicer', profile: 'pc', mode: 'vsync', variant: 'low', ids: H2H },
+    { product: 'dice-so-nice', profile: 'pc', mode: 'vsync', variant: 'defaults', ids: H2H },
+    { product: 'dice-so-nice', profile: 'throttled', mode: 'vsync', variant: 'defaults', ids: H2H },
+    { product: 'dice-so-nice', profile: 'pc', mode: 'vsync', variant: 'effectsOff', ids: H2H },
   ]
     .map(key)
     .sort();
@@ -149,18 +143,16 @@ test('matrix: Dicer pc-vsync runs first; each product runs back to back (fewest 
 
 test('matrix: Dicer quality per entry (throttled medium, effects-off pairing low, pc defaults untouched)', () => {
   expect(entry('dicer', 'pc', 'vsync').dicerQuality).toBeNull();
-  expect(entry('dicer', 'pc', 'uncapped').dicerQuality).toBeNull();
   expect(entry('dicer', 'throttled', 'vsync').dicerQuality).toBe('medium');
-  expect(entry('dicer', 'throttled', 'uncapped').dicerQuality).toBe('medium');
-  expect(entry('dicer', 'pc', 'uncapped', 'low').dicerQuality).toBe('low');
+  expect(entry('dicer', 'pc', 'vsync', 'low').dicerQuality).toBe('low');
 });
 
 test('runName is unique per entry and file-safe', () => {
   const names = matrix().map(runName);
   expect(new Set(names).size).toBe(names.length);
   expect(runName(entry('dicer', 'pc', 'vsync'))).toBe('dicer-pc-vsync');
-  expect(runName(entry('dice-so-nice', 'pc', 'uncapped', 'effectsOff'))).toBe(
-    'dice-so-nice-pc-uncapped-effectsOff',
+  expect(runName(entry('dice-so-nice', 'pc', 'vsync', 'effectsOff'))).toBe(
+    'dice-so-nice-pc-vsync-effectsOff',
   );
   for (const n of names) expect(n).toMatch(/^[a-z0-9-]+$/i);
 });
@@ -180,13 +172,13 @@ test('H-R8: DSN effects-off overrides, verbatim', () => {
 });
 
 test('dsnFlagFor: effects-off writes the overrides, DSN defaults unset the flag, Dicer leaves it', () => {
-  expect(dsnFlagFor(entry('dice-so-nice', 'pc', 'uncapped', 'effectsOff'))).toEqual({
+  expect(dsnFlagFor(entry('dice-so-nice', 'pc', 'vsync', 'effectsOff'))).toEqual({
     exists: true,
     value: { ...DSN_EFFECTS_OFF },
   });
-  expect(dsnFlagFor(entry('dice-so-nice', 'pc', 'uncapped'))).toEqual({ exists: false });
-  expect(dsnFlagFor(entry('dice-so-nice', 'throttled', 'uncapped'))).toEqual({ exists: false });
-  expect(dsnFlagFor(entry('dicer', 'pc', 'uncapped', 'low'))).toBeNull();
+  expect(dsnFlagFor(entry('dice-so-nice', 'pc', 'vsync'))).toEqual({ exists: false });
+  expect(dsnFlagFor(entry('dice-so-nice', 'throttled', 'vsync'))).toEqual({ exists: false });
+  expect(dsnFlagFor(entry('dicer', 'pc', 'vsync', 'low'))).toBeNull();
 });
 
 test('flagApplied: read-back must hold every override, or be unset for a defaults run', () => {
@@ -209,13 +201,13 @@ test('caps: Dicer maxDice 30 (H-R7), DSN maxDiceNumber 35 (range 20-100 step 5)'
 
 test('verdicts: pc-defaults 9.5 vs 10 fails (needs clearly less), throttled with the same numbers passes', () => {
   const reports = [
-    report(entry('dicer', 'pc', 'uncapped'), [result('d20', { frame: sum(9.5) })]),
-    report(entry('dice-so-nice', 'pc', 'uncapped'), [
-      result('d20', { product: 'dice-so-nice', frame: sum(10) }),
+    report(entry('dicer', 'pc', 'vsync'), [result('d20', { busy: busy(9.5) })]),
+    report(entry('dice-so-nice', 'pc', 'vsync'), [
+      result('d20', { product: 'dice-so-nice', busy: busy(10) }),
     ]),
-    report(entry('dicer', 'throttled', 'uncapped'), [result('d20', { frame: sum(9.5) })]),
-    report(entry('dice-so-nice', 'throttled', 'uncapped'), [
-      result('d20', { product: 'dice-so-nice', frame: sum(10) }),
+    report(entry('dicer', 'throttled', 'vsync'), [result('d20', { busy: busy(9.5) })]),
+    report(entry('dice-so-nice', 'throttled', 'vsync'), [
+      result('d20', { product: 'dice-so-nice', busy: busy(10) }),
     ]),
   ];
   const h2h = verdicts(reports).filter((r) => r.type === 'h2h');
@@ -238,9 +230,9 @@ test('verdicts: pc-defaults 9.5 vs 10 fails (needs clearly less), throttled with
 
 test('verdicts: effects-off pairing compares DSN effects-off with Dicer low, not clearly-less', () => {
   const reports = [
-    report(entry('dicer', 'pc', 'uncapped', 'low'), [result('pool30', { frame: sum(9.5) })]),
-    report(entry('dice-so-nice', 'pc', 'uncapped', 'effectsOff'), [
-      result('pool30', { product: 'dice-so-nice', frame: sum(10) }),
+    report(entry('dicer', 'pc', 'vsync', 'low'), [result('pool30', { busy: busy(9.5) })]),
+    report(entry('dice-so-nice', 'pc', 'vsync', 'effectsOff'), [
+      result('pool30', { product: 'dice-so-nice', busy: busy(10) }),
     ]),
   ];
   const [row] = verdicts(reports).filter((r) => r.type === 'h2h');
@@ -253,11 +245,11 @@ test('verdicts: effects-off pairing compares DSN effects-off with Dicer low, not
   });
 });
 
-test('verdicts: G2 target checks only on Dicer vsync reports (H-R1), never on uncapped or DSN', () => {
+test('verdicts: G2 target checks only on Dicer vsync defaults reports (H-R1), never on Low or DSN', () => {
   const reports = [
     report(entry('dicer', 'pc', 'vsync'), [result('d20', { frame: sum(20) })]),
-    report(entry('dicer', 'pc', 'uncapped'), [result('d20', { frame: sum(20) })]),
-    report(entry('dice-so-nice', 'pc', 'uncapped'), [
+    report(entry('dicer', 'pc', 'vsync', 'low'), [result('d20', { frame: sum(20) })]),
+    report(entry('dice-so-nice', 'pc', 'vsync'), [
       result('d20', { product: 'dice-so-nice', frame: sum(20) }),
     ]),
   ];
@@ -284,13 +276,13 @@ test('verdicts: roll failures and a renderer rebuilt on resize or context loss f
 
 test('verdicts: a head-to-head row fails when either side had roll failures, even if faster', () => {
   const reports = [
-    report(entry('dicer', 'throttled', 'uncapped'), [
-      result('d20', { frame: sum(5), failures: 1 }),
-      result('mixed10', { frame: sum(5) }),
+    report(entry('dicer', 'throttled', 'vsync'), [
+      result('d20', { busy: busy(5), failures: 1 }),
+      result('mixed10', { busy: busy(5) }),
     ]),
-    report(entry('dice-so-nice', 'throttled', 'uncapped'), [
-      result('d20', { product: 'dice-so-nice', frame: sum(10) }),
-      result('mixed10', { product: 'dice-so-nice', frame: sum(10), failures: 3 }),
+    report(entry('dice-so-nice', 'throttled', 'vsync'), [
+      result('d20', { product: 'dice-so-nice', busy: busy(10) }),
+      result('mixed10', { product: 'dice-so-nice', busy: busy(10), failures: 3 }),
     ]),
   ];
   const h2h = verdicts(reports).filter((r) => r.type === 'h2h');
@@ -299,9 +291,26 @@ test('verdicts: a head-to-head row fails when either side had roll failures, eve
 });
 
 test('verdicts: a missing counterpart yields an n/a row, not a crash', () => {
-  const reports = [report(entry('dicer', 'pc', 'uncapped'), [result('d20')])];
+  const reports = [report(entry('dicer', 'pc', 'vsync'), [result('d20')])];
   const [row] = verdicts(reports).filter((r) => r.type === 'h2h');
-  expect(row).toMatchObject({ scenario: 'd20', pass: null, dsnP95: null });
+  expect(row).toMatchObject({ scenario: 'd20', pass: null, dsnBusy: null });
+});
+
+// P9-R13: the head-to-head judges main-thread busy time per second at 60 fps; frame p95 is shown.
+test('verdicts: head-to-head rows carry busy time, the ratio on it, and both frame p95s', () => {
+  const reports = [
+    report(entry('dicer', 'throttled', 'vsync'), [result('burst100', { busy: busy(80), frame: sum(9) })]),
+    report(entry('dice-so-nice', 'throttled', 'vsync'), [
+      result('burst100', { product: 'dice-so-nice', busy: busy(100), frame: sum(6) }),
+    ]),
+  ];
+  const [row] = verdicts(reports).filter((r) => r.type === 'h2h');
+  expect(row).toMatchObject({ dicerBusy: 80, dsnBusy: 100, ratio: 0.8, pass: true, dicerP95: 9, dsnP95: 6 });
+  const noBusy = verdicts([
+    report(entry('dicer', 'throttled', 'vsync'), [result('burst100', { frame: sum(1) })]),
+    report(entry('dice-so-nice', 'throttled', 'vsync'), [result('burst100', { product: 'dice-so-nice', frame: sum(9) })]),
+  ]).find((r) => r.type === 'h2h');
+  expect(noBusy).toMatchObject({ ratio: null, pass: null });
 });
 
 test('exitCode: 1 on any failed check or run error, 0 otherwise (n/a does not fail)', () => {
@@ -419,10 +428,9 @@ test('parseArgs', () => {
 
 test('summaryMarkdown: target checks, then the head-to-head table, n/a for missing values', () => {
   const reports = [
-    report(entry('dicer', 'pc', 'vsync'), [result('d20', { firstFrame: null })]),
-    report(entry('dicer', 'pc', 'uncapped'), [result('d20', { frame: sum(8) })]),
-    report(entry('dice-so-nice', 'pc', 'uncapped'), [
-      result('d20', { product: 'dice-so-nice', frame: sum(10) }),
+    report(entry('dicer', 'pc', 'vsync'), [result('d20', { firstFrame: null, busy: busy(80), frame: sum(8) })]),
+    report(entry('dice-so-nice', 'pc', 'vsync'), [
+      result('d20', { product: 'dice-so-nice', busy: busy(100), frame: sum(10) }),
     ]),
   ];
   const rows = verdicts(reports);
@@ -441,8 +449,9 @@ test('summaryMarkdown: target checks, then the head-to-head table, n/a for missi
   expect(md).not.toContain('NaN');
   expect(md).toContain('glow');
   expect(md).toMatch(
-    /\| defaults \| pc \| d20 \| 8\.00 \| 10\.00 \| 0\.80 \| 0\.90 \| 0 \| 0 \| PASS \|/,
+    /\| defaults \| pc \| d20 \| 80\.0 \| 100\.0 \| 0\.80 \| 0\.90 \| 8\.00 \| 10\.00 \| 0 \| 0 \| PASS \|/,
   );
+  expect(md).toContain('## Head-to-head (60 fps, main-thread busy ms per second)');
 });
 
 test('verdicts: contextLoss gets noRebuild and recovered (I3); resize/hidden get no frame checks (perturb)', () => {
@@ -582,7 +591,7 @@ test('Runs tier: the tier the run started at, and start -> end after an adaptive
 });
 
 test('summaryMarkdown warns when the warm-up roll did not animate (P9-R2)', () => {
-  const e = entry('dice-so-nice', 'pc', 'uncapped');
+  const e = entry('dice-so-nice', 'pc', 'vsync');
   const ok = { ...report(e, [result('d20')]) };
   ok.suite = { ...ok.suite, warmup: { completed: true, started: true } };
   const skipped = { ...report(e, [result('d20')]) };
@@ -590,21 +599,21 @@ test('summaryMarkdown warns when the warm-up roll did not animate (P9-R2)', () =
   const warn = /warm-up roll did not animate/;
   expect(summaryMarkdown({ date: 'd', reports: [ok], rows: [], errors: [] })).not.toMatch(warn);
   expect(summaryMarkdown({ date: 'd', reports: [skipped], rows: [], errors: [] })).toMatch(
-    /Warning: dice-so-nice-pc-uncapped: the warm-up roll did not animate.*"dsnHideNpcRolls":true/,
+    /Warning: dice-so-nice-pc-vsync: the warm-up roll did not animate.*"dsnHideNpcRolls":true/,
   );
 });
 
 test('summaryMarkdown warns on a too-fast warm-up and a hidden page (P9-R7)', () => {
-  const e = entry('dice-so-nice', 'pc', 'uncapped');
+  const e = entry('dice-so-nice', 'pc', 'vsync');
   const fast = { ...report(e, [result('d20')]) };
   fast.suite = { ...fast.suite, warmup: { completed: true, started: true, tooFast: true, ms: 15, why: { documentHidden: true } } };
   expect(summaryMarkdown({ date: 'd', reports: [fast], rows: [], errors: [] })).toMatch(
-    /Warning: dice-so-nice-pc-uncapped: the warm-up roll did not animate \(over in 15 ms\).*"documentHidden":true/,
+    /Warning: dice-so-nice-pc-vsync: the warm-up roll did not animate \(over in 15 ms\).*"documentHidden":true/,
   );
   const hid = { ...report(e, [{ ...result('d20'), pageHidden: true }, { ...result('burst20'), pageHidden: false }]) };
   hid.suite = { ...hid.suite, warmup: { completed: true, started: true, hidden: true } };
   expect(summaryMarkdown({ date: 'd', reports: [hid], rows: [], errors: [] })).toMatch(
-    /Warning: dice-so-nice-pc-uncapped: the page was hidden during warm-up, d20, so those results are not valid/,
+    /Warning: dice-so-nice-pc-vsync: the page was hidden during warm-up, d20, so those results are not valid/,
   );
   const ok = { ...report(e, [{ ...result('d20'), pageHidden: false }]) };
   ok.suite = { ...ok.suite, warmup: { completed: true, started: true, tooFast: false, hidden: false } };
@@ -637,10 +646,9 @@ test('planFor: quick drops the throttled runs and carries the roll overrides', (
   const { plan } = planFor({ quick: true });
   expect(plan.map(runName)).toEqual([
     'dicer-pc-vsync',
-    'dicer-pc-uncapped',
-    'dicer-pc-uncapped-low',
-    'dice-so-nice-pc-uncapped',
-    'dice-so-nice-pc-uncapped-effectsOff',
+    'dicer-pc-vsync-low',
+    'dice-so-nice-pc-vsync',
+    'dice-so-nice-pc-vsync-effectsOff',
   ]);
   expect(plan.every((e) => e.rolls === QUICK_ROLLS)).toBe(true);
   expect(QUICK_ROLLS).toEqual({ soak500: 200, burst100: 30 });
@@ -651,8 +659,8 @@ test('planFor: --only keeps the runs whose name contains a term; nothing left is
   expect(planFor({ only: ['dice-so-nice'] }).plan.every((e) => e.product === 'dice-so-nice')).toBe(true);
   expect(planFor({ only: ['dicer'] }).plan.every((e) => e.product === 'dicer')).toBe(true);
   expect(planFor({ quick: true, only: ['dice-so-nice'] }).plan.map(runName)).toEqual([
-    'dice-so-nice-pc-uncapped',
-    'dice-so-nice-pc-uncapped-effectsOff',
+    'dice-so-nice-pc-vsync',
+    'dice-so-nice-pc-vsync-effectsOff',
   ]);
   const none = planFor({ quick: true, only: ['nope'] });
   expect(none.plan).toEqual([]);
@@ -661,16 +669,16 @@ test('planFor: --only keeps the runs whose name contains a term; nothing left is
 
 // P9-R9: quick keeps a throttled run an --only term names; an exact run name matches only itself.
 test('planFor: quick keeps throttled runs named by --only, with the quick roll counts', () => {
-  const { plan } = planFor({ quick: true, only: ['throttled-uncapped'] });
-  expect(plan.map(runName)).toEqual(['dicer-throttled-uncapped', 'dice-so-nice-throttled-uncapped']);
+  const { plan } = planFor({ quick: true, only: ['throttled'] });
+  expect(plan.map(runName)).toEqual(['dicer-throttled-vsync', 'dice-so-nice-throttled-vsync']);
   expect(plan.every((e) => e.rolls === QUICK_ROLLS)).toBe(true);
-  expect(planFor({ quick: true, only: ['dice-so-nice'] }).plan.map(runName)).not.toContain('dice-so-nice-throttled-uncapped');
+  expect(planFor({ quick: true, only: ['dice-so-nice'] }).plan.map(runName)).not.toContain('dice-so-nice-throttled-vsync');
 });
 
 test('planFor: a term that is a whole run name selects only that run', () => {
-  expect(planFor({ only: ['dicer-pc-uncapped'] }).plan.map(runName)).toEqual(['dicer-pc-uncapped']);
-  expect(planFor({ only: ['dicer-pc-uncapped-low'] }).plan.map(runName)).toEqual(['dicer-pc-uncapped-low']);
-  expect(planFor({ only: ['dicer-pc-unc'] }).plan.map(runName)).toEqual(['dicer-pc-uncapped', 'dicer-pc-uncapped-low']);
+  expect(planFor({ only: ['dicer-pc-vsync'] }).plan.map(runName)).toEqual(['dicer-pc-vsync']);
+  expect(planFor({ only: ['dicer-pc-vsync-low'] }).plan.map(runName)).toEqual(['dicer-pc-vsync-low']);
+  expect(planFor({ only: ['dicer-pc-vs'] }).plan.map(runName)).toEqual(['dicer-pc-vsync', 'dicer-pc-vsync-low']);
 });
 
 test('summaryMarkdown labels a partial run first; a full run has no label', () => {
@@ -705,9 +713,9 @@ test('parseArgs: --profile', () => {
 });
 
 test('planFor: --profile marks the runs that make burst100', () => {
-  const { plan } = planFor({ profile: true, only: ['throttled-uncapped'] });
+  const { plan } = planFor({ profile: true, only: ['throttled'] });
   expect(plan.map((e) => e.profileScenario)).toEqual(['burst100', 'burst100']);
-  expect(planFor({ only: ['throttled-uncapped'] }).plan.every((e) => e.profileScenario === undefined)).toBe(true);
+  expect(planFor({ only: ['throttled'] }).plan.every((e) => e.profileScenario === undefined)).toBe(true);
 });
 
 test('bucketOf sorts a call frame into dicer, dice-so-nice, foundry, other module, gc, browser', () => {
@@ -752,18 +760,18 @@ test('profileSummary: self time per bucket and the hottest functions, idle exclu
 });
 
 test('summaryMarkdown shows each run CPU profile', () => {
-  const e = entry('dicer', 'throttled', 'uncapped');
+  const e = entry('dicer', 'throttled', 'vsync');
   const rep = { ...report(e, [result('burst100')]), cpu: { scenario: 'burst100', totalMs: 6, buckets: [{ bucket: 'dicer', ms: 4, pct: 66.7 }], top: [{ name: 'render', where: 'dicer.js:100', bucket: 'dicer', ms: 4, pct: 66.7 }] } };
   const md = summaryMarkdown({ date: 'd', reports: [rep], rows: [], errors: [] });
   expect(md).toContain('## CPU profile (self time)');
-  expect(md).toContain('- dicer-throttled-uncapped, burst100: 6.0 ms sampled; dicer 4.0 ms (66.7%)');
-  expect(md).toContain('| dicer-throttled-uncapped | render | dicer.js:100 | dicer | 4.0 | 66.7 |');
+  expect(md).toContain('- dicer-throttled-vsync, burst100: 6.0 ms sampled; dicer 4.0 ms (66.7%)');
+  expect(md).toContain('| dicer-throttled-vsync | render | dicer.js:100 | dicer | 4.0 | 66.7 |');
   expect(summaryMarkdown({ date: 'd', reports: [report(e, [result('burst100')])], rows: [], errors: [] })).not.toContain('CPU profile');
 });
 
 // P9-R12: the per-frame WebGL work per canvas, from the profiled scenario.
 test('summaryMarkdown shows per-frame GPU work per canvas', () => {
-  const e = entry('dicer', 'throttled', 'uncapped');
+  const e = entry('dicer', 'throttled', 'vsync');
   const gl = {
     frames: 100,
     byCanvas: {
@@ -774,7 +782,7 @@ test('summaryMarkdown shows per-frame GPU work per canvas', () => {
   const rep = report(e, [{ ...result('burst100'), gl }]);
   const md = summaryMarkdown({ date: 'd', reports: [rep], rows: [], errors: [] });
   expect(md).toContain('## GPU work per frame');
-  expect(md).toContain('| dicer-throttled-uncapped | burst100 | dice | 2400x1350 | 42.0 | 9000 | 3.0 | 2.0 |');
-  expect(md).toContain('| dicer-throttled-uncapped | burst100 | foundry | 1920x1080 | 15.0 | 30 | 0.0 | 1.0 |');
+  expect(md).toContain('| dicer-throttled-vsync | burst100 | dice | 2400x1350 | 42.0 | 9000 | 3.0 | 2.0 |');
+  expect(md).toContain('| dicer-throttled-vsync | burst100 | foundry | 1920x1080 | 15.0 | 30 | 0.0 | 1.0 |');
   expect(summaryMarkdown({ date: 'd', reports: [report(e, [result('burst100')])], rows: [], errors: [] })).not.toContain('GPU work per frame');
 });

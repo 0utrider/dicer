@@ -238,6 +238,14 @@ function createHarness(chromium) {
           await cdp.send('Profiler.disable');
         }
       });
+      // P9-R13: Chrome's cumulative main-thread task time (seconds) and its clock, for the
+      // head-to-head's busy ms per second. world.js reads it before and after each scenario.
+      await cdp.send('Performance.enable');
+      await page.exposeFunction('__benchMetrics', async () => {
+        const { metrics } = await cdp.send('Performance.getMetrics');
+        const m = Object.fromEntries(metrics.map((x) => [x.name, x.value]));
+        return { task: m.TaskDuration ?? null, script: m.ScriptDuration ?? null, at: m.Timestamp ?? null };
+      });
       const takeProfile = () => {
         const p = cpuProfile;
         cpuProfile = null;

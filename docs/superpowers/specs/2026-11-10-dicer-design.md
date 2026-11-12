@@ -78,6 +78,7 @@ These are hard targets, measured by the benchmark harness in §7.
 - The head-to-head compares **each product's default settings at its own auto-picked tier**, with the same dice and the same scene. This is what a table actually experiences.
 - A second comparison pits DSN with every effect off against Dicer at Low.
 - Dicer must win both comparisons. Its extra features (interiors, engraving) count against its own budget; they are not excused.
+- **How "slower" is measured (owner's decision, P9-R13):** main-thread busy time per second at the display's frame cap (60 fps), for the whole page, not uncapped frame intervals. Uncapped frame intervals reward a product that skips redraws, not one that does less work. GPU time is not measured (no per-page counter); the real low-end testers cover it.
 
 **Interiors at default (designer's call):** the signature look ships on.
 - A clear die with an interior must hold 60 fps on the Iris Xe reference at the tier auto-picked for that GPU, with a reduced step budget.

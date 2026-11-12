@@ -646,6 +646,28 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
   };
 }
 
+/** P9-R13: Chrome's main-thread task counters (bench.mjs binding), or null without it. */
+async function benchMetrics() {
+  try {
+    return typeof globalThis.__benchMetrics === 'function' ? await globalThis.__benchMetrics() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** P9-R13: main-thread busy ms per second between two readings: {msPerSec, scriptMsPerSec, seconds}. */
+function busyBetween(a, b) {
+  const secs = b?.at - a?.at;
+  const task = b?.task - a?.task;
+  if (!(secs > 0) || !Number.isFinite(task)) return null;
+  const script = b.script - a.script;
+  return {
+    msPerSec: Math.round((task * 10000) / secs) / 10,
+    scriptMsPerSec: Number.isFinite(script) ? Math.round((script * 10000) / secs) / 10 : null,
+    seconds: Math.round(secs * 10) / 10,
+  };
+}
+
 /** P9-R12: a WebGL counter that tells the product's dice canvas from Foundry's board. */
 function glCounter(product, createGlCounter) {
   const dice = productCanvas(product);
@@ -705,6 +727,7 @@ export async function benchRun({ ids, profile, rolls = null, profileScenario = n
         const gl = id === profileScenario ? glCounter(product, createGlCounter) : null;
         if (profiling) await globalThis.__benchProfile('start');
         gl?.start();
+        const before = await benchMetrics();
         let part;
         let glCounts = null;
         try {
@@ -716,6 +739,9 @@ export async function benchRun({ ids, profile, rolls = null, profileScenario = n
             doc: document,
           });
         } finally {
+          const after = await benchMetrics();
+          const busy = busyBetween(before, after);
+          if (busy && part?.results?.[0]) part.results[0].busy = busy;
           glCounts = gl?.stop() ?? null;
           if (profiling) await globalThis.__benchProfile('stop');
         }
