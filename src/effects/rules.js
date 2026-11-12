@@ -186,10 +186,11 @@ function matchResult(result, die) {
       return die.value === result.value;
     case 'range':
       return die.value >= result.from && die.value <= result.to;
+    // A die's bounds (a Fate die: -1 / +1); without them, 1 and its faces.
     case 'max':
-      return die.value === die.faces;
+      return die.value === (die.max ?? die.faces);
     case 'min':
-      return die.value === 1;
+      return die.value === (die.min ?? 1);
     case 'label':
       return typeof die.label === 'string' && die.label === result.label;
     default:
@@ -207,7 +208,7 @@ function matchFormula(text, formula) {
   return formula.toLowerCase().includes(text.toLowerCase());
 }
 
-/** Does `rule` fire for this die? `die` is {type, dsnType, value, faces, label, formula, role, damageType, actorId, userId, outcome}. */
+/** Does `rule` fire for this die? `die` is {type, dsnType, value, faces, min?, max?, label, formula, role, damageType, actorId, userId, outcome}. */
 export function matchRule(rule, die) {
   if (rule.die !== 'any' && rule.die !== die.type && rule.die !== die.dsnType) return false;
   if (!matchResult(rule.result, die)) return false;

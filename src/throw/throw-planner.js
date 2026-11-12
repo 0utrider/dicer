@@ -34,7 +34,10 @@ function diceFor(term, r, shape, odd) {
       { type: 'd10', value: r % 10 || 10 },
     ];
   }
-  if (RELABEL[faces]) return [{ type: RELABEL[faces], value: r + odd * faces, variant: `d${faces}` }];
+  // A result off 1..n (a Fate die sent as a plain Die by a legacy show()) has no face: skipped.
+  if (RELABEL[faces]) {
+    return r >= 1 && r <= faces ? [{ type: RELABEL[faces], value: r + odd * faces, variant: `d${faces}` }] : null;
+  }
   const type = dieTypeForFaces(faces);
   return type ? [{ type, value: r }] : null;
 }

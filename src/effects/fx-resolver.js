@@ -224,6 +224,8 @@ export function createFxResolver({
         const base =
           faces === 100 ? null : (safe(() => shapeFor(term), null) ?? dieTypeForFaces(faces));
         const type = faces === 100 ? 'd100' : (base ?? dsnType);
+        // Foundry's DiceTerm#minValue (FateDie: -1); JSON or legacy terms may lack it.
+        const min = Number.isInteger(term?.minValue) ? term.minValue : dsnType === 'df' ? -1 : 1;
         const actorId =
           (typeof speakerActor === 'string' && speakerActor) || term?.options?.dsnActorId;
         const die = {
@@ -231,6 +233,8 @@ export function createFxResolver({
           dsnType,
           value,
           faces,
+          min,
+          max: min + faces - 1,
           label: labelOf(look?.faces, base, value),
           formula,
           role,

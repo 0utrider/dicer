@@ -88,6 +88,17 @@ test('the face choice follows the index in term.results, hidden and discarded re
   expect(planThrow({ dice: [t] }).dice.map((d) => d.value)).toEqual([4, 1]);
 });
 
+test('a relabelled result outside 1..n is skipped, never thrown on a wrong face', () => {
+  // A legacy show() sends a Fate die as a plain 3-faced Die: its -1 / 0 / +1 meet the d3 path.
+  expect(planThrow({ dice: [term(3, [-1, 0, 1, 4]), term(5, [6]), term(7, [8, 7])] })).toEqual({
+    dice: [
+      { type: 'd6', value: 1, variant: 'd3' },
+      { type: 'd14', value: 14, variant: 'd7' },
+    ],
+    skipped: 5,
+  });
+});
+
 test('a mixed roll counts skipped correctly', () => {
   const roll = { dice: [term(20, [17]), new FateDie([1]), term(7, [4]), term(16, [9]), term(9, [3]), term(100, [55])] };
   const { dice, skipped } = planThrow(roll);
