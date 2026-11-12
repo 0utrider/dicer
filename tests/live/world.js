@@ -320,6 +320,9 @@ export async function resolveHere(def) {
 const BENCH = '/modules/dicer/src/bench/';
 const SCENARIO_SETTLE_MS = 4000;
 const IDLE_WAIT_MS = 16000;
+// P9-R7: both products animate a roll for seconds; one over sooner than this did not animate
+// (DSN on a hidden page fires its start hook, then completes at once).
+const MIN_ANIMATED_MS = 300;
 const RESTORE_WAIT_MS = 3000;
 /**
  * P9-R2: every bench roll speaks as a plain alias, never a token or character. DSN skips an
@@ -675,7 +678,9 @@ export async function benchRun({ ids, profile, rolls = null }) {
   try {
     progress(`${profile}: warm-up roll`);
     warmup = await warmupRoll(created);
-    if (!warmup.started) progress(`${profile}: warning: the warm-up roll did not animate (${JSON.stringify(warmup.why)})`);
+    if (!warmup.started || warmup.tooFast)
+      progress(`${profile}: warning: the warm-up roll did not animate (${warmup.ms} ms, ${JSON.stringify(warmup.why)})`);
+    if (warmup.hidden) progress(`${profile}: warning: the page was hidden during the warm-up`);
     await deleteMessages(created.splice(0));
     for (const [n, id] of ids.entries()) {
       await settle(adapter);
@@ -683,7 +688,21 @@ export async function benchRun({ ids, profile, rolls = null }) {
       try {
         progress(`${profile}: scenario ${n + 1}/${ids.length} ${id}`);
         const t0 = performance.now();
-        const part = await runSuite([id], adapter, { profile, hooks: Hooks, rolls });
+        const part = await runSuite([id], adapter, {
+          profile,
+          hooks: Hooks,
+          rolls,
+          minAnimatedMs: MIN_ANIMATED_MS,
+          doc: document,
+        });
+        // P9-R8: each adaptive drop during the scenario, with the judge numbers behind it.
+        const drops = (game.dice3d?._debug?.qualityDrops ?? []).filter((d) => d.at >= t0);
+        if (part.results[0] && drops.length) {
+          part.results[0].qualityDrops = drops.map((d) => ({ ...d, at: Math.round(d.at - t0) }));
+          progress(`${profile}: ${id}: quality dropped ${drops.map((d) => `${d.from} -> ${d.to} (${d.path})`).join(', ')}`);
+        }
+        if (part.results[0]?.pageHidden)
+          progress(`${profile}: warning: the page was hidden during ${id}; keep the benchmark window visible`);
         const r = part.results[0];
         progress(`${profile}: ${id} done in ${((performance.now() - t0) / 1000).toFixed(0)} s, failures ${r?.failures ?? 'n/a'}`);
         if (id === 'resize' || id === 'contextLoss') {
@@ -731,6 +750,12 @@ async function warmupRoll(created) {
   const done = new Promise((r) => (resolveDone = r));
   const seen = new Set();
   const starts = new Set();
+  // P9-R7: hidden at any point of the warm-up (DSN then skips the animation).
+  let hidden = document.hidden;
+  const onVisibility = () => {
+    if (document.hidden) hidden = true;
+  };
+  document.addEventListener('visibilitychange', onVisibility);
   const startId = Hooks.on('diceSoNiceRollStart', (mid) => starts.add(mid));
   const hookId = Hooks.on('diceSoNiceRollComplete', (mid) => {
     seen.add(mid);
@@ -743,13 +768,19 @@ async function warmupRoll(created) {
     if (seen.has(id)) resolveDone(true);
     const completed = await Promise.race([done, sleep(IDLE_WAIT_MS).then(() => false)]);
     const started = starts.has(id);
+    const ms = Math.round(performance.now() - t0);
+    const tooFast = completed && started && ms < MIN_ANIMATED_MS;
+    hidden ||= document.hidden;
     return {
       completed,
       started,
-      ms: Math.round(performance.now() - t0),
-      ...(started ? {} : { why: skipReasons() }),
+      ms,
+      tooFast,
+      hidden,
+      ...(started && !tooFast ? {} : { why: skipReasons() }),
     };
   } finally {
+    document.removeEventListener('visibilitychange', onVisibility);
     Hooks.off('diceSoNiceRollStart', startId);
     Hooks.off('diceSoNiceRollComplete', hookId);
   }
@@ -769,6 +800,7 @@ function skipReasons() {
     documentHidden: document.hidden,
     combatStarted: Boolean(game.combat?.started),
     dsnVisibility: dsnUser?.visibility ?? null,
+    dsnSkipOnInactiveTab: dsnUser?.skipAnimationOnInactiveTab ?? null,
     dsnHideNpcRolls: get('dice-so-nice', 'hideNpcRolls'),
     dsnDisabledDuringCombat: get('dice-so-nice', 'disabledDuringCombat'),
     dsnImmediatelyDisplay: get('dice-so-nice', 'immediatelyDisplayChatMessages'),

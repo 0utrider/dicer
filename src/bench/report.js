@@ -44,19 +44,21 @@ export function checkTargets(r) {
     const v = typeof r.recovered === 'boolean' ? r.recovered : null;
     out.push(check('recovered', true, v, v === true));
   }
+  // P9-R3/R8: a tier change swaps programs, textures and materials, so neither the resource counts
+  // nor the heap growth mean a leak any more.
+  const tierChanged = r.tier?.before != null && r.tier?.after != null && r.tier.before !== r.tier.after;
   if (r.heap) {
     const raw = r.heap.after - r.heap.before;
     const growth = Number.isFinite(raw) ? raw : null;
     const ratio = r.heap.before > 0 ? growth / r.heap.before : growth > 0 ? Infinity : 0;
-    out.push(check('heapGrowth', TARGETS.heapGrowthBytes, growth,
-      growth <= TARGETS.heapGrowthBytes && ratio <= TARGETS.heapGrowthRatio));
+    const c = check('heapGrowth', TARGETS.heapGrowthBytes, growth,
+      growth <= TARGETS.heapGrowthBytes && ratio <= TARGETS.heapGrowthRatio);
+    out.push(tierChanged ? { ...c, pass: null } : c);
   }
   if (r.resources) {
     const { before, after } = r.resources;
     const keys = new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]);
     const diff = [...keys].filter((k) => (before?.[k] ?? 0) !== (after?.[k] ?? 0));
-    // P9-R3: a tier change swaps programs and textures, so the counts no longer mean a leak.
-    const tierChanged = r.tier?.before != null && r.tier?.after != null && r.tier.before !== r.tier.after;
     out.push({ id: 'resources', target: 0, value: diff.length, pass: tierChanged ? null : diff.length === 0 });
   }
   return out;

@@ -64,12 +64,22 @@ export async function runScenario(scenario, adapter, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 16000;
   const now = opts.now ?? (() => (win.performance?.now ? win.performance.now() : Date.now()));
   const recorder = opts.recorder ?? createRecorder({ win });
+  // P9-R7: a roll that completes sooner than this after the roll call did not animate (0: off).
+  const minAnimatedMs = finite(opts.minAnimatedMs) && opts.minAnimatedMs > 0 ? opts.minAnimatedMs : 0;
+  // P9-R7: a hidden page throttles frames (and DSN skips animations), so the scenario is invalid.
+  // The hidden scenario hides the page on purpose and is exempt.
+  const doc = scenario.id === 'hidden' ? null : (opts.doc ?? win.document ?? null);
+  let pageHidden = Boolean(doc?.hidden);
+  const onVisibility = () => {
+    if (doc.hidden) pageHidden = true;
+  };
 
   const notes = [];
   const firstFrames = [];
   const dicerFrames = [];
   let failures = 0;
   let unanimated = 0;
+  let tooFast = 0;
   let completed = 0;
   let heapBefore = null;
   let heapAfter = null;
@@ -233,6 +243,10 @@ export async function runScenario(scenario, adapter, opts = {}) {
         // the frames measured nothing. A failure, so the head-to-head cannot use the scenario.
         failures++;
         unanimated++;
+      } else if (minAnimatedMs > 0 && now() - t0 < minAnimatedMs) {
+        // P9-R7: started, but over at once (DSN on a hidden tab): nothing was animated either.
+        failures++;
+        tooFast++;
       }
       try {
         dicerFrames.push(id != null ? (adapter.dicerFirstFrame?.(id) ?? null) : null);
@@ -263,6 +277,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
   try {
     hooks?.on('diceSoNiceRollStart', onStart);
     hooks?.on('diceSoNiceRollComplete', onComplete);
+    doc?.addEventListener?.('visibilitychange', onVisibility);
     recorder.start();
     for (let i = 1; i <= scenario.rolls; i++) {
       await oneRoll(i);
@@ -291,6 +306,11 @@ export async function runScenario(scenario, adapter, opts = {}) {
     }
   } finally {
     try {
+      doc?.removeEventListener?.('visibilitychange', onVisibility);
+    } catch {
+      /* ignore */
+    }
+    try {
       hooks?.off('diceSoNiceRollStart', onStart);
     } catch {
       /* ignore */
@@ -314,6 +334,14 @@ export async function runScenario(scenario, adapter, opts = {}) {
 
   if (unanimated > 0) {
     notes.push(`${unanimated} roll(s) completed without diceSoNiceRollStart: the product did not animate them`);
+  }
+  if (tooFast > 0) {
+    notes.push(`${tooFast} roll(s) finished under ${minAnimatedMs} ms after the roll call: too fast to have animated`);
+  }
+  if (doc?.hidden) pageHidden = true;
+  if (pageHidden) {
+    failures++;
+    notes.push('the page was hidden during the scenario: frame and first-frame times are not valid');
   }
 
   const lt = rec?.longTasks;
@@ -342,6 +370,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
     resources: resBefore && resAfter ? { before: resBefore, after: resAfter } : null,
     tier: { before: tierBefore, after: tierAfter },
     ...(scenario.recover ? { recovered } : {}),
+    ...(doc ? { pageHidden } : {}),
     notes,
   };
 }

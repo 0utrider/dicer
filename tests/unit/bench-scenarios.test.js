@@ -622,3 +622,87 @@ test('runSuite rolls overrides: a 200-roll soak samples at 50 and 200 and report
   expect(s.results[0].heap).toEqual({ before: 1000, after: 1000 });
   expect(rolled).toBe(230);
 });
+
+// P9-R7: a hidden page or a product that skips its animation makes the numbers meaningless.
+function fakeDoc(hidden = false) {
+  const listeners = new Set();
+  return {
+    hidden,
+    listeners,
+    addEventListener(n, f) {
+      if (n === 'visibilitychange') listeners.add(f);
+    },
+    removeEventListener(n, f) {
+      if (n === 'visibilitychange') listeners.delete(f);
+    },
+    set(h) {
+      this.hidden = h;
+      for (const f of [...listeners]) f();
+    },
+  };
+}
+
+test('a roll that completes faster than minAnimatedMs is a failure, noted once', async () => {
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks, { startAfter: 5, completeAfter: 15 });
+  const p = runScenario(by('burst20'), a, { hooks, win: fakeWin(), now, minAnimatedMs: 300 });
+  await vi.advanceTimersByTimeAsync(5000);
+  const r = await p;
+  expect(r.failures).toBe(20);
+  expect(r.notes.filter((x) => x.includes('too fast'))).toEqual([
+    '20 roll(s) finished under 300 ms after the roll call: too fast to have animated',
+  ]);
+});
+
+test('a roll slower than minAnimatedMs, or no minAnimatedMs, is not too fast', async () => {
+  const hooks = fakeHooks();
+  let p = runScenario(by('d20'), adapterFor(hooks, { completeAfter: 500 }), { hooks, win: fakeWin(), now, minAnimatedMs: 300 });
+  await vi.advanceTimersByTimeAsync(2000);
+  expect((await p).failures).toBe(0);
+  p = runScenario(by('d20'), adapterFor(hooks, { completeAfter: 15, startAfter: 5 }), { hooks, win: fakeWin(), now });
+  await vi.advanceTimersByTimeAsync(2000);
+  expect((await p).failures).toBe(0);
+});
+
+test('a page hidden during a scenario fails it once and marks pageHidden', async () => {
+  const hooks = fakeHooks();
+  const doc = fakeDoc();
+  const p = runScenario(by('burst20'), adapterFor(hooks), { hooks, win: fakeWin(), now, doc });
+  await vi.advanceTimersByTimeAsync(500);
+  doc.set(true);
+  await vi.advanceTimersByTimeAsync(300);
+  doc.set(false);
+  await vi.advanceTimersByTimeAsync(5000);
+  const r = await p;
+  expect(r.failures).toBe(1);
+  expect(r.pageHidden).toBe(true);
+  expect(r.notes).toContain('the page was hidden during the scenario: frame and first-frame times are not valid');
+  expect(doc.listeners.size).toBe(0);
+});
+
+test('a page already hidden when the scenario starts is caught too', async () => {
+  const hooks = fakeHooks();
+  const p = runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now, doc: fakeDoc(true) });
+  await vi.advanceTimersByTimeAsync(2000);
+  const r = await p;
+  expect(r.failures).toBe(1);
+  expect(r.pageHidden).toBe(true);
+});
+
+test('a visible page, and the hidden scenario itself, are not flagged', async () => {
+  const hooks = fakeHooks();
+  let p = runScenario(by('d20'), adapterFor(hooks), { hooks, win: fakeWin(), now, doc: fakeDoc() });
+  await vi.advanceTimersByTimeAsync(2000);
+  let r = await p;
+  expect(r.failures).toBe(0);
+  expect(r.pageHidden).toBe(false);
+  const doc = fakeDoc();
+  const a = adapterFor(hooks, { startAfter: 10, completeAfter: 800 });
+  a.perturb = vi.fn(async () => doc.set(true));
+  p = runScenario(by('hidden'), a, { hooks, win: fakeWin(), now, doc });
+  await vi.advanceTimersByTimeAsync(3000);
+  r = await p;
+  expect(r.failures).toBe(0);
+  expect(r.pageHidden).toBeUndefined();
+  expect(doc.listeners.size).toBe(0);
+});

@@ -136,8 +136,9 @@ describe('build', () => {
   it('does not grow the world-start download by more than 2 KB (ratchet, Plan 8 Task 6)', () => {
     // 4_086_989 bytes after Task 6 (GLSL stripping), 107 KB under the 4 MiB budget (H-R9 keeps
     // 4 MiB): the headroom must not be spent unnoticed. Lower this reference whenever world start
-    // shrinks.
-    const growth = worldStartBytes() - 4_086_989;
+    // shrinks. P9-R8 raised it by 650 bytes on purpose (4_087_639): the adaptive-quality drop log
+    // the benchmark reads must live in the world-start renderer.
+    const growth = worldStartBytes() - 4_087_639;
     console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });

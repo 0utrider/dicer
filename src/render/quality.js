@@ -135,6 +135,7 @@ export class AdaptiveQuality {
   #gpuBudget;
   #gpuFrames = [];
   #cpuFrames = [];
+  #lastDrop = null;
 
   constructor({ budgetMs = 20, window = 30, gpuBudgetMs = GPU_BUDGET_MS, onDrop } = {}) {
     this.#budget = budgetMs;
@@ -188,7 +189,7 @@ export class AdaptiveQuality {
     }
     if (this.#streak === 0) this.#frozen = base;
     if (++this.#streak < this.#window) return;
-    this.#dropNow();
+    this.#dropNow({ path: 'ema', ema: this.#ema, baseline: this.#frozen, streak: this.#streak });
   }
 
   /** GPU-timer path: GPU p95 and CPU median of the last 60 frames against the budget. */
@@ -201,12 +202,20 @@ export class AdaptiveQuality {
     if (this.#gpuFrames.length < GPU_WINDOW) return;
     const g = [...this.#gpuFrames].sort((a, b) => a - b);
     const c = [...this.#cpuFrames].sort((a, b) => a - b);
-    const gpuSlow = g[Math.ceil(0.95 * g.length) - 1] > this.#gpuBudget;
-    const cpuSlow = c[(c.length >> 1) - 1] > this.#gpuBudget;
-    if (gpuSlow || cpuSlow) this.#dropNow();
+    const gpuP95 = g[Math.ceil(0.95 * g.length) - 1];
+    const cpuMedian = c[(c.length >> 1) - 1];
+    const gpuSlow = gpuP95 > this.#gpuBudget;
+    const cpuSlow = cpuMedian > this.#gpuBudget;
+    if (gpuSlow || cpuSlow) this.#dropNow({ path: 'gpu', gpuP95, cpuMedian, gpuSlow, cpuSlow });
   }
 
-  #dropNow() {
+  /** P9-R8: why the last drop fired (null before any); kept across reset() for the report. */
+  get lastDrop() {
+    return this.#lastDrop ? { ...this.#lastDrop } : null;
+  }
+
+  #dropNow(reason) {
+    this.#lastDrop = reason;
     this.#dropped++;
     this.#ema = null;
     this.#streak = 0;

@@ -341,6 +341,8 @@ export function restorePlan(restore, active, { crashed = false } = {}) {
     groups.dicer.push({ op: 'setMaxDice', value: restore.maxDice });
   if (restore?.dsnMaxDiceNumber !== undefined)
     groups['dice-so-nice'].push({ op: 'setDsnMaxDiceNumber', value: restore.dsnMaxDiceNumber });
+  if (restore?.dsnImmediateDisplay !== undefined)
+    groups['dice-so-nice'].push({ op: 'setDsnImmediateDisplay', value: restore.dsnImmediateDisplay });
   if (restore?.dsnUserFlag !== undefined)
     groups['dice-so-nice'].push({ op: 'setDsnUserFlag', value: restore.dsnUserFlag });
   const order = active === 'dice-so-nice' ? ['dice-so-nice', 'dicer'] : ['dicer', 'dice-so-nice'];
@@ -408,14 +410,20 @@ export const QUICK_ROLLS = Object.freeze({ soak500: 200, burst100: 30 });
  * `error` when the filter leaves nothing.
  */
 export function planFor({ quick = false, only = null } = {}) {
-  let plan = matrix();
-  if (quick) plan = plan.filter((e) => e.profile !== 'throttled').map((e) => Object.freeze({ ...e, rolls: QUICK_ROLLS }));
-  if (only?.length) {
-    plan = plan.filter((e) => only.some((n) => runName(e).includes(n)));
-    if (!plan.length) {
-      const names = (quick ? matrix().filter((e) => e.profile !== 'throttled') : matrix()).map(runName);
-      return { plan, error: `--only ${only.join(',')} matches no run. Runs: ${names.join(', ')}` };
-    }
+  const all = matrix();
+  const names = new Set(all.map(runName));
+  // P9-R9: a term that is a whole run name selects that run only (dicer-pc-uncapped, not -low).
+  const matches = (e, n) => (names.has(n) ? runName(e) === n : runName(e).includes(n));
+  const named = (e) => only?.some((n) => matches(e, n));
+  let plan = only?.length ? all.filter(named) : all;
+  // Quick skips the throttled runs, unless --only names them (P9-R9).
+  if (quick) {
+    plan = plan
+      .filter((e) => e.profile !== 'throttled' || (only?.length && named(e) && only.some((n) => n.includes('throttled'))))
+      .map((e) => Object.freeze({ ...e, rolls: QUICK_ROLLS }));
+  }
+  if (only?.length && !plan.length) {
+    return { plan, error: `--only ${only.join(',')} matches no run. Runs: ${all.map(runName).join(', ')}` };
   }
   return { plan };
 }
@@ -456,6 +464,25 @@ export function runTier(suite) {
   return end != null && end !== start ? `${start} -> ${end}` : start;
 }
 
+/**
+ * P9-R8: one adaptive drop as text, e.g. "quality dropped ultra -> high 1004 s in (GPU timer:
+ * GPU p95 18.2 ms, CPU median 4.1 ms; GPU over budget)".
+ */
+export function dropText(d) {
+  const ms = (v) => (Number.isFinite(v) ? `${v.toFixed(1)} ms` : 'n/a');
+  const when = Number.isFinite(d?.at) ? ` ${Math.round(d.at / 1000)} s in` : '';
+  let why;
+  if (d?.path === 'gpu') {
+    const over = [d.gpuSlow && 'GPU', d.cpuSlow && 'CPU'].filter(Boolean).join(' and ') || 'nothing';
+    why = `GPU timer: GPU p95 ${ms(d.gpuP95)}, CPU median ${ms(d.cpuMedian)}; ${over} over budget`;
+  } else if (d?.path === 'ema') {
+    why = `frame EMA ${ms(d.ema)}, baseline ${ms(d.baseline)}, ${d.streak ?? '?'} slow frames`;
+  } else {
+    why = 'reason unknown';
+  }
+  return `quality dropped ${d?.from ?? '?'} -> ${d?.to ?? '?'}${when} (${why})`;
+}
+
 /** summary.md: runs, G2 target checks, then the head-to-head table. */
 export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = false, only = null }) {
   const out = [`# Dicer benchmark ${date}`, ''];
@@ -464,7 +491,7 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
     const parts = [];
     if (quick)
       parts.push(
-        `quick mode (no throttled runs; ${Object.entries(QUICK_ROLLS).map(([k, v]) => `${k} ${v} rolls`).join(', ')})`,
+        `quick mode (throttled runs only when --only names them; ${Object.entries(QUICK_ROLLS).map(([k, v]) => `${k} ${v} rolls`).join(', ')})`,
       );
     if (only?.length) parts.push(`only runs matching ${only.join(', ')}`);
     out.push(`Partial run: ${parts.join('; ')}. The full benchmark is the one that decides.`, '');
@@ -490,11 +517,24 @@ export function summaryMarkdown({ date, reports, rows, errors, dsnFlag, quick = 
       );
   }
   // P9-R2: a product that skipped the warm-up animation skipped the scenarios' too.
+  // P9-R7: also a warm-up that was over at once, and a page hidden during the warm-up or a scenario.
   for (const { entry, suite } of reports ?? []) {
-    if (suite?.warmup?.started === false)
+    const w = suite?.warmup;
+    if (w?.started === false || w?.tooFast === true)
       out.push(
         '',
-        `Warning: ${runName(entry)}: the warm-up roll did not animate, so its frames measure nothing (${JSON.stringify(suite.warmup.why ?? {})})`,
+        `Warning: ${runName(entry)}: the warm-up roll did not animate${w.tooFast ? ` (over in ${w.ms} ms)` : ''}, so its frames measure nothing (${JSON.stringify(w.why ?? {})})`,
+      );
+    // P9-R8: every adaptive drop, with the judge that fired and its numbers.
+    for (const r of suite?.results ?? []) {
+      for (const d of r?.qualityDrops ?? []) out.push('', `Note: ${runName(entry)}: ${r.scenario}: ${dropText(d)}`);
+    }
+    const hidden = (suite?.results ?? []).filter((r) => r?.pageHidden === true).map((r) => r.scenario);
+    if (w?.hidden === true) hidden.unshift('warm-up');
+    if (hidden.length)
+      out.push(
+        '',
+        `Warning: ${runName(entry)}: the page was hidden during ${hidden.join(', ')}, so those results are not valid (keep the benchmark window visible)`,
       );
   }
   out.push('', 'Throttled results are estimates of a low-end machine.', '');

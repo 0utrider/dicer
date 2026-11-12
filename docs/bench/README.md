@@ -23,7 +23,7 @@ npm run test:live:bench -- --quick   # a shorter partial run, for checking a fix
 npm run test:live:bench -- --only dice-so-nice   # only the runs whose name contains this
 ```
 
-`--quick` skips the throttled runs and makes fewer rolls where the count only buys precision: the soak makes 200 rolls (heap and resources at roll 50 and roll 200, still enough to show a leak) and `burst100` makes 30. `--only` takes one or more comma-separated parts of run names (see Profiles and modes for the names), for example `--only dicer-pc-vsync` or `--only dice-so-nice,dicer-pc-uncapped`. The two combine, and `--dry-run` shows what either one would run. `summary.md` of a partial run says so in its first line: the full run is the one that decides.
+`--quick` skips the throttled runs, unless an `--only` term containing "throttled" names them (`--quick --only throttled-uncapped` is the low-end head-to-head with the quick roll counts), and makes fewer rolls where the count only buys precision: the soak makes 200 rolls (heap and resources at roll 50 and roll 200, still enough to show a leak) and `burst100` makes 30. `--only` takes one or more comma-separated parts of run names (see Profiles and modes for the names); a whole run name selects only that run (`dicer-pc-uncapped` does not also pick `dicer-pc-uncapped-low`). For example `--only dicer-pc-vsync` or `--only dice-so-nice,dicer-pc-uncapped`. The two combine, and `--dry-run` shows what either one would run. `summary.md` of a partial run says so in its first line: the full run is the one that decides.
 
 A full run goes through 8 runs, including a 500-roll soak, a context-loss check and a hidden-tab check. Expect tens of minutes; this is an estimate, not a measured time. The terminal prints a timestamped line as each run's warm-up roll and each scenario starts and ends, so a long run visibly progresses. The module switch gets 60 s; a Foundry dialog that blocks it stops the run with a message instead of hanging it. The process exits 0 when every check passes and 1 when any check fails or a run errors. Rows marked n/a do not fail the run. It exits 2 before starting when the credentials are missing, Foundry cannot be reached or `restore.json` is damaged.
 
@@ -35,7 +35,13 @@ What each run covers:
 
 Before its scenarios each run makes one unrecorded warm-up roll of every die type (`1d4+1d6+1d8+1d10+1d12+1d20`), so neither product pays its first-roll setup inside a measured scenario. Every bench roll speaks as the alias "Dice benchmark", never a token or character: DSN skips an NPC speaker's roll when its hide-NPC-rolls setting is on. Before each scenario the harness forces a full garbage collection, so garbage left by page load is not collected inside the next measurement.
 
-A chat roll that completes without `diceSoNiceRollStart` was not animated: it counts as a failed roll, and the scenario notes how many. If the warm-up roll was not animated, `summary.md` warns and lists the settings that can cause it.
+A chat roll that completes without `diceSoNiceRollStart` was not animated: it counts as a failed roll, and the scenario notes how many. So does a roll over less than 300 ms after the roll call: DSN on a hidden page fires its start hook, then completes at once. If the warm-up roll was not animated, `summary.md` warns and lists the settings that can cause it.
+
+DSN runs turn DSN's world setting "immediately display chat messages" off and put it back afterwards, like `maxDiceNumber`. With it on, DSN fires `diceSoNiceRollComplete` before the dice land, so the next roll started at once and nothing was measured.
+
+Each adaptive quality drop during a Dicer scenario is recorded in that result's `qualityDrops`: when it happened, the tiers, which check fired (the GPU timer's GPU p95 / CPU median, or the frame EMA), and the numbers behind it. `summary.md` lists each one as a note. A scenario whose tier changed reports its heap growth and resource counts as n/a, because the new tier rebuilds textures and materials.
+
+**Keep the benchmark window visible for the whole run.** A minimized or hidden page gets about one frame a second, and DSN skips its animations there. A scenario during which the page was hidden at any point counts one failure, has `pageHidden: true`, and `summary.md` warns about it. The `hidden` scenario hides the page on purpose and is exempt.
 
 ## Profiles and modes
 

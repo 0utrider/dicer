@@ -74,7 +74,7 @@ function printPlan(plan, decision) {
       `${p[e.profile].viewport.width}x${p[e.profile].viewport.height}@${p[e.profile].deviceScaleFactor}`,
       e.dicerQuality ? `dicer quality ${e.dicerQuality}` : null,
       e.product === 'dicer' ? `maxDice ${lib.DICER_MAX_DICE}` : null,
-      e.product === 'dice-so-nice' ? `maxDiceNumber ${lib.DSN_MAX_DICE}` : null,
+      e.product === 'dice-so-nice' ? `maxDiceNumber ${lib.DSN_MAX_DICE}, immediate display off` : null,
       flag ? (flag.exists ? 'dsn user flag = effects off' : 'dsn user flag unset') : null,
     ].filter(Boolean);
     const ids = e.ids.map((id) => (e.rolls?.[id] ? `${id} (${e.rolls[id]} rolls)` : id));
@@ -314,6 +314,9 @@ function createHarness(chromium) {
       } else {
         const cap = lib.DSN_MAX_DICE;
         await raiseCap(s.page, restore, 'dsnMaxDiceNumber', 'dice-so-nice', 'maxDiceNumber', cap);
+        // P9-R8: with it on, DSN fires diceSoNiceRollComplete before the dice land, so the
+        // scenarios measured nothing. Off for the run, restored after.
+        await raiseCap(s.page, restore, 'dsnImmediateDisplay', 'dice-so-nice', 'immediatelyDisplayChatMessages', false);
         dsnFlag = await applyDsnFlag(s.page, restore, lib.dsnFlagFor(entry));
       }
       if (entry.dicerQuality)
@@ -362,6 +365,9 @@ function createHarness(chromium) {
             });
           } else if (step.op === 'setDsnMaxDiceNumber') {
             const set = { namespace: 'dice-so-nice', key: 'maxDiceNumber', value: step.value };
+            await rpc(s.page, 'setSetting', set);
+          } else if (step.op === 'setDsnImmediateDisplay') {
+            const set = { namespace: 'dice-so-nice', key: 'immediatelyDisplayChatMessages', value: step.value };
             await rpc(s.page, 'setSetting', set);
           } else if (step.op === 'setDsnUserFlag') {
             const back = await rpc(s.page, 'setDsnUserFlag', step.value);
@@ -511,7 +517,7 @@ async function main() {
         // Normal end or Ctrl+C in this process: only the tracked ids, never the time sweep (H-R11).
         await h.performRestore(restore, { crashed: false });
         console.log(
-          'bench: world restored (module configuration, maxDice, maxDiceNumber, DSN user flag, run chat messages)',
+          'bench: world restored (module configuration, maxDice, maxDiceNumber, DSN immediate display, DSN user flag, run chat messages)',
         );
       } catch (e) {
         errors.push({ run: 'restore', error: errText(e) });

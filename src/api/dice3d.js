@@ -156,6 +156,7 @@ export function createDice3dApi({
   getAtlas = () => null,
   getFonts = () => null,
   getTier = () => null,
+  getQualityDrops = () => [],
   getGpu = () => readGpu(renderer),
   importBench = () => import('../bench/dicer-adapter.js'),
 }) {
@@ -823,6 +824,14 @@ export function createDice3dApi({
       },
       get canvas() {
         return renderer?.canvas ?? null;
+      },
+      /** P9-R8: this session's adaptive tier drops, {at, from, to, path, ...judge numbers}. */
+      get qualityDrops() {
+        try {
+          return getQualityDrops() ?? [];
+        } catch {
+          return [];
+        }
       },
       /** message id -> ms from the gate intercepting it to the first drawn frame (last 50). */
       get firstFrames() {
