@@ -1,4 +1,5 @@
 import { planThrow } from '../../src/throw/throw-planner.js';
+import { coin } from './foundry-roll.js';
 
 const term = (faces, results) => ({
   faces,
@@ -24,6 +25,21 @@ test('d100 becomes tens + ones', () => {
 });
 test('unsupported counts (d9) still skipped', () => {
   expect(planThrow({ dice: [term(9, [3]), term(11, [2])] })).toEqual({ dice: [], skipped: 2 });
+});
+
+test('a Foundry coin (0 tails / 1 heads) is thrown as the d2 on face 2 / 1; other results are skipped', () => {
+  const heads = planThrow(coin(1)).dice;
+  const tails = planThrow(coin(0)).dice;
+  expect(heads).toEqual([{ type: 'd2', value: 1, variant: 'dc' }]);
+  expect(tails).toEqual([{ type: 'd2', value: 2, variant: 'dc' }]);
+  expect(planThrow(coin(2))).toEqual({ dice: [], skipped: 1 });
+  // A preset aliasing the coin onto another shape still shows face 1 / 2.
+  expect(planThrow(coin(0), { shapeFor: () => 'd6' }).dice).toEqual([{ type: 'd6', value: 2, variant: 'dc' }]);
+  // A decorator's faces stay on the coin (a preset's heads / tails labels).
+  const faces = { key: 'k', labels: [] };
+  expect(planThrow(coin(1), { decorate: () => ({ faces }) }).dice[0].faces).toBe(faces);
+  // A plain 1d2 (results 1 / 2) is unchanged.
+  expect(planThrow({ dice: [term(2, [2])] }).dice).toEqual([{ type: 'd2', value: 2 }]);
 });
 
 /** Modelled on Foundry v14's FateDie: DENOMINATION 'f', faces 3, minValue -1, results -1..1. */

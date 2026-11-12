@@ -4,7 +4,7 @@ import { FATE_FACES } from '../compat/faces.js';
 /**
  * @typedef {{kind:'glyph', text:string}|{kind:'text', text:string}|{kind:'image', url:string}|{kind:'blank'}} FaceLabel
  * @typedef {{ key: string, labels: FaceLabel[] }} FaceSet indexed like getShape(type).values
- * @typedef {{ type: string, value: number, variant?: 'd100tens'|'dF'|'d3'|'d5'|'d7', appearance?: object,
+ * @typedef {{ type: string, value: number, variant?: 'd100tens'|'dF'|'dc'|'d3'|'d5'|'d7', appearance?: object,
  *   faces?: FaceSet, ghost?: boolean, model?: string,
  *   fx?: import('../effects/fx-resolver.js').Fx[], damageType?: string }} DieSpec
  *   `fx` and `damageType` are result-dependent: set only for real views (never on a ghost).
@@ -14,6 +14,9 @@ import { FATE_FACES } from '../compat/faces.js';
 const RELABEL = { 3: 'd6', 5: 'd10', 7: 'd14' };
 /** Fate result -1 / 0 / +1 -> d6 face, [even, odd] result index (FATE_FACES: 1, 2 +; 3, 4 blank; 5, 6 -). */
 const FATE = [[6, 5], [3, 4], [1, 2]];
+
+/** Foundry's Coin (DENOMINATION 'c'), or any 2-faced term whose lowest result is 0. */
+const isCoin = (term) => dsnTypeOf(term) === 'dc' || (term?.faces === 2 && term.minValue === 0);
 
 /**
  * The dice one result throws: a d100 is a tens d10 plus a ones d10. `odd` is the result's index
@@ -26,6 +29,11 @@ function diceFor(term, r, shape, odd) {
   if (dsnTypeOf(term) === 'df') {
     const value = FATE[r + 1]?.[odd];
     return value ? [{ type: 'd6', value, variant: 'dF', faces: FATE_FACES }] : null;
+  }
+  // Foundry's Coin rolls 0 (tails) or 1 (heads): the d2 shows face 2 or 1, so the result survives.
+  // A preset may alias it onto another shape: faces 1 and 2 exist on every die.
+  if (isCoin(term)) {
+    return r === 0 || r === 1 ? [{ type: shape || 'd2', value: r === 0 ? 2 : 1, variant: 'dc' }] : null;
   }
   if (shape) return [{ type: shape, value: r }];
   if (faces === 100) {
@@ -87,7 +95,7 @@ export function planThrow(roll, { maxDice = 20, showExtra = true, decorate, shap
           else delete merged.variant;
           // A relabelled die (dF, d3, d5, d7) keeps its own faces: a preset's fit another shape.
           if (d.faces) merged.faces = d.faces;
-          else if (d.variant && d.variant !== 'd100tens') delete merged.faces;
+          else if (d.variant && d.variant !== 'd100tens' && d.variant !== 'dc') delete merged.faces;
           return merged;
         });
       }

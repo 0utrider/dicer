@@ -10,8 +10,10 @@ export class Die {
   }
 }
 
+/** As Foundry v14's Coin: results are 0 (tails) or 1 (heads), minValue 0. */
 export class Coin extends Die {
   static DENOMINATION = 'c';
+  minValue = 0;
 }
 
 const ok = (result) => ({ result, active: true });
@@ -66,5 +68,5 @@ export const dynamicCountD6 = () =>
     }),
   );
 
-/** 1dc that rolled heads. */
-export const coin = () => foundryRoll(new Coin({ number: 1, faces: 2, results: [ok(2)] }));
+/** 1dc that rolled heads (1), or tails (0). */
+export const coin = (result = 1) => foundryRoll(new Coin({ number: 1, faces: 2, results: [ok(result)] }));

@@ -869,10 +869,12 @@ export class DiceBox {
     const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
     const appearance = ghost ? GHOST_APPEARANCE : look;
     // A d4 with the crystal look is a d4crystal for hull, geometry, reader and labels; its type
-    // (and so its value) stays d4. A ghost has the shape of the look it stands for.
-    // A DSN preset's own model or faces win: that die stays classic.
+    // (and so its value) stays d4. A ghost follows the viewer's look and carries no appearance of
+    // its own, so it has the shape of the look it stands for.
+    // A DSN preset's own faces, or a model that is actually drawn (modelRotationFor is not null;
+    // the d4 has no verified rotation, so its model is never used), win: that die stays classic.
     const shapeType =
-      spec.type === 'd4' && !spec.variant && !spec.model && !spec.faces && look.shapes.d4 === 'crystal'
+      spec.type === 'd4' && !spec.variant && !modelRotationFor(spec) && !spec.faces && look.shapes.d4 === 'crystal'
         ? 'd4crystal'
         : spec.type;
     const shape = getShape(shapeType);

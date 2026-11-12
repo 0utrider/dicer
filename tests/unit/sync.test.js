@@ -846,7 +846,7 @@ describe('ghostRoll (P3-R20: every ghost render uses the wire ghost shape)', () 
 
   test('keeps the term class, so shapeFor still finds a coin', () => {
     const shapeFor = (t) => (t.constructor?.DENOMINATION === 'c' ? 'dc' : null);
-    expect(planThrow(ghostRoll(coin()), { shapeFor }).dice).toEqual([{ type: 'dc', value: 1 }]);
+    expect(planThrow(ghostRoll(coin()), { shapeFor }).dice).toEqual([{ type: 'dc', value: 1, variant: 'dc' }]);
   });
 
   test('a legacy Roll-like shape uses its number when given, else its result count', () => {

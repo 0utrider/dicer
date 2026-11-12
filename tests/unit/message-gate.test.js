@@ -1513,7 +1513,7 @@ describe('ghost dice use the wire ghost shape (P3-R20)', () => {
       planThrow: (r, o) => realPlanThrow(r, { shapeFor, ...o }),
     });
     gate.onCreate(hiddenWhisper('m1', coin()));
-    expect(diceBox.rolls[0].specs).toEqual([{ type: 'dc', value: 1, ghost: true }]);
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'dc', value: 1, variant: 'dc', ghost: true }]);
   });
 });
 

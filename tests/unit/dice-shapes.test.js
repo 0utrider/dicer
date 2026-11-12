@@ -66,6 +66,9 @@ test('labelFor variants; 6./9. marks only on drawn 6 and 9', () => {
   );
   expect(faces(6).map((f) => labelFor('d6', f, 'dF'))).toEqual(['', '', '', '', '', '']);
   expect(faces(6).map((f) => resultOf(f, 'dF'))).toEqual([1, 1, 0, 0, -1, -1]);
+  // A Foundry coin: face 1 (heads) is 1, face 2 (tails) is 0; the faces keep their 1 / 2 labels.
+  expect([1, 2].map((f) => resultOf(f, 'dc'))).toEqual([1, 0]);
+  expect([1, 2].map((f) => labelFor('d2', f, 'dc'))).toEqual(['1', '2']);
   expect(faces(14).map((f) => resultOf(f, 'd7'))).toEqual([1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7]);
   expect([resultOf(40, 'd100tens'), resultOf(7), resultOf(10, 'd5')]).toEqual([40, 7, 5]);
   // Plain dice are unchanged: 6 and 9 marked, d10's 10 reads 0.

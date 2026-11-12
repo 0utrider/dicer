@@ -13,6 +13,8 @@ import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
 import { FATE_FACES } from '../../src/compat/faces.js';
+import { planThrow } from '../../src/throw/throw-planner.js';
+import { foundryRoll, Coin } from './foundry-roll.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
@@ -386,6 +388,24 @@ test('a d7 and a d14 in one roll get different label sets', () => {
   expect(dice.map((d) => d.targetValue)).toEqual([8, 8, 5, 10]);
   // The die reports the Foundry result (dice events, DSN sfx), not the face it turned to.
   expect(dice.map((d) => d.value)).toEqual([1, 8, 2, 5]);
+  box.clear();
+});
+
+test('a Foundry coin (results 0 / 1) throws the d2 on face 2 / 1 and reports the Foundry result', () => {
+  const { box } = setup();
+  const { dice: specs } = planThrow(foundryRoll(new Coin({ faces: 2, results: [{ result: 0, active: true }, { result: 1, active: true }] })));
+  expect(specs).toEqual([
+    { type: 'd2', value: 2, variant: 'dc' },
+    { type: 'd2', value: 1, variant: 'dc' },
+  ]);
+  box.roll(specs);
+  const dice = box._rolls.values().next().value.dice;
+  expect(dice.map((d) => d.targetValue)).toEqual([2, 1]);
+  expect(dice.map((d) => d.value)).toEqual([0, 1]);
+  // A plain d2 (results 1 / 2) is unchanged.
+  box.clear();
+  box.roll([{ type: 'd2', value: 2 }]);
+  expect(box._rolls.values().next().value.dice[0].value).toBe(2);
   box.clear();
 });
 
@@ -2524,19 +2544,20 @@ describe('the crystal d4 look', () => {
   });
 });
 
-describe('a DSN preset model or faces keep the d4 classic', () => {
+describe('a DSN preset faces keep the d4 classic; a never-drawn d4 model does not', () => {
   const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
 
-  test('a d4 with a model and a crystal look stays classic (hull, geometry, reader, model rotation)', () => {
+  test('a d4 with an unused model (no verified rotation) and a crystal look is still the crystal', () => {
     buildDieGeometry.mockClear();
     const { physics, box } = setup();
     box.roll([{ type: 'd4', value: 2, dsnType: 'd4', model: 'm/dice_4.glb', appearance: crystal }]);
-    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
-    expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4']);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
+    expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4crystal']);
     const die = box._rolls.values().next().value.dice[0];
-    expect(die.shapeType).toBe('d4');
-    expect(die.shape).toBe(getShape('d4'));
+    expect(die.shapeType).toBe('d4crystal');
+    expect(die.shape).toBe(getShape('d4crystal'));
     expect(die.modelRotation).toBe(MODEL_ROTATIONS.d4);
+    expect(die.modelRotation).toBeNull();
     box.clear();
   });
 

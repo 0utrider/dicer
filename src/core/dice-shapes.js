@@ -228,9 +228,11 @@ export function dsnTypeOf(term) {
 
 /**
  * The Foundry result face `value` of a relabelled die stands for: dF faces 1, 2 / 3, 4 / 5, 6 give
- * +1 / 0 / -1; a d3 / d5 / d7 face f gives ((f - 1) mod n) + 1. Any other die: the value itself.
+ * +1 / 0 / -1; a d3 / d5 / d7 face f gives ((f - 1) mod n) + 1; a Foundry coin (variant 'dc')
+ * shows heads on face 1 (result 1) and tails on face 2 (result 0). Any other die: the value itself.
  */
 export function resultOf(value, variant) {
+  if (variant === 'dc') return value === 2 ? 0 : 1;
   const n = +variant?.slice(1);
   return variant === 'dF' ? (value < 3) - (value > 4) : n ? ((value - 1) % n) + 1 : value;
 }
@@ -243,7 +245,8 @@ export function resultOf(value, variant) {
 export function labelFor(type, value, variant) {
   if (variant === 'd100tens') return value === 100 || value === 0 ? '00' : String(value);
   if (value === 0 || variant === 'dF') return '';
-  value = resultOf(value, variant);
+  // A coin keeps its face numbers 1 and 2 (heads, tails): they are not its Foundry results.
+  if (variant !== 'dc') value = resultOf(value, variant);
   if (type === 'd10' && value === 10) return '0';
   if (value === 6 || value === 9) return `${value}.`;
   return String(value);
