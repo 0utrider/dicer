@@ -3,6 +3,7 @@ import { mergePatches } from '../merge.js';
 import * as iridescent from './iridescent.js';
 import * as gem from './gem.js';
 import * as wood from './wood.js';
+import * as metalFinishes from './metal-finishes.js';
 
 /**
  * Body modules: one per new body type, plus (later) the metal finishes and luminous.
@@ -25,6 +26,7 @@ const MODULES = [
   [iridescent.iridescentPatch, iridescent.USES_NOISE],
   [gem.gemPatch, gem.USES_NOISE],
   [wood.woodPatch, wood.USES_NOISE],
+  [metalFinishes.metalFinishPatch, metalFinishes.USES_NOISE],
 ];
 
 const isEmpty = (p) => Object.keys(p).length === 0;
@@ -32,7 +34,7 @@ const isEmpty = (p) => Object.keys(p).length === 0;
 /**
  * ExtrasPatch for the body: {} for today's bodies. NOISE_GLSL is prepended once when an applying
  * module uses it (world start's bodyChunks only adds it for marble and antique metal, which never
- * combine with a new body, so it is never compiled twice).
+ * combine with a new body or the patina/worn finishes, so it is never compiled twice).
  */
 export function bodyPatch(a, _flags) {
   const parts = [];

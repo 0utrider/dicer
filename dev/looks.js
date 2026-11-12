@@ -62,6 +62,9 @@ const VARIANTS = [
   ['wood~walnut', 'default', 'walnut', {}, {}, { type: 'wood', preset: 'walnut', color: '#5a3a22', color2: '#2a170c', roughness: 0.5 }],
   ['wood~cherry', 'default', 'cherry', {}, {}, { type: 'wood', preset: 'cherry', color: '#9c4a2c', color2: '#5a2414', roughness: 0.45 }],
   ['wood~ebony', 'default', 'ebony', {}, {}, { type: 'wood', preset: 'ebony', color: '#1c1714', color2: '#3b302a', roughness: 0.35 }],
+  // aged metal finishes: Task 7 replaces the inline colours with PRESET_COLORS (src/look/body-colors.js)
+  ['metal~patina', 'default', 'copper patina', {}, {}, { type: 'metal', finish: 'patina', color: '#b5653a', color2: '#3fae9a', roughness: 0.4 }],
+  ['metal~worn', 'default', 'battle-worn', {}, {}, { type: 'metal', finish: 'worn', color: '#9aa0a6', color2: '#3a3d40', roughness: 0.35 }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only

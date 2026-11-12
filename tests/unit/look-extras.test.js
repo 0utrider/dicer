@@ -13,6 +13,8 @@ import { bodyPatch } from '../../src/render/extras/bodies/index.js';
 import { PRESET_PARAMS, iridescentPatch } from '../../src/render/extras/bodies/iridescent.js';
 import { PRESET_PARAMS as GEM_PARAMS, gemPatch } from '../../src/render/extras/bodies/gem.js';
 import { PRESET_PARAMS as WOOD_PARAMS, woodPatch } from '../../src/render/extras/bodies/wood.js';
+import { LIP, metalFinishPatch } from '../../src/render/extras/bodies/metal-finishes.js';
+import { BORDER } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 
@@ -338,5 +340,92 @@ describe('bodies', () => {
         fs.indexOf('#include <lights_physical_fragment>'),
       );
     }
+  });
+
+  const METAL_LINE = 'metalnessFactor = mix( metalnessFactor, uFillPBR.x, dcMask );';
+
+  test('patina and worn: own programs (key finish part), other metal finishes untouched', () => {
+    const copper = { type: 'metal', color: '#b5653a', color2: '#3fae9a', roughness: 0.4 };
+    const keys = ['polished', 'brushed', 'antique', 'patina', 'worn'].map(
+      (finish) => bodyMat({ ...copper, finish }).userData.programKey,
+    );
+    expect(new Set(keys).size).toBe(5);
+    expect(keys[3]).toMatch(/^metal\|patina\|/);
+    expect(keys[4]).toMatch(/^metal\|worn\|/);
+    for (const finish of ['polished', 'brushed', 'antique']) {
+      expect(metalFinishPatch(look({ body: { ...copper, finish } }))).toEqual({});
+    }
+    const pat = bodyMat({ ...copper, finish: 'patina' });
+    const worn = bodyMat({ ...copper, finish: 'worn' });
+    expect(pat.defines.DICER_PATINA).toBe('');
+    expect(pat.defines.DICER_WORN).toBeUndefined();
+    expect(worn.defines.DICER_WORN).toBe('');
+    expect(worn.defines.DICER_PATINA).toBeUndefined();
+    for (const m of [pat, worn]) {
+      // the base metal program: border yes, brushed and antique chunks no
+      expect(m.defines.DICER_BORDER).toBe('');
+      expect(m.defines.DICER_BRUSHED).toBeUndefined();
+      expect(m.defines.DICER_ANTIQUE).toBeUndefined();
+      const fs = patched(m).fragmentShader;
+      expect(fs).not.toContain('#ifdef DICER_ANTIQUE');
+      expect(fs).not.toContain('#ifdef DICER_BRUSHED');
+      expect(count(fs, '#define DC_NOISE')).toBe(1);
+    }
+    const pfs = patched(pat).fragmentShader;
+    // the colour chunk after the number fill (it reads dcD and dcMask), never painting the fill
+    const at = pfs.indexOf('float dcPatina = 0.0;');
+    expect(count(pfs, 'float dcPatina = 0.0;')).toBe(1);
+    expect(at).toBeGreaterThan(pfs.indexOf('float dcMask = smoothstep( - dcAA, dcAA, dcD );'));
+    expect(pfs).toContain('dcPatina *= 1.0 - dcMask;');
+    const r = pfs.indexOf('roughnessFactor = mix( roughnessFactor, 0.85, dcPatina );');
+    expect(r).toBeGreaterThan(pfs.indexOf('#include <roughnessmap_fragment>'));
+    const wfs = patched(worn).fragmentShader;
+    const w = wfs.indexOf('float dcWoScr = 0.0;');
+    expect(count(wfs, 'float dcWoScr = 0.0;')).toBe(1);
+    expect(w).toBeGreaterThan(wfs.indexOf('float dcMask = smoothstep( - dcAA, dcAA, dcD );'));
+    expect(count(wfs, 'dcWoScr')).toBeGreaterThan(2);
+    expect(wfs.indexOf('roughnessFactor', w)).toBeGreaterThan(wfs.indexOf('#include <roughnessmap_fragment>'));
+    // worn keeps the plain metalness line
+    expect(count(wfs, METAL_LINE)).toBe(1);
+  });
+
+  test("patina's metalness pair applies exactly once, also with raised + outline numbers, and survives GLSL stripping", () => {
+    const pair = metalFinishPatch(look({ body: { type: 'metal', finish: 'patina' } })).replace;
+    expect(pair).toHaveLength(1);
+    const [from, to] = pair[0];
+    expect(from).toBe(METAL_LINE);
+    expect(to).toBe('metalnessFactor = mix( mix( metalnessFactor, 0.0, dcPatina ), uFillPBR.x, dcMask );');
+    // the line patchShader writes: once in today's metal shader, and it survives stripping
+    expect(count(patched(engraved()).fragmentShader, from)).toBe(1);
+    expect(stripGlslParts([`\t${from}`]).join('')).toContain(from);
+    const all = createDiceMaterial(
+      look({
+        body: { type: 'metal', finish: 'patina' },
+        numbers: { relief: 'raised', fill: 'outline' },
+      }),
+      atlas,
+      s,
+      labels,
+      FLAGS,
+    );
+    const fs = patched(all).fragmentShader;
+    expect(count(fs, from)).toBe(0);
+    expect(count(fs, to)).toBe(1);
+    for (const [f, t] of RAISED_REPLACE) {
+      expect(count(fs, f)).toBe(0);
+      expect(count(fs, t)).toBe(1);
+    }
+    expect(count(fs, 'float dcMask = smoothstep( - dcAA, dcAA, dcD ) * ( 1.0 - smoothstep(')).toBe(1);
+  });
+
+  test('metalFinishPatch is {} for a non-metal body with finish patina', () => {
+    for (const type of ['opaque', 'resin', 'marble', 'pearl', 'wood', 'gem', 'iridescent']) {
+      for (const finish of ['patina', 'worn']) {
+        expect(metalFinishPatch({ body: { type, finish, color: '#000000', color2: '#ffffff' } })).toEqual({});
+      }
+    }
+    expect(metalFinishPatch({ body: { type: 'metal', finish: 'worn' } }).defines).toEqual({ DICER_WORN: '' });
+    // the finishes' copy of the raised border geometry (kept local: no world-start export)
+    expect(LIP).toEqual({ to: BORDER.to, height: BORDER.height });
   });
 });
