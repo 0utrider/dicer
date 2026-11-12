@@ -34,6 +34,7 @@ export const DEFAULT_APPEARANCE = deepFreeze({
   numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif' },
   edges: { radius: 0.5, style: 'rounded' },
   glow: { color: '#ffffff', intensity: 0 },
+  shapes: { d4: 'classic' },
 });
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -133,6 +134,7 @@ export function normalizeAppearance(input) {
       },
       edges: { radius, style: radius === 0 ? 'sharp' : 'rounded' },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
+      shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
     };
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_APPEARANCE));

@@ -9,6 +9,7 @@ import { buildDieGeometry } from '../../src/core/chamfer.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
+import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
 import { FATE_FACES } from '../../src/compat/faces.js';
@@ -2445,5 +2446,80 @@ describe('impact effects', () => {
     expect(a.position).toBeDefined();
     expect(typeof a.position.x).toBe('number');
     expect(a.dieKey).not.toBe(b.dieKey);
+  });
+});
+
+describe('the crystal d4 look', () => {
+  const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
+  const landed = async (renderer, physics, box, specs) => {
+    const r = box.roll(specs);
+    physics.flush();
+    renderer.tick(10000);
+    renderer.tick(20000);
+    await flushMicrotasks();
+    return r;
+  };
+
+  test('a d4 with a crystal look is thrown as d4crystal (hull, geometry key, reader) and shows the rolled value', async () => {
+    buildDieGeometry.mockClear();
+    createDiceMaterial.mockClear();
+    const { renderer, physics, box } = setup();
+    await landed(renderer, physics, box, [{ type: 'd4', value: 3, appearance: crystal }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
+    expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4crystal']);
+    expect([...box._geometries.keys()][0].startsWith('d4crystal|')).toBe(true);
+    const shape = getShape('d4crystal');
+    expect(createDiceMaterial.mock.calls[0][2]).toBe(shape);
+    expect(createDiceMaterial.mock.calls[0][3]).toEqual(shape.values.map((v) => labelFor('d4crystal', v)));
+    const die = box._rolls.values().next().value.dice[0];
+    // Foundry's type and result stay d4's; the face reader is the crystal's
+    expect(die.type).toBe('d4');
+    expect(die.value).toBe(3);
+    expect(die.shape).toBe(shape);
+    expect(die.targetValue).toBe(3);
+    const r = rotationToShow(shape, readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 }), faceForValue(shape, 3));
+    const q = die.inner.quaternion;
+    expect(Math.abs(q.x * r.x + q.y * r.y + q.z * r.z + q.w * r.w)).toBeCloseTo(1, 5);
+    box.clear();
+  });
+
+  test('a classic d4 and a crystal d4 do not share a geometry or a material', () => {
+    const { renderer, box } = setup();
+    box.roll([
+      { type: 'd4', value: 2 },
+      { type: 'd4', value: 2, appearance: crystal },
+    ]);
+    const [a, b] = dieGroups(renderer).map((g) => g.children[0]);
+    expect(a.geometry).not.toBe(b.geometry);
+    expect(a.material).not.toBe(b.material);
+    box.clear();
+  });
+
+  test('a roll-level crystal look, a ghost and a rebuilt material all keep the shape', () => {
+    const { physics, box } = setup({ getAppearance: () => crystal });
+    box.roll([
+      { type: 'd4', value: 4 },
+      { type: 'd4', value: 4, ghost: true },
+    ]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }, { type: 'd4crystal' }]);
+    box.invalidateMaterials({ replaceInFlight: true });
+    const dice = box._rolls.values().next().value.dice;
+    expect(dice.every((d) => d.shape.type === 'd4crystal' && d.type === 'd4')).toBe(true);
+    expect(dice[0].inner.geometry).toBe(dice[1].inner.geometry);
+    box.clear();
+  });
+
+  test('other types ignore shapes.d4', () => {
+    const { physics, box } = setup();
+    box.roll(['d6', 'd8', 'd20', 'd2'].map((type) => ({ type, value: 1, appearance: crystal })));
+    expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d6', 'd8', 'd20', 'd2']);
+    box.clear();
+  });
+
+  test('a classic look keeps the d4', () => {
+    const { physics, box } = setup();
+    box.roll([{ type: 'd4', value: 1, appearance: DEFAULT_APPEARANCE }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    box.clear();
   });
 });

@@ -516,3 +516,18 @@ describe('look extras chunk', () => {
     vi.restoreAllMocks();
   });
 });
+
+test('a d4 with the crystal look draws the crystal; other types and classic d4s do not', async () => {
+  const { t } = make();
+  const crystal = { ...theme().appearance, shapes: { d4: 'crystal' } };
+  buildDieGeometry.mockClear();
+  await t.thumbnail({ appearance: crystal }, 'd4');
+  expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4crystal']);
+  buildDieGeometry.mockClear();
+  await t.thumbnail({ appearance: crystal }, 'd6');
+  expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d6']);
+  buildDieGeometry.mockClear();
+  await t.thumbnail({ appearance: { ...crystal, shapes: { d4: 'classic' } } }, 'd4');
+  expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4']);
+  t.dispose();
+});

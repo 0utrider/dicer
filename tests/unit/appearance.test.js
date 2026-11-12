@@ -53,7 +53,7 @@ test('interior colours and unknown keys are sanitised', () => {
 test('appearanceKey is order-independent and colour-sensitive', () => {
   const a = normalizeAppearance({ body: { type: 'opaque', color: '#111111' } });
   const b = JSON.parse(JSON.stringify(a));
-  const reordered = { glow: b.glow, edges: b.edges, numbers: b.numbers, interior: b.interior, body: b.body };
+  const reordered = { shapes: b.shapes, glow: b.glow, edges: b.edges, numbers: b.numbers, interior: b.interior, body: b.body };
   expect(appearanceKey(reordered)).toBe(appearanceKey(a));
   expect(appearanceKey(normalizeAppearance({ body: { type: 'opaque', color: '#222222' } }))).not.toBe(appearanceKey(a));
 });
@@ -483,5 +483,33 @@ describe('dice designs plan 3b: fantasy shapes', () => {
     }
     expect(fallbackLook(sh('sword', { luminous: 0.5 })).interior.shape).toBe('star');
     expect(fallbackLook(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'eye', shape: 'sword' } })).interior.shape).toBe('sphere');
+  });
+});
+
+describe('shapes.d4 (the crystal d4 look option)', () => {
+  test('shapes.d4 normalises; legacy looks get classic; every LOOKS / DAMAGE_THEMES programKey unchanged', () => {
+    expect(DEFAULT_APPEARANCE.shapes).toEqual({ d4: 'classic' });
+    expect(Object.isFrozen(DEFAULT_APPEARANCE.shapes)).toBe(true);
+    const shapes = (v) => normalizeAppearance({ shapes: v }).shapes.d4;
+    expect(shapes({ d4: 'crystal' })).toBe('crystal');
+    expect(shapes({ d4: 'classic' })).toBe('classic');
+    for (const v of [undefined, null, 'crystal', [], {}, { d4: 'cube' }, { d4: 3 }]) expect(shapes(v)).toBe('classic');
+    expect(normalizeAppearance({ body: 'metal', bodyColor: '#fff' }).shapes).toEqual({ d4: 'classic' });
+    expect(normalizeAppearance({ body: { type: 'metal' } }).shapes).toEqual({ d4: 'classic' });
+    const c = normalizeAppearance({ shapes: { d4: 'crystal' } });
+    expect(normalizeAppearance(c)).toEqual(c);
+    // part of the material key, not of the program key
+    expect(appearanceKey(c)).not.toBe(appearanceKey(normalizeAppearance({})));
+    expect(programKey(c, F)).toBe(programKey(normalizeAppearance({}), F));
+    expect(needsLookExtras(c)).toBe(false);
+    expect(fallbackLook(c)).toBe(c);
+    const keys = {};
+    for (const [k, l] of Object.entries(LOOKS)) {
+      const a = normalizeAppearance(l.appearance ?? l);
+      expect(a.shapes).toEqual({ d4: 'classic' });
+      keys[`look:${k}`] = programKey(a, F);
+    }
+    for (const [k, t] of Object.entries(DAMAGE_THEMES)) keys[`dmg:${k}`] = programKey(t.appearance, F);
+    expect(keys).toEqual(BASE_KEYS);
   });
 });

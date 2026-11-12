@@ -204,9 +204,13 @@ export function createThumbnailer({
     curSize = 0;
   }
 
+  // d100 shows a d10; a d4 with the crystal look shows the crystal
+  const shapeTypeOf = (dieType, appearance) =>
+    dieType === 'd100' ? 'd10' : dieType === 'd4' && normalizeAppearance(appearance).shapes.d4 === 'crystal' ? 'd4crystal' : dieType;
+
   async function renderOne(theme, dieType, dieAtlas = atlas) {
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
-    const shapeType = dieType === 'd100' ? 'd10' : dieType;
+    const shapeType = shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
     const labels = shape.values.map((v) => labelFor(shapeType, v));
     const api = sceneApi; // dispose() may null the module state while the blob is pending
@@ -350,7 +354,7 @@ export function createThumbnailer({
     function build() {
       if (!renderer) init();
       if (!renderer || broken) return false;
-      const shapeType = dieType === 'd100' ? 'd10' : dieType;
+      const shapeType = shapeTypeOf(dieType, appearance);
       const shape = getShape(shapeType);
       const labels = shape.values.map((v) => labelFor(shapeType, v));
       const fontId = fontOf(appearance);

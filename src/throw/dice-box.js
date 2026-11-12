@@ -349,7 +349,7 @@ export class DiceBox {
       roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
       roll.received = 0;
       const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
-      const req = { dice: specs.map((s) => ({ type: s.type })), seed };
+      const req = { dice: roll.dice.map((d) => ({ type: d.shapeType })), seed };
       if (throwArea) req.area = throwArea;
       const stream = this._physics.throw(req);
       // Stall guards (R12): a worker that never answers must not keep a roll alive.
@@ -590,7 +590,7 @@ export class DiceBox {
       const mat = this.#material(
         die.appearance,
         flags,
-        die.type,
+        die.shapeType,
         die.variant,
         die.faces,
         die.ghost,
@@ -855,7 +855,7 @@ export class DiceBox {
   #presetOf(source, type) {
     if (typeof source?.system !== 'string') return null;
     try {
-      const dsnType = source.dsnType ?? type;
+      const dsnType = source.dsnType ?? (type === 'd4crystal' ? 'd4' : type);
       const preset = this._presetFor(source.system, dsnType);
       return preset && typeof preset === 'object' ? { preset, dsnType } : null;
     } catch (err) {
@@ -865,15 +865,16 @@ export class DiceBox {
   }
 
   #makeDie(spec, roll, flags, rollLook) {
-    const shape = getShape(spec.type);
     const ghost = spec.ghost === true;
-    const appearance = ghost
-      ? GHOST_APPEARANCE
-      : spec.appearance
-        ? normalizeAppearance(spec.appearance)
-        : rollLook;
-    const faces = ghost ? undefined : spec.faces;
-    const geometry = this.#geometry(spec.type, appearance.edges.radius);
+    const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
+    const appearance = ghost ? GHOST_APPEARANCE : look;
+    // A d4 with the crystal look is a d4crystal for hull, geometry, reader and labels; its type
+    // (and so its value) stays d4. A ghost has the shape of the look it stands for.
+    const shapeType = spec.type === 'd4' && !spec.variant && look.shapes.d4 === 'crystal' ? 'd4crystal' : spec.type;
+    const shape = getShape(shapeType);
+    // a preset's faces are laid out for the classic d4
+    const faces = ghost || shapeType !== spec.type ? undefined : spec.faces;
+    const geometry = this.#geometry(shapeType, appearance.edges.radius);
     if (!roll.geometries.has(geometry)) {
       roll.geometries.add(geometry);
       this.#retainGeometry(geometry);
@@ -885,7 +886,7 @@ export class DiceBox {
     const material = this.#material(
       appearance,
       flags,
-      spec.type,
+      shapeType,
       spec.variant,
       faces,
       ghost,
@@ -914,6 +915,7 @@ export class DiceBox {
       targetValue,
       geometry,
       type: spec.type,
+      shapeType,
       variant: spec.variant,
       appearance,
       faces,
@@ -1015,8 +1017,8 @@ export class DiceBox {
     for (const die of roll.dice) {
       if (die.ghost || die.model || die.faces?.key !== faces.key) continue;
       die.faceTex = tex;
-      const { appearance, type, variant } = die;
-      const mat = this.#material(appearance, roll.flags, type, variant, die.faces, false, tex, die);
+      const { appearance, shapeType, variant } = die;
+      const mat = this.#material(appearance, roll.flags, shapeType, variant, die.faces, false, tex, die);
       this.#swapMaterial(roll, die, mat);
     }
   }
