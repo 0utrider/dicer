@@ -3,9 +3,36 @@ import { DEFAULT_RULES } from './effects/rules.js';
 
 export const MODULE_ID = 'dicer';
 
+/**
+ * P9-R17: Foundry's settings lookup is slow and the roll loop read sound settings on every die
+ * impact (a quarter of Dicer's loop time in the 30-die profile). getSetting remembers simple
+ * values (booleans, numbers, strings, null) of the settings registered here, and each one's
+ * onChange forgets its value before anything else runs (Foundry fires a world setting's onChange
+ * on every client). Object values are read fresh: a caller could change a shared copy.
+ */
+const cache = new Map();
+const cachable = new Set();
+
+function register(key, cfg) {
+  cachable.add(key);
+  const onChange = cfg.onChange;
+  game.settings.register(MODULE_ID, key, {
+    ...cfg,
+    onChange: (...args) => {
+      cache.delete(key);
+      return onChange?.(...args);
+    },
+  });
+}
+
+/** Forgets every remembered setting value (tests, teardown). */
+export function clearSettingCache() {
+  cache.clear();
+}
+
 /** The hidden world flag behind the one-time "Dice So Nice is active" GM notice. */
 export function registerNoticeSetting() {
-  game.settings.register(MODULE_ID, 'dsnNoticeShown', {
+  register('dsnNoticeShown', {
     scope: 'world',
     config: false,
     type: Boolean,
@@ -113,7 +140,7 @@ export function registerSettings({
   onSoundChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
-  game.settings.register(MODULE_ID, 'enabled', {
+  register('enabled', {
     name: t('enabled.Name'),
     hint: t('enabled.Hint'),
     scope: 'client',
@@ -121,7 +148,7 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
-  game.settings.register(MODULE_ID, 'diceLookButton', {
+  register('diceLookButton', {
     name: t('diceLookButton.Name'),
     hint: t('diceLookButton.Hint'),
     scope: 'client',
@@ -129,7 +156,7 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
-  game.settings.register(MODULE_ID, 'pixelRatioCap', {
+  register('pixelRatioCap', {
     name: t('pixelRatioCap.Name'),
     hint: t('pixelRatioCap.Hint'),
     scope: 'client',
@@ -139,7 +166,7 @@ export function registerSettings({
     default: 1.5,
     requiresReload: true, // the renderer reads its cap once, at creation
   });
-  game.settings.register(MODULE_ID, 'diceScale', {
+  register('diceScale', {
     name: t('diceScale.Name'),
     hint: t('diceScale.Hint'),
     scope: 'client',
@@ -149,7 +176,7 @@ export function registerSettings({
     default: 1,
     onChange: () => onAreaChange?.(),
   });
-  game.settings.register(MODULE_ID, 'timeBeforeHide', {
+  register('timeBeforeHide', {
     name: t('timeBeforeHide.Name'),
     hint: t('timeBeforeHide.Hint'),
     scope: 'client',
@@ -157,7 +184,7 @@ export function registerSettings({
     type: Number,
     default: 2000,
   });
-  game.settings.register(MODULE_ID, 'maxDice', {
+  register('maxDice', {
     name: t('maxDice.Name'),
     hint: t('maxDice.Hint'),
     scope: 'world',
@@ -167,7 +194,7 @@ export function registerSettings({
     default: 20,
   });
   // Ghost dice reveal THAT a hidden roll happened, so the privacy-first default is off.
-  game.settings.register(MODULE_ID, 'showGhostDice', {
+  register('showGhostDice', {
     name: t('showGhostDice.Name'),
     hint: t('showGhostDice.Hint'),
     scope: 'world',
@@ -175,7 +202,7 @@ export function registerSettings({
     type: Boolean,
     default: false,
   });
-  game.settings.register(MODULE_ID, 'showExtraDice', {
+  register('showExtraDice', {
     name: t('showExtraDice.Name'),
     hint: t('showExtraDice.Hint'),
     scope: 'client',
@@ -183,7 +210,7 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
-  game.settings.register(MODULE_ID, 'immediatelyDisplayChatMessages', {
+  register('immediatelyDisplayChatMessages', {
     name: t('immediatelyDisplayChatMessages.Name'),
     hint: t('immediatelyDisplayChatMessages.Hint'),
     scope: 'world',
@@ -191,7 +218,7 @@ export function registerSettings({
     type: Boolean,
     default: false,
   });
-  game.settings.register(MODULE_ID, 'hideInitiative', {
+  register('hideInitiative', {
     name: t('hideInitiative.Name'),
     hint: t('hideInitiative.Hint'),
     scope: 'world',
@@ -199,7 +226,7 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
-  game.settings.register(MODULE_ID, 'migrateFromDsn', {
+  register('migrateFromDsn', {
     name: t('migrateFromDsn.Name'),
     hint: t('migrateFromDsn.Hint'),
     scope: 'world',
@@ -208,13 +235,13 @@ export function registerSettings({
     default: true,
   });
   // Set (to 1) once the GM's run has copied the Dice So Nice world settings.
-  game.settings.register(MODULE_ID, 'dsnWorldMigrated', {
+  register('dsnWorldMigrated', {
     scope: 'world',
     config: false,
     type: Number,
     default: 0,
   });
-  game.settings.register(MODULE_ID, 'theme', {
+  register('theme', {
     name: t('theme.Name'),
     hint: t('theme.Hint'),
     scope: 'client',
@@ -232,7 +259,7 @@ export function registerSettings({
     /* the fixed built-in choices stay */
   }
   // GM controls (P7-D4): a world default theme, and a lock that makes it win for players.
-  game.settings.register(MODULE_ID, 'worldDefaultTheme', {
+  register('worldDefaultTheme', {
     name: t('worldDefaultTheme.Name'),
     hint: t('worldDefaultTheme.Hint'),
     scope: 'world',
@@ -256,7 +283,7 @@ export function registerSettings({
   } catch {
     /* the fixed built-in choices stay */
   }
-  game.settings.register(MODULE_ID, 'lockPlayerLooks', {
+  register('lockPlayerLooks', {
     name: t('lockPlayerLooks.Name'),
     hint: t('lockPlayerLooks.Hint'),
     scope: 'world',
@@ -266,14 +293,14 @@ export function registerSettings({
     onChange: (value) => onLookChange?.('lockPlayerLooks', value),
   });
   // The pre-Plan-5 look choice: hidden, read once by migrateLookSetting.
-  game.settings.register(MODULE_ID, 'look', {
+  register('look', {
     scope: 'client',
     config: false,
     type: String,
     default: 'default',
   });
   // GM-published themes (Plan 5); validated when read, unreadable entries are kept.
-  game.settings.register(MODULE_ID, 'worldThemes', {
+  register('worldThemes', {
     scope: 'world',
     config: false,
     type: Array,
@@ -281,7 +308,7 @@ export function registerSettings({
   });
   const tiers = ['low', 'medium', 'high', 'ultra'];
   const tierChoices = (keys) => Object.fromEntries(keys.map((k) => [k, t(`quality.Choices.${k}`)]));
-  game.settings.register(MODULE_ID, 'quality', {
+  register('quality', {
     name: t('quality.Name'),
     hint: t('quality.Hint'),
     scope: 'client',
@@ -291,7 +318,7 @@ export function registerSettings({
     default: 'auto',
     onChange: (value) => onQualityChange?.('quality', value),
   });
-  game.settings.register(MODULE_ID, 'qualityCap', {
+  register('qualityCap', {
     name: t('qualityCap.Name'),
     hint: t('qualityCap.Hint'),
     scope: 'world',
@@ -302,7 +329,7 @@ export function registerSettings({
     onChange: (value) => onQualityChange?.('qualityCap', value),
   });
   for (const key of ['interiors', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels']) {
-    game.settings.register(MODULE_ID, key, {
+    register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
       scope: 'client',
@@ -313,7 +340,7 @@ export function registerSettings({
     });
   }
   for (const key of ['sounds', 'quietWhenUnfocused']) {
-    game.settings.register(MODULE_ID, key, {
+    register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
       scope: 'client',
@@ -327,7 +354,7 @@ export function registerSettings({
     ['soundVolume', 0.6],
     ['effectsVolume', 0.8],
   ]) {
-    game.settings.register(MODULE_ID, key, {
+    register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
       scope: 'client',
@@ -340,7 +367,7 @@ export function registerSettings({
   const surfaceChoices = (keys) =>
     Object.fromEntries(keys.map((k) => [k, t(`soundSurface.Choices.${k}`)]));
   const surfaces = ['felt', 'wood', 'stone', 'metal'];
-  game.settings.register(MODULE_ID, 'soundSurface', {
+  register('soundSurface', {
     name: t('soundSurface.Name'),
     hint: t('soundSurface.Hint'),
     scope: 'world',
@@ -349,7 +376,7 @@ export function registerSettings({
     choices: surfaceChoices(surfaces),
     default: 'felt',
   });
-  game.settings.register(MODULE_ID, 'soundSurfaceOverride', {
+  register('soundSurfaceOverride', {
     name: t('soundSurfaceOverride.Name'),
     hint: t('soundSurfaceOverride.Hint'),
     scope: 'client',
@@ -360,7 +387,7 @@ export function registerSettings({
   });
   // Foundry's own dice clatter plays on every roll card; with Dicer's sounds it is a second,
   // unrelated one (src/foundry/core-dice-sound.js).
-  game.settings.register(MODULE_ID, 'muteCoreDiceSound', {
+  register('muteCoreDiceSound', {
     name: t('muteCoreDiceSound.Name'),
     hint: t('muteCoreDiceSound.Hint'),
     scope: 'world',
@@ -370,7 +397,7 @@ export function registerSettings({
   });
   // Trigger effects (P4-D2): the roller's rules decide; each viewer filters what they see.
   for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'screenShake']) {
-    game.settings.register(MODULE_ID, key, {
+    register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
       scope: 'client',
@@ -381,7 +408,7 @@ export function registerSettings({
       ...(key === 'effects' ? { onChange: (value) => onLookChange?.(key, value) } : {}),
     });
   }
-  game.settings.register(MODULE_ID, 'triggerMacros', {
+  register('triggerMacros', {
     name: t('triggerMacros.Name'),
     hint: t('triggerMacros.Hint'),
     scope: 'world',
@@ -390,7 +417,7 @@ export function registerSettings({
     default: true,
   });
   // Damage themes: a look, impact sound and landing effect per damage type.
-  game.settings.register(MODULE_ID, 'damagePresets', {
+  register('damagePresets', {
     name: t('damagePresets.Name'),
     hint: t('damagePresets.Hint'),
     scope: 'client',
@@ -399,14 +426,14 @@ export function registerSettings({
     default: true,
   });
   // damage type -> theme id | colorset name | 'none'; edited by the damage-theme UI, not the form.
-  game.settings.register(MODULE_ID, 'damageTypeMap', {
+  register('damageTypeMap', {
     scope: 'world',
     config: false,
     type: Object,
     default: {},
   });
   // damage type -> { src, volume? }: the GM's custom landing sound, replacing the theme's own.
-  game.settings.register(MODULE_ID, 'damageTypeSounds', {
+  register('damageTypeSounds', {
     scope: 'world',
     config: false,
     type: Object,
@@ -415,14 +442,14 @@ export function registerSettings({
   registerEditorMenu(t, 'damageMap', 'fa-solid fa-fire', () =>
     import('./ui/damage-map-editor.js').then((m) => m.openDamageMapEditor),
   );
-  game.settings.register(MODULE_ID, 'damageThemeOverrides', {
+  register('damageThemeOverrides', {
     scope: 'client',
     config: false,
     type: Object,
     default: {},
   });
   // Edited by the trigger editor (Task 12), never in the settings form.
-  game.settings.register(MODULE_ID, 'worldTriggers', {
+  register('worldTriggers', {
     scope: 'world',
     config: false,
     type: Array,
@@ -448,7 +475,7 @@ export function registerSettings({
     import('./bench/benchmark-app.js').then((m) => m.openBenchmarkApp),
   );
   // Ids of module (Dice So Nice default) rules the GM switched off in the trigger editor.
-  game.settings.register(MODULE_ID, 'disabledModuleTriggers', {
+  register('disabledModuleTriggers', {
     scope: 'world',
     config: false,
     type: Array,
@@ -456,7 +483,7 @@ export function registerSettings({
   });
   // Roll areas (Plan 5): read per throw by the area resolver, so no onChange rebuilds anything.
   // Edited by the area editor (GM only, P5-D3), never in the settings form.
-  game.settings.register(MODULE_ID, 'rollAreas', {
+  register('rollAreas', {
     scope: 'world',
     config: false,
     type: Object,
@@ -464,7 +491,7 @@ export function registerSettings({
     // Foundry fires a world setting's onChange on every client: the dicerRollAreasChanged hook.
     onChange: () => onRollAreasChange?.(),
   });
-  game.settings.register(MODULE_ID, 'perPlayerAreas', {
+  register('perPlayerAreas', {
     name: t('perPlayerAreas.Name'),
     hint: t('perPlayerAreas.Hint'),
     scope: 'world',
@@ -473,7 +500,7 @@ export function registerSettings({
     default: true,
   });
   // P5-D2: this screen's override is a scale around each area's centre, not a second area.
-  game.settings.register(MODULE_ID, 'areaScale', {
+  register('areaScale', {
     name: t('areaScale.Name'),
     hint: t('areaScale.Hint'),
     scope: 'client',
@@ -483,7 +510,7 @@ export function registerSettings({
     default: 1,
   });
   // P5-D7: opt-in; only a GM's own client, only rolls only GMs can see.
-  game.settings.register(MODULE_ID, 'gmPrivateCorner', {
+  register('gmPrivateCorner', {
     name: t('gmPrivateCorner.Name'),
     hint: t('gmPrivateCorner.Hint'),
     scope: 'world',
@@ -491,7 +518,7 @@ export function registerSettings({
     type: Boolean,
     default: false,
   });
-  game.settings.register(MODULE_ID, 'gmPrivateArea', {
+  register('gmPrivateArea', {
     scope: 'world',
     config: false,
     type: Object,
@@ -502,5 +529,10 @@ export function registerSettings({
 }
 
 export function getSetting(key) {
-  return game.settings.get(MODULE_ID, key);
+  if (cache.has(key)) return cache.get(key);
+  const value = game.settings.get(MODULE_ID, key);
+  if (cachable.has(key) && (value == null || (typeof value !== 'object' && typeof value !== 'function'))) {
+    cache.set(key, value);
+  }
+  return value;
 }
