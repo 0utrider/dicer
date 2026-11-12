@@ -283,7 +283,7 @@ test('needsLookExtras and fallbackLook', () => {
   expect(fallbackLook(plain)).toBe(plain);
   const fancy = normalizeAppearance({ numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' }, color: '#123456', depth: 0.7, font: 'sans' } });
   expect(needsLookExtras(fancy)).toBe(true);
-  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', depth: 0.7, font: 'sans' });
+  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', depth: 0.7, font: 'sans', pips: false, coin: 'numbers' });
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'outline' } })).numbers.fill).toBe('paint');
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'glow' } })).numbers.fill).toBe('paint');
   expect(needsLookExtras(normalizeAppearance({ numbers: { icons: { fumble: 'skull' } } }))).toBe(true);
@@ -507,6 +507,41 @@ describe('shapes.d4 (the crystal d4 look option)', () => {
     for (const [k, l] of Object.entries(LOOKS)) {
       const a = normalizeAppearance(l.appearance ?? l);
       expect(a.shapes).toEqual({ d4: 'classic' });
+      keys[`look:${k}`] = programKey(a, F);
+    }
+    for (const [k, t] of Object.entries(DAMAGE_THEMES)) keys[`dmg:${k}`] = programKey(t.appearance, F);
+    expect(keys).toEqual(BASE_KEYS);
+  });
+});
+
+describe('numbers.pips and numbers.coin (pipped d6, coin motifs)', () => {
+  test('pips/coin normalise and need extras; fallback clears them; programKey unchanged', () => {
+    expect(DEFAULT_APPEARANCE.numbers).toMatchObject({ pips: false, coin: 'numbers' });
+    const nums = (n) => normalizeAppearance({ numbers: n }).numbers;
+    expect(nums({ pips: true }).pips).toBe(true);
+    for (const v of [1, 'true', null, {}, undefined]) expect(nums({ pips: v }).pips).toBe(false);
+    for (const coin of ['numbers', 'heads-tails', 'sun-moon']) expect(nums({ coin }).coin).toBe(coin);
+    for (const coin of ['stars', 3, null, undefined, {}]) expect(nums({ coin }).coin).toBe('numbers');
+    expect(normalizeAppearance({ body: 'metal', bodyColor: '#fff' }).numbers).toMatchObject({ pips: false, coin: 'numbers' });
+    const plain = normalizeAppearance({});
+    for (const n of [{ pips: true }, { coin: 'heads-tails' }, { coin: 'sun-moon' }, { pips: true, coin: 'sun-moon' }]) {
+      const a = normalizeAppearance({ numbers: n });
+      expect(normalizeAppearance(a)).toEqual(a);
+      expect(needsLookExtras(a)).toBe(true);
+      const fb = fallbackLook(a);
+      expect(fb.numbers).toMatchObject({ pips: false, coin: 'numbers' });
+      expect(needsLookExtras(fb)).toBe(false);
+      expect(fb.numbers).toEqual(plain.numbers);
+      expect(programKey(a, F)).toBe(programKey(plain, F));
+      expect(appearanceKey(a)).not.toBe(appearanceKey(plain));
+    }
+    expect(needsLookExtras(normalizeAppearance({ numbers: { coin: 'numbers', pips: false } }))).toBe(false);
+    // a look that needs the chunk for another reason keeps neither when it is missing
+    expect(fallbackLook(normalizeAppearance({ numbers: { pips: true, fill: 'holo' } })).numbers).toMatchObject({ pips: false, fill: 'gold' });
+    const keys = {};
+    for (const [k, l] of Object.entries(LOOKS)) {
+      const a = normalizeAppearance(l.appearance ?? l);
+      expect(a.numbers).toMatchObject({ pips: false, coin: 'numbers' });
       keys[`look:${k}`] = programKey(a, F);
     }
     for (const [k, t] of Object.entries(DAMAGE_THEMES)) keys[`dmg:${k}`] = programKey(t.appearance, F);

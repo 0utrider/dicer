@@ -50,6 +50,12 @@ const VARIANTS = [
     {},
     { icons: { crit: 'starburst', fumble: 'broken-shield' }, relief: 'raised', fill: 'holo' },
   ],
+  // pips (the d6 column only) and coin motifs (the d2 column only); the combo row shows icons,
+  // pips and a motif on one look (each die its own composed atlas)
+  ['ruby~pips', 'ruby-classic', 'pipped d6', {}, { pips: true }],
+  ['gold~coin-sun-moon', 'gold-polished', 'coin: sun and moon', {}, { coin: 'sun-moon' }],
+  ['gold~coin-heads-tails', 'gold-polished', 'coin: heads and tails', {}, { coin: 'heads-tails' }],
+  ['combo~icons-pips-coin', 'default', 'icons, pips, coin, raised', {}, { icons: { crit: 'crown' }, pips: true, coin: 'heads-tails', relief: 'raised' }],
   // iridescent bodies
   ['iridescent~chameleon', 'default', 'chameleon', {}, {}, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
   ['iridescent~opal', 'default', 'opal', {}, {}, { type: 'iridescent', preset: 'opal', ...PRESET_COLORS.opal }],

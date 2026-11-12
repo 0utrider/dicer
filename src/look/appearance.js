@@ -16,6 +16,7 @@ const NEW_INSIDES = { foil: { type: 'glitter' }, eye: { type: 'shape', shape: 's
 const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes']; // those after the first four: look-extras chunk
 const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 const RELIEFS = ['engraved', 'raised'];
+const COINS = ['numbers', 'heads-tails', 'sun-moon']; // d2 faces; the motifs: look-extras chunk
 /** Crit/fumble icons a die can show instead of the number. */
 export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame']);
 /** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
@@ -31,7 +32,7 @@ function deepFreeze(o) {
 export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null, luminous: 0 },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false },
-  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif' },
+  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif', pips: false, coin: 'numbers' },
   edges: { radius: 0.5, style: 'rounded' },
   glow: { color: '#ffffff', intensity: 0 },
   shapes: { d4: 'classic' },
@@ -131,6 +132,8 @@ export function normalizeAppearance(input) {
         color: color(n.color, D.numbers.color),
         depth: num(n.depth, 0, 1, D.numbers.depth),
         font: font(n.font, D.numbers.font),
+        pips: n.pips === true,
+        coin: pick(n.coin, COINS, 'numbers'),
       },
       edges: { radius, style: radius === 0 ? 'sharp' : 'rounded' },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
@@ -184,11 +187,12 @@ export function programKey(a, flags) {
 // liquid's bubble / sand programs: '+b', '+s', '+bs'; nothing for other insides
 const LIQUID_EXTRA = ({ interior: i }) => (i.type === 'liquid' && (i.bubble || i.sand) ? `+${i.bubble ? 'b' : ''}${i.sand ? 's' : ''}` : '');
 
-/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, bodies, finishes, luminous). */
+/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, pips, coin motifs, bodies, finishes, luminous). */
 export const needsLookExtras = (a) =>
   FILLS.indexOf(a.numbers.fill) > 3 ||
   a.numbers.relief === 'raised' ||
-  !!(a.numbers.icons.crit || a.numbers.icons.fumble) ||
+  !!(a.numbers.icons.crit || a.numbers.icons.fumble || a.numbers.pips) ||
+  a.numbers.coin !== 'numbers' ||
   !!BODY_PRESETS[a.body.type] ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
   a.body.luminous > 0 ||
@@ -218,6 +222,8 @@ export const fallbackLook = (a) =>
           fill: { outline: 'paint', holo: 'gold', glow: 'paint' }[a.numbers.fill] || a.numbers.fill,
           relief: 'engraved',
           icons: { crit: null, fumble: null },
+          pips: false,
+          coin: 'numbers',
         },
       }
     : a;

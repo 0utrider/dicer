@@ -24,6 +24,7 @@
 import { reliefPatch } from './relief.js';
 import { fillPatch } from './fills.js';
 import { iconPatch } from './icons.js';
+import { glyphPatch } from './glyphs.js';
 import { bodyPatch } from './bodies/index.js';
 import { insidePatch } from './insides/index.js';
 import { mergePatches } from './merge.js';
@@ -35,6 +36,8 @@ export const EXTRAS_ID = 'dicer-look-extras';
 
 export const ready = Promise.resolve();
 
+// Icons relabel only the d20, pips only a plain d6, coin motifs only the d2: at most one of them
+// gives a die labels and an atlas (tests/unit/glyphs.test.js).
 export function patchMaterial(a, flags, ctx) {
-  return mergePatches(bodyPatch(a, flags), insidePatch(a, flags), reliefPatch(a), fillPatch(a), iconPatch(a, ctx));
+  return mergePatches(bodyPatch(a, flags), insidePatch(a, flags), reliefPatch(a), fillPatch(a), iconPatch(a, ctx), glyphPatch(a, ctx));
 }

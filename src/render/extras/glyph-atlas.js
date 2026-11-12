@@ -86,7 +86,8 @@ export function defaultMakeCanvas(w, h) {
 /**
  * Each glyph's SVG path (0..100 viewBox) drawn with Path2D at an ink height of
  * inkPx * SUPERSAMPLE raster px and cropped.
- * @param {Array<[string, string, CanvasFillRule?]>} entries [char, path, fill rule (evenodd)]
+ * @param {Array<[string, string, (CanvasFillRule|'union')?]>} entries [char, path, fill rule
+ *   (evenodd; 'union' fills every subpath on its own, so overlapping parts never cancel)]
  * @returns {ReturnType<typeof cropGlyph>[]}
  */
 export function rasterGlyphs(entries, inkPx, makeCanvas = defaultMakeCanvas) {
@@ -102,7 +103,8 @@ export function rasterGlyphs(entries, inkPx, makeCanvas = defaultMakeCanvas) {
     ctx.clearRect(0, 0, side, side);
     ctx.setTransform(size / 100, 0, 0, size / 100, margin, margin);
     ctx.fillStyle = '#fff';
-    ctx.fill(new Path2D(path), rule);
+    if (rule === 'union') for (const sub of path.split(/(?=M)/)) ctx.fill(new Path2D(sub));
+    else ctx.fill(new Path2D(path), rule);
     const data = ctx.getImageData(0, 0, side, side).data;
     const alpha = new Uint8Array(side * side);
     for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3];
