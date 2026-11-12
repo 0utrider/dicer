@@ -10,6 +10,9 @@ describe('soundMaterialOf', () => {
     ['resin', 'glass'],
     ['opaque', 'plastic'],
     ['pearl', 'plastic'],
+    ['wood', 'wood'],
+    ['gem', 'stone'],
+    ['iridescent', 'glass'],
     ['mystery', 'plastic'],
   ])('body %s -> %s', (type, want) => {
     expect(soundMaterialOf(look(type))).toBe(want);

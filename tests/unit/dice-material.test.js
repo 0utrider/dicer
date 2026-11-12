@@ -890,3 +890,16 @@ describe('look extras (lazy chunk)', () => {
     expect(after.userData.programKey).toBe(programKey(plain, FLAGS));
   });
 });
+
+describe('look extras params', () => {
+  afterEach(() => _setLookExtrasImport(() => new Promise(() => {})));
+
+  test("a patch's params reach the material (setValues)", async () => {
+    const mod = { ready: Promise.resolve(), patchMaterial: vi.fn(() => ({ params: { clearcoat: 0.25 } })) };
+    _setLookExtrasImport(vi.fn(async () => mod));
+    await requestLookExtras();
+    const m = createDiceMaterial(look({ body: { type: 'wood' } }), atlas, s, labels, FLAGS);
+    expect(mod.patchMaterial).toHaveBeenCalledTimes(1);
+    expect(m.clearcoat).toBe(0.25);
+  });
+});

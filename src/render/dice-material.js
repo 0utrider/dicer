@@ -354,6 +354,7 @@ ${interior.pars}`;
   }
   Object.assign(material.defines, p.defines);
   Object.assign(uniforms, p.uniforms);
+  if (p.params) material.setValues(p.params);
   for (const k in p.chunks) chunks[k] += `\n${p.chunks[k]}`;
   chunks.replace = p.replace;
   // Face layers: a define and a cache-key suffix; appearance.programKey stays pure.

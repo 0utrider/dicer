@@ -1,7 +1,14 @@
 // Plain-data Appearance model. Pure and three-free.
 
-const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl'];
-const FINISHES = ['polished', 'brushed', 'antique'];
+/** Body types with named presets (the preset picks a look; its first entry is the default). */
+export const BODY_PRESETS = Object.freeze({
+  iridescent: ['chameleon', 'opal', 'dichroic'],
+  gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
+  wood: ['oak', 'walnut', 'cherry', 'ebony'],
+});
+const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
+const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
+const AGED = ['patina', 'worn']; // metal finishes drawn by the look-extras chunk
 const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
 const SHAPES = ['star', 'heart', 'skull', 'sphere'];
 const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
@@ -19,7 +26,7 @@ function deepFreeze(o) {
 }
 
 export const DEFAULT_APPEARANCE = deepFreeze({
-  body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05 },
+  body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null, luminous: 0 },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star' },
   numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif' },
   edges: { radius: 0.5, style: 'rounded' },
@@ -88,12 +95,16 @@ export function normalizeAppearance(input) {
     const cols = Array.isArray(it.colors) ? it.colors : [];
     const ic = isObj(n.icons) ? n.icons : {};
 
+    const type = pick(b.type, BODY_TYPES, D.body.type);
+    const presets = BODY_PRESETS[type];
     const body = {
-      type: pick(b.type, BODY_TYPES, D.body.type),
+      type,
       color: color(b.color, D.body.color),
       color2: color(b.color2, D.body.color2),
       finish: pick(b.finish, FINISHES, D.body.finish),
       roughness: num(b.roughness, 0, 1, D.body.roughness),
+      preset: presets ? pick(b.preset, presets, presets[0]) : null,
+      luminous: num(b.luminous, 0, 1, 0),
     };
     const interior = {
       type: pick(it.type, INTERIOR_TYPES, D.interior.type),
@@ -157,20 +168,33 @@ export function programKey(a, flags) {
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
   const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
   const parts = [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'];
+  if (a.body.luminous > 0) parts.push('lum');
   const { fill, relief } = a.numbers;
   if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
   return parts.join('|');
 }
 
-/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons). */
+/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, bodies, finishes, luminous). */
 export const needsLookExtras = (a) =>
-  FILLS.indexOf(a.numbers.fill) > 3 || a.numbers.relief === 'raised' || !!(a.numbers.icons.crit || a.numbers.icons.fumble);
+  FILLS.indexOf(a.numbers.fill) > 3 ||
+  a.numbers.relief === 'raised' ||
+  !!(a.numbers.icons.crit || a.numbers.icons.fumble) ||
+  !!BODY_PRESETS[a.body.type] ||
+  (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
+  a.body.luminous > 0;
 
-/** The look a die draws while the chunk is missing (and for safe flags): plain fill, engraved, numbers. */
+/** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */
 export const fallbackLook = (a) =>
   needsLookExtras(a)
     ? {
         ...a,
+        body: {
+          ...a.body,
+          type: { iridescent: 'pearl', gem: 'marble', wood: 'opaque' }[a.body.type] ?? a.body.type,
+          finish: AGED.includes(a.body.finish) ? 'antique' : a.body.finish,
+          luminous: 0,
+          preset: null,
+        },
         numbers: {
           ...a.numbers,
           fill: { outline: 'paint', holo: 'gold', glow: 'paint' }[a.numbers.fill] || a.numbers.fill,

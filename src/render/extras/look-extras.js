@@ -16,6 +16,7 @@
  *   replace?: Array<[from, to]>,               // applied to the final fragment shader, in order
  *   labels?: string[],                         // replaces the face labels
  *   atlas?: object,                            // replaces the label atlas (texture + metrics)
+ *   params?: object,                           // material.setValues(params), after defines/uniforms
  * }
  */
 

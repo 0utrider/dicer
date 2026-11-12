@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  BODY_PRESETS,
   DEFAULT_APPEARANCE,
   EDGE_STEPS,
   FONT_IDS_BUILTIN,
@@ -10,6 +11,7 @@ import {
   programKey,
 } from '../../src/look/appearance.js';
 import { LOOKS } from '../../src/look/looks.js';
+import { DAMAGE_THEMES } from '../../src/effects/damage-themes.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 
 test('default is resin with an interior', () => {
@@ -286,4 +288,107 @@ test('needsLookExtras and fallbackLook', () => {
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'glow' } })).numbers.fill).toBe('paint');
   expect(needsLookExtras(normalizeAppearance({ numbers: { icons: { fumble: 'skull' } } }))).toBe(true);
   expect(fancy.numbers.fill).toBe('holo'); // not mutated
+});
+
+// Dice designs plan 2: bodies. Program keys of every built-in look and damage theme at the
+// plan-2 base commit; none may change.
+const BASE_KEYS = {
+  'look:default': 'resin|-|nebula:32|eng1|glow0|fx1|safe0',
+  'look:ruby-classic': 'opaque|-|none|eng1|glow0|fx1|safe0',
+  'look:abyss-liquid': 'resin|-|liquid:32|eng1|glow0|fx1|safe0',
+  'look:starlit-glitter': 'resin|-|glitter:32|eng1|glow0|fx1|safe0',
+  'look:galaxy-nebula': 'resin|-|nebula:32|eng1|glow0|fx1|safe0',
+  'look:sharp-crystal': 'resin|-|none|eng1|glow0|fx1|safe0',
+  'look:dwarven-brass': 'metal|antique|none|eng1|glow0|fx1|safe0',
+  'look:silver-brushed': 'metal|brushed|none|eng1|glow0|fx1|safe0',
+  'look:gold-polished': 'metal|polished|none|eng1|glow0|fx1|safe0',
+  'look:marble-white': 'marble|-|none|eng1|glow0|fx1|safe0',
+  'look:jade-marble': 'marble|-|none|eng1|glow0|fx1|safe0',
+  'look:pearl-moon': 'pearl|-|none|eng1|glow0|fx1|safe0',
+  'look:ember-core': 'resin|-|liquid:32|eng1|glow1|fx1|safe0',
+  'look:frost-crystal': 'resin|-|glitter:32|eng1|glow0|fx1|safe0',
+  'look:void-star': 'resin|-|shape:star:32|eng1|glow0|fx1|safe0',
+  'look:smoke-swirl': 'resin|-|swirl:32|eng1|glow0|fx1|safe0',
+  'dmg:fire': 'resin|-|liquid:32|eng1|glow1|fx1|safe0',
+  'dmg:cold': 'resin|-|glitter:32|eng1|glow0|fx1|safe0',
+  'dmg:acid': 'resin|-|liquid:32|eng1|glow0|fx1|safe0',
+  'dmg:electricity': 'resin|-|nebula:32|eng1|glow1|fx1|safe0',
+  'dmg:sonic': 'pearl|-|none|eng1|glow0|fx1|safe0',
+  'dmg:poison': 'opaque|-|none|eng1|glow0|fx1|safe0',
+  'dmg:force': 'resin|-|swirl:32|eng1|glow0|fx1|safe0',
+  'dmg:vitality': 'pearl|-|none|eng1|glow1|fx1|safe0',
+  'dmg:void': 'opaque|-|none|eng1|glow1|fx1|safe0',
+  'dmg:mental': 'resin|-|nebula:32|eng1|glow0|fx1|safe0',
+  'dmg:bleed': 'resin|-|liquid:32|eng1|glow0|fx1|safe0',
+  'dmg:spirit': 'resin|-|swirl:32|eng1|glow0|fx1|safe0',
+  'dmg:physical': 'metal|antique|none|eng1|glow0|fx1|safe0',
+};
+const body = (b) => normalizeAppearance({ body: b });
+describe('dice designs plan 2: bodies', () => {
+  test("new body types, finishes and presets normalise; a preset not of its type falls back to the type's first; types without presets store null", () => {
+    expect(body({ type: 'gem', preset: 'malachite' }).body).toMatchObject({ type: 'gem', preset: 'malachite' });
+    expect(body({ type: 'iridescent', preset: 'dichroic' }).body.preset).toBe('dichroic');
+    expect(body({ type: 'wood', preset: 'ebony' }).body.preset).toBe('ebony');
+    expect(body({ type: 'wood', preset: 'opal' }).body.preset).toBe('oak');
+    expect(body({ type: 'wood' }).body.preset).toBe('oak');
+    expect(body({ type: 'gem', preset: 'oak' }).body.preset).toBe('amethyst');
+    expect(body({ type: 'iridescent', preset: 7 }).body.preset).toBe('chameleon');
+    for (const t of ['opaque', 'resin', 'metal', 'marble', 'pearl']) expect(body({ type: t, preset: 'oak' }).body.preset).toBeNull();
+    expect(BODY_PRESETS.gem).toEqual(['amethyst', 'malachite', 'obsidian', 'quartz']);
+    for (const f of ['patina', 'worn']) expect(body({ type: 'metal', finish: f }).body.finish).toBe(f);
+    expect(body({ type: 'metal', finish: 'rusty' }).body.finish).toBe('polished');
+    const w = normalizeAppearance({ body: { type: 'wood', preset: 'cherry' } });
+    expect(normalizeAppearance(w)).toEqual(w);
+  });
+  test('luminous is 0..1, default 0', () => {
+    expect(DEFAULT_APPEARANCE.body.luminous).toBe(0);
+    expect(DEFAULT_APPEARANCE.body.preset).toBeNull();
+    expect(body({ luminous: 0.5 }).body.luminous).toBe(0.5);
+    expect(body({ luminous: 1 }).body.luminous).toBe(1);
+    for (const v of [-0.1, 1.1, 'x', null, NaN]) expect(body({ luminous: v }).body.luminous).toBe(0);
+  });
+  test('programKey gains lum only for luminous > 0 and never under safe flags', () => {
+    const lit = body({ type: 'wood', luminous: 0.4 });
+    expect(programKey(lit, F)).toBe('wood|-|none|eng1|glow0|fx1|safe0|lum');
+    expect(programKey(body({ type: 'wood', luminous: 0 }), F)).not.toContain('lum');
+    expect(programKey(body({ type: 'gem', preset: 'quartz' }), F)).toBe(programKey(body({ type: 'gem', preset: 'amethyst' }), F));
+    expect(programKey(lit, { ...F, safe: true })).toBe(programKey(normalizeAppearance({}), { ...F, safe: true }));
+  });
+  test('every look in LOOKS and DAMAGE_THEMES keeps its programKey and needsLookExtras false', () => {
+    const keys = {};
+    for (const [k, l] of Object.entries(LOOKS)) {
+      const a = normalizeAppearance(l.appearance ?? l);
+      keys[`look:${k}`] = programKey(a, F);
+      expect(needsLookExtras(a)).toBe(false);
+    }
+    for (const [k, t] of Object.entries(DAMAGE_THEMES)) {
+      keys[`dmg:${k}`] = programKey(t.appearance, F);
+      expect(needsLookExtras(t.appearance)).toBe(false);
+    }
+    expect(keys).toEqual(BASE_KEYS);
+  });
+  test("patina or worn on a non-metal body: key part '-', needsLookExtras false", () => {
+    for (const t of ['opaque', 'resin', 'marble', 'pearl']) {
+      const a = body({ type: t, finish: 'patina' });
+      expect(programKey(a, F).split('|')[1]).toBe('-');
+      expect(needsLookExtras(a)).toBe(false);
+      expect(fallbackLook(a)).toBe(a);
+    }
+    expect(needsLookExtras(body({ type: 'metal', finish: 'worn' }))).toBe(true);
+    expect(needsLookExtras(body({ type: 'metal', finish: 'patina' }))).toBe(true);
+    expect(needsLookExtras(body({ type: 'metal', finish: 'brushed' }))).toBe(false);
+    expect(needsLookExtras(body({ type: 'gem' }))).toBe(true);
+    expect(needsLookExtras(body({ type: 'opaque', luminous: 0.2 }))).toBe(true);
+  });
+  test('fallbackLook maps iridescent→pearl, gem→marble, wood→opaque, patina/worn→antique, luminous→0, preset→null', () => {
+    const fb = (b) => fallbackLook(body(b)).body;
+    expect(fb({ type: 'iridescent', preset: 'opal' })).toMatchObject({ type: 'pearl', preset: null });
+    expect(fb({ type: 'gem' })).toMatchObject({ type: 'marble', preset: null });
+    expect(fb({ type: 'wood', color: '#aa5500' })).toMatchObject({ type: 'opaque', preset: null, color: '#aa5500' });
+    expect(fb({ type: 'metal', finish: 'patina' }).finish).toBe('antique');
+    expect(fb({ type: 'metal', finish: 'worn' }).finish).toBe('antique');
+    expect(fb({ type: 'metal', finish: 'brushed', luminous: 0.5 })).toMatchObject({ finish: 'brushed', luminous: 0 });
+    expect(fb({ type: 'resin', luminous: 0.5 }).luminous).toBe(0);
+    expect(needsLookExtras(fallbackLook(body({ type: 'gem', luminous: 1 })))).toBe(false);
+  });
 });
