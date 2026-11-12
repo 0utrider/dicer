@@ -1,3 +1,5 @@
+import { CARD_AXIS, upFrame, upFrameGLSL } from './frame.js';
+
 /**
  * Magic circle inside (plan 3b): a glowing arcane circle of runes cast flat in the resin.
  *
@@ -41,7 +43,7 @@ export const USES_NOISE = false;
  */
 export const RUNES = Object.freeze({
   radius: Object.freeze([0.44, 0.6]),
-  axis: Object.freeze([-0.8469, 0.3853, -0.3665]),
+  axis: CARD_AXIS,
   aa: Object.freeze([0.012, 0.03]),
   glow: 1.6,
   glyphs: 14,
@@ -89,23 +91,12 @@ export function runeGlyphs() {
   return out;
 }
 
-const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-
 /**
  * The GLSL frame in JS (for tests): up = the die's up in the canonical frame (unit). Returns
  * { n, t1, t2 } (canonical): the card's normal and its in-plane axes (x and y of the unit card).
  */
 export function runesFrame(up) {
-  const a = RUNES.axis;
-  const n = up;
-  let t = a.map((x, i) => x - dot3(a, n) * n[i]);
-  if (dot3(t, t) < 1e-6) {
-    const alt = [a[2], a[0], a[1]];
-    t = alt.map((x, i) => x - dot3(alt, n) * n[i]);
-  }
-  const l = Math.hypot(...t);
-  const t1 = t.map((x) => x / l);
-  const t2 = [n[1] * t1[2] - n[2] * t1[1], n[2] * t1[0] - n[0] * t1[2], n[0] * t1[1] - n[1] * t1[0]];
+  const { n, t1, t2 } = upFrame(up, RUNES.axis);
   return { n, t1, t2 };
 }
 
@@ -226,12 +217,11 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 		if ( dot( q, q ) < R * R ) {
 			// the continuous up frame (runesFrame in JS): t1 = RUNES.axis projected off n (another
 			// axis where they are parallel), t2 = n x t1 (right-handed, never mirrored)
-			vec3 dcRuA = vec3( ${RUNES.axis.map(f).join(', ')} );
-			vec3 dcRuT = dcRuA - dot( dcRuA, n ) * n;
-			if ( dot( dcRuT, dcRuT ) < 1e-6 ) dcRuT = dcRuA.zxy - dot( dcRuA.zxy, n ) * n;
-			vec3 t1 = normalize( dcRuT );
-			vec3 t2 = cross( n, t1 );
-			vec2 uv = vec2( dot( q, t1 ), dot( q, t2 ) ) / R;
+			vec3 dcRuN = n;
+			vec3 dcRuT1;
+			vec3 dcRuT2;
+${upFrameGLSL('dcRu', `vec3( ${RUNES.axis.map(f).join(', ')} )`)}
+			vec2 uv = vec2( dot( q, dcRuT1 ), dot( q, dcRuT2 ) ) / R;
 			float aa = ${f(RUNES.aa[0])} + ${f(RUNES.aa[1])} * ( 1.0 - abs( dn ) );
 			vec3 c = dcRuCircle( uv, aa );
 			acc.rgb += dcRuG0 * c.x + dcRuG1 * c.y;

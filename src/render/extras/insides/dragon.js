@@ -1,3 +1,5 @@
+import { CARD_AXIS, upFrame, upFrameGLSL } from './frame.js';
+
 /**
  * Dragon inside (plan 3b): one detailed dragon cast in the resin, a fine pressed inclusion in
  * the manner of a heraldic "dragon displayed": the body seen from above with both bat wings
@@ -43,7 +45,7 @@ export const USES_NOISE = false;
  */
 export const DRAGON = Object.freeze({
   radius: Object.freeze([0.44, 0.58]),
-  axis: Object.freeze([-0.8469, 0.3853, -0.3665]),
+  axis: CARD_AXIS,
   aa: Object.freeze([0.012, 0.03]),
 });
 
@@ -220,15 +222,7 @@ export function dragonExtent() {
  * { n, t1, t2 } (canonical): the card's normal and its in-plane axes (x and y of the unit card).
  */
 export function dragonFrame(up) {
-  const a = DRAGON.axis;
-  const n = up;
-  let t = a.map((x, i) => x - dot3(a, n) * n[i]);
-  if (dot3(t, t) < 1e-6) {
-    const alt = [a[2], a[0], a[1]];
-    t = alt.map((x, i) => x - dot3(alt, n) * n[i]);
-  }
-  const t1 = mul(t, 1 / len(t));
-  const t2 = [n[1] * t1[2] - n[2] * t1[1], n[2] * t1[0] - n[0] * t1[2], n[0] * t1[1] - n[1] * t1[0]];
+  const { n, t1, t2 } = upFrame(up, DRAGON.axis);
   return { n, t1, t2 };
 }
 
@@ -473,19 +467,18 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	if ( dot( q, q ) >= R * R ) return vec4( 0.0 );
 	// the continuous up frame (dragonFrame in JS): t1 = DRAGON.axis projected off n (another axis
 	// where they are parallel), t2 = n x t1 (right-handed, never mirrored)
-	vec3 dcDrA = vec3( ${DRAGON.axis.map(f).join(', ')} );
-	vec3 dcDrT = dcDrA - dot( dcDrA, n ) * n;
-	if ( dot( dcDrT, dcDrT ) < 1e-6 ) dcDrT = dcDrA.zxy - dot( dcDrA.zxy, n ) * n;
-	vec3 t1 = normalize( dcDrT );
-	vec3 t2 = cross( n, t1 );
-	vec2 uv = vec2( dot( q, t1 ), dot( q, t2 ) ) / R;
+	vec3 dcDrN = n;
+	vec3 dcDrT1;
+	vec3 dcDrT2;
+${upFrameGLSL('dcDr', `vec3( ${DRAGON.axis.map(f).join(', ')} )`)}
+	vec2 uv = vec2( dot( q, dcDrT1 ), dot( q, dcDrT2 ) ) / R;
 	float aa = ${f(DRAGON.aa[0])} + ${f(DRAGON.aa[1])} * ( 1.0 - abs( dn ) );
 	vec4 ex;
 	float glow;
 	vec4 m = dcDrDragon( uv, aa, ex, glow );
 	if ( m.a <= 0.0 ) return vec4( 0.0 );
 	// two-sided: the side facing the eye, tilted by the relief
-	vec3 nf = normalize( n + ex.x * t1 + ex.y * t2 );
+	vec3 nf = normalize( n + ex.x * dcDrT1 + ex.y * dcDrT2 );
 	nf = dot( rd, nf ) > 0.0 ? - nf : nf;
 	float kd = dot( nf, dcIKey );
 	float wrap = clamp( ( kd + 0.35 ) / 1.35, 0.0, 1.0 );

@@ -1,3 +1,5 @@
+import { upFrame, upFrameGLSL } from './frame.js';
+
 /**
  * Weapons inside (plan 3b): a floating sword, axe or shield, one program per shape (programKey
  * carries the shape id; `#define DC_WE_KIND 0/1/2` selects the shape and its material zones).
@@ -51,7 +53,6 @@ export const WEAPON = Object.freeze({
 });
 
 const f = (x) => x.toFixed(4);
-const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 /**
  * The GLSL frame in JS (for tests): up = the die's up in the canonical frame (unit), rot =
@@ -59,16 +60,7 @@ const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
  */
 export function weaponFrame(up, rot) {
   const n = [0, 1, 2].map((r) => rot[r] * up[0] + rot[3 + r] * up[1] + rot[6 + r] * up[2]);
-  const a = WEAPON.axis;
-  let t = a.map((x, i) => x - dot3(a, n) * n[i]);
-  if (dot3(t, t) < 1e-6) {
-    const alt = [a[2], a[0], a[1]];
-    t = alt.map((x, i) => x - dot3(alt, n) * n[i]);
-  }
-  const l = Math.hypot(...t);
-  const t1 = t.map((x) => x / l);
-  const t2 = [n[1] * t1[2] - n[2] * t1[1], n[2] * t1[0] - n[0] * t1[2], n[0] * t1[1] - n[1] * t1[0]];
-  return { n, t1, t2 };
+  return upFrame(n, WEAPON.axis);
 }
 
 const COMMON = /* glsl */ `
@@ -285,11 +277,7 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	// the continuous up frame (weaponFrame in JS): z = the die's up, x = WEAPON.axis projected
 	// off it (another axis where they are parallel), y = z x x (right-handed, no mirror)
 	dcWeN = uShapeRot * dcIUp;
-	vec3 dcWeA = vec3( ${WEAPON.axis.map(f).join(', ')} );
-	vec3 dcWeT = dcWeA - dot( dcWeA, dcWeN ) * dcWeN;
-	if ( dot( dcWeT, dcWeT ) < 1e-6 ) dcWeT = dcWeA.zxy - dot( dcWeA.zxy, dcWeN ) * dcWeN;
-	dcWeT1 = normalize( dcWeT );
-	dcWeT2 = cross( dcWeN, dcWeT1 );
+${upFrameGLSL('dcWe', `vec3( ${WEAPON.axis.map(f).join(', ')} )`)}
 	float h = dcWeSd( p );
 	float a = dcIAlpha( mix( 0.15, 1.4, uInteriorDensity ) * exp( - max( h, 0.0 ) * 10.0 ) * dcIEdge( p ), dt );
 	vec4 haze = vec4( uInteriorColors[ 1 ] * ( dcILight + 0.4 ) * a, a );
