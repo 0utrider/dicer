@@ -29,7 +29,8 @@ const ROW_LABEL_PX = 170;
  * Rows: every curated look, plus variants with per-row flag overrides so variant programs
  * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL. An optional
  * fifth element is a numbers patch merged into the base look's appearance.numbers (dice designs),
- * a sixth a body patch merged into appearance.body (dice designs plan 2 bodies).
+ * a sixth a body patch merged into appearance.body, a seventh an interior patch (dice designs
+ * plan 2 bodies). The flags element covers per-row engraving / safe.
  */
 const VARIANTS = [
   ['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }],
@@ -69,6 +70,15 @@ const VARIANTS = [
   // luminous (glow in the dark)
   ['opaque~luminous', 'default', 'glow in the dark', {}, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
   ['wood~ebony~luminous', 'default', 'ebony + luminous', {}, {}, { type: 'wood', preset: 'ebony', ...PRESET_COLORS.ebony, luminous: 1 }],
+  // combinations (the compile check for body x numbers x interior x flags interactions)
+  ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
+  ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
+  ['combo~resin-nebula-luminous', 'default', 'resin nebula + luminous', {}, {}, { type: 'resin', color: '#6fa8dc', color2: '#a0c8f0', luminous: 1 }, { type: 'nebula', colors: ['#c04dff', '#2fd0f0'], density: 0.65 }],
+  ['combo~amethyst-holo', 'default', 'amethyst, holo numbers', {}, { fill: 'holo' }, { type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }],
+  ['combo~chameleon-glow', 'default', 'chameleon, glow-ink', {}, { fill: 'glow' }, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
+  ['combo~oak-flat', 'default', 'oak, engraving off', { engraving: false }, {}, { type: 'wood', preset: 'oak', ...PRESET_COLORS.oak }],
+  ['combo~luminous-safe', 'default', 'luminous, safe fallback', { safe: true }, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
+  ['combo~patina-effects-off', 'default', 'patina, safe', { safe: true }, {}, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only
@@ -81,10 +91,13 @@ const FACE_ROWS = [
   ['faces-image', 'default', 'image faces', { system: 'dev', type: 'd6', labels: FACE_IMAGES }, 6],
   ['faces-fate', 'ruby-classic', 'Fate text faces', { system: 'dev', type: 'df', shape: 'd6', labels: ['-', '-', '', '', '+', '+'] }, 6],
   ['faces-fate-minus', 'ruby-classic', 'Fate text faces', { system: 'dev', type: 'df', shape: 'd6', labels: ['-', '-', '', '', '+', '+'] }, 1],
+  // faces on an aged metal body (the face-layer path with the patina colour chunk)
+  ['faces-image-patina', 'default', 'image faces, patina', { system: 'dev', type: 'd6', labels: FACE_IMAGES }, 6, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
+  ['faces-fate-patina', 'ruby-classic', 'Fate faces, patina', { system: 'dev', type: 'df', shape: 'd6', labels: ['-', '-', '', '', '+', '+'] }, 6, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
 ];
 const looks = [
   ...Object.entries(LOOKS).map(([id, look]) => [id, look, {}]),
-  ...VARIANTS.map(([id, base, note, flags, numbers, body]) => [
+  ...VARIANTS.map(([id, base, note, flags, numbers, body, interior]) => [
     id,
     {
       ...LOOKS[base],
@@ -93,13 +106,18 @@ const looks = [
         ...LOOKS[base].appearance,
         numbers: { ...LOOKS[base].appearance.numbers, ...numbers },
         body: { ...LOOKS[base].appearance.body, ...body },
+        interior: { ...LOOKS[base].appearance.interior, ...interior },
       },
     },
     flags,
   ]),
-  ...FACE_ROWS.map(([id, base, note, preset, shown]) => [
+  ...FACE_ROWS.map(([id, base, note, preset, shown, body]) => [
     id,
-    { ...LOOKS[base], name: `${LOOKS[base].name} (${note})` },
+    {
+      ...LOOKS[base],
+      name: `${LOOKS[base].name} (${note})`,
+      appearance: { ...LOOKS[base].appearance, body: { ...LOOKS[base].appearance.body, ...body } },
+    },
     {},
     { preset, shown },
   ]),

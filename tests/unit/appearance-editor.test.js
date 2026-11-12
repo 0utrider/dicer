@@ -118,6 +118,9 @@ describe('bodies, presets, finishes and luminous in the form', () => {
     expect(f.body).toMatchObject({ type: 'wood', preset: 'oak', ...PRESET_COLORS.oak });
     f = setField(f, 'body.preset', 'ebony');
     expect(f.body).toMatchObject({ preset: 'ebony', ...PRESET_COLORS.ebony });
+    // re-clicking the active preset keeps edited colours; 'patina' is not a preset id
+    expect(setField(setField(f, 'body.color', '#abcdef'), 'body.preset', 'ebony').body.color).toBe('#abcdef');
+    expect(setField(f, 'body.preset', 'patina').body.color).toBe(f.body.color);
     // the user can still change every colour afterwards
     f = setField(setField(f, 'body.color', '#123456'), 'body.roughness', '0.9');
     expect(appearanceFromForm(f).body).toMatchObject({ type: 'wood', preset: 'ebony', color: '#123456', roughness: 0.9 });
@@ -152,6 +155,11 @@ describe('bodies, presets, finishes and luminous in the form', () => {
       expect(v.luminous).toBe(true);
       expect(v.color2).toBe(['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'].includes(type));
     }
+    // a metal's second colour: only for the aged finishes
+    for (const finish of FINISHES) {
+      expect(visibleSections({ body: { type: 'metal', finish } }).color2).toBe(finish === 'patina' || finish === 'worn');
+    }
+    expect(visibleSections({ body: { type: 'opaque', finish: 'patina' } }).color2).toBe(false);
   });
 });
 

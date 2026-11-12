@@ -123,7 +123,8 @@ export function visibleSections(look) {
     inside: resin,
     insideDetails: resin && inside !== 'none' && INTERIOR_TYPES.includes(inside),
     insideShape: resin && inside === 'shape',
-    color2: TWO_TONE.includes(body),
+    // the aged metal finishes' verdigris / grime colour is the second colour
+    color2: TWO_TONE.includes(body) || (body === 'metal' && (look?.body?.finish === 'patina' || look?.body?.finish === 'worn')),
     finish: body === 'metal',
     preset: Object.hasOwn(BODY_PRESET_LISTS, body),
     luminous: true,
@@ -151,7 +152,11 @@ export function setField(form, path, value) {
   if (path === 'body.type' && out.body?.type !== value) {
     const first = BODY_PRESET_LISTS[value]?.[0] ?? null;
     out.body = { ...(isObj(out.body) ? out.body : {}), preset: first, ...(first ? PRESET_COLORS[first] : {}) };
-  } else if (path === 'body.preset' && Object.hasOwn(PRESET_COLORS, value)) {
+  } else if (
+    path === 'body.preset' &&
+    Object.values(BODY_PRESET_LISTS).some((l) => l.includes(value)) &&
+    out.body?.preset !== value
+  ) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   } else if (path === 'body.finish' && (value === 'patina' || value === 'worn') && out.body?.finish !== value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
