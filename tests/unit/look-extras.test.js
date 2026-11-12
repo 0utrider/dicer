@@ -19,7 +19,7 @@ import { BORDER, FX_COLOR } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 import { insidePatch, INSIDE_TINT, marchWithUp } from '../../src/render/extras/insides/index.js';
-import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS, interiorChunk } from '../../src/render/shaders/interior.js';
+import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS, SHAPE_ROT, interiorChunk } from '../../src/render/shaders/interior.js';
 import { MARCH_RADIUS, FOIL, FOIL_WALK } from '../../src/render/extras/insides/foil.js';
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
 import { BO_KINDS, CARDS, CARD_RADIUS, TILT, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
@@ -27,7 +27,7 @@ import { smokeInside } from '../../src/render/extras/insides/smoke.js';
 import { LQ, liquidExtrasInside } from '../../src/render/extras/insides/liquid-extras.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook, needsLookExtras } from '../../src/look/appearance.js';
-import { WE_KINDS, weaponsInside } from '../../src/render/extras/insides/weapons.js';
+import { WEAPON, WE_KINDS, weaponFrame, weaponsInside } from '../../src/render/extras/insides/weapons.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -1110,6 +1110,127 @@ describe('insides', () => {
       expect(insidePatch(a, { ...FLAGS, interiorSteps: 0 })).toEqual({});
     });
     expect(keys.size).toBe(3);
+  });
+
+  test('weapons: a continuous right-handed up frame, no mirror, off its singular axis at every rest', () => {
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const unit = (v) => v.map((x) => x / Math.hypot(...v));
+    const axis = unit(WEAPON.axis);
+    for (const shape of WE_KINDS) {
+      const { body } = weaponsInside(resin({ type: 'shape', shape }));
+      // the GLSL builds the same frame as weaponFrame: no sign switch anywhere
+      expect(body).toContain('dcWeN = uShapeRot * dcIUp;');
+      expect(body).toContain(`vec3 dcWeA = vec3( ${WEAPON.axis.map((x) => x.toFixed(4)).join(', ')} );`);
+      expect(body).toContain('if ( dot( dcWeT, dcWeT ) < 1e-6 ) dcWeT = dcWeA.zxy - dot( dcWeA.zxy, dcWeN ) * dcWeN;');
+      expect(body).toContain('dcWeT2 = cross( dcWeN, dcWeT1 );');
+      expect(body).toContain('vec3 q = vec3( dot( q0, dcWeT1 ), dot( q0, dcWeT2 ), dot( q0, dcWeN ) );');
+      expect(body).not.toMatch(/dcWeFace|dcWeAlign|\? - 1\.0 : 1\.0/);
+    }
+    expect(WEAPON.axis[2]).toBe(0); // in the coin's plane
+    const check = (fr) => {
+      expect(dot(fr.n, fr.n)).toBeCloseTo(1, 9);
+      expect(dot(fr.t1, fr.t1)).toBeCloseTo(1, 9);
+      expect(dot(fr.t1, fr.n)).toBeCloseTo(0, 9);
+      // right-handed: t1 x t2 = n (a rotation, never a mirror)
+      cross(fr.t1, fr.t2).forEach((x, i) => expect(x).toBeCloseTo(fr.n[i], 9));
+    };
+    // every die's resting ups (face normals, both signs) and the coin's caps
+    const rests = [];
+    for (const type of ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+      const sh = getShape(type);
+      for (const fc of sh.faces) {
+        const n = [0, 0, 0];
+        fc.forEach((vi, k) => {
+          const [a, b] = [sh.vertices[vi], sh.vertices[fc[(k + 1) % fc.length]]];
+          n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+          n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+          n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+        });
+        rests.push([unit(n), SHAPE_ROT.die], [unit(n.map((x) => -x)), SHAPE_ROT.die]);
+      }
+    }
+    rests.push([[0, 1, 0], SHAPE_ROT.coin], [[0, -1, 0], SHAPE_ROT.coin]);
+    for (const [up, rot] of rests) {
+      const fr = weaponFrame(up, rot);
+      check(fr);
+      expect(Math.abs(dot(axis, fr.n))).toBeLessThan(0.94);
+    }
+    // continuous tumbles: slerp paths between pseudo-random orientations; the die's up in its
+    // own frame is R^T (0, 1, 0). Adjacent samples (< 0.01 rad apart) keep the frame within
+    // 0.05, except within about 11 degrees of the two singular directions (n along +-axis)
+    let seed = 777;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    const quat = () => unit([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]);
+    const slerp = (a, b, t) => {
+      let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+      const bb = d < 0 ? b.map((x) => -x) : b;
+      d = Math.abs(d);
+      if (d > 0.9995) return unit(a.map((x, i) => x + t * (bb[i] - x)));
+      const th = Math.acos(d);
+      return a.map((x, i) => (Math.sin((1 - t) * th) * x + Math.sin(t * th) * bb[i]) / Math.sin(th));
+    };
+    // up in the die frame: rotate (0,1,0) by the conjugate of q = (x, y, z, w)
+    const localUp = ([x, y, z, w]) => {
+      const [qx, qy, qz] = [-x, -y, -z];
+      const v = [0, 1, 0];
+      const tt = cross([qx, qy, qz], v).map((c) => 2 * c);
+      const c2 = cross([qx, qy, qz], tt);
+      return v.map((c, i) => c + w * tt[i] + c2[i]);
+    };
+    let jumps = 0;
+    let samples = 0;
+    for (let path = 0; path < 60; path++) {
+      const [qa, qb] = [quat(), quat()];
+      for (const rot of [SHAPE_ROT.die, SHAPE_ROT.coin]) {
+        let prev = null;
+        for (let k = 0; k <= 400; k++) {
+          const fr = weaponFrame(unit(localUp(slerp(qa, qb, k / 400))), rot);
+          check(fr);
+          if (prev) {
+            samples++;
+            const step = Math.max(Math.hypot(...fr.t1.map((x, i) => x - prev.t1[i])), Math.hypot(...fr.n.map((x, i) => x - prev.n[i])));
+            const nearAxis = Math.max(Math.abs(dot(axis, fr.n)), Math.abs(dot(axis, prev.n))) > 0.98;
+            if (step > 0.05) {
+              expect(nearAxis).toBe(true);
+              jumps++;
+            }
+          }
+          prev = fr;
+        }
+      }
+    }
+    // (the two 11-degree caps are 1.8 % of all directions; fast turns happen only inside them)
+    expect(jumps / samples).toBeLessThan(0.01);
+  });
+
+  test('weapons: every kind fits inside the march sphere at density 1; blade edges >= 0.02 at density 0', () => {
+    expect(WEAPON.shapeScale).toBe(INTERIOR.shapeScale); // the local copy
+    for (const shape of WE_KINDS) expect(WEAPON.extent[shape] * WEAPON.shapeScale * 1.15 + WEAPON.aa).toBeLessThanOrEqual(INTERIOR.radius);
+    expect(WEAPON.edgeUnit * WEAPON.shapeScale * 0.8).toBeGreaterThanOrEqual(0.02);
+    const body = (shape) => weaponsInside(resin({ type: 'shape', shape })).body;
+    // the geometry the extents and the edge come from
+    const sword = body('sword');
+    expect(sword).toContain('float d2 = max( ( ax - w ) * 0.8, max( - 0.66 - q.y, q.y - 1.5 ) );');
+    expect(sword).toContain('float halfT = mix( 0.066, 0.028, e ) - 0.024 * fuller;');
+    expect(sword).toContain('* ( abs( q.z ) - halfT ) ) - 0.008, 0.0,');
+    expect(sword).toContain("vec3 pm = q - vec3( 0.0, - 1.36, 0.0 );");
+    expect(sword).toContain('length( pm ) - 0.11');
+    const axe = body('axe');
+    expect(axe).toContain('halfT = mix( halfT, 0.028, bevel );');
+    expect(axe).toContain('float outer = length( c - vec2( 0.02, 0.0 ) ) - 0.74;');
+    expect(axe).toContain('+ vec2( 0.1350, -0.1750 )');
+    // the axe blade's furthest point (the horns), sampled in the unit frame
+    let far = 0;
+    for (let x = -0.1; x <= 0.8; x += 0.0025)
+      for (let y = -0.8; y <= 0.8; y += 0.0025) {
+        const d2 = Math.max(Math.hypot(x - 0.02, y) - 0.74, 0.5 - Math.hypot(x - 0.12, y - 0.63), 0.5 - Math.hypot(x - 0.12, y + 0.63), 0.04 - x);
+        if (d2 <= 0.008) far = Math.max(far, Math.hypot(x - 0.135, y + 0.78 + 0.175));
+      }
+    expect(far + 0.001).toBeLessThanOrEqual(WEAPON.extent.axe);
+    expect(body('shield')).toContain('const float R = 1.15;');
+    expect(body('shield')).toContain('length( vec2( rr - R, q.z - zE ) ) - 0.075');
+    expect(Math.hypot(1.15, 0.1) + 0.075).toBeLessThanOrEqual(WEAPON.extent.shield);
   });
 
   test('mergePatches: interior, last wins', () => {

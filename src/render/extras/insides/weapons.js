@@ -5,10 +5,12 @@
  * Geometry: a signed-distance function in a unit frame (the shape is about 3 units long), rotated
  * by uShapeRot like interior.js's shape march and scaled by INTERIOR.shapeScale x mix(0.8, 1.15,
  * density). The shapes are flat-ish in the unit frame's xy plane (the shield's front is +z). After
- * uShapeRot, the frame is mirrored and turned (by at most 90 degrees) so that its +z points along
- * the die's current up (dcIUp): a thin blade is never seen edge-on from above, and the shield
- * shows its emblem, whatever face the die rests on. On the coin uShapeRot already puts z along
- * the thin axis, so the turn is nil when it rests flat.
+ * uShapeRot, the unit frame is a continuous right-handed frame (as botanical.js's cards): z = the
+ * die's current up n (uShapeRot * dcIUp), x = the constant WEAPON.axis projected off n, y = n x x.
+ * So a thin blade is never seen edge-on from above and the shield always shows its emblem, with
+ * no mirror and no switch: the weapon turns smoothly while the die tumbles. The frame is singular
+ * only where n is along WEAPON.axis (a quick turn there, never a flip); the axis lies in the
+ * coin's plane and at least 21 degrees off every die's resting up (weaponFrame, tested).
  *
  * March: the blade is thinner (~0.07 unit, >= 0.02 canonical at density 0) than one step of the
  * lowest marched tier (2 x 0.62 / 16 = 0.078 canonical), so testing segment ends alone would
@@ -36,17 +38,48 @@ export const WEAPON = Object.freeze({
   aa: 0.012,
   /** sphere-trace steps per segment that comes near the surface */
   trace: 14,
+  /**
+   * The frame's x before projection, in the post-uShapeRot frame: in the xy plane (so off the
+   * coin's up, +-z), at the angle (147 degrees) that keeps it furthest from every die's resting
+   * up under SHAPE_ROT.die (|cos| <= 0.931). Rounded as the GLSL gets it.
+   */
+  axis: Object.freeze([-0.8387, 0.5446, 0]),
+  /** canonical thickness of the blade and axe edges at density 0 (>= 0.02, tested) */
+  edgeUnit: 2 * (0.028 + 0.008),
+  /** furthest point of each kind from the centre in the unit frame (inside the sphere at density 1, tested) */
+  extent: Object.freeze({ sword: 1.509, axe: 1.51, shield: 1.23 }),
 });
 
 const f = (x) => x.toFixed(4);
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/**
+ * The GLSL frame in JS (for tests): up = the die's up in the canonical frame (unit), rot =
+ * uShapeRot (column-major). Returns { n, t1, t2 } in the post-uShapeRot frame.
+ */
+export function weaponFrame(up, rot) {
+  const n = [0, 1, 2].map((r) => rot[r] * up[0] + rot[3 + r] * up[1] + rot[6 + r] * up[2]);
+  const a = WEAPON.axis;
+  let t = a.map((x, i) => x - dot3(a, n) * n[i]);
+  if (dot3(t, t) < 1e-6) {
+    const alt = [a[2], a[0], a[1]];
+    t = alt.map((x, i) => x - dot3(alt, n) * n[i]);
+  }
+  const l = Math.hypot(...t);
+  const t1 = t.map((x) => x / l);
+  const t2 = [n[1] * t1[2] - n[2] * t1[1], n[2] * t1[0] - n[0] * t1[2], n[0] * t1[1] - n[1] * t1[0]];
+  return { n, t1, t2 };
+}
 
 const COMMON = /* glsl */ `
 uniform mat3 uShapeRot;
 #define DC_WE_AA ${f(WEAPON.aa)}
 #define DC_WE_TRACE ${WEAPON.trace}
 float dcWeS; // unit frame -> canonical scale (set per segment)
-float dcWeFace; // -1 mirrors the unit frame's z, so its +z (the shield's front) is on dcIUp's side
-mat3 dcWeAlign; // then turns that +z onto dcIUp (at most 90 degrees): the flat side faces up
+// the unit frame's axes in the post-uShapeRot frame (set per segment): z along the die's up
+vec3 dcWeT1;
+vec3 dcWeT2;
+vec3 dcWeN;
 // rounded box, distance to a segment with its parameter, closer of two (d, zone, edge, detail)
 float dcWeBox( vec3 p, vec3 b, float r ) {
 	vec3 q = abs( p ) - b + r;
@@ -188,11 +221,10 @@ const march = (kind) => {
   const { angle, offset } = KINDS[kind];
   const [c, s] = [Math.cos(angle), Math.sin(angle)];
   return /* glsl */ `
-// canonical point -> unit frame: uShapeRot, the scale, the shield's mirror, the diagonal lay
+// canonical point -> unit frame: uShapeRot, the scale, the up frame, the diagonal lay
 vec3 dcWeLocal( vec3 p ) {
-	vec3 q = uShapeRot * p / dcWeS;
-	q.z *= dcWeFace;
-	q = dcWeAlign * q;
+	vec3 q0 = uShapeRot * p / dcWeS;
+	vec3 q = vec3( dot( q0, dcWeT1 ), dot( q0, dcWeT2 ), dot( q0, dcWeN ) );
 	q.xy = mat2( ${f(c)}, ${f(s)}, ${f(-s)}, ${f(c)} ) * q.xy + vec2( ${f(offset[0])}, ${f(offset[1])} );
 	return q;
 }
@@ -250,13 +282,14 @@ vec3 dcWeShade( vec3 hp, vec3 rd ) {
 }
 vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	dcWeS = ${f(WEAPON.shapeScale)} * mix( 0.8, 1.15, uInteriorDensity );
-	// the die's up in the shape frame, mirrored onto +z's side; dcWeAlign = the rotation taking
-	// it to +z (Rodrigues: I + [w]x + [w]x^2 / (1 + c), w = up x z, c = up.z >= 0)
-	vec3 dcWeUp = uShapeRot * dcIUp;
-	dcWeFace = dcWeUp.z < 0.0 ? - 1.0 : 1.0;
-	dcWeUp.z *= dcWeFace;
-	mat3 dcWeW = mat3( 0.0, 0.0, dcWeUp.x, 0.0, 0.0, dcWeUp.y, - dcWeUp.x, - dcWeUp.y, 0.0 );
-	dcWeAlign = mat3( 1.0 ) + dcWeW + dcWeW * dcWeW / ( 1.0 + dcWeUp.z );
+	// the continuous up frame (weaponFrame in JS): z = the die's up, x = WEAPON.axis projected
+	// off it (another axis where they are parallel), y = z x x (right-handed, no mirror)
+	dcWeN = uShapeRot * dcIUp;
+	vec3 dcWeA = vec3( ${WEAPON.axis.map(f).join(', ')} );
+	vec3 dcWeT = dcWeA - dot( dcWeA, dcWeN ) * dcWeN;
+	if ( dot( dcWeT, dcWeT ) < 1e-6 ) dcWeT = dcWeA.zxy - dot( dcWeA.zxy, dcWeN ) * dcWeN;
+	dcWeT1 = normalize( dcWeT );
+	dcWeT2 = cross( dcWeN, dcWeT1 );
 	float h = dcWeSd( p );
 	float a = dcIAlpha( mix( 0.15, 1.4, uInteriorDensity ) * exp( - max( h, 0.0 ) * 10.0 ) * dcIEdge( p ), dt );
 	vec4 haze = vec4( uInteriorColors[ 1 ] * ( dcILight + 0.4 ) * a, a );
@@ -274,9 +307,16 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 		h = dcWeSd( p + rd * t );
 		if ( h < best ) { best = h; tb = t; }
 	}
+	// the trace ran out on a grazing ray before the segment's end: if the end is inside, bisect
+	// between the last trace point and the end (as the plain march), so nothing shows through
+	if ( h >= 0.0004 && t <= dt && dcWeSd( p + rd * dt ) < 0.0 ) {
+		tp = t;
+		t = dt;
+		h = - 1.0;
+	}
 	if ( h < 0.0004 && t <= dt ) {
 		if ( h < 0.0 ) {
-			// the last step overshot into the shape: bisect back to its surface
+			// inside (the last step overshot, or the end is): bisect back to the surface
 			float lo = tp;
 			float hi = t;
 			for ( int dcWeB = 0; dcWeB < 4; dcWeB ++ ) {
