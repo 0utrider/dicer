@@ -19,7 +19,6 @@ import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_FREE_STEPS, MAX_OBSTACLES, MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 import { throwEdge } from '../core/rng.js';
-import { combineD100, faceNormals } from '../core/face-reader.js';
 import { fitDieCapacity, toDieArea } from '../areas/area-model.js';
 
 /** Die edge size on screen, in CSS px, at diceScale 1. One world unit is one die size. */
@@ -37,8 +36,6 @@ export const LANDING_GRACE_MS = 3000;
  * falls back, even if a loader never settles.
  */
 export const ASSET_WAIT_MS = 4250;
-/** R3: a hand-read d16 lights the face that counts (two numbers are up) this long after landing. */
-export const RESULT_GLOW_MS = 600;
 /** Dice So Nice's built-in system id: its presets share Dicer's plain material cache. */
 const STANDARD_SYSTEM = 'standard';
 /** Die types whose materials acquireWarmup() builds by default. */
@@ -224,6 +221,11 @@ export class DiceBox {
     return this._rolls.size;
   }
 
+  // Rolling by hand: `this.hand` is set by the lazy hand chunk (src/hand/chunk/box.js handFor):
+  // read (Playback's free-dice reader), land (values, the d16 glow), record, decorate and hold. It
+  // builds on _newRoll, _throw, _finish, _reveal, _fireResults, _fireFx and _systemOf (internal API,
+  // not private: private methods are lowered to helper calls in the bundle, which cost bytes).
+
   /** True while hold() shows dice that are not yet released or dropped (pets hold still: H-8). */
   get holding() {
     return !!this._hold;
@@ -369,22 +371,24 @@ export class DiceBox {
    *   `source`: {onChunk(cb), done, obstacleIds}: frames instead of physics (a replay). No THROW,
    *   no obstaclesFor; impacts -3 - i hit source.obstacleIds[i].
    *   Recorded and source chunks are never recycled to the worker.
+   *   Free dice, `record` and `values` need the hand chunk attached (this.hand).
    * @returns {{landed: Promise<void>, finished: Promise<void>, values: Promise<number[]|null>,
    *   handle: object}} `values` resolves at landing, in spec order: each die's Foundry result (a
    *   free die's read one, a forced die's own); a d100 in its ones-die slot, its tens slot null.
-   *   It resolves null for a roll that never lands. `handle` is for decorateLanded.
+   *   It resolves null for a roll that never lands, or without the hand chunk. `handle` is for
+   *   decorateLanded.
    */
   roll(specs, options) {
     // Empty, or a hidden tab (no animation frames would ever land it): resolve at once.
     if (!specs?.length || this._visibility?.hidden === true) {
-      const roll = this.#newRoll();
+      const roll = this._newRoll();
       this._armedFirstFrame = null;
       roll.resolveValues(specs?.length ? null : []);
       roll.resolveLanded();
       roll.resolveFinished();
       return roll.result;
     }
-    return this.#throw(this.#newRoll(specs), options);
+    return this._throw(this._newRoll(specs), options);
   }
 
   /**
@@ -392,33 +396,18 @@ export class DiceBox {
    * ASSET_WAIT_MS): `ready`. setPose(i, {x, y, z}, {x, y, z, w}) places die i in die units; the
    * render loop runs only while dice are held. release(rollOptions) throws these same die objects
    * as roll() would (area defaults to the hold's) and returns roll()'s result; drop() removes them.
-   * One hold at a time: a new one drops the last.
+   * Once released or dropped, both do nothing more (release returns the same result).
+   * One hold at a time: a new one drops the last. The body is the hand chunk's (this.hand).
    */
-  hold(specs, { area } = {}) {
-    if (this._hold) this.#finish(this._hold);
-    const roll = this.#newRoll(specs ?? []);
-    if (!roll.removed) this._hold = roll;
-    return {
-      ready: roll.assets.then(() => {
-        if (this._hold !== roll) return;
-        this.#reveal(roll);
-        this.wake();
-      }),
-      setPose: (i, p, q) => {
-        const o = roll.dice[i]?.outer;
-        o?.position.copy(p);
-        o?.quaternion.copy(q);
-      },
-      release: (options) => this.#throw(roll, { area, ...options }),
-      drop: () => this.#finish(roll),
-    };
+  hold(specs, options) {
+    return this.hand.hold(specs, options);
   }
 
   /**
    * A roll record with its promises, not in flight. With `specs`, its dice are built (hidden, in
    * the scene) and their assets start loading (roll.assets); a build that throws fails the roll.
    */
-  #newRoll(specs) {
+  _newRoll(specs) {
     const roll = {
       dice: [],
       shadows: [],
@@ -453,14 +442,14 @@ export class DiceBox {
   }
 
   /** Puts a built roll in flight: physics (or a source) -> Playback. Returns roll()'s result. */
-  #throw(roll, { area, capacityDice, pet, free, launch, seed, edge, record, source } = {}) {
+  _throw(roll, { area, capacityDice, pet, free, launch, seed, edge, record, source } = {}) {
     const result = roll.result;
     roll.onFirstFrame = this._armedFirstFrame;
     this._armedFirstFrame = null;
     if (roll.removed) return result;
     if (this._hold === roll) this._hold = null;
     if (this._visibility?.hidden === true) {
-      this.#finish(roll);
+      this._finish(roll);
       return result;
     }
     this._rolls.add(roll);
@@ -483,7 +472,11 @@ export class DiceBox {
         diePx: this._diePx,
         dice: null, // the settled die centres, filled when the roll lands
       };
-      roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
+      roll.playback = new Playback({
+        dice: roll.dice,
+        area: throwArea ?? this._area,
+        read: this.hand?.read,
+      });
       roll.received = 0;
       seed = Number.isInteger(seed)
         ? seed >>> 0
@@ -562,22 +555,7 @@ export class DiceBox {
       });
       stream.done.then(
         (res) => {
-          if (record && roll.playback) {
-            try {
-              record({
-                chunks: roll.playback.release(),
-                events: Float32Array.from(roll.playback._events.flat()),
-                settledStep: res?.settledStep,
-                nudges: res?.nudges,
-                dice: roll.dice.map((d) => ({ shapeType: d.shapeType, key: d.key })),
-                area: { ...roll.record.area },
-                obstacles: (req.obstacles ?? []).map((o, i) => ({ id: roll.ids[i], ...o })),
-                splatSpeed: req.splatSpeed ?? null,
-              });
-            } catch (err) {
-              console.warn('dicer: a throw recorder threw', err);
-            }
-          }
+          if (record) this.hand?.record(record, roll, req, res); // the chunk builds the recording
           this.#armLandingTimer(roll, res?.settledStep);
         },
         (err) => this.#fail(roll, err),
@@ -590,7 +568,7 @@ export class DiceBox {
 
   /** Remove every die now and resolve every pending promise. */
   clear() {
-    for (const roll of [...this._rolls, this._hold]) if (roll) this.#finish(roll);
+    for (const roll of [...this._rolls, this._hold]) if (roll) this._finish(roll);
     this.#effectsCall((e) => e.clear());
     this._renderer.hide?.();
   }
@@ -975,7 +953,7 @@ export class DiceBox {
   }
 
   /** The DiceSystem instance registered for `systemId`, or null; never throws. */
-  #systemOf(systemId) {
+  _systemOf(systemId) {
     if (typeof systemId !== 'string') return null;
     try {
       const instance = this._systemFor(systemId);
@@ -999,7 +977,7 @@ export class DiceBox {
    * null: its dice use the plain Dicer material.
    */
   #materialHooks(systemId, appearance) {
-    const instance = this.#systemOf(systemId);
+    const instance = this._systemOf(systemId);
     if (!instance || !MATERIAL_HOOKS.every((m) => typeof instance[m] === 'function')) return null;
     try {
       return { instance, cacheString: String(instance.getCacheString(appearance)) };
@@ -1146,7 +1124,7 @@ export class DiceBox {
       dsnType,
       // The system's DiceSystem instance (api.js), if any: it gets this die's dice events.
       // A ghost has no system, so it never fires one.
-      systemInstance: system ? this.#systemOf(system) : null,
+      systemInstance: system ? this._systemOf(system) : null,
       // The Foundry result (a relabelled die's face 8 on a d7 is a 1), for dice events and sfx.
       value: ghost ? undefined : resultOf(spec.value, spec.variant),
       // Trigger effects: never on a ghost; a d100 plays them once, on its ones die.
@@ -1317,7 +1295,7 @@ export class DiceBox {
    * gets its shadow once (a held roll is revealed again at release, a decorated one at decorate);
    * the pet begins at the first reveal of a thrown roll.
    */
-  #reveal(roll) {
+  _reveal(roll) {
     const shadows = this._shadows() !== false;
     for (const die of roll.dice) {
       die.outer.visible = true;
@@ -1401,17 +1379,8 @@ export class DiceBox {
   #land(roll, now) {
     clearTimeout(roll.landingTimer);
     roll.phase = 'lingering';
-    // A free die's result is its read value (a ghost's too: only this screen draws it as one).
-    const v = (d) => (d.free ? d.readValue : d.value);
-    roll.resolveValues(
-      roll.dice.map((d, i) => {
-        const t = roll.dice[i - 1];
-        if (d.variant === 'd100tens') return null;
-        return t?.variant === 'd100tens' ? combineD100(v(t), v(d)) : v(d);
-      }),
-    );
-    for (const d of roll.dice) if (d.free && !d.ghost && d.shapeType === 'd16') this.#glow(roll, d);
-    roll.glowAt = now;
+    // The hand chunk counts the values and lights a hand-read d16's counted face (roll.glows).
+    roll.resolveValues(this.hand?.land(roll, now) ?? null);
     if (roll.record) {
       roll.record.dice = roll.dice.map((d) => ({ x: d.outer.position.x, z: d.outer.position.z }));
     }
@@ -1423,8 +1392,8 @@ export class DiceBox {
       }));
       this.#petCall((h) => h.landed(roll.pet.key, dice), roll);
     }
-    this.#fireResults(roll);
-    this.#fireFx(roll);
+    this._fireResults(roll);
+    this._fireFx(roll);
     roll.resolveLanded();
     roll.timer = setTimeout(() => {
       if (roll.removed) return;
@@ -1441,66 +1410,20 @@ export class DiceBox {
     }, this._timeBeforeHide() ?? DEFAULT_LINGER_MS);
   }
 
-  /** R3: lights the face a hand-read d16 counts (its paired top kite), fading over RESULT_GLOW_MS. */
-  #glow(roll, die) {
-    const { shape, readFace: i } = die;
-    const f = shape.faces[i];
-    const n = faceNormals(shape)[i];
-    const c = [0, 1, 2].map((k) => f.reduce((s, v) => s + shape.vertices[v][k], 0) / f.length);
-    // The face shrunk towards its centre (clear of the rounded edges), just above it.
-    const pos = f.flatMap((v) =>
-      shape.vertices[v].map((p, k) => c[k] + (p - c[k]) * 0.8 + [n.x, n.y, n.z][k] * 0.01),
-    );
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setIndex(f.slice(2).flatMap((_, k) => [0, k + 1, k + 2]));
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xfff0b0,
-      transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    die.outer.add(mesh); // the hull's frame: a model's own rotation does not apply
-    (roll.glows ??= []).push(mesh);
-  }
-
+  /** Removes a d16 result glow still lit (roll.glows(now) is the hand chunk's: true once gone). */
   #unglow(roll) {
-    for (const m of roll.glows ?? []) {
-      m.removeFromParent();
-      m.geometry.dispose();
-      m.material.dispose();
-    }
+    roll.glows?.(Infinity);
     roll.glows = null;
   }
 
   /**
-   * H-9: the thrower's own hand roll, once its chat message exists. Merges each spec's fx,
-   * damageType, value, system and dsnType onto the lingering die it belongs to (by key, else by
-   * index; never a ghost), then plays today's landed effects, results and dice events, once.
-   * False when the roll is not lingering (still in flight, fading or gone) or was decorated.
+   * H-9: the thrower's own hand roll, once its chat message exists: the hand chunk merges each
+   * spec's fx, damageType, value, system and dsnType onto the lingering die it belongs to and plays
+   * today's landed effects, results and dice events, once. False when the roll is not lingering
+   * (still in flight, fading or gone), was decorated, or the hand chunk is not attached.
    */
   decorateLanded(roll, specs) {
-    if (roll?.phase !== 'lingering' || roll.removed || roll.decorated) return false;
-    roll.decorated = true;
-    const byKey = new Map((specs ?? []).map((s) => [s?.key, s]));
-    roll.dice.forEach((die, i) => {
-      const s = die.key ? byKey.get(die.key) : specs?.[i];
-      if (!s || die.ghost) return;
-      // As #makeDie: a d100 plays its fx once, on its ones die.
-      if (s.variant !== 'd100tens' && s.fx?.length) die.fx = s.fx;
-      die.damageType = s.damageType ?? die.damageType;
-      die.dsnType = s.dsnType ?? die.dsnType;
-      if (s.value != null) die.value = resultOf(s.value, s.variant);
-      if (!die.system && typeof s.system === 'string') {
-        die.systemInstance = this.#systemOf((die.system = s.system));
-      }
-    });
-    this.#reveal(roll); // spawns the dice that just got a system
-    this.#fireResults(roll);
-    this.#fireFx(roll);
-    return true;
+    return !!this.hand?.decorate(roll, specs);
   }
 
   /** Tells the pet its roll is going away in `msLeft` ms (0: at once), once. */
@@ -1515,7 +1438,7 @@ export class DiceBox {
    * onLandedFx (sound, macro) and the effect layer per landed die with fx; a throwing listener
    * or layer warns once and never blocks landing.
    */
-  #fireFx(roll) {
+  _fireFx(roll) {
     for (const die of roll.dice) {
       if (!die.fx || die.ghost) continue;
       roll.fxKey ??= { id: roll.id };
@@ -1532,7 +1455,7 @@ export class DiceBox {
   }
 
   /** One RESULT event per system instance, with that system's landed dice. */
-  #fireResults(roll) {
+  _fireResults(roll) {
     const bySystem = new Map(); // instance -> { die, dice }
     for (const die of roll.dice) {
       if (!die.systemInstance) continue;
@@ -1553,19 +1476,15 @@ export class DiceBox {
           if (roll.assetsPending) continue; // hidden, playback not started, until assets are in
           const hadFrames = roll.received > 0;
           const state = roll.playback.update(now);
-          if (hadFrames && !roll.revealed) this.#reveal(roll);
+          if (hadFrames && !roll.revealed) this._reveal(roll);
           if (state === 'playing') this.#impacts(roll);
           if (state === 'landed') this.#land(roll, now);
         } else if (roll.phase === 'fading') {
           roll.fadeStart ??= now;
           const t = Math.min(1, (now - roll.fadeStart) / FADE_MS);
           for (const m of roll.fades) m.opacity = 1 - t;
-          if (t >= 1) this.#finish(roll);
-        } else if (roll.glows) {
-          const t = (now - roll.glowAt) / RESULT_GLOW_MS;
-          if (t >= 1) this.#unglow(roll);
-          else for (const m of roll.glows) m.material.opacity = 0.8 * (1 - t);
-        }
+          if (t >= 1) this._finish(roll);
+        } else if (roll.glows?.(now)) roll.glows = null;
       } catch (err) {
         this.#fail(roll, err);
       }
@@ -1634,11 +1553,11 @@ export class DiceBox {
   #fail(roll, err) {
     if (roll.removed) return;
     console.error('dicer: roll failed', err);
-    this.#finish(roll);
+    this._finish(roll);
   }
 
   /** Removes a roll's dice and shadows, recycles its buffers, resolves both promises. */
-  #finish(roll) {
+  _finish(roll) {
     if (roll.removed) return;
     roll.removed = true;
     this._rolls.delete(roll);

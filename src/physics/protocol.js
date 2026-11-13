@@ -30,6 +30,8 @@ export const STEP_SECONDS = 1 / 60;
  * state, so its impacts' frames are one later. All four walls stand from step 0 unless a die
  * has no launch (then the seeded spawn's wall opens as usual).
  * DONE: {id, settledStep, nudges: number[]} (nudges per die, all 0 unless free).
+ * READERS: {readers} (computeReaders(), sent by the lazy hand chunk before its first free throw;
+ * messages are handled in order, so it lands before that throw).
  */
 export const MAX_OBSTACLES = 3;
 export const MAX_NUDGES = 3;
@@ -49,6 +51,7 @@ export const MSG = Object.freeze({
   DONE: 'done',
   RECYCLE: 'recycle',
   ERROR: 'error',
+  READERS: 'readers',
 });
 
 /** Worker -> client handshake once Rapier is initialised. */

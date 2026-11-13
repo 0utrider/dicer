@@ -12,7 +12,7 @@ self.onmessage = async (e) => {
   try {
     if (msg.type === MSG.INIT) {
       ready = initPhysics(wasmUrl).then(() => {
-        sim = createSim(msg.area ?? DEFAULT_AREA, msg.hulls, msg.readers);
+        sim = createSim(msg.area ?? DEFAULT_AREA, msg.hulls);
         // Pre-warm every die type (colliders, hulls, wasm paths) before announcing ready.
         prewarm(sim, [...Object.keys(msg.hulls ?? {}), 'd2']);
       });
@@ -23,6 +23,8 @@ self.onmessage = async (e) => {
     await ready; // messages sent before init completes are handled in order afterwards
     if (msg.type === MSG.RESIZE) {
       sim.resize(msg.area);
+    } else if (msg.type === MSG.READERS) {
+      sim.setReaders(msg.readers);
     } else if (msg.type === MSG.RECYCLE) {
       sim.recycle(msg.buffer, msg.events);
     } else if (msg.type === MSG.THROW) {

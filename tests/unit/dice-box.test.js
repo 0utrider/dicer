@@ -4,17 +4,15 @@ import {
   DiceBox,
   ASSET_WAIT_MS,
   IDLE_GEOMETRY_CAP,
-  RESULT_GLOW_MS,
 } from '../../src/throw/dice-box.js';
 import { MODEL_ROTATIONS } from '../../src/compat/dsn-orientation.js';
 import {
   rotationToShow,
   readTopFace,
   faceForValue,
-  readResult,
-  combineD100,
   faceNormals,
 } from '../../src/core/face-reader.js';
+import { readResult, combineD100 } from '../../src/core/physical-read.js';
 import { buildScene } from '../../src/render/scene.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
@@ -32,7 +30,8 @@ import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
 import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
-import { throwEdge, handEdge } from '../../src/core/rng.js';
+import { throwEdge } from '../../src/core/rng.js';
+import { handEdge, handFor, RESULT_GLOW_MS } from '../../src/hand/hand.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -3047,6 +3046,12 @@ describe('pet hook', () => {
 describe('rolling by hand: free rolls, record, source, hold', () => {
   const PET = { userId: 'u1', kind: 'cat', color: '#fa0', ghost: false };
   const ID = { x: 0, y: 0, z: 0, w: 1 };
+  /** A box with the hand chunk attached (it reads free dice, counts values, glows, records). */
+  const handSetup = (o) => {
+    const s = setup(o);
+    handFor(s.box);
+    return s;
+  };
   const LAUNCH = [{ pos: [1, 2, 0], quat: [0, 0, 0, 1], linvel: [3, 0, 0], angvel: [0, 0, 0] }];
   const hook = (over = {}) => ({
     begin: vi.fn(),
@@ -3082,7 +3087,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
   });
 
   test('values resolves in spec order at landing (free and forced)', async () => {
-    const { renderer, physics, box } = setup();
+    const { renderer, physics, box } = handSetup();
     const free = box.roll(
       [
         { type: 'd6', value: 1 },
@@ -3129,7 +3134,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
 
   test('a failed roll resolves values with null', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { physics, box } = setup();
+    const { physics, box } = handSetup();
     const r = box.roll([{ type: 'd6', value: 1 }], { free: true });
     physics.fail(0);
     await flushMicrotasks();
@@ -3142,7 +3147,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
       { x: 3, z: 1, r: 1, h: 2, id: 'u1' },
       { x: -3, z: 1, r: 1, h: 2, id: 'u2' },
     ];
-    const { renderer, physics, box } = setup({
+    const { renderer, physics, box } = handSetup({
       pet: hook({ obstaclesFor: () => OBS, splatSpeed: 10 }),
     });
     physics.events = [new Float32Array([5, 0, -1, 7]), new Float32Array([40, 0, -4, 12])];
@@ -3185,7 +3190,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
   test('source plays without a THROW and without obstaclesFor; its chunks are never recycled; hit maps -3-i to source.obstacleIds', async () => {
     const hit = vi.fn();
     const pet = hook({ obstaclesFor: vi.fn(() => []), hit });
-    const { renderer, physics, box } = setup({ pet });
+    const { renderer, physics, box } = handSetup({ pet });
     let push;
     let finish;
     const source = {
@@ -3215,13 +3220,13 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
 
   test("spec.shapeType forces the geometry over the viewer's crystal look", () => {
     const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
-    const a = setup({ getAppearance: () => crystal });
+    const a = handSetup({ getAppearance: () => crystal });
     a.box.roll([
       { type: 'd4', value: 2, shapeType: 'd4' },
       { type: 'd4', value: 2 },
     ]);
     expect(a.physics.streams[0].req.dice).toEqual([{ type: 'd4' }, { type: 'd4crystal' }]);
-    const b = setup();
+    const b = handSetup();
     b.box.roll([{ type: 'd4', value: 2, shapeType: 'd4crystal' }]);
     expect(b.physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
     const die = b.box._rolls.values().next().value.dice[0];
@@ -3238,7 +3243,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
       material: new THREE.MeshStandardMaterial(),
     };
     const loadModel = vi.fn(() => new Promise((res) => (resolveModel = () => res(model))));
-    const { renderer, physics, box } = setup({ loadModel });
+    const { renderer, physics, box } = handSetup({ loadModel });
     expect(box.holding).toBe(false);
     const h = box.hold(
       [
@@ -3294,7 +3299,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
   });
 
   test("hold loop stops after drop (renderer stopLoop / 'hold')", async () => {
-    const { renderer, box } = setup();
+    const { renderer, box } = handSetup();
     const h = box.hold([{ type: 'd6', value: 1 }]);
     await h.ready;
     expect(renderer.isLooping).toBe(true);
@@ -3304,7 +3309,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     expect(renderer.isLooping).toBe(false);
     // with a resting pet the loop holds instead
     const pet = hook({ update: vi.fn(() => 'rest') });
-    const other = setup({ pet });
+    const other = handSetup({ pet });
     const h2 = other.box.hold([{ type: 'd6', value: 1 }]);
     await h2.ready;
     expect(other.renderer.tick(0)).toBe(true);
@@ -3327,7 +3332,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
       releaseDie: vi.fn(),
     };
     const fire = vi.fn();
-    const { renderer, physics, box } = setup({ onLandedFx, effects, systemFor: () => ({ fire }) });
+    const { renderer, physics, box } = handSetup({ onLandedFx, effects, systemFor: () => ({ fire }) });
     const r = box.roll(
       [
         { type: 'd20', value: 1, key: '0:0:0' },
@@ -3378,7 +3383,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     vi.stubGlobal('crypto', { getRandomValues: (a) => ((a[0] = seed), a) });
     try {
       const pet = hook({ obstaclesFor: vi.fn(() => []) });
-      const { renderer, physics, box } = setup({ pet });
+      const { renderer, physics, box } = handSetup({ pet });
       box.roll([{ type: 'd6', value: 1 }], { free: true, launch: LAUNCH, edge: 2, pet: PET });
       expect(pet.obstaclesFor.mock.calls[0][0]).toMatchObject({ edge: 2, hand: true });
       physics.flush();
@@ -3399,7 +3404,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
   test('alignFor passes through to the pet hook; a throwing one warns once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const alignFor = vi.fn();
-    const { box } = setup({ pet: hook({ alignFor }) });
+    const { box } = handSetup({ pet: hook({ alignFor }) });
     const list = [{ id: 'u', x: 1, z: 1, r: 1, h: 2 }];
     const paths = () => 9;
     box.alignFor(list, { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 }, paths);
@@ -3417,7 +3422,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
   });
 
   test('a hand-read d16 glows on its counted face for RESULT_GLOW_MS', async () => {
-    const { renderer, physics, box } = setup();
+    const { renderer, physics, box } = handSetup();
     const r = box.roll(
       [
         { type: 'd16', value: 1 },
@@ -3447,6 +3452,69 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     expect(glow.material.opacity).toBeGreaterThan(0);
     expect(renderer.tick(5000 + RESULT_GLOW_MS + 1)).toBe('hold');
     expect(d16.outer.children).toHaveLength(1);
+    box.clear();
+  });
+
+  test('a glow still lit when the roll is cleared is removed and freed', async () => {
+    const { renderer, physics, box } = handSetup();
+    const r = box.roll([{ type: 'd16', value: 1 }], { free: true });
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(5000);
+    const [d16] = r.handle.dice;
+    const glow = d16.outer.children.find((c) => c !== d16.inner);
+    const dispose = vi.spyOn(glow.material, 'dispose');
+    box.clear();
+    expect(d16.outer.children).toHaveLength(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test('the hand chunk is attached once per box and sends the face readers to its worker once', () => {
+    const { box, physics } = setup();
+    expect(box.hand).toBeFalsy();
+    physics.setReaders = vi.fn();
+    const h = handFor(box);
+    expect(box.hand).toBe(h);
+    expect(handFor(box)).toBe(h);
+    expect(physics.setReaders).toHaveBeenCalledTimes(1);
+    const readers = physics.setReaders.mock.calls[0][0];
+    expect(Object.keys(readers)).toEqual(expect.arrayContaining(['d6', 'd16', 'd4crystal', 'd2']));
+  });
+
+  test('without the hand chunk a free roll still lands, unread, and values resolves null', async () => {
+    const { renderer, physics, box } = setup();
+    const r = box.roll([{ type: 'd16', value: 3 }], { free: true, record: vi.fn() });
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(5000);
+    await flushMicrotasks();
+    expect(await r.values).toBeNull();
+    expect(r.handle.dice[0].readValue).toBeUndefined();
+    expect(r.handle.dice[0].outer.children).toHaveLength(1); // no glow
+    expect(box.decorateLanded(r.handle, [])).toBe(false);
+    box.clear();
+  });
+
+  test('a released hold: release again throws nothing more, drop leaves the flying roll alone', async () => {
+    const { renderer, physics, box } = handSetup();
+    const h = box.hold([{ type: 'd6', value: 1 }]);
+    await h.ready;
+    const r = h.release({ free: true, launch: LAUNCH });
+    expect(h.release({ free: true })).toBe(r);
+    expect(physics.streams).toHaveLength(1);
+    h.drop();
+    expect(box.activeRolls).toBe(1);
+    expect(dieGroups(renderer)).toHaveLength(1);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(5000);
+    expect(await r.values).toEqual([readResult(getShape('d6'), ID)]);
+    // dropped first: a later release throws nothing
+    const h2 = box.hold([{ type: 'd6', value: 1 }]);
+    h2.drop();
+    const r2 = h2.release({ free: true });
+    expect(physics.streams).toHaveLength(1);
+    expect(await r2.values).toBeNull();
     box.clear();
   });
 });

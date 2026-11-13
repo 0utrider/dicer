@@ -193,9 +193,16 @@ test('done carries nudges', async () => {
   await expect(stream.done).resolves.toEqual({ settledStep: 300, nudges: [1, 0] });
 });
 
-test('init posts the readers with the hulls', () => {
+test('setReaders posts the readers (the hand chunk computes them), in order with throws', () => {
   const w = new FakeWorker();
   const readers = { d6: { normals: new Float32Array(18), read: null, mode: 1, gap: 1 } };
-  new PhysicsClient(() => w, { hulls: {}, readers });
-  expect(w.sent[0].m).toMatchObject({ type: 'init', readers });
+  const client = new PhysicsClient(() => w, { hulls: {} });
+  expect(w.sent[0].m.type).toBe('init');
+  expect('readers' in w.sent[0].m).toBe(false); // world start no longer computes them
+  client.setReaders(readers);
+  client.throw({ dice: [{ type: 'd6' }], seed: 1, free: true });
+  expect(w.sent).toHaveLength(1); // both wait for ready
+  w.emit({ type: 'ready' });
+  expect(w.sent.slice(1).map((s) => s.m.type)).toEqual(['readers', 'throw']);
+  expect(w.sent[1].m.readers).toBe(readers);
 });

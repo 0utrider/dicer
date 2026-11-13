@@ -12,10 +12,10 @@ export function createPhysicsWorker() {
 export class PhysicsClient {
   /**
    * @param {() => Worker} createWorker
-   * @param {{ hulls?: Record<string, { points: Float32Array, radius: number }>, area?: object, readers?: object }} [options] hulls come from
-   *   `computeHulls()` and readers from `computeReaders()` (main thread); the worker never builds geometry.
+   * @param {{ hulls?: Record<string, { points: Float32Array, radius: number }>, area?: object }} [options] hulls come from
+   *   `computeHulls()` (main thread); the worker never builds geometry.
    */
-  constructor(createWorker, { hulls, area, readers } = {}) {
+  constructor(createWorker, { hulls, area } = {}) {
     this._worker = createWorker();
     this._isReady = false;
     this._failed = null;
@@ -35,7 +35,7 @@ export class PhysicsClient {
     };
     this._worker.onmessageerror = () =>
       this._fail(new Error('dicer: physics worker message could not be deserialized'));
-    this._worker.postMessage({ type: MSG.INIT, hulls, area, readers });
+    this._worker.postMessage({ type: MSG.INIT, hulls, area });
   }
 
   ready() {
@@ -44,6 +44,11 @@ export class PhysicsClient {
 
   resize(area) {
     this._send({ type: MSG.RESIZE, area });
+  }
+
+  /** The face readers free throws need (computeReaders(); the lazy hand chunk sends them). */
+  setReaders(readers) {
+    this._send({ type: MSG.READERS, readers });
   }
 
   /**

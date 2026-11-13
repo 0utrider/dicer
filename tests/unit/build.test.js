@@ -44,7 +44,13 @@ describe('build', () => {
     const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
     const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
+    const hand = lazy.find((p) => /^dist\/hand-[A-Za-z0-9_-]{8}\.js$/.test(p)); // rolling by hand (src/hand/hand.js)
     expect(pets).toBeTruthy();
+    // The hand chunk is lazy: only src/hand/hand-loader.js names it (import()); dicer.js never holds its code.
+    expect(hand).toBeTruthy();
+    expect(readFileSync(hand, 'utf8')).toContain('dicer-hand-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-hand-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).toContain(hand.slice('dist/'.length));
     expect(threePoints).toBeTruthy();
     // lazy for real: only the lazy chunks import it, never the world-start bundle
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain(threePoints.slice('dist/'.length));
@@ -124,6 +130,7 @@ describe('build', () => {
         lookExtras,
         pets,
         threePoints,
+        hand,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),

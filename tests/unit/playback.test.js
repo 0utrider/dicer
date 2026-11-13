@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Playback } from '../../src/throw/playback.js';
 import { getShape } from '../../src/core/dice-shapes.js';
 import { readTopFace, faceNormals } from '../../src/core/face-reader.js';
+import { readFree } from '../../src/hand/hand.js';
 
 const area = { halfWidth: 12, halfDepth: 7 };
 function die(target = 6, type = 'd6') {
@@ -253,7 +254,7 @@ describe('free dice (rolling by hand)', () => {
       modelQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.4, 0.2, 0)),
     });
     a.inner.quaternion.set(0.5, 0.5, 0.5, 0.5);
-    const p = new Playback({ dice: [a, b], area });
+    const p = new Playback({ dice: [a, b], area, read: readFree });
     p.push(inside(2, 30, true, [pose('d6', 2), pose('d6', 4)]));
     p.update(0);
     expect(p.update(5000)).toBe('landed');
@@ -285,7 +286,7 @@ describe('free dice (rolling by hand)', () => {
       [free('d10'), pose('d10', i10(10)), 100],
     ];
     const dice = cases.map((c) => c[0]);
-    const p = new Playback({ dice, area });
+    const p = new Playback({ dice, area, read: readFree });
     p.push(
       inside(
         dice.length,
@@ -301,9 +302,27 @@ describe('free dice (rolling by hand)', () => {
     expect(dice[1].readFace).toBe(d16.values.indexOf(17 - d16.values[5]));
   });
 
+  test('the reader is the hand chunk: without one a free die is neither read nor forced', () => {
+    const a = free('d6');
+    a.inner.quaternion.set(0, 0, 0, 1);
+    const p = new Playback({ dice: [a], area });
+    p.push(inside(1, 30, true, [pose('d6', 2)]));
+    p.update(0);
+    expect(p.update(5000)).toBe('landed');
+    expect(a.readValue).toBeUndefined();
+    expect(a.value).toBeUndefined(); // untouched
+    expect(a.inner.quaternion.toArray()).toEqual([0, 0, 0, 1]);
+    const read = vi.fn();
+    const b = free('d6');
+    const q = new Playback({ dice: [b], area, read });
+    const c = inside(1, 30, true, [pose('d6', 2)]);
+    q.push(c);
+    expect(read).toHaveBeenCalledWith([b], c.data, 29 * 7);
+  });
+
   test('a free ghost reads its value but never carries it', () => {
     const g = free('d6', { ghost: true });
-    const p = new Playback({ dice: [g], area });
+    const p = new Playback({ dice: [g], area, read: readFree });
     p.push(inside(1, 30, true, [pose('d6', 0)]));
     p.update(0);
     p.update(5000);

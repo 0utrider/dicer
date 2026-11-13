@@ -1,10 +1,11 @@
 import { dropCoreDiceSound } from './foundry/core-dice-sound.js';
 import { createPhysicsWorker, PhysicsClient } from './physics/physics-client.js';
-import { computeHulls, computeReaders } from './physics/hulls.js';
+import { computeHulls } from './physics/hulls.js';
 import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
+import { loadHand } from './hand/hand-loader.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
@@ -482,7 +483,7 @@ Hooks.once('ready', async () => {
     loadAtlas: () => loadDigitAtlas(foundry.utils.getRoute('modules/dicer/assets/fonts')),
     // No initial area: DiceBox sends the real one through resize() on construction.
     createPhysics: () =>
-      new PhysicsClient(createPhysicsWorker, { hulls: computeHulls(), readers: computeReaders() }),
+      new PhysicsClient(createPhysicsWorker, { hulls: computeHulls() }),
     createRenderer: () =>
       new DiceRenderer({
         container: createLayer(),
@@ -663,6 +664,8 @@ Hooks.once('ready', async () => {
       });
       dice3d = api;
       game.dice3d = api;
+      // The lazy hand chunk, attached to this engine's DiceBox (on demand; live tests and later tasks).
+      api._debug.hand = () => loadHand(box);
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(resizeDice);
       // The look-extras chunk landed: later rolls draw the real looks, not their fallbacks.

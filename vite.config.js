@@ -49,8 +49,12 @@ export default defineConfig({
       // dist/dicer.js keeps the code (no facade re-exporting a hashed chunk) and also exports
       // what the lazy model-loader chunk shares with it.
       preserveEntrySignatures: 'allow-extension',
-      // The pet chunk (src/pet/chunk/pets.js) is named pet-*.js, which build/world-start.js lists as lazy.
-      output: { chunkFileNames: (c) => (c.name === 'pets' ? 'pet-[hash].js' : '[name]-[hash].js') },
+      // The pet chunk (src/pet/chunk/pets.js) is named pet-*.js and the rolling-by-hand chunk
+      // (src/hand/hand.js) hand-*.js, which build/world-start.js lists as lazy.
+      output: {
+        chunkFileNames: (c) =>
+          c.name === 'pets' ? 'pet-[hash].js' : c.name === 'hand' ? 'hand-[hash].js' : '[name]-[hash].js',
+      },
     },
   },
 });

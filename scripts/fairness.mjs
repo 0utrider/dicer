@@ -140,8 +140,10 @@ function load() {
       rng,
     ] = await Promise.all([
       import('../src/physics/sim.js'),
-      import('../src/physics/hulls.js'),
-      import('../src/core/face-reader.js'),
+      Promise.all([import('../src/physics/hulls.js'), import('../src/physics/readers.js')]).then(
+        ([h, r]) => ({ ...h, ...r }),
+      ),
+      import('../src/core/physical-read.js'),
       import('../src/core/dice-shapes.js'),
       import('../src/core/rng.js'),
     ]);

@@ -1,6 +1,7 @@
-import { computeReaders, HULL_TYPES } from '../../src/physics/hulls.js';
+import { HULL_TYPES } from '../../src/physics/hulls.js';
+import { computeReaders } from '../../src/physics/readers.js';
 import { getShape } from '../../src/core/dice-shapes.js';
-import { flatGap } from '../../src/core/face-reader.js';
+import { flatGap } from '../../src/core/physical-read.js';
 
 test('computeReaders covers every hull type and d2, normals unit length, crystal read set [0,1,2,3], d4 mode -1, d16 mode -1', () => {
   const r = computeReaders();

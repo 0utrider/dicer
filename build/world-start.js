@@ -14,7 +14,7 @@ export const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digi
  * Fetched on demand, never at world start: a die model (dynamic import / DRACOLoader), the DSN
  * migration at ready, the editors and theme browser, the benchmark, runtime fonts, and the like.
  * Paths are relative to the build's output folder (`dist/` by default). The dice pet chunk, the
- * rolling-by-hand chunk (hand-*, emitted from Task 5 of that plan) and
+ * rolling-by-hand chunk (hand-*, src/hand/hand.js) and
  * three's Points (split out because the pet chunk and the model loader share it) match only the
  * hashed chunk form, so a world-start module that happens to be named pet-* is never counted lazy.
  */

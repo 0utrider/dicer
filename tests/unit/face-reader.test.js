@@ -5,13 +5,15 @@ import {
   readTopFace,
   rotationToShow,
   faceForValue,
+} from '../../src/core/face-reader.js';
+import {
   flatGap,
   topFaceClearance,
   isCocked,
   readFace,
   readResult,
   combineD100,
-} from '../../src/core/face-reader.js';
+} from '../../src/core/physical-read.js';
 import { restingQuaternion } from '../../src/core/resting.js';
 import { mulberry32 } from '../../src/core/rng.js';
 

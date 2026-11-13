@@ -2,14 +2,11 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { beforeAll, expect, test, vi } from 'vitest';
 import { getShape } from '../../src/core/dice-shapes.js';
-import {
-  faceNormals,
-  isCocked,
-  readTopFace,
-  topFaceClearance,
-} from '../../src/core/face-reader.js';
+import { faceNormals, readTopFace } from '../../src/core/face-reader.js';
+import { isCocked, topFaceClearance } from '../../src/core/physical-read.js';
 import { clearanceOf, createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
-import { computeHulls, computeReaders } from '../../src/physics/hulls.js';
+import { computeHulls } from '../../src/physics/hulls.js';
+import { computeReaders } from '../../src/physics/readers.js';
 import { throwEdge } from '../../src/core/rng.js';
 import { fitDieCapacity } from '../../src/areas/area-model.js';
 import {
@@ -761,6 +758,25 @@ test('dice without a launch entry match the seeded spawn', () => {
   for (const d of [1, 2]) {
     expect(mixed[1][d].p).toEqual(auto[0][d].p);
     expect(mixed[1][d].q).toEqual(auto[0][d].q);
+  }
+});
+
+test('setReaders (the READERS message) gives a sim made without readers its nudges', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    const sim = createSim(area, hulls);
+    sim.setReaders(readers);
+    const chunks = [];
+    const req = { dice: LEAN.dice.map((type) => ({ type })), seed: 3, free: true, launch: LEAN.launch };
+    const res = sim.throw(req, (c) => chunks.push({ ...c, data: c.data.slice(), events: c.events.slice() }));
+    sim.dispose();
+    const same = runHand(LEAN.dice, 3, { free: true, launch: LEAN.launch });
+    expect(res.nudges).toEqual(same.res.nudges);
+    expect(res.nudges[1]).toBeGreaterThanOrEqual(1);
+    expect(framesHash(chunks)).toBe(framesHash(same.chunks));
+    expect(warn).not.toHaveBeenCalled();
+  } finally {
+    warn.mockRestore();
   }
 });
 

@@ -272,6 +272,11 @@ export function createSim(initialArea, hulls, readers) {
       area = { ...next };
     },
 
+    /** The face readers free throws need, when the sim was made without them (READERS). */
+    setReaders(next) {
+      readers = next;
+    },
+
     /** Return a transferred-back buffer to the pool. */
     recycle(buffer, events) {
       if (events && events.byteLength > 0 && eventPool.length < POOL_LIMIT) {
