@@ -79,7 +79,7 @@ describe('preloadEditors', () => {
   test('the ready hook schedules it, and the default loaders name both editor chunks', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync('src/main.js', 'utf8');
-    expect(src).toMatch(/preloadEffects\(\);\s*preloadEditors\(\);/);
+    expect(src).toMatch(/preloadEffects\(\);\s*preloadPets\(\);\s*preloadEditors\(\);/);
     expect(src).toContain("import('./ui/trigger-editor.js')");
     expect(src).toContain("import('./ui/damage-map-editor.js')");
   });

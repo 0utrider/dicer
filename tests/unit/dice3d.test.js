@@ -573,6 +573,34 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 12 }]);
   });
 
+  describe('dice pet', () => {
+    const user = (flag) => ({ id: 'p1', isGM: false, color: '#abcdef', getFlag: () => flag });
+    const makePet = (u) => make({ getUser: (id) => (id === u.id ? u : undefined) });
+
+    test('throwHere passes the roller\'s pet spec to diceBox.roll', async () => {
+      me = user({ kind: 'slime', color: '#00ff00' });
+      makePet(me).showForRoll(roll(20, 12), me, false, null, false);
+      await Promise.resolve();
+      expect(diceBox.roll.mock.calls[0][1].pet).toEqual({ userId: 'p1', kind: 'slime', color: '#00ff00', ghost: false });
+    });
+
+    test('a blind roll seen as ghost passes ghost:true', async () => {
+      settings.showGhostDice = true;
+      me = user(undefined);
+      makePet(me).showForRoll(roll(20, 12), me, false, null, true);
+      await Promise.resolve();
+      expect(diceBox.roll.mock.calls[0][1].pet).toMatchObject({ userId: 'p1', ghost: true });
+    });
+
+    test('pets off -> no pet in the call', async () => {
+      me = user(undefined);
+      settings.showPets = false;
+      makePet(me).showForRoll(roll(20, 12), me, false, null, false);
+      await Promise.resolve();
+      expect(diceBox.roll.mock.calls[0][1]?.pet ?? null).toBeNull();
+    });
+  });
+
   describe('trigger effects (privacy)', () => {
     const fxMake = () => {
       const fx = createFxResolver({

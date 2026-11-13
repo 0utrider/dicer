@@ -125,6 +125,7 @@ export async function migrateLookSetting({ get, set }) {
  * Registers every Dicer setting.
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
+ * @param {() => void} [callbacks.onPetChange] runs when petsAllowed or showPets changes
  * @param {() => void} [callbacks.onRollAreasChange] runs when rollAreas or gmPrivateArea changes
  * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when theme,
  *   interiors, engraving, shadows, glow, presetFaces, presetModels or effects changes
@@ -135,6 +136,7 @@ export async function migrateLookSetting({ get, set }) {
 export function registerSettings({
   onAreaChange,
   onRollAreasChange,
+  onPetChange,
   onLookChange,
   onQualityChange,
   onSoundChange,
@@ -205,6 +207,32 @@ export function registerSettings({
   register('showExtraDice', {
     name: t('showExtraDice.Name'),
     hint: t('showExtraDice.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  register('petsAllowed', {
+    name: t('petsAllowed.Name'),
+    hint: t('petsAllowed.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => onPetChange?.(),
+  });
+  register('showPets', {
+    name: t('showPets.Name'),
+    hint: t('showPets.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => onPetChange?.(),
+  });
+  register('petSounds', {
+    name: t('petSounds.Name'),
+    hint: t('petSounds.Hint'),
     scope: 'client',
     config: true,
     type: Boolean,

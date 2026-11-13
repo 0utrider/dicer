@@ -11,6 +11,7 @@ import { resolveDamageTheme } from '../effects/damage-themes.js';
 import { PRESETS, normalizeAreaDef } from '../areas/area-model.js';
 import { areaDefFor, withArea } from '../areas/area-store.js';
 import { isGmOnly } from '../areas/gm-only.js';
+import { petFor } from '../pet/pet-for.js';
 
 const STANDARD_SYSTEM = 'standard';
 /** The gate and showForRoll hooks enableDebugMode logs. */
@@ -152,6 +153,7 @@ export function createDice3dApi({
   hooks = globalThis.Hooks,
   socket = null,
   currentUser = () => globalThis.game?.user,
+  getUser = (id) => globalThis.game?.users?.get(id),
   gmIds = () => globalThis.game?.users?.filter((u) => u.isGM).map((u) => u.id) ?? [],
   fromData,
   registry = createRegistry(),
@@ -392,8 +394,12 @@ export function createDice3dApi({
       });
       if (!dice.length) return false;
       const area = areaHere(s, view);
-      // No area: the whole stage, called exactly as before areas existed.
-      await (area ? diceBox.roll(dice, { area }) : diceBox.roll(dice)).landed;
+      const pet = petFor({ user: getUser(s.senderId), view, getSetting });
+      // No area and no pet: the whole stage, called exactly as before areas existed.
+      const opts = {};
+      if (area) opts.area = area;
+      if (pet) opts.pet = pet;
+      await (area || pet ? diceBox.roll(dice, opts) : diceBox.roll(dice)).landed;
       return true;
     } catch (err) {
       console.error('dicer: showForRoll failed', err);
@@ -988,7 +994,8 @@ export function createDice3dApi({
             if (appearance) spec.appearance = appearance;
             return spec;
           });
-          return diceBox.roll(specs).landed;
+          const pet = petFor({ user: me(), view: 'real', getSetting });
+          return (pet ? diceBox.roll(specs, { pet }) : diceBox.roll(specs)).landed;
         } catch (err) {
           warnOnce('_throwLook', err);
           return Promise.resolve();
