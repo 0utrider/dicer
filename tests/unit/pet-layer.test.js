@@ -1539,3 +1539,46 @@ test('dispose removes the listener', () => {
   expect(() => fn({ clientX: 10, clientY: 10, target: null })).not.toThrow();
   expect(m.deps.wake).not.toHaveBeenCalled();
 });
+
+// ---- dodge polish (Task 2 review) ----
+test('a pointer in reach during a roll wakes nothing per move', () => {
+  const { m, win, rolls } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  rolls.n = 1;
+  m.deps.wake.mockClear();
+  for (let i = 0; i < 5; i++) pointAt(win, was.x + 0.1 * i, was.z);
+  expect(m.deps.wake).not.toHaveBeenCalled();
+});
+
+test('the last roll ending wakes the loop for a dodge held back by it (a still cursor)', () => {
+  const { m, win, rolls } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  rolls.n = 1;
+  pointAt(win, was.x, was.z);
+  m.layer.update((clockNow += 16)); // held back by the roll, then the loop holds
+  rolls.n = 0; // DiceBox takes the roll off its list, then ends it
+  m.deps.wake.mockClear();
+  m.layer.end('some-roll');
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  runTo(m, clockNow + 800);
+  expect(dist(posOf(m), was)).toBeGreaterThanOrEqual(4 - 1e-9);
+  // nothing pending: a roll ending wakes nothing
+  rolls.n = 0;
+  m.deps.wake.mockClear();
+  m.layer.end('another');
+  expect(m.deps.wake).not.toHaveBeenCalled();
+});
+
+test('the pointer target is asked about the sidebar or chat only when a pet would dodge', () => {
+  const { m, win } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  const target = { closest: vi.fn(() => null) };
+  pointAt(win, was.x + 7, was.z, target); // far: no DOM call
+  expect(target.closest).not.toHaveBeenCalled();
+  pointAt(win, was.x, was.z, target);
+  expect(target.closest).toHaveBeenCalledTimes(1);
+});

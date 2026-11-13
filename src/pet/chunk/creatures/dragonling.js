@@ -118,18 +118,18 @@ export function dragonling(color) {
   const belly = kit.mesh(new THREE.SphereGeometry(0.26, 10, 6), accent, squash, 0, 0.34, 0.03);
   belly.scale.set(0.9, 0.95, 0.9);
   const legGeo = kit.geo(new THREE.SphereGeometry(0.11, 8, 6));
-  const legs = []; // [mesh, home y, home z, tucked y, tucked z]
+  const legs = []; // flat, per leg: mesh, home y, home z, tucked y, tucked z
   for (const sx of [1, -1]) {
     const front = new THREE.Mesh(legGeo, body);
     front.position.set(sx * 0.17, 0.1, 0.17);
     front.scale.set(0.95, 1, 1.2);
     squash.add(front);
-    legs.push([front, 0.1, 0.17, 0.24, 0.1]);
+    legs.push(front, 0.1, 0.17, 0.24, 0.1);
     const hind = new THREE.Mesh(legGeo, body);
     hind.position.set(sx * 0.26, 0.15, -0.2);
     hind.scale.set(1.25, 1.35, 1.5);
     squash.add(hind);
-    legs.push([hind, 0.15, -0.2, 0.25, -0.3]);
+    legs.push(hind, 0.15, -0.2, 0.25, -0.3);
   }
   // Dorsal spikes down the back: a row of light triangles from above.
   const spikeGeo = kit.geo(new THREE.ConeGeometry(0.07, 0.15, 4));
@@ -369,7 +369,8 @@ export function dragonling(color) {
     const sxz = 1 / Math.sqrt(Math.max(0.3, sy));
     squash.scale.set(sxz, sy, sxz);
     head.rotation.set(o.headPitch, o.headYaw, o.headRoll);
-    for (const [leg, y0, z0, y1, z1] of legs) leg.position.set(leg.position.x, lerp(y0, y1, o.tuck), lerp(z0, z1, o.tuck));
+    for (let i = 0; i < legs.length; i += 5)
+      legs[i].position.set(legs[i].position.x, lerp(legs[i + 1], legs[i + 3], o.tuck), lerp(legs[i + 2], legs[i + 4], o.tuck));
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? 1 : -1;
       const w = wings[i];

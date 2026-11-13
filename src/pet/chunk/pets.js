@@ -114,8 +114,11 @@ export function createPetLayer(deps) {
   let disposed = false;
   let timer = null; // the one timer, aimed at the earliest leaveAt (so a held loop wakes up)
   let timerAt = Infinity;
-  let pointer = null; // the latest pointer on the stage ({x, z}, die units), null off it
+  const pointer = { x: 0, z: 0 }; // the latest pointer on the stage (die units), when hasPointer
+  let hasPointer = false; // false off the stage, over the sidebar or chat, or before any move
+  let pointerTarget = null; // the element under it (asked lazily whether it is the sidebar or chat)
   let pointerMoved = false; // since update last checked the dodge
+  const petList = []; // the pets as an array, for the listener's allocation-free loop
 
   const makeShadow = () => {
     shadowTex ??= discTexture();
@@ -186,6 +189,8 @@ export function createPetLayer(deps) {
 
   function removePet(pet) {
     pets.delete(pet.userId);
+    const at = petList.indexOf(pet);
+    if (at >= 0) petList.splice(at, 1);
     pending.delete(pet.userId);
     for (const k of pet.rolls.keys()) keyOwner.delete(k);
     pet.rolls.clear();
@@ -355,41 +360,6 @@ export function createPetLayer(deps) {
   // ---- dodging the cursor ----
   /** How near the cursor may come before the pet moves: its footprint plus DODGE_REACH. */
   const reachOf = (pet) => (pet.creature.footprint ?? 0.45 * pet.creature.height) + DODGE_REACH;
-  /** Whether `pet` would dodge a cursor at `p` now: resting, in reach, past its cooldown. */
-  const dodges = (pet, p, now) =>
-    pet.state === 'rest' &&
-    !pet.gone &&
-    now >= (pet.calmUntil ?? -Infinity) &&
-    Math.hypot((pet.px ?? pet.base.x) - p.x, (pet.pz ?? pet.base.z) - p.z) <= reachOf(pet);
-  /**
-   * The passive pointermove listener: keeps the latest pointer in stage units (null off the stage,
-   * or over the sidebar or chat), and wakes a held loop only when a pet would dodge it.
-   */
-  function onPointer(e) {
-    if (disposed) return;
-    try {
-      pointerMoved = true;
-      pointer = null;
-      const map = pageMap();
-      if (!map || e?.target?.closest?.(OFF_TABLE)) return;
-      const { r, px, ox, oz } = map;
-      const x = e.clientX;
-      const y = e.clientY;
-      if (!(x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height)) return;
-      pointer = { x: (stage.cx ?? 0) + (x - ox) / px, z: (stage.cz ?? 0) + (y - oz) / px };
-      const now = clock();
-      for (const pet of pets.values())
-        if (dodges(pet, pointer, now)) return wake();
-    } catch {
-      pointer = null; // an odd event: ignored
-    }
-  }
-  const POINTER_OPTS = { passive: true };
-  try {
-    win?.addEventListener?.('pointermove', onPointer, POINTER_OPTS);
-  } catch {
-    /* no window */
-  }
   const activeRolls = () => {
     try {
       return deps.activeRolls?.() ?? 0;
@@ -397,6 +367,57 @@ export function createPetLayer(deps) {
       return 0;
     }
   };
+  /**
+   * Whether `pet` would dodge a cursor at `p` now: no roll in flight (a lingering roll's frames
+   * are not woken per move), resting, in reach, past its cooldown.
+   */
+  const dodges = (pet, p, now) =>
+    pet.state === 'rest' &&
+    !pet.gone &&
+    now >= (pet.calmUntil ?? -Infinity) &&
+    Math.hypot((pet.px ?? pet.base.x) - p.x, (pet.pz ?? pet.base.z) - p.z) <= reachOf(pet) &&
+    activeRolls() === 0;
+  /** Whether a pet would dodge the pointer now; its target (the sidebar or chat?) is asked last. */
+  function anyDodges(now) {
+    if (!hasPointer) return false;
+    let hit = false;
+    for (let i = 0; i < petList.length && !hit; i++) hit = dodges(petList[i], pointer, now);
+    if (!hit) return false;
+    try {
+      if (pointerTarget?.closest?.(OFF_TABLE)) hasPointer = false; // not over the table
+    } catch {
+      hasPointer = false;
+    }
+    return hasPointer;
+  }
+  /**
+   * The passive pointermove listener: keeps the latest pointer in stage units (none off the
+   * stage, or over the sidebar or chat), and wakes a held loop only when a pet would dodge it.
+   * Allocation-free: the bounds test first, the DOM is asked only when a pet would move.
+   */
+  function onPointer(e) {
+    if (disposed) return;
+    pointerMoved = true;
+    hasPointer = false;
+    pointerTarget = null;
+    const r = stage?.rect;
+    if (!r || !(stage.halfWidth > 0) || !(r.width > 0) || !e) return;
+    const x = e.clientX;
+    const y = e.clientY;
+    if (!(x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height)) return;
+    const px = r.width / 2 / stage.halfWidth;
+    pointer.x = (stage.cx ?? 0) + (x - r.left - r.width / 2) / px;
+    pointer.z = (stage.cz ?? 0) + (y - r.top - r.height / 2) / px;
+    pointerTarget = e.target ?? null;
+    hasPointer = true;
+    if (anyDodges(clock())) wake();
+  }
+  const POINTER_OPTS = { passive: true };
+  try {
+    win?.addEventListener?.('pointermove', onPointer, POINTER_OPTS);
+  } catch {
+    /* no window */
+  }
   /** Every resting pet the cursor at `p` has come near moves away from it (update, no roll in flight). */
   function dodge(p, now) {
     for (const pet of pets.values()) {
@@ -536,6 +557,7 @@ export function createPetLayer(deps) {
       setCreature(pet, creature, spec);
       scene.add(group);
       pets.set(spec.userId, pet);
+      petList.push(pet);
     } else if (make && (pet.kind !== spec.kind || pet.color !== spec.color)) {
       setCreature(pet, make(spec.color), spec); // the editor's Throw shows the new pick at once
     }
@@ -635,6 +657,9 @@ export function createPetLayer(deps) {
   }
 
   function end(key) {
+    // DiceBox ends a roll after taking it off its list: the last one over, a dodge held back while
+    // it flew (a still cursor beside a resting pet) wakes the loop now, with no new pointer move.
+    if (!disposed && pointerMoved && anyDodges(clock())) wake();
     const pet = petOf(key);
     keyOwner.delete(key);
     if (!pet) return;
@@ -896,7 +921,7 @@ export function createPetLayer(deps) {
     if (pointerMoved && stay && activeRolls() === 0) {
       pointerMoved = false;
       try {
-        if (pointer) dodge(pointer, now);
+        if (anyDodges(now)) dodge(pointer, now);
       } catch (err) {
         console.warn('Dicer | pet', err);
       }
@@ -1109,7 +1134,8 @@ export function createPetLayer(deps) {
     } catch {
       /* no window */
     }
-    pointer = null;
+    hasPointer = false;
+    pointerTarget = null;
     try {
       hooks?.off?.(AREAS_HOOK, areasHook);
     } catch {
