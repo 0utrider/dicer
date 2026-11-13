@@ -147,6 +147,12 @@ function onSoundChange(key, value) {
 const NOOP_HANDLERS = { onCreate() {}, onUpdate() {}, onRender() {}, onDelete() {} };
 /** Chat hooks are registered at init but stay no-ops until the engine is ready. */
 const handlers = () => gate ?? NOOP_HANDLERS;
+/**
+ * Task 8 (P6-D2): this user's hand throws of `m` go to the users allowed to see them, under the
+ * gate's RollStart outcome (none known: GMs only). A throw is stored only where the chunk loaded.
+ */
+const sendHand = (m) =>
+  handNow()?.sendHand(m, { start: gate?.startOf(m.id), pending: gate?.isAnimating(m.id) });
 
 /**
  * This user's own default look (DiceBox's fallback and the warm-up), by the resolver's chain:
@@ -473,9 +479,7 @@ Hooks.once('init', () => {
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
     initiative?.onCreateMessage(message);
-    // Task 8 (P6-D2): this user's hand throws go to the users allowed to see them, after the gate
-    // took its own lingering throw. A throw was stored only if this client loaded the chunk.
-    handNow()?.sendHand(message);
+    sendHand(message); // what the gate did not send from its RollStart (not animated here)
   });
   Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
   updateUserHook = Hooks.on('updateUser', (user, changes) =>
@@ -483,7 +487,7 @@ Hooks.once('init', () => {
   );
   Hooks.on('updateChatMessage', (message, changes) => {
     handlers().onUpdate(message, changes);
-    handNow()?.sendHand(message); // appended hand rolls (sent ones are no longer stored)
+    sendHand(message); // appended hand rolls (sent ones are no longer stored)
   });
   Hooks.on('renderChatMessageHTML', (message, html) => handlers().onRender(message, html));
   Hooks.on('deleteChatMessage', (message) => handlers().onDelete(message));
@@ -670,6 +674,7 @@ Hooks.once('ready', async () => {
         getSetting,
         areaFor: areas.rectFor,
         hand,
+        onStarted: sendHand,
       });
       initiative = createInitiativeHider({
         gate,

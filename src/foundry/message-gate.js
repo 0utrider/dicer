@@ -106,6 +106,8 @@ const onlyFrom = (views, from) => views.map((v, i) => (i >= from ? v : 'none'));
  * @param {(id: string) => boolean} [deps.userIsGM] whether a whisper recipient is a GM
  * @param {object | null} [deps.hand] the hand gate (createHandGate; Task 8): hand rolls replay
  *   their thrower's trajectory here, and the thrower's own lingering throw is decorated (H-9)
+ * @param {(message, start) => void} [deps.onStarted] after each RollStart (and the own lingering
+ *   throws were read): main.js sends the thrower's hand throws then (sendHand)
  */
 export function createMessageGate({
   diceBox,
@@ -123,7 +125,10 @@ export function createMessageGate({
   documentRef = globalThis.document,
   now = () => globalThis.performance.now(),
   hand = null,
+  onStarted = () => {},
 }) {
+  /** message id -> {blind, ghostAll, secretAll, count} of its last RollStart (count: rolls covered). */
+  const starts = new Map();
   /** Fixed ring of the last FIRST_FRAME_LIMIT marks: ids[i] -> ms[i]; no allocation per mark. */
   const markIds = new Array(FIRST_FRAME_LIMIT).fill(null);
   const markMs = new Array(FIRST_FRAME_LIMIT).fill(0);
@@ -284,15 +289,17 @@ export function createMessageGate({
     const showExtra = getSetting('showExtraDice') !== false;
     return rolls.map((roll, i) => {
       const view = views[i] ?? 'none';
-      if (view === 'none' || budget <= 0) return [];
+      // H-10: a hand roll seen real is replayed whole (the decoder's 100-dice cap), outside the budget.
+      const whole = view === 'real' && hand?.isHand(roll) && getSetting('handReplay') !== false;
+      if (view === 'none' || (budget <= 0 && !whole)) return [];
       const ghost = view === 'ghost';
       const decorate = ghost ? ghostDecorator() : decoratorFor(message, roll);
       const { dice } = planThrow(ghost ? ghostRoll(roll) : roll, {
-        maxDice: budget,
+        maxDice: whole ? 100 : budget,
         showExtra,
         decorate,
       });
-      budget -= dice.length;
+      if (!whole) budget -= dice.length;
       return dice;
     });
   }
@@ -425,11 +432,6 @@ export function createMessageGate({
   }
 
   /**
-   * Throws the rolls in ascending rollOrder groups, each after the previous one lands. Each group
-   * gets its own watchdog. A watchdog, a failure or a delete reveals the message once, and the
-   * remaining groups are never thrown.
-   */
-  /**
    * Task 8: a hand roll seen real here (another user's) replays its thrower's trajectory: waited
    * for (HAND_REPLAY_WAIT_MS at most), sent by the author who threw it (dicerHand.by), and
    * matching the message's results by key (the chunk's replayFor). Extras beyond the recording
@@ -455,6 +457,11 @@ export function createMessageGate({
     );
   }
 
+  /**
+   * Throws the rolls in ascending rollOrder groups, each after the previous one lands. Each group
+   * gets its own watchdog. A watchdog, a failure or a delete reveals the message once, and the
+   * remaining groups are never thrown.
+   */
   function throwGroups(id, entry, groups, message, owned = []) {
     const next = (i) => {
       if (animating.get(id) !== entry) return; // revealed meanwhile (watchdog, delete)
@@ -582,15 +589,21 @@ export function createMessageGate({
       }));
       hooks.callAll('diceSoNiceRollStart', id, context);
       if (animating.get(id) !== entry) return; // a listener deleted the message
+      const flags = appearedFlags(context, before, message);
+      // Task 8: what RollStart decided for the whole message, which the thrower's sendHand honours.
+      const start = { blind: !!context.blind, ...flags, count: message.rolls.length };
+      starts.delete(id);
+      starts.set(id, start);
+      if (starts.size > VIEW_LOG_LIMIT) starts.delete(starts.keys().next().value);
       // A blind context forces every view to none: nothing is thrown, the message shows at once.
       if (context.blind) {
+        onStarted(message, start);
         reveal(id);
         return;
       }
 
       const rolls = message.rolls.slice();
       rolls[from] = context.dsnRoll ?? first;
-      const flags = appearedFlags(context, before, message);
       const views = onlyFrom(viewsOf(message, { before, ...flags }), from);
       recordViews(id, views);
       // RollStart can only change the views or replace the first animated roll. The maxDice
@@ -607,6 +620,7 @@ export function createMessageGate({
       const owned = message.rolls.map((r, i) =>
         own && views[i] === 'real' && hand?.isHand(r) ? hand.ownHandle(r) : null,
       );
+      onStarted(message, start);
       throwGroups(id, entry, groupsOf(message.rolls, plan, views, secrets), message, owned);
     } catch (err) {
       console.error('dicer: chat message gate failed', err);
@@ -709,6 +723,8 @@ export function createMessageGate({
     onDelete,
     setUpdateHideSelector,
     isAnimating: (id) => animating.has(id),
+    /** Task 8: the message's last RollStart outcome here ({blind, ghostAll, secretAll, count}). */
+    startOf: (id) => starts.get(id),
     /** Whether the message's chat card is hidden while its dice fly (immediate display off). */
     isHiding: (id) => animating.get(id)?.hide === true,
     /** Debug only: ms from interception to first frame, by message id (an id may be missing). */

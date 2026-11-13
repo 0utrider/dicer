@@ -190,12 +190,15 @@ export function createSync({
    * Task 8: a thrower's trajectory (`kind: 'hand'`) goes to onHand(payload, senderId) only from a
    * verified sender (required here) equal to `userId`, and only when the trajectory (its base64
    * sections and the rest, as JSON: as the encoder measures it) fits MAX_TRAJECTORY_BYTES, else
-   * it is ignored before decoding (one warning). The rest is the hand gate's.
+   * it is ignored before decoding (one warning). A `none: true` notice carries no trajectory at
+   * all. The rest is the hand gate's.
    */
   function hand(p, sender) {
     const t = p.trajectory;
-    if (!onHand || sender == null || p.userId !== sender || !t || typeof t !== 'object') return;
-    if (JSON.stringify(t).length > MAX_TRAJECTORY_BYTES) {
+    if (!onHand || sender == null || p.userId !== sender) return;
+    // `none: true` (no trajectory): the thrower sent none, so the receiver throws at once.
+    if (p.none === true ? t !== undefined : !t || typeof t !== 'object') return;
+    if (t && JSON.stringify(t).length > MAX_TRAJECTORY_BYTES) {
       return void (warned ||= !console.warn('dicer: an oversized hand throw was ignored'));
     }
     onHand(p, sender);

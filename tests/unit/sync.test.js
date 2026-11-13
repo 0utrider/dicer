@@ -934,6 +934,13 @@ describe('Task 8: kind hand', () => {
     deliver(hand({ trajectory: 'x' }), 'a');
     expect(onHand).toHaveBeenCalledTimes(1);
     expect(onShow).not.toHaveBeenCalled();
+    // A values-free `none` notice (no trajectory at all) passes; a none carrying data does not.
+    const none = { v: 1, kind: 'hand', id: 'h1', messageId: 'm1', userId: 'a', none: true };
+    deliver(none, 'a');
+    deliver({ ...none, trajectory: traj() }, 'a');
+    deliver(none, 'b');
+    expect(onHand).toHaveBeenCalledTimes(2);
+    expect(onHand).toHaveBeenLastCalledWith(none, 'a');
   });
 
   test('oversized hand payload ignored', () => {

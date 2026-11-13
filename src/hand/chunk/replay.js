@@ -11,13 +11,14 @@ import { decodeTrajectory, placeTrajectory, replaySource } from './trajectory.js
 import { HAND_BUFFER_MS, HAND_REPLAY_WAIT_MS } from '../gate-hand.js';
 
 const BUFFER_LIMIT = 32;
+const SENDER_LIMIT = 4;
 
 /**
  * The receiver's trajectory buffer behind createHandGate (one per gate). Payloads are keyed by
  * message, roll and verified sender, so a payload from anyone else than the author never matches
- * the author's wait. An early payload is kept HAND_BUFFER_MS (at most BUFFER_LIMIT, oldest
- * dropped); a wait resolves on its payload, decoded then (null when malformed), or null after
- * HAND_REPLAY_WAIT_MS. replay is replayFor, never throwing (null).
+ * the author's wait. An early payload is kept HAND_BUFFER_MS (at most SENDER_LIMIT per sender,
+ * that sender's oldest dropped, and BUFFER_LIMIT in all); a wait resolves on its payload, decoded
+ * then (null when malformed or a `none` notice), or null at its deadline. replay never throws.
  */
 export function handBuffer({ now = () => Date.now(), setTimeoutFn = (fn, ms) => setTimeout(fn, ms) } = {}) {
   const buffer = new Map(); // key -> {p, at}
@@ -35,22 +36,30 @@ export function handBuffer({ now = () => Date.now(), setTimeoutFn = (fn, ms) => 
       if (w) return w(decode(p));
       prune();
       buffer.delete(k);
-      buffer.set(k, { p, at: now() });
+      // One sender can never evict another's payloads: its own oldest goes past SENDER_LIMIT.
+      const own = [...buffer].filter(([, e]) => e.sender === sender);
+      if (own.length >= SENDER_LIMIT) buffer.delete(own[0][0]);
+      buffer.set(k, { p, sender, at: now() });
       if (buffer.size > BUFFER_LIMIT) buffer.delete(buffer.keys().next().value);
     },
-    waitFor(messageId, rollId, authorId) {
+    /** `end`: the deadline (as `now`), taken when the gate asked; default HAND_REPLAY_WAIT_MS from now. */
+    waitFor(messageId, rollId, authorId, end = now() + HAND_REPLAY_WAIT_MS) {
       prune();
       const k = `${messageId}|${rollId}|${authorId}`;
       const e = buffer.get(k);
       buffer.delete(k);
       if (e) return decode(e.p);
+      waiters.get(k)?.(null); // a second wait for the same roll replaces the first
       return new Promise((resolve) => {
         waiters.set(k, resolve);
-        setTimeoutFn(() => {
-          if (waiters.get(k) !== resolve) return;
-          waiters.delete(k);
-          resolve(null);
-        }, HAND_REPLAY_WAIT_MS);
+        setTimeoutFn(
+          () => {
+            if (waiters.get(k) !== resolve) return;
+            waiters.delete(k);
+            resolve(null);
+          },
+          Math.max(0, end - now()),
+        );
       });
     },
     /**

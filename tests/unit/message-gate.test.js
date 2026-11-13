@@ -2114,8 +2114,8 @@ describe('Task 8: hand rolls in the gate', () => {
     expect(sourced(box.rolls[0])).toBe(true);
   });
 
-  test('H-10: a recorded die missing from this plan (maxDice) is replayed with a look-only spec', async () => {
-    settings.maxDice = 1;
+  test('H-10: a recorded die missing from this plan (showExtraDice off) is replayed with a look-only spec', async () => {
+    settings.showExtraDice = false;
     const decorateFor = () => () => ({
       fx: [{ id: 'burst' }],
       damageType: 'fire',
@@ -2123,7 +2123,9 @@ describe('Task 8: hand rolls in the gate', () => {
     });
     gateH = make({ decorateFor });
     send(handChunk.encodeTrajectory(recordingOf([D20(17), D20(5, '0:1:0')])));
-    gateH.onCreate(hmsg({ rolls: [handD20([17, 5], { n: 2 })] }));
+    const kh = handD20([17, 5], { n: 2 });
+    kh.dice[0].results[1].discarded = true;
+    gateH.onCreate(hmsg({ rolls: [kh] }));
     await tick();
     const { specs } = box.rolls[0];
     expect(specs).toHaveLength(2);
@@ -2291,5 +2293,145 @@ describe('Task 8: hand rolls in the gate', () => {
     gateH.onCreate(hmsg({ id: 'm2', rolls: [handD20([17], { id: 'h2' }), d20Roll(9)] }));
     await tick();
     expect(box.rolls.slice(2).map(sourced).sort()).toEqual([false, true]);
+  });
+
+  test('H-10: the receiver maxDice never drops a recorded hand die (planned outside the budget)', async () => {
+    settings.maxDice = 1;
+    const decorateFor = () => () => ({ fx: [{ id: 'burst' }] });
+    gateH = make({ decorateFor });
+    send(handChunk.encodeTrajectory(recordingOf([D20(17), D20(5, '0:1:0')])));
+    gateH.onCreate(hmsg({ rolls: [handD20([17, 5], { n: 2 }), d20Roll(9)] }));
+    await tick();
+    const replay = box.rolls.find(sourced);
+    expect(replay.specs.map((s) => [s.key, s.fx])).toEqual([
+      ['0:0:0', [{ id: 'burst' }]],
+      ['0:1:0', [{ id: 'burst' }]],
+    ]);
+    // The normal roll still gets the budget (1 die).
+    expect(box.rolls.find((r) => !sourced(r)).specs).toHaveLength(1);
+  });
+
+  test('a d100 replays from its tens and ones dice', async () => {
+    const d100 = (result) => ({
+      options: { dicerHand: { id: 'h1', by: 'thrower', n: 2 } },
+      dice: [{ faces: 100, results: [{ result, active: true }] }],
+    });
+    const D10 = (face, p) => ({ shapeType: 'd10', key: `0:0:${p}`, face });
+    send(handChunk.encodeTrajectory(recordingOf([D10(4, 0), D10(7, 1)])));
+    gateH.onCreate(hmsg({ rolls: [d100(47)] }));
+    send(handChunk.encodeTrajectory(recordingOf([D10(10, 0), D10(10, 1)])), { messageId: 'm2' });
+    gateH.onCreate(hmsg({ id: 'm2', rolls: [d100(100)] }));
+    send(handChunk.encodeTrajectory(recordingOf([D10(4, 0), D10(8, 1)])), { messageId: 'm3' });
+    gateH.onCreate(hmsg({ id: 'm3', rolls: [d100(47)] }));
+    await tick();
+    expect(box.rolls.map(sourced)).toEqual([true, true, false]);
+    expect(box.rolls[0].specs).toEqual([
+      expect.objectContaining({ variant: 'd100tens', value: 40, shapeType: 'd10' }),
+      expect.objectContaining({ value: 7, shapeType: 'd10' }),
+    ]);
+  });
+
+  test('a relabelled d3 replays when the landed d6 face reads its result', async () => {
+    const d3 = (result) => ({
+      options: { dicerHand: { id: 'h1', by: 'thrower', n: 1 } },
+      dice: [{ faces: 3, results: [{ result, active: true }] }],
+    });
+    const D6 = (face) => ({ shapeType: 'd6', key: '0:0:0', face });
+    send(handChunk.encodeTrajectory(recordingOf([D6(5)]))); // face 5 of the d6 reads 2 on a d3
+    gateH.onCreate(hmsg({ rolls: [d3(2)] }));
+    send(handChunk.encodeTrajectory(recordingOf([D6(3)])), { messageId: 'm2' });
+    gateH.onCreate(hmsg({ id: 'm2', rolls: [d3(2)] }));
+    await tick();
+    expect(box.rolls.map(sourced)).toEqual([true, false]);
+    expect(box.rolls[0].specs[0]).toMatchObject({ type: 'd6', variant: 'd3', value: 2, shapeType: 'd6' });
+  });
+
+  describe('the thrower sends after its RollStart (privacy)', () => {
+    let sent, thrower;
+    const recording = () => recordingOf([D20(17)]);
+    const store = (id = 'h1') =>
+      handChunk.handThrows.set(id, { handle: { id }, recording: recording(), specs: [], extras: [] });
+    beforeEach(() => {
+      user = { id: 'thrower', isGM: false };
+      sent = [];
+      const send = (m) =>
+        handChunk.sendHand(m, {
+          start: thrower.startOf(m.id),
+          pending: thrower.isAnimating(m.id),
+          broadcast: (p, to) => sent.push([p.trajectory ? 'trajectory' : 'none', to]),
+          gms: ['gm'],
+          all: ['gm', 'thrower', 'p2'],
+          selfId: 'thrower',
+        });
+      thrower = make({ onStarted: send });
+      thrower.send = send; // main.js: after onCreate / onUpdate too
+    });
+    const create = (m) => {
+      thrower.onCreate(m);
+      thrower.send(m);
+    };
+
+    test('a plain public roll goes to everyone', async () => {
+      store();
+      create(hmsg());
+      expect(sent).toEqual([['trajectory', null]]);
+    });
+
+    test('a RollStart listener setting context.blind: GMs only, the rest get a none notice', async () => {
+      hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.blind = true)];
+      store();
+      create(hmsg());
+      expect(sent).toEqual([
+        ['trajectory', ['gm']],
+        ['none', ['p2']],
+      ]);
+    });
+
+    test('a RollStart listener replacing dsnRoll with a ghost: nothing is sent, only none notices', async () => {
+      hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.dsnRoll = { ...ctx.roll, ghost: true })];
+      store();
+      create(hmsg());
+      expect(sent).toEqual([['none', ['gm', 'p2']]]);
+    });
+
+    test('a secret replacement narrows to the GMs', async () => {
+      hooks.listeners.diceSoNiceRollStart = [(id, ctx) => (ctx.dsnRoll = { ...ctx.roll, secret: true })];
+      store();
+      create(hmsg());
+      expect(sent).toEqual([
+        ['trajectory', ['gm']],
+        ['none', ['p2']],
+      ]);
+    });
+
+    test('when the gate never ran RollStart (3D dice off here): GMs only', async () => {
+      settings.enabled = false;
+      store();
+      create(hmsg());
+      expect(hooks.named('diceSoNiceRollStart')).toHaveLength(0);
+      expect(sent).toEqual([
+        ['trajectory', ['gm']],
+        ['none', ['p2']],
+      ]);
+    });
+
+    test('an append during an animation keeps its handle: no re-throw, effects kept, sent after its RollStart', async () => {
+      const m = hmsg({ rolls: [d20Roll(9)] });
+      create(m);
+      expect(box.roll).toHaveBeenCalledTimes(1); // the normal roll flies
+      store('h2');
+      m.rolls = [...m.rolls, handD20([17], { id: 'h2' })];
+      thrower.onUpdate(m, { rolls: m.rolls });
+      thrower.send(m);
+      expect(sent).toEqual([]); // queued: not sent yet, still stored
+      expect(handChunk.handThrows.has('h2')).toBe(true);
+      box.rolls[0].landed.resolve();
+      await tick();
+      expect(box.roll).toHaveBeenCalledTimes(1); // the appended hand roll is not thrown again
+      expect(box.decorateLanded).toHaveBeenCalledTimes(1);
+      expect(box.decorateLanded.mock.calls[0][0]).toEqual({ id: 'h2' });
+      expect(sent).toEqual([['trajectory', null]]);
+      expect(handChunk.handThrows.has('h2')).toBe(false);
+    });
   });
 });

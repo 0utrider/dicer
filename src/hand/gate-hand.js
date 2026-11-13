@@ -27,7 +27,8 @@ export const isHandRoll = (roll) => {
  * `setTimeoutFn` go to the chunk's buffer.
  * - accept(payload, senderId): a verified payload, buffered HAND_BUFFER_MS for its message.
  * - waitFor(messageId, rollId, authorId): the decoded trajectory that author sent for that roll
- *   of that message, or null after HAND_REPLAY_WAIT_MS (or without the chunk).
+ *   of that message, or null HAND_REPLAY_WAIT_MS after this call (or without the chunk, or on a
+ *   `none` notice: the thrower sent no trajectory).
  * - ownHandle(roll): this client's lingering hand throw of `roll`, or null.
  * - replay(decoded, o): the chunk buffer's replay (the landed promise of a validated replay), or
  *   null (no chunk, it failed, or it does not match the message).
@@ -38,7 +39,9 @@ export function createHandGate(o) {
   return {
     isHand: isHandRoll,
     accept: (p, sender) => void buf().then((x) => x?.accept(p, sender), () => {}),
-    waitFor: (...a) => buf().then((x) => x?.waitFor(...a) ?? null, () => null),
+    // The deadline is taken now: loading the chunk never adds to the wait.
+    waitFor: (m, r, a, end = (o.now ?? Date.now)() + HAND_REPLAY_WAIT_MS) =>
+      buf().then((x) => x?.waitFor(m, r, a, end) ?? null, () => null),
     ownHandle: (roll) => o.chunkNow?.()?.handThrows.get(roll.options.dicerHand.id)?.handle ?? null,
     replay: (d, x) => b?.replay(d, x) ?? null,
   };
