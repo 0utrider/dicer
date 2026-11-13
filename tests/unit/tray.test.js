@@ -214,6 +214,23 @@ test('no dice, no engine or a user not allowed posts nothing and opens nothing',
   expect(FakeRoll.made).toEqual([]);
 });
 
+test('M7: with 3D dice off (no engine) the tray says so instead of doing nothing', async () => {
+  const warn = vi.fn();
+  globalThis.ui = { notifications: { warn } };
+  try {
+    expect(await throwTray({ counts: { d6: 1 } }, { deps: null, Roll: FakeRoll })).toBeNull();
+    expect(warn).toHaveBeenCalledWith('DICER.Tray.NoEngine');
+    expect(overlay.open).not.toHaveBeenCalled();
+    // with the engine on, no such notice
+    warn.mockClear();
+    overlay.values = [4];
+    await tray({ counts: { d6: 1 }, mode: 'public' });
+    expect(warn).not.toHaveBeenCalled();
+  } finally {
+    delete globalThis.ui;
+  }
+});
+
 test('the picker offers the nine dice, a modifier and the four message modes', () => {
   globalThis.game = {
     i18n: { localize: (k) => k },

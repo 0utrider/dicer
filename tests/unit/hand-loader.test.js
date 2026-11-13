@@ -71,30 +71,47 @@ describe('H-20: the chunk is prefetched at idle after ready', () => {
     const load = vi.fn(async () => ({ handFor }));
     _setHandImport(load);
     const box = {};
-    prefetchHand(box, () => 'all');
+    prefetchHand(box, () => true);
     await flush();
     expect(load).toHaveBeenCalledTimes(1);
     expect(handFor).toHaveBeenCalledWith(box);
   });
 
-  test("never when handRollsAllowed is 'none'; an unregistered setting reads as allowed ('all')", async () => {
+  test('M8: only when this user could throw by hand (want() true); a failing want() fetches nothing', async () => {
     const load = vi.fn(async () => ({ handFor: () => {} }));
     _setHandImport(load);
-    prefetchHand({}, () => 'none');
-    await flush();
-    expect(load).not.toHaveBeenCalled();
-    for (const v of ['gm', 'trusted', 'all']) prefetchHand({}, () => v);
+    prefetchHand({}, () => false);
     prefetchHand({}, () => {
       throw new Error('not a registered game setting');
     });
     await flush();
+    expect(load).not.toHaveBeenCalled();
+    prefetchHand({}, () => true);
+    prefetchHand({}, () => true);
+    await flush();
     expect(load).toHaveBeenCalledTimes(1); // imported once
+  });
+
+  test('M8: wantsHand: allowed and (on, required, or a die on dicer)', async () => {
+    const { wantsHand } = await import('../../src/hand/shell.js');
+    const player = { role: 1, isGM: false };
+    const get = (s) => (k) => ({ handRolls: 'off', handRollsAllowed: 'all', handRollsRequired: false, ...s })[k];
+    expect(wantsHand(player, get({}), {})).toBe(false); // a default world: hand rolls off, no dicer die
+    expect(wantsHand(player, get({}), null)).toBe(false);
+    expect(wantsHand(player, get({}), { d20: 'manual' })).toBe(false);
+    expect(wantsHand(player, get({ handRolls: 'ask' }), {})).toBe(true);
+    expect(wantsHand(player, get({ handRolls: 'always' }), {})).toBe(true);
+    expect(wantsHand(player, get({ handRollsRequired: true }), {})).toBe(true);
+    expect(wantsHand(player, get({}), { d20: 'dicer' })).toBe(true); // picked in Foundry's window
+    // not allowed: never
+    expect(wantsHand(player, get({ handRolls: 'always', handRollsAllowed: 'gm' }), { d20: 'dicer' })).toBe(false);
+    expect(wantsHand(player, get({ handRollsRequired: true, handRollsAllowed: 'none' }), {})).toBe(false);
   });
 
   test('main.js prefetches in an idle callback at ready, and the pets read DiceBox.holding', () => {
     const src = readFileSync('src/main.js', 'utf8');
     const ready = src.slice(src.indexOf("Hooks.once('ready'"));
-    expect(ready).toContain("idle(() => prefetchHand(diceBox, () => getSetting('handRollsAllowed')))");
+    expect(ready).toContain('idle(() => prefetchHand(diceBox, () => wantsHand(game.user, getSetting, getCore())));');
     expect(src).toContain(
       "const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run) : setTimeout(run, 200));",
     );

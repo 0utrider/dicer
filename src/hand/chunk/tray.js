@@ -64,7 +64,12 @@ export async function throwTray(
     Roll = globalThis.foundry?.dice?.Roll?.defaultImplementation,
   } = {},
 ) {
-  if (!deps || !formulaFromCounts(counts, 0)) return null;
+  if (!formulaFromCounts(counts, 0)) return null;
+  // M7: no engine (3D dice off, or not started): say so, never a silent no-op
+  if (!deps) {
+    globalThis.ui?.notifications?.warn(loc('DICER.Tray.NoEngine'));
+    return null;
+  }
   const me = deps.user();
   if (!handAllowed(me, deps.getSetting)) return null;
   if (!TRAY_MODES.includes(mode)) mode = 'public';

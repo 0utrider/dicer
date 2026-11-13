@@ -27,6 +27,16 @@ export function handAllowed(user, getSetting) {
 }
 
 /**
+ * Could `user` throw by hand (M8: the idle prefetch)? Allowed, and hand rolls on (or required) or
+ * a die on `dicer` in the core dice configuration `core`.
+ */
+export const wantsHand = (user, get, core) =>
+  handAllowed(user, get) &&
+  (get('handRollsRequired') === true ||
+    get('handRolls') !== 'off' ||
+    Object.values(core ?? {}).includes('dicer'));
+
+/**
  * Brings the core diceConfiguration in line with the hand settings (the body is the hand chunk's
  * syncConfig). The chunk is loaded only when there is something to do: a dicer entry or a stash
  * to undo, or hand rolls on (or required) for an allowed user. An "off" world never loads it.

@@ -7,7 +7,13 @@ import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
 import { loadHand, prefetchHand, handNow } from './hand/hand-loader.js';
 import { createHandGate, markCard } from './hand/gate-hand.js';
-import { registerHandMethod, setHandDeps, syncDiceConfiguration, handAllowed } from './hand/shell.js';
+import {
+  registerHandMethod,
+  setHandDeps,
+  syncDiceConfiguration,
+  handAllowed,
+  wantsHand,
+} from './hand/shell.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
@@ -796,5 +802,5 @@ Hooks.once('ready', async () => {
   preloadEffects();
   preloadPets();
   preloadEditors();
-  idle(() => prefetchHand(diceBox, () => getSetting('handRollsAllowed'))); // H-20
+  idle(() => prefetchHand(diceBox, () => wantsHand(game.user, getSetting, getCore()))); // H-20, M8
 });

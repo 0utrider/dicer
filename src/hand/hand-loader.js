@@ -16,16 +16,16 @@ export const loadHand = (box) =>
 export const handNow = () => now;
 
 /**
- * H-20: fetches the chunk for `box` (main.js calls it in an idle callback after ready), unless
- * `allowed()` (the world's handRollsAllowed) is 'none'. An unreadable setting is the default, 'all'.
+ * H-20: fetches the chunk for `box` (main.js calls it in an idle callback after ready) when
+ * `want()` (shell.wantsHand, M8): only where this user could throw by hand. A throwing want()
+ * fetches nothing (a roll still loads the chunk on demand).
  */
-export function prefetchHand(box, allowed) {
+export function prefetchHand(box, want) {
   try {
-    if (allowed() === 'none') return;
+    if (want()) loadHand(box);
   } catch {
     /* not registered */
   }
-  loadHand(box);
 }
 
 /** Test seam: replaces the chunk import and resets the state. */
