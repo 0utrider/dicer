@@ -1,5 +1,12 @@
-import { planThrow } from '../../src/throw/throw-planner.js';
+import { planThrow as plan } from '../../src/throw/throw-planner.js';
 import { coin } from './foundry-roll.js';
+
+/** planThrow without the dice keys: every test but the key test below compares the rest. */
+const planThrow = (...args) => {
+  const out = plan(...args);
+  for (const d of out.dice) delete d.key;
+  return out;
+};
 
 const term = (faces, results) => ({
   faces,
@@ -223,4 +230,13 @@ test('showExtra false drops discarded and inactive results without counting them
     skipped: 0,
   });
   expect(planThrow(roll).dice.length).toBe(4);
+});
+test('keys are t:r:p, d100 parts 0 and 1, stable under decorate', () => {
+  const roll = { dice: [term(6, [3, { result: 5, hidden: true }, 4]), term(100, [47])] };
+  const keys = (opts) => plan(roll, opts).dice.map((d) => d.key);
+  expect(keys()).toEqual(['0:0:0', '0:2:0', '1:0:0', '1:0:1']);
+  // a decorator can neither drop nor overwrite the key
+  expect(keys({ decorate: () => ({ key: 'x', appearance: { body: 'glass' } }) })).toEqual(keys());
+  const tens = plan(roll).dice[2];
+  expect(tens).toEqual({ type: 'd10', value: 40, variant: 'd100tens', key: '1:0:0' });
 });

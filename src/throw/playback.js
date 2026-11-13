@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { FLOATS_PER_DIE, IMPACT_FLOATS, STEP_SECONDS } from '../physics/protocol.js';
-import { readTopFace, rotationToShow, faceForValue } from '../core/face-reader.js';
+import {
+  readTopFace,
+  rotationToShow,
+  faceForValue,
+  readFace,
+  readResult,
+  combineD100,
+} from '../core/face-reader.js';
 
 const _q = [0, 0, 0, 1];
 /** Slow motion: playhead steps over which the speed eases down to the held slow speed. */
@@ -9,7 +16,10 @@ export const SLOW_SPEED = 0.35;
 
 /**
  * Consumes streamed frame chunks and moves the dice. No die is drawn inside the roll area
- * until the final chunk has arrived and the result rotation has been applied.
+ * until the final chunk has arrived and the result rotation has been applied, except a `free` die
+ * (rolling by hand): it plays as it streams and is never rotated. Its result is read from its final
+ * pose: die.readFace, die.readValue, and die.value its Foundry result (a d100's ones die carries the
+ * combined d100; a ghost no value).
  * `area` = {halfWidth, halfDepth, cx?, cz?}: the throw's rectangle, centred at (cx, cz) (default 0).
  */
 export class Playback {
@@ -122,6 +132,7 @@ export class Playback {
   _anyInside(data, offset) {
     const { halfWidth, halfDepth, cx = 0, cz = 0 } = this.area;
     for (let d = 0; d < this.dice.length; d++) {
+      if (this.dice[d].free) continue; // never held at the edge
       const o = offset + d * FLOATS_PER_DIE;
       if (Math.abs(data[o] - cx) < halfWidth && Math.abs(data[o + 2] - cz) < halfDepth) return true;
     }
@@ -132,12 +143,27 @@ export class Playback {
     this.dice.forEach((die, d) => {
       const o = offset + d * FLOATS_PER_DIE;
       const q = { x: data[o + 3], y: data[o + 4], z: data[o + 5], w: data[o + 6] };
-      const landed = readTopFace(die.shape, q);
-      const target = faceForValue(die.shape, die.targetValue);
-      const r = rotationToShow(die.shape, landed, target);
-      die.inner.quaternion.set(r.x, r.y, r.z, r.w);
+      if (die.free) {
+        // Physics decides: the face that landed counts (after the worker's nudges it stands).
+        die.readFace = readFace(die.shape, q);
+        die.readValue = readResult(die.shape, q, die.variant);
+        die.inner.quaternion.identity();
+      } else {
+        const landed = readTopFace(die.shape, q);
+        const r = rotationToShow(die.shape, landed, faceForValue(die.shape, die.targetValue));
+        die.inner.quaternion.set(r.x, r.y, r.z, r.w);
+      }
       // A model die: its model rotation first, then the face-forcing one.
       if (die.modelQuat) die.inner.quaternion.multiply(die.modelQuat);
+    });
+    this.dice.forEach((die, d) => {
+      const t = this.dice[d - 1]; // a d100's ones die follows its tens die
+      if (die.free && !die.ghost) {
+        die.value =
+          t?.free && t.variant === 'd100tens'
+            ? combineD100(t.readValue, die.readValue)
+            : die.readValue;
+      }
     });
     this.resultsApplied = true;
   }

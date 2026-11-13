@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Playback } from '../../src/throw/playback.js';
 import { getShape } from '../../src/core/dice-shapes.js';
-import { readTopFace } from '../../src/core/face-reader.js';
+import { readTopFace, faceNormals } from '../../src/core/face-reader.js';
 
 const area = { halfWidth: 12, halfDepth: 7 };
 function die(target = 6, type = 'd6') {
@@ -205,4 +205,109 @@ test('"inside" uses an offset area (cx, cz)', () => {
   p2.update(0);
   p2.update(1000);
   expect(d2.outer.position.x).toBeGreaterThan(-8);
+});
+describe('free dice (rolling by hand)', () => {
+  const free = (type = 'd6', extra = {}) => ({ ...die(1, type), free: true, ...extra });
+  /** n dice per frame, inside the area: x runs 0 -> 5 over the chunk, then rests with `qs[d]`. */
+  const inside = (n, steps, done, qs = []) => {
+    const data = new Float32Array(steps * 7 * n);
+    for (let s = 0; s < steps; s++) {
+      for (let d = 0; d < n; d++) {
+        data.set([(5 * s) / (steps - 1), 1, d * 1.5, ...(qs[d] ?? [0, 0, 0, 1])], (s * n + d) * 7);
+      }
+    }
+    return { steps, data, done };
+  };
+  /** The pose with face i of `type` pointing along dir (+1 up, -1 down). */
+  const pose = (type, i, dir = 1) => {
+    const n = faceNormals(getShape(type))[i];
+    const q = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(n.x, n.y, n.z),
+      new THREE.Vector3(0, dir, 0),
+    );
+    return [q.x, q.y, q.z, q.w];
+  };
+
+  test('free dice inside the area play from frame 0 before the final chunk', () => {
+    const d = free();
+    const p = new Playback({ dice: [d], area });
+    p.push(inside(1, 30, false));
+    p.update(0);
+    expect(p.update(250)).toBe('playing');
+    expect(d.outer.position.x).toBeGreaterThan(1);
+    expect(p.update(5000)).toBe('waiting'); // the end of what has arrived: not landed yet
+    expect(d.outer.position.x).toBeCloseTo(5, 5);
+    expect(p.resultsApplied).toBe(false);
+    // a forced die in the same spot holds at frame 0
+    const f = die();
+    const q = new Playback({ dice: [f], area });
+    q.push(inside(1, 30, false));
+    q.update(0);
+    q.update(250);
+    expect(f.outer.position.x).toBe(0);
+  });
+
+  test('free dice are not rotated: inner quaternion identity (modelQuat kept)', () => {
+    const a = free();
+    const b = free('d6', {
+      modelQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.4, 0.2, 0)),
+    });
+    a.inner.quaternion.set(0.5, 0.5, 0.5, 0.5);
+    const p = new Playback({ dice: [a, b], area });
+    p.push(inside(2, 30, true, [pose('d6', 2), pose('d6', 4)]));
+    p.update(0);
+    expect(p.update(5000)).toBe('landed');
+    expect(a.inner.quaternion.toArray()).toEqual([0, 0, 0, 1]);
+    expect(b.inner.quaternion.angleTo(b.modelQuat)).toBeCloseTo(0, 6);
+  });
+
+  test('readValue/value from the final pose for d6, d16, d4crystal, d3, dF, dc, d100 pair', () => {
+    const d6 = getShape('d6');
+    const d16 = getShape('d16');
+    const crystal = getShape('d4crystal');
+    const d10 = getShape('d10');
+    const i10 = (v) => d10.values.indexOf(v);
+    const cases = [
+      [free('d6'), pose('d6', 3), d6.values[3]],
+      // d16: the face on the table counts its paired top kite (17 - table value)
+      [free('d16'), pose('d16', 5, -1), 17 - d16.values[5]],
+      [
+        free('d4crystal'),
+        pose('d4crystal', crystal.readFaces[1]),
+        crystal.values[crystal.readFaces[1]],
+      ],
+      [free('d6', { variant: 'd3' }), pose('d6', d6.values.indexOf(5)), 2],
+      [free('d6', { variant: 'dF' }), pose('d6', d6.values.indexOf(6)), -1],
+      [free('d2', { variant: 'dc' }), [1, 0, 0, 0], 0], // flipped: face 2 (tails) up
+      [free('d10', { variant: 'd100tens' }), pose('d10', i10(3)), 30],
+      [free('d10'), pose('d10', i10(7)), 37], // the ones die carries the combined d100
+      [free('d10', { variant: 'd100tens' }), pose('d10', i10(10)), 0],
+      [free('d10'), pose('d10', i10(10)), 100],
+    ];
+    const dice = cases.map((c) => c[0]);
+    const p = new Playback({ dice, area });
+    p.push(
+      inside(
+        dice.length,
+        30,
+        true,
+        cases.map((c) => c[1]),
+      ),
+    );
+    p.update(0);
+    expect(p.update(5000)).toBe('landed');
+    expect(dice.map((d) => d.value)).toEqual(cases.map((c) => c[2]));
+    expect(dice.map((d) => d.readValue)).toEqual([...cases.slice(0, 7).map((c) => c[2]), 7, 0, 10]);
+    expect(dice[1].readFace).toBe(d16.values.indexOf(17 - d16.values[5]));
+  });
+
+  test('a free ghost reads its value but never carries it', () => {
+    const g = free('d6', { ghost: true });
+    const p = new Playback({ dice: [g], area });
+    p.push(inside(1, 30, true, [pose('d6', 0)]));
+    p.update(0);
+    p.update(5000);
+    expect(g.readValue).toBe(getShape('d6').values[0]);
+    expect(g.value).toBeUndefined();
+  });
 });

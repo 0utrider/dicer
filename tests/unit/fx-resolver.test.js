@@ -56,7 +56,7 @@ test('a nat 20 on a d20 carries the celebrate fx (sound fanfare, slow motion)', 
 
 test('a nat 1 carries fumble; a d20 rolling 19 carries no fx', () => {
   expect(plan(make(), d20(1), { author: { id: 'alice' } })[0].fx[0].effect.id).toBe('fumble');
-  expect(plan(make(), d20(19), { author: { id: 'alice' } })[0]).toEqual({ type: 'd20', value: 19 });
+  expect(plan(make(), d20(19), { author: { id: 'alice' } })[0]).toEqual({ type: 'd20', value: 19, key: '0:0:0' });
 });
 
 test('slowMotion is false when the slowMotion setting is off, and true for an effect asking for it', () => {

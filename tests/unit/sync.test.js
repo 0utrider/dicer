@@ -33,6 +33,8 @@ function fakeDiceBox() {
   return {
     rolls,
     roll: vi.fn((specs) => {
+      // planThrow's dice keys ('t:r:p') are covered in throw-planner.test.js: compared without them.
+      for (const s of specs) delete s.key;
       let resolve;
       const landed = new Promise((r) => (resolve = r));
       rolls.push({ specs, resolve });
@@ -825,11 +827,11 @@ describe('ghostRoll (P3-R20: every ghost render uses the wire ghost shape)', () 
     const g = ghostRoll(explodingD6());
     expect(g.dice).toHaveLength(1);
     expect(g.dice[0]).toMatchObject({ faces: 6, number: 1, results: ones(1) });
-    expect(planThrow(g).dice).toEqual([{ type: 'd6', value: 1 }]);
+    expect(planThrow(g).dice).toEqual([{ type: 'd6', value: 1, key: '0:0:0' }]);
   });
 
   test('a rerolled 1d20r1 with 2 results is one ghost die', () => {
-    expect(planThrow(ghostRoll(rerolledD20())).dice).toEqual([{ type: 'd20', value: 1 }]);
+    expect(planThrow(ghostRoll(rerolledD20())).dice).toEqual([{ type: 'd20', value: 1, key: '0:0:0' }]);
   });
 
   test('a dynamic count (1d4)d6 is no dice', () => {
@@ -846,7 +848,7 @@ describe('ghostRoll (P3-R20: every ghost render uses the wire ghost shape)', () 
 
   test('keeps the term class, so shapeFor still finds a coin', () => {
     const shapeFor = (t) => (t.constructor?.DENOMINATION === 'c' ? 'dc' : null);
-    expect(planThrow(ghostRoll(coin()), { shapeFor }).dice).toEqual([{ type: 'dc', value: 1, variant: 'dc' }]);
+    expect(planThrow(ghostRoll(coin()), { shapeFor }).dice).toEqual([{ type: 'dc', value: 1, variant: 'dc', key: '0:0:0' }]);
   });
 
   test('a legacy Roll-like shape uses its number when given, else its result count', () => {
@@ -857,8 +859,8 @@ describe('ghostRoll (P3-R20: every ghost render uses the wire ghost shape)', () 
       ],
     };
     expect(planThrow(ghostRoll(legacy)).dice).toEqual([
-      { type: 'd6', value: 1 },
-      { type: 'd8', value: 1 },
+      { type: 'd6', value: 1, key: '0:0:0' },
+      { type: 'd8', value: 1, key: '1:0:0' },
     ]);
     expect(ghostRoll(null).dice).toEqual([]);
   });

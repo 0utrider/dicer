@@ -6,8 +6,11 @@ import { FATE_FACES } from '../compat/faces.js';
  * @typedef {{ key: string, labels: FaceLabel[] }} FaceSet indexed like getShape(type).values
  * @typedef {{ type: string, value: number, variant?: 'd100tens'|'dF'|'dc'|'d3'|'d5'|'d7', appearance?: object,
  *   faces?: FaceSet, ghost?: boolean, model?: string,
- *   fx?: import('../effects/fx-resolver.js').Fx[], damageType?: string }} DieSpec
+ *   fx?: import('../effects/fx-resolver.js').Fx[], damageType?: string,
+ *   key?: string, free?: true, shapeType?: string }} DieSpec
  *   `fx` and `damageType` are result-dependent: set only for real views (never on a ghost).
+ *   `key` is 'term:result:part' (planThrow). `free`: physics decides the face (never forced).
+ *   `shapeType` forces the geometry (a replay draws the recorded shape whatever this viewer's look).
  */
 
 /** The die a dN without its own shape is thrown on: face v or v + N shows v (labelFor). */
@@ -99,6 +102,9 @@ export function planThrow(roll, { maxDice = 20, showExtra = true, decorate, shap
           return merged;
         });
       }
+      // The die's place in the roll (term, result, part: a d100's ones die is part 1), last so a
+      // decorator cannot change it: a replay matches its recorded dice by it.
+      out?.forEach((d, p) => (d.key = `${termIndex}:${i}:${p}`));
       if (!out) skipped += 1;
       else if (dice.length + out.length > maxDice) skipped += out.length;
       else dice.push(...out);

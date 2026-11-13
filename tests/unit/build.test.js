@@ -177,7 +177,8 @@ describe('build', () => {
     // pet splat plan: 1,536 B cap + 64 B controller allowance (ledger) over 4,100,546.
     // pet splat plan: +512 B for the final-review fixes (ledger).
     // pet dodge plan: 512 B over 4,102,587
-    // rolling by hand: owner-approved +12,288 B over 4,103,020
+    // rolling by hand plan: 12,288 B cap over 4,103,020 (owner approval, 2026-11-14). Re-based once,
+    // at its Task 1 (pre-flight R1), so no later task re-bases it.
     const growth = worldStartBytes() - 4_103_020;
     console.info(`dicer world-start growth since the rolling-by-hand base: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(12_288);

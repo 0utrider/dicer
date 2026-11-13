@@ -39,6 +39,8 @@ function fakeDiceBox() {
     rolls,
     activeRolls: 0,
     roll: vi.fn((specs) => {
+      // planThrow's dice keys ('t:r:p') are covered in throw-planner.test.js: compared without them.
+      for (const s of specs) delete s.key;
       const landed = deferred();
       const finished = deferred();
       rolls.push({ specs, landed, finished });

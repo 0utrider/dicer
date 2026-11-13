@@ -1,8 +1,20 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { DiceBox, ASSET_WAIT_MS, IDLE_GEOMETRY_CAP } from '../../src/throw/dice-box.js';
+import {
+  DiceBox,
+  ASSET_WAIT_MS,
+  IDLE_GEOMETRY_CAP,
+  RESULT_GLOW_MS,
+} from '../../src/throw/dice-box.js';
 import { MODEL_ROTATIONS } from '../../src/compat/dsn-orientation.js';
-import { rotationToShow, readTopFace, faceForValue } from '../../src/core/face-reader.js';
+import {
+  rotationToShow,
+  readTopFace,
+  faceForValue,
+  readResult,
+  combineD100,
+  faceNormals,
+} from '../../src/core/face-reader.js';
 import { buildScene } from '../../src/render/scene.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
@@ -20,7 +32,7 @@ import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
 import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
-import { throwEdge } from '../../src/core/rng.js';
+import { throwEdge, handEdge } from '../../src/core/rng.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -84,7 +96,7 @@ function fakePhysics() {
           this.emitted += 1;
           s.cb(c);
         }
-        s.resolve({ settledStep: 59 });
+        s.resolve({ settledStep: 59, nudges: s.req.dice.map(() => 0) });
       }
     },
     /** Emits only the first (not done) chunk of stream i. */
@@ -397,8 +409,8 @@ test('a Foundry coin (results 0 / 1) throws the d2 on face 2 / 1 and reports the
   const { box } = setup();
   const { dice: specs } = planThrow(foundryRoll(new Coin({ faces: 2, results: [{ result: 0, active: true }, { result: 1, active: true }] })));
   expect(specs).toEqual([
-    { type: 'd2', value: 2, variant: 'dc' },
-    { type: 'd2', value: 1, variant: 'dc' },
+    { type: 'd2', value: 2, variant: 'dc', key: '0:0:0' },
+    { type: 'd2', value: 1, variant: 'dc', key: '0:1:0' },
   ]);
   box.roll(specs);
   const dice = box._rolls.values().next().value.dice;
@@ -3030,5 +3042,411 @@ describe('pet hook', () => {
     const other = setup({ pet });
     other.box.roll([], { pet: PET });
     expect(pet.calls).toEqual([]);
+  });
+});
+describe('rolling by hand: free rolls, record, source, hold', () => {
+  const PET = { userId: 'u1', kind: 'cat', color: '#fa0', ghost: false };
+  const ID = { x: 0, y: 0, z: 0, w: 1 };
+  const LAUNCH = [{ pos: [1, 2, 0], quat: [0, 0, 0, 1], linvel: [3, 0, 0], angvel: [0, 0, 0] }];
+  const hook = (over = {}) => ({
+    begin: vi.fn(),
+    landed: vi.fn(),
+    leave: vi.fn(),
+    end: vi.fn(),
+    update: vi.fn(() => false),
+    ...over,
+  });
+  const liveRefs = (box) => [...box._refs.values()].filter((e) => e.refs > 0).length;
+  const liveGeo = (box) => [...box._geoRefs.values()].filter((e) => e.refs > 0).length;
+  /** Lands every flushed roll, then lingers, fades and finishes them. */
+  const playOut = async (renderer, t = 0) => {
+    renderer.tick(t);
+    renderer.tick(t + 5000);
+    await flushMicrotasks();
+    vi.advanceTimersByTime(2000);
+    renderer.tick(t + 5100);
+    renderer.tick(t + 6000);
+    await flushMicrotasks();
+  };
+
+  test('handEdge is the side whose wall the mean release point is nearest (0 = +x, as throwEdge)', () => {
+    const area = { cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 };
+    const at = (...xz) => xz.map(([x, z]) => ({ pos: [x, 2, z] }));
+    expect(handEdge(at([8, 0]), area)).toBe(0);
+    expect(handEdge(at([-8, 0]), area)).toBe(1);
+    expect(handEdge(at([0, 4]), area)).toBe(2);
+    expect(handEdge(at([0, -4]), area)).toBe(3);
+    expect(handEdge([null, ...at([9, -4], [7, -2])], area)).toBe(0); // mean (8, -3): +x is 2 away
+    // an offset area: x = -4 is 1 from its -x wall at -5
+    expect(handEdge(at([-4, 0]), { ...area, cx: 5 })).toBe(1);
+  });
+
+  test('values resolves in spec order at landing (free and forced)', async () => {
+    const { renderer, physics, box } = setup();
+    const free = box.roll(
+      [
+        { type: 'd6', value: 1 },
+        { type: 'd10', value: 0, variant: 'd100tens' },
+        { type: 'd10', value: 10 },
+        { type: 'd20', value: 1, ghost: true },
+      ],
+      { free: true },
+    );
+    expect(physics.streams[0].req.free).toBe(true);
+    expect(free.handle).toBeTruthy();
+    const got = settled(free.values);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(300);
+    await flushMicrotasks();
+    expect(got()).toBe(false);
+    renderer.tick(5000);
+    const tens = readResult(getShape('d10'), ID, 'd100tens');
+    expect(await free.values).toEqual([
+      readResult(getShape('d6'), ID),
+      null,
+      combineD100(tens, readResult(getShape('d10'), ID)),
+      readResult(getShape('d20'), ID), // a ghost on this screen still reads its value
+    ]);
+    const dice = free.handle.dice;
+    expect(dice[0].value).toBe(readResult(getShape('d6'), ID));
+    expect(dice[3].value).toBeUndefined();
+    expect(dice.every((d) => d.inner.quaternion.equals(new THREE.Quaternion()))).toBe(true);
+
+    const forced = box.roll([
+      { type: 'd6', value: 3 },
+      { type: 'd10', value: 40, variant: 'd100tens' },
+      { type: 'd10', value: 7 },
+      { type: 'd6', value: 5, variant: 'd3' },
+    ]);
+    expect('free' in physics.streams[1].req).toBe(false);
+    physics.flush(1);
+    renderer.tick(6000);
+    renderer.tick(9000);
+    expect(await forced.values).toEqual([3, null, 47, 2]);
+    box.clear();
+  });
+
+  test('a failed roll resolves values with null', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { physics, box } = setup();
+    const r = box.roll([{ type: 'd6', value: 1 }], { free: true });
+    physics.fail(0);
+    await flushMicrotasks();
+    expect(await r.values).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  test('record gets every chunk, events, obstacles with ids; #finish does not recycle recorded chunks', async () => {
+    const OBS = [
+      { x: 3, z: 1, r: 1, h: 2, id: 'u1' },
+      { x: -3, z: 1, r: 1, h: 2, id: 'u2' },
+    ];
+    const { renderer, physics, box } = setup({
+      pet: hook({ obstaclesFor: () => OBS, splatSpeed: 10 }),
+    });
+    physics.events = [new Float32Array([5, 0, -1, 7]), new Float32Array([40, 0, -4, 12])];
+    const record = vi.fn();
+    const r = box.roll([{ type: 'd6', value: 1, key: '0:0:0' }], {
+      free: true,
+      launch: LAUNCH,
+      seed: 42,
+      record,
+    });
+    const s = physics.streams[0];
+    expect(s.req).toMatchObject({ seed: 42, free: true, launch: LAUNCH });
+    const emitted = [];
+    const inner = s.cb;
+    s.cb = (c) => (emitted.push(c.data), inner(c));
+    physics.flush();
+    await flushMicrotasks();
+    expect(record).toHaveBeenCalledTimes(1);
+    const rec = record.mock.calls[0][0];
+    expect(rec.chunks).toHaveLength(2);
+    rec.chunks.forEach((c, i) => expect(c).toBe(emitted[i]));
+    expect(rec.events).toBeInstanceOf(Float32Array);
+    expect([...rec.events]).toEqual([5, 0, -1, 7, 40, 0, -4, 12]);
+    expect(rec.settledStep).toBe(59);
+    expect(rec.nudges).toEqual([0]);
+    expect(rec.dice).toEqual([{ shapeType: 'd6', key: '0:0:0' }]);
+    expect(rec.area).toEqual({ cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 });
+    expect(rec.obstacles).toEqual([
+      { id: 'u1', x: 3, z: 1, r: 1, h: 2 },
+      { id: 'u2', x: -3, z: 1, r: 1, h: 2 },
+    ]);
+    expect(rec.splatSpeed).toBe(10);
+    const finished = settled(r.finished);
+    await playOut(renderer);
+    expect(finished()).toBe(true);
+    expect(physics.recycle).not.toHaveBeenCalled();
+    expect(emitted.every((d) => d.length > 0)).toBe(true); // never transferred away
+  });
+
+  test('source plays without a THROW and without obstaclesFor; its chunks are never recycled; hit maps -3-i to source.obstacleIds', async () => {
+    const hit = vi.fn();
+    const pet = hook({ obstaclesFor: vi.fn(() => []), hit });
+    const { renderer, physics, box } = setup({ pet });
+    let push;
+    let finish;
+    const source = {
+      onChunk: (cb) => (push = cb),
+      done: new Promise((res) => (finish = res)),
+      obstacleIds: ['a', 'b'],
+    };
+    const r = box.roll([{ type: 'd6', value: 1 }], { source, free: true, edge: 3, pet: PET });
+    expect(physics.streams).toHaveLength(0);
+    expect(pet.obstaclesFor).not.toHaveBeenCalled();
+    for (const c of chunksFor(1, [new Float32Array(0), new Float32Array([45, 0, -4, 12])])) push(c);
+    finish({ settledStep: 59 });
+    renderer.tick(0);
+    expect(pet.begin.mock.calls[0][1]).toMatchObject({ edge: 3, hand: true });
+    renderer.tick(800);
+    expect(hit).toHaveBeenCalledWith('b', expect.objectContaining({ speed: 12 }));
+    renderer.tick(5000);
+    expect(await r.values).toEqual([readResult(getShape('d6'), ID)]);
+    const finished = settled(r.finished);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(5100);
+    renderer.tick(6000);
+    await flushMicrotasks();
+    expect(finished()).toBe(true);
+    expect(physics.recycle).not.toHaveBeenCalled();
+  });
+
+  test("spec.shapeType forces the geometry over the viewer's crystal look", () => {
+    const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
+    const a = setup({ getAppearance: () => crystal });
+    a.box.roll([
+      { type: 'd4', value: 2, shapeType: 'd4' },
+      { type: 'd4', value: 2 },
+    ]);
+    expect(a.physics.streams[0].req.dice).toEqual([{ type: 'd4' }, { type: 'd4crystal' }]);
+    const b = setup();
+    b.box.roll([{ type: 'd4', value: 2, shapeType: 'd4crystal' }]);
+    expect(b.physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
+    const die = b.box._rolls.values().next().value.dice[0];
+    expect(die.type).toBe('d4');
+    expect(die.shape).toBe(getShape('d4crystal'));
+    a.box.clear();
+    b.box.clear();
+  });
+
+  test('hold shows dice after assets, setPose moves them, release reuses the die objects, drop frees materials and geometries (refcounts back to 0)', async () => {
+    let resolveModel;
+    const model = {
+      geometry: new THREE.BoxGeometry(1, 1, 1),
+      material: new THREE.MeshStandardMaterial(),
+    };
+    const loadModel = vi.fn(() => new Promise((res) => (resolveModel = () => res(model))));
+    const { renderer, physics, box } = setup({ loadModel });
+    expect(box.holding).toBe(false);
+    const h = box.hold(
+      [
+        { type: 'd6', value: 1, dsnType: 'd6', model: 'm/dice_6.glb' },
+        { type: 'd8', value: 1 },
+      ],
+      { area: rect },
+    );
+    expect(box.holding).toBe(true);
+    const ready = settled(h.ready);
+    const groups = dieGroups(renderer);
+    expect(groups).toHaveLength(2);
+    expect(groups.every((g) => !g.visible)).toBe(true);
+    expect(renderer.isLooping).toBe(false);
+    resolveModel();
+    await flushMicrotasks();
+    expect(ready()).toBe(true);
+    expect(groups.every((g) => g.visible)).toBe(true);
+    expect(groups[0].children[0].geometry).toBe(model.geometry);
+    expect(renderer.tick(16)).toBe(true); // held: the loop runs
+    h.setPose(1, { x: 2, y: 3, z: -1 }, { x: 0, y: 0, z: 1, w: 0 });
+    expect(groups[1].position.toArray()).toEqual([2, 3, -1]);
+    expect(groups[1].quaternion.toArray()).toEqual([0, 0, 1, 0]);
+    expect(physics.streams).toHaveLength(0);
+
+    const r = h.release({ free: true, launch: LAUNCH });
+    expect(box.holding).toBe(false);
+    expect(physics.streams).toHaveLength(1);
+    expect(physics.streams[0].req).toMatchObject({ free: true, launch: LAUNCH });
+    const after = dieGroups(renderer);
+    expect(after).toHaveLength(2);
+    after.forEach((g, i) => expect(g).toBe(groups[i]));
+    expect(loadModel).toHaveBeenCalledTimes(1);
+    physics.flush();
+    renderer.tick(100);
+    renderer.tick(5000);
+    expect(await r.values).toHaveLength(2);
+    box.clear();
+    expect(liveRefs(box)).toBe(0);
+
+    const h2 = box.hold([
+      { type: 'd6', value: 1 },
+      { type: 'd12', value: 1 },
+    ]);
+    await h2.ready;
+    expect(liveRefs(box)).toBeGreaterThan(0);
+    expect(liveGeo(box)).toBe(2);
+    h2.drop();
+    expect(box.holding).toBe(false);
+    expect(dieGroups(renderer)).toHaveLength(0);
+    expect(liveRefs(box)).toBe(0);
+    expect(liveGeo(box)).toBe(0);
+  });
+
+  test("hold loop stops after drop (renderer stopLoop / 'hold')", async () => {
+    const { renderer, box } = setup();
+    const h = box.hold([{ type: 'd6', value: 1 }]);
+    await h.ready;
+    expect(renderer.isLooping).toBe(true);
+    expect(renderer.tick(0)).toBe(true);
+    h.drop();
+    expect(renderer.tick(16)).toBe(false);
+    expect(renderer.isLooping).toBe(false);
+    // with a resting pet the loop holds instead
+    const pet = hook({ update: vi.fn(() => 'rest') });
+    const other = setup({ pet });
+    const h2 = other.box.hold([{ type: 'd6', value: 1 }]);
+    await h2.ready;
+    expect(other.renderer.tick(0)).toBe(true);
+    h2.drop();
+    expect(other.renderer.tick(16)).toBe('hold');
+    // clear() drops a hold too
+    const h3 = box.hold([{ type: 'd6', value: 1 }]);
+    await h3.ready;
+    box.clear();
+    expect(box.holding).toBe(false);
+    expect(dieGroups(renderer)).toHaveLength(0);
+  });
+
+  test('decorateLanded plays fx once on lingering dice; false after the fade', async () => {
+    const onLandedFx = vi.fn();
+    const effects = {
+      update: vi.fn(() => false),
+      play: vi.fn(),
+      clear: vi.fn(),
+      releaseDie: vi.fn(),
+    };
+    const fire = vi.fn();
+    const { renderer, physics, box } = setup({ onLandedFx, effects, systemFor: () => ({ fire }) });
+    const r = box.roll(
+      [
+        { type: 'd20', value: 1, key: '0:0:0' },
+        { type: 'd6', value: 1, key: '1:0:0' },
+      ],
+      { free: true },
+    );
+    expect(box.decorateLanded(r.handle, [])).toBe(false); // not landed yet
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(5000);
+    await flushMicrotasks();
+    expect(onLandedFx).not.toHaveBeenCalled();
+    const fx = [{ ruleId: 'x', effect: { id: 'celebrate' } }];
+    // matched by key: the message's plan may order (or number) its dice differently
+    const specs = [
+      { type: 'd6', value: 4, key: '1:0:0', system: 'sys', dsnType: 'd6' },
+      { type: 'd20', value: 20, key: '0:0:0', fx, damageType: 'fire' },
+    ];
+    expect(box.decorateLanded(r.handle, specs)).toBe(true);
+    expect(onLandedFx).toHaveBeenCalledTimes(1);
+    const [die, gotFx] = onLandedFx.mock.calls[0];
+    expect(die.type).toBe('d20');
+    expect(gotFx).toBe(fx);
+    expect(die.damageType).toBe('fire');
+    expect(die.value).toBe(20);
+    expect(effects.play).toHaveBeenCalledTimes(1);
+    expect(fire.mock.calls.map((c) => c[0])).toEqual([0, 2]); // SPAWN, then RESULT
+    expect(fire.mock.calls[1][1]).toEqual({ dice: [{ type: 'd6', value: 4 }], system: 'sys' });
+    expect(box.decorateLanded(r.handle, specs)).toBe(false); // once
+    expect(onLandedFx).toHaveBeenCalledTimes(1);
+
+    const late = box.roll([{ type: 'd6', value: 1 }], { free: true });
+    physics.flush(1);
+    renderer.tick(6000);
+    renderer.tick(9000);
+    await flushMicrotasks();
+    vi.advanceTimersByTime(2000);
+    renderer.tick(9100); // fading
+    expect(box.decorateLanded(late.handle, [{ type: 'd6', value: 2, fx }])).toBe(false);
+    box.clear();
+    expect(box.decorateLanded(late.handle, [{ type: 'd6', value: 2, fx }])).toBe(false);
+    expect(onLandedFx).toHaveBeenCalledTimes(1);
+  });
+
+  test('a hand roll passes edge and hand: true to obstaclesFor and begin', () => {
+    const seed = 777;
+    vi.stubGlobal('crypto', { getRandomValues: (a) => ((a[0] = seed), a) });
+    try {
+      const pet = hook({ obstaclesFor: vi.fn(() => []) });
+      const { renderer, physics, box } = setup({ pet });
+      box.roll([{ type: 'd6', value: 1 }], { free: true, launch: LAUNCH, edge: 2, pet: PET });
+      expect(pet.obstaclesFor.mock.calls[0][0]).toMatchObject({ edge: 2, hand: true });
+      physics.flush();
+      renderer.tick(16);
+      expect(pet.begin.mock.calls[0][1]).toMatchObject({ edge: 2, hand: true });
+      // an automatic roll keeps its seeded edge, hand false; a bad edge falls back to the seed
+      box.roll([{ type: 'd6', value: 1 }], { pet: PET, edge: 7 });
+      expect(pet.obstaclesFor.mock.calls[1][0]).toMatchObject({
+        edge: throwEdge(seed),
+        hand: false,
+      });
+      box.clear();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('alignFor passes through to the pet hook; a throwing one warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const alignFor = vi.fn();
+    const { box } = setup({ pet: hook({ alignFor }) });
+    const list = [{ id: 'u', x: 1, z: 1, r: 1, h: 2 }];
+    const paths = () => 9;
+    box.alignFor(list, { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 }, paths);
+    expect(alignFor).toHaveBeenCalledWith(
+      list,
+      { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 },
+      paths,
+    );
+    alignFor.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    expect(() => box.alignFor(list, {}, paths)).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  test('a hand-read d16 glows on its counted face for RESULT_GLOW_MS', async () => {
+    const { renderer, physics, box } = setup();
+    const r = box.roll(
+      [
+        { type: 'd16', value: 1 },
+        { type: 'd6', value: 1 },
+      ],
+      { free: true },
+    );
+    const forced = box.roll([{ type: 'd16', value: 3 }]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(5000); // both land
+    const [d16, d6] = r.handle.dice;
+    const glow = d16.outer.children.find((c) => c !== d16.inner);
+    expect(glow).toBeTruthy();
+    expect(d6.outer.children).toHaveLength(1);
+    expect(forced.handle.dice[0].outer.children).toHaveLength(1);
+    // every glow vertex lies on the counted face's plane (just above it)
+    const shape = getShape('d16');
+    const n = new THREE.Vector3().copy(faceNormals(shape)[d16.readFace]);
+    const plane = new THREE.Vector3(...shape.vertices[shape.faces[d16.readFace][0]]).dot(n);
+    const pos = glow.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      expect(new THREE.Vector3().fromBufferAttribute(pos, i).dot(n) - plane).toBeGreaterThan(0);
+      expect(new THREE.Vector3().fromBufferAttribute(pos, i).dot(n) - plane).toBeLessThan(0.05);
+    }
+    expect(renderer.tick(5000 + RESULT_GLOW_MS / 2)).toBe(true); // fading out: the loop runs
+    expect(glow.material.opacity).toBeGreaterThan(0);
+    expect(renderer.tick(5000 + RESULT_GLOW_MS + 1)).toBe('hold');
+    expect(d16.outer.children).toHaveLength(1);
+    box.clear();
   });
 });
