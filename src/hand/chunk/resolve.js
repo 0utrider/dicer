@@ -33,10 +33,15 @@ export const THROW_LIMIT = 16;
  */
 export function storeThrow(id, entry) {
   const now = Date.now();
-  for (const [k, e] of handThrows) if (now - e.at > THROW_TTL_MS) handThrows.delete(k);
-  handThrows.set(id, Object.defineProperty(entry, 'at', { value: now })); // not part of the entry
+  // The TTL runs from the last throw stored, not from each one: a long burst (initiative for a
+  // crowd) may create its messages only once every roll is thrown, so its first throws must
+  // outlive the burst. After THROW_TTL_MS with no throw at all, the leftovers go.
+  if (now - lastStored > THROW_TTL_MS) handThrows.clear();
+  lastStored = now;
+  handThrows.set(id, entry);
   while (handThrows.size > THROW_LIMIT) handThrows.delete(handThrows.keys().next().value);
 }
+let lastStored = -Infinity;
 
 /**
  * H-19: modes in which the roller may not see the result (Foundry v14 messageMode, legacy rollMode).

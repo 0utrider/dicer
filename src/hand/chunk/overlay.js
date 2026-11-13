@@ -617,8 +617,8 @@ export function openThrowOverlay({
   }
   // I3: Foundry's windows (z-index 100 and up) sit over the dice canvas (60) and this overlay;
   // they fade and let the pointer through until the release (detach).
+  pose(clock()); // first, so a throw here can't leave the windows faded
   document.body.classList.add(FADE);
-  pose(clock());
   frame = globalThis.requestAnimationFrame?.(tick) ?? 0;
   return done;
 }

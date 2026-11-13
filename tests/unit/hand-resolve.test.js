@@ -809,6 +809,28 @@ describe('final review fixes', () => {
     expect([...handThrows.keys()]).toEqual([fresh]);
   });
 
+  test('M3: nothing expires while other throws are still queued (a long burst keeps its first throws)', async () => {
+    vi.useFakeTimers({ now: Date.now() + 7200e3 });
+    const { THROW_TTL_MS } = await import('../../src/hand/chunk/resolve.js');
+    handThrows.clear();
+    overlay.values = [3];
+    // a burst of rolls thrown one after another over more than THROW_TTL_MS in all
+    const ids = [];
+    for (let i = 0; i < 4; i++) {
+      const r = rollOf(new Die({ faces: 6 }));
+      await fulfill(new Resolver(r, deps));
+      ids.push(r.options.dicerHand.id);
+      await vi.advanceTimersByTimeAsync(THROW_TTL_MS / 2);
+    }
+    // the burst's first throws are all still there for their messages
+    for (const id of ids) expect(handThrows.has(id)).toBe(true);
+    // after THROW_TTL_MS with no throw at all, the leftovers go with the next one
+    await vi.advanceTimersByTimeAsync(THROW_TTL_MS + 1);
+    const late = rollOf(new Die({ faces: 6 }));
+    await fulfill(new Resolver(late, deps));
+    expect([...handThrows.keys()]).toEqual([late.options.dicerHand.id]);
+  });
+
   test('M6: the ask prompt names the roll, and "Throw the rest automatically" covers the rest of the burst', async () => {
     vi.useFakeTimers({ now: Date.now() + 3600e3 }); // after every earlier test's rolls
     settings.handRolls = 'ask';
