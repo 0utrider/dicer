@@ -865,6 +865,10 @@ export function createDice3dApi({
       get isLooping() {
         return Boolean(renderer?.isLooping);
       },
+      /** The loop is held (resting pets or dice, no frames): idle for every idleness check. */
+      get isHolding() {
+        return Boolean(renderer?.isHolding);
+      },
       get activeRolls() {
         return diceBox.activeRolls;
       },

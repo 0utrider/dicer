@@ -78,7 +78,8 @@ export async function rollAndTrack(formula) {
       completeCount: mine.length,
       msToComplete,
       scrolledIntoView: inView,
-      loopingAfter: Boolean(game.dice3d?._debug?.isLooping),
+      // A held loop (resting pets) draws no frames, which is what this check is for.
+      loopingAfter: Boolean(game.dice3d?._debug?.isLooping && !game.dice3d._debug.isHolding),
     };
   } finally {
     Hooks.off('diceSoNiceRollComplete', hookId);
@@ -128,7 +129,7 @@ export function arm() {
   state.timer = setInterval(() => {
     const debug = game.dice3d?._debug;
     state.cur.maxActive = Math.max(state.cur.maxActive, debug?.activeRolls ?? 0);
-    state.cur.looping ||= Boolean(debug?.isLooping);
+    state.cur.looping ||= Boolean(debug?.isLooping && !debug.isHolding); // a hold draws no frames
     const canvas = document.querySelector('#dicer-layer canvas');
     if (canvas && canvas.style.display !== 'none') state.cur.canvasShown = true;
   }, SAMPLE_MS);
