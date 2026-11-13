@@ -103,11 +103,17 @@ describe('syncDiceConfiguration', async () => {
     // another method keeps its entries (default included); '' counts as free
     set = await run(on, { d20: 'manual', default: 'bluetooth', d6: '' });
     expect(set.mock.calls[0][0]).toMatchObject({ d20: 'manual', default: 'bluetooth', d6: 'dicer', d4: 'dicer' });
-    // chosen types only: no default, stale dicer entries removed
-    set = await run({ ...on, handRollTypes: ['d20', 'f'] }, { d6: 'dicer', default: 'dicer', d8: 'manual' });
+    // chosen types only: no default, stale entries Dicer wrote removed
+    set = await run(
+      { ...on, handRollTypes: ['d20', 'f'], handRollMapped: ['d6', 'default'] },
+      { d6: 'dicer', default: 'dicer', d8: 'manual' },
+    );
     expect(set.mock.calls[0][0]).toEqual({ d20: 'dicer', f: 'dicer', d8: 'manual' });
-    // off: only dicer entries go
-    set = await run({ ...on, handRolls: 'off' }, { d6: 'dicer', d8: 'manual', default: 'dicer', d4: '' });
+    // off: only the dicer entries Dicer wrote go
+    set = await run(
+      { ...on, handRolls: 'off', handRollMapped: ['d6', 'default'] },
+      { d6: 'dicer', d8: 'manual', default: 'dicer', d4: '' },
+    );
     expect(set.mock.calls[0][0]).toEqual({ d8: 'manual', d4: '' });
     // not allowed: removed even when on
     set = await run({ ...on, handRollsAllowed: 'gm' }, { d6: 'dicer' });
@@ -166,13 +172,103 @@ describe('syncDiceConfiguration', async () => {
     await sync({ ...on, handRollsAllowed: 'trusted' }, null);
     expect(load).not.toHaveBeenCalled();
     expect(setCore).not.toHaveBeenCalled();
-    await sync({ ...on, handRolls: 'off' }, { d6: 'dicer' });
+    await sync({ ...on, handRolls: 'off', handRollMapped: ['d6'] }, { d6: 'dicer' });
     expect(load).toHaveBeenCalledTimes(1);
     expect(setCore).toHaveBeenLastCalledWith({});
     await sync({ ...on, handRolls: 'off', handRollStash: { d20: 'manual' } }, { d20: 'dicer' });
     expect(setCore).toHaveBeenLastCalledWith({ d20: 'manual' });
     await sync(on, {});
     expect(setCore).toHaveBeenCalledTimes(3);
+  });
+
+  describe("I2: Foundry's Configure Dice is the per-die choice", () => {
+    /** A client: the stored settings (handRollMapped written through setSetting) and the core config. */
+    const client = (settings, core) => {
+      const c = { store: { ...on, handRollStash: {}, ...settings }, core };
+      c.sync = () =>
+        syncDiceConfiguration({
+          getSetting: (k) => c.store[k],
+          user: { role: 1 },
+          getCore: () => c.core,
+          setCore: (v) => (c.core = v),
+          setSetting: (k, v) => (c.store[k] = v),
+        });
+      return c;
+    };
+    const ALL = [...HAND_DICE, 'default'];
+
+    test('Dicer records the entries it writes, and removes only those when hand rolls turn off', async () => {
+      const c = client({}, { d8: 'manual' });
+      await c.sync();
+      expect(c.core).toEqual({ ...Object.fromEntries(ALL.map((k) => [k, 'dicer'])), d8: 'manual' });
+      expect([...c.store.handRollMapped].sort()).toEqual(ALL.filter((k) => k !== 'd8').sort());
+      c.store.handRolls = 'off';
+      await c.sync();
+      expect(c.core).toEqual({ d8: 'manual' });
+      expect(c.store.handRollMapped).toEqual([]);
+    });
+
+    test('a dicer entry the user picked survives a sync (off, ask, always) and is the type choice', async () => {
+      // picked in Foundry's window with Roll by hand off: kept, nothing else mapped
+      const c = client({ handRolls: 'off' }, { d20: 'dicer', d6: 'manual' });
+      await c.sync();
+      expect(c.core).toEqual({ d20: 'dicer', d6: 'manual' });
+      // Ask / Always: the user's own pick is the die-type choice (no other die is mapped)
+      for (const mode of ['ask', 'always']) {
+        c.store.handRolls = mode;
+        await c.sync();
+        expect(c.core).toEqual({ d20: 'dicer', d6: 'manual' });
+        expect(c.store.handRollMapped ?? []).toEqual([]);
+      }
+      // turning it off again keeps the user's pick
+      c.store.handRolls = 'off';
+      await c.sync();
+      expect(c.core).toEqual({ d20: 'dicer', d6: 'manual' });
+    });
+
+    test('after Always mapped every die, a die set back in Foundry\'s window stays as the user set it', async () => {
+      const c = client({}, {});
+      await c.sync();
+      c.core = { ...c.core, d6: '', d8: 'manual' }; // the user's Configure Dice submission
+      await c.sync();
+      expect(c.core).toMatchObject({ d6: '', d8: 'manual', d20: 'dicer', d4: 'dicer' });
+      expect(c.store.handRollMapped).not.toContain('d6');
+      expect(c.store.handRollMapped).not.toContain('d8');
+      c.store.handRolls = 'off'; // Dicer's own entries go; the user's choices stay
+      await c.sync();
+      expect(c.core).toEqual({ d6: '', d8: 'manual' });
+    });
+
+    test('a user pick next to Dicer-written entries: both kept while on; off removes only Dicer\'s', async () => {
+      const c = client({ handRollMapped: ['d4'] }, { d4: 'dicer', d20: 'dicer' });
+      await c.sync();
+      expect(c.core).toEqual({ d4: 'dicer', d20: 'dicer' });
+      expect(c.store.handRollMapped).toEqual(['d4']);
+      c.store.handRolls = 'off';
+      await c.sync();
+      expect(c.core).toEqual({ d20: 'dicer' });
+    });
+
+    test('handRollTypes still limits what Dicer maps; Require still maps every die over the user', async () => {
+      const c = client({ handRollTypes: ['d20'] }, { d6: 'dicer' });
+      await c.sync();
+      expect(c.core).toEqual({ d6: 'dicer', d20: 'dicer' }); // d6: the user's, d20: Dicer's
+      expect(c.store.handRollMapped).toEqual(['d20']);
+      const r = client({ handRolls: 'off', handRollsRequired: true }, { d20: 'dicer', d8: 'manual' });
+      await r.sync();
+      expect(r.core).toEqual({ ...Object.fromEntries(ALL.map((k) => [k, 'dicer'])) });
+      expect(r.store.handRollStash).toEqual({ d8: 'manual' });
+      expect(r.store.handRollMapped).not.toContain('d20'); // the user's own: not stashed, not Dicer's
+      r.store.handRollsRequired = false; // off again: Dicer's entries go, the stash comes back
+      await r.sync();
+      expect(r.core).toEqual({ d20: 'dicer', d8: 'manual' });
+    });
+
+    test('a user who may not roll by hand (or another interactive method) loses every dicer entry', async () => {
+      const c = client({ handRollsAllowed: 'gm' }, { d20: 'dicer' });
+      await c.sync();
+      expect(c.core).toEqual({});
+    });
   });
 
   test('a failed stash write rejects before the configuration is written (nothing lost)', async () => {

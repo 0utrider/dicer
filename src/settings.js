@@ -131,6 +131,15 @@ export async function migratePetStay(store, set) {
   }
 }
 
+/** Re-prepares Foundry's scene controls (the Dice tray tool comes and goes); never throws. */
+export const resetControls = () => {
+  try {
+    ui.controls.render({ reset: true });
+  } catch {
+    /* no controls yet */
+  }
+};
+
 /**
  * Registers every Dicer setting.
  * @param {object} [callbacks]
@@ -146,15 +155,6 @@ export async function migratePetStay(store, set) {
  * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
  *   or handRollsRequired changes (the core dice configuration is re-synced)
  */
-/** Re-prepares Foundry's scene controls (the Dice tray tool comes and goes); never throws. */
-export const resetControls = () => {
-  try {
-    ui.controls.render({ reset: true });
-  } catch {
-    /* no controls yet */
-  }
-};
-
 export function registerSettings({
   onAreaChange,
   onRollAreasChange,
@@ -622,6 +622,8 @@ export function registerSettings({
   );
   // The dice configuration entries handRollsRequired took from another method, restored when it ends.
   register('handRollStash', { scope: 'client', config: false, type: Object, default: {} });
+  // The entries Dicer wrote itself: only those are ever removed (a user's own Dicer pick stays).
+  register('handRollMapped', { scope: 'client', config: false, type: Array, default: [] });
   registerNoticeSetting();
 }
 

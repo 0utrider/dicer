@@ -11,25 +11,31 @@ const differ = (a, b) => {
 let warnedOther = false;
 
 /**
- * Brings the core diceConfiguration in line with the hand settings. Dicer's entries are removed
- * (entries required took from another method come back from the `handRollStash` client setting),
- * then, when hand rolls are on (or required) and allowed, each chosen denomination (none: all of
- * HAND_DICE, plus default) is mapped to `dicer` where no other method holds it; required also
- * takes a denomination from another method (never default), stashing it. With another
- * interactive method than manual configured (Foundry would then use its generic resolver, H-17),
- * nothing is mapped (one warning). Writes only on a change; the stash is written (and awaited)
- * before the configuration, so a failed stash write never loses the entries it holds.
+ * Brings the core diceConfiguration in line with the hand settings. Foundry's own Configure Dice
+ * window is the per-die choice (I2): Dicer records the entries it writes itself in the
+ * `handRollMapped` client setting and only ever removes those; a `dicer` entry the user picked
+ * there is kept, whatever Roll by hand says.
+ * - Dicer's entries are removed first (entries required took from another method come back from
+ *   the `handRollStash` client setting).
+ * - Hand rolls on (Ask / Always, or required) for an allowed user: Dicer maps `handRollTypes` when
+ *   set; else, when no die is on `dicer` yet, every die of HAND_DICE plus default (otherwise the
+ *   dice already on `dicer`, the user's and Dicer's own, are the choice and nothing is added).
+ *   Only where no other method holds the die, except required: it takes a die from another
+ *   method too (never default), stashing it, and maps every die (or `handRollTypes`).
+ * - A user who may not roll by hand, or another interactive method than manual (Foundry would
+ *   then use its generic resolver, H-17, one warning): every `dicer` entry goes, the user's too.
+ * Writes only on a change; the stash and the record are written (and awaited) before the
+ * configuration, so a failed write never loses the entries they hold.
  */
 export async function syncConfig({ getSetting, user, getCore, setCore, setSetting }) {
   const was = getCore() ?? {};
   const stash = { ...getSetting('handRollStash') };
   const kept = { ...stash };
-  const out = {};
-  for (const k in was) if (was[k] !== 'dicer') out[k] = was[k];
-  for (const k in stash) if (!out[k]) out[k] = stash[k];
-  for (const k in stash) delete stash[k];
+  const record = getSetting('handRollMapped') ?? [];
+  // A stashed die is one Dicer took (and wrote) under required.
+  const ours = new Set([...record, ...Object.keys(stash)]);
   const req = getSetting('handRollsRequired') === true;
-  const other = Object.values(out).some(
+  const other = Object.values(was).some(
     (m) => m && m !== 'manual' && globalThis.CONFIG?.Dice?.fulfillment?.methods?.[m]?.interactive,
   );
   if (other && !warnedOther) {
@@ -37,13 +43,32 @@ export async function syncConfig({ getSetting, user, getCore, setCore, setSettin
       'dicer: another interactive dice method is configured; rolling by hand stays off',
     );
   }
-  if (!other && handAllowed(user, getSetting) && (req || getSetting('handRolls') !== 'off')) {
+  const usable = !other && handAllowed(user, getSetting);
+  const onDicer = Object.keys(was).filter((k) => was[k] === 'dicer');
+  const out = {};
+  for (const k in was) if (was[k] !== 'dicer' || (usable && !ours.has(k))) out[k] = was[k];
+  for (const k in stash) if (!out[k]) out[k] = stash[k];
+  for (const k in stash) delete stash[k];
+  const mapped = [];
+  if (usable && (req || getSetting('handRolls') !== 'off')) {
     const chosen = getSetting('handRollTypes');
-    for (const k of chosen?.length ? chosen : [...HAND_DICE, 'default']) {
+    const types = chosen?.length
+      ? chosen
+      : req || !onDicer.length
+        ? [...HAND_DICE, 'default']
+        : onDicer.filter((k) => ours.has(k));
+    for (const k of types) {
+      if (out[k] === 'dicer') continue; // the user's own pick
       if (out[k] && req && k !== 'default') stash[k] = out[k];
-      if (!out[k] || stash[k]) out[k] = 'dicer';
+      if (!out[k] || stash[k]) {
+        out[k] = 'dicer';
+        mapped.push(k);
+      }
     }
   }
   if (differ(stash, kept)) await setSetting?.('handRollStash', stash);
+  if (mapped.length !== record.length || mapped.some((k) => !record.includes(k))) {
+    await setSetting?.('handRollMapped', mapped);
+  }
   if (differ(out, was)) await setCore(out);
 }

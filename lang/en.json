@@ -98,7 +98,7 @@
       },
       "handRolls": {
         "Name": "Roll by hand",
-        "Hint": "Grab, shake and throw your own dice: the face that lands up is the result. Ask lets you choose for each roll.",
+        "Hint": "Grab, shake and throw your own dice: the face that lands up is the result. Ask lets you choose for each roll. To throw only some dice, set them to \"Dicer: roll by hand\" in Foundry's Dice settings (Core). Off removes only the dice Dicer set for you.",
         "Choices": {
           "off": "Off",
           "ask": "Ask each time",
@@ -107,7 +107,7 @@
       },
       "handRollTypes": {
         "Name": "Dice rolled by hand",
-        "Hint": "The dice types thrown by hand. None chosen means all."
+        "Hint": "The dice types Dicer sets to its method for you (console only). None chosen: all, unless you set dice to Dicer in Foundry's Dice settings yourself."
       },
       "handRollsAllowed": {
         "Name": "Who may roll by hand",

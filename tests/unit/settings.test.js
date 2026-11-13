@@ -258,6 +258,8 @@ test('rolling by hand: the 7 keys with their defaults; the four that decide the 
   for (const [key, cfg] of Object.entries(want)) expect(r[key]).toMatchObject({ ns: 'dicer', ...cfg });
   // plus the hidden stash of entries handRollsRequired took from another method
   expect(r.handRollStash).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Object, default: {} });
+  // and the record of the dice configuration entries Dicer wrote itself (I2: only those are removed)
+  expect(r.handRollMapped).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Array, default: [] });
   expect(Object.keys(r.handRolls.choices)).toEqual(['off', 'ask', 'always']);
   expect(Object.keys(r.handRollsAllowed.choices)).toEqual(['all', 'trusted', 'gm', 'none']);
   expect(r.handRollTimeout.range).toMatchObject({ min: 10, max: 300 });
