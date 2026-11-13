@@ -20,6 +20,7 @@ export const WOBBLE_SPEED = 1.5;
 const PUDDLE_MS = 600; // the eyes open and blink once, then the puddle holds
 const WOBBLE_PUSH = 0.3; // of the height, the recoil away from the die
 // The states of a pet knocked flat: bursting, lying there, pulling back together, fading away.
+const NO_LOOK = { yaw: 0 }; // shared: poses only read it
 const DOWN = new Set(['splat', 'puddle', 'reform', 'fade']);
 const HOP = 0.45; // of the height
 const LOOK_MAX = 0.6;
@@ -391,14 +392,14 @@ export function createPetLayer(deps) {
       if (e < 1) {
         wt = clamp01(e);
         push = WOBBLE_PUSH * h * Math.sin(wt * Math.PI);
-      }
+      } else pet.wobble = null; // over: nothing carries into the next frame or roll
     }
     pet.group.position.set(px + (wt >= 0 ? pet.wobble.dx * push : 0), hop, pz + (wt >= 0 ? pet.wobble.dz * push : 0));
     pet.group.rotation.y = pet.yaw;
     pet.group.userData.dicerPet.phase = phase;
     pet.shadow.position.y = 0.01 - hop;
     pet.shadow.visible = shadows;
-    if (wt >= 0) pet.creature.pose('wobble', wt, pet.reaction, { yaw: 0 });
+    if (wt >= 0) pet.creature.pose('wobble', wt, pet.reaction, NO_LOOK);
     else pet.creature.pose(phase, t, pet.reaction, { yaw: look });
     // A ghost roll is never 'crit', so it never bursts.
     const s = phase === 'react' && pet.reaction === 'crit' ? (t * REACT_MS) / BURST_MS : 1;
@@ -427,6 +428,15 @@ export function createPetLayer(deps) {
     return true;
   }
 
+  /** A puddle (or a splat that is becoming one) snaps to the spot the stage change gave it. */
+  function moveDown(pet) {
+    const to = pet.moveTo;
+    pet.moveTo = null;
+    pet.px = to.x;
+    pet.pz = to.z;
+    pet.spot = to;
+  }
+
   /**
    * A splat bursting, a puddle, a puddle reforming or fading, for this frame. The creature is
    * hidden while it is down; the splat is the visual. Returns like step().
@@ -447,6 +457,7 @@ export function createPetLayer(deps) {
       if (e >= 1) {
         pet.puddleAt = now;
         pet.puddleDone = false;
+        if (pet.moveTo) moveDown(pet);
         pet.state = pet.reformNext ? 'reform' : 'puddle';
         pet.reformAt = now;
         pet.reformNext = false;
@@ -470,7 +481,7 @@ export function createPetLayer(deps) {
       pet.creature.root.visible = true;
       pet.shadow.visible = shadows && e > 0.5;
       sp.pose('reform', e);
-      pet.creature.pose('reform', e, 'plain', { yaw: 0 });
+      pet.creature.pose('reform', e, 'plain', NO_LOOK);
       if (e >= 1) {
         dropSplat(pet);
         pet.shadow.visible = shadows;
@@ -493,10 +504,8 @@ export function createPetLayer(deps) {
     if (DOWN.has(pet.state)) return stepDown(pet, now, shadows, stay);
     if (pet.state === 'rest') {
       if (stay && pet.wobble) {
-        const done = now - pet.wobble.at >= WOBBLE_MS;
-        show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows); // the wobble, or the plain pose once it is over
-        if (done) pet.wobble = null;
-        return done ? 'rest' : true;
+        show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows); // the wobble, or the plain pose once it is over (show clears it)
+        return pet.wobble ? true : 'rest';
       }
       if (stay) {
         const was = pet.shadow.visible;
@@ -657,6 +666,22 @@ export function createPetLayer(deps) {
     stage = next;
     const now = clock();
     for (const pet of pets.values()) {
+      if (pet.state === 'splat' || pet.state === 'puddle') {
+        // A puddle does not hop: it snaps to a fresh spot in its owner's fitted area (a splat gets
+        // it when it becomes a puddle). Its old spot keeps nobody away.
+        pet.area = fitArea(pet.area, stage);
+        pet.spot = null;
+        const taken = [];
+        for (const o of pets.values()) if (o !== pet && standing(o)) taken.push(spotOf(o));
+        pet.moveTo = restSpot(pet.area, pet.creature.height, taken, rand);
+        if (pet.state === 'puddle') {
+          moveDown(pet);
+          pet.puddleDone = false; // drawn again, once, at the new spot
+          pet.puddleAt = now - PUDDLE_MS;
+          wake();
+        } else pet.spot = { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
+        continue;
+      }
       if (pet.state !== 'hop' && pet.state !== 'rest') continue;
       pet.spot = null; // its old spot keeps nobody away
       restOf(pet, now);
@@ -677,6 +702,13 @@ export function createPetLayer(deps) {
         samples.push(c);
         c.root.traverse((o) => {
           if (o.isMesh || o.isPoints) objs.push(o);
+        });
+      }
+      for (const kind of Object.keys(CREATURES)) {
+        const sp = createSplat(kind, '#ffffff'); // a splat has the same dispose()
+        samples.push(sp);
+        sp.root.traverse((o) => {
+          if (o.isMesh) objs.push(o);
         });
       }
       sampleShadow = makeShadow();

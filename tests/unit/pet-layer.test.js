@@ -986,3 +986,35 @@ test("a roll that begins mid-burst reforms the puddle once the burst ends", () =
   expect(seen.has('puddle')).toBe(false);
   expect(splatCalls(m)).toBe(1);
 });
+
+test('a puddle is moved inside the smaller stage, and its old spot keeps nobody away', () => {
+  const m = puddled();
+  const next = { cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 };
+  m.deps.wake.mockClear();
+  m.layer.areaChanged(next);
+  expect(m.deps.wake).toHaveBeenCalled();
+  m.layer.update((clockNow += 16)); // drawn at the new spot, then held
+  const p = at(m.scene);
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  // a pet resting afterwards is spaced from the puddle's new spot, not its old one
+  rollToRest(m, 'u2');
+  const q = at(m.scene, 1);
+  expect(Math.hypot(q.x - p.x, q.z - p.z)).toBeGreaterThanOrEqual(3 - 1e-6);
+});
+
+test('a splat becoming a puddle after a stage change lands inside the new stage', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  m.layer.update((clockNow += 16));
+  const next = { cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 };
+  m.layer.areaChanged(next);
+  runTo(m, clockNow + 1300);
+  const p = at(m.scene);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
+});

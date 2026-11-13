@@ -22,6 +22,7 @@ import { dragonling } from './dragonling.js';
  * so that its top-down footprint is as wide as the other pets' and a d20's.
  */
 // t is clamped to 0..1 (NaN -> 0) once here, so no creature can put a NaN into a matrix.
+const NO_LOOK = { yaw: 0 }; // shared: poses only read it
 const smooth = (t) => t * t * (3 - 2 * t);
 const safe = (make) => (color) => {
   const c = make(color);
@@ -32,7 +33,7 @@ const safe = (make) => (color) => {
       c.root.scale.setScalar(1);
       return pose(phase, t, reaction, look);
     }
-    pose('exit', 1, 'plain', { yaw: 0 }); // the standing pose, squashed below
+    pose('exit', 1, 'plain', NO_LOOK); // the standing pose, squashed below
     let sy;
     if (phase === 'wobble') sy = 1 - 0.22 * Math.sin(t * Math.PI * 3) * (1 - t); // a damped jiggle
     else sy = 0.03 + 0.97 * smooth(t < 0.15 ? 0 : (t - 0.15) / 0.85) + 0.08 * Math.sin(t * Math.PI) * t; // grows from flat, with a little overshoot
