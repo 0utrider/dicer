@@ -482,6 +482,16 @@
         "perType": "Per die type",
         "extras": "Sound and celebrations"
       },
+      "Pet": {
+        "Title": "Pet",
+        "Hint": "Your pet throws your dice and reacts to a natural 20 or 1. Everyone sees it.",
+        "None": "None",
+        "Mimic": "Mimic",
+        "Slime": "Slime",
+        "Dragonling": "Dragonling",
+        "Color": "Colour",
+        "Hidden": "You have dice pets hidden (Dicer settings)."
+      },
       "Body": {
         "Type": "Material",
         "Color": "Colour",

@@ -675,7 +675,7 @@ describe('the appearance editor', () => {
     const root = q(app, '.window-content');
     expect(root.children).toHaveLength(1);
     const sections = [...app.element.querySelectorAll('details[data-section]')].map((d) => d.dataset.section);
-    expect(sections).toEqual(['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras']);
+    expect(sections).toEqual(['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras', 'pet']);
     expect(q(app, '[data-section="inside"] .dicer-ae-note')).toBeTruthy();
     expect(q(app, '[data-field="interior.type"]')).toBeNull();
     expect(q(app, '[data-field="body.finish"]')).toBeTruthy(); // metal shows the finish
@@ -970,6 +970,76 @@ describe('the appearance editor', () => {
     expect(flags.themes).toHaveLength(2);
     await app.close();
   });
+
+  describe('the pet section', () => {
+    const chips = (app) => [...app.element.querySelectorAll('[data-action="setPet"]')];
+    it("shows the user's current pet", async () => {
+      flags.pet = { kind: 'dragonling', color: '#112233' };
+      const app = await open({ themeId: 'user.u1.mine' });
+      expect(q(app, 'details[data-section="pet"]')).toBeTruthy();
+      expect(chips(app).map((b) => b.dataset.value)).toEqual(['none', 'mimic', 'slime', 'dragonling']);
+      expect(chips(app).map((b) => b.textContent.trim())).toEqual(['None', 'Mimic', 'Slime', 'Dragonling']);
+      expect(chips(app).filter((b) => b.classList.contains('active')).map((b) => b.dataset.value)).toEqual(['dragonling']);
+      expect(q(app, 'input[name="pet.color"]').value).toBe('#112233');
+      expect(q(app, '[data-section="pet"] .dicer-ae-pet-hidden')).toBeNull();
+      await app.close();
+    });
+    it('an unset flag shows the default mimic', async () => {
+      const app = await open({ themeId: 'user.u1.mine' });
+      expect(chips(app).filter((b) => b.classList.contains('active')).map((b) => b.dataset.value)).toEqual(['mimic']);
+      await app.close();
+    });
+    it('choosing slime saves {kind:"slime", color} to the user flag', async () => {
+      flags.pet = { kind: 'mimic', color: '#445566' };
+      const app = await open({ themeId: 'user.u1.mine' });
+      await click(app, '[data-action="setPet"][data-value="slime"]');
+      expect(user.setFlag).toHaveBeenCalledWith('dicer', 'pet', { kind: 'slime', color: '#445566' });
+      expect(chips(app).filter((b) => b.classList.contains('active')).map((b) => b.dataset.value)).toEqual(['slime']);
+      await app.close();
+    });
+    it('a colour change saves', async () => {
+      flags.pet = { kind: 'slime', color: '#445566' };
+      const app = await open({ themeId: 'user.u1.mine' });
+      type(app, 'pet.color', '#abcdef', 'change');
+      expect(user.setFlag).toHaveBeenCalledWith('dicer', 'pet', { kind: 'slime', color: '#abcdef' });
+      const picker = q(app, 'input[type="color"][data-color-for="pet.color"]');
+      picker.value = '#fedcba';
+      picker.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(user.setFlag).toHaveBeenLastCalledWith('dicer', 'pet', { kind: 'slime', color: '#fedcba' });
+      type(app, 'pet.color', '#12', 'input'); // half typed: nothing saved
+      expect(user.setFlag).toHaveBeenCalledTimes(2);
+      await app.close();
+    });
+    it('is absent when petsAllowed is off', async () => {
+      store.petsAllowed = false;
+      const app = await open({ themeId: 'user.u1.mine' });
+      expect(q(app, 'details[data-section="pet"]')).toBeNull();
+      expect(q(app, '[data-action="setPet"]')).toBeNull();
+      await app.close();
+    });
+    it('shows a note when this user has pets hidden', async () => {
+      store.showPets = false;
+      const app = await open({ themeId: 'user.u1.mine' });
+      expect(q(app, '[data-section="pet"]')).toBeTruthy();
+      expect(q(app, '.dicer-ae-pet-hidden').textContent).toContain(localize('DICER.Appearance.Pet.Hidden'));
+      await app.close();
+    });
+    it('saving the look does not write the pet into the theme, and picking a pet is not an unsaved edit', async () => {
+      flags.pet = { kind: 'mimic', color: '#445566' };
+      const app = await open({ themeId: 'user.u1.mine' });
+      await click(app, '[data-action="setPet"][data-value="dragonling"]');
+      expect(app.dirty).toBe(false);
+      expect(JSON.stringify(app.theme())).not.toContain('dragonling');
+      user.setFlag.mockClear();
+      await click(app, '[data-action="saveMine"]');
+      for (const [, k, v] of user.setFlag.mock.calls) {
+        expect(k).toBe('themes');
+        expect(JSON.stringify(v)).not.toContain('dragonling');
+      }
+      expect(JSON.stringify(flags.themes)).not.toContain('"pet"');
+      await app.close();
+    });
+  });
 });
 
 describe('lang/en.json', () => {
@@ -990,6 +1060,7 @@ describe('lang/en.json', () => {
       'Coin.': ['numbers', 'heads-tails', 'sun-moon'],
       'Icon.': ['none', ...ICON_IDS],
       'Edge.': ['sharp', 'crisp', 'soft', 'round', 'veryRound'],
+      'Pet.': ['None', 'Mimic', 'Slime', 'Dragonling'],
     });
     expect(keys.length).toBeGreaterThan(30);
     expect([BODY_TYPES.length, Object.values(BODY_PRESETS).flat().length, FINISHES.length]).toEqual([8, 11, 5]);
@@ -1001,6 +1072,7 @@ describe('lang/en.json', () => {
       Finish: FINISHES,
       Preset: Object.values(BODY_PRESETS).flat(),
       Section: ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras'],
+      Pet: ['Title', 'Hint', 'None', 'Mimic', 'Slime', 'Dragonling', 'Color', 'Hidden'],
     }))
       for (const id of ids) expect(typeof lang[group][id], `${group}.${id}`).toBe('string');
   });
