@@ -15,10 +15,12 @@ import { discTexture, starTexture } from './textures.js';
 import {
   edgeSpot,
   restSpot,
+  inRestRing,
   offPoint,
   fitArea,
   obstacle,
   SLIDE,
+  SPACING,
   PET_HEIGHT,
   KIND_FOOTPRINT,
 } from './resting.js';
@@ -87,6 +89,9 @@ export function createPetLayer(deps) {
   let stage = null;
   const pets = new Map(); // userId -> pet
   const keyOwner = new Map(); // roll key -> userId
+  // userId -> {area, spot}: the rest spot obstaclesFor chose for a pet that has none yet, which
+  // begin then takes (so the physics and the pet agree on it)
+  const pending = new Map();
   let shadowTex = null;
   let shadowGeo = null;
   let sparkTex = null;
@@ -162,6 +167,7 @@ export function createPetLayer(deps) {
 
   function removePet(pet) {
     pets.delete(pet.userId);
+    pending.delete(pet.userId);
     for (const k of pet.rolls.keys()) keyOwner.delete(k);
     pet.rolls.clear();
     scene.remove(pet.group);
@@ -286,15 +292,66 @@ export function createPetLayer(deps) {
     }
     return out;
   }
-  /** A free rest spot for `pet` in its area: spaced from the other pets, off Foundry's UI. */
-  function freeSpot(pet) {
+  /**
+   * A free rest spot in `area` for user `userId`'s pet of `height`: spaced from the other pets
+   * (but not `skip`, a pet about to be sent off), off Foundry's UI.
+   */
+  function spotFor(userId, area, height, skip) {
     const taken = [];
-    for (const o of pets.values()) if (o !== pet && standing(o)) taken.push(spotOf(o));
-    return restSpot(pet.area, pet.creature.height, taken, rand, uiRects());
+    for (const o of pets.values())
+      if (o.userId !== userId && o !== skip && standing(o)) taken.push(spotOf(o));
+    return restSpot(area, height, taken, rand, uiRects());
+  }
+  const freeSpot = (pet) => spotFor(pet.userId, pet.area, pet.creature.height);
+  const fitted = (area) => (stage ? fitArea(area, stage) : area);
+  const sameArea = (a, b) => ['cx', 'cz', 'halfWidth', 'halfDepth'].every((k) => a[k] === b[k]);
+  /**
+   * Where `userId`'s pet will rest if it has no resting spot yet: the one obstaclesFor chose (kept
+   * while its area is the same and it still clears the others), or a new one. `keep` leaves it
+   * pending (obstaclesFor); begin takes it.
+   */
+  function newSpot(userId, area, height, skip, keep) {
+    const a = fitted(area);
+    const p = pending.get(userId);
+    let spot = null;
+    if (p && sameArea(p.area, a)) {
+      const clear = [...pets.values()].every(
+        (o) =>
+          o.userId === userId ||
+          o === skip ||
+          !standing(o) ||
+          Math.hypot(spotOf(o).x - p.spot.x, spotOf(o).z - p.spot.z) >= SPACING * height - 1e-9,
+      );
+      if (clear) spot = p.spot;
+    }
+    spot ??= spotFor(userId, a, height, skip);
+    if (keep) pending.set(userId, { area: a, spot });
+    else pending.delete(userId);
+    return spot;
+  }
+  /**
+   * The spot a pet watches its owner's roll from, when it already has a resting one: where it rests
+   * (or will, at the end of its hop), a puddle's spot, or the spot its roll is already using.
+   */
+  function restingSpot(pet) {
+    if (!pet) return null;
+    if (pet.state === 'hop' || pet.state === 'rest') return pet.spot ?? { x: pet.px, z: pet.pz };
+    if (pet.state === 'splat' || pet.state === 'puddle')
+      return pet.moveTo ?? pet.spot ?? { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
+    if (pet.state === 'reform' && pet.atRest) return { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
+    if (pet.state === 'routine' && pet.atRest) return pet.base;
+    return null;
   }
   const restOf = (pet, now) => {
     if (pet.state === 'routine') pet.idleAt = now; // idle since its routine ended
     if (stage) pet.area = fitArea(pet.area, stage);
+    if (pet.state === 'routine' && pet.atRest && inRestRing(pet.area, pet.creature.height, pet.base)) {
+      // it watched from its resting spot: it stays, with a little hop in place
+      hopTo(pet, { x: pet.base.x, z: pet.base.z }, 'hop', now);
+      pet.yawTo = pet.yaw; // no turning round
+      return;
+    }
+    pet.atRest = false;
     hopTo(pet, freeSpot(pet), 'hop', now);
   };
   const sendOff = (pet, now) => {
@@ -363,6 +420,12 @@ export function createPetLayer(deps) {
       setCreature(pet, make(spec.color), spec); // the editor's Throw shows the new pick at once
     }
     const now = clock();
+    // petsStay: the pet watches from where it rests (a first appearance hops straight to a new
+    // rest spot, the one obstaclesFor sent the physics); otherwise it takes the edge spot.
+    const rest = stays()
+      ? (restingSpot(pet) ?? newSpot(spec.userId, area, pet.creature.height, null, false))
+      : null;
+    if (!rest) pending.delete(spec.userId);
     if (down) {
       pet.group.scale.setScalar(1);
       pet.wobble = null;
@@ -383,8 +446,20 @@ export function createPetLayer(deps) {
     pet.current = key;
     pet.centre = centre;
     const was = fresh ? null : { x: pet.px, z: pet.pz, y: pet.hop };
-    place(pet, edge, area);
-    pet.yaw = pet.inward;
+    if (rest) {
+      pet.base = { x: rest.x, z: rest.z };
+      pet.atRest = true;
+      pet.spot = pet.base;
+      const off = offPoint(area, rest, pet.creature.height);
+      const len = Math.hypot(off.x - rest.x, off.z - rest.z) || 1;
+      pet.out = [(off.x - rest.x) / len, (off.z - rest.z) / len];
+      pet.inward = Math.atan2(-pet.out[0], -pet.out[1]);
+      if (fresh) pet.yaw = Math.atan2(centre().x - rest.x, centre().z - rest.z);
+    } else {
+      place(pet, edge, area);
+      pet.atRest = false;
+      pet.yaw = pet.inward;
+    }
     pet.reaction = 'plain';
     pet.soundDone = false;
     pet.exitFrom = null;
@@ -393,7 +468,9 @@ export function createPetLayer(deps) {
     // is elsewhere (mid-exit, another edge or area) hops there from where it is.
     const moved =
       !!was && (Math.hypot(was.x - pet.base.x, was.z - pet.base.z) > MOVED || was.y > MOVED);
-    pet.from = moved ? was : null;
+    // a first appearance at a rest spot hops in from just outside the area
+    const outside = rest && fresh ? { ...offPoint(area, rest, pet.creature.height), y: 0 } : null;
+    pet.from = moved ? was : outside;
     pet.track = { beganAt: fresh || moved ? now : now - ENTER_MS };
   }
 
@@ -606,7 +683,11 @@ export function createPetLayer(deps) {
     if (pet.state !== 'routine') return stepHop(pet, now, shadows);
     const { phase, t } = phaseAt(pet.track, now);
     if ((phase === 'exit' || phase === 'gone') && stay && !pet.gone) {
-      restOf(pet, now); // the exit becomes a hop to a resting spot
+      restOf(pet, now); // the exit becomes a hop to a resting spot (in place, if it watched from one)
+      return stepHop(pet, now, shadows);
+    }
+    if ((phase === 'exit' || phase === 'gone') && pet.atRest) {
+      sendOff(pet, now); // resting is off, or its user left: it hops out from its spot, not slides
       return stepHop(pet, now, shadows);
     }
     if (phase === 'gone') return false;
@@ -681,8 +762,14 @@ export function createPetLayer(deps) {
     const own = spec ? slotFor(spec.userId) : null;
     const list = [];
     if (own?.ok) {
-      const h = pets.get(spec.userId)?.creature.height ?? PET_HEIGHT;
-      list.push(obstacle(edgeSpot(edge, area, h).base, h, spec.userId, KIND_FOOTPRINT[spec.kind]));
+      const mine = pets.get(spec.userId);
+      const h = mine?.creature.height ?? PET_HEIGHT;
+      // with petsStay the pet rolls from its resting spot (a first appearance: the one it will hop
+      // to, kept pending for begin); otherwise from the edge spot
+      const at = stays()
+        ? (restingSpot(mine) ?? newSpot(spec.userId, area, h, own.victim, true))
+        : edgeSpot(edge, area, h).base;
+      list.push(obstacle(at, h, spec.userId, KIND_FOOTPRINT[spec.kind]));
     }
     for (const p of pets.values())
       if (solid(p) && p !== own?.victim && !(own?.ok && p.userId === spec.userId))
@@ -780,6 +867,7 @@ export function createPetLayer(deps) {
       } else pet.spot = { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
     } else if (pet.state === 'hop' || pet.state === 'rest') {
       pet.spot = null;
+      pet.atRest = false; // a new area: a new spot
       restOf(pet, now);
     }
   }

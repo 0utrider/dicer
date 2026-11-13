@@ -1,23 +1,33 @@
-import { restSpot, fitArea, offPoint, edgeSpot, PET_HEIGHT, KIND_FOOTPRINT, BODY } from '../../src/pet/chunk/resting.js';
+import { restSpot, fitArea, offPoint, edgeSpot, PET_HEIGHT, KIND_FOOTPRINT, BODY, RING_IN, RING_OUT } from '../../src/pet/chunk/resting.js';
 import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
 import { mulberry32 } from '../../src/core/rng.js';
 
 const AREA = { cx: 1, cz: -2, halfWidth: 14, halfDepth: 9 };
 const H = 1.5;
 
-test('restSpot honours edges, the inner 60% and spacing for 200 seeded tries', () => {
+/** How far out a spot is, as a share of the area's half size: the larger of the two axes. */
+const ringOf = (area, p) => Math.max(Math.abs(p.x - area.cx) / area.halfWidth, Math.abs(p.z - area.cz) / area.halfDepth);
+
+test('the ring is 35% to 60% of the area', () => {
+  expect(RING_IN).toBe(0.35);
+  expect(RING_OUT).toBe(0.6);
+});
+
+test('restSpot honours edges, the 35-60% ring and spacing for 200 seeded tries', () => {
   for (let seed = 1; seed <= 200; seed++) {
     const rand = mulberry32(seed);
     const taken = [
-      { x: AREA.cx + 12, z: AREA.cz },
-      { x: AREA.cx - 11, z: AREA.cz + 6 },
+      { x: AREA.cx + 6, z: AREA.cz },
+      { x: AREA.cx - 5, z: AREA.cz + 3 },
     ];
     const { x, z } = restSpot(AREA, H, taken, rand);
     const dx = Math.abs(x - AREA.cx);
     const dz = Math.abs(z - AREA.cz);
     expect(dx).toBeLessThanOrEqual(AREA.halfWidth - 1.2 * H + 1e-9);
     expect(dz).toBeLessThanOrEqual(AREA.halfDepth - 1.2 * H + 1e-9);
-    expect(dx > 0.6 * AREA.halfWidth || dz > 0.6 * AREA.halfDepth).toBe(true);
+    const r = ringOf(AREA, { x, z });
+    expect(r, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
+    expect(r, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
     for (const o of taken) expect(Math.hypot(x - o.x, z - o.z)).toBeGreaterThanOrEqual(2 * H - 1e-9);
   }
 });
@@ -87,6 +97,9 @@ test('restSpot keeps the pet body off every exclusion rectangle for 200 seeded t
   for (let seed = 1; seed <= 200; seed++) {
     const spot = restSpot(AREA, H, [], mulberry32(seed), avoid);
     for (const r of avoid) expect(overlaps(spot, r, BODY * H - 1e-9), `seed ${seed}`).toBe(false);
+    const ring = ringOf(AREA, spot);
+    expect(ring, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
+    expect(ring, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
   }
 });
 

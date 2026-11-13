@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, expect, test } from 'vitest';
 import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
-import { mulberry32, throwEdge } from '../../src/core/rng.js';
+import { mulberry32 } from '../../src/core/rng.js';
 import { FLOATS_PER_DIE, IMPACT_FLOATS, MAX_STEPS } from '../../src/physics/protocol.js';
 import { SPLAT_SPEED } from '../../src/pet/chunk/pets.js';
-import { edgeSpot, restSpot, obstacle, KIND_FOOTPRINT } from '../../src/pet/chunk/resting.js';
+import { restSpot, obstacle, KIND_FOOTPRINT } from '../../src/pet/chunk/resting.js';
 
-// Pet obstacles against the real sim, placed by the shipped helpers: the roller's pet at its edge
-// spot plus two resting pets (final review I-1, M-1, M-5).
+// Pet obstacles against the real sim, placed by the shipped helpers: the roller's pet at its
+// rest spot plus two resting pets (final review I-1, M-1, M-5).
 
 const area = { halfWidth: 12, halfDepth: 7 };
 const full = { cx: 0, cz: 0, ...area };
@@ -24,10 +24,11 @@ beforeAll(async () => {
   s.dispose();
 });
 
-/** The roller's edge-spot pet and two resting pets for `seed`, as the pet layer would place them. */
+/** The roller's pet (watching from its rest spot) and two resting pets for `seed`, as the pet layer places them. */
 function petsFor(seed) {
   const rand = mulberry32(seed * 7919);
-  const own = obstacle(edgeSpot(throwEdge(seed), full, 1.5).base, 1.5, 'a', KIND_FOOTPRINT.mimic);
+  const a = restSpot(full, 1.5, [], rand);
+  const own = obstacle(a, 1.5, 'a', KIND_FOOTPRINT.mimic);
   const r1 = restSpot(full, 1.5, [own], rand);
   const r2 = restSpot(full, 1.5, [own, r1], rand);
   return [own, obstacle(r1, 1.5, 'b', KIND_FOOTPRINT.slime), obstacle(r2, 1.5, 'c', KIND_FOOTPRINT.dragonling)];
@@ -58,7 +59,7 @@ function run(dice, seed, extra) {
 
 // --- I-1: the sim decides the splat --------------------------------------------------------------
 
-test.each([131, 133])(
+test.each([2, 11])(
   'seed %i: after a die splats a pet, no die of the same throw touches that spot again',
   (seed) => {
     const obstacles = petsFor(seed);
@@ -76,18 +77,18 @@ test.each([131, 133])(
 );
 
 test('splatSpeed absent, null or with no obstacles changes nothing', () => {
-  const obstacles = petsFor(131);
-  const base = JSON.stringify(run(MIX, 131, { obstacles }));
-  expect(JSON.stringify(run(MIX, 131, { obstacles, splatSpeed: null }))).toBe(base);
-  expect(JSON.stringify(run(MIX, 131, { obstacles, splatSpeed: undefined }))).toBe(base);
+  const obstacles = petsFor(2);
+  const base = JSON.stringify(run(MIX, 2, { obstacles }));
+  expect(JSON.stringify(run(MIX, 2, { obstacles, splatSpeed: null }))).toBe(base);
+  expect(JSON.stringify(run(MIX, 2, { obstacles, splatSpeed: undefined }))).toBe(base);
   const bare = JSON.stringify(run(MIX, 7));
   expect(JSON.stringify(run(MIX, 7, { splatSpeed: SPLAT_SPEED }))).toBe(bare);
 });
 
 test('a splatSpeed above every contact leaves the throw as it was', () => {
-  const obstacles = petsFor(131);
-  expect(JSON.stringify(run(MIX, 131, { obstacles, splatSpeed: 1e9 }))).toBe(
-    JSON.stringify(run(MIX, 131, { obstacles })),
+  const obstacles = petsFor(2);
+  expect(JSON.stringify(run(MIX, 2, { obstacles, splatSpeed: 1e9 }))).toBe(
+    JSON.stringify(run(MIX, 2, { obstacles })),
   );
 });
 

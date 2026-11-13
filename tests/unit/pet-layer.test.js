@@ -602,7 +602,9 @@ test("with petsStay a pet rests after its roll and update returns 'rest'", () =>
   const dz = Math.abs(p.position.z - BIG.cz);
   expect(dx).toBeLessThanOrEqual(BIG.halfWidth - 1.8 + 1e-6);
   expect(dz).toBeLessThanOrEqual(BIG.halfDepth - 1.8 + 1e-6);
-  expect(dx > 0.6 * BIG.halfWidth || dz > 0.6 * BIG.halfDepth).toBe(true);
+  const ring = Math.max(dx / BIG.halfWidth, dz / BIG.halfDepth);
+  expect(ring).toBeGreaterThanOrEqual(0.35 - 1e-9);
+  expect(ring).toBeLessThanOrEqual(0.6 + 1e-9);
   expect(p.position.y).toBe(0);
   // a resting pet is not posed again
   p.position.x = 99;
@@ -619,30 +621,97 @@ test("petsStay off keeps today's hop-off", () => {
   expect(pets(m.scene)).toHaveLength(0);
 });
 
-test("the owner's next roll hops from the resting spot (no frame moves more than a hop step)", () => {
+const ringOf = (p) => Math.max(Math.abs(p.x) / BIG.halfWidth, Math.abs(p.z) / BIG.halfDepth);
+const outside = (p) => Math.abs(p.x) > BIG.halfWidth || Math.abs(p.z) > BIG.halfDepth;
+const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const inRing = (p) => {
+  expect(ringOf(p)).toBeGreaterThanOrEqual(0.35 - 1e-9);
+  expect(ringOf(p)).toBeLessThanOrEqual(0.6 + 1e-9);
+};
+
+test("the owner's roll is watched from the resting spot: no movement, the obstacle is that spot", () => {
   const m = make({ petsStay: true });
   rollToRest(m, 'u1');
   const rest = { x: at(m.scene).x, z: at(m.scene).z };
-  const edge = BIG.halfWidth - 0.9;
+  const own = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(own).toHaveLength(1);
+  expect(own[0].id).toBe('u1');
+  expect(own[0].x).toBeCloseTo(rest.x, 6);
+  expect(own[0].z).toBeCloseTo(rest.z, 6);
   m.layer.begin('again', bigInfo(spec('u1'), 0));
   m.layer.update(clockNow);
-  const D = Math.hypot(edge - rest.x, 0 - rest.z);
-  let prev = { ...rest };
-  let worst = Math.hypot(at(m.scene).x - rest.x, at(m.scene).z - rest.z);
+  const seen = new Set();
   const start = clockNow;
-  while (clockNow < start + 340) {
+  while (clockNow < start + 1500) {
     m.layer.update((clockNow += 16));
-    const p = at(m.scene);
-    worst = Math.max(worst, Math.hypot(p.x - prev.x, p.z - prev.z));
-    prev = { x: p.x, z: p.z };
+    expect(at(m.scene).x).toBeCloseTo(rest.x, 6);
+    expect(at(m.scene).z).toBeCloseTo(rest.z, 6);
+    expect(at(m.scene).y).toBe(0);
+    seen.add(phaseOf(m));
   }
-  expect(worst).toBeLessThan(0.15 * D);
-  runTo(m, start + 400);
-  expect(at(m.scene).x).toBeCloseTo(edge, 3);
+  expect(seen.has('throw')).toBe(true);
+  expect(seen.has('watch')).toBe(true);
+  expect(seen.has('enter')).toBe(false);
+  // it has turned toward the dice (the middle of BIG)
+  const want = Math.atan2(0 - rest.x, 0 - rest.z);
+  expect(Math.abs(wrapA(pets(m.scene)[0].rotation.y - want))).toBeLessThan(0.1);
+  m.layer.landed('again', [d20(5)]);
+  m.layer.leave('again', 0);
+  m.layer.end('again');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  expect(at(m.scene).x).toBeCloseTo(rest.x, 6); // still at the same spot
+  expect(at(m.scene).z).toBeCloseTo(rest.z, 6);
+  expect(at(m.scene).y).toBe(0);
+  expect(m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG })[0].x).toBeCloseTo(rest.x, 6);
 });
 
-test("obstaclesFor lists resting pets and the roller's upcoming edge spot", () => {
-  const m = make({ petsStay: true });
+test('a first appearance hops in from outside the edge to a rest spot, and the obstacle sent is that spot', () => {
+  const m = make({ petsStay: true }, { random: mulberry(11) });
+  const sent = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(sent).toHaveLength(1);
+  const spot = { x: sent[0].x, z: sent[0].z };
+  inRing(spot);
+  // asking again changes nothing
+  const again = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(again[0].x).toBe(spot.x);
+  expect(again[0].z).toBe(spot.z);
+  m.layer.begin('k', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  expect(outside(at(m.scene))).toBe(true); // it starts just outside the area
+  runTo(m, clockNow + 400);
+  expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+  m.layer.landed('k', [d20(5)]);
+  m.layer.leave('k', 0);
+  m.layer.end('k');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+});
+
+test('a first appearance with no prior obstaclesFor still rests in the ring', () => {
+  const m = make({ petsStay: true }, { random: mulberry(12) });
+  m.layer.begin('k', bigInfo(spec('u1'), 3));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 400);
+  inRing(at(m.scene));
+  const ob = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG })[0];
+  expect(ob.x).toBeCloseTo(at(m.scene).x, 6);
+});
+
+test('petsStay off: the obstacle is the edge spot and the pet stands there', () => {
+  const m = make({ petsStay: false });
+  const list = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(list[0].x).toBeCloseTo(BIG.halfWidth - 0.9);
+  expect(list[0].z).toBeCloseTo(0);
+  m.layer.begin('k', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 400);
+  expect(at(m.scene).x).toBeCloseTo(BIG.halfWidth - 0.9, 3);
+});
+
+test("obstaclesFor lists resting pets and the roller's upcoming rest spot", () => {
+  const m = make({ petsStay: true }, { random: mulberry(21) });
   rollToRest(m, 'u1');
   const rest = { x: at(m.scene).x, z: at(m.scene).z };
   const list = m.layer.obstaclesFor({ spec: spec('u2'), edge: 1, area: BIG });
@@ -653,17 +722,18 @@ test("obstaclesFor lists resting pets and the roller's upcoming edge spot", () =
   expect(resting.h).toBe(1.5);
   expect(resting.r).toBeCloseTo(0.95);
   const own = list.find((o) => o.id === 'u2');
-  expect(own.x).toBeCloseTo(-(BIG.halfWidth - 0.9));
-  expect(own.z).toBeCloseTo(0);
-  // no spec: only the standing pets; the owner: its upcoming spot replaces its resting one
+  inRing(own);
+  expect(Math.hypot(own.x - rest.x, own.z - rest.z)).toBeGreaterThanOrEqual(3 - 1e-9); // 2 x height apart
+  // no spec: only the standing pets; the owner: its own rest spot replaces nothing else
   expect(m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG })).toHaveLength(1);
   const mine = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
   expect(mine).toHaveLength(1);
-  expect(mine[0].x).toBeCloseTo(BIG.halfWidth - 0.9);
-  // a rolling pet is listed at its edge spot
+  expect(mine[0].x).toBeCloseTo(rest.x, 6);
+  // a rolling pet is listed at the spot it rests at during its roll
   m.layer.begin('r', bigInfo(spec('u2'), 2));
   const rolling = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG }).find((o) => o.id === 'u2');
-  expect(rolling.z).toBeCloseTo(BIG.halfDepth - 0.9);
+  expect(rolling.x).toBeCloseTo(own.x, 6);
+  expect(rolling.z).toBeCloseTo(own.z, 6);
 });
 
 test('a 4th roller replaces the longest-idle resting pet, never one mid-routine; all 3 mid-routine -> no pet', () => {
@@ -716,7 +786,9 @@ test('areaChanged re-places resting pets validly', () => {
     const dz = Math.abs(p.position.z);
     expect(dx).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
     expect(dz).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
-    expect(dx > 0.6 * next.halfWidth || dz > 0.6 * next.halfDepth).toBe(true);
+    const ring = Math.max(dx / next.halfWidth, dz / next.halfDepth);
+    expect(ring).toBeGreaterThanOrEqual(0.35 - 1e-9);
+    expect(ring).toBeLessThanOrEqual(0.6 + 1e-9);
   }
   const gap = Math.hypot(ps[0].position.x - ps[1].position.x, ps[0].position.z - ps[1].position.z);
   expect(gap).toBeGreaterThanOrEqual(3 - 1e-6);
@@ -936,6 +1008,29 @@ test("the owner's next roll reforms the puddle in place and plays the routine", 
   m.layer.leave('again', 0);
   m.layer.end('again');
   expect(runTo(m, clockNow + 3000)).toBe('rest'); // rests again
+});
+
+test("a puddle owner's roll reforms in place, stays there, and its obstacle is the puddle spot", () => {
+  const m = puddled();
+  const spot = { x: at(m.scene).x, z: at(m.scene).z };
+  const ob = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(ob).toHaveLength(1);
+  expect(ob[0].x).toBeCloseTo(spot.x, 6);
+  expect(ob[0].z).toBeCloseTo(spot.z, 6);
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  const start = clockNow;
+  while (clockNow < start + 2000) {
+    m.layer.update((clockNow += 16));
+    expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+    expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+  }
+  expect(phaseOf(m)).toBe('watch');
+  m.layer.landed('again', [d20(5)]);
+  m.layer.leave('again', 0);
+  m.layer.end('again');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
 });
 
 test('a puddle counts toward the cap and is not in obstaclesFor', () => {

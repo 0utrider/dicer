@@ -42,13 +42,17 @@ and the pet comes back on its owner's next roll. A gentle hit only knocks it and
     fanfare.
   - The puddle stays until the owner's next roll.
 - **S-4 Respawn.** When the owner rolls, the puddle pulls together into the pet, about 0.4 s, at
-  the puddle's spot. The pet then does its normal roll routine: hop to the edge the dice come from,
-  throw, watch, react. After its exit it rests at a new random spot.
+  the puddle's spot. The pet then does its normal roll routine from there (owner decision
+  2026-11-13, see S-14): throw, watch, react, without hopping to an edge; it stays at the spot.
 - **S-5 Resting.**
   - After its reaction, instead of hopping off the table, the pet hops to a random spot inside its
     owner's roll area (or the stage when there are no per-player areas) and sits still.
-  - The spot keeps away from the area's edges and from the middle, where the dice aim (the inner
-    60%), so it is a target, not in the way of results.
+  - The spot keeps away from the area's edges, and sits in a ring around the middle where the dice
+    aim: 0.35 <= max(|x-cx|/halfWidth, |z-cz|/halfDepth) <= 0.6 (RING_IN, RING_OUT in resting.js),
+    with the edge margin, spacing, UI exclusions and seeded tries as before. (Owner decision
+    2026-11-13: it used to be "outside the inner 60%", which put the pet so far out that the owner
+    could never splat it. In the real sim a single d20 now hits a ring-spot pet 8.5-14.5% of the
+    time, four dice 21.5-37%.)
   - No idle animation, so a resting pet costs no GPU. The render loop holds the last frame, the
     canvas stays shown, and nothing redraws until something moves.
   - Two resting pets never overlap.
@@ -74,7 +78,8 @@ and the pet comes back on its owner's next roll. A gentle hit only knocks it and
   where every pet on screen stands (resting or rolling), as a simple rounded shape the size of the
   pet's body. Puddles are not obstacles.
   - A rolling pet moves during the throw, but the physics treats it as fixed at the spot it stands
-    on when the throw starts. The pet hops to that spot first, during its enter.
+    on when the throw starts. The pet hops to that spot first, during its enter (a pet watching
+    from its resting spot, S-14, is already there).
 - **S-10 Results never change.** Foundry picks the number and the dice are made to show it, so a
   bounce off a pet changes where a die lands, not what it shows.
 
@@ -83,12 +88,19 @@ and the pet comes back on its owner's next roll. A gentle hit only knocks it and
 - **S-11 Where the physics sees each pet.** A throw's physics is simulated when the throw starts,
   before it plays back, so obstacles are the spots where each pet will stand during that playback:
   - A resting pet is at its resting spot.
-  - Another roller's pet that is mid-routine is at the edge spot it hopped to.
-  - The roller's own pet is at the edge spot it is about to hop to. That spot is known before the
-    throw, from the seed's edge, as today.
-  - Puddles are not obstacles.
-  - The pet's edge spot stays inside the area, where dice spawn high beyond the stage edge. A
-    test checks that dice never spawn inside or get stuck on a pet obstacle.
+  - Another roller's pet that is mid-routine is where it watches from: its resting spot (with
+    petsStay on) or, with petsStay off, the edge spot it hopped to.
+  - The roller's own pet (owner decision 2026-11-13) is at its current resting spot, which is where
+    it watches its owner's roll from. A pet's first appearance with petsStay on has no resting
+    spot yet: the layer picks the one it is about to hop to when the physics asks (same random
+    stream, kept pending for that user), and `begin` uses that very spot. With petsStay off, as
+    before, it is the edge spot it is about to hop to, known from the seed's edge. A pet evicted
+    to make room is omitted.
+  - A puddle (the owner's) is the puddle's spot: it reforms in place; other users' puddles are not
+    obstacles.
+  - The pet's spot stays inside the area (the edge spot) or the ring (a resting spot), where dice
+    spawn high beyond the stage edge. A test checks that dice never spawn inside or get stuck on a
+    pet obstacle.
 - **S-12 Splats from another throw.** A throw already simulated keeps treating a pet as solid,
   even if a different throw splats it mid-playback. The worker is not told mid-throw.
   - After a splat, impacts against that pet are ignored.
@@ -96,8 +108,16 @@ and the pet comes back on its owner's next roll. A gentle hit only knocks it and
 - **S-13 Splats happen at playback time,** when the die visibly touches the pet, not when the
   physics computed them.
 - **S-14 One pet per user.**
-  - An owner who rolls while their pet is resting: the pet hops from its resting spot to the edge.
-  - Rolling while it is a puddle: the puddle reforms in place, then hops to the edge.
+  - Owner decision 2026-11-13: with petsStay on, the pet watches its owner's roll from where it
+    rests, so the owner's own dice can splat it.
+  - An owner who rolls while their pet is resting: the pet does not move; it turns toward the
+    dice centre, throws, watches and reacts from its resting spot, then stays there (no hop to
+    a new spot).
+  - Rolling while it is a puddle: the puddle reforms in place and the pet then does the same,
+    from the puddle's spot.
+  - A pet's first appearance (no resting spot yet): it hops in from just outside the area edge
+    straight to a new resting spot, then throws, watches and reacts from there.
+  - With petsStay off nothing changes: the pet hops to the edge spot and hops off afterwards.
   - A watcher who sees the owner's roll as ghost dice: the pet does its routine with the neutral
     nod, as today.
   - A watcher who sees no dice for it: the resting pet just stays.
