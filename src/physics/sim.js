@@ -257,7 +257,8 @@ export function createSim(initialArea, hulls) {
         // Pets standing on the floor: fixed capsules, owner code -3 - i. No rand() draws.
         const obstacles = Array.isArray(req.obstacles) ? req.obstacles.slice(0, MAX_OBSTACLES) : [];
         obstacles.forEach((o, i) => {
-          if (!o || ![o.x, o.z, o.r, o.h].every(Number.isFinite) || o.r <= 0 || o.h <= 0) return;
+          if (!o || ![o.x, o.z, o.r, o.h].every(Number.isFinite) || o.r <= 0 || o.h <= 0 || o.r > 3 || o.h > 6)
+            return;
           const c = world.createCollider(
             withEvents(
               RAPIER.ColliderDesc.capsule(Math.max(0, o.h / 2 - o.r), o.r)

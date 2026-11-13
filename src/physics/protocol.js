@@ -16,7 +16,8 @@ export const STEP_SECONDS = 1 / 60;
  * THROW: {id, dice, seed, area?}; `area` = {cx, cz, halfWidth, halfDepth} (die units relative to
  * the stage centre) is that throw's own walls/spawn/aim rectangle; absent, the stage (RESIZE).
  * `obstacles?: {x, z, r, h}[]` are fixed pet capsules on the floor (scene units, radius r,
- * standing height h); impacts with obstacle i report other = -3 - i. At most MAX_OBSTACLES.
+ * standing height h; r > 3 or h > 6 is ignored); the caller keeps them inside the stage, off the
+ * spawn side. Impacts with obstacle i report other = -3 - i. At most MAX_OBSTACLES.
  */
 export const MAX_OBSTACLES = 3;
 export const MSG = Object.freeze({

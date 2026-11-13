@@ -483,6 +483,8 @@ test("a die dropped onto an obstacle's top slides off", () => {
   const onPet = runObs(['d6'], 5, { obstacles: [{ ...p, r: 0.5, h: 1.5 }] });
   const hit = impactsOf(onPet.chunks).find((e) => e.other === -3);
   expect(hit).toBeDefined();
+  // Top contact: at the first -3 impact the die's centre is above the pet's height.
+  expect(onPet.chunks.flatMap((c) => Array.from({ length: c.steps }, (_, k) => c.data[k * FLOATS_PER_DIE + 1]))[hit.frame]).toBeGreaterThan(1.5);
   expect(Math.abs(restY(onPet.chunks) - flat)).toBeLessThan(0.05);
 });
 
@@ -496,7 +498,7 @@ test('more than 3 obstacles: only the first 3 exist', () => {
 
 test('NaN obstacle fields are ignored', () => {
   const base = framesHash(runObs(['d20', 'd6', 'd6'], 7).chunks);
-  for (const bad of [{ x: NaN, z: 0, r: 0.5, h: 1.5 }, { x: 0, z: 0, r: Infinity, h: 1.5 }, { x: 0, z: 0, r: 0.5 }, null]) {
+  for (const bad of [{ x: NaN, z: 0, r: 0.5, h: 1.5 }, { x: 0, z: 0, r: Infinity, h: 1.5 }, { x: 0, z: 0, r: 0.5 }, { x: 0, z: 0, r: 10, h: 1.5 }, { x: 0, z: 0, r: 0.5, h: 9 }, null]) {
     expect(framesHash(runObs(['d20', 'd6', 'd6'], 7, { obstacles: [bad] }).chunks)).toBe(base);
   }
 });
