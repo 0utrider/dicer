@@ -428,7 +428,7 @@ Hooks.once('init', () => {
   registerSettings({
     onAreaChange: resizeDice,
     onRollAreasChange: () => emitRollAreasChanged(Hooks, getSetting),
-    onPetChange: preloadPets,
+    onPetChange: () => (preloadPets(), diceBox?.wake()), // a held resting pet must see pets hidden
     onPetStayChange: () => diceBox?.wake(),
     onLookChange,
     onQualityChange,

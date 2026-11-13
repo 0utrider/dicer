@@ -234,3 +234,11 @@ describe('engine start failure (M-8)', () => {
     expect(failed).toMatch(/fontAtlases\?\.dispose\(\);[^\n]*\n\s*fontAtlases = null;/);
   });
 });
+
+describe('pet settings', () => {
+  test('a petsAllowed or showPets change wakes the box, so resting pets leave', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('src/main.js', 'utf8');
+    expect(src).toMatch(/onPetChange: \(\) => \(preloadPets\(\), diceBox\?\.wake\(\)\)/);
+  });
+});
