@@ -1,6 +1,7 @@
 import { viewFor } from '../compat/privacy.js';
 import { ghostRoll } from '../compat/sync.js';
 import { isGmOnly } from '../areas/gm-only.js';
+import { petFor } from '../pet/pet-for.js';
 import { HIDE, pinCard, refreshCard, matchesIn, hiddenIn, isSelector } from './chat-hiding.js';
 
 /**
@@ -43,16 +44,18 @@ function rollOrderOf(roll) {
 /**
  * The planned dice grouped by ascending rollOrder, in roll order inside a group. Empty plans are
  * dropped, so every group throws something. Each group is an array of per-roll specs carrying
- * `allReal`: every roll in it is a real view here (a ghost never uses the GM private corner).
+ * `allReal`: every roll in it is a real view here (a ghost never uses the GM private corner), and
+ * `views`: each roll's own view in the group's order (one message can mix real and ghost rolls).
  */
 function groupsOf(rolls, plan, views = [], secrets = []) {
   const byOrder = new Map();
   plan.forEach((specs, i) => {
     if (!specs.length) return;
     const order = rollOrderOf(rolls[i]);
-    if (!byOrder.has(order)) byOrder.set(order, Object.assign([], { allReal: true, allSecret: true }));
+    if (!byOrder.has(order)) byOrder.set(order, Object.assign([], { allReal: true, allSecret: true, views: [] }));
     const group = byOrder.get(order);
     group.push(specs);
+    group.views.push(views[i]);
     if (views[i] !== 'real') group.allReal = false;
     if (secrets[i] !== true) group.allSecret = false;
   });
@@ -407,6 +410,15 @@ export function createMessageGate({
     if (target.hide) for (const el of elementsFor(id)) hideInto(companion, el);
   }
 
+  /** The roller's pet for one roll seen as `view` (ghost per roll), or null. A failure never stops the roll. */
+  function petOf(message, view) {
+    try {
+      return message.author?.id ? petFor({ user: message.author, view, getSetting }) : null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Throws the rolls in ascending rollOrder groups, each after the previous one lands. Each group
    * gets its own watchdog. A watchdog, a failure or a delete reveals the message once, and the
@@ -432,7 +444,9 @@ export function createMessageGate({
             const t0 = entry.t0;
             diceBox.armFirstFrame?.(() => recordFirstFrame(id, now() - t0));
           }
-          const opts = area ? (total > specs.length ? { area, capacityDice: total } : { area }) : null;
+          let opts = area ? (total > specs.length ? { area, capacityDice: total } : { area }) : null;
+          const pet = petOf(message, groups[i].views[j]);
+          if (pet) opts = { ...opts, pet };
           return (opts ? diceBox.roll(specs, opts) : diceBox.roll(specs)).landed;
         });
       } catch (err) {

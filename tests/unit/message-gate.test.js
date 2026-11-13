@@ -1636,6 +1636,7 @@ describe('roll areas follow the roller (P5-D1) and the GM private corner (P5-D7)
     settings.perPlayerAreas = true;
     settings.gmPrivateCorner = false;
     settings.gmPrivateArea = { preset: 'corner' };
+    settings.petsAllowed = false; // these pin the area call shape; the pet has its own tests
   });
 
   /** A gate as one viewer's client: its own resolver, its own user. */
@@ -1855,5 +1856,69 @@ describe('first-frame marks (Plan 8 Task 2)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("the roller's dice pet", () => {
+  const player = { id: 'p2', isGM: false };
+  const author = { id: 'p1', color: '#112233', flags: { dicer: { pet: { kind: 'slime', color: '#abcdef' } } } };
+  const petOf = (call) => call[1]?.pet ?? null;
+  const slime = (ghost) => ({ userId: 'p1', kind: 'slime', color: '#abcdef', ghost });
+
+  test('a real roll passes the roller pet with ghost false', () => {
+    gate.onCreate(message('m1', { author }));
+    expect(diceBox.roll.mock.calls[0]).toEqual([[{ type: 'd20', value: 17 }], { pet: slime(false) }]);
+  });
+
+  test('a ghost view passes the pet with ghost true', () => {
+    settings.showGhostDice = true;
+    makeGate({ currentUser: () => player }).onCreate(
+      message('m1', { author, isContentVisible: false, whisper: ['x'] }),
+    );
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(petOf(diceBox.roll.mock.calls[0])).toEqual(slime(true));
+  });
+
+  test("a 'none' roll is not thrown, so no pet", () => {
+    makeGate({ currentUser: () => player }).onCreate(
+      message('m1', { author, isContentVisible: false, blind: true, whisper: ['gm'] }),
+    );
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('no author (or one without an id) -> no pet', () => {
+    gate.onCreate(message('m1', { author: undefined }));
+    gate.onCreate(message('m2', { author: {} }));
+    expect(diceBox.roll.mock.calls.map((c) => c.length)).toEqual([1, 1]);
+  });
+
+  test('pets off (world or client) -> no pet', () => {
+    settings.petsAllowed = false;
+    gate.onCreate(message('m1', { author }));
+    settings.petsAllowed = true;
+    settings.showPets = false;
+    gate.onCreate(message('m2', { author }));
+    expect(diceBox.roll.mock.calls.map((c) => c.length)).toEqual([1, 1]);
+  });
+
+  test('a kind of none -> no pet', () => {
+    gate.onCreate(message('m1', { author: { id: 'p1', flags: { dicer: { pet: { kind: 'none' } } } } }));
+    expect(diceBox.roll.mock.calls[0]).toHaveLength(1);
+  });
+
+  test('one message with a real and a ghost roll: each roll carries its own ghost flag', () => {
+    makeGate({ currentUser: () => player }).onCreate(
+      message('m1', { author, rolls: [d20Roll(3), { ...d20Roll(4), ghost: true }] }),
+    );
+    expect(diceBox.roll.mock.calls.map(petOf)).toEqual([slime(false), slime(true)]);
+  });
+
+  test('the pet rides along with the area options', () => {
+    const area = { x: 0, y: 0, width: 10, height: 10 };
+    makeGate({ areaFor: () => area }).onCreate(message('m1', { author, rolls: [d20Roll(3), d20Roll(4)] }));
+    expect(diceBox.roll.mock.calls.map((c) => c[1])).toEqual([
+      { area, capacityDice: 2, pet: slime(false) },
+      { area, capacityDice: 2, pet: slime(false) },
+    ]);
   });
 });
