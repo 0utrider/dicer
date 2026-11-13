@@ -18,6 +18,7 @@
     "test:visual:editors": "node tests/visual/editors.mjs",
     "test:visual:pets": "node tests/visual/pets.mjs",
     "test:watch": "vitest",
+    "test:fairness": "node scripts/fairness.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
