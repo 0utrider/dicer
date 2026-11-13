@@ -152,6 +152,8 @@ function injectStyle() {
 }
 
 let active = false; // one overlay at a time
+/** The body class that fades Foundry's windows while dice are held (overlay-style.js). */
+const FADE = 'dicer-hand-open';
 
 /**
  * Opens the throw overlay over `stage` (px {left, top, width, height}; DiceBox's stage rect by
@@ -166,7 +168,13 @@ let active = false; // one overlay at a time
  * too (a generated flick), so every throw carries a launch. `ghostOnRelease`: on release the held
  * dice turn into ghost dice on this screen; their values are still read and recorded (P6-D1,
  * H-19). The overlay's DOM goes at landing, its listeners and frame loop at release; DiceBox.holding
- * is true until then (pets hold still: H-8).
+ * is true until then (pets hold still: H-8). `onRelease()` is called once when the dice leave the
+ * hand (the caller bounds the flight from there).
+ *
+ * I3: while the dice are held, Foundry's windows (a sheet the roll came from) fade and let the
+ * pointer through (body class `dicer-hand-open`), restored at release, cancel, timeout or a failed
+ * throw. Raising the overlay instead would not do: the held dice are drawn on the dice canvas
+ * (z-index 60), and Foundry's windows start at --z-index-window (100) and climb with every focus.
  */
 export function openThrowOverlay({
   specs,
@@ -179,6 +187,7 @@ export function openThrowOverlay({
   label,
   rng = Math.random,
   getRect,
+  onRelease,
 }) {
   if (active) return Promise.resolve({ cancelled: true });
   active = true;
@@ -303,6 +312,7 @@ export function openThrowOverlay({
     if (!open) return;
     open = false;
     active = false;
+    document.body.classList.remove(FADE);
     for (const off of offs.splice(0)) off();
     clearTimeout(timer);
     clearInterval(ticker);
@@ -435,6 +445,11 @@ export function openThrowOverlay({
   async function release(makeLaunch) {
     if (!open) return;
     detach();
+    try {
+      onRelease?.();
+    } catch {
+      /* the caller's bound only */
+    }
     el.classList.add('dicer-hand-thrown');
     let recording = null;
     let gotRecording;
@@ -600,6 +615,9 @@ export function openThrowOverlay({
     close({ cancelled: true });
     return done;
   }
+  // I3: Foundry's windows (z-index 100 and up) sit over the dice canvas (60) and this overlay;
+  // they fade and let the pointer through until the release (detach).
+  document.body.classList.add(FADE);
   pose(clock());
   frame = globalThis.requestAnimationFrame?.(tick) ?? 0;
   return done;

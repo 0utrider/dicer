@@ -2,9 +2,19 @@
  * The throw overlay's styles (lazy hand chunk: players who never throw by hand never load them).
  * openThrowOverlay injects them once, as <style id="dicer-hand-style"> in the document head. The
  * overlay captures the pointer over the stage (above the dice canvas, z 60) while the dice are held;
- * the board stays visible and the roller's area is outlined.
+ * the board stays visible and the roller's area is outlined. Foundry's windows (ApplicationV2 frames
+ * carry .application, v1 ones .window-app; z-index 100 and up) fade and let the pointer through to
+ * the overlay meanwhile (I3), their contents too (a child may set its own pointer-events).
  */
 export const OVERLAY_CSS = `
+body.dicer-hand-open :is(.application, .window-app),
+body.dicer-hand-open :is(.application, .window-app) * {
+  pointer-events: none !important;
+}
+body.dicer-hand-open :is(.application, .window-app) {
+  opacity: 0.15;
+  transition: opacity 0.2s;
+}
 .dicer-hand-overlay {
   position: fixed;
   z-index: 70;

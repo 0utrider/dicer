@@ -216,6 +216,57 @@ async function main() {
         shakeAndFlick({ shakes: 8, dx: 240, dy: -60 }),
       ),
     );
+    // I3: a Foundry window (a sheet, z-index 100) over the stage centre, where the dice are held:
+    // it fades and lets the pointer through while they are held, and comes back at the release.
+    await page.evaluate(() => {
+      const w = document.createElement('div');
+      w.className = 'application sheet visual-window';
+      w.innerHTML =
+        '<header style="padding:6px 10px;background:#3a2d1e;color:#eee;font:bold 14px sans-serif">Character sheet</header>' +
+        '<div style="padding:12px;font:13px sans-serif;color:#222"><button>Attack</button><p>A window over the stage centre.</p></div>';
+      Object.assign(w.style, {
+        position: 'fixed',
+        zIndex: '100',
+        left: `${innerWidth / 2 - 220}px`,
+        top: `${innerHeight / 2 - 170}px`,
+        width: '440px',
+        height: '340px',
+        background: '#e8dcc0',
+        border: '1px solid #222',
+        boxShadow: '0 0 20px #000',
+      });
+      document.body.append(w);
+    });
+    const windowState = () =>
+      page.evaluate(() => {
+        const w = document.querySelector('.visual-window');
+        const r = w.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          opacity: Number(getComputedStyle(w).opacity),
+          pointerEvents: getComputedStyle(w.querySelector('button')).pointerEvents,
+          hitOverlay: !!hit?.closest('.dicer-hand-overlay'),
+        };
+      });
+    let heldWindow = null;
+    results.push(
+      await scenario(
+        page,
+        'under-window',
+        { dice: ['d20', 'd6'], where: 'stage' },
+        async (p, c, area, shot) => {
+          heldWindow = await windowState();
+          await shakeAndFlick({ shakes: 4, dx: 240, dy: -100 })(p, c, area, shot);
+        },
+      ),
+    );
+    const afterWindow = await windowState();
+    console.log(`  window while held ${JSON.stringify(heldWindow)}, after ${JSON.stringify(afterWindow)}`);
+    if (!(heldWindow?.opacity < 0.5 && heldWindow.pointerEvents === 'none' && heldWindow.hitOverlay))
+      problems.push(`under-window: the window did not step aside while held ${JSON.stringify(heldWindow)}`);
+    if (!(afterWindow.opacity === 1 && afterWindow.pointerEvents !== 'none' && !afterWindow.hitOverlay))
+      problems.push(`under-window: the window did not come back ${JSON.stringify(afterWindow)}`);
+    await page.evaluate(() => document.querySelector('.visual-window')?.remove());
     results.push(
       await scenario(page, 'escape', { dice: ['d20'], where: 'area' }, async (p, c, area, shot) => {
         await p.keyboard.press('Escape');

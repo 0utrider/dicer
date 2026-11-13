@@ -496,3 +496,106 @@ test('the styles come with the chunk: one <style> injected on first open, none i
   expect(styles[0].textContent).toContain('.dicer-hand-overlay');
   expect(readFileSync('styles/dicer.css', 'utf8')).not.toContain('dicer-hand');
 });
+
+describe("I3: Foundry's windows step aside while the dice are held", () => {
+  const FADE = 'dicer-hand-open';
+  const faded = () => document.body.classList.contains(FADE);
+  /** A Foundry window (ApplicationV2 frames carry .application, v1 ones .window-app) over the stage. */
+  const sheet = () => {
+    const w = document.createElement('div');
+    w.className = 'application sheet';
+    document.body.append(w);
+    return w;
+  };
+
+  test('the class is set while held and removed on release (the dice still fly)', async () => {
+    sheet();
+    let land;
+    const box = fakeBox();
+    box.held.release = vi.fn(() => ({
+      landed: Promise.resolve(),
+      finished: Promise.resolve(),
+      values: new Promise((r) => (land = r)),
+      handle: {},
+    }));
+    const { p, el } = open({ diceBox: box });
+    expect(faded()).toBe(true);
+    el.querySelector('[data-action="auto"]').click();
+    expect(faded()).toBe(false); // released: the windows are back while the dice are in flight
+    land([3]);
+    expect((await p).values).toEqual([3]);
+    expect(faded()).toBe(false);
+  });
+
+  test.each([
+    ['Cancel', (el) => el.querySelector('[data-action="cancel"]').click()],
+    ['Escape', () => key('Escape')],
+  ])('%s restores the windows', async (_, act) => {
+    const { p, el } = open();
+    expect(faded()).toBe(true);
+    act(el);
+    expect(await p).toEqual({ cancelled: true });
+    expect(faded()).toBe(false);
+  });
+
+  test('a timeout restores the windows', async () => {
+    vi.useFakeTimers();
+    const { p } = open({ timeoutMs: 1000 });
+    expect(faded()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(await p).toEqual({ timedOut: true });
+    expect(faded()).toBe(false);
+  });
+
+  test('errors restore the windows: a failing hold, a failing throw', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const box = fakeBox();
+    box.hold = vi.fn(() => {
+      throw new Error('no GPU');
+    });
+    expect(await open({ diceBox: box }).p).toEqual({ cancelled: true });
+    expect(faded()).toBe(false);
+    const box2 = fakeBox();
+    box2.held.release = vi.fn(() => {
+      throw new Error('worker gone');
+    });
+    const b = open({ diceBox: box2 });
+    expect(faded()).toBe(true);
+    key(' ', 'Space');
+    expect(await b.p).toEqual({ cancelled: true });
+    expect(faded()).toBe(false);
+  });
+
+  test('a second overlay (refused while one is open) never clears the first one\'s class', async () => {
+    const a = open();
+    const second = await openThrowOverlay({ specs: SPECS, rect: RECT, stage: STAGE, diePx: PX, diceBox: fakeBox(), timeoutMs: 1000 });
+    expect(second).toEqual({ cancelled: true });
+    expect(faded()).toBe(true);
+    key('Escape');
+    await a.p;
+    expect(faded()).toBe(false);
+  });
+
+  test('the CSS fades and un-clicks every Foundry window and its contents under the class', async () => {
+    const a = open();
+    key('Escape');
+    await a.p;
+    const css = document.querySelector('style#dicer-hand-style').textContent.replace(/\s+/g, ' ');
+    expect(css).toContain(`body.${FADE} :is(.application, .window-app)`);
+    expect(css).toMatch(/:is\(\.application, \.window-app\) \* \{[^}]*pointer-events: none !important/);
+    expect(css).toMatch(/:is\(\.application, \.window-app\) \{[^}]*opacity: 0\.\d+/);
+  });
+
+  test('M4: onRelease is called once, at the release', async () => {
+    const onRelease = vi.fn();
+    const { p, el } = open({ onRelease });
+    expect(onRelease).not.toHaveBeenCalled();
+    el.querySelector('[data-action="auto"]').click();
+    expect(onRelease).toHaveBeenCalledTimes(1);
+    await p;
+    const c = open({ onRelease: vi.fn() });
+    key('Escape');
+    await c.p;
+    expect(onRelease).toHaveBeenCalledTimes(1); // a cancel is no release
+  });
+});
