@@ -60,3 +60,33 @@ test('two engines: one import, two layers, the first disposed when the second is
   expect(b.dispose).toHaveBeenCalledTimes(1);
   expect(getPets()).toBeNull();
 });
+
+test('a request released before its import resolves makes no layer', async () => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const createPetLayer = vi.fn(() => ({ dispose: vi.fn() }));
+  _setPetImport(async () => (await gate, { createPetLayer }));
+  const p = requestPets({ scene: 1 });
+  releasePets();
+  release();
+  expect(await p).toBeNull();
+  expect(createPetLayer).not.toHaveBeenCalled();
+  expect(getPets()).toBeNull();
+});
+
+test('a request superseded before its import resolves makes no layer; only the newest does', async () => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const createPetLayer = vi.fn((d) => ({ d, dispose: vi.fn() }));
+  _setPetImport(async () => (await gate, { createPetLayer }));
+  const a = { scene: 'a' };
+  const b = { scene: 'b' };
+  const pa = requestPets(a);
+  const pb = requestPets(b);
+  release();
+  expect(await pa).toBeNull();
+  const lb = await pb;
+  expect(lb.d).toBe(b);
+  expect(createPetLayer).toHaveBeenCalledTimes(1);
+  expect(getPets()).toBe(lb);
+});
