@@ -333,7 +333,7 @@ export function mimic(color) {
   }
 
   function apply(o) {
-    rig.position.y = o.lift / 1; // design units: the scaler scales it
+    rig.position.y = o.lift; // design units: the scaler scales it
     rig.rotation.set(o.pitch, o.spin + o.yaw, o.roll);
     const sy = 1 - o.squash;
     const sxz = 1 / Math.sqrt(Math.max(0.2, sy));

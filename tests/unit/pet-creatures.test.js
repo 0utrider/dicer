@@ -95,7 +95,7 @@ describe.each(KINDS)('%s', (kind) => {
     const pos = c.root.position.clone();
     for (const phase of PHASES)
       for (const reaction of REACTIONS)
-        for (const t of [0, 0.5, 1])
+        for (const t of [0, 0.5, 1, -0.3, 1.4, NaN])
           for (const yaw of [-1.2, 0, 1.2]) {
             c.pose(phase, t, reaction, { yaw });
             c.root.updateMatrixWorld(true);

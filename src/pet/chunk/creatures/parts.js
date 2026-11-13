@@ -7,7 +7,7 @@ import * as THREE from 'three';
  */
 
 export const TAU = Math.PI * 2;
-export const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+export const clamp01 = (x) => (x > 0 ? (x < 1 ? x : 1) : 0); // NaN -> 0
 export const lerp = (a, b, k) => a + (b - a) * k;
 /** 0..1 over [a, b] of t, clamped. */
 export const span = (t, a, b) => clamp01((t - a) / (b - a));
