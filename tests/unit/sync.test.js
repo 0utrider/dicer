@@ -7,6 +7,7 @@ import {
   ghostRollData,
 } from '../../src/compat/sync.js';
 import { createDice3dApi } from '../../src/api/dice3d.js';
+import { MAX_TRAJECTORY_BYTES } from '../../src/hand/gate-hand.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { explodingD6, rerolledD20, dynamicCountD6, coin } from './foundry-roll.js';
 import { createFxResolver, composeDecorateFor } from '../../src/effects/fx-resolver.js';
@@ -906,5 +907,70 @@ describe('rollToData on a Roll-like object without toJSON', () => {
   it('falls back to the result count when no number is given (legacy show shape)', () => {
     const data = rollToData({ dice: [{ faces: 20, results: [{ result: 7 }, { result: 13 }] }] });
     expect(data.terms[0].number).toBe(2);
+  });
+});
+
+describe('Task 8: kind hand', () => {
+  const traj = (o = {}) => ({ v: 1, n: 1, pos: 'AAAA', rot: 'AAAA', last: 'AAAA', events: '', ...o });
+  const hand = (o = {}) => ({ v: 1, kind: 'hand', id: 'h1', messageId: 'm1', userId: 'a', trajectory: traj(), ...o });
+  const make = () => {
+    const socket = fakeSocket();
+    const onShow = vi.fn();
+    const onHand = vi.fn();
+    createSync({ socket, currentUser: () => ({ id: 'me' }), onShow, onHand, fromData: fakeFromData });
+    const deliver = (p, sender) => socket.handlers.get(SOCKET_EVENT)(p, sender);
+    return { socket, onShow, onHand, deliver };
+  };
+
+  test('kind hand reaches onHand only with a matching sender', () => {
+    const { onShow, onHand, deliver } = make();
+    deliver(hand(), 'a');
+    expect(onHand).toHaveBeenCalledTimes(1);
+    expect(onHand).toHaveBeenCalledWith(hand(), 'a');
+    deliver(hand(), 'b'); // spoofed: userId a, sent by b
+    deliver(hand()); // no verified sender
+    deliver(hand({ v: 2 }), 'a');
+    deliver(hand({ trajectory: null }), 'a');
+    deliver(hand({ trajectory: 'x' }), 'a');
+    expect(onHand).toHaveBeenCalledTimes(1);
+    expect(onShow).not.toHaveBeenCalled();
+  });
+
+  test('oversized hand payload ignored', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { onHand, deliver } = make();
+    const big = 'A'.repeat(MAX_TRAJECTORY_BYTES);
+    deliver(hand({ trajectory: traj({ pos: big }) }), 'a');
+    deliver(hand({ trajectory: traj({ rot: big.slice(8), last: big.slice(8) }) }), 'a');
+    expect(onHand).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1); // one warning
+    deliver(hand({ trajectory: traj({ pos: big.slice(200) }) }), 'a'); // fits, as JSON
+    expect(onHand).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  test('a throwing onHand never reaches the socket handler', () => {
+    const socket = fakeSocket();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    createSync({ socket, currentUser: () => ({ id: 'me' }), onShow: vi.fn(), onHand: () => { throw new Error('x'); } });
+    expect(() => socket.handlers.get(SOCKET_EVENT)(hand(), 'a')).not.toThrow();
+    err.mockRestore();
+  });
+
+  test('show path unchanged', () => {
+    const { onShow, onHand, deliver } = make();
+    deliver(payload({ users: ['me'] }), 'author');
+    expect(onShow).toHaveBeenCalledTimes(1);
+    deliver(payload({ users: ['me'] }), 'other'); // P3-R15 as before
+    expect(onShow).toHaveBeenCalledTimes(1);
+    deliver({ ...payload(), kind: 'hand' }, 'author'); // a show body labelled hand is no show
+    expect(onShow).toHaveBeenCalledTimes(1);
+    expect(onHand).not.toHaveBeenCalled();
+  });
+
+  test('without onHand a hand payload is ignored', () => {
+    const socket = fakeSocket();
+    createSync({ socket, currentUser: () => ({ id: 'me' }), onShow: vi.fn() });
+    expect(() => socket.handlers.get(SOCKET_EVENT)(hand(), 'a')).not.toThrow();
   });
 });

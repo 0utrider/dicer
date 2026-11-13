@@ -1,3 +1,5 @@
+import { MAX_TRAJECTORY_BYTES } from '../hand/gate-hand.js';
+
 /** The module socket event (`module.json` has `"socket": true`). */
 export const SOCKET_EVENT = 'module.dicer';
 
@@ -172,6 +174,7 @@ function collectGhostDice(data, live, onDie) {
  * @param {{ on(event, fn): void, off?(event, fn): void, emit(event, data): void }} deps.socket
  * @param {() => { id?: string } | undefined} deps.currentUser
  * @param {(payload: object) => Promise<unknown>} deps.onShow the payload, its roll parsed
+ * @param {(payload: object, senderId: string) => void} [deps.onHand] a verified hand trajectory
  * @param {(data: object) => object} [deps.fromData] Roll.fromData
  * @returns {{ broadcast(payload: object, recipients?: string[] | null): void, dispose(): void }}
  */
@@ -179,10 +182,29 @@ export function createSync({
   socket,
   currentUser,
   onShow,
+  onHand,
   fromData = (d) => globalThis.Roll.fromData(d),
 }) {
+  let warned = false;
+  /**
+   * Task 8: a thrower's trajectory (`kind: 'hand'`) goes to onHand(payload, senderId) only from a
+   * verified sender (required here) equal to `userId`, and only when the trajectory (its base64
+   * sections and the rest, as JSON: as the encoder measures it) fits MAX_TRAJECTORY_BYTES, else
+   * it is ignored before decoding (one warning). The rest is the hand gate's.
+   */
+  function hand(p, sender) {
+    const t = p.trajectory;
+    if (!onHand || sender == null || p.userId !== sender || !t || typeof t !== 'object') return;
+    if (JSON.stringify(t).length > MAX_TRAJECTORY_BYTES) {
+      return void (warned ||= !console.warn('dicer: an oversized hand throw was ignored'));
+    }
+    onHand(p, sender);
+  }
+
   function receive(p, senderUserId) {
-    if (!p || typeof p !== 'object' || p.v !== 1 || p.kind !== 'show') return;
+    if (!p || typeof p !== 'object' || p.v !== 1) return;
+    if (p.kind === 'hand') return hand(p, senderUserId);
+    if (p.kind !== 'show') return;
     if (senderUserId != null && p.userId !== senderUserId) return;
     let users = null;
     if (p.users != null) {

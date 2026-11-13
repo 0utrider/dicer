@@ -1,4 +1,4 @@
-import { createDice3dApi, createDebugCounters, materialReadyNotifier } from '../../src/api/dice3d.js';
+import { createDice3dApi, createDebugCounters, materialReadyNotifier, recipientsOf } from '../../src/api/dice3d.js';
 import { getShape } from '../../src/core/dice-shapes.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { createRegistry } from '../../src/compat/registry.js';
@@ -1314,5 +1314,69 @@ describe('previewEffect', () => {
     await finish();
     expect(await p).toBe(true);
     expect(diceBox.rolls.at(-1).specs[0]).toMatchObject({ type: 'd20', value: 20 });
+  });
+});
+
+describe('Task 8: hand rolls (H-18) and the recipients rule', () => {
+  const handRoll = (o = {}) => ({
+    options: { dicerHand: { id: 'h1', by: 'p1', n: 1, ...o } },
+    dice: [{ faces: 20, results: [{ result: 12, active: true }] }],
+  });
+  let hooks, me, socket;
+  const make = () =>
+    createDice3dApi({
+      diceBox,
+      gate,
+      planThrow,
+      getSetting: (k) => settings[k],
+      hooks,
+      socket,
+      currentUser: () => me,
+      gmIds: () => ['gm'],
+    });
+  beforeEach(() => {
+    hooks = { callAll: vi.fn() };
+    me = { id: 'p1', isGM: false };
+    socket = { on: vi.fn(), off: vi.fn(), emit: vi.fn() };
+  });
+
+  test("showForRoll of the thrower's own hand roll does not animate locally", async () => {
+    const a = make();
+    await expect(a.showForRoll(handRoll(), me, true, null, false, 'm1')).resolves.toBe(false);
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    // Hooks still fire once each, and synchronized receivers still get today's show payload.
+    const names = hooks.callAll.mock.calls.map(([n]) => n);
+    expect(names.filter((n) => n === 'diceSoNiceRollStart')).toHaveLength(1);
+    expect(names.filter((n) => n === 'diceSoNiceRollComplete')).toHaveLength(1);
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+    expect(socket.emit.mock.calls[0][1]).toMatchObject({ kind: 'show' });
+  });
+
+  test('a fallback hand roll, or one thrown by another user, animates as today', async () => {
+    const a = make();
+    a.showForRoll(handRoll({ fallback: 'timeout' }), me);
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    a.showForRoll(handRoll({ by: 'p2' }), me);
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledTimes(2);
+  });
+
+  test('recipientsOf: null for everyone, else unique ids without self', () => {
+    expect(recipientsOf({}, ['gm'], 'me')).toBeNull();
+    expect(recipientsOf({ users: ['p2', 'me', 'p2'] }, ['gm', 'me'], 'me')).toEqual(['gm', 'p2']);
+    expect(recipientsOf({ blind: true, users: ['p2'] }, ['gm'], 'me')).toEqual(['gm']);
+    expect(recipientsOf({ secret: true }, ['gm', 'me'], 'me')).toEqual(['gm']);
+  });
+
+  test('onHand receives verified hand payloads through the API socket', () => {
+    const onHand = vi.fn();
+    createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], socket, onHand, currentUser: () => me });
+    const handler = socket.on.mock.calls[0][1];
+    const p = { v: 1, kind: 'hand', id: 'h1', messageId: 'm1', userId: 'p2', trajectory: { pos: '' } };
+    handler(p, 'p2');
+    expect(onHand).toHaveBeenCalledWith(p, 'p2');
+    handler(p, 'p3');
+    expect(onHand).toHaveBeenCalledTimes(1);
   });
 });

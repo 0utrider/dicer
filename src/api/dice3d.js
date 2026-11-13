@@ -12,6 +12,7 @@ import { PRESETS, normalizeAreaDef } from '../areas/area-model.js';
 import { areaDefFor, withArea } from '../areas/area-store.js';
 import { isGmOnly } from '../areas/gm-only.js';
 import { petFor } from '../pet/pet-for.js';
+import { isHandRoll } from '../hand/gate-hand.js';
 
 const STANDARD_SYSTEM = 'standard';
 /** The gate and showForRoll hooks enableDebugMode logs. */
@@ -108,6 +109,18 @@ export function createDebugCounters() {
 
 const ghostDecorator = () => ({ ghost: true });
 
+/**
+ * Who may receive a roll's real payload (P3-R12/R14; the server honours `recipients` for module
+ * sockets), or null for everyone: a secret or blind roll's results go to the GMs only, a
+ * whispered one to the GMs and the listed `users`. Unique ids, never `selfId` (the server would
+ * echo to its own socket). Shared by showForRoll's sync and the hand trajectory (Task 8).
+ */
+export function recipientsOf(s, gms, selfId) {
+  if (!s.secret && !s.users && !s.blind) return null;
+  const ids = s.secret || s.blind ? gms : [...gms, ...(s.users ?? [])];
+  return [...new Set(ids)].filter((id) => typeof id === 'string' && id !== selfId);
+}
+
 /** The GPU renderer string of the dice canvas (the unmasked one when the browser allows), or 'unknown'. */
 function readGpu(renderer) {
   try {
@@ -170,6 +183,7 @@ export function createDice3dApi({
   getQualityDrops = () => [],
   getGpu = () => readGpu(renderer),
   importBench = () => import('../bench/dicer-adapter.js'),
+  onHand,
 }) {
   const warned = new Set();
   /** A malformed third-party call logs one warning per member, never throws. */
@@ -280,16 +294,6 @@ export function createDice3dApi({
   };
 
   /**
-   * Who may receive the real payload (P3-R12; the server honours `recipients` for module
-   * sockets), or null for everyone. A secret or blind roll's results go to the GMs only
-   * (P3-R14); a whispered one to the GMs and the listed users.
-   */
-  function recipientsFor(s, gms) {
-    if (!s.secret && !s.users && !s.blind) return null;
-    return withoutSelf(s.secret || s.blind ? gms : [...gms, ...(s.users ?? [])]);
-  }
-
-  /**
    * Two emits at most: the roll to its recipients and, for a blind (not secret) roll with
    * showGhostDice on, an allow-list ghost payload (ghostRollData, P3-R16) to the listed users who
    * are not GMs, so the real results never reach a socket that may not see them (P3-R14). A roll
@@ -315,7 +319,7 @@ export function createDice3dApi({
         messageID: s.messageID,
         speaker: s.speaker,
       };
-      const recipients = recipientsFor(s, gms);
+      const recipients = recipientsOf(s, gms, me()?.id);
       if (!recipients || recipients.length) sync.broadcast(payload, recipients);
       if (!s.blind || s.secret || !s.users || getSetting('showGhostDice') !== true) return;
       const players = withoutSelf(s.users.filter((id) => !gms.includes(id)));
@@ -376,6 +380,8 @@ export function createDice3dApi({
         if (isRollLike(context.dsnRoll)) toThrow = context.dsnRoll;
       }
       if (s.synchronize) broadcast(toThrow, s);
+      // H-18: this user threw it by hand and saw it land; it is not animated again here.
+      if (isHandRoll(toThrow) && toThrow.options.dicerHand.by === me()?.id) return false;
       // Client-scope (P3-R11): turning 3D dice off here never suppresses the other clients' dice
       // nor the hooks an integration may wait on.
       if (!getSetting('enabled')) {
@@ -436,7 +442,7 @@ export function createDice3dApi({
     });
   }
 
-  const sync = socket ? createSync({ socket, currentUser: me, onShow: receive, fromData }) : null;
+  const sync = socket ? createSync({ socket, currentUser: me, onShow: receive, onHand, fromData }) : null;
 
   /** A registry member, called so that a throw never reaches the third-party caller. */
   function reg(name, args, fallback) {
@@ -851,7 +857,6 @@ export function createDice3dApi({
       sync?.dispose();
       releasePreloads();
     },
-
     _debug: {
       verbose: false,
       /** effect id -> times a landed effect started on this client. */

@@ -5,7 +5,8 @@ import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
-import { loadHand, prefetchHand } from './hand/hand-loader.js';
+import { loadHand, prefetchHand, handNow } from './hand/hand-loader.js';
+import { createHandGate } from './hand/gate-hand.js';
 import { registerHandMethod, setHandDeps, syncDiceConfiguration } from './hand/shell.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
@@ -472,12 +473,18 @@ Hooks.once('init', () => {
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
     initiative?.onCreateMessage(message);
+    // Task 8 (P6-D2): this user's hand throws go to the users allowed to see them, after the gate
+    // took its own lingering throw. A throw was stored only if this client loaded the chunk.
+    handNow()?.sendHand(message);
   });
   Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
   updateUserHook = Hooks.on('updateUser', (user, changes) =>
     appearanceRewarm.onUpdateUser(user, changes),
   );
-  Hooks.on('updateChatMessage', (message, changes) => handlers().onUpdate(message, changes));
+  Hooks.on('updateChatMessage', (message, changes) => {
+    handlers().onUpdate(message, changes);
+    handNow()?.sendHand(message); // appended hand rolls (sent ones are no longer stored)
+  });
   Hooks.on('renderChatMessageHTML', (message, html) => handlers().onRender(message, html));
   Hooks.on('deleteChatMessage', (message) => handlers().onDelete(message));
   Hooks.on('userConnected', (user, connected) => {
@@ -653,6 +660,8 @@ Hooks.once('ready', async () => {
       const areas = createAreaResolver({ getSetting, measureUsable: () => measureArea(), currentUser: () => game.user });
       // A user's area as their throws use it: the pet layer moves resting pets when areas change.
       petDeps.areaOf = (id) => box.dieArea(areas.rectFor({ rollerId: id }));
+      // Task 8: hand throws from other users, buffered until their message; the chunk on demand.
+      const hand = createHandGate({ importChunk: () => loadHand(box), chunkNow: handNow });
       gate = createMessageGate({
         diceBox: box,
         planThrow: plan,
@@ -660,6 +669,7 @@ Hooks.once('ready', async () => {
         hooks: Hooks,
         getSetting,
         areaFor: areas.rectFor,
+        hand,
       });
       initiative = createInitiativeHider({
         gate,
@@ -677,6 +687,7 @@ Hooks.once('ready', async () => {
         hooks: Hooks,
         // showForRoll's synchronize: the module socket ("socket": true in module.json).
         socket: game.socket ?? null,
+        onHand: hand.accept,
         currentUser: () => game.user,
         fromData: (data) => foundry.dice.Roll.fromData(data),
         registry,

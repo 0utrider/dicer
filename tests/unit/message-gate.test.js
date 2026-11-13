@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { createMessageGate, WATCHDOG_MS } from '../../src/foundry/message-gate.js';
 import { planThrow as realPlanThrow } from '../../src/throw/throw-planner.js';
+import { createHandGate, HAND_REPLAY_WAIT_MS } from '../../src/hand/gate-hand.js';
+import * as handChunk from '../../src/hand/hand.js';
+import { recordingOf, handD20 } from './hand-fixtures.js';
 import { explodingD6, rerolledD20, dynamicCountD6, coin } from './foundry-roll.js';
 import { createFxResolver, composeDecorateFor } from '../../src/effects/fx-resolver.js';
 import { DEFAULT_RULES } from '../../src/effects/rules.js';
@@ -1961,5 +1964,332 @@ describe("the roller's dice pet: secret and appended rolls", () => {
     await flush();
     expect(diceBox.roll).toHaveBeenCalledTimes(2);
     expect(petOf(diceBox.roll.mock.calls[1])).toMatchObject({ userId: 'p1', ghost: false });
+  });
+});
+
+describe('Task 8: hand rolls in the gate', () => {
+  const D20 = (face, key = '0:0:0') => ({ shapeType: 'd20', key, face });
+  let box, hand, user, gateH;
+
+  function handBox() {
+    const rolls = [];
+    return {
+      rolls,
+      _area: { halfWidth: 15, halfDepth: 7.5 },
+      dieArea: vi.fn(() => ({ cx: 1, cz: 1, halfWidth: 5, halfDepth: 4 })),
+      decorateLanded: vi.fn(() => true),
+      roll: vi.fn((specs, opts) => {
+        const landed = deferred();
+        rolls.push({ specs, opts, landed });
+        return { landed: landed.promise, finished: landed.promise };
+      }),
+    };
+  }
+  const hmsg = (o = {}) => ({
+    id: 'm1',
+    rolls: [handD20([17])],
+    isContentVisible: true,
+    flags: {},
+    author: { id: 'thrower' },
+    whisper: [],
+    ...o,
+  });
+  const make = (o = {}) =>
+    createMessageGate({
+      diceBox: box,
+      planThrow: realPlanThrow,
+      hooks,
+      getSetting: (k) => settings[k],
+      documentRef: document,
+      currentUser: () => user,
+      currentUserId: () => user.id,
+      hand,
+      ...o,
+    });
+  const send = (trajectory, o = {}) =>
+    hand.accept(
+      { v: 1, kind: 'hand', id: 'h1', messageId: 'm1', userId: 'thrower', trajectory, ...o },
+      o.userId ?? 'thrower',
+    );
+  const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
+  const sourced = (call) => Boolean(call.opts?.source);
+
+  beforeEach(() => {
+    box = handBox();
+    hand = createHandGate({
+      importChunk: () => Promise.resolve(handChunk),
+      chunkNow: () => handChunk,
+      now: () => Date.now(),
+    });
+    user = { id: 'p2', isGM: false };
+    handChunk.handThrows.clear();
+    gateH = make();
+  });
+
+  test('own hand roll: no throw, decorateLanded called, RollStart and RollComplete once, revealed at once', async () => {
+    user = { id: 'thrower', isGM: false };
+    gateH = make();
+    const handle = { lingering: true };
+    handChunk.handThrows.set('h1', { handle, recording: null, specs: [], extras: [] });
+    const el = li('m1');
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(box.roll).not.toHaveBeenCalled();
+    expect(box.decorateLanded).toHaveBeenCalledTimes(1);
+    const [h, specs] = box.decorateLanded.mock.calls[0];
+    expect(h).toBe(handle);
+    expect(specs).toEqual([expect.objectContaining({ type: 'd20', value: 17, key: '0:0:0' })]);
+    expect(hooks.named('diceSoNiceRollStart')).toHaveLength(1);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    expect(gateH.isAnimating('m1')).toBe(false);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+  });
+
+  test("R8: the thrower's blind tray roll and secret roll take the normal path (ghost / none), never decorateLanded", async () => {
+    user = { id: 'thrower', isGM: false };
+    settings.showGhostDice = true;
+    gateH = make();
+    handChunk.handThrows.set('h1', { handle: {}, recording: null, specs: [], extras: [] });
+    gateH.onCreate(hmsg({ blind: true, whisper: ['gm'], isContentVisible: false }));
+    await tick();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(box.roll.mock.calls[0][0]).toEqual([expect.objectContaining({ ghost: true, value: 1 })]);
+    box.rolls[0].landed.resolve();
+    await tick();
+    gateH.onCreate(hmsg({ id: 'm2', rolls: [{ ...handD20([17]), secret: true }] }));
+    await tick();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+    expect(box.roll).toHaveBeenCalledTimes(1); // none: nothing thrown
+    expect(gateH.isAnimating('m2')).toBe(false);
+  });
+
+  test("the thrower's other client (no stored throw) throws the result at once", async () => {
+    user = { id: 'thrower', isGM: false };
+    gateH = make();
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(sourced(box.rolls[0])).toBe(false);
+  });
+
+  test('real receiver replays with source and reveals after landing', async () => {
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])));
+    const rect = { left: 10, top: 10, width: 300, height: 200 };
+    gateH = make({ areaFor: () => rect });
+    const el = li('m1');
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    const { specs, opts } = box.rolls[0];
+    expect(opts.area).toBe(rect);
+    expect(box.dieArea).toHaveBeenCalledWith(rect, 1);
+    expect(specs).toEqual([
+      expect.objectContaining({ type: 'd20', key: '0:0:0', shapeType: 'd20', free: true }),
+    ]);
+    expect(opts.free).toBe(true);
+    expect(opts.edge).toBe(1);
+    expect(typeof opts.source.onChunk).toBe('function');
+    // Placed into the roller's area on this screen (die units), at scale 1 (5 x 4 holds 4 x 3).
+    const frames = [];
+    opts.source.onChunk((c) => frames.push(c.data));
+    expect(frames[0][0]).toBeCloseTo(1, 2); // the area centre x (the recorded die was at the centre)
+    expect(el.classList.contains('dsn-hide')).toBe(true);
+    expect(hooks.named(COMPLETE)).toHaveLength(0);
+    box.rolls[0].landed.resolve();
+    await tick();
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+  });
+
+  test('message before payload: the card is held until the trajectory arrives, then replays', async () => {
+    gateH.onCreate(hmsg());
+    await tick(1000);
+    expect(box.roll).not.toHaveBeenCalled();
+    expect(gateH.isAnimating('m1')).toBe(true);
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])));
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(sourced(box.rolls[0])).toBe(true);
+  });
+
+  test('H-10: a recorded die missing from this plan (maxDice) is replayed with a look-only spec', async () => {
+    settings.maxDice = 1;
+    const decorateFor = () => () => ({
+      fx: [{ id: 'burst' }],
+      damageType: 'fire',
+      appearance: { bodyColor: '#123456' },
+    });
+    gateH = make({ decorateFor });
+    send(handChunk.encodeTrajectory(recordingOf([D20(17), D20(5, '0:1:0')])));
+    gateH.onCreate(hmsg({ rolls: [handD20([17, 5], { n: 2 })] }));
+    await tick();
+    const { specs } = box.rolls[0];
+    expect(specs).toHaveLength(2);
+    expect(specs[0]).toMatchObject({ key: '0:0:0', value: 17, fx: [{ id: 'burst' }], damageType: 'fire' });
+    expect(specs[1]).toMatchObject({
+      key: '0:1:0',
+      value: 5,
+      appearance: { bodyColor: '#123456' },
+      free: true,
+    });
+    expect(specs[1].fx).toBeUndefined();
+    expect(specs[1].damageType).toBeUndefined();
+  });
+
+  test("H-10: the replay draws the thrower's shape (a crystal d4 stays a crystal d4 here)", async () => {
+    const d4 = {
+      options: { dicerHand: { id: 'h1', by: 'thrower', n: 1 } },
+      dice: [{ faces: 4, results: [{ result: 3, active: true }] }],
+    };
+    send(
+      handChunk.encodeTrajectory(recordingOf([{ shapeType: 'd4crystal', key: '0:0:0', face: 3 }])),
+    );
+    gateH.onCreate(hmsg({ rolls: [d4] }));
+    await tick();
+    expect(sourced(box.rolls[0])).toBe(true);
+    expect(box.rolls[0].specs[0]).toMatchObject({ type: 'd4', shapeType: 'd4crystal' });
+  });
+
+  test('Review Focus 4: no payload -> forced throw, revealed within WATCHDOG_MS + HAND_REPLAY_WAIT_MS', async () => {
+    gateH.onCreate(hmsg());
+    await tick(HAND_REPLAY_WAIT_MS - 1);
+    expect(box.roll).not.toHaveBeenCalled();
+    await tick(1);
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(sourced(box.rolls[0])).toBe(false);
+    expect(box.rolls[0].specs).toEqual([expect.objectContaining({ type: 'd20', value: 17 })]);
+    // The dice never land: the hand group's watchdog reveals.
+    await tick(WATCHDOG_MS - 1);
+    expect(gateH.isAnimating('m1')).toBe(true);
+    await tick(1);
+    expect(gateH.isAnimating('m1')).toBe(false);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+  });
+
+  test('Review Focus 4: spoofed sender / values mismatch / garbage -> forced throw', async () => {
+    // A payload sent by someone else than the author never matches; after the wait, forced.
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])), { userId: 'evil' });
+    gateH.onCreate(hmsg());
+    await tick(HAND_REPLAY_WAIT_MS);
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(sourced(box.rolls[0])).toBe(false);
+
+    // The author sent it, but the roll says another user threw it: forced at once.
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])), { messageId: 'm2', userId: 'evil' });
+    gateH.onCreate(hmsg({ id: 'm2', author: { id: 'evil' } }));
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(2);
+    expect(sourced(box.rolls[1])).toBe(false);
+
+    // The trajectory lands on another face than the message's result.
+    send(handChunk.encodeTrajectory(recordingOf([D20(3)])), { messageId: 'm3' });
+    gateH.onCreate(hmsg({ id: 'm3' }));
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(3);
+    expect(sourced(box.rolls[2])).toBe(false);
+    expect(box.rolls[2].specs).toEqual([expect.objectContaining({ value: 17 })]);
+
+    // Garbage, an unknown key, a wrong shape and a wrong dice count.
+    send({ v: 1, n: 'x' }, { messageId: 'm4' });
+    gateH.onCreate(hmsg({ id: 'm4' }));
+    send(handChunk.encodeTrajectory(recordingOf([D20(17, '0:9:0')])), { messageId: 'm5' });
+    gateH.onCreate(hmsg({ id: 'm5' }));
+    send(
+      handChunk.encodeTrajectory(recordingOf([{ shapeType: 'd12', key: '0:0:0', face: 12 }])),
+      { messageId: 'm6' },
+    );
+    gateH.onCreate(hmsg({ id: 'm6', rolls: [handD20([12])] }));
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])), { messageId: 'm7' });
+    gateH.onCreate(hmsg({ id: 'm7', rolls: [handD20([17], { n: 2 })] }));
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(7);
+    expect(box.rolls.slice(3).map(sourced)).toEqual([false, false, false, false]);
+  });
+
+  test('ghost view of a hand roll -> ghost throw, waitFor never called', async () => {
+    const waitFor = vi.spyOn(hand, 'waitFor');
+    gateH = make();
+    gateH.onCreate(hmsg({ rolls: [{ ...handD20([17]), ghost: true }] }));
+    await tick();
+    expect(waitFor).not.toHaveBeenCalled();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(box.rolls[0].specs).toEqual([expect.objectContaining({ ghost: true, value: 1 })]);
+    // A whispered roll this player cannot read: none (showGhostDice off), nothing thrown.
+    gateH.onCreate(hmsg({ id: 'm2', whisper: ['gm'], isContentVisible: false }));
+    await tick();
+    expect(waitFor).not.toHaveBeenCalled();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+  });
+
+  test('handReplay off -> forced throw', async () => {
+    settings.handReplay = false;
+    const waitFor = vi.spyOn(hand, 'waitFor');
+    gateH = make();
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])));
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(waitFor).not.toHaveBeenCalled();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(sourced(box.rolls[0])).toBe(false);
+  });
+
+  test('extras beyond the recording throw after the replay', async () => {
+    send(handChunk.encodeTrajectory(recordingOf([D20(20)])));
+    // Result 1 (an explosion) was thrown free afterwards, not in the recording.
+    gateH.onCreate(hmsg({ rolls: [handD20([20, 6], { n: 1 })] }));
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(box.rolls[0].specs).toHaveLength(1);
+    box.rolls[0].landed.resolve();
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(2);
+    expect(sourced(box.rolls[1])).toBe(false);
+    expect(box.rolls[1].specs).toEqual([expect.objectContaining({ value: 6, key: '0:1:0' })]);
+    expect(gateH.isAnimating('m1')).toBe(true);
+    box.rolls[1].landed.resolve();
+    await tick();
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+  });
+
+  test('fallback hand roll animates normally everywhere', async () => {
+    const waitFor = vi.spyOn(hand, 'waitFor');
+    gateH = make();
+    gateH.onCreate(hmsg({ rolls: [handD20([17], { fallback: 'timeout' })] }));
+    user = { id: 'thrower', isGM: false };
+    handChunk.handThrows.set('h1', { handle: {}, recording: null, specs: [], extras: [] });
+    make().onCreate(hmsg({ id: 'm2', rolls: [handD20([17], { fallback: 'timeout' })] }));
+    await tick();
+    expect(waitFor).not.toHaveBeenCalled();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+    expect(box.roll).toHaveBeenCalledTimes(2);
+    expect(box.rolls.map(sourced)).toEqual([false, false]);
+  });
+
+  test('a message mixing a hand roll and a normal roll throws both in rollOrder', async () => {
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])));
+    const handRoll = handD20([17]);
+    handRoll.options.rollOrder = 2;
+    const normal = {
+      options: { rollOrder: 1 },
+      dice: [{ faces: 6, results: [{ result: 4, active: true }] }],
+    };
+    gateH.onCreate(hmsg({ rolls: [handRoll, normal] }));
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(box.rolls[0].specs).toEqual([expect.objectContaining({ type: 'd6', value: 4 })]);
+    box.rolls[0].landed.resolve();
+    await tick();
+    expect(box.roll).toHaveBeenCalledTimes(2);
+    expect(sourced(box.rolls[1])).toBe(true);
+    box.rolls[1].landed.resolve();
+    await tick();
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    // One group: both are thrown together.
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])), { messageId: 'm2', id: 'h2' });
+    gateH.onCreate(hmsg({ id: 'm2', rolls: [handD20([17], { id: 'h2' }), d20Roll(9)] }));
+    await tick();
+    expect(box.rolls.slice(2).map(sourced).sort()).toEqual([false, true]);
   });
 });

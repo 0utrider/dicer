@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { loadHand, prefetchHand, _setHandImport } from '../../src/hand/hand-loader.js';
+import { loadHand, prefetchHand, handNow, _setHandImport } from '../../src/hand/hand-loader.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -47,8 +47,22 @@ test('the real chunk is marked and carries the hand code', async () => {
     'decodeTrajectory',
     'placeTrajectory',
     'replaySource',
+    'sendHand',
+    'replayFor',
   ])
     expect(typeof m[k]).toBe('function');
+});
+
+test('handNow: the chunk synchronously once a load resolved, else null', async () => {
+  const mod = { handFor: () => {} };
+  _setHandImport(async () => mod);
+  expect(handNow()).toBeNull();
+  const p = loadHand();
+  expect(handNow()).toBeNull();
+  await p;
+  expect(handNow()).toBe(mod);
+  _setHandImport(async () => mod);
+  expect(handNow()).toBeNull();
 });
 
 describe('H-20: the chunk is prefetched at idle after ready', () => {

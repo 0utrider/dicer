@@ -7,6 +7,8 @@ export { handFor, readFree, RESULT_GLOW_MS } from './chunk/box.js';
 export { handEdge } from './chunk/edge.js';
 export { fulfill, fulfillTerm, extraResult, handThrows, HAND_GRACE_MS } from './chunk/resolve.js';
 export { syncConfig } from './chunk/config.js';
+export { sendHand, handRecipients } from './chunk/send.js';
+export { replayFor, handBuffer } from './chunk/replay.js';
 export {
   openThrowOverlay,
   velocityFromSamples,

@@ -3,6 +3,7 @@ import { ghostRoll } from '../compat/sync.js';
 import { isGmOnly } from '../areas/gm-only.js';
 import { petFor } from '../pet/pet-for.js';
 import { HIDE, pinCard, refreshCard, matchesIn, hiddenIn, isSelector } from './chat-hiding.js';
+import { HAND_REPLAY_WAIT_MS } from '../hand/gate-hand.js';
 
 /**
  * The longest one rollOrder group may take to land, measured from that group's start (each
@@ -52,10 +53,11 @@ function groupsOf(rolls, plan, views = [], secrets = []) {
   plan.forEach((specs, i) => {
     if (!specs.length) return;
     const order = rollOrderOf(rolls[i]);
-    if (!byOrder.has(order)) byOrder.set(order, Object.assign([], { allReal: true, allSecret: true, views: [] }));
+    if (!byOrder.has(order)) byOrder.set(order, Object.assign([], { allReal: true, allSecret: true, views: [], idx: [] }));
     const group = byOrder.get(order);
     group.push(specs);
     group.views.push(views[i]);
+    group.idx.push(i);
     if (views[i] !== 'real') group.allReal = false;
     if (secrets[i] !== true) group.allSecret = false;
   });
@@ -102,6 +104,8 @@ const onlyFrom = (views, from) => views.map((v, i) => (i >= from ? v : 'none'));
  * @param {(q: { rollerId?: string, gmPrivate: boolean }) => object | null} [deps.areaFor] the px
  *   area a throw lands in on this screen (area-resolver rectFor); null throws on the whole stage
  * @param {(id: string) => boolean} [deps.userIsGM] whether a whisper recipient is a GM
+ * @param {object | null} [deps.hand] the hand gate (createHandGate; Task 8): hand rolls replay
+ *   their thrower's trajectory here, and the thrower's own lingering throw is decorated (H-9)
  */
 export function createMessageGate({
   diceBox,
@@ -118,6 +122,7 @@ export function createMessageGate({
   clearTimeoutFn = (h) => globalThis.clearTimeout(h),
   documentRef = globalThis.document,
   now = () => globalThis.performance.now(),
+  hand = null,
 }) {
   /** Fixed ring of the last FIRST_FRAME_LIMIT marks: ids[i] -> ms[i]; no allocation per mark. */
   const markIds = new Array(FIRST_FRAME_LIMIT).fill(null);
@@ -424,7 +429,33 @@ export function createMessageGate({
    * gets its own watchdog. A watchdog, a failure or a delete reveals the message once, and the
    * remaining groups are never thrown.
    */
-  function throwGroups(id, entry, groups, message) {
+  /**
+   * Task 8: a hand roll seen real here (another user's) replays its thrower's trajectory: waited
+   * for (HAND_REPLAY_WAIT_MS at most), sent by the author who threw it (dicerHand.by), and
+   * matching the message's results by key (the chunk's replayFor). Extras beyond the recording
+   * follow as a forced throw. Anything else is today's forced throw of the results (`cast`).
+   */
+  function replayHand(id, entry, message, roll, specs, opts, cast) {
+    const author = message.author?.id;
+    const alive = () => animating.get(id) === entry;
+    return hand.waitFor(message.id, roll.options.dicerHand.id, author).then((decoded) =>
+      alive()
+        ? (hand.replay(decoded, {
+            roll,
+            author,
+            specs,
+            opts,
+            cast,
+            diceBox,
+            alive,
+            // Every result, same looks (the decoder's 100-dice cap): look-only specs come from it.
+            full: () => planThrow(roll, { maxDice: 100, decorate: decoratorFor(message, roll) }).dice,
+          }) ?? cast())
+        : undefined,
+    );
+  }
+
+  function throwGroups(id, entry, groups, message, owned = []) {
     const next = (i) => {
       if (animating.get(id) !== entry) return; // revealed meanwhile (watchdog, delete)
       if (i >= groups.length) {
@@ -432,7 +463,12 @@ export function createMessageGate({
         return;
       }
       clearTimeoutFn(entry.timer);
-      entry.timer = setTimeoutFn(() => reveal(id), WATCHDOG_MS);
+      // A group holding a hand roll may wait for its trajectory first.
+      const handIn = groups[i].idx.some((k) => hand?.isHand(message.rolls[k]));
+      entry.timer = setTimeoutFn(
+        () => reveal(id),
+        WATCHDOG_MS + (handIn ? HAND_REPLAY_WAIT_MS : 0),
+      );
       let landed;
       try {
         const area = areaOf(message, groups[i]);
@@ -440,14 +476,28 @@ export function createMessageGate({
         // The rolls of a group share one area, so size it for the group's dice, not each roll's (DiceBox grows it).
         const total = groups[i].reduce((n, specs) => n + specs.length, 0);
         landed = groups[i].map((specs, j) => {
-          if (i === 0 && j === 0 && entry.t0 !== undefined) {
-            const t0 = entry.t0;
-            diceBox.armFirstFrame?.(() => recordFirstFrame(id, now() - t0));
-          }
+          let arm = i === 0 && j === 0 && entry.t0 !== undefined;
           let opts = area ? (total > specs.length ? { area, capacityDice: total } : { area }) : null;
           const pet = petOf(message, groups[i].views[j]);
           if (pet) opts = { ...opts, pet };
-          return (opts ? diceBox.roll(specs, opts) : diceBox.roll(specs)).landed;
+          const cast = (s = specs, o = opts) => {
+            if (arm) {
+              arm = false;
+              const t0 = entry.t0;
+              diceBox.armFirstFrame?.(() => recordFirstFrame(id, now() - t0));
+            }
+            return (o ? diceBox.roll(s, o) : diceBox.roll(s)).landed;
+          };
+          const k = groups[i].idx[j];
+          const roll = message.rolls[k];
+          // H-9: this client's own hand throw is not thrown again; its dice get their effects.
+          if (owned[k]) return void diceBox.decorateLanded?.(owned[k], specs);
+          return hand?.isHand(roll) &&
+            groups[i].views[j] === 'real' &&
+            !entry.own &&
+            getSetting('handReplay') !== false
+            ? replayHand(id, entry, message, roll, specs, opts, cast)
+            : cast();
         });
       } catch (err) {
         console.error('dicer: roll failed', err);
@@ -552,7 +602,12 @@ export function createMessageGate({
       const secrets = message.rolls.map(
         (r, i) => flags.secretAll || Boolean(r?.secret || before[i]?.secret),
       );
-      throwGroups(id, entry, groupsOf(message.rolls, plan, views, secrets), message);
+      // H-9, R8: this client's own hand throw seen real (its stored throw, read before sendHand
+      // drops it); a ghost or none view takes the normal path.
+      const owned = message.rolls.map((r, i) =>
+        own && views[i] === 'real' && hand?.isHand(r) ? hand.ownHandle(r) : null,
+      );
+      throwGroups(id, entry, groupsOf(message.rolls, plan, views, secrets), message, owned);
     } catch (err) {
       console.error('dicer: chat message gate failed', err);
       reveal(id);

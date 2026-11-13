@@ -14,12 +14,13 @@ import {
   MAX_OBSTACLES,
 } from '../../physics/protocol.js';
 import { HULL_TYPES } from '../../physics/hulls.js';
+import { MAX_TRAJECTORY_BYTES } from '../gate-hand.js';
 
 export const TRAJ_STRIDE = 2;
 /** Positions are stored in steps of 1/POS_SCALE die unit. */
 export const POS_SCALE = 512;
 /** The whole payload, as JSON (its base64 sections and the rest): the encoder gives null above it. */
-export const MAX_TRAJECTORY_BYTES = 262144;
+export { MAX_TRAJECTORY_BYTES };
 /** At most this many dice are decoded. */
 export const MAX_REPLAY_DICE = 100;
 /** H-11: a replay is never scaled below this (it may overrun a smaller area, kept on the stage). */
