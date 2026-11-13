@@ -81,6 +81,14 @@
         "Name": "Pet sounds",
         "Hint": "Your pet's happy and sad chirps."
       },
+      "petsStay": {
+        "Name": "Pets stay on the table",
+        "Hint": "Your and other players' pets sit on the table between rolls."
+      },
+      "petSplat": {
+        "Name": "Dice can splat pets",
+        "Hint": "A die that hits a pet hard enough splats it until its owner rolls again."
+      },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
         "Hint": "Roll messages appear in the chat at once instead of waiting for the dice to land. The dice still animate."

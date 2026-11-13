@@ -2706,6 +2706,194 @@ describe('pet hook', () => {
     expect(pet.calls[2][1]).toBe(pet.calls[0][1]);
   });
 
+  describe('obstacles, hits and a held rest', () => {
+    const OBS = (n) => Array.from({ length: n }, (_, i) => ({ x: i, z: 1, r: 1, h: 2, id: `p${i}` }));
+    const pump = (renderer, physics) => {
+      physics.flush();
+      renderer.tick(0);
+      renderer.tick(800); // playhead ~48
+      renderer.tick(950); // playhead ~57
+    };
+
+    test('roll() asks obstaclesFor before the throw and sends at most 3 obstacles without ids', () => {
+      const seed = 987;
+      vi.stubGlobal('crypto', { getRandomValues: (a) => ((a[0] = seed), a) });
+      try {
+        const pet = fakePet({ obstaclesFor: vi.fn(() => OBS(4)) });
+        const { physics, box } = setup({ pet: () => pet });
+        box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+        expect(pet.obstaclesFor).toHaveBeenCalledTimes(1);
+        const info = pet.obstaclesFor.mock.calls[0][0];
+        expect(info.spec).toBe(PET);
+        expect(info.edge).toBe(throwEdge(seed));
+        expect(info.area).toEqual({ cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 });
+        expect(physics.streams[0].req.obstacles).toEqual([
+          { x: 0, z: 1, r: 1, h: 2 },
+          { x: 1, z: 1, r: 1, h: 2 },
+          { x: 2, z: 1, r: 1, h: 2 },
+        ]);
+        box.clear();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test('obstaclesFor is asked for a throw with no PetSpec too (spec null), and sends none for an empty list', () => {
+      const pet = fakePet({ obstaclesFor: vi.fn(() => []) });
+      const { physics, box } = setup({ pet });
+      box.roll([{ type: 'd6', value: 3 }]);
+      expect(pet.obstaclesFor.mock.calls[0][0].spec).toBeNull();
+      expect('obstacles' in physics.streams[0].req).toBe(false);
+      box.clear();
+    });
+
+    test('a throw with no pet hook sends no obstacles key', () => {
+      const { physics, box } = setup();
+      box.roll([{ type: 'd6', value: 3 }]);
+      expect('obstacles' in physics.streams[0].req).toBe(false);
+      const bare = fakePet();
+      const other = setup({ pet: bare });
+      other.box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+      expect('obstacles' in other.physics.streams[0].req).toBe(false);
+      box.clear();
+      other.box.clear();
+    });
+
+    test('the hook that answered obstaclesFor is the one begin is called on', () => {
+      const first = fakePet({ obstaclesFor: vi.fn(() => []) });
+      const second = fakePet();
+      let current = first;
+      const { renderer, physics, box } = setup({ pet: () => current });
+      box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+      current = second;
+      physics.flush();
+      renderer.tick(16);
+      expect(first.begin).toHaveBeenCalledTimes(1);
+      expect(second.begin).not.toHaveBeenCalled();
+      box.clear();
+    });
+
+    test('an impact with other -4 calls hit with the second id, at playback time, with the die position copied', () => {
+      const hit = vi.fn();
+      const pet = fakePet({ obstaclesFor: () => OBS(3), hit });
+      const { renderer, physics, box } = setup({ pet });
+      physics.events = [new Float32Array(0), new Float32Array([45, 0, -4, 12])];
+      box.roll([{ type: 'd6', value: 3 }]); // no PetSpec: hits still arrive
+      physics.flush();
+      renderer.tick(0);
+      expect(hit).not.toHaveBeenCalled();
+      renderer.tick(800);
+      expect(hit).toHaveBeenCalledTimes(1);
+      const [id, info] = hit.mock.calls[0];
+      expect(id).toBe('p1');
+      expect(info.speed).toBe(12);
+      expect(info.dieKey).toMatch(/^\d+:0$/);
+      expect(Object.keys(info.position).sort()).toEqual(['x', 'y', 'z']);
+      const die = box._rolls.values().next().value.dice[0];
+      expect(info.position).not.toBe(die.outer.position);
+      expect(info.position.x).toBe(die.outer.position.x);
+      box.clear();
+    });
+
+    test('impacts with other -1/-2/0 never call hit; an unknown obstacle index is ignored', () => {
+      const hit = vi.fn();
+      const pet = fakePet({ obstaclesFor: () => OBS(1), hit });
+      const { renderer, physics, box } = setup({ pet });
+      physics.events = [
+        new Float32Array([5, 0, -1, 9]),
+        new Float32Array([45, 0, -2, 12, 50, 0, 0, 5, 55, 0, -6, 7]),
+      ];
+      box.roll([{ type: 'd6', value: 3 }]);
+      pump(renderer, physics);
+      expect(hit).not.toHaveBeenCalled();
+      box.clear();
+    });
+
+    test('no rolls + update "rest" -> #frame returns "hold"; no rolls + update false -> false', () => {
+      const pet = fakePet({ update: vi.fn(() => 'rest') });
+      const { renderer, box } = setup({ pet });
+      box.wake();
+      expect(renderer.tick(0)).toBe('hold');
+      pet.update.mockImplementation(() => false);
+      expect(renderer.tick(16)).toBe(false);
+    });
+
+    test('with rolls, "rest" counts as not moving', () => {
+      const pet = fakePet({ update: vi.fn(() => 'rest') });
+      const { renderer, physics, box } = setup({ pet });
+      box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+      physics.flush();
+      renderer.tick(16);
+      renderer.tick(500);
+      expect(renderer.tick(2000)).toBe('hold');
+      box.clear();
+    });
+
+    test('wake() restarts a held loop', () => {
+      const pet = fakePet({ update: vi.fn(() => 'rest') });
+      const { renderer, box } = setup({ pet });
+      box.wake();
+      expect(renderer.tick(0)).toBe('hold');
+      const starts = renderer.startLoop.mock.calls.length;
+      box.wake();
+      expect(renderer.startLoop.mock.calls.length).toBe(starts + 1);
+      expect(renderer.startLoop).toHaveBeenLastCalledWith(box._tick);
+    });
+
+    test('a throwing obstaclesFor or hit warns once and the roll still lands', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const pet = fakePet({
+        obstaclesFor: vi.fn(() => {
+          throw new Error('obs boom');
+        }),
+        hit: vi.fn(() => {
+          throw new Error('hit boom');
+        }),
+      });
+      const { renderer, physics, box } = setup({ pet });
+      physics.events = [new Float32Array(0), new Float32Array([45, 0, -3, 12, 50, 0, -3, 12])];
+      const { landed } = box.roll([{ type: 'd6', value: 3 }]);
+      const isLanded = settled(landed);
+      expect('obstacles' in physics.streams[0].req).toBe(false);
+      pump(renderer, physics);
+      renderer.tick(2000);
+      await flushMicrotasks();
+      expect(isLanded()).toBe(true);
+      expect(warn.mock.calls.filter((c) => c[0] === 'Dicer | pet')).toHaveLength(1);
+      warn.mockRestore();
+      box.clear();
+    });
+
+    test('a hit that throws warns once without skipping the impact sound', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const onImpact = vi.fn();
+      const pet = fakePet({
+        obstaclesFor: () => OBS(1),
+        hit: vi.fn(() => {
+          throw new Error('hit boom');
+        }),
+      });
+      const { renderer, physics, box } = setup({ pet, onImpact });
+      physics.events = [new Float32Array(0), new Float32Array([45, 0, -3, 12, 50, 0, -3, 12])];
+      box.roll([{ type: 'd6', value: 3 }]);
+      pump(renderer, physics);
+      expect(onImpact).toHaveBeenCalledTimes(2);
+      expect(warn.mock.calls.filter((c) => c[0] === 'Dicer | pet')).toHaveLength(1);
+      warn.mockRestore();
+      box.clear();
+    });
+
+    test('onResize tells the hook the new area through areaChanged', () => {
+      const pet = fakePet({ areaChanged: vi.fn() });
+      let r = rect;
+      const { box } = setup({ pet, getArea: () => r });
+      pet.areaChanged.mockClear();
+      r = { left: 0, top: 0, width: 480, height: 240 };
+      box.onResize();
+      expect(pet.areaChanged).toHaveBeenCalledWith({ cx: 0, cz: 0, halfWidth: 5, halfDepth: 2.5 });
+    });
+  });
+
   test('a hidden tab or empty specs never calls begin', () => {
     const pet = fakePet();
     const { box } = setup({ pet, visibility: { hidden: true, addEventListener() {} } });

@@ -126,6 +126,7 @@ export async function migrateLookSetting({ get, set }) {
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
  * @param {() => void} [callbacks.onPetChange] runs when petsAllowed or showPets changes
+ * @param {() => void} [callbacks.onPetStayChange] runs when petsStay or petSplat changes
  * @param {() => void} [callbacks.onRollAreasChange] runs when rollAreas or gmPrivateArea changes
  * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when theme,
  *   interiors, engraving, shadows, glow, presetFaces, presetModels or effects changes
@@ -137,6 +138,7 @@ export function registerSettings({
   onAreaChange,
   onRollAreasChange,
   onPetChange,
+  onPetStayChange,
   onLookChange,
   onQualityChange,
   onSoundChange,
@@ -238,6 +240,17 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
+  for (const key of ['petsStay', 'petSplat']) {
+    register(key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope: 'client',
+      config: true,
+      type: Boolean,
+      default: true,
+      onChange: () => onPetStayChange?.(),
+    });
+  }
   register('immediatelyDisplayChatMessages', {
     name: t('immediatelyDisplayChatMessages.Name'),
     hint: t('immediatelyDisplayChatMessages.Hint'),

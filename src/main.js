@@ -429,6 +429,7 @@ Hooks.once('init', () => {
     onAreaChange: resizeDice,
     onRollAreasChange: () => emitRollAreasChanged(Hooks, getSetting),
     onPetChange: preloadPets,
+    onPetStayChange: () => diceBox?.wake(),
     onLookChange,
     onQualityChange,
     onSoundChange,
@@ -452,6 +453,9 @@ Hooks.once('init', () => {
   Hooks.on('updateChatMessage', (message, changes) => handlers().onUpdate(message, changes));
   Hooks.on('renderChatMessageHTML', (message, html) => handlers().onRender(message, html));
   Hooks.on('deleteChatMessage', (message) => handlers().onDelete(message));
+  Hooks.on('userConnected', (user, connected) => {
+    if (!connected) getPets()?.userGone?.(user.id);
+  });
 });
 
 Hooks.once('ready', async () => {
@@ -539,6 +543,7 @@ Hooks.once('ready', async () => {
         getSetting,
         playSound: (sound) => soundEngine?.result(sound),
         warm: (objects) => renderer.warmObjects(objects),
+        wake: () => box?.wake(),
       };
       preloadPets(); // this engine's layer (idle; the old one was released above)
       box = new DiceBox({

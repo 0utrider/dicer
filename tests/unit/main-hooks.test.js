@@ -49,6 +49,19 @@ test('an engine (re)creation releases the old pet layer, then requests one for t
   expect(src).toMatch(/function preloadPets\(\) \{\s*if \(!petDeps \|\| getSetting\('petsAllowed'\) === false \|\| getSetting\('showPets'\) === false\) return;\s*const run = \(\) => petDeps && requestPets\(petDeps\);/);
 });
 
+test('pet layer wiring: wake dep, userConnected disconnect -> userGone, settings wake the box', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('src/main.js', 'utf8').replace(/\r\n/g, '\n');
+  expect(src).toMatch(/petDeps = \{[\s\S]*?wake: \(\) => box\?\.wake\(\),[\s\S]*?\};\s*preloadPets\(\);/);
+  expect(src).toMatch(
+    /Hooks\.on\('userConnected', \(user, connected\) => \{\s*if \(!connected\) getPets\(\)\?\.userGone\?\.\(user\.id\);\s*\}\);/,
+  );
+  expect(src).toMatch(/onPetStayChange: \(\) => diceBox\?\.wake\(\)/);
+  // the area change reaches the hook from DiceBox.onResize, which main's resize path calls
+  const box = readFileSync('src/throw/dice-box.js', 'utf8');
+  expect(box).toMatch(/areaChanged/);
+});
+
 describe('soundSurface', () => {
   test("the client's override wins over the world surface; 'world' falls back to it", async () => {
     const { soundSurface } = await import('../../src/main.js');
