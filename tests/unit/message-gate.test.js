@@ -2346,6 +2346,62 @@ describe('Task 8: hand rolls in the gate', () => {
     expect(box.rolls[0].specs[0]).toMatchObject({ type: 'd6', variant: 'd3', value: 2, shapeType: 'd6' });
   });
 
+  // ---- Task 9 (H-6, H-7): the receiver's pets take the thrower's layout before a real replay ----
+  const withPet = () => ({
+    ...recordingOf([D20(17)]),
+    obstacles: [{ id: 'u9', x: 3, z: -0.5, r: 0.95, h: 1.5 }], // 1, 0.5 from the area centre
+  });
+
+  test('alignFor is called for real replays only, never for ghost or none views', async () => {
+    let rollsBefore = -1;
+    box.alignFor = vi.fn(() => (rollsBefore = box.roll.mock.calls.length));
+    gateH = make({ areaFor: () => ({ left: 10, top: 10, width: 300, height: 200 }) }); // dieArea: (1, 1)
+    send(handChunk.encodeTrajectory(withPet()));
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(box.alignFor).toHaveBeenCalledTimes(1);
+    expect(rollsBefore).toBe(0); // just before the replay's roll()
+    const [list, area, paths] = box.alignFor.mock.calls[0];
+    // placed like the dice: the receiver's area centre is (1, 1), at scale 1
+    expect(list).toEqual([expect.objectContaining({ id: 'u9', r: 0.95, h: 1.5 })]);
+    expect(list[0].x).toBeCloseTo(2, 2);
+    expect(list[0].z).toBeCloseTo(1.5, 2);
+    expect(area).toMatchObject({ cx: 1, cz: 1, halfWidth: 4, halfDepth: 3 });
+    // the distance to the nearest recorded die centre over the whole replay (the die fell at 1, 1)
+    expect(paths(1, 1)).toBeCloseTo(0, 2);
+    expect(paths(2, 1.5)).toBeCloseTo(Math.hypot(1, 0.5), 2);
+    expect(sourced(box.rolls[0])).toBe(true);
+    box.rolls[0].landed.resolve();
+    await tick();
+    // ghost (a ghost roll), none (a whisper this player cannot read), and the forced fallback
+    send(handChunk.encodeTrajectory(withPet()), { messageId: 'm2' });
+    gateH.onCreate(hmsg({ id: 'm2', rolls: [{ ...handD20([17]), ghost: true }] }));
+    send(handChunk.encodeTrajectory(withPet()), { messageId: 'm3' });
+    gateH.onCreate(hmsg({ id: 'm3', whisper: ['gm'], isContentVisible: false }));
+    gateH.onCreate(hmsg({ id: 'm4' })); // no payload: forced after the wait
+    await tick(HAND_REPLAY_WAIT_MS);
+    expect(box.alignFor).toHaveBeenCalledTimes(1);
+    expect(box.rolls.slice(1).map(sourced)).toEqual([false, false]);
+  });
+
+  test('a throwing alignFor still replays', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    box.alignFor = vi.fn(() => {
+      throw new Error('pets broke');
+    });
+    send(handChunk.encodeTrajectory(withPet()));
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(box.alignFor).toHaveBeenCalledTimes(1);
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(sourced(box.rolls[0])).toBe(true);
+    expect(warn).toHaveBeenCalled();
+    box.rolls[0].landed.resolve();
+    await tick();
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    warn.mockRestore();
+  });
+
   describe('the thrower sends after its RollStart (privacy)', () => {
     let sent, thrower;
     const recording = () => recordingOf([D20(17)]);

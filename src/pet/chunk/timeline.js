@@ -22,20 +22,24 @@ const WATCH_FROM = ENTER_MS + THROW_MS;
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
 /**
- * Where a pet is on its timeline at `now`. track = { beganAt, landedAt?, leaveAt?, leaveMs? }.
+ * Where a pet is on its timeline at `now`. track = { beganAt, landedAt?, leaveAt?, leaveMs?, hand? }.
  * enter, throw, watch (until the dice land), react, exit, gone. `t` runs 0..1 within the phase
- * (watch has no fixed length: its t is 0). A leave caps the exit so it ends by the fade; with no
- * leave, LIFE_MS after beganAt acts as one (a quick exit that ends by then).
+ * (watch has no fixed length: its t is 0). A hand throw (H-5) has no throw phase: the watch starts
+ * at ENTER_MS (at once for a pet begun ENTER_MS back, watching from rest). A leave caps the exit
+ * so it ends by the fade; with no leave, LIFE_MS after beganAt acts as one (a quick exit that ends
+ * by then), but never before a landed roll's reaction and exit (a free throw lands up to 13 s in).
  */
 export function phaseAt(track, now) {
   const { beganAt, landedAt } = track;
   let { leaveAt, leaveMs } = track;
   if (leaveAt == null) {
-    leaveAt = beganAt + LIFE_MS - QUICK_EXIT_MS;
+    leaveAt =
+      Math.max(beganAt + LIFE_MS, landedAt == null ? 0 : landedAt + REACT_MS + EXIT_MS) - QUICK_EXIT_MS;
     leaveMs = QUICK_EXIT_MS;
   }
   const since = now - beganAt;
-  const reactAt = landedAt == null ? Infinity : Math.max(landedAt, beganAt + WATCH_FROM);
+  const watchFrom = track.hand ? ENTER_MS : WATCH_FROM;
+  const reactAt = landedAt == null ? Infinity : Math.max(landedAt, beganAt + watchFrom);
   let exitAt = reactAt + REACT_MS;
   let exitMs = EXIT_MS;
   // The pet is always gone by leaveAt + leaveMs (the dice have faded by then).
@@ -53,6 +57,6 @@ export function phaseAt(track, now) {
   }
   if (now >= reactAt) return { phase: 'react', t: clamp01((now - reactAt) / REACT_MS) };
   if (since < ENTER_MS) return { phase: 'enter', t: clamp01(since / ENTER_MS) };
-  if (since < WATCH_FROM) return { phase: 'throw', t: clamp01((since - ENTER_MS) / THROW_MS) };
+  if (since < watchFrom) return { phase: 'throw', t: clamp01((since - ENTER_MS) / THROW_MS) };
   return { phase: 'watch', t: 0 };
 }

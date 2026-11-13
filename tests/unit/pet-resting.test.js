@@ -154,3 +154,25 @@ test('without away restSpot draws as before', () => {
   for (const seed of [1, 2, 3])
     expect(restSpot(AREA, H, [], mulberry32(seed), [], undefined)).toEqual(restSpot(AREA, H, [], mulberry32(seed)));
 });
+
+// ---- R7: clear (the thrower-layout case of Task 9: off the replay's die paths) ----
+test('restSpot honours away over 200 seeded tries (R7: the `clear` predicate, 7th parameter)', () => {
+  const clear = (p) => p.x < AREA.cx; // the paths cover the right half
+  for (let seed = 1; seed <= 200; seed++) {
+    const spot = restSpot(AREA, H, [], mulberry32(seed), [], null, clear);
+    expect(clear(spot), `seed ${seed}`).toBe(true);
+    const r = ringOf(AREA, spot);
+    expect(r, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
+    expect(r, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
+  }
+  // with the cursor dodge too: both hold
+  const away = { x: AREA.cx - 6, z: AREA.cz + 3, min: 4 };
+  for (let seed = 1; seed <= 200; seed++) {
+    const spot = restSpot(AREA, H, [], mulberry32(seed), [], away, clear);
+    expect(clear(spot), `seed ${seed}`).toBe(true);
+  }
+  // a predicate always true draws exactly as without it; one never true still gives a spot
+  expect(restSpot(AREA, H, [], mulberry32(5), [], null, () => true)).toEqual(restSpot(AREA, H, [], mulberry32(5)));
+  const none = restSpot(AREA, H, [], mulberry32(5), [], null, () => false);
+  expect(Number.isFinite(none.x) && Number.isFinite(none.z)).toBe(true);
+});

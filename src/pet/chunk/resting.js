@@ -70,11 +70,12 @@ function slack(area, height, taken, x, z, avoid) {
  * |z - cz| / halfDepth) <= RING_OUT), and at least 2 x height from each of `taken` ({x, z}: the other
  * pets and puddles), with the pet's body (BODY x height) off each of `avoid` ({x0, x1, z0, z1}:
  * Foundry's UI in die units), and, given `away` ({x, z, min}: the cursor a pet dodges), at least
- * `min` from (x, z). Seeded rejection sampling with `rand`: the first of 24 valid tries; if none
+ * `min` from (x, z), and, given `clear` ((p: {x, z}) => boolean: off a hand replay's die paths, R7),
+ * where it is true. Seeded rejection sampling with `rand`: the first of 24 valid tries; if none
  * is, the valid one farthest from `away`, else (a crowded or tiny area) the candidate farthest
- * from breaking a rule, never a throw.
+ * from breaking a rule (one `clear` refuses counts as worse than any other), never a throw.
  */
-export function restSpot(area, height, taken, rand, avoid = [], away = null) {
+export function restSpot(area, height, taken, rand, avoid = [], away = null, clear = null) {
   const ex = Math.max(0, Math.min(area.halfWidth - EDGE_GAP * height, RING_OUT * area.halfWidth));
   const ez = Math.max(0, Math.min(area.halfDepth - EDGE_GAP * height, RING_OUT * area.halfDepth));
   let best = null;
@@ -85,6 +86,7 @@ export function restSpot(area, height, taken, rand, avoid = [], away = null) {
     const x = area.cx + (rand() * 2 - 1) * ex;
     const z = area.cz + (rand() * 2 - 1) * ez;
     let s = slack(area, height, taken, x, z, avoid);
+    if (clear && !clear({ x, z })) s = Math.min(s, 0) - 1e6;
     if (s >= 0 && away) {
       const d = Math.hypot(x - away.x, z - away.z);
       if (d < away.min) {

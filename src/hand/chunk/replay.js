@@ -12,6 +12,26 @@ import { HAND_BUFFER_MS, HAND_REPLAY_WAIT_MS } from '../gate-hand.js';
 
 const BUFFER_LIMIT = 32;
 const SENDER_LIMIT = 4;
+let alignWarned = false;
+
+/**
+ * `paths(x, z)` for alignFor: the distance from (x, z) to the nearest die centre of a placed
+ * throw over all its frames. The positions are gathered on the first call.
+ */
+function pathsOf(placed) {
+  let xz = null;
+  return (x, z) => {
+    if (!xz) {
+      const all = [];
+      for (const c of placed.chunks)
+        for (let o = 0; o < c.length; o += FLOATS_PER_DIE) all.push(c[o], c[o + 2]);
+      xz = Float64Array.from(all);
+    }
+    let best = Infinity;
+    for (let i = 0; i < xz.length; i += 2) best = Math.min(best, (xz[i] - x) ** 2 + (xz[i + 1] - z) ** 2);
+    return Math.sqrt(best);
+  };
+}
 
 /**
  * The receiver's trajectory buffer behind createHandGate (one per gate). Payloads are keyed by
@@ -84,6 +104,15 @@ export function handBuffer({ now = () => Date.now(), setTimeoutFn = (fn, ms) => 
             capacity: opts?.capacityDice,
           });
         if (!r) return null;
+        // H-6: this screen's pets take the thrower's layout just before the replay's roll(). Only
+        // real views reach here (H-7: the gate replays nothing for ghost or none). A throw warns
+        // once and the replay goes on.
+        try {
+          diceBox.alignFor?.(r.obstacles, r.area, r.paths);
+        } catch (err) {
+          if (!alignWarned) console.warn('dicer: pets could not take the thrower layout', err);
+          alignWarned = true;
+        }
         const first = cast(r.specs, { ...opts, source: r.source, free: true, edge: r.edge });
         return r.extras.length ? first.then(() => alive() && cast(r.extras)) : first;
       } catch (err) {
@@ -108,8 +137,9 @@ const resultOfSpec = (s) => (s.variant === 'd100tens' ? s.value : resultOf(s.val
  * and the final frame must read the message's result for it. Its replay spec is this plan's spec
  * for the key, or a look-only one (no fx or damage type) when this plan dropped it (maxDice,
  * showExtraDice off); it is drawn with the recorded shape and is free (physics already decided).
- * Returns {specs, source, extras, edge, obstacles}: `extras` are this plan's dice the recording
- * lacks (explosions, rerolls thrown later), thrown forced after the replay lands (P6-D3).
+ * Returns {specs, source, extras, edge, obstacles, area, paths}: `extras` are this plan's dice the
+ * recording lacks (explosions, rerolls thrown later), thrown forced after the replay lands (P6-D3);
+ * `obstacles`, `area` and `paths` are placed here, for the pets' alignFor (H-6).
  */
 export function replayFor(decoded, { n, specs, full, diceBox, rect, capacity = 0 }) {
   const { keys, shapes } = decoded;
@@ -145,6 +175,9 @@ export function replayFor(decoded, { n, specs, full, diceBox, rect, capacity = 0
     source: replaySource(placed),
     extras: specs.filter((s) => !recorded.has(s.key)),
     edge: decoded.edge,
-    obstacles: placed.obstacles, // Task 9 aligns the pets to these
+    // Task 9: the pets here take these spots (alignFor), off the die paths
+    obstacles: placed.obstacles,
+    area: placed.area,
+    paths: pathsOf(placed),
   };
 }

@@ -24,6 +24,7 @@ import {
   PET_HEIGHT,
   KIND_FOOTPRINT,
 } from './resting.js';
+import { petFor } from '../pet-for.js';
 
 /** At most this many pets on screen at once. */
 export const MAX_PETS = 3;
@@ -101,6 +102,7 @@ export function createPetLayer(deps) {
   const doc = deps.doc || globalThis.document; // test seam: Foundry's UI, which rest spots avoid
   const hooks = deps.hooks || globalThis.Hooks; // test seam: Foundry's hooks (area edits)
   const win = deps.win || globalThis.window; // test seam: the pointer listener
+  const userOf = deps.userOf || ((id) => globalThis.game?.users?.get?.(id)); // test seam: alignFor's absent pets
   // The last stage DiceBox told us ({cx, cz, halfWidth, halfDepth, rect?}: rect is its px rect): a
   // rest area is always fitted inside it.
   let stage = null;
@@ -258,14 +260,18 @@ export function createPetLayer(deps) {
       /* a stopped engine */
     }
   };
+  /** Whether pets are allowed and shown. */
+  const shown = () => {
+    try {
+      return getSetting('petsAllowed') !== false && getSetting('showPets') !== false;
+    } catch {
+      return true;
+    }
+  };
   /** Whether resting is on: petStay is not 0 (leave after the roll), and pets allowed and shown. */
   const stays = () => {
     try {
-      return (
-        getSetting('petStay') !== 0 &&
-        getSetting('petsAllowed') !== false &&
-        getSetting('showPets') !== false
-      );
+      return getSetting('petStay') !== 0 && shown();
     } catch {
       return true;
     }
@@ -350,13 +356,14 @@ export function createPetLayer(deps) {
   }
   /**
    * A free rest spot in `area` for user `userId`'s pet of `height`: spaced from the other pets
-   * (but not `skip`, a pet about to be sent off), off Foundry's UI, and `away` from the cursor.
+   * (but not `skip`, a pet about to be sent off), off Foundry's UI, `away` from the cursor, and
+   * where `clear` holds (restSpot's).
    */
-  function spotFor(userId, area, height, skip, away) {
+  function spotFor(userId, area, height, skip, away, clear) {
     const taken = [];
     for (const o of pets.values())
       if (o.userId !== userId && o !== skip && standing(o)) taken.push(spotOf(o));
-    return restSpot(area, height, taken, rand, uiRects(), away);
+    return restSpot(area, height, taken, rand, uiRects(), away, clear);
   }
 
   // ---- dodging the cursor ----
@@ -454,18 +461,23 @@ export function createPetLayer(deps) {
         pet.calmUntil = now + DODGE_COOLDOWN_MS;
         continue;
       }
-      pet.goFrom = at;
-      pet.goTo = to;
-      pet.goAt = now;
-      pet.goMs = pet.kind === 'dragonling' ? FLY_MS : MOVE_MS;
-      pet.spot = to; // obstaclesFor reports the destination (a throw may start mid-move)
-      pet.state = 'move';
-      pet.yaw0 = pet.yaw;
-      pet.yawGo = Math.atan2(to.x - at.x, to.z - at.z); // faces where it goes
-      pet.yawTo = Math.atan2(at.x - to.x, at.z - to.z); // then turns back to look where it was
-      pet.calmUntil = now + pet.goMs + DODGE_COOLDOWN_MS;
-      wake();
+      // then it turns back to look where it was (at the cursor)
+      goTo(pet, at, to, pet.kind === 'dragonling' ? FLY_MS : MOVE_MS, Math.atan2(at.x - to.x, at.z - to.z), now);
     }
+  }
+  /** A move of a standing pet from `at` to `to` over `ms` (stepMove), facing `yawTo` at the end. */
+  function goTo(pet, at, to, ms, yawTo, now) {
+    pet.goFrom = at;
+    pet.goTo = to;
+    pet.goAt = now;
+    pet.goMs = ms;
+    pet.spot = to; // obstaclesFor reports the destination (a throw may start mid-move)
+    pet.state = 'move';
+    pet.yaw0 = pet.yaw;
+    pet.yawGo = Math.atan2(to.x - at.x, to.z - at.z); // faces where it goes
+    pet.yawTo = yawTo;
+    pet.calmUntil = now + ms + DODGE_COOLDOWN_MS;
+    wake();
   }
   const freeSpot = (pet) => spotFor(pet.userId, pet.area, pet.creature.height);
   const fitted = (area) => (stage ? fitArea(area, stage) : area);
@@ -508,6 +520,7 @@ export function createPetLayer(deps) {
     return null;
   }
   const restOf = (pet, now) => {
+    pet.aligned = false;
     if (pet.state === 'routine') pet.idleAt = now; // idle since its routine ended
     if (stage) pet.area = fitArea(pet.area, stage);
     if (pet.state === 'routine' && pet.atRest && inRestRing(pet.area, pet.creature.height, pet.base)) {
@@ -520,6 +533,7 @@ export function createPetLayer(deps) {
     hopTo(pet, freeSpot(pet), 'hop', now);
   };
   const sendOff = (pet, now) => {
+    pet.aligned = false;
     if (pet.state === 'off' || pet.state === 'fade') return;
     if (pet.state === 'puddle') {
       pet.state = 'fade'; // a puddle does not hop: it fades
@@ -532,9 +546,10 @@ export function createPetLayer(deps) {
 
   /**
    * Whether a pet of `userId` may stand: it has a place already, or there is a free place, or a
-   * resting pet (never one mid-routine) can give its place up; the one idle longest goes (victim).
+   * resting pet (never one mid-routine, nor one of `spare`, a Set of user ids) can give its place
+   * up; the one idle longest goes (victim).
    */
-  function slotFor(userId) {
+  function slotFor(userId, spare) {
     const mine = pets.get(userId);
     let count = 0;
     let victim = null;
@@ -542,6 +557,7 @@ export function createPetLayer(deps) {
       if (p === mine || !standing(p)) continue;
       count++;
       if (
+        !spare?.has(p.userId) &&
         (p.state === 'hop' || p.state === 'rest' || p.state === 'move' || p.state === 'puddle') &&
         (!victim || p.idleAt < victim.idleAt)
       )
@@ -550,7 +566,26 @@ export function createPetLayer(deps) {
     return count < MAX_PETS ? { ok: true } : { ok: !!victim, victim };
   }
 
-  function begin(key, { spec, edge, area, centre }) {
+  /** A new pet of `spec` in the scene, not yet placed (its creature made from CREATURES). */
+  function makePet(spec) {
+    const group = new THREE.Group();
+    group.userData.dicerPet = { phase: 'enter' };
+    const shadow = makeShadow();
+    const sparkle = makeSparkle();
+    group.add(shadow, sparkle);
+    const pet = { userId: spec.userId, group, shadow, sparkle, creature: null, rolls: new Map(), state: 'routine' };
+    setCreature(pet, CREATURES[spec.kind](spec.color), spec);
+    scene.add(group);
+    pets.set(spec.userId, pet);
+    petList.push(pet);
+    return pet;
+  }
+
+  /**
+   * A roll with a pet begins (PetHook.begin). `hand` (H-5): a hand throw, with no throw pose; its
+   * edge is the hand edge. A pet alignFor put at the thrower's spot watches from there.
+   */
+  function begin(key, { spec, edge, area, centre, hand }) {
     if (disposed) return;
     const make = CREATURES[spec.kind];
     let pet = pets.get(spec.userId);
@@ -562,35 +597,19 @@ export function createPetLayer(deps) {
       if (!slot.ok) return;
       if (slot.victim) sendOff(slot.victim, clock());
     }
-    if (fresh) {
-      const creature = make(spec.color);
-      const group = new THREE.Group();
-      group.userData.dicerPet = { phase: 'enter' };
-      const shadow = makeShadow();
-      const sparkle = makeSparkle();
-      group.add(shadow, sparkle);
-      pet = {
-        userId: spec.userId,
-        group,
-        shadow,
-        sparkle,
-        creature: null,
-        rolls: new Map(),
-        state: 'routine',
-      };
-      setCreature(pet, creature, spec);
-      scene.add(group);
-      pets.set(spec.userId, pet);
-      petList.push(pet);
-    } else if (make && (pet.kind !== spec.kind || pet.color !== spec.color)) {
+    if (fresh) pet = makePet(spec);
+    else if (make && (pet.kind !== spec.kind || pet.color !== spec.color)) {
       setCreature(pet, make(spec.color), spec); // the editor's Throw shows the new pick at once
     }
     const now = clock();
     // resting is on: the pet watches from where it rests (a first appearance hops straight to a new
     // rest spot, the one obstaclesFor sent the physics); otherwise it takes the edge spot.
+    // A hand replay's pet that alignFor placed at the thrower's spot watches from it (petStay 0 too).
     const rest = stays()
       ? (restingSpot(pet) ?? newSpot(spec.userId, area, pet.creature.height, null, false))
-      : null;
+      : hand && pet.aligned
+        ? restingSpot(pet)
+        : null;
     if (!rest) pending.delete(spec.userId);
     if (down) {
       pet.group.scale.setScalar(1);
@@ -638,7 +657,7 @@ export function createPetLayer(deps) {
     // a first appearance at a rest spot hops in from just outside the area
     const outside = rest && fresh ? { ...offPoint(area, rest, pet.creature.height), y: 0 } : null;
     pet.from = moved ? was : outside;
-    pet.track = { beganAt: fresh || moved ? now : now - ENTER_MS };
+    pet.track = { beganAt: fresh || moved ? now : now - ENTER_MS, hand: !!hand };
   }
 
   const petOf = (key) => {
@@ -982,7 +1001,9 @@ export function createPetLayer(deps) {
             if (!busy) sendOff(pet, now);
           } else if (!held) nextLeave = Math.min(nextLeave, pet.leaveAt);
         }
-        alive = step(pet, now, shadows, stay);
+        // A pet alignFor placed stays while the replay flies, even with petStay 0 (not mid-routine:
+        // that one follows its own roll).
+        alive = step(pet, now, shadows, stay || (pet.aligned && busy && pet.state !== 'routine'));
       } catch (err) {
         console.warn('Dicer | pet', err);
       }
@@ -1018,6 +1039,83 @@ export function createPetLayer(deps) {
       if (solid(p) && p !== own?.victim && !(own?.ok && p.userId === spec.userId))
         list.push(obstacle(spotOf(p), p.creature.height, p.userId, p.creature.footprint));
     return list;
+  }
+
+  /**
+   * H-6: a hand replay is about to play here with the thrower's pet layout (`list`: {id, x, z, r, h}
+   * in this screen's die units, placed like the dice; `area`: the replay's area; `paths(x, z)`: the
+   * distance to the nearest recorded die centre over the whole replay). Each listed standing pet
+   * moves to its spot (REST_HOP_MS); a listed pet not here hops in to it at rest, if slotFor finds
+   * it a place (a full cap sends the longest-idle resting pet off, never one mid-routine or listed);
+   * a listed pet mid-routine, splatted, a puddle or fading stays as it is (a puddle is no obstacle:
+   * its die passes over it), and one with no place or no pet here is skipped (its die bounces off
+   * empty air, and its splat finds no pet). An unlisted standing pet whose footprint the paths come
+   * within r + 1 of moves to a rest spot they clear, if it finds one. Nothing with pets hidden or
+   * not allowed. A placed or moved pet stays while the replay flies, even with petStay 0.
+   */
+  function alignFor(list, area, paths) {
+    if (disposed || !shown()) return;
+    const now = clock();
+    const items = (Array.isArray(list) ? list : []).filter(
+      (o) => o && o.id != null && Number.isFinite(o.x) && Number.isFinite(o.z),
+    );
+    const spare = new Set(items.map((o) => o.id));
+    const yawAt = (to) => Math.atan2(area.cx - to.x, area.cz - to.z); // faces the replay's dice
+    const absent = [];
+    for (const o of items) {
+      const pet = pets.get(o.id);
+      const to = { x: o.x, z: o.z };
+      if (!pet || pet.state === 'off') absent.push([o, to]);
+      else if (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move') {
+        const at = pos(pet);
+        pet.aligned = true;
+        if (Math.hypot(at.x - to.x, at.z - to.z) > MOVED || at.y > MOVED)
+          goTo(pet, at, to, REST_HOP_MS, yawAt(to), now);
+      }
+    }
+    for (const [o, to] of absent) {
+      let pet = pets.get(o.id);
+      if (pet?.gone) continue;
+      const spec = pet ? null : petFor({ user: userOf(o.id), view: 'real', getSetting });
+      if (!pet && !CREATURES[spec?.kind]) continue;
+      const slot = slotFor(o.id, spare);
+      if (!slot.ok) continue;
+      if (slot.victim) sendOff(slot.victim, now);
+      if (!pet) {
+        pet = makePet({ ...spec, userId: o.id });
+        let own = null;
+        try {
+          own = deps.areaOf?.(o.id);
+        } catch {
+          /* no area: the replay's */
+        }
+        pet.area = fitted(own ?? area);
+        const from = offPoint(area, to, pet.creature.height); // hops in from just outside
+        pet.px = from.x;
+        pet.pz = from.z;
+        pet.hop = 0;
+        pet.base = to;
+        pet.yaw = Math.atan2(to.x - from.x, to.z - from.z);
+        pet.reaction = 'plain';
+        pet.lastNow = now;
+      }
+      pet.atRest = true;
+      pet.idleAt = now;
+      hopTo(pet, to, 'hop', now);
+      pet.aligned = true;
+    }
+    for (const pet of pets.values()) {
+      if (spare.has(pet.userId) || !(pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move')) continue;
+      const r = pet.creature.footprint ?? 0.45 * pet.creature.height;
+      const clear = (p) => paths(p.x, p.z) > r + 1;
+      const at = spotOf(pet);
+      if (clear(at)) continue;
+      pet.area = fitted(pet.area);
+      const to = spotFor(pet.userId, pet.area, pet.creature.height, null, null, clear);
+      if (!clear(to)) continue; // nowhere the paths clear: it stays
+      pet.aligned = true;
+      goTo(pet, pos(pet), to, REST_HOP_MS, yawAt(to), now);
+    }
   }
 
   /** The user left: their resting pet hops off; one mid-routine leaves when its roll ends. */
@@ -1213,6 +1311,7 @@ export function createPetLayer(deps) {
     end,
     update,
     obstaclesFor,
+    alignFor,
     userGone,
     areaChanged,
     hit,

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED, PUDDLE_LEAVE_MS } from '../../src/pet/chunk/pets.js';
 import { mulberry32 as mulberry } from '../../src/core/rng.js';
+import { REST_HOP_MS } from '../../src/pet/chunk/timeline.js';
 
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
 let clockNow = 0;
@@ -1732,4 +1733,165 @@ test('no idle leave while holding(); the timer re-arms after release', () => {
   n.held.on = false;
   n.m.layer.update((clockNow += 16));
   expect(n.timers.live()).toHaveLength(1);
+});
+
+// ---- Task 9: pets in hand throws (H-5), the thrower's layout on receivers (H-6) ----
+describe('Task 9: hand throws and alignFor', () => {
+  const MIMIC_R = 0.95;
+  const userOf = (id) => ({ id, flags: { dicer: { pet: { kind: id === 'nopet' ? 'none' : 'slime', color: '#00ff00' } } } });
+  const obOf = (m, id) => m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG }).find((o) => o.id === id);
+  const listed = (id, x, z) => ({ id, x, z, r: MIMIC_R, h: 1.5 });
+  const far = () => 100; // no die passes near anything
+
+  test("a hand begin never poses 'throw'", () => {
+    // a pet that hops in (petStay 0) and one watching from its resting spot
+    for (const settings of [{ petStay: 0 }, { petStay: 60 }]) {
+      const m = make(settings);
+      if (settings.petStay) rollToRest(m, 'u1');
+      const poses = [];
+      m.layer.begin('h', { ...bigInfo(spec('u1'), 2), hand: true });
+      m.layer.update(clockNow);
+      const first = phaseOf(m);
+      const start = clockNow;
+      while (clockNow < start + 2000) {
+        m.layer.update((clockNow += 16));
+        poses.push(phaseOf(m));
+      }
+      expect(poses).not.toContain('throw');
+      expect(poses).toContain('watch');
+      if (settings.petStay) expect(first).toBe('watch'); // from rest: at once
+    }
+  });
+
+  test('alignFor moves a listed resting pet to its spot', () => {
+    const m = make({ petStay: 60 });
+    rollToRest(m, 'u1');
+    const from = { x: at(m.scene).x, z: at(m.scene).z };
+    const to = { x: -from.x, z: -from.z };
+    m.layer.alignFor([listed('u1', to.x, to.z)], BIG, far);
+    // the physics' view is the destination at once; the pet moves there over REST_HOP_MS
+    expect(obOf(m, 'u1')).toMatchObject({ x: to.x, z: to.z });
+    m.layer.update((clockNow += 100));
+    const mid = at(m.scene);
+    expect(Math.hypot(mid.x - from.x, mid.z - from.z)).toBeGreaterThan(0);
+    expect(Math.hypot(mid.x - to.x, mid.z - to.z)).toBeGreaterThan(0);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    expect(at(m.scene).x).toBeCloseTo(to.x, 6);
+    expect(at(m.scene).z).toBeCloseTo(to.z, 6);
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+  });
+
+  test('alignFor places an absent listed pet at rest within the cap', () => {
+    const m = make({ petStay: 60 }, { userOf, random: mulberry(3) });
+    rollToRest(m, 'u1');
+    clockNow += 500;
+    rollToRest(m, 'u2');
+    m.layer.alignFor([listed('u3', 4, 3)], BIG, far);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    expect(pets(m.scene)).toHaveLength(3);
+    expect(obOf(m, 'u3')).toMatchObject({ x: 4, z: 3, r: 1.0 }); // a slime, its own footprint
+    expect(at(m.scene, 2).x).toBeCloseTo(4, 6);
+    expect(at(m.scene, 2).z).toBeCloseTo(3, 6);
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    // the cap is full: the longest-idle resting pet (u1) gives its place up
+    m.layer.alignFor([listed('u4', -4, -3)], BIG, far);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    expect(ids(m)).toEqual(['u2', 'u3', 'u4']);
+    // all three mid-routine: no place, nothing placed (its die passes through empty air here)
+    for (const u of ['u2', 'u3', 'u4']) m.layer.begin(`r-${u}`, bigInfo(spec(u)));
+    m.layer.alignFor([listed('u5', 4, -3)], BIG, far);
+    runTo(m, clockNow + 100);
+    expect(ids(m)).toEqual(['u2', 'u3', 'u4']);
+    // a user whose pet is 'none', or an unknown user: nothing placed
+    const n = make({ petStay: 60 }, { userOf: (id) => (id === 'ghost' ? null : userOf(id)) });
+    n.layer.alignFor([listed('nopet', 4, 3), listed('ghost', -4, 3)], BIG, far);
+    expect(pets(n.scene)).toHaveLength(0);
+    // showPets or petsAllowed off: nothing placed (H-6)
+    for (const off of [{ showPets: false }, { petsAllowed: false }]) {
+      const o = make({ petStay: 60, ...off }, { userOf });
+      o.layer.alignFor([listed('u1', 4, 3)], BIG, far);
+      expect(pets(o.scene)).toHaveLength(0);
+    }
+  });
+
+  test('alignFor with petStay 0 keeps the placed pet while the replay is in flight, then it leaves', () => {
+    let active = 0;
+    const m = make({ petStay: 0 }, { userOf, activeRolls: () => active });
+    active = 1; // the replay's roll() follows alignFor at once
+    m.layer.alignFor([listed('u3', 4, 3)], BIG, far);
+    runTo(m, clockNow + 2000);
+    expect(pets(m.scene)).toHaveLength(1);
+    expect(at(m.scene).x).toBeCloseTo(4, 6);
+    // the roller's own (aligned) pet watches its hand replay from the recorded spot
+    m.layer.begin('h', { ...bigInfo(spec('u3'), 1), hand: true });
+    runTo(m, clockNow + 500);
+    expect(at(m.scene).x).toBeCloseTo(4, 6);
+    expect(at(m.scene).z).toBeCloseTo(3, 6);
+    m.layer.landed('h', [d20(5)]);
+    m.layer.leave('h', 0);
+    m.layer.end('h');
+    active = 0;
+    expect(runTo(m, clockNow + 3000)).toBe(false);
+    expect(pets(m.scene)).toHaveLength(0);
+  });
+
+  test('alignFor moves an unlisted pet off the die paths', () => {
+    const m = make({ petStay: 60 }, { random: mulberry(9) });
+    rollToRest(m, 'u1');
+    const s = { x: at(m.scene).x, z: at(m.scene).z };
+    // a pet no die passes near stays put
+    m.layer.alignFor([], BIG, far);
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    expect(at(m.scene).x).toBe(s.x);
+    // the recorded dice rolled straight across its spot
+    const paths = (x, z) => Math.abs(z - s.z);
+    m.layer.alignFor([], BIG, paths);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    const p = at(m.scene);
+    expect(paths(p.x, p.z)).toBeGreaterThan(MIMIC_R + 1);
+    inRing(p);
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+  });
+
+  test('alignFor never moves a pet mid-routine or a puddle', () => {
+    const m = puddled({}, 'u1');
+    const puddle = { x: at(m.scene).x, z: at(m.scene).z };
+    m.layer.begin('r2', bigInfo(spec('u2'), 2));
+    runTo(m, clockNow + 600);
+    const routine = { x: at(m.scene, 1).x, z: at(m.scene, 1).z };
+    const paths = (x, z) => Math.min(Math.hypot(x - puddle.x, z - puddle.z), Math.hypot(x - routine.x, z - routine.z));
+    m.layer.alignFor([listed('u1', 5, 4), listed('u2', -5, -4)], BIG, paths);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    expect(phaseOf(m, 0)).toBe('puddle'); // a listed puddle stays a puddle, where it lies
+    expect(at(m.scene, 0).x).toBeCloseTo(puddle.x, 6);
+    expect(at(m.scene, 0).z).toBeCloseTo(puddle.z, 6);
+    expect(at(m.scene, 1).x).toBeCloseTo(routine.x, 6);
+    expect(at(m.scene, 1).z).toBeCloseTo(routine.z, 6);
+    // unlisted: the same
+    m.layer.alignFor([], BIG, paths);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    expect(at(m.scene, 0).x).toBeCloseTo(puddle.x, 6);
+    expect(at(m.scene, 1).x).toBeCloseTo(routine.x, 6);
+  });
+
+  test("Review Focus 5: a replayed -3 impact over SPLAT_SPEED splats the listed pet on the receiver; the owner's next roll reforms it", () => {
+    // The receiver had no pet of u1: the thrower's layout places it, the replay's impact
+    // (-3 - i mapped to u1 by DiceBox) hits it at the recorded speed, and it splats here too.
+    const m = make({ petStay: 60 }, { userOf });
+    m.layer.alignFor([listed('u1', 4, 3)], BIG, far);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    m.layer.hit('u1', { speed: SPLAT_SPEED + 1, position: { x: 4.5, y: 1, z: 3 }, dieKey: '0:0:0' });
+    runTo(m, clockNow + 1300);
+    expect(phaseOf(m)).toBe('puddle');
+    expect(splatCalls(m)).toBe(1);
+    expect(at(m.scene).x).toBeCloseTo(4, 6); // where the dice met it
+    expect(at(m.scene).z).toBeCloseTo(3, 6);
+    expect(obOf(m, 'u1')).toBeUndefined(); // a puddle is no obstacle
+    m.layer.begin('again', bigInfo(spec('u1'), 0));
+    m.layer.update(clockNow);
+    expect(phaseOf(m)).toBe('reform');
+    runTo(m, clockNow + 1500);
+    expect(phaseOf(m)).not.toMatch(/puddle|reform|splat/);
+    expect(pets(m.scene)[0].children[0].visible).toBe(true);
+  });
 });

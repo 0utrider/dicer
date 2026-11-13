@@ -75,3 +75,24 @@ test('a roll that never lands or leaves is force-exited by LIFE_MS after it bega
   // landed but never left: the normal exit still ends it well before the cap
   expect(phaseAt({ beganAt: 0, landedAt: 2000 }, 2000 + REACT_MS + EXIT_MS).phase).toBe('gone');
 });
+
+test('hand track has no throw phase', () => {
+  const tr = { beganAt: 1000, hand: true };
+  expect(phaseAt(tr, 1000).phase).toBe('enter');
+  expect(phaseAt(tr, 1000 + ENTER_MS)).toEqual({ phase: 'watch', t: 0 });
+  for (let t = 1000; t < 4000; t += 10) expect(phaseAt(tr, t).phase).not.toBe('throw');
+  // a pet watching from its resting spot (begun ENTER_MS back) watches at once
+  expect(phaseAt({ beganAt: 5000 - ENTER_MS, hand: true }, 5000)).toEqual({ phase: 'watch', t: 0 });
+  // a landing during the enter reacts as soon as the enter ends
+  expect(phaseAt({ beganAt: 0, landedAt: 100, hand: true }, ENTER_MS).phase).toBe('react');
+});
+
+test('a free throw landing late (13-14 s) still reacts and exits in full: the lifetime cap waits for it', () => {
+  const tr = { beganAt: 0, landedAt: 14000, hand: true };
+  expect(phaseAt(tr, 14000 + REACT_MS - 1).phase).toBe('react');
+  expect(phaseAt(tr, 14000 + REACT_MS)).toEqual({ phase: 'exit', t: 0 });
+  expect(phaseAt(tr, 14000 + REACT_MS + EXIT_MS)).toEqual({ phase: 'gone', t: 1 });
+  // unlanded, the cap is LIFE_MS as before
+  expect(phaseAt({ beganAt: 0, hand: true }, LIFE_MS - QUICK_EXIT_MS).phase).toBe('exit');
+  expect(phaseAt({ beganAt: 0, hand: true }, LIFE_MS).phase).toBe('gone');
+});
