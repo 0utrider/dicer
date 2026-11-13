@@ -9,6 +9,7 @@ import {
   renderResult,
   renderAll,
 } from '../../src/audio/synth.js';
+import { USER_SOUNDS } from '../../src/audio/sound-names.js';
 
 const SR = 48000;
 
@@ -135,6 +136,24 @@ describe('renderSurface / renderResult', () => {
       expect(peak(a)).toBeLessThanOrEqual(1);
     }
     expect(() => renderResult('nope', SR)).toThrow(RangeError);
+  });
+
+  it('pet sounds are non-silent, no louder than fanfare, and sized to their duration', () => {
+    const fan = peak(renderResult('fanfare', SR));
+    for (const [n, dur] of [['petHappy', 0.45], ['petSad', 0.6]]) {
+      const a = renderResult(n, SR);
+      expect(a.length).toBe(Math.floor(dur * SR));
+      expect(a.every(Number.isFinite)).toBe(true);
+      expect(peak(a)).toBeGreaterThan(0.1);
+      expect(peak(a)).toBeLessThanOrEqual(0.7 * fan);
+    }
+  });
+
+  it('pet sounds are never offered as user sound choices', () => {
+    expect(RESULT_SOUNDS).toContain('petHappy');
+    expect(USER_SOUNDS).not.toContain('petHappy');
+    expect(USER_SOUNDS).not.toContain('petSad');
+    expect(USER_SOUNDS).toContain('fanfare');
   });
 });
 

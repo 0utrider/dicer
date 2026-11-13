@@ -20,6 +20,7 @@ import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
 import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
+import { throwEdge } from '../../src/core/rng.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -2570,5 +2571,147 @@ describe('a DSN preset faces keep the d4 classic; a never-drawn d4 model does no
     expect(die.faces).toBe(faces);
     expect(die.shape).toBe(getShape('d4'));
     box.clear();
+  });
+});
+
+describe('pet hook', () => {
+  const PET = { userId: 'u1', kind: 'cat', color: '#fa0', ghost: false };
+  const fakePet = (over = {}) => {
+    const calls = [];
+    const pet = {
+      calls,
+      moving: false,
+      begin: vi.fn((key, info) => calls.push(['begin', key, info])),
+      landed: vi.fn((key, dice) => calls.push(['landed', key, dice])),
+      leave: vi.fn((key, ms) => calls.push(['leave', key, ms])),
+      end: vi.fn((key) => calls.push(['end', key])),
+      update: vi.fn(() => pet.moving),
+      ...over,
+    };
+    return pet;
+  };
+  const names = (pet) => pet.calls.map((c) => c[0]);
+
+  /** Lands the roll, lets it linger and fade, and finishes it. */
+  async function playOut(renderer, physics) {
+    physics.flush();
+    renderer.tick(16);
+    renderer.tick(500);
+    renderer.tick(2000);
+    await flushMicrotasks();
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2100);
+    renderer.tick(2600);
+    await flushMicrotasks();
+  }
+
+  test('a roll with a pet spec calls begin at reveal, landed with each die, leave on fade, end on finish', async () => {
+    const seed = 123456;
+    vi.stubGlobal('crypto', { getRandomValues: (a) => ((a[0] = seed), a) });
+    try {
+      const pet = fakePet();
+      const { renderer, physics, box } = setup({ pet });
+      const area = { left: 0, top: 0, width: 480, height: 240 };
+      box.roll(
+        [
+          { type: 'd20', value: 17 },
+          { type: 'd6', value: 3, ghost: true },
+        ],
+        { area, pet: PET },
+      );
+      expect(pet.begin).not.toHaveBeenCalled();
+      await playOut(renderer, physics);
+      expect(names(pet)).toEqual(['begin', 'landed', 'leave', 'end']);
+      const [, key, info] = pet.calls[0];
+      expect(typeof key).toBe('string');
+      expect(info.spec).toBe(PET);
+      expect(info.edge).toBe(throwEdge(seed));
+      expect(Object.keys(info.area).sort()).toEqual(['cx', 'cz', 'halfDepth', 'halfWidth']);
+      expect(info.area).toEqual(physics.streams[0].req.area);
+      expect(Object.keys(info.centre())).toEqual(['x', 'z']);
+      expect(pet.calls[1][2]).toEqual([
+        { type: 'd20', value: 17, ghost: false },
+        { type: 'd6', ghost: true }, // a ghost shows no result
+      ]);
+      expect(pet.calls[2][2]).toBe(400);
+      expect(pet.calls.every((c) => c[1] === key)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('the area is the stage rectangle when the throw had none; the hook may be a function', () => {
+    const pet = fakePet();
+    const { renderer, physics, box } = setup({ pet: () => pet });
+    box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+    physics.flush();
+    renderer.tick(16);
+    expect(pet.calls[0][2].area).toEqual({ cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 });
+    box.clear();
+  });
+
+  test('no pet spec, no pet calls', async () => {
+    const pet = fakePet();
+    const { renderer, physics, box } = setup({ pet });
+    box.roll([{ type: 'd6', value: 3 }]);
+    await playOut(renderer, physics);
+    expect(pet.calls).toEqual([]);
+  });
+
+  test('the loop keeps running while pet.update returns true, and holds once it returns false', () => {
+    const pet = fakePet();
+    const { renderer, physics, box } = setup({ pet });
+    box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+    physics.flush();
+    renderer.tick(16);
+    renderer.tick(500);
+    renderer.tick(2000); // landed, lingering
+    pet.moving = true;
+    expect(renderer.tick(2100)).toBe(true);
+    pet.moving = false;
+    expect(renderer.tick(2200)).toBe('hold');
+    box.clear();
+  });
+
+  test('a pet that throws in update warns once and is not called again for that roll; the roll still lands and finishes', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pet = fakePet({
+      update: vi.fn(() => {
+        throw new Error('pet boom');
+      }),
+    });
+    const { renderer, physics, box } = setup({ pet });
+    const { landed, finished } = box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+    const isLanded = settled(landed);
+    const isFinished = settled(finished);
+    await playOut(renderer, physics);
+    expect(isLanded()).toBe(true);
+    expect(isFinished()).toBe(true);
+    expect(pet.update).toHaveBeenCalledTimes(1);
+    expect(names(pet)).toEqual(['begin']);
+    expect(warn.mock.calls.filter((c) => c[0] === 'Dicer | pet')).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  test('clear() mid-throw calls leave(key, 0) and end(key)', () => {
+    const pet = fakePet();
+    const { renderer, physics, box } = setup({ pet });
+    box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+    physics.flush();
+    renderer.tick(16);
+    box.clear();
+    expect(names(pet)).toEqual(['begin', 'leave', 'end']);
+    expect(pet.calls[1][2]).toBe(0);
+    expect(pet.calls[1][1]).toBe(pet.calls[0][1]);
+    expect(pet.calls[2][1]).toBe(pet.calls[0][1]);
+  });
+
+  test('a hidden tab or empty specs never calls begin', () => {
+    const pet = fakePet();
+    const { box } = setup({ pet, visibility: { hidden: true, addEventListener() {} } });
+    box.roll([{ type: 'd6', value: 3 }], { pet: PET });
+    const other = setup({ pet });
+    other.box.roll([], { pet: PET });
+    expect(pet.calls).toEqual([]);
   });
 });

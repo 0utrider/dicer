@@ -482,3 +482,25 @@ describe('getSetting cache', () => {
     expect(get).toHaveBeenCalledTimes(4);
   });
 });
+
+test('petsAllowed (world), showPets and petSounds (client) are Booleans, default on', () => {
+  const r = capture();
+  for (const [key, scope] of [
+    ['petsAllowed', 'world'],
+    ['showPets', 'client'],
+    ['petSounds', 'client'],
+  ]) {
+    expect(r[key]).toMatchObject({ ns: 'dicer', scope, config: true, type: Boolean, default: true });
+    expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
+    expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
+  }
+});
+
+test('petsAllowed and showPets call onPetChange; petSounds does not', () => {
+  const onPetChange = vi.fn();
+  const r = capture({ onPetChange });
+  r.petsAllowed.onChange(false);
+  r.showPets.onChange(false);
+  r.petSounds.onChange?.(false);
+  expect(onPetChange).toHaveBeenCalledTimes(2);
+});

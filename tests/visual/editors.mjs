@@ -249,6 +249,27 @@ async function main() {
         await page.locator('[data-field="shapes.d4"][data-value="crystal"]').scrollIntoViewIfNeeded();
       }, { reducedMotion: 'reduce' })),
     );
+    // The Pet section: open, Slime picked (saved straight to the user's flag, not the look).
+    problems.push(
+      ...(await shoot(browser, 'app=appearance', 'appearance-pet.png', async (page) => {
+        await livePreview(page);
+        await page.click('[data-section="pet"]:not([open]) > summary');
+        await page.click('[data-action="setPet"][data-value="slime"]');
+        await page.fill('input[name="pet.color"]', '#4fbf6a');
+        await page.dispatchEvent('input[name="pet.color"]', 'change');
+        const got = await page.evaluate(() => ({
+          chips: document.querySelectorAll('[data-action="setPet"]').length,
+          on: document.querySelector('[data-action="setPet"][aria-checked="true"]')?.dataset.value,
+          flag: window.__editors.userFlags.pet,
+          open: document.querySelector('[data-section="pet"]')?.open,
+        }));
+        if (got.chips !== 4 || got.on !== 'slime' || got.flag?.kind !== 'slime' || got.flag?.color !== '#4fbf6a' || !got.open)
+          throw new Error(`appearance-pet: unexpected state ${JSON.stringify(got)}`);
+        await page.waitForTimeout(600);
+        await page.mouse.move(5, 5);
+        await page.locator('[data-section="pet"]').scrollIntoViewIfNeeded();
+      }, { reducedMotion: 'reduce' })),
+    );
     // A font from the computer (Georgia) drawn on the die.
     problems.push(
       ...(await shoot(browser, 'app=appearance&theme=user.u1.georgia-gold', 'appearance-editor-font.png', async (page) => {

@@ -6,7 +6,7 @@
  */
 import { LOOKS } from '../look/looks.js';
 import { appearanceKey } from '../look/appearance.js';
-import { RESULT_SOUNDS } from '../audio/sound-names.js';
+import { USER_SOUNDS } from '../audio/sound-names.js';
 import { themeRef } from '../compat/user-looks.js';
 import {
   DIE_TYPES,
@@ -230,7 +230,7 @@ export function formFromTheme(theme) {
     const rule = (theme.rules ?? []).find((r) => r?.id === id);
     form[key] = {
       effect: rule?.effect ? (KNOWN_EFFECTS.includes(rule.effect.id) ? rule.effect.id : KEEP) : '',
-      sound: rule?.sound ? (RESULT_SOUNDS.includes(rule.sound.builtin) ? rule.sound.builtin : KEEP) : '',
+      sound: rule?.sound ? (USER_SOUNDS.includes(rule.sound.builtin) ? rule.sound.builtin : KEEP) : '',
     };
   }
   return form;
@@ -270,7 +270,7 @@ export function themeFromForm(form, base) {
       : want.effect === KEEP
         ? (old?.effect ?? null)
         : null;
-    const sound = RESULT_SOUNDS.includes(want.sound)
+    const sound = USER_SOUNDS.includes(want.sound)
       ? { builtin: want.sound }
       : want.sound === KEEP
         ? (old?.sound ?? null)

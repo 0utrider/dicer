@@ -4,6 +4,7 @@ import { computeHulls } from './physics/hulls.js';
 import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
+import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
@@ -58,6 +59,7 @@ let faceTextures = null; // shared by DiceBox and preloadPresets (one cache)
 let dice3d = null; // game.dice3d, once activate() made it
 let soundEngine = null; // impact and result sounds; its synth is a lazy chunk
 let effectLayer = null; // trigger effects; its library is a lazy chunk
+let petDeps = null; // what the lazy pet chunk's layer is made from
 
 /** The table surface the dice sound on: the client's override unless it is 'world'. */
 export function soundSurface(get) {
@@ -87,6 +89,14 @@ function preloadSounds() {
 function preloadEffects() {
   if (!effectLayer || getSetting('effects') === false) return;
   const run = () => effectLayer?.prefetch();
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
+  else setTimeout(run, 200);
+}
+
+/** Fetches the pet chunk in an idle callback, only when pets are allowed and shown. */
+function preloadPets() {
+  if (!petDeps || getSetting('petsAllowed') === false || getSetting('showPets') === false) return;
+  const run = () => petDeps && requestPets(petDeps);
   if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
   else setTimeout(run, 200);
 }
@@ -418,6 +428,7 @@ Hooks.once('init', () => {
   registerSettings({
     onAreaChange: resizeDice,
     onRollAreasChange: () => emitRollAreasChanged(Hooks, getSetting),
+    onPetChange: preloadPets,
     onLookChange,
     onQualityChange,
     onSoundChange,
@@ -495,6 +506,7 @@ Hooks.once('ready', async () => {
       soundEngine = createSoundEngine({ getSetting: (k) => getSetting(k), resolveUrl: routeOf });
       let box = null;
       effectLayer?.dispose();
+      releasePets(); // the old engine's layer; preloadPets makes one for this engine
       effectLayer = createEffectLayer({
         scene: renderer.scene,
         camera: renderer.camera,
@@ -520,6 +532,15 @@ Hooks.once('ready', async () => {
           }),
         }),
       });
+      petDeps = {
+        scene: renderer.scene,
+        camera: renderer.camera,
+        getTier: () => quality.config,
+        getSetting,
+        playSound: (sound) => soundEngine?.result(sound),
+        warm: (objects) => renderer.warmObjects(objects),
+      };
+      preloadPets(); // this engine's layer (idle; the old one was released above)
       box = new DiceBox({
         renderer,
         physics,
@@ -542,6 +563,7 @@ Hooks.once('ready', async () => {
         getSurface: () => soundSurface(getSetting),
         onLandedFx: (die, fx, rollKey) => landedFx(die, fx, rollKey),
         effects: effectLayer,
+        pet: () => getPets(),
         fonts: fontAtlases,
       });
       return box;
@@ -666,6 +688,8 @@ Hooks.once('ready', async () => {
     soundEngine = null;
     effectLayer?.dispose();
     effectLayer = null;
+    releasePets();
+    petDeps = null;
     stopWatchingArea?.();
     stopWatchingArea = null;
     stopLookExtras?.(); // idempotent: no reset needed
@@ -678,5 +702,6 @@ Hooks.once('ready', async () => {
   announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady });
   preloadSounds();
   preloadEffects();
+  preloadPets();
   preloadEditors();
 });

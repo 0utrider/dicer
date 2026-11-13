@@ -390,16 +390,36 @@ const RESULT = {
     yield* saturate(buf, 1.8);
     yield* reverb(buf, sr, { mix: 0.25, decay: 1.2 });
   },
+  // The dice pet's voice: small, soft-attacked and bright without being shrill.
+  *petHappy(sr, buf) {
+    // Three rising chirps, each with a little upward glide.
+    const soft2 = [[1, 1, 1], [2, 0.2, 0.6]];
+    for (const [freq, start] of [[880, 0], [1100, 0.14], [1400, 0.28]]) {
+      yield* voice(buf, sr, { freq, start, dur: 0.15, gain: 0.8, attack: 0.012, tau: 0.07, partials: soft2, pitch: (t) => 0.9 + 0.2 * Math.min(1, t / 0.08) });
+    }
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petSad(sr, buf) {
+    // A falling two-note whimper ("aww") with a slight vibrato.
+    const soft2 = [[1, 1, 1], [2, 0.18, 0.6]];
+    const o = { attack: 0.03, partials: soft2, vib: 0.012, vibRate: 6, vibDelay: 0.08, gain: 0.8 };
+    yield* voice(buf, sr, { ...o, freq: 880, start: 0, dur: 0.3, tau: 0.25, pitch: (t) => 1.03 - 0.06 * Math.min(1, t / 0.3) });
+    yield* voice(buf, sr, { ...o, freq: 660, start: 0.28, dur: 0.32, tau: 0.28, pitch: (t) => 1.02 - 0.14 * Math.min(1, t / 0.32) });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
 };
 
-const RESULT_DUR = { chime: 1.5, fanfare: 1.5, sparkle: 1.3, fizzle: 1.2, thud: 0.7, whoosh: 1.0, crackle: 1.1, zap: 0.5, boom: 1.5 };
+const RESULT_DUR = { chime: 1.5, fanfare: 1.5, sparkle: 1.3, fizzle: 1.2, thud: 0.7, whoosh: 1.0, crackle: 1.1, zap: 0.5, boom: 1.5, petHappy: 0.45, petSad: 0.6 };
+
+/** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */
+const RESULT_PEAK = { petHappy: 0.55, petSad: 0.55 };
 
 function* resultGen(name, sampleRate) {
   const fn = RESULT[name];
   if (!fn) throw new RangeError(`Unknown result sound: ${name}`);
   const buf = new Float32Array(Math.floor(RESULT_DUR[name] * sampleRate));
   yield* fn(sampleRate, buf, mulberry32(hash(`result:${name}`)));
-  return fadeOut(normalize(buf, 0.85), sampleRate, 10);
+  return fadeOut(normalize(buf, RESULT_PEAK[name] ?? 0.85), sampleRate, 10);
 }
 
 /** Drive a generator to completion and return its Float32Array. */

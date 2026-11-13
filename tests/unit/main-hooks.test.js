@@ -40,6 +40,15 @@ test('it registers nothing while Dice So Nice is active (dormant), even before i
   expect(register).not.toHaveBeenCalled();
 });
 
+test('an engine (re)creation releases the old pet layer, then requests one for the new scene', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('src/main.js', 'utf8').replace(/\r\n/g, '\n');
+  expect(src).toMatch(/releasePets\(\);[^\n]*\n\s*effectLayer = createEffectLayer\(/);
+  expect(src).toMatch(/petDeps = \{\s*scene: renderer\.scene,[\s\S]*?\};\s*preloadPets\(\);/);
+  // preloadPets requests with the current deps and honours both switches
+  expect(src).toMatch(/function preloadPets\(\) \{\s*if \(!petDeps \|\| getSetting\('petsAllowed'\) === false \|\| getSetting\('showPets'\) === false\) return;\s*const run = \(\) => petDeps && requestPets\(petDeps\);/);
+});
+
 describe('soundSurface', () => {
   test("the client's override wins over the world surface; 'world' falls back to it", async () => {
     const { soundSurface } = await import('../../src/main.js');
@@ -79,7 +88,7 @@ describe('preloadEditors', () => {
   test('the ready hook schedules it, and the default loaders name both editor chunks', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync('src/main.js', 'utf8');
-    expect(src).toMatch(/preloadEffects\(\);\s*preloadEditors\(\);/);
+    expect(src).toMatch(/preloadEffects\(\);\s*preloadPets\(\);\s*preloadEditors\(\);/);
     expect(src).toContain("import('./ui/trigger-editor.js')");
     expect(src).toContain("import('./ui/damage-map-editor.js')");
   });

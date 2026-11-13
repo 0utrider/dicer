@@ -5,6 +5,7 @@ import { getShape } from '../../src/core/dice-shapes.js';
 import { faceNormals, readTopFace } from '../../src/core/face-reader.js';
 import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
+import { throwEdge } from '../../src/core/rng.js';
 import { fitDieCapacity } from '../../src/areas/area-model.js';
 import { FLOATS_PER_DIE, IMPACT_FLOATS, MAX_STEPS } from '../../src/physics/protocol.js';
 
@@ -266,6 +267,18 @@ test('no area: frames and events are identical to before per-throw areas', () =>
   expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area).chunks)).toBe('1118cbd0');
   const small = { halfWidth: 9, halfDepth: 5 };
   expect(framesHash(runEv(['d8', 'd10', 'd12', 'd4', 'd2'], 42, small).chunks)).toBe('1662dbb4');
+});
+
+test("throwEdge matches the worker's spawn edge", () => {
+  for (const seed of [1, 2, 3, 42, 99, 123456, 2 ** 31]) {
+    const edge = throwEdge(seed);
+    const [x, , z] = runEv(['d6'], seed, area).chunks[0].data;
+    const sign = edge % 2 === 0 ? 1 : -1;
+    if (edge < 2) expect(x * sign, `seed ${seed} edge ${edge}`).toBeGreaterThan(area.halfWidth);
+    else expect(z * sign, `seed ${seed} edge ${edge}`).toBeGreaterThan(area.halfDepth);
+  }
+  // The seeds cover more than one edge, or the test proves nothing.
+  expect(new Set([1, 2, 3, 42, 99, 123456, 2 ** 31].map(throwEdge)).size).toBeGreaterThan(1);
 });
 
 const offset = { cx: 6, cz: 3, halfWidth: 4, halfDepth: 3 };

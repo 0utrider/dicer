@@ -118,6 +118,19 @@ Every look is saved as a theme, so it can be your default, be used for one die t
 - **Font file** uses a `.ttf`, `.otf`, `.woff` or `.woff2` file in Foundry's data folder, so every player gets the same digits.
 - The digits of a computer font or a font file are built in the background the first time they are needed and then kept. Until they are ready the dice show the serif digits. A font that cannot be loaded falls back to the serif digits and writes one warning to the console.
 
+## Dice pet
+
+A small pet can throw your dice. It hops in beside the roll, and when the dice land it reacts to a natural 20 (a cheer) or a natural 1 (a groan), or does something in between when a roll has both (a natural 20 also throws a few sparkles). Then it leaves. It never delays the roll, the chat card or anything else: the pet is decided as the dice first show, so if its graphics have not loaded yet when the roll starts, that roll simply has no pet.
+
+- **Pick yours**: open the appearance editor and use the **Pet** section: None, **Mimic** (a treasure chest), **Slime** or **Dragonling**, and a colour. The default is a mimic in your player colour. The choice is saved to you at once; it is not part of a theme, so saving, copying or exporting a look does not include it. Press **Throw** to see your pet with the look you are editing.
+- **Everyone sees it**: each player sees every roller's pet, up to three at a time (one pet per roller). If you roll again while your pet is still out, it throws again; when the rolls overlap (an attack and its damage), it reacts once both have landed, so a natural 20 is never lost.
+- **The GM's pet**: the GM's pet throws every roll the GM makes, NPC rolls included. A GM who would rather not have one picks **None**.
+- **Settings**:
+  - **Allow dice pets** (world, GM): turn pets off for the whole table. The Pet section is hidden while it is off.
+  - **Show dice pets** (per player): hide pets on your own screen. The Pet section tells you they are hidden.
+  - **Pet sounds** (per player): mute the pets' chirps.
+- **Privacy**: a roll that is hidden or blind never shows a reaction. The pet just nods, in silence and for the same time as any other reaction, so nobody can tell a 20 from a 1. A roll nobody can see has no pet at all. The pet still shows whose roll it is: players who see a hidden roll's ghost dice also see the roller's pet.
+
 ## GM controls
 
 - **World default theme** (a setting): the theme players' dice use until they choose one of their own.

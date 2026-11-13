@@ -69,6 +69,18 @@
         "Name": "Show extra dice",
         "Hint": "Also throw dice whose results do not count, such as the dropped die of an advantage roll or rerolled dice."
       },
+      "petsAllowed": {
+        "Name": "Allow dice pets",
+        "Hint": "Players' pets hop in to throw their dice and react to a natural 20 or 1."
+      },
+      "showPets": {
+        "Name": "Show dice pets",
+        "Hint": "See your own and other players' pets when they roll."
+      },
+      "petSounds": {
+        "Name": "Pet sounds",
+        "Hint": "Your pet's happy and sad chirps."
+      },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
         "Hint": "Roll messages appear in the chat at once instead of waiting for the dice to land. The dice still animate."
@@ -469,6 +481,17 @@
         "glow": "Glow",
         "perType": "Per die type",
         "extras": "Sound and celebrations"
+      },
+      "Pet": {
+        "Title": "Pet",
+        "Hint": "Your pet throws your dice and reacts to a natural 20 or 1. Everyone sees it.",
+        "None": "None",
+        "Mimic": "Mimic",
+        "Slime": "Slime",
+        "Dragonling": "Dragonling",
+        "Color": "Colour",
+        "Hidden": "You have dice pets hidden (Dicer settings).",
+        "SaveFailed": "Could not save your pet."
       },
       "Body": {
         "Type": "Material",

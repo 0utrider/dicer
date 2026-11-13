@@ -42,6 +42,12 @@ describe('build', () => {
     const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
     const benchReport = lazy.find((p) => /report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
     const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
+    const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
+    const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
+    expect(pets).toBeTruthy();
+    expect(threePoints).toBeTruthy();
+    // lazy for real: only the lazy chunks import it, never the world-start bundle
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain(threePoints.slice('dist/'.length));
     expect(lookExtras).toBeTruthy();
     expect(readFileSync(lookExtras, 'utf8')).toContain('dicer-look-extras');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-look-extras');
@@ -116,6 +122,8 @@ describe('build', () => {
         benchApp,
         benchReport,
         lookExtras,
+        pets,
+        threePoints,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),
@@ -164,7 +172,9 @@ describe('build', () => {
     // of the next 2 KB.
     // Dice designs plan 4 re-based it on purpose (4_097_080): plan 4 may spend at most 1,536 bytes
     // of the next 2 KB.
-    const growth = worldStartBytes() - 4_097_080;
+    // dice pet plan: 4,096,854 + 2,048; the plan's cap is 4,096 B over 4,096,854 (controller
+    // ruling, ledger). All pet art, animation and sound is lazy.
+    const growth = worldStartBytes() - 4_098_902;
     console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });
