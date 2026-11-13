@@ -19,7 +19,7 @@ const fakeSynth = {
     const m = new Map();
     for (const mat of MATS) for (let v = 0; v < 4; v++) m.set(`impact:${mat}:${v}`, new Float32Array(480));
     for (const s of ['felt', 'wood', 'stone', 'metal']) m.set(`surface:${s}`, new Float32Array(480));
-    for (const r of ['chime', 'fanfare', 'sparkle', 'fizzle', 'thud']) m.set(`result:${r}`, new Float32Array(480));
+    for (const r of ['chime', 'fanfare', 'sparkle', 'fizzle', 'thud', 'petHappy', 'petSad']) m.set(`result:${r}`, new Float32Array(480));
     return m;
   },
 };
@@ -454,6 +454,13 @@ describe('sound engine', () => {
       await engine.result({ builtin: 'chime' });
       expect(ctx.sources.length).toBe(1);
       expect(ctx.sources[0].totalGain).toBeCloseTo(0.25, 5);
+    });
+
+    it('plays the pet sounds as builtins', async () => {
+      const { engine } = await ready();
+      await engine.result({ builtin: 'petHappy' });
+      await engine.result({ builtin: 'petSad' });
+      expect(ctx.sources.length).toBe(2);
     });
 
     it('fetches, decodes and caches a custom file', async () => {

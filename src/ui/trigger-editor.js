@@ -5,7 +5,7 @@
  */
 import { EFFECTS } from '../effects/library/effects.js';
 import { DEFAULT_RULES, normalizeRule } from '../effects/rules.js';
-import { RESULT_SOUNDS } from '../audio/sound-names.js';
+import { USER_SOUNDS } from '../audio/sound-names.js';
 import {
   blankEntry,
   entriesOf,
@@ -57,7 +57,7 @@ export function buildChoices(ctx) {
   const effects = { '': loc('DICER.Triggers.NoEffect') };
   for (const id of Object.keys(EFFECTS)) effects[id] = humanize(id);
   for (const [id, name] of Object.entries(ctx.modes ?? {})) effects[`dsn:${id}`] = `${name} (DSN)`;
-  const sounds = Object.fromEntries(RESULT_SOUNDS.map((s) => [s, humanize(s)]));
+  const sounds = Object.fromEntries(USER_SOUNDS.map((s) => [s, humanize(s)]));
   return { dice, effects, sounds };
 }
 

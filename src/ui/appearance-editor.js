@@ -10,7 +10,7 @@
  * (one WebGL context) and disposes it on close.
  */
 import { DIE_TYPES, SOUND_MATERIALS, KNOWN_EFFECTS, BUILTIN_THEMES, normalizeTheme } from '../themes/themes.js';
-import { RESULT_SOUNDS } from '../audio/sound-names.js';
+import { USER_SOUNDS } from '../audio/sound-names.js';
 import { LOOKS } from '../look/looks.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, formFromTheme, themeFromForm } from './theme-form.js';
@@ -301,7 +301,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       extras,
       materialChoices: withKeep(choiceMap(SOUND_MATERIALS, humanize, loc('DICER.Appearance.Extras.None')), extras.soundMaterial),
       effectChoices: choiceMap(KNOWN_EFFECTS, humanize, loc('DICER.Appearance.Extras.None'), keep),
-      soundChoices: choiceMap(RESULT_SOUNDS, humanize, loc('DICER.Appearance.Extras.None'), keep),
+      soundChoices: choiceMap(USER_SOUNDS, humanize, loc('DICER.Appearance.Extras.None'), keep),
       celebrations: [
         { key: 'nat20', label: loc('DICER.Appearance.Extras.NatHigh'), ...extras.nat20 },
         { key: 'nat1', label: loc('DICER.Appearance.Extras.NatLow'), ...extras.nat1 },
