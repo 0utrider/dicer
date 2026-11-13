@@ -4,6 +4,7 @@ import { createPetLayer } from '../../src/pet/chunk/pets.js';
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
 let clockNow = 0;
 const make = (settings = {}, over = {}) => {
+  settings.petsStay ??= false; // resting has its own tests below
   clockNow = 0;
   const scene = new THREE.Scene();
   const playSound = vi.fn();
@@ -16,9 +17,10 @@ const make = (settings = {}, over = {}) => {
     playSound,
     warm,
     now: () => clockNow,
+    wake: vi.fn(),
     ...over,
   };
-  return { layer: createPetLayer(deps), scene, playSound, warm, settings };
+  return { layer: createPetLayer(deps), scene, playSound, warm, settings, deps };
 };
 const spec = (userId = 'u1', ghost = false) => ({ userId, kind: 'mimic', color: '#ff0000', ghost });
 const info = (edge = 0, s = spec()) => ({
@@ -558,4 +560,202 @@ describe('a reaction plays once per roll', () => {
     m.layer.end('A');
     expect(pets(m.scene)).toHaveLength(0);
   });
+});
+
+// ---- resting pets ----
+const BIG = { cx: 0, cz: 0, halfWidth: 14, halfDepth: 9 };
+const bigInfo = (s, edge = 0) => ({ spec: s, edge, area: BIG, centre: () => ({ x: 0, z: 0 }) });
+const runTo = (m, ms) => {
+  let r;
+  while (clockNow < ms) r = m.layer.update((clockNow += 16));
+  return r;
+};
+/** Runs a whole roll of `user`'s pet to its rest. */
+const rollToRest = (m, user) => {
+  const key = `k-${user}-${clockNow}`;
+  m.layer.begin(key, bigInfo(spec(user)));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 400);
+  m.layer.landed(key, [d20(5)]);
+  const end = clockNow + 3000;
+  let r;
+  while (clockNow < end && r !== 'rest') r = m.layer.update((clockNow += 16));
+  m.layer.leave(key, 0);
+  m.layer.end(key);
+  return key;
+};
+const at = (scene, i = 0) => pets(scene)[i].position;
+const ids = (m) =>
+  m.layer
+    .obstaclesFor({ spec: null, edge: 0, area: BIG })
+    .map((o) => o.id)
+    .sort();
+
+test("with petsStay a pet rests after its roll and update returns 'rest'", () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  const p = pets(m.scene)[0];
+  const dx = Math.abs(p.position.x - BIG.cx);
+  const dz = Math.abs(p.position.z - BIG.cz);
+  expect(dx).toBeLessThanOrEqual(BIG.halfWidth - 1.8 + 1e-6);
+  expect(dz).toBeLessThanOrEqual(BIG.halfDepth - 1.8 + 1e-6);
+  expect(dx > 0.6 * BIG.halfWidth || dz > 0.6 * BIG.halfDepth).toBe(true);
+  expect(p.position.y).toBe(0);
+  // a resting pet is not posed again
+  p.position.x = 99;
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  expect(p.position.x).toBe(99);
+});
+
+test("petsStay off keeps today's hop-off", () => {
+  const m = make({ petsStay: false });
+  m.layer.begin('k', bigInfo(spec()));
+  m.layer.update(clockNow);
+  m.layer.landed('k', [d20(5)]);
+  expect(runTo(m, 4000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test("the owner's next roll hops from the resting spot (no frame moves more than a hop step)", () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  const rest = { x: at(m.scene).x, z: at(m.scene).z };
+  const edge = BIG.halfWidth - 0.9;
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  const D = Math.hypot(edge - rest.x, 0 - rest.z);
+  let prev = { ...rest };
+  let worst = Math.hypot(at(m.scene).x - rest.x, at(m.scene).z - rest.z);
+  const start = clockNow;
+  while (clockNow < start + 340) {
+    m.layer.update((clockNow += 16));
+    const p = at(m.scene);
+    worst = Math.max(worst, Math.hypot(p.x - prev.x, p.z - prev.z));
+    prev = { x: p.x, z: p.z };
+  }
+  expect(worst).toBeLessThan(0.15 * D);
+  runTo(m, start + 400);
+  expect(at(m.scene).x).toBeCloseTo(edge, 3);
+});
+
+test("obstaclesFor lists resting pets and the roller's upcoming edge spot", () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  const rest = { x: at(m.scene).x, z: at(m.scene).z };
+  const list = m.layer.obstaclesFor({ spec: spec('u2'), edge: 1, area: BIG });
+  expect(list).toHaveLength(2);
+  const resting = list.find((o) => o.id === 'u1');
+  expect(resting.x).toBeCloseTo(rest.x, 6);
+  expect(resting.z).toBeCloseTo(rest.z, 6);
+  expect(resting.h).toBe(1.5);
+  expect(resting.r).toBeCloseTo(0.675);
+  const own = list.find((o) => o.id === 'u2');
+  expect(own.x).toBeCloseTo(-(BIG.halfWidth - 0.9));
+  expect(own.z).toBeCloseTo(0);
+  // no spec: only the standing pets; the owner: its upcoming spot replaces its resting one
+  expect(m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG })).toHaveLength(1);
+  const mine = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(mine).toHaveLength(1);
+  expect(mine[0].x).toBeCloseTo(BIG.halfWidth - 0.9);
+  // a rolling pet is listed at its edge spot
+  m.layer.begin('r', bigInfo(spec('u2'), 2));
+  const rolling = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG }).find((o) => o.id === 'u2');
+  expect(rolling.z).toBeCloseTo(BIG.halfDepth - 0.9);
+});
+
+test('a 4th roller replaces the longest-idle resting pet, never one mid-routine; all 3 mid-routine -> no pet', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  clockNow += 500;
+  rollToRest(m, 'u2');
+  m.layer.begin('r3', bigInfo(spec('u3'), 2)); // mid-routine
+  m.layer.update(clockNow);
+  m.layer.begin('r4', bigInfo(spec('u4'), 3)); // replaces u1, idle the longest
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 600);
+  expect(pets(m.scene)).toHaveLength(3);
+  expect(ids(m)).toEqual(['u2', 'u3', 'u4']);
+  m.layer.begin('r5', bigInfo(spec('u5'), 0)); // u2 is the only resting one: replaced
+  runTo(m, clockNow + 600);
+  expect(ids(m)).toEqual(['u3', 'u4', 'u5']);
+  m.layer.begin('r6', bigInfo(spec('u6'), 0)); // all three mid-routine: no pet
+  runTo(m, clockNow + 600);
+  expect(pets(m.scene)).toHaveLength(3);
+  expect(m.layer.obstaclesFor({ spec: spec('u6'), edge: 0, area: BIG }).map((o) => o.id)).not.toContain('u6');
+  expect(ids(m)).toEqual(['u3', 'u4', 'u5']);
+});
+
+test('userGone hops that pet off and the layer ends empty', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  m.deps.wake.mockClear();
+  m.layer.userGone('u1');
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(ids(m)).toHaveLength(0);
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+  m.layer.userGone('nobody'); // harmless
+});
+
+test('areaChanged re-places resting pets validly', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  rollToRest(m, 'u2');
+  m.deps.wake.mockClear();
+  const next = { cx: 0, cz: 0, halfWidth: 11, halfDepth: 7 };
+  m.layer.areaChanged(next);
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(runTo(m, clockNow + 600)).toBe('rest');
+  const ps = pets(m.scene);
+  expect(ps).toHaveLength(2);
+  for (const p of ps) {
+    const dx = Math.abs(p.position.x);
+    const dz = Math.abs(p.position.z);
+    expect(dx).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
+    expect(dz).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
+    expect(dx > 0.6 * next.halfWidth || dz > 0.6 * next.halfDepth).toBe(true);
+  }
+  const gap = Math.hypot(ps[0].position.x - ps[1].position.x, ps[0].position.z - ps[1].position.z);
+  expect(gap).toBeGreaterThanOrEqual(3 - 1e-6);
+});
+
+test('a stage smaller than the remembered roll area keeps the pet inside the stage', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 });
+  runTo(m, clockNow + 600);
+  const p = at(m.scene);
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(8 - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(6 - 1.8 + 1e-6);
+});
+
+test('petsStay switched off mid-rest -> all hop off, update false at the end', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  rollToRest(m, 'u2');
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  m.settings.petsStay = false;
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test('petsAllowed or showPets off makes resting pets hop off too', () => {
+  for (const key of ['petsAllowed', 'showPets']) {
+    const m = make({ petsStay: true });
+    rollToRest(m, 'u1');
+    m.settings[key] = false;
+    expect(runTo(m, clockNow + 1000)).toBe(false);
+  }
+});
+
+test('a pet whose user is gone mid-roll leaves instead of resting', () => {
+  const m = make({ petsStay: true });
+  m.layer.begin('k', bigInfo(spec('u1')));
+  m.layer.update(clockNow);
+  m.layer.userGone('u1');
+  m.layer.landed('k', [d20(5)]);
+  expect(runTo(m, clockNow + 4000)).toBe(false);
 });

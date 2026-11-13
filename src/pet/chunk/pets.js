@@ -1,19 +1,13 @@
 import * as THREE from 'three';
 import { CREATURES } from './creatures/index.js';
-import { phaseAt, ENTER_MS, REACT_MS } from './timeline.js';
+import { phaseAt, ENTER_MS, REACT_MS, REST_HOP_MS } from './timeline.js';
 import { summarize, merge, reactionSound } from './reaction.js';
+import { discTexture, starTexture } from './textures.js';
+import { edgeSpot, restSpot, offPoint, fitArea, obstacle, SLIDE, PET_HEIGHT } from './resting.js';
 
 /** At most this many pets on screen at once. */
 export const MAX_PETS = 3;
-const INSET = 0.6; // of the creature's height, in from the area edge
-const OUT = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-]; // the outward direction of each edge: +x, -x, +z, -z
 const HOP = 0.45; // of the height
-const SLIDE = 1.5; // of the height, how far outside the edge the pet hops in from
 const LOOK_MAX = 0.6;
 const MOVED = 1e-3; // a re-used pet farther than this from its new spot hops there
 
@@ -39,35 +33,6 @@ const SPARK = Array.from({ length: SPARKS }, (_, i) => {
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (t) => t * t * (3 - 2 * t);
 
-function texture(n, alphaAt, rgb) {
-  const data = new Uint8Array(n * n * 4);
-  for (let y = 0; y < n; y++)
-    for (let x = 0; x < n; x++) {
-      const i = (y * n + x) * 4;
-      data[i] = data[i + 1] = data[i + 2] = rgb;
-      data[i + 3] = Math.round(255 * alphaAt(((x + 0.5) / n) * 2 - 1, ((y + 0.5) / n) * 2 - 1));
-    }
-  const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-/** A soft black disc: the contact shadow. */
-const discTexture = () =>
-  texture(32, (u, v) => Math.max(0, 1 - Math.hypot(u, v)) ** 2, 0);
-
-/** A white four-pointed twinkle: a small round core and two thin arms. */
-const starTexture = () =>
-  texture(
-    32,
-    (u, v) => {
-      const core = Math.max(0, 1 - Math.hypot(u, v) * 2.2) ** 2;
-      const arm = (a, b) => Math.max(0, 1 - Math.abs(a) * 10) * Math.max(0, 1 - Math.abs(b)) ** 2;
-      return Math.min(1, core + 0.9 * (arm(u, v) + arm(v, u)));
-    },
-    255,
-  );
-
 /**
  * The pet layer (lazy chunk): one pet per roller, driven by DiceBox's PetHook. A pet's whole life
  * is a timeline (timeline.js); update() poses and places it each frame and removes it when gone.
@@ -77,6 +42,7 @@ const starTexture = () =>
 export function createPetLayer(deps) {
   const { scene, getSetting, playSound, warm } = deps;
   const clock = deps.now || (() => performance.now()); // test seam; DiceBox's update() is on this clock
+  const rand = deps.random || Math.random; // test seam: the rest spots
   const pets = new Map(); // userId -> pet
   const keyOwner = new Map(); // roll key -> userId
   let shadowTex = null;
@@ -180,12 +146,71 @@ export function createPetLayer(deps) {
   }
 
   function place(pet, edge, area) {
-    const out = OUT[edge] || OUT[0];
-    const half = edge < 2 ? area.halfWidth : area.halfDepth;
-    const d = half - INSET * pet.creature.height;
+    const { out, base, inward } = edgeSpot(edge, area, pet.creature.height);
     pet.out = out;
-    pet.base = { x: area.cx + out[0] * d, z: area.cz + out[1] * d };
-    pet.inward = Math.atan2(-out[0], -out[1]);
+    pet.base = base;
+    pet.inward = inward;
+  }
+
+  const wake = () => {
+    try {
+      deps.wake?.();
+    } catch {
+      /* a stopped engine */
+    }
+  };
+  /** Whether resting is on: petsStay, and pets allowed and shown at all. */
+  const stays = () => {
+    try {
+      return getSetting('petsStay') !== false && getSetting('petsAllowed') !== false && getSetting('showPets') !== false;
+    } catch {
+      return true;
+    }
+  };
+  const pos = (pet) => ({ x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z, y: pet.hop ?? 0 });
+  /** Where a pet stands (or will, at the end of its hop): what the others keep their distance from. */
+  const spotOf = (pet) => pet.spot ?? pet.base;
+  const standing = (pet) => pet.state !== 'off';
+
+  /** Starts a hop of the pet from where it is to `to` (a rest spot, or off the table). */
+  function hopTo(pet, to, state, now) {
+    const from = pos(pet);
+    pet.hopFrom = from;
+    pet.hopTo = to;
+    pet.hopAt = now;
+    pet.state = state;
+    if (state === 'hop') {
+      pet.spot = to;
+      pet.yaw0 = pet.yaw;
+      pet.yawTo = Math.atan2(pet.area.cx - to.x, pet.area.cz - to.z); // faces the middle of the table
+    }
+    wake();
+  }
+  const restOf = (pet, now) => {
+    if (pet.state === 'routine') pet.idleAt = now; // idle since its routine ended
+    const taken = [];
+    for (const o of pets.values()) if (o !== pet && standing(o)) taken.push(spotOf(o));
+    hopTo(pet, restSpot(pet.area, pet.creature.height, taken, rand), 'hop', now);
+  };
+  const sendOff = (pet, now) => {
+    if (pet.state === 'off') return;
+    hopTo(pet, offPoint(pet.area, pos(pet), pet.creature.height), 'off', now);
+  };
+
+  /**
+   * Whether a pet of `userId` may stand: it has a place already, or there is a free place, or a
+   * resting pet (never one mid-routine) can give its place up; the one idle longest goes (victim).
+   */
+  function slotFor(userId) {
+    const mine = pets.get(userId);
+    let count = 0;
+    let victim = null;
+    for (const p of pets.values()) {
+      if (p === mine || !standing(p)) continue;
+      count++;
+      if ((p.state === 'hop' || p.state === 'rest') && (!victim || p.idleAt < victim.idleAt)) victim = p;
+    }
+    return count < MAX_PETS ? { ok: true } : { ok: !!victim, victim };
   }
 
   function begin(key, { spec, edge, area, centre }) {
@@ -193,21 +218,30 @@ export function createPetLayer(deps) {
     const make = CREATURES[spec.kind];
     let pet = pets.get(spec.userId);
     const fresh = !pet;
+    if (!make && fresh) return;
+    if (fresh || pet.state === 'off') {
+      const slot = slotFor(spec.userId);
+      if (!slot.ok) return;
+      if (slot.victim) sendOff(slot.victim, clock());
+    }
     if (fresh) {
-      if (pets.size >= MAX_PETS || !make) return;
       const creature = make(spec.color);
       const group = new THREE.Group();
       group.userData.dicerPet = { phase: 'enter' };
       const shadow = makeShadow();
       const sparkle = makeSparkle();
       group.add(shadow, sparkle);
-      pet = { userId: spec.userId, group, shadow, sparkle, creature: null, rolls: new Map() };
+      pet = { userId: spec.userId, group, shadow, sparkle, creature: null, rolls: new Map(), state: 'routine' };
       setCreature(pet, creature, spec);
       scene.add(group);
       pets.set(spec.userId, pet);
     } else if (make && (pet.kind !== spec.kind || pet.color !== spec.color)) {
       setCreature(pet, make(spec.color), spec); // the editor's Throw shows the new pick at once
     }
+    pet.state = 'routine'; // a resting or leaving pet starts its routine from where it stands
+    pet.gone = false;
+    pet.spot = null;
+    pet.area = { ...area }; // the owner's resting area: that of their most recent roll
     pet.rolls.set(key, { ghost: !!spec.ghost, summary: null, consumed: false });
     keyOwner.set(key, spec.userId);
     // The newest roll (pet.current) owns the throw, the place and the leave; each roll keeps its
@@ -274,40 +308,15 @@ export function createPetLayer(deps) {
     keyOwner.delete(key);
     if (!pet) return;
     pet.rolls.delete(key);
-    if (pet.rolls.size === 0) removePet(pet);
-    else settle(pet); // the rolls still on screen may all have landed now
+    if (pet.rolls.size) return settle(pet); // the rolls still on screen may all have landed now
+    if (pet.state !== 'routine') return; // resting or leaving: the pet outlives its roll
+    if (stays() && !pet.gone) restOf(pet, clock());
+    else removePet(pet);
   }
 
-  function step(pet, now, shadows) {
-    const { phase, t } = phaseAt(pet.track, now);
-    if (phase === 'gone') return false;
+  /** Poses and places the pet for this frame: the shared end of every state's step. */
+  function show(pet, now, phase, t, px, pz, hop, shadows) {
     const h = pet.creature.height;
-    const { base, out } = pet;
-    let px = base.x;
-    let pz = base.z;
-    let hop = 0;
-    if (phase === 'enter') {
-      const e = smooth(t);
-      const from = pet.from;
-      if (from) {
-        // a re-used pet hops from where it was to its new spot
-        px = from.x + (base.x - from.x) * e;
-        pz = from.z + (base.z - from.z) * e;
-        hop = from.y * (1 - e) + Math.sin(e * Math.PI) * HOP * h;
-      } else {
-        const slide = (1 - e) * SLIDE * h;
-        px += out[0] * slide;
-        pz += out[1] * slide;
-        hop = Math.sin(e * Math.PI) * HOP * h;
-      }
-    } else if (phase === 'exit') {
-      // Leave from wherever the pet is now (a leave can land mid-hop), not from its base.
-      const from = (pet.exitFrom ??= { x: pet.px ?? base.x, z: pet.pz ?? base.z, y: pet.hop ?? 0 });
-      const e = smooth(t);
-      px = from.x + (base.x + out[0] * SLIDE * h - from.x) * e;
-      pz = from.z + (base.z + out[1] * SLIDE * h - from.z) * e;
-      hop = from.y * (1 - e) + Math.sin(e * Math.PI) * HOP * h;
-    }
     pet.px = px;
     pet.pz = pz;
     pet.hop = hop;
@@ -336,9 +345,78 @@ export function createPetLayer(deps) {
       if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false)
         playSound({ builtin: name });
     }
+  }
+
+  /** A hop to a rest spot or off the table, on the exit pose. Returns false once a leaver is gone. */
+  function stepHop(pet, now, shadows) {
+    const e = Math.min(1, Math.max(0, (now - pet.hopAt) / REST_HOP_MS));
+    const { hopFrom: from, hopTo: to } = pet;
+    const s = smooth(e);
+    if (pet.state === 'off' && e >= 1) return false;
+    if (pet.state === 'hop') pet.yaw = wrap(pet.yaw0 + wrap(pet.yawTo - pet.yaw0) * s);
+    const px = from.x + (to.x - from.x) * s;
+    const pz = from.z + (to.z - from.z) * s;
+    const hop = e >= 1 ? 0 : from.y * (1 - s) + Math.sin(s * Math.PI) * HOP * pet.creature.height;
+    show(pet, now, 'exit', e, px, pz, hop, shadows);
+    if (e >= 1) pet.state = 'rest'; // the last frame is posed: from here nothing redraws
     return true;
   }
 
+  /** One pet, one frame: true if it moved, 'rest' if it sits still, false once it is gone. */
+  function step(pet, now, shadows, stay) {
+    if (pet.state === 'rest') {
+      if (stay) {
+        const was = pet.shadow.visible;
+        pet.shadow.visible = shadows; // the only thing that can change while it sits
+        return was !== shadows || 'rest'; // a frame to draw it; otherwise nothing moves
+      }
+      sendOff(pet, now);
+    }
+    if (pet.state === 'hop' && !stay) sendOff(pet, now);
+    if (pet.state !== 'routine') return stepHop(pet, now, shadows);
+    const { phase, t } = phaseAt(pet.track, now);
+    if ((phase === 'exit' || phase === 'gone') && stay && !pet.gone) {
+      restOf(pet, now); // the exit becomes a hop to a resting spot
+      return stepHop(pet, now, shadows);
+    }
+    if (phase === 'gone') return false;
+    const h = pet.creature.height;
+    const { base, out } = pet;
+    let px = base.x;
+    let pz = base.z;
+    let hop = 0;
+    if (phase === 'enter') {
+      const e = smooth(t);
+      const from = pet.from;
+      if (from) {
+        // a re-used pet hops from where it was to its new spot
+        px = from.x + (base.x - from.x) * e;
+        pz = from.z + (base.z - from.z) * e;
+        hop = from.y * (1 - e) + Math.sin(e * Math.PI) * HOP * h;
+      } else {
+        const slide = (1 - e) * SLIDE * h;
+        px += out[0] * slide;
+        pz += out[1] * slide;
+        hop = Math.sin(e * Math.PI) * HOP * h;
+      }
+    } else if (phase === 'exit') {
+      // Leave from wherever the pet is now (a leave can land mid-hop), not from its base.
+      const from = (pet.exitFrom ??= { x: pet.px ?? base.x, z: pet.pz ?? base.z, y: pet.hop ?? 0 });
+      const e = smooth(t);
+      px = from.x + (base.x + out[0] * SLIDE * h - from.x) * e;
+      pz = from.z + (base.z + out[1] * SLIDE * h - from.z) * e;
+      hop = from.y * (1 - e) + Math.sin(e * Math.PI) * HOP * h;
+    }
+    show(pet, now, phase, t, px, pz, hop, shadows);
+    return true;
+  }
+
+  /**
+   * One frame. true while anything moves; 'rest' when pets stand but nothing moves (DiceBox holds
+   * the last frame with no rAF; wake() restarts it); false with no pets. A resting pet is not
+   * posed again, so it costs nothing until its owner rolls, or a setting, a user or the area
+   * changes (each of those wakes the loop).
+   */
   function update(now) {
     if (!pets.size) return false;
     let shadows = true;
@@ -347,16 +425,61 @@ export function createPetLayer(deps) {
     } catch {
       /* unreadable: keep the default */
     }
+    const stay = stays();
+    let moving = false;
     for (const pet of [...pets.values()]) {
       let alive = false;
       try {
-        alive = step(pet, now, shadows);
+        alive = step(pet, now, shadows, stay);
       } catch (err) {
         console.warn('Dicer | pet', err);
       }
-      if (!alive) removePet(pet);
+      if (alive === false) removePet(pet);
+      else if (alive === true) moving = true;
     }
-    return pets.size > 0;
+    return moving ? true : pets.size > 0 ? 'rest' : false;
+  }
+
+  /**
+   * The pets the physics should treat as fixed, for a throw about to start (PetHook.obstaclesFor):
+   * every standing pet, a resting one at its spot and a rolling one at its edge spot, and, for
+   * `spec`'s own user, the edge spot its pet is about to take, from the same placement as begin
+   * (which replaces that pet's own entry). A pet leaving, or about to be replaced, stands no more.
+   */
+  function obstaclesFor({ spec, edge, area }) {
+    const own = spec ? slotFor(spec.userId) : null;
+    const list = [];
+    if (own?.ok) {
+      const h = pets.get(spec.userId)?.creature.height ?? PET_HEIGHT;
+      list.push(obstacle(edgeSpot(edge, area, h).base, h, spec.userId));
+    }
+    for (const p of pets.values())
+      if (standing(p) && p !== own?.victim && !(own?.ok && p.userId === spec.userId))
+        list.push(obstacle(spotOf(p), p.creature.height, p.userId));
+    return list;
+  }
+
+  /** The user left: their resting pet hops off; one mid-routine leaves when its roll ends. */
+  function userGone(userId) {
+    const pet = pets.get(userId);
+    if (!pet) return;
+    pet.gone = true;
+    if (pet.state === 'hop' || pet.state === 'rest') sendOff(pet, clock());
+  }
+
+  /**
+   * The stage changed size. Each resting pet hops to a fresh valid spot inside its owner's area:
+   * the area of that owner's most recent roll (kept on the pet at begin), shrunk and shifted to fit
+   * the new stage. Rolling pets keep their edge spot: their roll has its own area.
+   */
+  function areaChanged(stage) {
+    const now = clock();
+    for (const pet of pets.values()) {
+      if (pet.state !== 'hop' && pet.state !== 'rest') continue;
+      pet.area = fitArea(pet.area, stage);
+      pet.spot = null; // its old spot keeps nobody away
+      restOf(pet, now);
+    }
   }
 
   // One of each creature, plus a shadow and a sparkle, compiled up front so the first pet costs no
@@ -405,5 +528,5 @@ export function createPetLayer(deps) {
     shadowTex = shadowGeo = sparkTex = sparkMat = null;
   }
 
-  return { begin, landed, leave, end, update, dispose };
+  return { begin, landed, leave, end, update, obstaclesFor, userGone, areaChanged, hit() {}, dispose };
 }
