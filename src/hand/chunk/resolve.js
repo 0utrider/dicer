@@ -22,8 +22,11 @@ import { modelRotationFor } from '../../compat/dsn-orientation.js';
 /** id (roll.options.dicerHand.id) -> {recording, handle, specs} of the thrower's hand throw (Task 8). */
 export const handThrows = new Map();
 
-/** H-19: modes in which the roller may not see the result (Foundry v14 messageMode, legacy rollMode). */
-const SECRET = ['blind', 'gm', 'blindroll', 'gmroll'];
+/**
+ * H-19: modes in which the roller may not see the result (Foundry v14 messageMode, legacy rollMode).
+ * Blind only: a "Private GM Roll" (gm / gmroll) is visible to its author (config.mjs modes.gm).
+ */
+const SECRET = ['blind', 'blindroll'];
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const facesOf = (type) => +/^d(\d+)$/.exec(type)?.[1];
 

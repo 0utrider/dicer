@@ -510,8 +510,10 @@ test("a roll with options.messageMode 'blind' opens with ghostOnRelease", async 
     await fulfill(new Resolver(r, deps));
     return overlay.open.mock.calls[0][0].ghostOnRelease;
   };
-  expect(await ghostFor({ options: { messageMode: 'gm' } })).toBe(true);
   expect(await ghostFor({ options: { rollMode: 'blindroll' } })).toBe(true);
+  // I1: a "Private GM Roll" is visible to its author in v14 (CONFIG.ChatMessage.modes.gm): real dice
+  expect(await ghostFor({ options: { messageMode: 'gm' } })).toBe(false);
+  expect(await ghostFor({ options: { rollMode: 'gmroll' } })).toBe(false);
   expect(await ghostFor({ secret: true, options: {} })).toBe(true);
   expect(await ghostFor({ ghost: true, options: {} })).toBe(true);
   expect(await ghostFor({ options: { messageMode: 'public' } })).toBe(false);
@@ -519,6 +521,27 @@ test("a roll with options.messageMode 'blind' opens with ghostOnRelease", async 
   expect(await ghostFor({ options: { messageMode: 'blind' } }, { id: 'g', isGM: true, role: 4 })).toBe(false);
 });
 
+
+test('I1: a gm-mode hand roll throws real dice (and its extras) for the thrower; blind still ghosts', async () => {
+  const d6 = new Die({ number: 1, faces: 6, modifiers: ['x'] });
+  const roll = rollOf(d6);
+  roll.options.messageMode = 'gm';
+  overlay.values = [6];
+  boxValues = [3];
+  await evaluate(new Resolver(roll, deps));
+  expect(overlay.open.mock.calls[0][0].ghostOnRelease).toBe(false);
+  expect(deps.diceBox.roll.mock.calls[0][0][0].ghost).toBeUndefined(); // the explosion is real too
+  expect(d6.results.map((x) => x.result)).toEqual([6, 3]);
+  // the core chat mode "gm" (no mode on the roll) does not ghost either
+  globalThis.game = { settings: { get: (ns, k) => (k === 'messageMode' ? 'gm' : undefined) } };
+  overlay.values = [2];
+  await fulfill(new Resolver(rollOf(new Die({ faces: 6 })), deps));
+  expect(overlay.open.mock.calls[1][0].ghostOnRelease).toBe(false);
+  const blind = rollOf(new Die({ faces: 6 }));
+  blind.options.messageMode = 'blind';
+  await fulfill(new Resolver(blind, deps));
+  expect(overlay.open.mock.calls[2][0].ghostOnRelease).toBe(true);
+});
 
 test('an out-of-range read takes randomFace() in its slot (counted in partial), so keys stay aligned', async () => {
   const d6 = new Die({ number: 2, faces: 6 });
