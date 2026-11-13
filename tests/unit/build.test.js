@@ -177,9 +177,10 @@ describe('build', () => {
     // pet splat plan: 1,536 B cap + 64 B controller allowance (ledger) over 4,100,546.
     // pet splat plan: +512 B for the final-review fixes (ledger).
     // pet dodge plan: 512 B over 4,102,587
-    const growth = worldStartBytes() - 4_102_587;
-    console.info(`dicer world-start growth since the pet dodge plan base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(512);
+    // rolling by hand: owner-approved +12,288 B over 4,103,020
+    const growth = worldStartBytes() - 4_103_020;
+    console.info(`dicer world-start growth since the rolling-by-hand base: ${growth} bytes`);
+    expect(growth).toBeLessThanOrEqual(12_288);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

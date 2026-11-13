@@ -1,5 +1,6 @@
 import { getShape } from '../core/dice-shapes.js';
 import { minkowskiHull } from '../core/chamfer.js';
+import { faceNormals, flatGap, readSign } from '../core/face-reader.js';
 
 export const HULL_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd14', 'd16', 'd4crystal'];
 
@@ -27,4 +28,21 @@ export function hullPointsFor(type) {
  */
 export function computeHulls(types = HULL_TYPES) {
   return Object.fromEntries(types.map((t) => [t, hullPointsFor(t)]));
+}
+
+/**
+ * Main-thread helper: what the worker needs to tell a cocked die from a flat one (it has no shape
+ * table): local face normals (flat xyz; the coin's two caps), the read set (null: every face), the
+ * read side (-1: the face on the table, d4 and d16) and the flat gap. Plain data for `init`.
+ * @returns {Record<string, {normals: Float32Array, read: Int8Array|null, mode: 1|-1, gap: number}>}
+ */
+export function computeReaders(types = [...HULL_TYPES, 'd2']) {
+  return Object.fromEntries(
+    types.map((t) => {
+      const s = getShape(t);
+      const normals = new Float32Array(faceNormals(s).flatMap((n) => [n.x, n.y, n.z]));
+      const read = s.readFaces ? Int8Array.from(s.readFaces) : null;
+      return [t, { normals, read, mode: readSign(s), gap: flatGap(s) }];
+    }),
+  );
 }
