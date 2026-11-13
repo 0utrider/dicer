@@ -109,6 +109,7 @@ function fakeRenderer() {
     canvas: { style: { transform: '' } },
     setArea: vi.fn(),
     onContextLost: vi.fn(),
+    onContextRestored: vi.fn(),
     startLoop: vi.fn((t) => (r.tickFn = t)),
     hide: vi.fn(() => (r.tickFn = null)),
     tickFn: null,
@@ -449,6 +450,16 @@ test('context loss clears every roll', async () => {
   expect(box.activeRolls).toBe(0);
 });
 
+test('a restored context wakes the loop, so resting pets show again', () => {
+  const update = vi.fn(() => 'rest');
+  const { renderer } = setup({ pet: { update } });
+  renderer.onContextLost.mock.calls[0][0]();
+  expect(renderer.isLooping).toBe(false);
+  renderer.onContextRestored.mock.calls[0][0]();
+  expect(renderer.isLooping).toBe(true);
+  expect(renderer.tick(0)).toBe('hold');
+});
+
 test('the loop starts on the first chunk, not when the roll is made', () => {
   const { renderer, physics, box } = setup();
   box.roll([{ type: 'd6', value: 2 }]);
@@ -531,7 +542,7 @@ describe('hidden tabs get no animation frames', () => {
     expect(dieGroups(renderer)).toHaveLength(0);
   });
 
-  test('(b) visibilitychange to hidden clears every roll; back to visible does nothing', async () => {
+  test('(b) visibilitychange to hidden clears every roll; back to visible keeps the rolls', async () => {
     const visibility = new FakeVisibility();
     const { physics, box } = setup({ visibility });
     const a = box.roll([{ type: 'd6', value: 2 }]);
@@ -541,6 +552,20 @@ describe('hidden tabs get no animation frames', () => {
     visibility.setHidden(true);
     await Promise.all([a.landed, a.finished]);
     expect(box.activeRolls).toBe(0);
+  });
+
+  test('(b) back to visible wakes the loop, so resting pets show again', () => {
+    const visibility = new FakeVisibility();
+    const update = vi.fn(() => 'rest');
+    const { renderer, box } = setup({ visibility, pet: { update } });
+    box.wake();
+    expect(renderer.tick(0)).toBe('hold');
+    visibility.setHidden(true);
+    expect(renderer.hide).toHaveBeenCalled();
+    expect(renderer.isLooping).toBe(false);
+    visibility.setHidden(false);
+    expect(renderer.isLooping).toBe(true);
+    expect(renderer.tick(16)).toBe('hold');
   });
 
   test('(b) dispose() stops listening for visibilitychange', () => {
@@ -2809,6 +2834,37 @@ describe('pet hook', () => {
       box.clear();
     });
 
+    test('a pet contact plays no die click and raises no dust; the floor and wall contacts still do', () => {
+      const hit = vi.fn();
+      const onImpact = vi.fn();
+      const effects = { update: vi.fn(() => false), play: vi.fn(), clear: vi.fn(), impact: vi.fn() };
+      const pet = fakePet({ obstaclesFor: () => OBS(2), hit });
+      const { renderer, physics, box } = setup({ pet, onImpact, effects });
+      physics.events = [
+        new Float32Array(0),
+        new Float32Array([42, 0, -1, 9, 45, 0, -3, 12, 50, 0, -4, 3, 55, 0, -2, 7]),
+      ];
+      box.roll([{ type: 'd6', value: 3 }]);
+      pump(renderer, physics);
+      expect(hit).toHaveBeenCalledTimes(2);
+      expect(onImpact.mock.calls.map((c) => c[0].other)).toEqual([-1, -2]);
+      expect(effects.impact).toHaveBeenCalledTimes(2);
+      box.clear();
+    });
+
+    test("the throw carries the pet layer's splatSpeed with its obstacles, and none when it has none", () => {
+      const withSplat = setup({ pet: fakePet({ obstaclesFor: () => OBS(1), splatSpeed: 10 }) });
+      withSplat.box.roll([{ type: 'd6', value: 3 }]);
+      expect(withSplat.physics.streams[0].req.splatSpeed).toBe(10);
+      const off = setup({ pet: fakePet({ obstaclesFor: () => OBS(1), splatSpeed: null }) });
+      off.box.roll([{ type: 'd6', value: 3 }]);
+      expect('splatSpeed' in off.physics.streams[0].req).toBe(false);
+      const none = setup({ pet: fakePet({ obstaclesFor: () => [], splatSpeed: 10 }) });
+      none.box.roll([{ type: 'd6', value: 3 }]);
+      expect('splatSpeed' in none.physics.streams[0].req).toBe(false);
+      for (const s of [withSplat, off, none]) s.box.clear();
+    });
+
     test('no rolls + update "rest" -> #frame returns "hold"; no rolls + update false -> false', () => {
       const pet = fakePet({ update: vi.fn(() => 'rest') });
       const { renderer, box } = setup({ pet });
@@ -2864,7 +2920,7 @@ describe('pet hook', () => {
       box.clear();
     });
 
-    test('a hit that throws warns once without skipping the impact sound', () => {
+    test('a hit that throws warns once without skipping the next impact sound', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const onImpact = vi.fn();
       const pet = fakePet({
@@ -2874,10 +2930,14 @@ describe('pet hook', () => {
         }),
       });
       const { renderer, physics, box } = setup({ pet, onImpact });
-      physics.events = [new Float32Array(0), new Float32Array([45, 0, -3, 12, 50, 0, -3, 12])];
+      physics.events = [
+        new Float32Array(0),
+        new Float32Array([45, 0, -3, 12, 50, 0, -3, 12, 55, 0, -1, 12]),
+      ];
       box.roll([{ type: 'd6', value: 3 }]);
       pump(renderer, physics);
-      expect(onImpact).toHaveBeenCalledTimes(2);
+      expect(pet.hit).toHaveBeenCalledTimes(2);
+      expect(onImpact).toHaveBeenCalledTimes(1); // the floor's; a pet contact has no die click
       expect(warn.mock.calls.filter((c) => c[0] === 'Dicer | pet')).toHaveLength(1);
       warn.mockRestore();
       box.clear();
@@ -2928,7 +2988,38 @@ describe('pet hook', () => {
       pet.areaChanged.mockClear();
       r = { left: 0, top: 0, width: 480, height: 240 };
       box.onResize();
-      expect(pet.areaChanged).toHaveBeenCalledWith({ cx: 0, cz: 0, halfWidth: 5, halfDepth: 2.5 });
+      expect(pet.areaChanged).toHaveBeenCalledWith({
+        cx: 0,
+        cz: 0,
+        halfWidth: 5,
+        halfDepth: 2.5,
+        rect: { left: 0, top: 0, width: 480, height: 240 },
+      });
+    });
+
+    test('obstaclesFor gets the stage too (the pet layer may load after the last resize)', () => {
+      const pet = fakePet({ obstaclesFor: vi.fn(() => []) });
+      const { box } = setup({ pet });
+      box.roll([{ type: 'd6', value: 3 }]);
+      expect(pet.obstaclesFor.mock.calls[0][0].stage).toEqual({
+        cx: 0,
+        cz: 0,
+        halfWidth: 10,
+        halfDepth: 5,
+        rect: { left: 0, top: 0, width: 960, height: 480 },
+      });
+      box.clear();
+    });
+
+    test('dieArea turns a px area into the die-unit area a throw there uses; null is the stage', () => {
+      const { box } = setup();
+      expect(box.dieArea(null)).toEqual({ cx: 0, cz: 0, halfWidth: 10, halfDepth: 5 });
+      expect(box.dieArea({ left: 480, top: 0, width: 480, height: 240 })).toEqual({
+        cx: 5,
+        cz: -2.5,
+        halfWidth: 5,
+        halfDepth: 2.5,
+      });
     });
   });
 

@@ -619,6 +619,8 @@ Hooks.once('ready', async () => {
       const decorateFor = composeDecorateFor({ looks: resolver, fx: fxResolver });
       // Which area each throw lands in on this screen (the roller's; the GM private corner).
       const areas = createAreaResolver({ getSetting, measureUsable: () => measureArea(), currentUser: () => game.user });
+      // A user's area as their throws use it: the pet layer moves resting pets when areas change.
+      petDeps.areaOf = (id) => box.dieArea(areas.rectFor({ rollerId: id }));
       gate = createMessageGate({
         diceBox: box,
         planThrow: plan,

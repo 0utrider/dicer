@@ -211,9 +211,9 @@ export class DiceBox {
     });
     // A hidden tab gets no animation frames, so nothing could land: drop every roll.
     this._visibility = visibility ?? null;
-    this._onVisibility = () => {
-      if (this._visibility?.hidden) this.clear();
-    };
+    // Visible again (or a restored context): resting pets are drawn again.
+    this._onVisibility = () => (this._visibility?.hidden ? this.clear() : this.wake());
+    renderer.onContextRestored?.(() => this.wake());
     this._visibility?.addEventListener?.('visibilitychange', this._onVisibility);
   }
 
@@ -234,7 +234,14 @@ export class DiceBox {
     this._renderer.sceneApi.fitArea(this._area);
     this._physics.resize(this._area);
     this._renderer.setArea(rect);
-    this.#hookCall((h) => h.areaChanged?.({ cx: 0, cz: 0, ...this._area }));
+    // The pet layer's stage: die units, plus the px rect it measures Foundry's UI against.
+    this._stage = { cx: 0, cz: 0, ...this._area, rect: this._stageRect };
+    this.#hookCall((h) => h.areaChanged?.(this._stage));
+  }
+
+  /** A px area (an area resolver's rectFor; null: the stage) as the die-unit area a throw uses there. */
+  dieArea(rect) {
+    return this.#throwArea(rect, 0)?.area ?? { cx: 0, cz: 0, ...this._area };
   }
 
   /** Starts the render loop when it is stopped or held (a resting pet starts to move, a setting changed). */
@@ -387,11 +394,17 @@ export class DiceBox {
       // Resting pets of any user are obstacles for every throw; the hook is the one begin uses.
       this.#hookCall((h) => {
         roll.hook = h;
-        const o = h.obstaclesFor?.({ spec: pet ?? null, edge: throwEdge(seed), area: { ...roll.record.area } });
+        const o = h.obstaclesFor?.({
+          spec: pet ?? null,
+          edge: throwEdge(seed),
+          area: { ...roll.record.area },
+          stage: this._stage,
+        });
         const list = Array.isArray(o) ? o.filter((e) => e && typeof e === 'object').slice(0, MAX_OBSTACLES) : [];
         if (!list.length) return;
         roll.ids = list.map((e) => e.id);
         req.obstacles = list.map(({ x, z, r, h }) => ({ x, z, r, h }));
+        if (h.splatSpeed > 0) req.splatSpeed = h.splatSpeed; // the sim splats too (null: petSplat off)
       });
       const stream = this._physics.throw(req);
       // Stall guards (R12): a worker that never answers must not keep a roll alive.
@@ -1364,10 +1377,14 @@ export class DiceBox {
         // throwing sound hook must not skip it. The position is copied (the die keeps moving).
         const pos = d.outer?.position;
         const position = { x: pos?.x ?? 0, y: pos?.y ?? 0, z: pos?.z ?? 0 };
+        if (other <= -3) {
+          // A pet obstacle (-3 - i): the pet layer decides at playback time whether it splats or
+          // wobbles; its own sound covers the contact, so no die click and no dust.
+          const id = roll.ids?.[-3 - other];
+          if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey }), roll.hook);
+          continue;
+        }
         this.#effectsCall((e) => e.impact?.({ position, speed, surface, dieKey }));
-        // A pet obstacle (-3 - i): the pet layer decides at playback time whether it splats.
-        const id = other <= -3 ? roll.ids?.[-3 - other] : undefined;
-        if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey }), roll.hook);
         this._onImpact({
           material: d.soundMaterial,
           surface,
