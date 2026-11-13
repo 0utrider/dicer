@@ -36,6 +36,8 @@ export const MAX_PETS = 3;
  */
 export const SPLAT_SPEED = 10;
 export const WOBBLE_SPEED = 1.5;
+/** A puddle fades this long after its splat when its owner hasn't rolled again (owner, 2026-11-14). */
+export const PUDDLE_LEAVE_MS = 5000;
 const PUDDLE_MS = 600; // the eyes open and blink once, then the puddle holds
 const WOBBLE_PUSH = 0.3; // of the height, the recoil away from the die
 // The states of a pet knocked flat: bursting, lying there, pulling back together, fading away.
@@ -967,8 +969,11 @@ export function createPetLayer(deps) {
       let alive = false;
       try {
         // a resting pet or puddle leaves once its idle time is up (a hop off, or a fade)
+        // (a puddle fades PUDDLE_LEAVE_MS after its splat, whatever petStay says, unless sooner)
         const waits = ['rest', 'hop', 'move', 'puddle'].includes(pet.state);
-        pet.leaveAt = stay && idle > 0 && waits && Number.isFinite(pet.idleAt) ? pet.idleAt + idle * 1000 : null;
+        const wait =
+          pet.state === 'puddle' ? (idle > 0 ? Math.min(idle * 1000, PUDDLE_LEAVE_MS) : PUDDLE_LEAVE_MS) : idle * 1000;
+        pet.leaveAt = stay && wait > 0 && waits && Number.isFinite(pet.idleAt) ? pet.idleAt + wait : null;
         if (pet.leaveAt !== null) {
           // An overdue leave waits while any roll is in flight (the physics has the pet as an
           // obstacle, and the owner's roll may be between obstaclesFor and begin); the timer is

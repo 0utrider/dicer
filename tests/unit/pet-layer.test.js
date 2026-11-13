@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED } from '../../src/pet/chunk/pets.js';
+import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED, PUDDLE_LEAVE_MS } from '../../src/pet/chunk/pets.js';
 import { mulberry32 as mulberry } from '../../src/core/rng.js';
 
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
@@ -1038,16 +1038,17 @@ test('a puddle counts toward the cap and is not in obstaclesFor', () => {
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', HARD); // u1 is splatted at once, so idle the longest
   runTo(m, clockNow + 1300);
-  clockNow += 500;
-  rollToRest(m, 'u2');
-  clockNow += 500;
-  rollToRest(m, 'u3');
-  expect(ids(m)).toEqual(['u2', 'u3']); // the puddle stands in nobody's way
-  expect(pets(m.scene)).toHaveLength(3); // ... but holds a place
-  m.layer.begin('r4', bigInfo(spec('u4'), 2)); // so the 4th replaces it
+  // within the puddle's 5 s: two other rollers' pets arrive (still mid-routine)
+  m.layer.begin('r2', bigInfo(spec('u2'), 0));
+  m.layer.begin('r3', bigInfo(spec('u3'), 1));
+  runTo(m, clockNow + 400);
+  expect(pets(m.scene)).toHaveLength(3); // the puddle holds a place ...
+  expect(ids(m)).not.toContain('u1'); // ... but stands in nobody's way
+  m.layer.begin('r4', bigInfo(spec('u4'), 2)); // the 4th replaces the puddle, not a pet mid-routine
   runTo(m, clockNow + 900);
   expect(pets(m.scene)).toHaveLength(3);
-  expect(ids(m)).toEqual(['u2', 'u3', 'u4']);
+  expect(ids(m)).toEqual(expect.arrayContaining(['u2', 'u3', 'u4']));
+  expect(ids(m)).not.toContain('u1');
 });
 
 test('petsStay off with a puddle -> it fades and the layer ends empty', () => {
@@ -1242,12 +1243,12 @@ test('petStay 60: a resting pet leaves 60 s after its reaction; update false aft
   expect(pets(m.scene)).toHaveLength(0);
 });
 
-test('a puddle fades after petStay', () => {
-  const m = puddled({ petStay: 60 });
-  const idle = clockNow;
-  expect(runTo(m, idle + 50000)).toBe('rest');
+test.each([60, 120, -1])('a puddle fades 5 s after its splat (petStay %i)', (petStay) => {
+  const m = puddled({ petStay }); // the splat was 1300 ms ago
+  const splatAt = clockNow - 1300;
+  expect(runTo(m, splatAt + PUDDLE_LEAVE_MS - 500)).toBe('rest');
   expect(pets(m.scene)).toHaveLength(1);
-  expect(runTo(m, idle + 62000)).toBe(false);
+  expect(runTo(m, splatAt + PUDDLE_LEAVE_MS + 3000)).toBe(false);
   expect(pets(m.scene)).toHaveLength(0);
 });
 
