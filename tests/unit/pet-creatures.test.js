@@ -146,3 +146,67 @@ describe.each(KINDS)('%s', (kind) => {
     for (const s of spies) expect(s).toHaveBeenCalled();
   });
 });
+
+// --- wobble and reform (Task 5) -----------------------------------------------------------------
+
+describe.each(KINDS)('%s wobble and reform', (kind) => {
+  const sizeOf = (c) => {
+    c.root.updateMatrixWorld(true);
+    return new THREE.Box3().setFromObject(c.root).getSize(new THREE.Vector3());
+  };
+  const isRest = (c) => {
+    for (const k of ['x', 'y', 'z']) {
+      expect(c.root.scale[k]).toBeCloseTo(1, 3);
+      expect(c.root.rotation[k]).toBeCloseTo(0, 3);
+    }
+  };
+
+  test('wobble starts and ends on the standing pose (no pop into or out of it)', () => {
+    const c = CREATURES[kind]('#c0392b');
+    c.pose('wobble', 0, 'plain', { yaw: 0, leanX: 1, leanZ: 0 });
+    isRest(c);
+    c.pose('wobble', 1, 'plain', { yaw: 0, leanX: 1, leanZ: 0 });
+    isRest(c);
+    c.dispose();
+  });
+
+  test('wobble squashes, then leans away from the hit (look.leanX/leanZ, local)', () => {
+    const c = CREATURES[kind]('#c0392b');
+    let minY = 1;
+    for (let t = 0; t <= 1; t += 0.02) {
+      c.pose('wobble', t, 'plain', { yaw: 0, leanX: 0, leanZ: 0 });
+      minY = Math.min(minY, c.root.scale.y);
+    }
+    expect(minY).toBeLessThan(0.85);
+    // the top goes toward +x when pushed toward +x, toward -z when pushed toward -z
+    const top = (lx, lz) => {
+      c.pose('wobble', 0.2, 'plain', { yaw: 0, leanX: lx, leanZ: lz });
+      c.root.updateMatrixWorld(true);
+      return new THREE.Vector3(0, 1.5, 0).applyMatrix4(c.root.matrixWorld);
+    };
+    expect(top(1, 0).x).toBeGreaterThan(0.1);
+    expect(top(0, -1).z).toBeLessThan(-0.1);
+    // no lean given: a plain squash and jiggle
+    const still = top(undefined, undefined);
+    expect(Math.abs(still.x) + Math.abs(still.z)).toBeLessThan(1e-6);
+    c.dispose();
+  });
+
+  test('reform grows from (almost) nothing, overshoots, and lands on the standing pose', () => {
+    const c = CREATURES[kind]('#c0392b');
+    c.pose('reform', 0, 'plain', { yaw: 0 });
+    const s0 = sizeOf(c);
+    expect(Math.max(s0.x, s0.y, s0.z)).toBeLessThan(0.2); // hidden in the goo, also from above
+    let peak = 0;
+    for (let t = 0.3; t <= 0.95; t += 0.01) {
+      c.pose('reform', t, 'plain', { yaw: 0 });
+      peak = Math.max(peak, c.root.scale.y);
+    }
+    expect(peak).toBeGreaterThan(1.05); // the pop
+    c.pose('reform', 1, 'plain', { yaw: 0 });
+    isRest(c);
+    c.pose('exit', 1, 'plain', { yaw: 0 });
+    isRest(c); // and a normal pose resets whatever the wobble or reform left
+    c.dispose();
+  });
+});

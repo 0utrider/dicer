@@ -17,28 +17,31 @@ const parts = (root) => {
   return out;
 };
 
-test.each(KINDS)('createSplat builds for %s with <= 3 materials, no NaN for every phase x t', (kind) => {
-  for (const color of ['#c0392b', '#ffffff', '#000000', undefined]) {
-    const s = createSplat(kind, color);
-    expect(s.root).toBeInstanceOf(THREE.Object3D);
-    const mats = new Set(parts(s.root).flatMap((m) => [].concat(m.material)));
-    expect(mats.size).toBeLessThanOrEqual(3);
-    for (const m of mats) {
-      expect(m.type).toBe('MeshStandardMaterial');
-      for (const k of ['r', 'g', 'b']) expect(m.color[k]).toBeLessThanOrEqual(1);
-    }
-    for (const phase of PHASES)
-      for (const t of TS) {
-        s.pose(phase, t);
-        s.root.updateMatrixWorld(true);
-        s.root.traverse((o) => {
-          for (const e of o.matrixWorld.elements) expect(Number.isFinite(e)).toBe(true);
-          if (o.material) expect(Number.isFinite(o.material.opacity)).toBe(true);
-        });
+test.each(KINDS)(
+  'createSplat builds for %s with <= 3 materials, no NaN for every phase x t',
+  (kind) => {
+    for (const color of ['#c0392b', '#ffffff', '#000000', undefined]) {
+      const s = createSplat(kind, color);
+      expect(s.root).toBeInstanceOf(THREE.Object3D);
+      const mats = new Set(parts(s.root).flatMap((m) => [].concat(m.material)));
+      expect(mats.size).toBeLessThanOrEqual(3);
+      for (const m of mats) {
+        expect(m.type).toBe('MeshStandardMaterial');
+        for (const k of ['r', 'g', 'b']) expect(m.color[k]).toBeLessThanOrEqual(1);
       }
-    s.dispose();
-  }
-});
+      for (const phase of PHASES)
+        for (const t of TS) {
+          s.pose(phase, t);
+          s.root.updateMatrixWorld(true);
+          s.root.traverse((o) => {
+            for (const e of o.matrixWorld.elements) expect(Number.isFinite(e)).toBe(true);
+            if (o.material) expect(Number.isFinite(o.material.opacity)).toBe(true);
+          });
+        }
+      s.dispose();
+    }
+  },
+);
 
 test('createSplat dispose frees everything', () => {
   const s = createSplat('slime', '#33aa55');
@@ -61,7 +64,9 @@ test('createSplat dispose frees everything', () => {
 
 const area = { halfWidth: 12, halfDepth: 7 };
 beforeAll(async () => {
-  await initPhysics(readFileSync('node_modules/@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.wasm'));
+  await initPhysics(
+    readFileSync('node_modules/@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.wasm'),
+  );
   const sim = createSim(area, computeHulls());
   prewarm(sim, ['d6']);
   sim.dispose();
@@ -86,7 +91,132 @@ test('the thresholds: a full-pace arrival splats, a die tumbling to rest only wo
   // path (full pace, 20.7), and one just ahead of where the same die has slowed to ~3 (2.9).
   const full = firstPetImpact(5, { x: -6.050136089324951, z: 0.9487465620040894, r: 0.95, h: 1.5 });
   expect(full.speed).toBeGreaterThanOrEqual(SPLAT_SPEED);
-  const tumble = firstPetImpact(5, { x: 1.099047846402165, z: -2.149915245914432, r: 0.95, h: 1.5 });
+  const tumble = firstPetImpact(5, {
+    x: 1.099047846402165,
+    z: -2.149915245914432,
+    r: 0.95,
+    h: 1.5,
+  });
   expect(tumble.speed).toBeGreaterThanOrEqual(WOBBLE_SPEED);
   expect(tumble.speed).toBeLessThan(SPLAT_SPEED);
+});
+
+// --- the look's budgets and shape (Task 5) ------------------------------------------------------
+
+const triangles = (root) =>
+  parts(root).reduce((n, m) => {
+    const g = m.geometry;
+    return n + (g.index ? g.index.count : g.attributes.position.count) / 3;
+  }, 0);
+const named = (root, name) => {
+  const out = [];
+  root.traverse((o) => o.name === name && out.push(o));
+  return out;
+};
+/** The world-space box of the visible meshes (invisible ones and their children left out). */
+function visibleBox(root) {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const walk = (o) => {
+    if (!o.visible) return;
+    if (o.isMesh) box.expandByObject(o);
+    else for (const c of o.children) walk(c);
+  };
+  walk(root);
+  return box;
+}
+
+test.each(KINDS)('%s splat: <= 1500 triangles, <= 3 materials, <= 24 draw calls', (kind) => {
+  const s = createSplat(kind, '#7b4bc4');
+  expect(triangles(s.root)).toBeLessThanOrEqual(1500);
+  expect(new Set(parts(s.root).map((m) => m.material)).size).toBeLessThanOrEqual(3);
+  expect(parts(s.root).length).toBeLessThanOrEqual(24);
+  s.dispose();
+});
+
+test.each(KINDS)(
+  '%s puddle: two eyes, a wide flat puddle and 6-10 droplets on the floor',
+  (kind) => {
+    const s = createSplat(kind, '#2e9e5b');
+    s.pose('puddle', 1);
+    expect(named(s.root, 'splatEye')).toHaveLength(2);
+    for (const e of named(s.root, 'splatEye')) expect(e.visible).toBe(true);
+    const drops = named(s.root, 'splatDrop');
+    expect(drops.length).toBeGreaterThanOrEqual(6);
+    expect(drops.length).toBeLessThanOrEqual(10);
+    const box = visibleBox(s.root);
+    const size = box.getSize(new THREE.Vector3());
+    expect(Math.max(size.x, size.z)).toBeGreaterThanOrEqual(2); // wider than the pet
+    // flat, on the floor: the goo itself is low (eyes, a lid or a wing may stand above it)
+    const puddle = new THREE.Box3().setFromObject(named(s.root, 'splatPuddle')[0]);
+    expect(Math.abs(puddle.min.y)).toBeLessThan(0.01);
+    expect(puddle.max.y).toBeLessThan(0.3);
+    for (const d of drops) {
+      const b = new THREE.Box3().setFromObject(d);
+      expect(b.max.y).toBeLessThan(0.2); // landed
+      expect(b.min.y).toBeGreaterThan(-0.01);
+    }
+    // a lid or wing dips into the goo, never deep under the table (nothing hides it there)
+    for (const n of ['splatLid', 'splatWing'])
+      for (const o of named(s.root, n))
+        expect(new THREE.Box3().setFromObject(o).min.y).toBeGreaterThan(-0.12);
+    s.dispose();
+  },
+);
+
+test('the mimic leaves its lid with teeth, the dragonling a wing, the slime neither', () => {
+  const m = createSplat('mimic', '#c0392b');
+  expect(named(m.root, 'splatLid')).toHaveLength(1);
+  expect(named(m.root, 'splatTooth').length).toBeGreaterThanOrEqual(1);
+  expect(named(m.root, 'splatWing')).toHaveLength(0);
+  const d = createSplat('dragonling', '#7b4bc4');
+  expect(named(d.root, 'splatWing')).toHaveLength(1);
+  expect(named(d.root, 'splatLid')).toHaveLength(0);
+  const s = createSplat('slime', '#2e9e5b');
+  expect(named(s.root, 'splatLid').length + named(s.root, 'splatWing').length).toBe(0);
+  for (const x of [m, d, s]) x.dispose();
+});
+
+test.each(KINDS)(
+  '%s burst starts as a compact blob where the pet stood and ends as the puddle',
+  (kind) => {
+    const s = createSplat(kind, '#c0392b');
+    s.pose('burst', 0);
+    const start = visibleBox(s.root).getSize(new THREE.Vector3());
+    expect(Math.max(start.x, start.z)).toBeLessThan(1.8);
+    expect(start.y).toBeGreaterThan(0.4); // still a lump, about to squash
+    s.pose('burst', 1);
+    const a = visibleBox(s.root);
+    s.pose('puddle', 1);
+    const b = visibleBox(s.root);
+    // the burst's last frame lands on the puddle's footprint (the eyes may still be blinking)
+    expect(a.min.x).toBeCloseTo(b.min.x, 1);
+    expect(a.max.z).toBeCloseTo(b.max.z, 1);
+    s.dispose();
+  },
+);
+
+test.each(KINDS)('%s reform pulls everything in and is gone at t = 1', (kind) => {
+  const s = createSplat(kind, '#c0392b');
+  s.pose('reform', 0);
+  const start = visibleBox(s.root).getSize(new THREE.Vector3());
+  expect(Math.max(start.x, start.z)).toBeGreaterThanOrEqual(2);
+  s.pose('reform', 1);
+  const end = visibleBox(s.root);
+  expect(end.isEmpty() || Math.max(...end.getSize(new THREE.Vector3()).toArray()) < 0.05).toBe(
+    true,
+  );
+  s.dispose();
+});
+
+test('a pose never adds, removes or swaps parts', () => {
+  const s = createSplat('dragonling', '#7b4bc4');
+  const ids = () =>
+    parts(s.root)
+      .map((m) => m.geometry.id + ':' + m.material.id)
+      .join();
+  const before = ids();
+  for (const phase of PHASES) for (let t = -0.2; t <= 1.2; t += 0.05) s.pose(phase, t);
+  expect(ids()).toBe(before);
+  s.dispose();
 });

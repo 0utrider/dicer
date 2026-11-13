@@ -1,10 +1,27 @@
 import * as THREE from 'three';
 import { CREATURES } from './creatures/index.js';
-import { phaseAt, ENTER_MS, REACT_MS, REST_HOP_MS, WOBBLE_MS, SPLAT_MS, REFORM_MS } from './timeline.js';
+import {
+  phaseAt,
+  ENTER_MS,
+  REACT_MS,
+  REST_HOP_MS,
+  WOBBLE_MS,
+  SPLAT_MS,
+  REFORM_MS,
+} from './timeline.js';
 import { createSplat } from './splat.js';
 import { summarize, merge, reactionSound } from './reaction.js';
 import { discTexture, starTexture } from './textures.js';
-import { edgeSpot, restSpot, offPoint, fitArea, obstacle, SLIDE, PET_HEIGHT, KIND_FOOTPRINT } from './resting.js';
+import {
+  edgeSpot,
+  restSpot,
+  offPoint,
+  fitArea,
+  obstacle,
+  SLIDE,
+  PET_HEIGHT,
+  KIND_FOOTPRINT,
+} from './resting.js';
 
 /** At most this many pets on screen at once. */
 export const MAX_PETS = 3;
@@ -21,6 +38,7 @@ const PUDDLE_MS = 600; // the eyes open and blink once, then the puddle holds
 const WOBBLE_PUSH = 0.3; // of the height, the recoil away from the die
 // The states of a pet knocked flat: bursting, lying there, pulling back together, fading away.
 const NO_LOOK = { yaw: 0 }; // shared: poses only read it
+const WOBBLE_LOOK = { yaw: 0, leanX: 0, leanZ: 0 }; // reused: the push in the pet's own space
 const DOWN = new Set(['splat', 'puddle', 'reform', 'fade']);
 const HOP = 0.45; // of the height
 const LOOK_MAX = 0.6;
@@ -73,7 +91,12 @@ export function createPetLayer(deps) {
     shadowGeo ??= new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2);
     const shadow = new THREE.Mesh(
       shadowGeo,
-      new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: 0.4, depthWrite: false }),
+      new THREE.MeshBasicMaterial({
+        map: shadowTex,
+        transparent: true,
+        opacity: 0.4,
+        depthWrite: false,
+      }),
     );
     shadow.name = 'petShadow';
     shadow.position.y = 0.01;
@@ -199,7 +222,11 @@ export function createPetLayer(deps) {
   /** Whether resting is on: petsStay, and pets allowed and shown at all. */
   const stays = () => {
     try {
-      return getSetting('petsStay') !== false && getSetting('petsAllowed') !== false && getSetting('showPets') !== false;
+      return (
+        getSetting('petsStay') !== false &&
+        getSetting('petsAllowed') !== false &&
+        getSetting('showPets') !== false
+      );
     } catch {
       return true;
     }
@@ -254,7 +281,11 @@ export function createPetLayer(deps) {
     for (const p of pets.values()) {
       if (p === mine || !standing(p)) continue;
       count++;
-      if ((p.state === 'hop' || p.state === 'rest' || p.state === 'puddle') && (!victim || p.idleAt < victim.idleAt)) victim = p;
+      if (
+        (p.state === 'hop' || p.state === 'rest' || p.state === 'puddle') &&
+        (!victim || p.idleAt < victim.idleAt)
+      )
+        victim = p;
     }
     return count < MAX_PETS ? { ok: true } : { ok: !!victim, victim };
   }
@@ -278,7 +309,15 @@ export function createPetLayer(deps) {
       const shadow = makeShadow();
       const sparkle = makeSparkle();
       group.add(shadow, sparkle);
-      pet = { userId: spec.userId, group, shadow, sparkle, creature: null, rolls: new Map(), state: 'routine' };
+      pet = {
+        userId: spec.userId,
+        group,
+        shadow,
+        sparkle,
+        creature: null,
+        rolls: new Map(),
+        state: 'routine',
+      };
       setCreature(pet, creature, spec);
       scene.add(group);
       pets.set(spec.userId, pet);
@@ -289,7 +328,8 @@ export function createPetLayer(deps) {
     if (down) {
       pet.group.scale.setScalar(1);
       pet.wobble = null;
-      if (pet.state === 'splat') pet.reformNext = true; // the burst finishes, then it reforms
+      if (pet.state === 'splat')
+        pet.reformNext = true; // the burst finishes, then it reforms
       else if (pet.state !== 'reform') {
         pet.state = 'reform';
         pet.reformAt = now;
@@ -394,13 +434,23 @@ export function createPetLayer(deps) {
         push = WOBBLE_PUSH * h * Math.sin(wt * Math.PI);
       } else pet.wobble = null; // over: nothing carries into the next frame or roll
     }
-    pet.group.position.set(px + (wt >= 0 ? pet.wobble.dx * push : 0), hop, pz + (wt >= 0 ? pet.wobble.dz * push : 0));
+    pet.group.position.set(
+      px + (wt >= 0 ? pet.wobble.dx * push : 0),
+      hop,
+      pz + (wt >= 0 ? pet.wobble.dz * push : 0),
+    );
     pet.group.rotation.y = pet.yaw;
     pet.group.userData.dicerPet.phase = phase;
     pet.shadow.position.y = 0.01 - hop;
     pet.shadow.visible = shadows;
-    if (wt >= 0) pet.creature.pose('wobble', wt, pet.reaction, NO_LOOK);
-    else pet.creature.pose(phase, t, pet.reaction, { yaw: look });
+    if (wt >= 0) {
+      // the push direction turned into the creature's space (the group is turned by pet.yaw)
+      const cy = Math.cos(pet.yaw);
+      const sy = Math.sin(pet.yaw);
+      WOBBLE_LOOK.leanX = pet.wobble.dx * cy - pet.wobble.dz * sy;
+      WOBBLE_LOOK.leanZ = pet.wobble.dx * sy + pet.wobble.dz * cy;
+      pet.creature.pose('wobble', wt, pet.reaction, WOBBLE_LOOK);
+    } else pet.creature.pose(phase, t, pet.reaction, { yaw: look });
     // A ghost roll is never 'crit', so it never bursts.
     const s = phase === 'react' && pet.reaction === 'crit' ? (t * REACT_MS) / BURST_MS : 1;
     pet.sparkle.visible = s < 1;
@@ -606,7 +656,8 @@ export function createPetLayer(deps) {
     const pet = pets.get(userId);
     if (!pet) return;
     pet.gone = true;
-    if (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'puddle') sendOff(pet, clock());
+    if (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'puddle')
+      sendOff(pet, clock());
   }
 
   /** Whether petSplat is on. */
@@ -630,7 +681,8 @@ export function createPetLayer(deps) {
     pet.splatAt = now;
     pet.idleAt = now;
     ensureSplat(pet).root.visible = true;
-    if (getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: 'petSplat' });
+    if (getSetting('petSounds') !== false && getSetting('sounds') !== false)
+      playSound({ builtin: 'petSplat' });
     wake();
   }
 
@@ -651,8 +703,8 @@ export function createPetLayer(deps) {
     let dx = (pet.px ?? pet.base.x) - (info.position?.x ?? 0);
     let dz = (pet.pz ?? pet.base.z) - (info.position?.z ?? 0);
     const len = Math.hypot(dx, dz);
-    if (len > 1e-6 && Number.isFinite(len)) (dx /= len), (dz /= len);
-    else (dx = 1), (dz = 0);
+    if (len > 1e-6 && Number.isFinite(len)) ((dx /= len), (dz /= len));
+    else ((dx = 1), (dz = 0));
     pet.wobble = { at: now, dx, dz };
     wake();
   }
