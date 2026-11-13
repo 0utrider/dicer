@@ -69,6 +69,44 @@
 - **During a hand replay,** other screens move their pets to the thrower's layout, so a shared splat lines up.
 - **d16:** read the face on the table and report its paired top face, with a short glow on that face.
 
+## Pre-flight rulings (binding; they override task text where they differ)
+
+From the controller's pre-flight scan (`.superpowers/sdd/2026-11-14-dicer-rolling-by-hand/preflight.md`):
+
+- **R1 Ratchet.** Task 1 re-bases `tests/unit/build.test.js` to reference `4_103_020` with allowance `12_288` (comment: "rolling by hand: owner-approved +12,288 B"), so no task goes red before Task 3. Task 3 does not re-base again.
+- **R2 Hand chunk.**
+  - The lazy entry is named `src/hand/hand.js`. `vite.config.js` `chunkFileNames` maps it to `hand-[hash].js`, and `build/world-start.js` `LAZY` gains the hashed `hand-` pattern.
+  - Task 5 adds the importing seam: a loader like `src/pet/pet-loader.js`, with a test that the chunk is lazy.
+- **R3 d16 glow** (owner decision). Task 3 implements `RESULT_GLOW_MS` in Playback/DiceBox: a short glow on the counted face of a hand-read d16. Test it.
+- **R4 d16 value.**
+  - Result = the value of the face paired with the face on the table: `17 −` the table face's value, for a 1..16 numbering where opposite faces sum to 17. Verify against `src/core/dice-shapes.js`'s d16 labels and use the real pairing.
+  - Task 1's resting test uses face-down resting poses for d4, crystal d4 and d16 (not `restingQuaternion`'s face-up pose).
+- **R5 Task 2 sim tests.**
+  - "Launched outside the area ends inside" uses a displaced seeded-spawn die.
+  - The cocked/edge test leans the die on a wall or obstacle (deterministic), not a balanced edge.
+  - Walls stay open iff any die has no launch.
+- **R6 Task 5 codec.**
+  - Assert position error ≤ 1/512 on kept frames and ≤ 0.05 on interpolated ones.
+  - `MAX_TRAJECTORY_BYTES` applies to the base64 payload, and the encoder returns null above it (the sender then falls back as the plan says for oversize).
+- **R7 Task 9 `restSpot`.** Keep `away` as `{x, z, min}` (cursor dodge, existing tests) and add a 7th parameter `clear` (predicate) for the thrower-layout case.
+- **R8 Privacy (G1).** Task 8's own-roll `decorateLanded` applies only when the view is `real`; the ghost and none views take the normal path. Test a blind tray roll and a secret roll.
+- **R9 Task 7 resolver with manual + dicer methods.**
+  - Pre-set `_id` and the method on dicer terms. Call `super.awaitFulfillment` only when manual terms exist.
+  - Delegate manual `resolveResult`/`addTerm` to super.
+  - Use `options.explode`/`options.reroll` to tell extras from dropped dice. Test mixed manual + dicer.
+- **R10 Glue.**
+  - Task 3 adds `DiceBox.holding` (a getter) and an `alignFor` passthrough to the pet hook.
+  - `main.js` injects the hand chunk's deps (diceBox, areas, decorateFor, pets) at ready.
+  - `placeTrajectory` takes the area in die units, converting from the px rect with the same helper DiceBox uses (`toDieArea`), plus capacity growth.
+  - The trajectory payload carries `edge` and the hand flag for the replay pet.
+  - The Task 10 tray stores its recording through the same store as hand rolls.
+  - The bench adapter reaches hand throws through a small api hook (Task 11 may touch `src/api/dice3d.js` and `src/bench/report.js`).
+  - `dicerHand.n` = the number of dice in the throw.
+  - `HAND_UNFAIR` is defined in Task 4 (where the fairness run produces it) and imported by Task 7's shell.
+  - `throw-planner.test.js` already exists: extend it.
+- **R11 Tests to add.** H-10 (look-only replay specs) gets a test in Task 8. H-20 (prefetch) gets a test in Task 6.
+- **R12 Commit trailer.** Keep `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, per the harness's attribution rule.
+
 ## Design calls (owner can overturn)
 
 Kept: P6-D1 (blind sheet rolls are never thrown by hand), P6-D2 (trajectory after the message exists), P6-D3 (extras thrown automatically), P6-D4 (hand rolls off by default, GM allows all), P6-D6 (the fairness script stays separate from the suite). Refined: P6-D5 (see H-11).
