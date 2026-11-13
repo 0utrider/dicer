@@ -125,6 +125,21 @@ async function main() {
       })),
     );
     problems.push(
+      // The d100 preview is its tens die: 10, 20 … 90 and 00, as in a roll.
+      ...(await shoot(
+        browser,
+        'app=appearance',
+        'appearance-editor-d100.png',
+        async (page) => {
+          await livePreview(page);
+          await page.click('[data-action="previewDie"][data-type="d100"]');
+          await page.waitForTimeout(600);
+          await page.mouse.move(5, 5);
+        },
+        { reducedMotion: 'reduce' },
+      )),
+    );
+    problems.push(
       ...(await shoot(
         browser,
         'app=appearance',

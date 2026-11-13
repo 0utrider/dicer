@@ -208,11 +208,17 @@ export function createThumbnailer({
   const shapeTypeOf = (dieType, appearance) =>
     dieType === 'd100' ? 'd10' : dieType === 'd4' && normalizeAppearance(appearance).shapes.d4 === 'crystal' ? 'd4crystal' : dieType;
 
+  // d100 shows its tens die (10, 20 … 90, 00), as a roll does
+  const labelsOf = (dieType, shapeType, shape) =>
+    dieType === 'd100'
+      ? shape.values.map((v) => labelFor('d10', v * 10, 'd100tens'))
+      : shape.values.map((v) => labelFor(shapeType, v));
+
   async function renderOne(theme, dieType, dieAtlas = atlas) {
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
     const shapeType = shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
-    const labels = shape.values.map((v) => labelFor(shapeType, v));
+    const labels = labelsOf(dieType, shapeType, shape);
     const api = sceneApi; // dispose() may null the module state while the blob is pending
     const cam = camera;
     const cvs = canvas;
@@ -356,7 +362,7 @@ export function createThumbnailer({
       if (!renderer || broken) return false;
       const shapeType = shapeTypeOf(dieType, appearance);
       const shape = getShape(shapeType);
-      const labels = shape.values.map((v) => labelFor(shapeType, v));
+      const labels = labelsOf(dieType, shapeType, shape);
       const fontId = fontOf(appearance);
       const dieAtlas = readyAtlas(fontId);
       const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags);

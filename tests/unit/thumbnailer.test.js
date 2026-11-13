@@ -211,10 +211,13 @@ test('context loss resolves null with one warning and never retries', async () =
   t.dispose();
 });
 
-test('d100 draws as a d10', async () => {
+test('d100 draws as the tens d10: 10, 20 … 90 and 00', async () => {
+  createDiceMaterial.mockClear();
   const { t, rig } = make();
   expect(await t.thumbnail(theme(), 'd100')).toBe('blob:t1');
   expect(rig.renderer.render).toHaveBeenCalledTimes(1);
+  const labels = createDiceMaterial.mock.calls.at(-1)[3];
+  expect([...labels].sort()).toEqual(['00', '10', '20', '30', '40', '50', '60', '70', '80', '90']);
   t.dispose();
 });
 
@@ -293,6 +296,18 @@ describe('geometry per edge step', () => {
     c.stop();
     expect(freed(geo)).toBe(2);
     geo.mockRestore();
+    t.dispose();
+  });
+
+  test('a d100 preview shows the tens die: 10, 20 … 90 and 00', () => {
+    createDiceMaterial.mockClear();
+    const frames = [];
+    const { t } = make({ opts: previewOpts(frames) });
+    const p = t.preview(target(), withRadius(0.5), 'd100');
+    for (const cb of frames.splice(0)) cb(0);
+    const labels = createDiceMaterial.mock.calls.at(-1)[3];
+    expect([...labels].sort()).toEqual(['00', '10', '20', '30', '40', '50', '60', '70', '80', '90']);
+    p.stop();
     t.dispose();
   });
 
