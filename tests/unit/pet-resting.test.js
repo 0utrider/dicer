@@ -1,4 +1,4 @@
-import { restSpot, fitArea, offPoint, edgeSpot, PET_HEIGHT, KIND_FOOTPRINT } from '../../src/pet/chunk/resting.js';
+import { restSpot, fitArea, offPoint, edgeSpot, PET_HEIGHT, KIND_FOOTPRINT, BODY } from '../../src/pet/chunk/resting.js';
 import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
 import { mulberry32 } from '../../src/core/rng.js';
 
@@ -71,4 +71,35 @@ test('PET_HEIGHT matches every creature', () => {
 
 test('a NaN rand never yields null', () => {
   expect(restSpot(AREA, H, [], () => NaN)).toEqual({ x: AREA.cx, z: AREA.cz });
+});
+
+// ---- Foundry's UI kept clear (final review I-4) ----
+/** Whether a disc of radius pad at p overlaps the rectangle r. */
+const overlaps = (p, r, pad) =>
+  Math.hypot(Math.max(r.x0 - p.x, 0, p.x - r.x1), Math.max(r.z0 - p.z, 0, p.z - r.z1)) < pad;
+
+test('restSpot keeps the pet body off every exclusion rectangle for 200 seeded tries', () => {
+  // the left column and the bottom band of the area are taken by UI
+  const avoid = [
+    { x0: AREA.cx - AREA.halfWidth, x1: AREA.cx - 8, z0: AREA.cz - AREA.halfDepth, z1: AREA.cz + AREA.halfDepth },
+    { x0: AREA.cx - 6, x1: AREA.cx + 6, z0: AREA.cz + 5, z1: AREA.cz + AREA.halfDepth },
+  ];
+  for (let seed = 1; seed <= 200; seed++) {
+    const spot = restSpot(AREA, H, [], mulberry32(seed), avoid);
+    for (const r of avoid) expect(overlaps(spot, r, BODY * H - 1e-9), `seed ${seed}`).toBe(false);
+  }
+});
+
+test('without exclusions (or with an empty list) restSpot draws as before', () => {
+  for (const seed of [1, 2, 3])
+    expect(restSpot(AREA, H, [], mulberry32(seed), [])).toEqual(restSpot(AREA, H, [], mulberry32(seed)));
+});
+
+test('an area covered by UI still gives a finite best candidate, in bounded tries', () => {
+  const all = [{ x0: -100, x1: 100, z0: -100, z1: 100 }];
+  let draws = 0;
+  const rand = mulberry32(5);
+  const spot = restSpot(AREA, H, [], () => (draws++, rand()), all);
+  expect(Number.isFinite(spot.x) && Number.isFinite(spot.z)).toBe(true);
+  expect(draws).toBe(2 * 24);
 });

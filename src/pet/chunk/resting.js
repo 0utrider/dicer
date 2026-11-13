@@ -14,6 +14,7 @@ export const SPACING = 2; // of the height: a resting spot is at least this far 
 export const INNER = 0.6; // the middle share of the area, where the dice aim, kept clear
 export const TRIES = 24;
 export const FOOTPRINT = 0.45; // of the height: an obstacle's radius
+export const BODY = 0.65; // of the height: the drawn pet's half-width, kept off Foundry's UI
 /** The standing height of every creature (creatures/*.js; a test keeps this in step). */
 export const PET_HEIGHT = 1.5;
 /** Each kind's `footprint` (creatures/*.js), for a pet not made yet; a test keeps these in step. */
@@ -39,13 +40,20 @@ export const obstacle = (at, height, id, footprint) => ({ x: at.x, z: at.z, r: f
  * How well a spot honours the rules, as the smallest slack over them: >= 0 is valid (the inner
  * 60% needs > 0), negative is how far the worst rule is broken. Edges, the inner 60%, spacing.
  */
-function slack(area, height, taken, x, z) {
+function slack(area, height, taken, x, z, avoid) {
   const dx = Math.abs(x - area.cx);
   const dz = Math.abs(z - area.cz);
   const m = EDGE_GAP * height;
   let s = Math.min(area.halfWidth - m - dx, area.halfDepth - m - dz);
   s = Math.min(s, Math.max(dx - INNER * area.halfWidth, dz - INNER * area.halfDepth) - 1e-9);
   for (const o of taken) s = Math.min(s, Math.hypot(x - o.x, z - o.z) - SPACING * height);
+  for (const r of avoid) {
+    // the signed distance from the spot to the rectangle (negative inside), less the pet's body
+    const ox = Math.max(r.x0 - x, x - r.x1);
+    const oz = Math.max(r.z0 - z, z - r.z1);
+    const d = ox > 0 || oz > 0 ? Math.hypot(Math.max(ox, 0), Math.max(oz, 0)) : Math.max(ox, oz);
+    s = Math.min(s, d - BODY * height - 1e-9);
+  }
   return s;
 }
 
@@ -53,10 +61,12 @@ function slack(area, height, taken, x, z) {
  * A random resting spot for a pet of `height` in `area` ({cx, cz, halfWidth, halfDepth}): at least
  * 1.2 x height from every edge, outside the inner 60% (|x - cx| > 0.6 halfWidth or
  * |z - cz| > 0.6 halfDepth), and at least 2 x height from each of `taken` ({x, z}: the other
- * pets and puddles). Seeded rejection sampling with `rand`: the first of 24 valid tries; if none
- * is valid (a crowded or tiny area), the candidate farthest from breaking a rule, never a throw.
+ * pets and puddles), with the pet's body (BODY x height) off each of `avoid` ({x0, x1, z0, z1}:
+ * Foundry's UI in die units). Seeded rejection sampling with `rand`: the first of 24 valid tries;
+ * if none is valid (a crowded or tiny area), the candidate farthest from breaking a rule, never a
+ * throw.
  */
-export function restSpot(area, height, taken, rand) {
+export function restSpot(area, height, taken, rand, avoid = []) {
   const ex = Math.max(0, area.halfWidth - EDGE_GAP * height);
   const ez = Math.max(0, area.halfDepth - EDGE_GAP * height);
   let best = null;
@@ -64,7 +74,7 @@ export function restSpot(area, height, taken, rand) {
   for (let i = 0; i < TRIES; i++) {
     const x = area.cx + (rand() * 2 - 1) * ex;
     const z = area.cz + (rand() * 2 - 1) * ez;
-    const s = slack(area, height, taken, x, z);
+    const s = slack(area, height, taken, x, z, avoid);
     if (s >= 0) return { x, z };
     if (s > bestSlack) {
       bestSlack = s;

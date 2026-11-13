@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED } from '../../src/pet/chunk/pets.js';
+import { mulberry32 as mulberry } from '../../src/core/rng.js';
 
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
 let clockNow = 0;
@@ -1017,4 +1018,100 @@ test('a splat becoming a puddle after a stage change lands inside the new stage'
   expect(phaseOf(m)).toBe('puddle');
   expect(Math.abs(p.x)).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
   expect(Math.abs(p.z)).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
+});
+
+// ---- final review fixes: the sim's splat speed, UI kept clear, area edits, unchanged resizes ----
+
+test('splatSpeed is SPLAT_SPEED while petSplat is on, null when it is off', () => {
+  const m = make({ petsStay: true });
+  expect(m.layer.splatSpeed).toBe(SPLAT_SPEED);
+  m.settings.petSplat = false;
+  expect(m.layer.splatSpeed).toBeNull();
+  m.settings.petSplat = true;
+  expect(m.layer.splatSpeed).toBe(SPLAT_SPEED);
+});
+
+test('areaChanged with an unchanged stage does not move resting pets or puddles', () => {
+  const m = make({ petsStay: true });
+  const stage = { cx: 0, cz: 0, halfWidth: 14, halfDepth: 9 };
+  m.layer.areaChanged(stage);
+  rollToRest(m, 'u1');
+  const before = { ...at(m.scene) };
+  m.deps.wake.mockClear();
+  m.layer.areaChanged({ ...stage }); // a resize event with the same size
+  expect(m.deps.wake).not.toHaveBeenCalled();
+  expect(runTo(m, clockNow + 600)).toBe('rest');
+  expect(at(m.scene).x).toBe(before.x);
+  expect(at(m.scene).z).toBe(before.z);
+});
+
+/** A fake document: getElementById answers px rects for the named ids. */
+const fakeDoc = (rects) => ({
+  getElementById: (id) =>
+    rects[id] ? { getBoundingClientRect: () => ({ ...rects[id], right: rects[id].left + rects[id].width, bottom: rects[id].top + rects[id].height }) } : null,
+});
+
+test("resting pets keep off Foundry's UI (measured in px, turned into die units)", () => {
+  // stage 1400 x 900 px at 50 px per die: 14 x 9 half units. The left 400 px and the bottom 250 px are UI.
+  const rects = {
+    'ui-left': { left: 0, top: 0, width: 400, height: 900 },
+    hotbar: { left: 400, top: 650, width: 1000, height: 250 },
+    navigation: { left: 0, top: 0, width: 0, height: 0 }, // hidden: ignored
+  };
+  for (let seed = 1; seed <= 20; seed++) {
+    const r = mulberry(seed);
+    const m = make({ petsStay: true }, { doc: fakeDoc(rects), random: r });
+    m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 14, halfDepth: 9, rect: { left: 0, top: 0, width: 1400, height: 900 } });
+    rollToRest(m, 'u1');
+    const p = at(m.scene);
+    // the left UI ends at x = 400 px = -6 units; the hotbar starts at z = 650 px = +4 units
+    expect(p.x > -6 + 0.9 || p.z < -9, `seed ${seed}`).toBe(true);
+    expect(p.z < 4 - 0.9 || p.x < -6, `seed ${seed}`).toBe(true);
+  }
+});
+
+test('an area edit re-places the resting pets whose owner area changed, and dispose stops listening', () => {
+  const handlers = new Map();
+  const hooks = {
+    on: vi.fn((name, fn) => (handlers.set(name, fn), 7)),
+    off: vi.fn((name) => handlers.delete(name)),
+  };
+  const areas = { u1: BIG, u2: BIG };
+  const m = make({ petsStay: true }, { hooks, areaOf: (id) => areas[id] });
+  rollToRest(m, 'u1');
+  rollToRest(m, 'u2');
+  const u2 = { ...at(m.scene, 1) };
+  // u1's area becomes the top-right corner of the stage
+  const corner = { cx: 8, cz: -5, halfWidth: 6, halfDepth: 4 };
+  areas.u1 = corner;
+  m.deps.wake.mockClear();
+  handlers.get('dicerRollAreasChanged')({});
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(runTo(m, clockNow + 600)).toBe('rest');
+  const p = at(m.scene, 0);
+  expect(Math.abs(p.x - corner.cx)).toBeLessThanOrEqual(corner.halfWidth);
+  expect(Math.abs(p.z - corner.cz)).toBeLessThanOrEqual(corner.halfDepth);
+  expect(at(m.scene, 1).x).toBe(u2.x); // u2's area did not change: it stays
+  expect(at(m.scene, 1).z).toBe(u2.z);
+  m.layer.dispose();
+  expect(hooks.off).toHaveBeenCalledWith('dicerRollAreasChanged', 7);
+});
+
+test('an area edit moves a puddle into its owner new area', () => {
+  const handlers = new Map();
+  const hooks = { on: (name, fn) => (handlers.set(name, fn), 1), off: () => {} };
+  const areas = { u1: BIG };
+  const m = make({ petsStay: true }, { hooks, areaOf: (id) => areas[id] });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  runTo(m, clockNow + 1300);
+  expect(phaseOf(m)).toBe('puddle');
+  const corner = { cx: -8, cz: 5, halfWidth: 6, halfDepth: 4 };
+  areas.u1 = corner;
+  handlers.get('dicerRollAreasChanged')({});
+  m.layer.update((clockNow += 16));
+  const p = at(m.scene);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(Math.abs(p.x - corner.cx)).toBeLessThanOrEqual(corner.halfWidth);
+  expect(Math.abs(p.z - corner.cz)).toBeLessThanOrEqual(corner.halfDepth);
 });

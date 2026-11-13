@@ -43,6 +43,9 @@ const DOWN = new Set(['splat', 'puddle', 'reform', 'fade']);
 const HOP = 0.45; // of the height
 const LOOK_MAX = 0.6;
 const MOVED = 1e-3; // a re-used pet farther than this from its new spot hops there
+// Foundry's UI that the dice canvas draws over (v14 puts it at z-index 30, the canvas at 60).
+const UI_IDS = ['ui-left', 'players', 'hotbar', 'navigation', 'ui-top'];
+const AREAS_HOOK = 'dicerRollAreasChanged';
 
 // The crit's sparkle burst: a few additive star points thrown out around the pet.
 const SPARKS = 12;
@@ -77,7 +80,11 @@ export function createPetLayer(deps) {
   const { scene, getSetting, playSound, warm } = deps;
   const clock = deps.now || (() => performance.now()); // test seam; DiceBox's update() is on this clock
   const rand = deps.random || Math.random; // test seam: the rest spots
-  let stage = null; // the last stage areaChanged told us: a rest area is always fitted inside it
+  const doc = deps.doc || globalThis.document; // test seam: Foundry's UI, which rest spots avoid
+  const hooks = deps.hooks || globalThis.Hooks; // test seam: Foundry's hooks (area edits)
+  // The last stage DiceBox told us ({cx, cz, halfWidth, halfDepth, rect?}: rect is its px rect): a
+  // rest area is always fitted inside it.
+  let stage = null;
   const pets = new Map(); // userId -> pet
   const keyOwner = new Map(); // roll key -> userId
   let shadowTex = null;
@@ -252,12 +259,43 @@ export function createPetLayer(deps) {
     }
     wake();
   }
+  /**
+   * Foundry's UI on the stage (I-4: the dice canvas draws over it), in die units from the stage
+   * centre: measured now, so a players list opened since counts. Missing or hidden parts are left out.
+   */
+  function uiRects() {
+    const r = stage?.rect;
+    const out = [];
+    if (!r || !(stage.halfWidth > 0) || !(r.width > 0)) return out;
+    const px = r.width / 2 / stage.halfWidth;
+    const ox = r.left + r.width / 2;
+    const oz = r.top + r.height / 2;
+    for (const id of UI_IDS) {
+      try {
+        const b = doc?.getElementById?.(id)?.getBoundingClientRect?.();
+        if (!(b?.width > 0 && b.height > 0)) continue;
+        out.push({
+          x0: (b.left - ox) / px,
+          x1: (b.left + b.width - ox) / px,
+          z0: (b.top - oz) / px,
+          z1: (b.top + b.height - oz) / px,
+        });
+      } catch {
+        /* unreadable: ignored */
+      }
+    }
+    return out;
+  }
+  /** A free rest spot for `pet` in its area: spaced from the other pets, off Foundry's UI. */
+  function freeSpot(pet) {
+    const taken = [];
+    for (const o of pets.values()) if (o !== pet && standing(o)) taken.push(spotOf(o));
+    return restSpot(pet.area, pet.creature.height, taken, rand, uiRects());
+  }
   const restOf = (pet, now) => {
     if (pet.state === 'routine') pet.idleAt = now; // idle since its routine ended
     if (stage) pet.area = fitArea(pet.area, stage);
-    const taken = [];
-    for (const o of pets.values()) if (o !== pet && standing(o)) taken.push(spotOf(o));
-    hopTo(pet, restSpot(pet.area, pet.creature.height, taken, rand), 'hop', now);
+    hopTo(pet, freeSpot(pet), 'hop', now);
   };
   const sendOff = (pet, now) => {
     if (pet.state === 'off' || pet.state === 'fade') return;
@@ -638,7 +676,8 @@ export function createPetLayer(deps) {
    * `spec`'s own user, the edge spot its pet is about to take, from the same placement as begin
    * (which replaces that pet's own entry). A pet leaving, or about to be replaced, stands no more.
    */
-  function obstaclesFor({ spec, edge, area }) {
+  function obstaclesFor({ spec, edge, area, stage: now }) {
+    if (now) stage = now; // the layer may have loaded after DiceBox's last areaChanged
     const own = spec ? slotFor(spec.userId) : null;
     const list = [];
     if (own?.ok) {
@@ -715,30 +754,58 @@ export function createPetLayer(deps) {
    * the new stage. Rolling pets keep their edge spot: their roll has its own area.
    */
   function areaChanged(next) {
+    const same =
+      stage &&
+      ['cx', 'cz', 'halfWidth', 'halfDepth'].every((k) => (stage[k] ?? 0) === (next[k] ?? 0));
     stage = next;
+    if (same) return; // a resize event with the same size: nobody hops for no visible reason
     const now = clock();
-    for (const pet of pets.values()) {
-      if (pet.state === 'splat' || pet.state === 'puddle') {
-        // A puddle does not hop: it snaps to a fresh spot in its owner's fitted area (a splat gets
-        // it when it becomes a puddle). Its old spot keeps nobody away.
-        pet.area = fitArea(pet.area, stage);
-        pet.spot = null;
-        const taken = [];
-        for (const o of pets.values()) if (o !== pet && standing(o)) taken.push(spotOf(o));
-        pet.moveTo = restSpot(pet.area, pet.creature.height, taken, rand);
-        if (pet.state === 'puddle') {
-          moveDown(pet);
-          pet.puddleDone = false; // drawn again, once, at the new spot
-          pet.puddleAt = now - PUDDLE_MS;
-          wake();
-        } else pet.spot = { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
-        continue;
-      }
-      if (pet.state !== 'hop' && pet.state !== 'rest') continue;
-      pet.spot = null; // its old spot keeps nobody away
+    for (const pet of pets.values()) replace(pet, now);
+  }
+
+  /**
+   * A resting pet hops to a fresh spot in its (re-fitted) area; a puddle snaps to one, and a splat
+   * gets one when it becomes a puddle. Its old spot keeps nobody away. Others are left alone.
+   */
+  function replace(pet, now) {
+    if (pet.state === 'splat' || pet.state === 'puddle') {
+      if (stage) pet.area = fitArea(pet.area, stage);
+      pet.spot = null;
+      pet.moveTo = freeSpot(pet);
+      if (pet.state === 'puddle') {
+        moveDown(pet);
+        pet.puddleDone = false; // drawn again, once, at the new spot
+        pet.puddleAt = now - PUDDLE_MS;
+        wake();
+      } else pet.spot = { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
+    } else if (pet.state === 'hop' || pet.state === 'rest') {
+      pet.spot = null;
       restOf(pet, now);
     }
   }
+
+  /**
+   * The GM edited the roll areas (main's dicerRollAreasChanged): a resting pet or puddle whose
+   * owner's area is now another moves into it. `deps.areaOf(userId)` is that user's area in die
+   * units, from the resolver DiceBox throws with; a user whose area did not change keeps their spot.
+   */
+  function onAreas() {
+    if (disposed) return;
+    const now = clock();
+    for (const pet of pets.values()) {
+      let a = null;
+      try {
+        a = deps.areaOf?.(pet.userId);
+      } catch {
+        /* no area: the pet stays */
+      }
+      if (!a || ['cx', 'cz', 'halfWidth', 'halfDepth'].every((k) => a[k] === pet.area?.[k])) continue;
+      // A pet mid-routine rests in the new area once its roll is over.
+      pet.area = { cx: a.cx, cz: a.cz, halfWidth: a.halfWidth, halfDepth: a.halfDepth };
+      replace(pet, now);
+    }
+  }
+  const areasHook = hooks?.on?.(AREAS_HOOK, onAreas);
 
   // One of each creature, plus a shadow and a sparkle, compiled up front so the first pet costs no
   // programs mid-roll. They stay alive (never in the scene) until dispose(): freeing their
@@ -774,6 +841,11 @@ export function createPetLayer(deps) {
 
   function dispose() {
     disposed = true;
+    try {
+      hooks?.off?.(AREAS_HOOK, areasHook);
+    } catch {
+      /* Foundry is gone */
+    }
     for (const pet of [...pets.values()]) removePet(pet);
     for (const c of samples) {
       try {
@@ -793,5 +865,20 @@ export function createPetLayer(deps) {
     shadowTex = shadowGeo = sparkTex = sparkMat = null;
   }
 
-  return { begin, landed, leave, end, update, obstaclesFor, userGone, areaChanged, hit, dispose };
+  return {
+    begin,
+    landed,
+    leave,
+    end,
+    update,
+    obstaclesFor,
+    userGone,
+    areaChanged,
+    hit,
+    dispose,
+    /** The contact speed at which the physics splats a pet (THROW splatSpeed); null: petSplat off. */
+    get splatSpeed() {
+      return splatOn() ? SPLAT_SPEED : null;
+    },
+  };
 }
