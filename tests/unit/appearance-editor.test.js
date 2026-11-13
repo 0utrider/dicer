@@ -1025,6 +1025,20 @@ describe('the appearance editor', () => {
       expect(q(app, 'input[name="pet.color"]').value).toBe('#445566');
       await app.close();
     });
+    it('choosing a kind with no stored colour saves only the kind: the pet keeps following the player colour', async () => {
+      user.color = '#778899';
+      const app = await open({ themeId: 'user.u1.mine' });
+      await click(app, '[data-action="setPet"][data-value="slime"]');
+      expect(user.setFlag).toHaveBeenCalledWith('dicer', 'pet', { kind: 'slime' });
+      await app.close();
+    });
+    it('a save keeps unknown fields of the raw flag and writes only the changed one', async () => {
+      flags.pet = { kind: 'dragonling', later: 1 };
+      const app = await open({ themeId: 'user.u1.mine' });
+      type(app, 'pet.color', '#abcdef', 'change');
+      expect(user.setFlag).toHaveBeenCalledWith('dicer', 'pet', { kind: 'dragonling', later: 1, color: '#abcdef' });
+      await app.close();
+    });
     it('choosing the stored kind again does not save', async () => {
       flags.pet = { kind: 'slime', color: '#445566' };
       const app = await open({ themeId: 'user.u1.mine' });

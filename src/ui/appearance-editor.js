@@ -493,11 +493,16 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     return true;
   }
 
-  /** The pet is the user's own flag, saved at once; it is not part of the look being edited. True when saved. */
+  /**
+   * The pet is the user's own flag, saved at once; it is not part of the look being edited. True
+   * when saved. Only the changed field is written over the RAW stored flag (not readPet's filled
+   * defaults), so a pet with no stored colour keeps following the player colour.
+   */
   async #savePet(change) {
     const user = me();
     try {
-      await user.setFlag(MODULE, 'pet', { ...readPet(user), ...change });
+      const raw = user.getFlag(MODULE, 'pet');
+      await user.setFlag(MODULE, 'pet', { ...(raw && typeof raw === 'object' ? raw : {}), ...change });
       return true;
     } catch {
       notify('warn', loc('DICER.Appearance.Pet.SaveFailed'));
