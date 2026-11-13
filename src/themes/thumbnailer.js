@@ -9,12 +9,13 @@ import { TIERS, flagsFor } from '../render/quality.js';
 import { buildDieGeometry, snapEdgeRadius } from '../core/chamfer.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { restingQuaternion, minY } from '../core/resting.js';
-import { appearanceKey } from '../look/appearance.js';
+import { appearanceKey, normalizeAppearance, needsLookExtras } from '../look/appearance.js';
+import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import { createTurntable } from './turntable.js';
 
 const ENV_RESOLUTION = 128;
 /** The face shown on top per type (6 and 9 show the underline mark). */
-const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d20: 20, d2: 2 };
+const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d14: 14, d16: 16, d20: 20, d2: 2, d4crystal: 4 };
 const FOV = 26;
 const VIEW_DISTANCE = 4.6;
 const VIEW_ANGLE = THREE.MathUtils.degToRad(52);
@@ -203,9 +204,13 @@ export function createThumbnailer({
     curSize = 0;
   }
 
+  // d100 shows a d10; a d4 with the crystal look shows the crystal
+  const shapeTypeOf = (dieType, appearance) =>
+    dieType === 'd100' ? 'd10' : dieType === 'd4' && normalizeAppearance(appearance).shapes.d4 === 'crystal' ? 'd4crystal' : dieType;
+
   async function renderOne(theme, dieType, dieAtlas = atlas) {
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
-    const shapeType = dieType === 'd100' ? 'd10' : dieType;
+    const shapeType = shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
     const labels = shape.values.map((v) => labelFor(shapeType, v));
     const api = sceneApi; // dispose() may null the module state while the blob is pending
@@ -290,9 +295,15 @@ export function createThumbnailer({
       chain = r.catch(() => null);
       return r;
     };
-    const p = isSerif(fontId)
-      ? enqueue(atlas, false)
-      : awaitAtlas(fontId).then((a) => (disposed ? null : enqueue(a, a === atlas)));
+    // A look needing the look-extras chunk waits for it too; a failed chunk draws the fallback
+    // as a stand-in that is not cached.
+    const wantsExtras = !getLookExtras() && needsLookExtras(normalizeAppearance(appearance));
+    const p =
+      isSerif(fontId) && !wantsExtras
+        ? enqueue(atlas, false)
+        : Promise.all([awaitAtlas(fontId), wantsExtras ? requestLookExtras() : true]).then(([a, x]) =>
+            disposed ? null : enqueue(a, (a === atlas && !isSerif(fontId)) || !x),
+          );
     inflight.set(key, p);
     const done = () => inflight.delete(key);
     p.then(done, done);
@@ -343,7 +354,7 @@ export function createThumbnailer({
     function build() {
       if (!renderer) init();
       if (!renderer || broken) return false;
-      const shapeType = dieType === 'd100' ? 'd10' : dieType;
+      const shapeType = shapeTypeOf(dieType, appearance);
       const shape = getShape(shapeType);
       const labels = shape.values.map((v) => labelFor(shapeType, v));
       const fontId = fontOf(appearance);
@@ -354,6 +365,15 @@ export function createThumbnailer({
         // the serif stands in: rebuild the die once the font is ready
         awaitAtlas(fontId).then((a) => {
           if (a === atlas || stopped || !res?.standIn) return;
+          free();
+          redraw();
+        });
+      }
+      const extrasWait = !getLookExtras() && needsLookExtras(normalizeAppearance(appearance));
+      if (extrasWait) {
+        // the fallback look stands in: rebuild the die once the chunk is ready
+        requestLookExtras().then((m) => {
+          if (!m || stopped || !res?.extrasWait) return;
           free();
           redraw();
         });
@@ -383,6 +403,7 @@ export function createThumbnailer({
         baseQ,
         y: mesh.position.y,
         standIn: !dieAtlas,
+        extrasWait,
       };
       return true;
     }

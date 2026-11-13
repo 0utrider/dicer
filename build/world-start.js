@@ -16,7 +16,7 @@ export const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digi
  * Paths are relative to the build's output folder (`dist/` by default).
  */
 const LAZY =
-  /^(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|appearance-editor-[^/]+\.js|theme-form-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|(?:LineSegments|InterleavedBufferAttribute)-[^/]+\.js|font-builder-[^/]+\.js|dicer-adapter-[^/]+\.js|benchmark-app-[^/]+\.js|report-[^/]+\.js|assets\/font-worker-[^/]+\.js|draco\/)/;
+  /^(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|appearance-editor-[^/]+\.js|theme-form-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|(?:LineSegments|InterleavedBufferAttribute)-[^/]+\.js|font-builder-[^/]+\.js|sdf-builder-[^/]+\.js|dicer-adapter-[^/]+\.js|benchmark-app-[^/]+\.js|report-[^/]+\.js|look-extras-[^/]+\.js|assets\/font-worker-[^/]+\.js|draco\/)/;
 
 /** `p` is `dist/...` (or `<outDir>/...` with `outDir` given). */
 export const isLazy = (p, outDir = 'dist') =>

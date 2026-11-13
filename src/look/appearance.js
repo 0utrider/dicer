@@ -1,14 +1,28 @@
 // Plain-data Appearance model. Pure and three-free.
 
-const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl'];
-const FINISHES = ['polished', 'brushed', 'antique'];
-const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
-const SHAPES = ['star', 'heart', 'skull', 'sphere'];
-const FILLS = ['paint', 'gold', 'silver', 'enamel'];
+/** Body types with named presets (the preset picks a look; its first entry is the default). */
+export const BODY_PRESETS = Object.freeze({
+  iridescent: ['chameleon', 'opal', 'dichroic'],
+  gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
+  wood: ['oak', 'walnut', 'cherry', 'ebony'],
+});
+const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
+const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
+const AGED = ['patina', 'worn']; // metal finishes drawn by the look-extras chunk
+const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke'];
+const INCLUSIONS = ['flower', 'moss', 'butterfly'];
+// the new insides (drawn by the look-extras chunk) and what they draw while it is missing
+const NEW_INSIDES = { foil: { type: 'glitter' }, eye: { type: 'shape', shape: 'sphere' }, botanical: { type: 'swirl' }, smoke: { type: 'swirl' } };
+const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes']; // those after the first four: look-extras chunk
+const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
+const RELIEFS = ['engraved', 'raised'];
+const COINS = ['numbers', 'heads-tails', 'sun-moon']; // d2 faces; the motifs: look-extras chunk
+/** Crit/fumble icons a die can show instead of the number. */
+export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame']);
 /** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
 export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 /** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
-export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans']);
+export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco']);
 
 function deepFreeze(o) {
   for (const v of Object.values(o)) if (v && typeof v === 'object') deepFreeze(v);
@@ -16,11 +30,12 @@ function deepFreeze(o) {
 }
 
 export const DEFAULT_APPEARANCE = deepFreeze({
-  body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05 },
-  interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star' },
-  numbers: { fill: 'gold', color: '#e2b04a', depth: 0.5, font: 'serif' },
+  body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null, luminous: 0 },
+  interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false },
+  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif', pips: false, coin: 'numbers' },
   edges: { radius: 0.5, style: 'rounded' },
   glow: { color: '#ffffff', intensity: 0 },
+  shapes: { d4: 'classic' },
 });
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -83,19 +98,27 @@ export function normalizeAppearance(input) {
     const g = isObj(i.glow) ? i.glow : {};
     const it = isObj(i.interior) ? i.interior : {};
     const cols = Array.isArray(it.colors) ? it.colors : [];
+    const ic = isObj(n.icons) ? n.icons : {};
 
+    const type = pick(b.type, BODY_TYPES, D.body.type);
+    const presets = BODY_PRESETS[type];
     const body = {
-      type: pick(b.type, BODY_TYPES, D.body.type),
+      type,
       color: color(b.color, D.body.color),
       color2: color(b.color2, D.body.color2),
       finish: pick(b.finish, FINISHES, D.body.finish),
       roughness: num(b.roughness, 0, 1, D.body.roughness),
+      preset: presets ? pick(b.preset, presets, presets[0]) : null,
+      luminous: num(b.luminous, 0, 1, 0),
     };
     const interior = {
       type: pick(it.type, INTERIOR_TYPES, D.interior.type),
       colors: [color(cols[0], D.interior.colors[0]), color(cols[1], D.interior.colors[1])],
       density: num(it.density, 0, 1, D.interior.density),
       shape: pick(it.shape, SHAPES, D.interior.shape),
+      inclusion: pick(it.inclusion, INCLUSIONS, D.interior.inclusion),
+      bubble: it.bubble === true,
+      sand: it.sand === true,
     };
     if (body.type !== 'resin') interior.type = 'none';
     const radius = edgeRadius(e, D.edges.radius);
@@ -104,12 +127,17 @@ export function normalizeAppearance(input) {
       interior,
       numbers: {
         fill: pick(n.fill, FILLS, D.numbers.fill),
+        relief: pick(n.relief, RELIEFS, D.numbers.relief),
+        icons: { crit: pick(ic.crit, ICON_IDS, null), fumble: pick(ic.fumble, ICON_IDS, null) },
         color: color(n.color, D.numbers.color),
         depth: num(n.depth, 0, 1, D.numbers.depth),
         font: font(n.font, D.numbers.font),
+        pips: n.pips === true,
+        coin: pick(n.coin, COINS, 'numbers'),
       },
       edges: { radius, style: radius === 0 ? 'sharp' : 'rounded' },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
+      shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
     };
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_APPEARANCE));
@@ -144,11 +172,58 @@ export function programKey(a, flags) {
   const steps = flags.interiorSteps;
   const active =
     a.body.type === 'resin' && !!flags.interiors && steps > 0 && a.interior.type !== 'none';
-  const interior = active
-    ? `${a.interior.type}${a.interior.type === 'shape' ? ':' + a.interior.shape : ''}:${steps}`
-    : 'none';
+  const { type, shape } = a.interior;
+  const interior = active ? `${type}${type === 'shape' ? ':' + shape : ''}${LIQUID_EXTRA(a)}:${steps}` : 'none';
   const finish = a.body.type === 'metal' ? a.body.finish : '-';
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
   const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
-  return [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'].join('|');
+  const parts = [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'];
+  if (a.body.luminous > 0) parts.push('lum');
+  const { fill, relief } = a.numbers;
+  if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
+  return parts.join('|');
 }
+
+// liquid's bubble / sand programs: '+b', '+s', '+bs'; nothing for other insides
+const LIQUID_EXTRA = ({ interior: i }) => (i.type === 'liquid' && (i.bubble || i.sand) ? `+${i.bubble ? 'b' : ''}${i.sand ? 's' : ''}` : '');
+
+/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, pips, coin motifs, bodies, finishes, luminous). */
+export const needsLookExtras = (a) =>
+  FILLS.indexOf(a.numbers.fill) > 3 ||
+  a.numbers.relief === 'raised' ||
+  !!(a.numbers.icons.crit || a.numbers.icons.fumble || a.numbers.pips) ||
+  a.numbers.coin !== 'numbers' ||
+  !!BODY_PRESETS[a.body.type] ||
+  (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
+  a.body.luminous > 0 ||
+  (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || LIQUID_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
+
+/** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */
+export const fallbackLook = (a) =>
+  needsLookExtras(a)
+    ? {
+        ...a,
+        body: {
+          ...a.body,
+          type: { iridescent: 'pearl', gem: 'marble', wood: 'opaque' }[a.body.type] ?? a.body.type,
+          finish: AGED.includes(a.body.finish) ? 'antique' : a.body.finish,
+          luminous: 0,
+          preset: null,
+        },
+        interior: {
+          ...a.interior,
+          shape: SHAPES.indexOf(a.interior.shape) > 3 ? 'star' : a.interior.shape,
+          ...NEW_INSIDES[a.interior.type],
+          bubble: false,
+          sand: false,
+        },
+        numbers: {
+          ...a.numbers,
+          fill: { outline: 'paint', holo: 'gold', glow: 'paint' }[a.numbers.fill] || a.numbers.fill,
+          relief: 'engraved',
+          icons: { crit: null, fumble: null },
+          pips: false,
+          coin: 'numbers',
+        },
+      }
+    : a;

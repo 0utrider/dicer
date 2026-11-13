@@ -1,6 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-deterministic';
 import * as glue from '@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.js';
-import { getShape } from '../core/dice-shapes.js';
 import { mulberry32 } from '../core/rng.js';
 import {
   CHUNK_STEPS,
@@ -62,9 +61,15 @@ export function initPhysics(wasm) {
   return initialised;
 }
 
+/**
+ * The d2 is the only coin (its shape kind is 'coin'). A type check, not getShape(): importing
+ * the shape table would bundle every shape builder into the worker for this one test.
+ */
+const isCoin = (type) => type === 'd2';
+
 function dieColliderDesc(type, hulls) {
   let desc;
-  if (getShape(type).kind === 'coin') {
+  if (isCoin(type)) {
     desc = RAPIER.ColliderDesc.cylinder(0.125, 1);
   } else {
     const hull = hulls?.[type];
@@ -276,7 +281,7 @@ export function createSim(initialArea, hulls) {
             y: (rand() * 2 - 1) * 18,
             z: (rand() * 2 - 1) * 18,
           };
-          const coin = getShape(req.dice[i].type).kind === 'coin';
+          const coin = isCoin(req.dice[i].type);
           const body = world.createRigidBody(
             RAPIER.RigidBodyDesc.dynamic()
               .setTranslation(px, y, pz)

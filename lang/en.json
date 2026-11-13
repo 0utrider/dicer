@@ -475,19 +475,39 @@
         "Color": "Colour",
         "SecondColor": "Second colour",
         "Finish": "Finish",
-        "Roughness": "Roughness"
+        "Roughness": "Roughness",
+        "Preset": "Style",
+        "Luminous": "Glow in the dark"
       },
       "BodyType": {
         "opaque": "Opaque",
         "resin": "Clear resin",
         "metal": "Metal",
         "marble": "Marble",
-        "pearl": "Pearl"
+        "pearl": "Pearl",
+        "iridescent": "Iridescent",
+        "gem": "Gemstone",
+        "wood": "Wood"
+      },
+      "Preset": {
+        "chameleon": "Chameleon",
+        "opal": "Opal",
+        "dichroic": "Dichroic glass",
+        "amethyst": "Amethyst",
+        "malachite": "Malachite",
+        "obsidian": "Obsidian",
+        "quartz": "Quartz",
+        "oak": "Oak",
+        "walnut": "Walnut",
+        "cherry": "Cherry",
+        "ebony": "Ebony"
       },
       "Finish": {
         "polished": "Polished",
         "brushed": "Brushed",
-        "antique": "Antique"
+        "antique": "Antique",
+        "patina": "Copper patina",
+        "worn": "Battle-worn"
       },
       "Inside": {
         "Type": "Inside the resin",
@@ -495,6 +515,10 @@
         "SecondColor": "Second colour",
         "Density": "Density",
         "Shape": "Shape",
+        "IrisColor": "Iris colour",
+        "Inclusion": "Inclusion",
+        "Bubble": "Air bubble",
+        "Sand": "Sand",
         "ResinOnly": "Only clear resin dice have an inside. Choose Clear resin under Body to add one."
       },
       "InsideType": {
@@ -503,18 +527,38 @@
         "glitter": "Glitter",
         "swirl": "Swirl",
         "nebula": "Nebula",
-        "shape": "Shape"
+        "shape": "Shape",
+        "foil": "Foil flakes",
+        "eye": "Floating eye",
+        "botanical": "Inclusion",
+        "smoke": "Smoke"
+      },
+      "Inclusion": {
+        "flower": "Flower",
+        "moss": "Moss",
+        "butterfly": "Butterfly"
       },
       "Shape": {
         "star": "Star",
         "heart": "Heart",
         "skull": "Skull",
-        "sphere": "Sphere"
+        "sphere": "Sphere",
+        "sword": "Sword",
+        "axe": "Axe",
+        "shield": "Shield",
+        "dragon": "Dragon",
+        "runes": "Magic circle"
       },
       "Numbers": {
         "Fill": "Fill",
         "Color": "Colour",
-        "Depth": "Engraving depth",
+        "Depth": "Depth",
+        "Relief": "Relief",
+        "CritIcon": "Icon on the 20",
+        "FumbleIcon": "Icon on the 1",
+        "IconsHint": "Only d20s show icons; every other die keeps its numbers.",
+        "Pips": "Pips on the d6",
+        "Coin": "Coin faces",
         "Font": "Font",
         "Family": "Font on this computer",
         "FamilyPlaceholder": "A font name, e.g. Georgia",
@@ -527,13 +571,45 @@
         "paint": "Paint",
         "gold": "Gold",
         "silver": "Silver",
-        "enamel": "Enamel"
+        "enamel": "Enamel",
+        "outline": "Outline",
+        "holo": "Holo foil",
+        "glow": "Glow ink"
+      },
+      "Relief": {
+        "engraved": "Engraved",
+        "raised": "Raised"
+      },
+      "Icon": {
+        "none": "Off",
+        "starburst": "Starburst",
+        "crown": "Crown",
+        "skull": "Skull",
+        "broken-shield": "Broken shield",
+        "heart": "Heart",
+        "flame": "Flame"
       },
       "FontKind": {
         "serif": "Serif",
         "sans": "Sans",
+        "blackletter": "Blackletter",
+        "norse": "Norse",
+        "uncial": "Uncial",
+        "scifi": "Sci-fi",
+        "handwritten": "Handwritten",
+        "deco": "Art Deco",
         "css": "On this computer",
         "file": "Font file"
+      },
+      "Coin": {
+        "numbers": "1 and 2",
+        "heads-tails": "Heads and tails",
+        "sun-moon": "Sun and moon"
+      },
+      "Shapes": {
+        "D4": "d4 shape",
+        "classic": "Classic",
+        "crystal": "Crystal"
       },
       "Edges": {
         "Sharpness": "Sharpness"

@@ -355,4 +355,14 @@ describe('hardening (Task 12)', () => {
     expect(reg.baseShape('d6')).toBe('d6');
     expect(warn).toHaveBeenCalled();
   });
+
+  test('d14 and d16 are built-in shapes', async () => {
+    const { reg } = make();
+    expect(reg.baseShape('d14')).toBe('d14');
+    expect(reg.baseShape('d16')).toBe('d16');
+    reg.addDiceShape({ name: 'dspindle', baseShape: 'd14' });
+    expect(reg.baseShape('dspindle')).toBe('d14');
+    await reg.addDicePreset({ type: 'd16', labels: labels(16) }, 'd20');
+    expect(reg.baseShape('d16')).toBe('d16');
+  });
 });

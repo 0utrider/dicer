@@ -3,6 +3,7 @@ import { createPhysicsWorker, PhysicsClient } from './physics/physics-client.js'
 import { computeHulls } from './physics/hulls.js';
 import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
+import { onLookExtrasReady } from './render/extras-loader.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
@@ -49,6 +50,7 @@ let diceBox = null;
 let diceRenderer = null;
 let quality = null;
 let stopWatchingArea = null;
+let stopLookExtras = null;
 let digitAtlas = null;
 let fontAtlases = null; // the font layer: the atlas of each look's numbers.font
 let registry = null; // the DSN registry, once activate() made it
@@ -631,6 +633,8 @@ Hooks.once('ready', async () => {
       game.dice3d = api;
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(resizeDice);
+      // The look-extras chunk landed: later rolls draw the real looks, not their fallbacks.
+      stopLookExtras = onLookExtrasReady(refreshMaterials);
       // 'shader': the low fallback or the P2-R12 safe flags; dice in flight move over too.
       quality.onChange((event) => refreshMaterials({ replaceInFlight: event.reason === 'shader' }));
       // three rebuilds every program lazily on a restored context: compile them ahead again.
@@ -664,6 +668,7 @@ Hooks.once('ready', async () => {
     effectLayer = null;
     stopWatchingArea?.();
     stopWatchingArea = null;
+    stopLookExtras?.(); // idempotent: no reset needed
     api?._dispose();
     if (api && game.dice3d === api) delete game.dice3d;
     return;

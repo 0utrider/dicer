@@ -49,7 +49,7 @@ export const SURFACE_COLOUR = {
   metal: { db: 0, filters: [{ type: 'peaking', frequency: 3000, Q: 1, gain: 4 }] },
 };
 const DIE_TYPES = new Set(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
-const DIE_ALIAS = { d100: 'd10', d2: 'd6' };
+const DIE_ALIAS = { d100: 'd10', d2: 'd6', d14: 'd10', d16: 'd12' };
 const LEVEL_ORDER = {
   heavy: ['heavy', 'medium', 'light'],
   medium: ['medium', 'heavy', 'light'],

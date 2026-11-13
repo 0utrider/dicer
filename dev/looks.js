@@ -6,29 +6,127 @@ import { buildScene } from '../src/render/scene.js';
 import { configureRenderer } from '../src/render/renderer.js';
 import { loadDigitAtlas } from '../src/render/sdf-atlas.js';
 import { createDiceMaterial } from '../src/render/dice-material.js';
+import { requestLookExtras } from '../src/render/extras-loader.js';
 import { NOISE_GLSL } from '../src/render/shaders/noise.js';
 import { buildDieGeometry } from '../src/core/chamfer.js';
 import { getShape, labelFor } from '../src/core/dice-shapes.js';
 import { restingQuaternion, minY } from '../src/core/resting.js';
 import { LOOKS } from '../src/look/looks.js';
+import { ICON_IDS } from '../src/look/appearance.js';
+import { PRESET_COLORS } from '../src/look/body-colors.js';
 import { runProbe } from '../src/render/gpu-probe.js';
 import { TIERS, flagsFor } from '../src/render/quality.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from '../src/render/face-textures.js';
 import { facesFor, atlasGlyphTest } from '../src/compat/faces.js';
 
-export const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd2'];
+export const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd2', 'd14', 'd16', 'd4crystal'];
 /** The face shown on top per type (6 and 9 show the underline mark). */
-const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d20: 20, d2: 2 };
+const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d20: 20, d2: 2, d14: 14, d16: 16, d4crystal: 4 };
 const CELL = 128;
 const ROW_LABEL_PX = 170;
 
 /**
  * Rows: every curated look, plus variants with per-row flag overrides so variant programs
- * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL.
+ * (the engraving-off #else path, the P2-R12 safe fallback) also compile on real WebGL. An optional
+ * fifth element is a numbers patch merged into the base look's appearance.numbers (dice designs),
+ * a sixth a body patch merged into appearance.body, a seventh an interior patch (dice designs
+ * plans 2 and 3). The flags element covers per-row engraving / safe.
  */
 const VARIANTS = [
   ['dwarven-brass~flat', 'dwarven-brass', 'engraving off', { engraving: false }],
   ['default~safe', 'default', 'safe fallback', { safe: true }],
+  ['default~raised', 'default', 'raised numbers', {}, { relief: 'raised' }],
+  ['dwarven-brass~raised', 'dwarven-brass', 'raised numbers', {}, { relief: 'raised' }],
+  ['default~outline', 'default', 'outline numbers', {}, { fill: 'outline' }],
+  ['default~holo', 'default', 'holographic numbers', {}, { fill: 'holo' }],
+  ['default~glow', 'default', 'glow-ink numbers', {}, { fill: 'glow' }],
+  ['void-star~glow', 'void-star', 'glow-ink raised numbers', {}, { fill: 'glow', relief: 'raised' }],
+  // crit icons: only the d20 column shows one (on its 20); other dice keep their numbers
+  ...ICON_IDS.map((id) => [`icon-${id}`, 'default', `${id} crit`, {}, { icons: { crit: id } }]),
+  [
+    'ruby-classic~icons',
+    'ruby-classic',
+    'icons, raised holo',
+    {},
+    { icons: { crit: 'starburst', fumble: 'broken-shield' }, relief: 'raised', fill: 'holo' },
+  ],
+  // pips (the d6 column only) and coin motifs (the d2 column only); the combo row shows icons,
+  // pips and a motif on one look (each die its own composed atlas)
+  ['ruby~pips', 'ruby-classic', 'pipped d6', {}, { pips: true }],
+  ['gold~coin-sun-moon', 'gold-polished', 'coin: sun and moon', {}, { coin: 'sun-moon' }],
+  ['gold~coin-heads-tails', 'gold-polished', 'coin: heads and tails', {}, { coin: 'heads-tails' }],
+  ['combo~icons-pips-coin', 'default', 'icons, pips, coin, raised', {}, { icons: { crit: 'crown' }, pips: true, coin: 'heads-tails', relief: 'raised' }],
+  // iridescent bodies
+  ['iridescent~chameleon', 'default', 'chameleon', {}, {}, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
+  ['iridescent~opal', 'default', 'opal', {}, {}, { type: 'iridescent', preset: 'opal', ...PRESET_COLORS.opal }],
+  ['iridescent~dichroic', 'default', 'dichroic glass', {}, {}, { type: 'iridescent', preset: 'dichroic', ...PRESET_COLORS.dichroic }],
+  // gem bodies
+  ['gem~amethyst', 'default', 'amethyst', {}, {}, { type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }],
+  ['gem~malachite', 'default', 'malachite', {}, {}, { type: 'gem', preset: 'malachite', ...PRESET_COLORS.malachite }],
+  ['gem~obsidian', 'default', 'obsidian', {}, {}, { type: 'gem', preset: 'obsidian', ...PRESET_COLORS.obsidian }],
+  ['gem~quartz', 'default', 'quartz', {}, {}, { type: 'gem', preset: 'quartz', ...PRESET_COLORS.quartz }],
+  // wood bodies
+  ['wood~oak', 'default', 'oak', {}, {}, { type: 'wood', preset: 'oak', ...PRESET_COLORS.oak }],
+  ['wood~walnut', 'default', 'walnut', {}, {}, { type: 'wood', preset: 'walnut', ...PRESET_COLORS.walnut }],
+  ['wood~cherry', 'default', 'cherry', {}, {}, { type: 'wood', preset: 'cherry', ...PRESET_COLORS.cherry }],
+  ['wood~ebony', 'default', 'ebony', {}, {}, { type: 'wood', preset: 'ebony', ...PRESET_COLORS.ebony }],
+  // aged metal finishes
+  ['metal~patina', 'default', 'copper patina', {}, {}, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
+  ['metal~worn', 'default', 'battle-worn', {}, {}, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
+  // luminous (glow in the dark)
+  ['opaque~luminous', 'default', 'glow in the dark', {}, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
+  ['wood~ebony~luminous', 'default', 'ebony + luminous', {}, {}, { type: 'wood', preset: 'ebony', ...PRESET_COLORS.ebony, luminous: 1 }],
+  // foil insides (dice designs plan 3)
+  ['resin~foil-gold', 'default', 'gold and copper foil', {}, {}, { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 }, { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 }],
+  ['resin~foil-silver', 'default', 'silver foil', {}, {}, { type: 'resin', color: '#2b4a66', color2: '#0f2236', roughness: 0.05 }, { type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.5 }],
+  // eye insides
+  ['resin~eye-green', 'default', 'green eye', {}, {}, { type: 'resin', color: '#e6eef2', color2: '#b8c8d4', roughness: 0.05 }, { type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 }],
+  ['resin~eye-red', 'default', 'red eye', {}, {}, { type: 'resin', color: '#3a1a22', color2: '#1a0a10', roughness: 0.05 }, { type: 'eye', colors: ['#c8322a', '#ffe6dc'], density: 0.6 }],
+  // botanical insides
+  ['resin~flower', 'default', 'pressed flower', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'flower', colors: ['#f28fb0', '#f6d24a'], density: 0.5 }],
+  ['resin~moss', 'default', 'moss', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'moss', colors: ['#4f8a3a', '#b9d36a'], density: 0.5 }],
+  ['resin~butterfly', 'default', 'butterfly', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'botanical', inclusion: 'butterfly', colors: ['#2f7fe0', '#111a2c'], density: 0.5 }],
+  // smoke inside, liquid bubble and sand
+  ['resin~smoke', 'default', 'smoke plume', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'smoke', colors: ['#2a2440', '#9a8fc8'], density: 0.6 }],
+  ['resin~liquid-bubble', 'default', 'liquid, air bubble', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, bubble: true }],
+  ['resin~liquid-sand', 'default', 'liquid, sand', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, sand: true }],
+  ['resin~liquid-bubble-sand', 'default', 'liquid, bubble and sand', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'liquid', colors: ['#1f7fd1', '#bfe6ff'], density: 0.5, bubble: true, sand: true }],
+  // fantasy shapes (dice designs plan 3b): floating weapons in clear resin
+  ['resin~sword', 'default', 'floating sword', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'sword', colors: ['#5a2e1a', '#e0b040'], density: 0.5 }],
+  ['resin~axe', 'default', 'floating axe', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'axe', colors: ['#6b4423', '#9aa3ad'], density: 0.5 }],
+  ['resin~shield', 'default', 'floating shield', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'shield', colors: ['#8a1f1f', '#d9a93a'], density: 0.5 }],
+  ['resin~dragon-red', 'default', 'red dragon', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'dragon', colors: ['#8a1c1c', '#d9603a'], density: 0.5 }],
+  ['resin~dragon-green', 'default', 'green dragon', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'dragon', colors: ['#1f5a2e', '#6fbf5a'], density: 0.5 }],
+  ['resin~runes-arcane', 'default', 'arcane rune circle', {}, {}, { type: 'resin', color: '#1a2036', color2: '#0a0d18', roughness: 0.05 }, { type: 'shape', shape: 'runes', colors: ['#7fd0ff', '#c8a2ff'], density: 0.5 }],
+  ['resin~runes-fire', 'default', 'fire rune circle', {}, {}, { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 }, { type: 'shape', shape: 'runes', colors: ['#ff9a3a', '#ffd27a'], density: 0.5 }],
+  // combinations (the compile check for body x numbers x interior x flags interactions)
+  ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
+  ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
+  ['combo~resin-nebula-luminous', 'default', 'resin nebula + luminous', {}, {}, { type: 'resin', color: '#6fa8dc', color2: '#a0c8f0', luminous: 1 }, { type: 'nebula', colors: ['#c04dff', '#2fd0f0'], density: 0.65 }],
+  ['combo~amethyst-holo', 'default', 'amethyst, holo numbers', {}, { fill: 'holo' }, { type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }],
+  ['combo~chameleon-glow', 'default', 'chameleon, glow-ink', {}, { fill: 'glow' }, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
+  ['combo~oak-flat', 'default', 'oak, engraving off', { engraving: false }, {}, { type: 'wood', preset: 'oak', ...PRESET_COLORS.oak }],
+  // plan 3 insides with plan 1 numbers and plan 2 luminous
+  [
+    'resin~eye+outline-raised-luminous',
+    'default',
+    'eye, outline raised, luminous',
+    {},
+    { fill: 'outline', relief: 'raised' },
+    { type: 'resin', color: '#e6eef2', color2: '#b8c8d4', roughness: 0.05, luminous: 0.6 },
+    { type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 },
+  ],
+  [
+    'resin~foil+holo',
+    'default',
+    'foil, holo numbers',
+    {},
+    { fill: 'holo' },
+    { type: 'resin', color: '#2b4a66', color2: '#0f2236', roughness: 0.05 },
+    { type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.5 },
+  ],
+  ['combo~luminous-safe', 'default', 'luminous, safe fallback', { safe: true }, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
+  ['combo~patina-effects-off', 'default', 'patina, safe', { safe: true }, {}, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
 ];
 /**
  * Face rows (Task 5): DSN-style presets whose faces the digit atlas cannot draw, on a d6 only
@@ -41,17 +139,33 @@ const FACE_ROWS = [
   ['faces-image', 'default', 'image faces', { system: 'dev', type: 'd6', labels: FACE_IMAGES }, 6],
   ['faces-fate', 'ruby-classic', 'Fate text faces', { system: 'dev', type: 'df', shape: 'd6', labels: ['-', '-', '', '', '+', '+'] }, 6],
   ['faces-fate-minus', 'ruby-classic', 'Fate text faces', { system: 'dev', type: 'df', shape: 'd6', labels: ['-', '-', '', '', '+', '+'] }, 1],
+  // faces on an aged metal body (the face-layer path with the patina colour chunk)
+  ['faces-image-patina', 'default', 'image faces, patina', { system: 'dev', type: 'd6', labels: FACE_IMAGES }, 6, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
+  ['faces-fate-patina', 'ruby-classic', 'Fate faces, patina', { system: 'dev', type: 'df', shape: 'd6', labels: ['-', '-', '', '', '+', '+'] }, 6, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
 ];
 const looks = [
   ...Object.entries(LOOKS).map(([id, look]) => [id, look, {}]),
-  ...VARIANTS.map(([id, base, note, flags]) => [
+  ...VARIANTS.map(([id, base, note, flags, numbers, body, interior]) => [
     id,
-    { ...LOOKS[base], name: `${LOOKS[base].name} (${note})` },
+    {
+      ...LOOKS[base],
+      name: `${LOOKS[base].name} (${note})`,
+      appearance: {
+        ...LOOKS[base].appearance,
+        numbers: { ...LOOKS[base].appearance.numbers, ...numbers },
+        body: { ...LOOKS[base].appearance.body, ...body },
+        interior: { ...LOOKS[base].appearance.interior, ...interior },
+      },
+    },
     flags,
   ]),
-  ...FACE_ROWS.map(([id, base, note, preset, shown]) => [
+  ...FACE_ROWS.map(([id, base, note, preset, shown, body]) => [
     id,
-    { ...LOOKS[base], name: `${LOOKS[base].name} (${note})` },
+    {
+      ...LOOKS[base],
+      name: `${LOOKS[base].name} (${note})`,
+      appearance: { ...LOOKS[base].appearance, body: { ...LOOKS[base].appearance.body, ...body } },
+    },
     {},
     { preset, shown },
   ]),
@@ -89,7 +203,7 @@ looks.forEach(([id, look, rowFlags], row) => {
   r.className = 'row';
   r.style.gridArea = `${row + 2} / 1`;
   const a = look.appearance;
-  const detail = [a.body.type, a.body.type === 'metal' ? a.body.finish : null, a.numbers.fill];
+  const detail = [a.body.type, a.body.type === 'metal' ? a.body.finish : a.body.preset, a.numbers.fill];
   if (a.interior.type !== 'none') detail.push(a.interior.type);
   if (a.edges.style !== 'rounded') detail.push(a.edges.style);
   if (rowFlags.engraving === false) detail.push('no engraving');
@@ -499,6 +613,8 @@ function info() {
 
 async function init() {
   atlas = await loadDigitAtlas('/assets/fonts');
+  // The look-extras chunk first, so the extras rows draw their real looks, not the fallbacks.
+  if (!(await requestLookExtras())) report('look extras chunk failed to load');
   buildCells();
   await buildFaceCells();
   noiseProbe();

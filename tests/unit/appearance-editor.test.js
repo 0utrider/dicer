@@ -2,9 +2,22 @@
 import { readFileSync } from 'node:fs';
 import Handlebars from 'handlebars';
 import { duplicateKeys, usedKeys, resolve } from './lang-check.js';
-import { normalizeAppearance, EDGE_STEPS } from '../../src/look/appearance.js';
+import { normalizeAppearance, EDGE_STEPS, ICON_IDS, FONT_IDS_BUILTIN, BODY_PRESETS } from '../../src/look/appearance.js';
+import { PRESET_COLORS } from '../../src/look/body-colors.js';
 import { BUILTIN_THEMES, normalizeTheme, readThemeList, findTheme } from '../../src/themes/themes.js';
 import {
+  BODY_TYPES,
+  FINISHES,
+  BODY_PRESET_LISTS,
+  FILLS,
+  RELIEFS,
+  ICON_CHOICES,
+  INTERIOR_TYPES,
+  INCLUSION_LIST,
+  SHAPES,
+  D4_SHAPES,
+  COIN_CHOICES,
+  FONT_KINDS,
   formFromAppearance,
   appearanceFromForm,
   visibleSections,
@@ -24,6 +37,8 @@ import {
 
 vi.mock('../../src/themes/thumbnailer.js', () => ({ createThumbnailer: vi.fn() }));
 
+const NINE_SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
+
 const resinNebula = {
   body: { type: 'resin', color: '#203040', color2: '#405060', finish: 'polished', roughness: 0.2 },
   interior: { type: 'nebula', colors: ['#aa00ff', '#00ffaa'], density: 0.8, shape: 'heart' },
@@ -38,18 +53,224 @@ const metal = {
   glow: { color: '#ffffff', intensity: 0 },
 };
 
+describe('relief, icons, new fills and fonts in the form', () => {
+  const FILL7 = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
+  it('form round-trips relief, icons, every fill and every built-in font', () => {
+    for (const fill of FILL7)
+      for (const relief of ['engraved', 'raised']) {
+        const a = normalizeAppearance({ numbers: { fill, relief, icons: { crit: 'crown', fumble: 'skull' } } });
+        expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+      }
+    for (const font of FONT_IDS_BUILTIN) {
+      const a = normalizeAppearance({ numbers: { font } });
+      expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+    }
+    for (const icon of ICON_IDS) {
+      const a = normalizeAppearance({ numbers: { icons: { crit: icon, fumble: icon } } });
+      expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+    }
+  });
+  it("'none' icon picks give null icons", () => {
+    const f = formFromAppearance({});
+    expect(f.numbers.critIcon).toBe('none');
+    expect(f.numbers.fumbleIcon).toBe('none');
+    expect(appearanceFromForm(f).numbers.icons).toEqual({ crit: null, fumble: null });
+    const picked = setField(setField(f, 'numbers.critIcon', 'flame'), 'numbers.relief', 'raised');
+    const a = appearanceFromForm(picked);
+    expect(a.numbers.icons).toEqual({ crit: 'flame', fumble: null });
+    expect(a.numbers.relief).toBe('raised');
+  });
+  it("the form's option lists are exactly what normalisation accepts", () => {
+    const num = (k, v) => normalizeAppearance({ numbers: { [k]: v } }).numbers[k];
+    for (const id of FILLS) expect(num('fill', id)).toBe(id);
+    for (const id of RELIEFS) expect(num('relief', id)).toBe(id);
+    for (const id of FONT_IDS_BUILTIN) expect(num('font', id)).toBe(id);
+    for (const id of ICON_IDS) expect(normalizeAppearance({ numbers: { icons: { crit: id } } }).numbers.icons.crit).toBe(id);
+    expect(num('fill', 'nope')).not.toBe('nope');
+    expect(num('relief', 'nope')).not.toBe('nope');
+    expect(num('font', 'nope')).not.toBe('nope');
+    expect(normalizeAppearance({ numbers: { icons: { crit: 'nope' } } }).numbers.icons.crit).toBeNull();
+    expect(FILLS).toEqual(FILL7);
+    expect(ICON_CHOICES).toEqual(['none', ...ICON_IDS]);
+    expect(FONT_KINDS).toEqual([...FONT_IDS_BUILTIN, 'css', 'file']);
+  });
+  it('numberColor shows for paint, enamel, outline, holo and glow, not for gold or silver', () => {
+    for (const fill of FILL7) expect(visibleSections({ numbers: { fill } }).numberColor).toBe(!['gold', 'silver'].includes(fill));
+  });
+  it('a built-in font is a valid kind, not a computer font', () => {
+    const f = setField(formFromAppearance({}), 'numbers.fontKind', 'norse');
+    expect(appearanceFromForm(f).numbers.font).toBe('norse');
+    expect(fontInvalid(f)).toBe(false);
+  });
+});
+
+describe('crystal d4, pips and coin faces in the form', () => {
+  it('round trip of shapes.d4, pips, coin', () => {
+    for (const d4 of ['classic', 'crystal'])
+      for (const pips of [false, true])
+        for (const coin of ['numbers', 'heads-tails', 'sun-moon']) {
+          const a = normalizeAppearance({ shapes: { d4 }, numbers: { pips, coin } });
+          expect(a.shapes.d4).toBe(d4);
+          expect(a.numbers).toMatchObject({ pips, coin });
+          const f = formFromAppearance(a);
+          expect(f.shapes.d4).toBe(d4);
+          expect(f.numbers).toMatchObject({ pips, coin });
+          expect(appearanceFromForm(f)).toEqual(a);
+        }
+    const f = setField(setField(setField(formFromAppearance({}), 'shapes.d4', 'crystal'), 'numbers.pips', true), 'numbers.coin', 'sun-moon');
+    expect(appearanceFromForm(f)).toMatchObject({ shapes: { d4: 'crystal' }, numbers: { pips: true, coin: 'sun-moon' } });
+  });
+  it('lists pinned to normalisation', () => {
+    expect(D4_SHAPES).toEqual(['classic', 'crystal']);
+    expect(COIN_CHOICES).toEqual(['numbers', 'heads-tails', 'sun-moon']);
+    for (const id of D4_SHAPES) expect(normalizeAppearance({ shapes: { d4: id } }).shapes.d4).toBe(id);
+    for (const id of COIN_CHOICES) expect(normalizeAppearance({ numbers: { coin: id } }).numbers.coin).toBe(id);
+    expect(normalizeAppearance({ shapes: { d4: 'nope' } }).shapes.d4).toBe('classic');
+    expect(normalizeAppearance({ numbers: { coin: 'nope' } }).numbers.coin).toBe('numbers');
+  });
+  it('saving keeps the per-type looks of dice the editor has no tab for', () => {
+    const d7 = { body: { type: 'metal' }, numbers: { fill: 'paint' }, weird: 1 };
+    const df = { glow: { color: '#112233', intensity: 0.5 } };
+    const theme = { id: 'x', name: 'X', appearance: {}, perType: { d7, df, d6: { body: { type: 'wood' } } } };
+    const out = looksFromForms(formsFromTheme(theme), theme);
+    expect(JSON.stringify(out.perType.d7)).toBe(JSON.stringify(d7));
+    expect(JSON.stringify(out.perType.df)).toBe(JSON.stringify(df));
+    expect(out.perType.d6.body.type).toBe('wood');
+    expect(looksFromForms(formsFromTheme(theme)).perType.d7).toBeUndefined();
+  });
+});
+
+describe('bodies, presets, finishes and luminous in the form', () => {
+  it('form round-trips every new body type, preset, finish and luminous', () => {
+    for (const [type, presets] of Object.entries(BODY_PRESETS))
+      for (const preset of presets) {
+        const a = normalizeAppearance({ body: { type, preset, luminous: 0.5 } });
+        expect(a.body).toMatchObject({ type, preset, luminous: 0.5 });
+        expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+      }
+    for (const finish of ['patina', 'worn']) {
+      const a = normalizeAppearance({ body: { type: 'metal', finish } });
+      expect(a.body.finish).toBe(finish);
+      expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
+    }
+    // string slider values read as numbers
+    expect(appearanceFromForm(setField(formFromAppearance({}), 'body.luminous', '0.65')).body.luminous).toBe(0.65);
+  });
+  it('picking a preset applies its PRESET_COLORS; picking a new type picks its first preset', () => {
+    let f = setField(formFromAppearance({}), 'body.type', 'wood');
+    expect(f.body).toMatchObject({ type: 'wood', preset: 'oak', ...PRESET_COLORS.oak });
+    f = setField(f, 'body.preset', 'ebony');
+    expect(f.body).toMatchObject({ preset: 'ebony', ...PRESET_COLORS.ebony });
+    // re-clicking the active preset keeps edited colours; 'patina' is not a preset id
+    expect(setField(setField(f, 'body.color', '#abcdef'), 'body.preset', 'ebony').body.color).toBe('#abcdef');
+    expect(setField(f, 'body.preset', 'patina').body.color).toBe(f.body.color);
+    // the user can still change every colour afterwards
+    f = setField(setField(f, 'body.color', '#123456'), 'body.roughness', '0.9');
+    expect(appearanceFromForm(f).body).toMatchObject({ type: 'wood', preset: 'ebony', color: '#123456', roughness: 0.9 });
+    // re-picking the same type keeps the chosen preset and edited colours
+    f = setField(f, 'body.type', 'wood');
+    expect(f.body).toMatchObject({ preset: 'ebony', color: '#123456' });
+    // a type without presets has none
+    f = setField(f, 'body.type', 'opaque');
+    expect(appearanceFromForm(f).body.preset).toBeNull();
+    for (const [type, presets] of Object.entries(BODY_PRESETS))
+      expect(setField(formFromAppearance({}), 'body.type', type).body).toMatchObject({ preset: presets[0], ...PRESET_COLORS[presets[0]] });
+    // the aged finishes apply their colours (a change of finish only)
+    f = setField(formFromAppearance({ body: { type: 'metal' } }), 'body.finish', 'patina');
+    expect(f.body).toMatchObject({ finish: 'patina', ...PRESET_COLORS.patina });
+    f = setField(setField(f, 'body.color', '#010203'), 'body.finish', 'patina');
+    expect(f.body.color).toBe('#010203');
+    expect(setField(f, 'body.finish', 'worn').body).toMatchObject({ finish: 'worn', ...PRESET_COLORS.worn });
+    expect(setField(f, 'body.finish', 'brushed').body.color).toBe('#010203');
+  });
+  it("the form's body lists are exactly what normalisation accepts", () => {
+    expect(BODY_PRESET_LISTS).toEqual(BODY_PRESETS);
+    expect(BODY_TYPES).toEqual(['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood']);
+    expect(FINISHES).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn']);
+    for (const type of BODY_TYPES) expect(normalizeAppearance({ body: { type } }).body.type).toBe(type);
+    for (const finish of FINISHES) expect(normalizeAppearance({ body: { type: 'metal', finish } }).body.finish).toBe(finish);
+    for (const id of [...Object.values(BODY_PRESETS).flat(), 'patina', 'worn']) expect(PRESET_COLORS[id]).toBeTruthy();
+  });
+  it('visibleSections: presets for the new bodies, a second colour for them, luminous always', () => {
+    for (const type of BODY_TYPES) {
+      const v = visibleSections({ body: { type } });
+      expect(v.preset).toBe(Object.hasOwn(BODY_PRESETS, type));
+      expect(v.luminous).toBe(true);
+      expect(v.color2).toBe(['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'].includes(type));
+    }
+    // a metal's second colour: only for the aged finishes
+    for (const finish of FINISHES) {
+      expect(visibleSections({ body: { type: 'metal', finish } }).color2).toBe(finish === 'patina' || finish === 'worn');
+    }
+    expect(visibleSections({ body: { type: 'opaque', finish: 'patina' } }).color2).toBe(false);
+  });
+});
+
+describe('the new insides in the form', () => {
+  const NEW_TYPES = ['foil', 'eye', 'botanical', 'smoke'];
+  it('form round-trips every new inside, inclusion, bubble and sand', () => {
+    for (const type of NEW_TYPES)
+      for (const inclusion of ['flower', 'moss', 'butterfly']) {
+        const look = { body: { type: 'resin' }, interior: { type, inclusion } };
+        const a = normalizeAppearance(look);
+        expect(a.interior).toMatchObject({ type, inclusion });
+        expect(appearanceFromForm(formFromAppearance(look))).toEqual(a);
+      }
+    for (const bubble of [false, true])
+      for (const sand of [false, true]) {
+        const look = { body: { type: 'resin' }, interior: { type: 'liquid', bubble, sand } };
+        const a = normalizeAppearance(look);
+        expect(a.interior).toMatchObject({ bubble, sand });
+        expect(appearanceFromForm(formFromAppearance(look))).toEqual(a);
+        // real booleans through setField, not strings
+        let f = setField(formFromAppearance(look), 'interior.bubble', !bubble);
+        f = setField(f, 'interior.sand', !sand);
+        expect(f.interior).toMatchObject({ bubble: !bubble, sand: !sand });
+        expect(appearanceFromForm(f).interior).toMatchObject({ bubble: !bubble, sand: !sand });
+      }
+  });
+  it("the form's lists are exactly what normalisation accepts", () => {
+    expect(INTERIOR_TYPES).toEqual(['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', ...NEW_TYPES]);
+    for (const type of INTERIOR_TYPES) expect(normalizeAppearance({ body: { type: 'resin' }, interior: { type } }).interior.type).toBe(type);
+    expect(INCLUSION_LIST).toEqual(['flower', 'moss', 'butterfly']);
+    for (const inclusion of INCLUSION_LIST) expect(normalizeAppearance({ interior: { inclusion } }).interior.inclusion).toBe(inclusion);
+    expect(normalizeAppearance({ interior: { inclusion: 'bogus' } }).interior.inclusion).toBe('flower');
+  });
+  it('keeps the new fields through a non-resin body (resin -> metal -> resin)', () => {
+    const look = { body: { type: 'resin' }, interior: { type: 'liquid', bubble: true, sand: true } };
+    let f = setField(formFromAppearance(look), 'body.type', 'metal');
+    expect(f.interior).toMatchObject({ bubble: true, sand: true });
+    f = setField(setField(formFromAppearance({ body: { type: 'metal' }, interior: { type: 'botanical', inclusion: 'moss' } }), 'body.type', 'metal'), 'body.type', 'resin');
+    expect(appearanceFromForm(f).interior).toMatchObject({ type: 'botanical', inclusion: 'moss' });
+  });
+  it('visibleSections: inclusion chips only for botanical; bubble and sand only for liquid', () => {
+    for (const type of INTERIOR_TYPES) {
+      const v = visibleSections({ body: { type: 'resin' }, interior: { type } });
+      expect(v.inclusion, type).toBe(type === 'botanical');
+      expect(v.liquidOptions, type).toBe(type === 'liquid');
+    }
+    expect(visibleSections({ body: { type: 'metal' }, interior: { type: 'botanical' } })).toMatchObject({ inclusion: false, liquidOptions: false });
+  });
+});
+
 describe('form <-> appearance', () => {
   it('round-trips every layer (resin with an inside, metal with a finish)', () => {
     for (const look of [resinNebula, metal]) {
       expect(appearanceFromForm(formFromAppearance(look))).toEqual(normalizeAppearance(look));
     }
   });
+  it("the form's shape list equals SHAPES in the look module (that list is not exported)", () => {
+    const src = readFileSync('src/look/appearance.js', 'utf8');
+    const literal = /^const SHAPES = (\[[^\]]*\]);/m.exec(src)[1];
+    expect(SHAPES).toEqual(JSON.parse(literal.replace(/'/g, '"')));
+    expect(SHAPES).toEqual(NINE_SHAPES);
+  });
   it('round-trips every edge step, fill, inside type, shape and font kind', () => {
     for (const radius of EDGE_STEPS) expect(appearanceFromForm(formFromAppearance({ edges: { radius } })).edges.radius).toBe(radius);
     for (const fill of ['paint', 'gold', 'silver', 'enamel'])
       expect(appearanceFromForm(formFromAppearance({ numbers: { fill } })).numbers.fill).toBe(fill);
     for (const type of ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'])
-      for (const shape of ['star', 'heart', 'skull', 'sphere']) {
+      for (const shape of NINE_SHAPES) {
         const look = { body: { type: 'resin' }, interior: { type, shape } };
         expect(appearanceFromForm(formFromAppearance(look)).interior).toEqual(normalizeAppearance(look).interior);
       }
@@ -351,6 +572,89 @@ describe('the appearance editor', () => {
     el.dispatchEvent(new Event(evt, { bubbles: true }));
   };
 
+  it('the numbers section renders relief, icon and font chips with their labels', async () => {
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    expect(labels('[data-field="numbers.relief"]')).toEqual([L('Relief.engraved'), L('Relief.raised')]);
+    for (const field of ['numbers.critIcon', 'numbers.fumbleIcon'])
+      expect(labels(`[data-field="${field}"]`)).toEqual(['none', ...ICON_IDS].map((i) => L(`Icon.${i}`)));
+    expect(labels('[data-field="numbers.fontKind"]')).toHaveLength(10);
+    expect(labels('[data-field="numbers.fontKind"]')).toContain(L('FontKind.norse'));
+    expect(labels('[data-field="numbers.fill"]')).toHaveLength(7);
+    expect(app.element.textContent).toContain(L('Numbers.IconsHint'));
+    await click(app, '[data-field="numbers.critIcon"][data-value="crown"]');
+    expect(app.theme().appearance.numbers.icons.crit).toBe('crown');
+    await app.close();
+  });
+
+  it('controls render with their labels', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: { d7: { body: { type: 'wood' } }, df: { numbers: { fill: 'paint' } } }, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    expect(labels('[data-field="shapes.d4"]')).toEqual([L('Shapes.classic'), L('Shapes.crystal')]);
+    expect(app.element.textContent).toContain(L('Shapes.D4'));
+    expect(labels('[data-field="numbers.coin"]')).toEqual(COIN_CHOICES.map((c) => L(`Coin.${c}`)));
+    expect(app.element.textContent).toContain(L('Numbers.Pips'));
+    expect(q(app, 'input[name="numbers.pips"]')).toBeTruthy();
+    // real booleans from the checkbox, chips set the look
+    const pips = q(app, 'input[name="numbers.pips"]');
+    pips.checked = true;
+    pips.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(app.theme().appearance.numbers.pips).toBe(true);
+    await click(app, '[data-field="numbers.coin"][data-value="sun-moon"]');
+    await click(app, '[data-field="shapes.d4"][data-value="crystal"]');
+    const t = app.theme();
+    expect(t.appearance.numbers.coin).toBe('sun-moon');
+    expect(t.appearance.shapes.d4).toBe('crystal');
+    // dice with no tab keep their looks through a save
+    expect(t.perType.d7).toEqual({ body: { type: 'wood' } });
+    expect(t.perType.df).toEqual({ numbers: { fill: 'paint' } });
+    await app.close();
+  });
+
+  it('the shape chips list nine shapes with their labels', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const app = await open({ base: { id: 't', name: 'T', appearance: { body: { type: 'resin' }, interior: { type: 'shape', shape: 'sword' } }, perType: {}, rules: [] } });
+    const chips = [...app.element.querySelectorAll('[data-field="interior.shape"]')];
+    expect(chips.map((e) => e.dataset.value)).toEqual(NINE_SHAPES);
+    expect(chips.map((e) => e.textContent.trim())).toEqual(
+      ['Star', 'Heart', 'Skull', 'Sphere', 'Sword', 'Axe', 'Shield', 'Dragon', 'Magic circle'],
+    );
+    expect(chips.map((e) => e.textContent.trim())).toEqual(NINE_SHAPES.map((s) => L(`Shape.${s}`)));
+    expect(q(app, '[data-field="interior.shape"][data-value="sword"]').getAttribute('aria-pressed')).toBe('true');
+    await click(app, '[data-field="interior.shape"][data-value="runes"]');
+    expect(app.theme().appearance.interior.shape).toBe('runes');
+    await app.close();
+  });
+
+  it('inclusion chips only for botanical; bubble and sand only for liquid; iris label for the eye', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const resin = { body: { type: 'resin' }, interior: { type: 'liquid' } };
+    const app = await open({ base: { id: 't', name: 'T', appearance: resin, perType: {}, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    expect(labels('[data-field="interior.type"]')).toEqual(INTERIOR_TYPES.map((t) => L(`InsideType.${t}`)));
+    expect(q(app, '[data-field="interior.inclusion"]')).toBeNull();
+    expect(q(app, 'input[name="interior.bubble"]')).toBeTruthy();
+    expect(q(app, 'input[name="interior.sand"]')).toBeTruthy();
+    expect(labels('[data-section="inside"] .dicer-ae-color > span:first-child')[0]).toBe(L('Inside.MainColor'));
+    // the toggles round-trip as real booleans
+    const bubble = q(app, 'input[name="interior.bubble"]');
+    bubble.checked = true;
+    bubble.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(app.theme().appearance.interior.bubble).toBe(true);
+    await click(app, '[data-field="interior.type"][data-value="botanical"]');
+    expect(q(app, 'input[name="interior.bubble"]')).toBeNull();
+    expect(labels('[data-field="interior.inclusion"]')).toEqual(INCLUSION_LIST.map((i) => L(`Inclusion.${i}`)));
+    await click(app, '[data-field="interior.inclusion"][data-value="moss"]');
+    expect(app.theme().appearance.interior.inclusion).toBe('moss');
+    expect(q(app, '[data-field="interior.inclusion"][data-value="moss"]').getAttribute('aria-checked')).toBe('true');
+    await click(app, '[data-field="interior.type"][data-value="eye"]');
+    expect(q(app, '[data-field="interior.inclusion"]')).toBeNull();
+    expect(labels('[data-section="inside"] .dicer-ae-color > span:first-child')[0]).toBe(L('Inside.IrisColor'));
+    await app.close();
+  });
+
   it('the Throw button throws the working look (appearance + perType as edited) on the table', async () => {
     const _throwLook = vi.fn(async () => {});
     globalThis.game.dice3d._throwLook = _throwLook;
@@ -377,6 +681,31 @@ describe('the appearance editor', () => {
     expect(q(app, '[data-field="body.finish"]')).toBeTruthy(); // metal shows the finish
     expect(app.element.querySelectorAll('.dicer-ae-edges button')).toHaveLength(5);
     expect(q(app, '.dicer-ae-edges button.active').dataset.value).toBe('0');
+    await app.close();
+  });
+
+  it('the material section renders preset chips only for types with presets, five finishes for metal, and the luminous range', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
+    expect(labels('[data-field="body.type"]')).toHaveLength(8);
+    expect(labels('[data-field="body.finish"]')).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn'].map((f) => L(`Finish.${f}`)));
+    expect(q(app, '[data-field="body.preset"]')).toBeNull();
+    expect(q(app, 'input[name="body.luminous"]')).toBeTruthy();
+    expect(q(app, 'input[name="body.luminous"]').getAttribute('max')).toBe('1');
+    expect(app.element.textContent).toContain(L('Body.Luminous'));
+    await click(app, '[data-field="body.type"][data-value="wood"]');
+    expect(labels('[data-field="body.preset"]')).toEqual(BODY_PRESETS.wood.map((p) => L(`Preset.${p}`)));
+    expect(q(app, '[data-field="body.preset"][data-value="oak"]').getAttribute('aria-checked')).toBe('true');
+    expect(q(app, '[data-field="body.finish"]')).toBeNull();
+    expect(app.element.textContent).toContain(L('Body.Preset'));
+    await click(app, '[data-field="body.preset"][data-value="cherry"]');
+    expect(app.theme().appearance.body).toMatchObject({ type: 'wood', preset: 'cherry', ...PRESET_COLORS.cherry });
+    expect(q(app, 'input[name="body.color"]').value).toBe(PRESET_COLORS.cherry.color);
+    type(app, 'body.luminous', '0.4');
+    expect(app.theme().appearance.body.luminous).toBe(0.4);
+    await click(app, '[data-field="body.type"][data-value="opaque"]');
+    expect(q(app, '[data-field="body.preset"]')).toBeNull();
     await app.close();
   });
 
@@ -435,6 +764,17 @@ describe('the appearance editor', () => {
     await click(app, '[data-field="numbers.fill"][data-value="silver"]');
     expect(q(app, 'canvas.dicer-live')).toBe(canvas);
     expect(thumbs.preview).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it('the coin previews (a d2 button) but is no per-type look', async () => {
+    const app = await open({ themeId: 'user.u1.mine' });
+    expect(q(app, '.dicer-ae-dice button[data-type="d2"]')).toBeTruthy();
+    expect(q(app, '[data-action="editType"][data-type="d2"]')).toBeNull();
+    await click(app, '.dicer-ae-dice button[data-type="d2"]');
+    expect(q(app, '.dicer-ae-dice button.active').dataset.type).toBe('d2');
+    expect(thumbs.preview.mock.calls[0][2]).toBe('d20');
+    expect(app.theme().perType).toEqual({});
     await app.close();
   });
 
@@ -637,19 +977,29 @@ describe('lang/en.json', () => {
     expect(duplicateKeys()).toEqual([]);
     const lang = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Appearance;
     const keys = usedKeys('Appearance', ['src/ui/appearance-editor.js', 'templates/appearance-editor.hbs'], {
-      'BodyType.': ['opaque', 'resin', 'metal', 'marble', 'pearl'],
-      'Finish.': ['polished', 'brushed', 'antique'],
-      'InsideType.': ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'],
-      'Shape.': ['star', 'heart', 'skull', 'sphere'],
-      'Fill.': ['paint', 'gold', 'silver', 'enamel'],
-      'FontKind.': ['serif', 'sans', 'css', 'file'],
+      'BodyType.': BODY_TYPES,
+      'Finish.': FINISHES,
+      'Preset.': Object.values(BODY_PRESETS).flat(),
+      'InsideType.': INTERIOR_TYPES,
+      'Inclusion.': INCLUSION_LIST,
+      'Shape.': NINE_SHAPES,
+      'Fill.': ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'],
+      'FontKind.': [...FONT_IDS_BUILTIN, 'css', 'file'],
+      'Relief.': ['engraved', 'raised'],
+      'Shapes.': ['D4', 'classic', 'crystal'],
+      'Coin.': ['numbers', 'heads-tails', 'sun-moon'],
+      'Icon.': ['none', ...ICON_IDS],
       'Edge.': ['sharp', 'crisp', 'soft', 'round', 'veryRound'],
     });
     expect(keys.length).toBeGreaterThan(30);
+    expect([BODY_TYPES.length, Object.values(BODY_PRESETS).flat().length, FINISHES.length]).toEqual([8, 11, 5]);
+    expect(keys).toEqual(expect.arrayContaining(['Body.Preset', 'Body.Luminous']));
     for (const k of keys) expect(typeof resolve(lang, k), `DICER.Appearance.${k}`).toBe('string');
     // dynamic keys built from lists
     for (const [group, ids] of Object.entries({
-      BodyType: ['opaque', 'resin', 'metal', 'marble', 'pearl'],
+      BodyType: BODY_TYPES,
+      Finish: FINISHES,
+      Preset: Object.values(BODY_PRESETS).flat(),
       Section: ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras'],
     }))
       for (const id of ids) expect(typeof lang[group][id], `${group}.${id}`).toBe('string');

@@ -9,25 +9,44 @@
  */
 import { normalizeAppearance, EDGE_STEPS } from '../look/appearance.js';
 import { DIE_TYPES } from '../themes/themes.js';
+import { PRESET_COLORS } from '../look/body-colors.js';
 import { upsertTheme, userThemeId, worldThemeId, mergeEdited } from './theme-form.js';
 
-export const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl'];
-export const FINISHES = ['polished', 'brushed', 'antique'];
-export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape'];
-export const SHAPES = ['star', 'heart', 'skull', 'sphere'];
-export const FILLS = ['paint', 'gold', 'silver', 'enamel'];
-export const FONT_KINDS = ['serif', 'sans', 'css', 'file'];
+export const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
+export const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
+// Literal copy of BODY_PRESETS (importing it would add an export to the world-start chunk; the unit
+// test pins it to the real one).
+export const BODY_PRESET_LISTS = {
+  iridescent: ['chameleon', 'opal', 'dichroic'],
+  gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
+  wood: ['oak', 'walnut', 'cherry', 'ebony'],
+};
+export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke'];
+// Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
+export const INCLUSION_LIST = ['flower', 'moss', 'butterfly'];
+export const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
+// Literal lists (the unit test pins them to what normalisation accepts).
+export const D4_SHAPES = ['classic', 'crystal'];
+export const COIN_CHOICES = ['numbers', 'heads-tails', 'sun-moon'];
+export const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
+export const RELIEFS = ['engraved', 'raised'];
+// A literal list, not ICON_IDS: importing that name would add an export to the world-start chunk
+// (the unit test pins this list to what normalisation accepts).
+export const ICON_CHOICES = ['none', 'starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame'];
+// Literal, like ICON_CHOICES (the unit test pins it to FONT_IDS_BUILTIN).
+const BUILTIN_FONTS = ['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco'];
+export const FONT_KINDS = [...BUILTIN_FONTS, 'css', 'file'];
 export { EDGE_STEPS };
 /** Fonts most computers have, offered as suggestions for "a font on this computer". */
 export const FONT_SUGGESTIONS = ['Georgia', 'Impact', 'Palatino Linotype', 'Trebuchet MS', 'Verdana', 'Courier New', 'Times New Roman'];
 export const LOOK_KIND = 'dicer-look';
 /** Body types with a second colour (marble veins, pearl sheen, resin tint). */
-const TWO_TONE = ['marble', 'pearl', 'resin'];
+const TWO_TONE = ['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'];
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
 function fontParts(font) {
-  if (font === 'sans' || font === 'serif') return { fontKind: font, fontFamily: '', fontFile: '' };
+  if (BUILTIN_FONTS.includes(font)) return { fontKind: font, fontFamily: '', fontFile: '' };
   if (typeof font === 'string' && font.startsWith('css:')) return { fontKind: 'css', fontFamily: font.slice(4), fontFile: '' };
   if (typeof font === 'string' && font.startsWith('file:')) return { fontKind: 'file', fontFamily: '', fontFile: font.slice(5) };
   return { fontKind: 'serif', fontFamily: '', fontFile: '' };
@@ -36,7 +55,7 @@ function fontParts(font) {
 /** The font id a form names ('serif' | 'sans' | 'css:<family>' | 'file:<path>'), not yet validated. */
 export function fontIdOf(numbers = {}) {
   const kind = numbers.fontKind;
-  if (kind === 'sans') return 'sans';
+  if (BUILTIN_FONTS.includes(kind)) return kind;
   if (kind === 'css') return `css:${String(numbers.fontFamily ?? '').trim()}`;
   if (kind === 'file') return `file:${String(numbers.fontFile ?? '').trim()}`;
   return 'serif';
@@ -50,9 +69,25 @@ export function formFromAppearance(raw) {
   const inside = a.body.type === 'resin' ? a.interior : rawInside;
   return {
     body: { ...a.body },
-    interior: { type: inside.type, color1: inside.colors[0], color2: inside.colors[1], density: inside.density, shape: inside.shape },
-    numbers: { fill: a.numbers.fill, color: a.numbers.color, depth: a.numbers.depth, ...fontParts(a.numbers.font) },
+    interior: { type: inside.type, color1: inside.colors[0], color2: inside.colors[1], density: inside.density,
+      shape: inside.shape,
+      inclusion: inside.inclusion,
+      bubble: inside.bubble,
+      sand: inside.sand,
+    },
+    numbers: {
+      fill: a.numbers.fill,
+      relief: a.numbers.relief,
+      critIcon: a.numbers.icons.crit ?? 'none',
+      fumbleIcon: a.numbers.icons.fumble ?? 'none',
+      color: a.numbers.color,
+      depth: a.numbers.depth,
+      pips: a.numbers.pips,
+      coin: a.numbers.coin,
+      ...fontParts(a.numbers.font),
+    },
     edges: { radius: a.edges.radius },
+    shapes: { d4: a.shapes.d4 },
     glow: { ...a.glow },
   };
 }
@@ -68,10 +103,20 @@ export function appearanceFromForm(form) {
   const e = isObj(f.edges) ? f.edges : {};
   const g = isObj(f.glow) ? f.glow : {};
   return normalizeAppearance({
-    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness) },
-    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape },
-    numbers: { fill: num.fill, color: num.color, depth: n(num.depth), font: fontIdOf(num) },
+    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset, luminous: n(b.luminous) },
+    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand },
+    numbers: {
+      fill: num.fill,
+      relief: num.relief,
+      icons: { crit: num.critIcon, fumble: num.fumbleIcon },
+      color: num.color,
+      depth: n(num.depth),
+      font: fontIdOf(num),
+      pips: num.pips === true,
+      coin: num.coin,
+    },
     edges: { radius: n(e.radius) },
+    shapes: { d4: isObj(f.shapes) ? f.shapes.d4 : undefined },
     glow: { color: g.color, intensity: n(g.intensity) },
   });
 }
@@ -79,7 +124,7 @@ export function appearanceFromForm(form) {
 /** True when the form names a computer font / font file that is not a usable id (it would fall back to the serif). */
 export function fontInvalid(form) {
   const id = fontIdOf(form?.numbers);
-  if (id === 'serif' || id === 'sans') return false;
+  if (BUILTIN_FONTS.includes(id)) return false;
   return appearanceFromForm(form).numbers.font !== id;
 }
 
@@ -94,9 +139,15 @@ export function visibleSections(look) {
     inside: resin,
     insideDetails: resin && inside !== 'none' && INTERIOR_TYPES.includes(inside),
     insideShape: resin && inside === 'shape',
-    color2: TWO_TONE.includes(body),
+    inclusion: resin && inside === 'botanical',
+    liquidOptions: resin && inside === 'liquid',
+    irisLabel: resin && inside === 'eye',
+    // the aged metal finishes' verdigris / grime colour is the second colour
+    color2: TWO_TONE.includes(body) || (body === 'metal' && (look?.body?.finish === 'patina' || look?.body?.finish === 'worn')),
     finish: body === 'metal',
-    numberColor: fill === 'paint' || fill === 'enamel',
+    preset: Object.hasOwn(BODY_PRESET_LISTS, body),
+    luminous: true,
+    numberColor: fill !== 'gold' && fill !== 'silver',
     fontFamily: kind === 'css',
     fontFile: kind === 'file',
   };
@@ -115,8 +166,22 @@ export function setField(form, path, value) {
   if (path === 'numbers.fill' && Object.hasOwn(METAL_FILL_COLORS, value) && out.numbers?.fill !== value) {
     out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), color: METAL_FILL_COLORS[value] };
   }
+  // A new body type starts from its first preset; a preset (and the aged finishes) apply their colours.
+  // Only a change applies them: re-picking keeps what the user edited.
+  if (path === 'body.type' && out.body?.type !== value) {
+    const first = BODY_PRESET_LISTS[value]?.[0] ?? null;
+    out.body = { ...(isObj(out.body) ? out.body : {}), preset: first, ...(first ? PRESET_COLORS[first] : {}) };
+  } else if (
+    path === 'body.preset' &&
+    Object.values(BODY_PRESET_LISTS).some((l) => l.includes(value)) &&
+    out.body?.preset !== value
+  ) {
+    out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
+  } else if (path === 'body.finish' && (value === 'patina' || value === 'worn') && out.body?.finish !== value) {
+    out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
+  }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'luminous'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};
@@ -139,9 +204,15 @@ export function removeOverride(forms, type) {
   const { [type]: _gone, ...rest } = forms;
   return rest;
 }
-/** forms -> { appearance, perType } of a theme. */
-export function looksFromForms(forms) {
+/**
+ * forms -> { appearance, perType } of a theme. `base` (the theme being edited) supplies the per-type
+ * looks of dice the editor has no tab for (d3, d5, d7, d14, d16, dF): they pass through unchanged.
+ */
+export function looksFromForms(forms, base = null) {
   const perType = {};
+  if (isObj(base?.perType)) {
+    for (const [t, look] of Object.entries(base.perType)) if (!DIE_TYPES.includes(t)) perType[t] = plain(look);
+  }
   for (const t of DIE_TYPES) if (forms[t]) perType[t] = appearanceFromForm(forms[t]);
   return { appearance: appearanceFromForm(forms.default), perType };
 }

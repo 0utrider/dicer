@@ -40,7 +40,7 @@ const f = (x) => x.toFixed(4);
 /** GLSL: a point in [cellMin, cellMax] of a cell from hash h in [0, 1). */
 const cellPos = (h) => `${f(INTERIOR.cellMin)} + ${f(INTERIOR.cellMax - INTERIOR.cellMin)} * ${h}`;
 
-const COMMON_PARS = /* glsl */ `
+export const INTERIOR_PARS = /* glsl */ `
 uniform vec3 uInteriorColors[ 2 ];
 uniform float uInteriorDensity;
 uniform vec3 uKeyLightDir; // world space, towards the key light
@@ -326,7 +326,7 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
  * ray's chord through it, start jittered per pixel (interleaved gradient noise) against
  * banding; front-to-back over premultiplied segments; stops at opacity ${INTERIOR.opaque}.
  */
-const MARCH = /* glsl */ `
+export const INTERIOR_MARCH = /* glsl */ `
 	if ( dcMask < 0.99 ) {
 		vec3 dcIs = dcIScale();
 		vec3 dcIo = vLocalPos * dcIs;
@@ -379,5 +379,5 @@ const TYPES = {
 export function interiorChunk(type, shape = 'star') {
   const build = Object.hasOwn(TYPES, type) ? TYPES[type] : null;
   if (!build) throw new Error(`dicer: unknown interior type "${type}"`);
-  return { pars: [NOISE_GLSL, COMMON_PARS, build(shape)].join('\n'), main: MARCH };
+  return { pars: [NOISE_GLSL, INTERIOR_PARS, build(shape)].join('\n'), main: INTERIOR_MARCH };
 }

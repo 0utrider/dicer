@@ -91,7 +91,7 @@ describe('normalizeTheme', () => {
       {
         ...good(),
         appearance: { body: { color: '#123456' } },
-        perType: { d6: { body: { type: 'metal' } }, d3: {}, d20: 5 },
+        perType: { d6: { body: { type: 'metal' } }, d9: {}, d20: 5, d7: {} },
       },
       'world',
       warn,
@@ -99,7 +99,7 @@ describe('normalizeTheme', () => {
     expect(warn).not.toHaveBeenCalled();
     expect(t.source).toBe('world');
     expect(t.appearance.body.color).toBe('#123456');
-    expect(Object.keys(t.perType)).toEqual(['d6']);
+    expect(Object.keys(t.perType)).toEqual(['d6', 'd7']); // a d7 (plan 4) is kept, a d9 dropped
     expect(t.rules[0].source).toBe('theme');
     expect(Object.isFrozen(t.appearance.interior.colors)).toBe(true);
     expect(Object.isFrozen(t.perType.d6.body)).toBe(true);

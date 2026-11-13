@@ -170,6 +170,70 @@ async function main() {
       );
     if (Object.keys(bodyShots).length === 3 && new Set(Object.values(bodyShots)).size !== 3)
       problems.push('appearance-body: two body types drew the same stage');
+    // The new insides: the chips and options each shows, and the live preview follows each pick.
+    const insideShots = {};
+    for (const [type, expected] of [['eye', { inclusion: 0, bubble: 0 }], ['botanical', { inclusion: 3, bubble: 0 }], ['liquid', { inclusion: 0, bubble: 1 }]])
+      problems.push(
+        ...(await shoot(browser, 'app=appearance', `appearance-inside-${type}.png`, async (page) => {
+          await livePreview(page);
+          await page.click('[data-section="inside"]:not([open]) > summary').catch(() => {});
+          await page.click(`[data-field="interior.type"][data-value="${type}"]`);
+          if (type === 'liquid') await page.check('input[name="interior.bubble"]');
+          await page.waitForTimeout(1200); // debounce + the chunk-built program
+          await page.mouse.move(5, 5);
+          const got = await page.evaluate(() => ({
+            inclusion: document.querySelectorAll('[data-field="interior.inclusion"]').length,
+            bubble: document.querySelectorAll('input[name="interior.bubble"]:checked').length,
+          }));
+          if (got.inclusion !== expected.inclusion || got.bubble !== expected.bubble)
+            throw new Error(`appearance-inside-${type}: unexpected options ${JSON.stringify(got)}`);
+          insideShots[type] = (await page.locator('.dicer-ae-stage').screenshot()).toString('base64');
+          await page.locator('[data-section="inside"]').scrollIntoViewIfNeeded();
+        }, { reducedMotion: 'reduce' })),
+      );
+    if (Object.keys(insideShots).length === 3 && new Set(Object.values(insideShots)).size !== 3)
+      problems.push('appearance-inside: two insides drew the same stage');
+    // The floating-shape chips: nine shapes (the fantasy five included), and the preview follows each pick.
+    const shapeShots = {};
+    problems.push(
+      ...(await shoot(browser, 'app=appearance', 'appearance-inside-shape.png', async (page) => {
+        await livePreview(page);
+        await page.click('[data-section="inside"]:not([open]) > summary').catch(() => {});
+        await page.click('[data-field="interior.type"][data-value="shape"]');
+        const chips = await page.locator('[data-field="interior.shape"]').count();
+        if (chips !== 9) throw new Error(`appearance-inside-shape: ${chips} shape chips, expected 9`);
+        for (const shape of ['star', 'sword', 'axe', 'shield', 'dragon', 'runes']) {
+          await page.click(`[data-field="interior.shape"][data-value="${shape}"]`);
+          await page.waitForTimeout(1200); // debounce + the chunk-built program
+          await page.mouse.move(5, 5);
+          shapeShots[shape] = (await page.locator('.dicer-ae-stage').screenshot()).toString('base64');
+        }
+        await page.locator('[data-field="interior.shape"][data-value="runes"]').scrollIntoViewIfNeeded();
+      }, { reducedMotion: 'reduce' })),
+    );
+    if (Object.keys(shapeShots).length === 6 && new Set(Object.values(shapeShots)).size !== 6)
+      problems.push('appearance-inside-shape: two shapes drew the same stage');
+    // The crystal d4, pips on the d6 and the coin faces: the controls show, take a pick and keep it.
+    problems.push(
+      ...(await shoot(browser, 'app=appearance', 'appearance-numbers-edges.png', async (page) => {
+        await livePreview(page);
+        await page.click('[data-field="numbers.coin"][data-value="sun-moon"]');
+        await page.check('input[name="numbers.pips"]');
+        await page.click('[data-field="shapes.d4"][data-value="crystal"]');
+        const got = await page.evaluate(() => ({
+          coin: document.querySelectorAll('[data-field="numbers.coin"]').length,
+          coinOn: document.querySelector('[data-field="numbers.coin"][data-value="sun-moon"]')?.getAttribute('aria-checked'),
+          pips: document.querySelector('input[name="numbers.pips"]')?.checked,
+          d4: document.querySelector('[data-field="shapes.d4"][data-value="crystal"]')?.getAttribute('aria-pressed'),
+          d4Count: document.querySelectorAll('[data-field="shapes.d4"]').length,
+        }));
+        if (got.coin !== 3 || got.coinOn !== 'true' || got.pips !== true || got.d4 !== 'true' || got.d4Count !== 2)
+          throw new Error(`appearance-numbers-edges: unexpected controls ${JSON.stringify(got)}`);
+        await page.waitForTimeout(600);
+        await page.mouse.move(5, 5);
+        await page.locator('[data-field="shapes.d4"][data-value="crystal"]').scrollIntoViewIfNeeded();
+      }, { reducedMotion: 'reduce' })),
+    );
     // A font from the computer (Georgia) drawn on the die.
     problems.push(
       ...(await shoot(browser, 'app=appearance&theme=user.u1.georgia-gold', 'appearance-editor-font.png', async (page) => {

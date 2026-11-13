@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getShape, labelFor } from '../core/dice-shapes.js';
+import { getShape, labelFor, resultOf } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
 import {
   createDiceMaterial,
@@ -349,7 +349,7 @@ export class DiceBox {
       roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
       roll.received = 0;
       const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
-      const req = { dice: specs.map((s) => ({ type: s.type })), seed };
+      const req = { dice: roll.dice.map((d) => ({ type: d.shapeType })), seed };
       if (throwArea) req.area = throwArea;
       const stream = this._physics.throw(req);
       // Stall guards (R12): a worker that never answers must not keep a roll alive.
@@ -590,7 +590,7 @@ export class DiceBox {
       const mat = this.#material(
         die.appearance,
         flags,
-        die.type,
+        die.shapeType,
         die.variant,
         die.faces,
         die.ghost,
@@ -695,8 +695,7 @@ export class DiceBox {
     if (!mat) {
       const shape = getShape(type);
       const labels = shape.values.map((v, i) => {
-        const dflt = () =>
-          variant === 'd100tens' ? labelFor(type, v * 10, variant) : labelFor(type, v);
+        const dflt = () => labelFor(type, variant === 'd100tens' ? v * 10 : v, variant);
         if (ghost) return '';
         const face = faces?.labels?.[i];
         if (!face) return dflt();
@@ -856,7 +855,7 @@ export class DiceBox {
   #presetOf(source, type) {
     if (typeof source?.system !== 'string') return null;
     try {
-      const dsnType = source.dsnType ?? type;
+      const dsnType = source.dsnType ?? (type === 'd4crystal' ? 'd4' : type);
       const preset = this._presetFor(source.system, dsnType);
       return preset && typeof preset === 'object' ? { preset, dsnType } : null;
     } catch (err) {
@@ -866,15 +865,21 @@ export class DiceBox {
   }
 
   #makeDie(spec, roll, flags, rollLook) {
-    const shape = getShape(spec.type);
     const ghost = spec.ghost === true;
-    const appearance = ghost
-      ? GHOST_APPEARANCE
-      : spec.appearance
-        ? normalizeAppearance(spec.appearance)
-        : rollLook;
+    const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
+    const appearance = ghost ? GHOST_APPEARANCE : look;
+    // A d4 with the crystal look is a d4crystal for hull, geometry, reader and labels; its type
+    // (and so its value) stays d4. A ghost follows the viewer's look and carries no appearance of
+    // its own, so it has the shape of the look it stands for.
+    // A DSN preset's own faces, or a model that is actually drawn (modelRotationFor is not null;
+    // the d4 has no verified rotation, so its model is never used), win: that die stays classic.
+    const shapeType =
+      spec.type === 'd4' && !spec.variant && !modelRotationFor(spec) && !spec.faces && look.shapes.d4 === 'crystal'
+        ? 'd4crystal'
+        : spec.type;
+    const shape = getShape(shapeType);
     const faces = ghost ? undefined : spec.faces;
-    const geometry = this.#geometry(spec.type, appearance.edges.radius);
+    const geometry = this.#geometry(shapeType, appearance.edges.radius);
     if (!roll.geometries.has(geometry)) {
       roll.geometries.add(geometry);
       this.#retainGeometry(geometry);
@@ -886,7 +891,7 @@ export class DiceBox {
     const material = this.#material(
       appearance,
       flags,
-      spec.type,
+      shapeType,
       spec.variant,
       faces,
       ghost,
@@ -915,6 +920,7 @@ export class DiceBox {
       targetValue,
       geometry,
       type: spec.type,
+      shapeType,
       variant: spec.variant,
       appearance,
       faces,
@@ -929,7 +935,8 @@ export class DiceBox {
       // The system's DiceSystem instance (api.js), if any: it gets this die's dice events.
       // A ghost has no system, so it never fires one.
       systemInstance: system ? this.#systemOf(system) : null,
-      value: ghost ? undefined : spec.value,
+      // The Foundry result (a relabelled die's face 8 on a d7 is a 1), for dice events and sfx.
+      value: ghost ? undefined : resultOf(spec.value, spec.variant),
       // Trigger effects: never on a ghost; a d100 plays them once, on its ones die.
       fx:
         !ghost && spec.variant !== 'd100tens' && Array.isArray(spec.fx) && spec.fx.length
@@ -1015,8 +1022,8 @@ export class DiceBox {
     for (const die of roll.dice) {
       if (die.ghost || die.model || die.faces?.key !== faces.key) continue;
       die.faceTex = tex;
-      const { appearance, type, variant } = die;
-      const mat = this.#material(appearance, roll.flags, type, variant, die.faces, false, tex, die);
+      const { appearance, shapeType, variant } = die;
+      const mat = this.#material(appearance, roll.flags, shapeType, variant, die.faces, false, tex, die);
       this.#swapMaterial(roll, die, mat);
     }
   }

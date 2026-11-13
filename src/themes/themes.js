@@ -5,6 +5,8 @@ import { normalizeAppearance } from '../look/appearance.js';
 import { normalizeRule } from '../effects/rules.js';
 
 export const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+/** perType keys a theme may carry: the editor's DIE_TYPES plus the dice it has no tab for yet. */
+const THEME_TYPES = [...DIE_TYPES, 'd3', 'd5', 'd7', 'd14', 'd16', 'df'];
 export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
 /** Effect catalogue ids (the library chunk is lazy, so the list is repeated here); 'dsn:' ids are also allowed. */
 export const KNOWN_EFFECTS = [
@@ -48,7 +50,7 @@ export function normalizeTheme(raw, source = 'user', warn = console.warn) {
     return fail(warn, `Dicer: ignoring theme${label}: missing appearance`);
   const perType = {};
   if (isObj(raw.perType)) {
-    for (const t of DIE_TYPES)
+    for (const t of THEME_TYPES)
       if (isObj(raw.perType[t])) perType[t] = normalizeAppearance(raw.perType[t]);
   }
   let soundMaterial = null;

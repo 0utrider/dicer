@@ -25,7 +25,10 @@ export function faceNormals(shape) {
   });
 }
 
-/** Face index whose world normal points most up (most down for readMode 'down'). */
+/**
+ * Face index whose world normal points most up (most down for readMode 'down'), among
+ * shape.readFaces when given (the crystal d4's caps are never a result).
+ */
 export function readTopFace(shape, q) {
   const quat = new THREE.Quaternion(q.x, q.y, q.z, q.w);
   const sign = shape.readMode === 'down' ? -1 : 1;
@@ -33,7 +36,7 @@ export function readTopFace(shape, q) {
   let bestY = -Infinity;
   faceNormals(shape).forEach((n, i) => {
     const y = sign * _n.set(n.x, n.y, n.z).applyQuaternion(quat).y;
-    if (y > bestY) {
+    if (y > bestY && (shape.readFaces?.includes(i) ?? 1)) {
       bestY = y;
       best = i;
     }

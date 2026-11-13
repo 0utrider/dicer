@@ -7,9 +7,14 @@ import { buildScene } from '../../src/render/scene.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
+import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
+import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
+import { FATE_FACES } from '../../src/compat/faces.js';
+import { planThrow } from '../../src/throw/throw-planner.js';
+import { foundryRoll, Coin } from './foundry-roll.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { EFFECTS } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
@@ -357,6 +362,53 @@ test('tens dice use their own label set and map onto d10 faces 1..10', () => {
   box.clear();
 });
 
+test('a d7 and a d14 in one roll get different label sets', () => {
+  createDiceMaterial.mockClear();
+  const { box, renderer } = setup();
+  box.roll([
+    { type: 'd14', value: 8, variant: 'd7' },
+    { type: 'd14', value: 8 },
+    { type: 'd6', value: 5, variant: 'd3' },
+    { type: 'd10', value: 10, variant: 'd5' },
+  ]);
+  const [d7, d14] = dieGroups(renderer).map((g) => g.children[0]);
+  expect(d7.material).not.toBe(d14.material);
+  expect(d7.geometry).toBe(d14.geometry);
+  const values = (t) => getShape(t).values;
+  const labelSets = createDiceMaterial.mock.calls.map((c) => c[3]);
+  expect(labelSets).toEqual([
+    values('d14').map((v) => labelFor('d14', v, 'd7')),
+    values('d14').map((v) => labelFor('d14', v)),
+    values('d6').map((v) => labelFor('d6', v, 'd3')),
+    values('d10').map((v) => labelFor('d10', v, 'd5')),
+  ]);
+  expect(labelSets[0]).not.toEqual(labelSets[1]);
+  // The die turns to the planned face itself (face 8 shows a 1 on the d7).
+  const dice = box._rolls.values().next().value.dice;
+  expect(dice.map((d) => d.targetValue)).toEqual([8, 8, 5, 10]);
+  // The die reports the Foundry result (dice events, DSN sfx), not the face it turned to.
+  expect(dice.map((d) => d.value)).toEqual([1, 8, 2, 5]);
+  box.clear();
+});
+
+test('a Foundry coin (results 0 / 1) throws the d2 on face 2 / 1 and reports the Foundry result', () => {
+  const { box } = setup();
+  const { dice: specs } = planThrow(foundryRoll(new Coin({ faces: 2, results: [{ result: 0, active: true }, { result: 1, active: true }] })));
+  expect(specs).toEqual([
+    { type: 'd2', value: 2, variant: 'dc' },
+    { type: 'd2', value: 1, variant: 'dc' },
+  ]);
+  box.roll(specs);
+  const dice = box._rolls.values().next().value.dice;
+  expect(dice.map((d) => d.targetValue)).toEqual([2, 1]);
+  expect(dice.map((d) => d.value)).toEqual([0, 1]);
+  // A plain d2 (results 1 / 2) is unchanged.
+  box.clear();
+  box.roll([{ type: 'd2', value: 2 }]);
+  expect(box._rolls.values().next().value.dice[0].value).toBe(2);
+  box.clear();
+});
+
 test('an empty roll resolves immediately and starts no loop', async () => {
   const { renderer, box } = setup();
   const { landed, finished } = box.roll([]);
@@ -594,6 +646,77 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     flags.interiorSteps = 32;
     box.roll([{ type: 'd6', value: 1 }]);
     expect(meshOf(renderer).material).toBe(a);
+    box.clear();
+  });
+
+  test('a roll before the chunk loads draws the fallback; after refresh the next roll draws the real look', async () => {
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const load = vi.fn(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+    _setLookExtrasImport(load);
+    const extras = {
+      body: { type: 'opaque', color: '#ffffff' },
+      numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' } },
+    };
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => extras });
+    expect(() => box.roll([{ type: 'd20', value: 20 }])).not.toThrow();
+    const first = meshOf(renderer).material.userData.programKey;
+    expect(first).not.toContain('|n:');
+    expect(load).toHaveBeenCalledTimes(1);
+    release();
+    expect(await requestLookExtras()).not.toBeNull();
+    box.invalidateMaterials();
+    expect(() => box.roll([{ type: 'd20', value: 20 }])).not.toThrow();
+    const second = meshOf(renderer).material.userData.programKey;
+    expect(second).toContain('|n:holo+r');
+    expect(load).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
+  test('an iridescent look rolled before the chunk loads draws pearl, then iridescent after it loads', async () => {
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const load = vi.fn(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+    _setLookExtrasImport(load);
+    const irid = { body: { type: 'iridescent', preset: 'opal', color: '#e8eef0', color2: '#7fd6e8' } };
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => irid });
+    expect(() => box.roll([{ type: 'd8', value: 3 }])).not.toThrow();
+    const first = meshOf(renderer).material;
+    expect(first.userData.programKey).toMatch(/^pearl\|/);
+    expect(first.userData.uniforms.uBodyPreset).toBeUndefined();
+    release();
+    expect(await requestLookExtras()).not.toBeNull();
+    box.invalidateMaterials();
+    expect(() => box.roll([{ type: 'd8', value: 3 }])).not.toThrow();
+    const second = meshOf(renderer).material;
+    expect(second.userData.programKey).toMatch(/^iridescent\|/);
+    expect(second.defines.DICER_IRIDESCENT).toBe('');
+    expect(second.userData.uniforms.uBodyPreset).toBeDefined();
+    expect(load).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
+  test('a foil look rolled before the chunk loads draws glitter, then foil after it loads', async () => {
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const load = vi.fn(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+    _setLookExtrasImport(load);
+    const foil = {
+      body: { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 },
+      interior: { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 },
+    };
+    const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => foil, getFlags: () => flags });
+    expect(() => box.roll([{ type: 'd20', value: 7 }])).not.toThrow();
+    const first = meshOf(renderer).material.userData.programKey;
+    expect(first).toContain('|glitter:32|');
+    release();
+    expect(await requestLookExtras()).not.toBeNull();
+    box.invalidateMaterials();
+    expect(() => box.roll([{ type: 'd20', value: 7 }])).not.toThrow();
+    const second = meshOf(renderer).material.userData.programKey;
+    expect(second).toContain('|foil:32|');
+    expect(load).toHaveBeenCalledTimes(1);
     box.clear();
   });
 
@@ -982,6 +1105,32 @@ describe('image and text faces', () => {
     ]);
     expect(faceTextures.acquire).not.toHaveBeenCalled();
     for (const call of createDiceMaterial.mock.calls) expect(call[5]).toBeFalsy();
+    box.clear();
+  });
+
+  test('a Fate die uses the Fate faces', async () => {
+    const faceTextures = fakeFaceTextures();
+    faceTextures.result.layers = Int16Array.from(
+      FATE_FACES.labels.map((l, i) => (l.kind === 'text' ? i : -1)),
+    );
+    const { renderer, physics, box } = setup({ faceTextures });
+    box.roll([
+      { type: 'd6', value: 5, variant: 'dF', faces: FATE_FACES },
+      { type: 'd6', value: 5 },
+    ]);
+    expect(faceTextures.acquire).toHaveBeenCalledWith(FATE_FACES);
+    // Before (or without) its layers a Fate die shows no numbers at all.
+    expect(createDiceMaterial.mock.calls[0][3].every((l) => l === '')).toBe(true);
+    physics.flush();
+    faceTextures.resolve();
+    await flushMicrotasks();
+    const call = createDiceMaterial.mock.calls.find((c) => c[5]);
+    expect(call[5]).toBe(faceTextures.result);
+    expect(call[3].every((l) => l === '')).toBe(true); // + and − from layers, blanks blank
+    const [fate, plain] = meshes(renderer).map((m) => m.material);
+    expect(fate).not.toBe(plain);
+    const [die] = box._rolls.values().next().value.dice;
+    expect([die.targetValue, die.value]).toEqual([5, -1]);
     box.clear();
   });
 
@@ -2317,5 +2466,109 @@ describe('impact effects', () => {
     expect(a.position).toBeDefined();
     expect(typeof a.position.x).toBe('number');
     expect(a.dieKey).not.toBe(b.dieKey);
+  });
+});
+
+describe('the crystal d4 look', () => {
+  const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
+  const landed = async (renderer, physics, box, specs) => {
+    const r = box.roll(specs);
+    physics.flush();
+    renderer.tick(10000);
+    renderer.tick(20000);
+    await flushMicrotasks();
+    return r;
+  };
+
+  test('a d4 with a crystal look is thrown as d4crystal (hull, geometry key, reader) and shows the rolled value', async () => {
+    buildDieGeometry.mockClear();
+    createDiceMaterial.mockClear();
+    const { renderer, physics, box } = setup();
+    await landed(renderer, physics, box, [{ type: 'd4', value: 3, appearance: crystal }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
+    expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4crystal']);
+    expect([...box._geometries.keys()][0].startsWith('d4crystal|')).toBe(true);
+    const shape = getShape('d4crystal');
+    expect(createDiceMaterial.mock.calls[0][2]).toBe(shape);
+    expect(createDiceMaterial.mock.calls[0][3]).toEqual(shape.values.map((v) => labelFor('d4crystal', v)));
+    const die = box._rolls.values().next().value.dice[0];
+    // Foundry's type and result stay d4's; the face reader is the crystal's
+    expect(die.type).toBe('d4');
+    expect(die.value).toBe(3);
+    expect(die.shape).toBe(shape);
+    expect(die.targetValue).toBe(3);
+    const r = rotationToShow(shape, readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 }), faceForValue(shape, 3));
+    const q = die.inner.quaternion;
+    expect(Math.abs(q.x * r.x + q.y * r.y + q.z * r.z + q.w * r.w)).toBeCloseTo(1, 5);
+    box.clear();
+  });
+
+  test('a classic d4 and a crystal d4 do not share a geometry or a material', () => {
+    const { renderer, box } = setup();
+    box.roll([
+      { type: 'd4', value: 2 },
+      { type: 'd4', value: 2, appearance: crystal },
+    ]);
+    const [a, b] = dieGroups(renderer).map((g) => g.children[0]);
+    expect(a.geometry).not.toBe(b.geometry);
+    expect(a.material).not.toBe(b.material);
+    box.clear();
+  });
+
+  test('a roll-level crystal look, a ghost and a rebuilt material all keep the shape', () => {
+    const { physics, box } = setup({ getAppearance: () => crystal });
+    box.roll([
+      { type: 'd4', value: 4 },
+      { type: 'd4', value: 4, ghost: true },
+    ]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }, { type: 'd4crystal' }]);
+    box.invalidateMaterials({ replaceInFlight: true });
+    const dice = box._rolls.values().next().value.dice;
+    expect(dice.every((d) => d.shape.type === 'd4crystal' && d.type === 'd4')).toBe(true);
+    expect(dice[0].inner.geometry).toBe(dice[1].inner.geometry);
+    box.clear();
+  });
+
+  test('other types ignore shapes.d4', () => {
+    const { physics, box } = setup();
+    box.roll(['d6', 'd8', 'd20', 'd2'].map((type) => ({ type, value: 1, appearance: crystal })));
+    expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d6', 'd8', 'd20', 'd2']);
+    box.clear();
+  });
+
+  test('a classic look keeps the d4', () => {
+    const { physics, box } = setup();
+    box.roll([{ type: 'd4', value: 1, appearance: DEFAULT_APPEARANCE }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    box.clear();
+  });
+});
+
+describe('a DSN preset faces keep the d4 classic; a never-drawn d4 model does not', () => {
+  const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
+
+  test('a d4 with an unused model (no verified rotation) and a crystal look is still the crystal', () => {
+    buildDieGeometry.mockClear();
+    const { physics, box } = setup();
+    box.roll([{ type: 'd4', value: 2, dsnType: 'd4', model: 'm/dice_4.glb', appearance: crystal }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
+    expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4crystal']);
+    const die = box._rolls.values().next().value.dice[0];
+    expect(die.shapeType).toBe('d4crystal');
+    expect(die.shape).toBe(getShape('d4crystal'));
+    expect(die.modelRotation).toBe(MODEL_ROTATIONS.d4);
+    expect(die.modelRotation).toBeNull();
+    box.clear();
+  });
+
+  test('a d4 with preset faces and a crystal look keeps its faces and the classic shape', () => {
+    const { physics, box } = setup();
+    const faces = { key: 'k', labels: getShape('d4').values.map((v) => ({ kind: 'glyph', text: 'g' + v })) };
+    box.roll([{ type: 'd4', value: 2, faces, appearance: crystal }]);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    const die = box._rolls.values().next().value.dice[0];
+    expect(die.faces).toBe(faces);
+    expect(die.shape).toBe(getShape('d4'));
+    box.clear();
   });
 });

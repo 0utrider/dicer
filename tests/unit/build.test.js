@@ -36,10 +36,15 @@ describe('build', () => {
     const soundNames = lazy.find((p) => /sound-names-/.test(p)); // the built-in sound list, shared by the synth and the editor
     const points = lazy.find((p) => /(LineSegments|InterleavedBufferAttribute)-/.test(p)); // three's InterleavedBuffer(Attribute), shared by the effects and model-loader chunks (named after its first export)
     const fontBuilder = lazy.find((p) => /font-builder-/.test(p)); // runtime font atlases (P7-D3)
+    const sdfBuilder = lazy.find((p) => /sdf-builder-/.test(p)); // the SDF builder, shared by font-builder and look-extras (icons)
     const fontWorker = lazy.find((p) => /font-worker-/.test(p));
     const benchAdapter = lazy.find((p) => /dicer-adapter-/.test(p)); // game.dice3d.benchmark(): adapter + runner
     const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
     const benchReport = lazy.find((p) => /report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
+    const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
+    expect(lookExtras).toBeTruthy();
+    expect(readFileSync(lookExtras, 'utf8')).toContain('dicer-look-extras');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-look-extras');
     expect(benchAdapter).toBeTruthy();
     expect(benchApp).toBeTruthy();
     expect(benchReport).toBeTruthy();
@@ -48,12 +53,16 @@ describe('build', () => {
     expect(readFileSync(benchReport, 'utf8')).toContain('Dicer benchmark');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Dicer benchmark');
     expect(fontBuilder).toBeTruthy();
+    expect(sdfBuilder).toBeTruthy();
     expect(fontWorker).toBeTruthy();
     // The SDF builder lives in the lazy chunks only; dicer.js just names the worker's URL.
-    expect(readFileSync(fontBuilder, 'utf8')).toContain('nodigits');
+    expect(readFileSync(sdfBuilder, 'utf8')).toContain('nodigits');
     expect(readFileSync(fontWorker, 'utf8')).toContain('nodigits');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('nodigits');
     expect(WORLD_START_ASSETS.some((p) => p.includes('digits-sans'))).toBe(false);
+    expect(
+      WORLD_START_ASSETS.some((p) => /digits-(blackletter|norse|uncial|scifi|handwritten|deco)/.test(p)),
+    ).toBe(false);
     expect(synth).toBeTruthy();
     expect(editor).toBeTruthy();
     expect(soundNames).toBeTruthy();
@@ -101,10 +110,12 @@ describe('build', () => {
         soundNames,
         points,
         fontBuilder,
+        sdfBuilder,
         fontWorker,
         benchAdapter,
         benchApp,
         benchReport,
+        lookExtras,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),
@@ -144,7 +155,16 @@ describe('build', () => {
     // world-start API (the editors call it through game.dice3d). The readable-numbers fix
     // re-based it on purpose (+1_738, 4_094_135): every die's material picks its number colour
     // against the die's own colour, so the contrast rule lives in the world-start renderer.
-    const growth = worldStartBytes() - 4_094_135;
+    // Dice designs plan 1 re-based it on purpose (4_094_135): its option lists, normalisation and
+    // the look-extras loader must live in world start (spec Constraints, World-start size); plan 1
+    // may spend at most 1,536 bytes of the next 2 KB.
+    // Dice designs plan 2 re-based it on purpose (4_095_655): plan 2 may spend at most 1,024
+    // bytes of the next 2 KB.
+    // Dice designs plan 3 re-based it on purpose (4_096_369): plan 3 may spend at most 768 bytes
+    // of the next 2 KB.
+    // Dice designs plan 4 re-based it on purpose (4_097_080): plan 4 may spend at most 1,536 bytes
+    // of the next 2 KB.
+    const growth = worldStartBytes() - 4_097_080;
     console.info(`dicer world-start growth since Plan 8 Task 6: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(2048);
   });

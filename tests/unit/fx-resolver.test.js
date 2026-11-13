@@ -73,6 +73,49 @@ test('slowMotion is false when the slowMotion setting is off, and true for an ef
   expect(FX_SLOW_EFFECTS).toEqual(['celebrate', 'fumble']);
 });
 
+test('a Fate +1 matches max, -1 matches min, 0 neither; d3, d5, d7 and d20 keep 1 and faces', () => {
+  const world = [
+    { id: 'hi', die: 'any', result: { kind: 'max' }, effect: { id: 'sparkles' } },
+    { id: 'lo', die: 'any', result: { kind: 'min' }, effect: { id: 'smoke' } },
+  ];
+  const resolver = make({ getWorldRules: () => world });
+  /** Modelled on Foundry v14's FateDie: DENOMINATION 'f', faces 3, minValue -1. */
+  class FateDie {
+    static DENOMINATION = 'f';
+    faces = 3;
+    minValue = -1;
+    constructor(results) {
+      this.results = results.map((result) => ({ result, active: true }));
+    }
+  }
+  const ids = (roll) => plan(resolver, roll).map((d) => d.fx?.map((f) => f.ruleId).join() ?? '');
+  expect(ids({ dice: [new FateDie([1, 0, -1])] })).toEqual(['hi', '', 'lo']);
+  // A Fate term without minValue (JSON, legacy data) still knows its bounds by its denomination.
+  const bare = Object.assign(Object.create({ constructor: { DENOMINATION: 'f' } }), {
+    faces: 3,
+    results: [{ result: 1, active: true }],
+  });
+  expect(ids({ dice: [bare] })).toEqual(['hi']);
+  const die = (faces, results) => ({ faces, results: results.map((result) => ({ result, active: true })) });
+  expect(ids({ dice: [die(3, [3, 1, 2]), die(5, [5, 1]), die(7, [7, 1]), die(20, [20, 1, 10])] })).toEqual(
+    ['hi', 'lo', '', 'hi', 'lo', 'hi', 'lo', 'hi', 'lo', ''],
+  );
+});
+
+test('a Fate die a DSN preset aliases onto the d6 never matches d6 rules', () => {
+  class FateDie {
+    static DENOMINATION = 'f';
+    faces = 3;
+    minValue = -1;
+    results = [{ result: 1, active: true }];
+  }
+  const rule = (die) => [{ id: die, die, result: { kind: 'max' }, effect: { id: 'sparkles' } }];
+  const ids = (die) =>
+    plan(make({ getWorldRules: () => rule(die), shapeFor: () => 'd6' }), { dice: [new FateDie()] }).map((d) => d.fx?.length ?? 0);
+  expect(ids('d6')).toEqual([0]);
+  expect(ids('df')).toEqual([1]);
+});
+
 test("another user's roll with showOthersEffects off: no fx; effects off: no fx at all", () => {
   settings.showOthersEffects = false;
   expect(plan(make(), d20(20), { author: { id: 'bob' } })[0].fx).toBeUndefined();

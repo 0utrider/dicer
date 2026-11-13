@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { layoutLabel } from './sdf-atlas.js';
-import { normalizeAppearance, programKey } from '../look/appearance.js';
+import { normalizeAppearance, programKey, needsLookExtras, fallbackLook } from '../look/appearance.js';
+import { getLookExtras, requestLookExtras, warnLookExtras } from './extras-loader.js';
 import { readableNumbers } from '../look/contrast.js';
 import {
   ENGRAVE_VERTEX_PARS,
@@ -185,10 +186,14 @@ function patchShader(shader, uniforms, chunks) {
 ${chunks.coat}`,
     ),
     after('transmission_fragment', chunks.lighting),
+    // Last: the look-extras line replacements, on the assembled fragment shader.
+    ...(chunks.replace ?? []),
   ];
   for (const [a, b] of vertex) shader.vertexShader = shader.vertexShader.replace(a, b);
   for (const [a, b] of fragment) shader.fragmentShader = shader.fragmentShader.replace(a, b);
 }
+
+let extrasFailed = false;
 
 function faceCountOf(shape, labels) {
   return Math.max(1, shape.faces?.length ?? 0, labels?.length ?? 0);
@@ -257,6 +262,25 @@ export function createDiceMaterial(
       safe: true,
     };
   }
+  // The lazy look-extras chunk: its fallback look until it lands (and always under safe flags).
+  let p;
+  const x = getLookExtras();
+  if (needsLookExtras(a)) {
+    if (!x) requestLookExtras();
+    else if (!f.safe) {
+      try {
+        p = x.patchMaterial(a, f, { shape, labels, atlas });
+      } catch (err) {
+        extrasFailed ||= !warnLookExtras(err); // warns once (warnLookExtras returns undefined)
+      }
+    }
+  }
+  if (!p) {
+    a = fallbackLook(a); // a itself for a look without the new options
+    p = {};
+  }
+  labels = p.labels ?? labels;
+  atlas = p.atlas ?? atlas;
   const key = programKey(a, f);
 
   const body = a.body.type;
@@ -315,19 +339,27 @@ export function createDiceMaterial(
   if (f.effects) {
     chunks.pars = `${chunks.pars}
 ${FX_PARS}`;
-    chunks.colorPost = `${chunks.colorPost}
-${FX_COLOR}`;
     chunks.emissive = `${chunks.emissive}
 ${FX_EMISSIVE}`;
   }
   if (mode === 'march') {
     material.defines.DICER_INTERIOR = '';
     material.defines.DICER_STEPS = f.interiorSteps;
-    const interior = interiorChunk(a.interior.type, a.interior.shape);
+    const interior = p.interior ?? interiorChunk(a.interior.type, a.interior.shape);
     chunks.pars = `${chunks.pars}
 ${interior.pars}`;
     chunks.lighting = chunks.lighting.replace(INTERIOR_HOOK, interior.main);
   }
+  Object.assign(material.defines, p.defines);
+  Object.assign(uniforms, p.uniforms);
+  if (p.params) material.setValues(p.params);
+  for (const k in p.chunks) chunks[k] += `\n${p.chunks[k]}`;
+  // The colour-shift tint runs after the extras' colour code (patina / worn) so it tints their result.
+  if (f.effects) {
+    chunks.colorPost = `${chunks.colorPost}
+${FX_COLOR}`;
+  }
+  chunks.replace = p.replace;
   // Face layers: a define and a cache-key suffix; appearance.programKey stays pure.
   let cacheKey = key;
   if (faceTex?.texture) {

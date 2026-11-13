@@ -15,7 +15,8 @@ export function restingQuaternion(shape, f) {
     const c = new THREE.Vector3();
     for (const i of face) c.add(new THREE.Vector3(...shape.vertices[i]));
     c.divideScalar(face.length);
-    v = new THREE.Vector3(...shape.vertices[face[0]]).sub(c);
+    // chamfer.js: V towards the first vertex, or along shape.labelUp when given.
+    v = shape.labelUp ? new THREE.Vector3(...shape.labelUp) : new THREE.Vector3(...shape.vertices[face[0]]).sub(c);
     v.addScaledVector(n, -v.dot(n)).normalize();
   }
   const swing = new THREE.Quaternion().setFromUnitVectors(n, up);

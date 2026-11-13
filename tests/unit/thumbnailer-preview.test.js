@@ -5,6 +5,7 @@ import { buildScene } from '../../src/render/scene.js';
 import { createThumbnailer } from '../../src/themes/thumbnailer.js';
 import { createTurntable, TURN_SECONDS } from '../../src/themes/turntable.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
+import { _setLookExtrasImport } from '../../src/render/extras-loader.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -453,5 +454,36 @@ test('the preview holds a font atlas while its die exists and lets go on stop', 
   expect(release).not.toHaveBeenCalled();
   p.stop();
   expect(release).toHaveBeenCalledTimes(1);
+  s.t.dispose();
+});
+
+test('the live preview rebuilds its die once the chunk is ready (one extra material, the old one freed)', async () => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  _setLookExtrasImport(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
+  const spies = disposeSpies();
+  const s = setup();
+  const look = {
+    ...theme(),
+    appearance: {
+      ...theme().appearance,
+      numbers: { ...theme().appearance.numbers, fill: 'holo', relief: 'raised' },
+    },
+  };
+  const keys = [];
+  const draw = s.r.renderer.render.getMockImplementation();
+  s.r.renderer.render.mockImplementation((scene, cam) => {
+    keys.push(scene.children.find((c) => c.isMesh && c.material.userData?.uniforms)?.material.userData.programKey);
+    draw(scene, cam);
+  });
+  const p = s.t.preview(target(), look, 'd20');
+  expect(s.r.renderer.render).toHaveBeenCalledTimes(1);
+  release();
+  await vi.waitFor(() => expect(spies.mat).toHaveBeenCalledTimes(1)); // the fallback material freed
+  s.step(16);
+  expect(keys[0]).not.toContain('|n:');
+  expect(keys.at(-1)).toContain('|n:holo+r');
+  p.stop();
+  expect(spies.mat).toHaveBeenCalledTimes(2);
   s.t.dispose();
 });

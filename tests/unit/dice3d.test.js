@@ -93,8 +93,8 @@ test('showForRoll resolves false for blind', async () => {
   expect(diceBox.roll).not.toHaveBeenCalled();
 });
 
-test('showForRoll resolves false for a roll with only d7s', async () => {
-  await expect(api.showForRoll(roll(7, 3))).resolves.toBe(false);
+test('showForRoll resolves false for a roll with only d9s', async () => {
+  await expect(api.showForRoll(roll(9, 3))).resolves.toBe(false);
   expect(diceBox.roll).not.toHaveBeenCalled();
 });
 
@@ -670,6 +670,14 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     expect(specs.map((d) => d.type)).toEqual(['d10', 'd10', 'd2']);
   });
 
+  test('show(legacy) throws a dF as the Fate die, never skipped', async () => {
+    a.show({ throws: [{ dice: [{ type: 'df', result: -1 }] }] }, me);
+    await Promise.resolve();
+    const [specs] = diceBox.roll.mock.calls[0];
+    expect(specs).toHaveLength(1);
+    expect(specs[0]).toMatchObject({ type: 'd6', value: 6, variant: 'dF' });
+  });
+
   test('show() with a malformed payload warns once and resolves false', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(a.show(null)).resolves.toBe(false);
@@ -740,7 +748,7 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
 
   test('RollComplete fires once when nothing animated or the throw fails', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await a.showForRoll(roll(7, 3), me, false, null, false, 'none');
+    await a.showForRoll(roll(9, 3), me, false, null, false, 'none');
     diceBox.roll.mockImplementationOnce(() => {
       throw new Error('boom');
     });
@@ -972,7 +980,7 @@ describe('trigger editor helpers (Task 12)', () => {
 });
 
 describe('_throwLook', () => {
-  const TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+  const TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20']; // the coin previews too
   const theme = { id: 'x', appearance: { body: { type: 'plain' } }, perType: { d6: { body: { type: 'resin' } } } };
 
   test('is not enumerable', () => {

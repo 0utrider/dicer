@@ -265,6 +265,9 @@ describe('sound engine', () => {
       for (let i = 0; i < 6; i++) expect(die({ dieKey: `a${i}`, dieType: 'd4' })).toBe('d4');
       for (let i = 0; i < 6; i++) expect(die({ dieKey: `b${i}`, dieType: 'd100' })).toBe('d10');
       for (let i = 0; i < 6; i++) expect(die({ dieKey: `c${i}`, dieType: 'd2' })).toBe('d6');
+      for (let i = 0; i < 6; i++) expect(die({ dieKey: `d${i}`, dieType: 'd14' })).toBe('d10');
+      // The recorded set has no d12 hit: a d16 (aliased to the d12) plays any recorded hit.
+      expect(['d4', 'd6', 'd10', 'd20']).toContain(die({ dieKey: 'e', dieType: 'd16' }));
       expect(['d4', 'd6', 'd10', 'd20']).toContain(die({ dieKey: 'z', dieType: 'd7' }));
     });
 

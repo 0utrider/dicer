@@ -118,8 +118,10 @@ function slerpUnit(a, b, t) {
 }
 
 /**
- * Shared polyhedron setup: per-face frames plus the Minkowski parameters (shrink factor s and
- * profile radius rho). Used by buildDieGeometry and minkowskiHull, so the maths lives once.
+ * Shared polyhedron setup: per-face frames plus the Minkowski parameters (the profile radius rho
+ * and the shrunk vertices S: where each vertex's face planes meet once each is moved rho inward;
+ * for equal face distances that is the uniform scale s = (rIn - rho) / rIn of V, otherwise a
+ * per-vertex solve over the incident planes). Used by buildDieGeometry and minkowskiHull, so the maths lives once.
  */
 function polyhedronFrame(shape, chamfer) {
   const V = shape.vertices.map((v) => new THREE.Vector3(v[0], v[1], v[2]));
@@ -137,7 +139,8 @@ function polyhedronFrame(shape, chamfer) {
       return new THREE.Vector3().crossVectors(n, e).normalize(); // left of CCW edge = inside
     });
     const r = Math.min(...pts.map((p, j) => c.clone().sub(p).dot(inward[j])));
-    const vAxis = pts[0].clone().sub(c);
+    // V towards the first vertex, or along shape.labelUp (the crystal's long axis) when given.
+    const vAxis = shape.labelUp ? new THREE.Vector3(...shape.labelUp) : pts[0].clone().sub(c);
     vAxis.addScaledVector(n, -vAxis.dot(n)).normalize();
     const uAxis = new THREE.Vector3().crossVectors(vAxis, n); // right-handed (U, V, n)
     return { n, pts, c, inward, r, uAxis, vAxis };
@@ -158,17 +161,32 @@ function polyhedronFrame(shape, chamfer) {
     }),
   );
   const w = Math.min(chamfer, MAX_INSET_FRACTION * Math.min(...info.map((f) => f.r)));
-  // Insphere radius: every Dicer polyhedron is face-transitive, so all face planes share it.
-  const rIn = Math.min(...info.map((f) => f.c.dot(f.n)));
+  const d = info.map((f) => f.c.dot(f.n)); // face plane distances from the centre
+  const rIn = Math.min(...d);
   const rho = w > 0 && maxTurn > 0 ? w / Math.tan(maxTurn / 2) : 0;
   const s = (rIn - rho) / rIn;
-  return { V, normals, info, edges, rho, s };
+  // Shrunk vertices: where the vertex's face planes meet once each is moved rho inward. On a
+  // face-transitive solid (equal plane distances) that is exactly s * V; the crystal d4's faces
+  // sit at two distances, so its incident planes are solved (least squares; they meet exactly).
+  const S = V.map((v, vi) => {
+    if (Math.max(...d) - rIn < 1e-9) return v.clone().multiplyScalar(s);
+    const m = Array(9).fill(0);
+    const rhs = new THREE.Vector3();
+    shape.faces.forEach((f, i) => {
+      if (!f.includes(vi)) return;
+      const n = normals[i].toArray();
+      n.forEach((a, r) => n.forEach((c, k) => (m[r * 3 + k] += a * c)));
+      rhs.addScaledVector(normals[i], d[i] - rho);
+    });
+    return rhs.applyMatrix3(new THREE.Matrix3().fromArray(m).invert());
+  });
+  return { V, S, normals, info, edges, rho };
 }
 
 function buildPolyhedron(shape, chamfer, segs, b) {
-  const { V, normals, info, edges, rho, s } = polyhedronFrame(shape, chamfer);
+  const { V, S, normals, info, edges, rho } = polyhedronFrame(shape, chamfer);
   /** Surface point over vertex vi in direction dir: shrunk vertex + rho * dir. */
-  const at = (vi, dir) => V[vi].clone().multiplyScalar(s).addScaledVector(dir, rho);
+  const at = (vi, dir) => S[vi].clone().addScaledVector(dir, rho);
 
   // Face triangles: centroid fans over the inset polygon.
   info.forEach((f, i) => {
@@ -369,8 +387,10 @@ function resolveOptions(opts) {
 
 /**
  * The exact Minkowski solid that buildDieGeometry's rounded mesh approximates: the shrunk
- * polyhedron s * V plus a sphere of radius rho (P2-R4: the physics collider is
- * roundConvexHull(points, radius)). Polyhedra only.
+ * polyhedron (every face plane moved rho inward: s * V for face-transitive solids, a per-vertex
+ * solve of the incident planes when the face distances differ, as on the crystal d4) plus a
+ * sphere of radius rho (P2-R4: the physics collider is roundConvexHull(points, radius)).
+ * Polyhedra only.
  * @param {object} shape ShapeDef from getShape()
  * @param {{chamfer?: number, style?: 'rounded'|'sharp'}} [opts] same options as buildDieGeometry
  * @returns {{ points: number[][], radius: number }}
@@ -378,8 +398,8 @@ function resolveOptions(opts) {
 export function minkowskiHull(shape, opts = {}) {
   if (shape.kind === 'coin') throw new Error('Dicer: minkowskiHull is for polyhedra only');
   const { chamfer } = resolveOptions({ ...opts, radius: undefined }); // the collider never follows the look
-  const { V, rho, s } = polyhedronFrame(shape, chamfer);
-  return { points: V.map((v) => [v.x * s, v.y * s, v.z * s]), radius: rho };
+  const { S, rho } = polyhedronFrame(shape, chamfer);
+  return { points: S.map((v) => [v.x, v.y, v.z]), radius: rho };
 }
 
 /**

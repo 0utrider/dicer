@@ -389,6 +389,20 @@ describe('createFontAtlases', () => {
     expect(fonts.get('sans')).toBe(a);
   });
 
+  test('every built-in font other than serif loads once through loadBundled(id) and is pinned', async () => {
+    const ids = ['sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco'];
+    const loadBundled = vi.fn(async (name) => ({ id: name, texture: new THREE.Texture() }));
+    const { fonts, build } = make({ loadBundled, opts: { cacheSize: 2 } });
+    const atlases = {};
+    for (const id of ids) atlases[id] = await fonts.request(id);
+    for (const id of ids) expect(loadBundled).toHaveBeenCalledWith(id);
+    expect(loadBundled).toHaveBeenCalledTimes(ids.length);
+    expect(build).not.toHaveBeenCalled();
+    for (let i = 0; i < 7; i++) await fonts.request(`file:f${i}.ttf`);
+    for (const id of ids) expect(fonts.get(id)).toBe(atlases[id]);
+    expect(loadBundled).toHaveBeenCalledTimes(ids.length);
+  });
+
   test('get is null until ready, then the atlas; onReady fires once per font', async () => {
     const { fonts, build } = make();
     const ready = vi.fn();

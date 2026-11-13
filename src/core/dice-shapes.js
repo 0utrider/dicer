@@ -114,44 +114,68 @@ const buildD12 = () => fromNormals('d12', dodecaVerts(), icosaVerts());
 const buildD20 = () => fromNormals('d20', icosaVerts(), dodecaVerts());
 
 /**
- * Pentagonal trapezohedron. Upper ring U_k at angle 72k, height +a; lower ring L_k at
- * 72k+36, height -a; apexes at +-h. Kite planarity requires h = a(1+cos36)/(1-cos36).
+ * n-gonal trapezohedron (d10: n = 5). Upper ring U_k at angle 2pi k/n, height +1; lower ring L_k
+ * at 2pi k/n + pi/n, height -1; apexes at +-h. Kite planarity requires h = (1+cos(pi/n))/(1-cos(pi/n)).
+ * Top kite k is opposite bottom kite k + (n-1)/2, rounded down: the antipode for odd n (what
+ * oppositeValues finds on the d10); an even n has no parallel faces, so -n lies midway between
+ * two bottom kites and the earlier one is taken. Opposite faces sum to 2n + 1.
  */
-function buildD10() {
-  const c = Math.cos(Math.PI / 5);
-  const a = 1;
-  const h = (a * (1 + c)) / (1 - c);
-  const r = Math.sqrt(h * h - a * a); // ring points share the apex circumradius
-  const ring = (k, y, off) => {
-    const t = (2 * Math.PI * k) / 5 + off;
-    return [r * Math.cos(t), y, r * Math.sin(t)];
-  };
+function buildTrapezohedron(type, n) {
+  const c = Math.cos(Math.PI / n);
+  const h = (1 + c) / (1 - c);
+  const r = Math.sqrt(h * h - 1); // ring points share the apex circumradius
   const raw = [
     [0, h, 0],
     [0, -h, 0],
   ];
-  for (let k = 0; k < 5; k++) raw.push(ring(k, a, 0)); // U_k = 2 + k
-  for (let k = 0; k < 5; k++) raw.push(ring(k, -a, Math.PI / 5)); // L_k = 7 + k
+  for (let j = 0; j < 2 * n; j++) {
+    const t = (2 * Math.PI * (j % n)) / n + (j < n ? 0 : Math.PI / n);
+    raw.push([r * Math.cos(t), j < n ? 1 : -1, r * Math.sin(t)]); // U_k = 2 + k, L_k = 2 + n + k
+  }
   const vertices = raw.map(norm);
-  const U = (k) => 2 + (k % 5);
-  const L = (k) => 7 + (k % 5);
+  const U = (k) => 2 + (k % n);
+  const L = (k) => 2 + n + (k % n);
   const faces = [];
-  for (let k = 0; k < 5; k++) faces.push([0, U(k), L(k), U(k + 1)]); // top kites
-  for (let k = 0; k < 5; k++) faces.push([1, L(k), U(k + 1), L(k + 1)]); // bottom kites
-  // Orient every kite CCW seen from outside.
-  faces.forEach((f, i) => {
-    const n = loopNormal(vertices, f);
-    const cen = [0, 0, 0];
-    f.forEach((vi) => vertices[vi].forEach((x, d) => (cen[d] += x)));
-    if (dot(n, cen) < 0) faces[i] = [f[0], ...f.slice(1).reverse()];
-  });
-  // Opposite faces sum to 11 (value 10 is labelled "0").
+  const values = [];
+  for (let k = 0; k < n; k++) {
+    faces[k] = [0, U(k), L(k), U(k + 1)]; // top kites
+    faces[n + k] = [1, L(k), U(k + 1), L(k + 1)]; // bottom kite k, centred on U_k+1
+    values[k] = k + 1;
+    values[n + ((k + ((n - 1) >> 1)) % n)] = 2 * n - k;
+  }
+  // Orient every kite CCW seen from outside (the apex lies on its plane, at +distance).
   return {
-    type: 'd10',
+    type,
     kind: 'polyhedron',
     vertices,
-    faces,
-    values: oppositeValues(vertices, faces),
+    faces: faces.map((f) =>
+      dot(loopNormal(vertices, f), vertices[f[0]]) < 0 ? [f[0], ...f.slice(1).reverse()] : f,
+    ),
+    values,
+    readMode: 'up',
+  };
+}
+
+/**
+ * Crystal d4: an elongated square bipyramid along Y. Ring corners (+-S, +-L, +-S), tips +-1
+ * (the circumradius). Faces 0-3 are the long 2S x 2L rectangles (+x, +z, -x, -z; opposites sum
+ * to 5; 2.32x as long as wide), 4-11 the caps, value 0 and never read: the centre projects past
+ * the ring edge of every cap's plane (S^2 < L(H^2 + S^2)), so a cap can never be rested on.
+ */
+function buildD4Crystal() {
+  const S = 0.28;
+  const H = 0.35; // tip height over the ring: 1 - L, L = 0.65
+  const vertices = [[0, 1, 0], [0, -1, 0], ...signs([S, 0.65, S])];
+  const sides = [AXES[0], AXES[4], AXES[1], AXES[5]];
+  const normals = [1, -1].flatMap((y) => sides.map((d) => [d[0] * H, y * S, d[2] * H]));
+  return {
+    type: 'd4crystal',
+    kind: 'polyhedron',
+    vertices,
+    faces: [...sides, ...normals].map((n) => faceFromNormal(vertices, norm(n))),
+    values: [1, 2, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+    readFaces: [0, 1, 2, 3],
+    labelUp: [0, 1, 0], // numbers stand along the long axis (chamfer.js face V axis)
     readMode: 'up',
   };
 }
@@ -170,9 +194,12 @@ const BUILDERS = {
   d4: buildD4,
   d6: buildD6,
   d8: buildD8,
-  d10: buildD10,
+  d10: () => buildTrapezohedron('d10', 5),
   d12: buildD12,
+  d14: () => buildTrapezohedron('d14', 7),
+  d16: () => buildTrapezohedron('d16', 8),
   d20: buildD20,
+  d4crystal: buildD4Crystal,
 };
 const cache = new Map();
 
@@ -185,7 +212,7 @@ export function getShape(type) {
 
 /** @returns {string|null} die type for a face count, or null when unsupported. */
 export function dieTypeForFaces(faces) {
-  return [2, 4, 6, 8, 10, 12, 20].includes(faces) ? `d${faces}` : null;
+  return [2, 4, 6, 8, 10, 12, 14, 16, 20].includes(faces) ? `d${faces}` : null;
 }
 
 /**
@@ -199,9 +226,27 @@ export function dsnTypeOf(term) {
   return Number.isInteger(term?.faces) && term.faces > 0 ? `d${term.faces}` : null;
 }
 
-/** Text drawn on a face. 6 and 9 carry a "." suffix (rendered as an underline mark). */
+/**
+ * The Foundry result face `value` of a relabelled die stands for: dF faces 1, 2 / 3, 4 / 5, 6 give
+ * +1 / 0 / -1; a d3 / d5 / d7 face f gives ((f - 1) mod n) + 1; a Foundry coin (variant 'dc')
+ * shows heads on face 1 (result 1) and tails on face 2 (result 0). Any other die: the value itself.
+ */
+export function resultOf(value, variant) {
+  if (variant === 'dc') return value === 2 ? 0 : 1;
+  const n = +variant?.slice(1);
+  return variant === 'dF' ? (value < 3) - (value > 4) : n ? ((value - 1) % n) + 1 : value;
+}
+
+/**
+ * Text drawn on a face. 6 and 9 carry a "." suffix (rendered as an underline mark); value 0
+ * (the crystal d4's caps) is blank. A relabelled die (variant d3 / d5 / d7) draws face f as
+ * ((f - 1) mod n) + 1; a Fate die (dF) draws no numbers (its faces come from FATE_FACES).
+ */
 export function labelFor(type, value, variant) {
   if (variant === 'd100tens') return value === 100 || value === 0 ? '00' : String(value);
+  if (value === 0 || variant === 'dF') return '';
+  // A coin keeps its face numbers 1 and 2 (heads, tails): they are not its Foundry results.
+  if (variant !== 'dc') value = resultOf(value, variant);
   if (type === 'd10' && value === 10) return '0';
   if (value === 6 || value === 9) return `${value}.`;
   return String(value);

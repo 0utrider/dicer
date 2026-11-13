@@ -17,9 +17,15 @@ import { KEEP, formFromTheme, themeFromForm } from './theme-form.js';
 import {
   BODY_TYPES,
   FINISHES,
+  BODY_PRESET_LISTS,
   INTERIOR_TYPES,
+  INCLUSION_LIST,
   SHAPES,
   FILLS,
+  RELIEFS,
+  ICON_CHOICES,
+  D4_SHAPES,
+  COIN_CHOICES,
   FONT_KINDS,
   EDGE_STEPS,
   FONT_SUGGESTIONS,
@@ -41,6 +47,8 @@ import {
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
+/** The preview dice: the per-type looks plus the coin, which only previews (it wears the default look). */
+const PREVIEW_DICE = [...DIE_TYPES, 'd2'];
 const MODULE = 'dicer';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const notify = (kind, message) => globalThis.ui?.notifications?.[kind]?.(message);
@@ -52,8 +60,9 @@ const humanize = (id) => {
 };
 const pct = (v, scale = 1) => `${Math.round((Number(v) || 0) * 100 * scale) / scale}%`;
 
-const INSIDE_ICONS = { none: 'fa-ban', liquid: 'fa-droplet', glitter: 'fa-wand-sparkles', swirl: 'fa-hurricane', nebula: 'fa-cloud', shape: 'fa-shapes' };
-const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sphere: 'fa-circle' };
+const INSIDE_ICONS = { none: 'fa-ban', liquid: 'fa-droplet', glitter: 'fa-wand-sparkles', swirl: 'fa-hurricane', nebula: 'fa-cloud', shape: 'fa-shapes', foil: 'fa-certificate', eye: 'fa-eye', botanical: 'fa-seedling', smoke: 'fa-smog' };
+const INCLUSION_ICONS = { flower: 'fa-fan', moss: 'fa-leaf', butterfly: 'fa-bugs' };
+const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sphere: 'fa-circle', sword: 'fa-sword', axe: 'fa-axe', shield: 'fa-shield', dragon: 'fa-dragon', runes: 'fa-wand-magic-sparkles' };
 const EDGE_NAMES = ['sharp', 'crisp', 'soft', 'round', 'veryRound'];
 /** px radius of the one rounded corner each edge-step icon draws (22 px box): clearly apart. */
 const EDGE_ICON_RADIUS = [0, 5, 10, 15, 22];
@@ -208,7 +217,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   theme() {
     const keepAll = Object.fromEntries(DIE_TYPES.map((t) => [t, '']));
     const raw = themeFromForm({ name: this.#name, base: KEEP, perType: keepAll, ...this.#extras }, this.#base);
-    const { appearance, perType } = looksFromForms(this.#forms);
+    const { appearance, perType } = looksFromForms(this.#forms, this.#base);
     // An empty name stays empty, so the save refuses it (NeedName) instead of reusing the base's.
     return { ...raw, name: this.#name.trim(), appearance, perType };
   }
@@ -247,12 +256,19 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       editingType: this.#editing,
       editingLabel: loc('DICER.Appearance.PerType.Editing').replace('{type}', this.#editing),
       hasPreview: Boolean(this.#context().atlas),
-      dice: DIE_TYPES.map((type) => ({ type, active: type === this.#dieType, overridden: overridden(type) })),
+      dice: PREVIEW_DICE.map((type) => ({ type, active: type === this.#dieType, overridden: overridden(type) })),
       bodyTypes: active(BODY_TYPES, form.body.type, 'DICER.Appearance.BodyType.'),
+      bodyPresets: active(BODY_PRESET_LISTS[form.body.type] ?? [], form.body.preset, 'DICER.Appearance.Preset.'),
       finishes: active(FINISHES, form.body.finish, 'DICER.Appearance.Finish.'),
       insideTypes: active(INTERIOR_TYPES, form.interior.type, 'DICER.Appearance.InsideType.', INSIDE_ICONS),
+      inclusions: active(INCLUSION_LIST, form.interior.inclusion, 'DICER.Appearance.Inclusion.', INCLUSION_ICONS),
       shapes: active(SHAPES, form.interior.shape, 'DICER.Appearance.Shape.', SHAPE_ICONS),
+      d4Shapes: active(D4_SHAPES, form.shapes.d4, 'DICER.Appearance.Shapes.'),
+      coins: active(COIN_CHOICES, form.numbers.coin, 'DICER.Appearance.Coin.'),
       fills: active(FILLS, form.numbers.fill, 'DICER.Appearance.Fill.'),
+      reliefs: active(RELIEFS, form.numbers.relief, 'DICER.Appearance.Relief.'),
+      critIcons: active(ICON_CHOICES, form.numbers.critIcon, 'DICER.Appearance.Icon.'),
+      fumbleIcons: active(ICON_CHOICES, form.numbers.fumbleIcon, 'DICER.Appearance.Icon.'),
       fontKinds: active(FONT_KINDS, form.numbers.fontKind, 'DICER.Appearance.FontKind.'),
       fontSuggestions: FONT_SUGGESTIONS,
       fontMessage,
@@ -265,6 +281,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       })),
       pct: {
         roughness: pct(form.body.roughness),
+        luminous: pct(form.body.luminous),
         density: pct(form.interior.density),
         depth: pct(form.numbers.depth),
         intensity: pct(form.glow.intensity),
@@ -430,7 +447,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       return;
     }
     let path = el.name;
-    let value = el.value;
+    let value = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.colorFor) {
       path = el.dataset.colorFor;
       const text = this.element.querySelector(`input[name="${path}"]`);
@@ -483,7 +500,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onPreviewDie(event, target) {
     const type = target.dataset.type;
-    if (!DIE_TYPES.includes(type) || type === this.#dieType) return;
+    if (!PREVIEW_DICE.includes(type) || type === this.#dieType) return;
     this.#dieType = type;
     for (const b of this.element.querySelectorAll('.dicer-ae-dice button')) {
       const on = b.dataset.type === type;
