@@ -1,0 +1,42 @@
+export { summarize } from './reaction.js';
+
+export const ENTER_MS = 350;
+export const THROW_MS = 250;
+export const REACT_MS = 1200;
+export const EXIT_MS = 450;
+export const QUICK_EXIT_MS = 300;
+
+const WATCH_FROM = ENTER_MS + THROW_MS;
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/**
+ * Where a pet is on its timeline at `now`. track = { beganAt, landedAt?, leaveAt?, leaveMs? }.
+ * enter, throw, watch (until the dice land), react, exit, gone. `t` runs 0..1 within the phase
+ * (watch has no fixed length: its t is 0). A leave caps the exit so it ends by the fade.
+ */
+export function phaseAt(track, now) {
+  const { beganAt, landedAt, leaveAt, leaveMs } = track;
+  const since = now - beganAt;
+  const reactAt = landedAt == null ? Infinity : Math.max(landedAt, beganAt + WATCH_FROM);
+  let exitAt = reactAt + REACT_MS;
+  let exitMs = EXIT_MS;
+  if (leaveAt != null) {
+    if (leaveMs <= 0) {
+      if (now >= leaveAt) return { phase: 'gone', t: 1 };
+    } else {
+      const capped = leaveAt + leaveMs - QUICK_EXIT_MS;
+      if (capped < exitAt) {
+        exitAt = capped;
+        exitMs = QUICK_EXIT_MS;
+      }
+    }
+  }
+  if (now >= exitAt) {
+    const t = (now - exitAt) / exitMs;
+    return t >= 1 ? { phase: 'gone', t: 1 } : { phase: 'exit', t };
+  }
+  if (now >= reactAt) return { phase: 'react', t: clamp01((now - reactAt) / REACT_MS) };
+  if (since < ENTER_MS) return { phase: 'enter', t: clamp01(since / ENTER_MS) };
+  if (since < WATCH_FROM) return { phase: 'throw', t: clamp01((since - ENTER_MS) / THROW_MS) };
+  return { phase: 'watch', t: 0 };
+}
