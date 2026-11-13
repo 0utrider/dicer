@@ -413,8 +413,21 @@ export function createPetLayer(deps) {
     if (anyDodges(clock())) wake();
   }
   const POINTER_OPTS = { passive: true };
+  /** The cursor left the window (out to nowhere), or the window lost focus: there is no pointer. */
+  function onPointerOut(e) {
+    if (!e?.relatedTarget) {
+      hasPointer = false;
+      pointerTarget = null;
+    }
+  }
+  function onBlur() {
+    hasPointer = false;
+    pointerTarget = null;
+  }
   try {
     win?.addEventListener?.('pointermove', onPointer, POINTER_OPTS);
+    win?.addEventListener?.('pointerout', onPointerOut, POINTER_OPTS);
+    win?.addEventListener?.('blur', onBlur, POINTER_OPTS);
   } catch {
     /* no window */
   }
@@ -724,6 +737,15 @@ export function createPetLayer(deps) {
     }
   }
 
+  /**
+   * The pet comes to rest. A cursor parked on the stage is checked again on the next update, so a
+   * pet that settles beside it still gets out of its way (with no new pointer move).
+   */
+  function toRest(pet) {
+    pet.state = 'rest';
+    pointerMoved ||= hasPointer;
+  }
+
   /** A hop to a rest spot or off the table, on the exit pose. Returns false once a leaver is gone. */
   function stepHop(pet, now, shadows) {
     const e = Math.min(1, Math.max(0, (now - pet.hopAt) / REST_HOP_MS));
@@ -735,7 +757,7 @@ export function createPetLayer(deps) {
     const pz = from.z + (to.z - from.z) * s;
     const hop = e >= 1 ? 0 : from.y * (1 - s) + Math.sin(s * Math.PI) * HOP * pet.creature.height;
     show(pet, now, 'exit', e, px, pz, hop, shadows);
-    if (e >= 1) pet.state = 'rest'; // the last frame is posed: from here nothing redraws
+    if (e >= 1) toRest(pet); // the last frame is posed: from here nothing redraws
     return true;
   }
 
@@ -762,7 +784,7 @@ export function createPetLayer(deps) {
     const px = from.x + (to.x - from.x) * s;
     const pz = from.z + (to.z - from.z) * s;
     show(pet, now, 'move', e, px, pz, e >= 1 ? 0 : hop, shadows);
-    if (e >= 1) pet.state = 'rest'; // posed on the standing pose: nothing redraws from here
+    if (e >= 1) toRest(pet); // posed on the standing pose: nothing redraws from here
     return true;
   }
 
@@ -918,7 +940,8 @@ export function createPetLayer(deps) {
     // The cursor moved since the last check and no roll is in flight (the physics fixed every
     // pet's spot when a throw started): resting pets near it move away. A check held back by a
     // roll stays due until the roll is over.
-    if (pointerMoved && stay && activeRolls() === 0) {
+    const busy = activeRolls() > 0; // once per frame
+    if (pointerMoved && stay && !busy) {
       pointerMoved = false;
       try {
         if (anyDodges(now)) dodge(pointer, now);
@@ -935,8 +958,12 @@ export function createPetLayer(deps) {
         const waits = ['rest', 'hop', 'move', 'puddle'].includes(pet.state);
         pet.leaveAt = stay && idle > 0 && waits && Number.isFinite(pet.idleAt) ? pet.idleAt + idle * 1000 : null;
         if (pet.leaveAt !== null) {
-          if (now >= pet.leaveAt) sendOff(pet, now);
-          else nextLeave = Math.min(nextLeave, pet.leaveAt);
+          // An overdue leave waits while any roll is in flight (the physics has the pet as an
+          // obstacle, and the owner's roll may be between obstaclesFor and begin); the timer is
+          // not aimed at it (it would spin the loop), and the roll's end runs update anyway.
+          if (now >= pet.leaveAt) {
+            if (!busy) sendOff(pet, now);
+          } else nextLeave = Math.min(nextLeave, pet.leaveAt);
         }
         alive = step(pet, now, shadows, stay);
       } catch (err) {
@@ -1131,6 +1158,8 @@ export function createPetLayer(deps) {
     arm(Infinity);
     try {
       win?.removeEventListener?.('pointermove', onPointer, POINTER_OPTS);
+      win?.removeEventListener?.('pointerout', onPointerOut, POINTER_OPTS);
+      win?.removeEventListener?.('blur', onBlur, POINTER_OPTS);
     } catch {
       /* no window */
     }

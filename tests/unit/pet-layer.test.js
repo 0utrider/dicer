@@ -1582,3 +1582,91 @@ test('the pointer target is asked about the sidebar or chat only when a pet woul
   pointAt(win, was.x, was.z, target);
   expect(target.closest).toHaveBeenCalledTimes(1);
 });
+
+// ---- final review fixes ----
+const busyMake = () => {
+  const timers = fakeTimers();
+  const win = fakeWin();
+  const rolls = { n: 0 };
+  const m = make(
+    { petStay: 60 },
+    { setTimer: timers.setTimer, clearTimer: timers.clearTimer, activeRolls: () => rolls.n, win, random: mulberry(5) },
+  );
+  m.layer.areaChanged(STAGE_BIG);
+  return { m, timers, rolls, win };
+};
+
+test('an overdue idle leave waits while any roll is in flight, with no timer aimed at it', () => {
+  const { m, timers, rolls } = busyMake();
+  rollToRest(m, 'u1');
+  const idle = clockNow;
+  rolls.n = 1; // someone's dice are flying: the pet is their obstacle
+  expect(runTo(m, idle + 62000)).toBe('rest');
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(timers.live()).toHaveLength(0); // nothing spins the loop while it is held
+  rolls.n = 0;
+  expect(m.layer.update((clockNow += 16))).toBe(true); // the first frame with no roll: it hops off
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+});
+
+test("the owner's roll between obstaclesFor and begin keeps the pet's spot past its leave time", () => {
+  const { m, rolls } = busyMake();
+  rollToRest(m, 'u1');
+  const idle = clockNow;
+  const rest = posOf(m);
+  clockNow = idle + 61000; // past leaveAt
+  rolls.n = 1; // the roll is in DiceBox's list from the start
+  const [own] = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(own.x).toBeCloseTo(rest.x, 6);
+  m.layer.update(clockNow); // a frame before the dice first show
+  m.layer.begin('late', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 1000);
+  expect(posOf(m).x).toBeCloseTo(own.x, 6);
+  expect(posOf(m).z).toBeCloseTo(own.z, 6);
+});
+
+test('a pet that comes to rest beside a parked cursor gets out of its way', () => {
+  const first = dodgeMake();
+  rollToRest(first.m, 'u1');
+  const spot = posOf(first.m); // the same seed rests the next pet here
+  const { m, win } = dodgeMake();
+  pointAt(win, spot.x, spot.z); // the cursor waits where the pet will sit, and never moves again
+  rollToRest(m, 'u1');
+  runTo(m, clockNow + 800);
+  expect(dist(posOf(m), spot)).toBeGreaterThanOrEqual(4 - 1e-9);
+});
+
+test('the cursor leaving the window, or the window losing focus, drops the pointer', () => {
+  for (const leave of [
+    (win) => win.handlers.get('pointerout').fn({ relatedTarget: null }),
+    (win) => win.handlers.get('blur').fn({}),
+  ]) {
+    const { m, win, rolls } = dodgeMake();
+    rollToRest(m, 'u1');
+    const was = posOf(m);
+    rolls.n = 1;
+    pointAt(win, was.x, was.z); // held back by the roll
+    win.handlers.get('pointerout').fn({ relatedTarget: {} }); // moving between elements: still there
+    leave(win);
+    rolls.n = 0;
+    for (let i = 0; i < 20; i++) m.layer.update((clockNow += 16));
+    expect(posOf(m)).toEqual(was);
+    m.layer.dispose();
+    for (const type of ['pointermove', 'pointerout', 'blur'])
+      expect(win.removeEventListener).toHaveBeenCalledWith(type, expect.any(Function), expect.anything());
+  }
+});
+
+test('pointerout to another element keeps the pointer (a held-back dodge still happens)', () => {
+  const { m, win, rolls } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  rolls.n = 1;
+  pointAt(win, was.x, was.z);
+  win.handlers.get('pointerout').fn({ relatedTarget: {} });
+  rolls.n = 0;
+  m.layer.update((clockNow += 16));
+  runTo(m, clockNow + 800);
+  expect(dist(posOf(m), was)).toBeGreaterThanOrEqual(4 - 1e-9);
+});
