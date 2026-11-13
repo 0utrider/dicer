@@ -1285,6 +1285,12 @@ test('a pet that left on the timer returns as a first appearance on its next rol
   rollToRest(m, 'u1');
   expect(pets(m.scene)).toHaveLength(1);
   expect(m.layer.update((clockNow += 16))).toBe('rest');
+  // the physics sees it where it now rests (a fresh spot), not where it was before it left
+  const [ob] = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG });
+  expect(ob.id).toBe('u1');
+  expect(ob.x).toBeCloseTo(at(m.scene).x, 6);
+  expect(ob.z).toBeCloseTo(at(m.scene).z, 6);
+  inRing(at(m.scene));
 });
 
 test('changing petStay mid-wait re-arms the timer', () => {
@@ -1329,4 +1335,207 @@ test('the timer fires through a held loop (deps.wake called)', () => {
   expect(m.deps.wake).toHaveBeenCalled();
   expect(m.layer.update(clockNow)).toBe(true); // the wake runs update: it hops off
   expect(runTo(m, clockNow + 1000)).toBe(false);
+});
+
+// ---- dodging the cursor ----
+const PX = 48; // px per die unit on the fake stage
+const STAGE_BIG = {
+  cx: 0,
+  cz: 0,
+  halfWidth: BIG.halfWidth,
+  halfDepth: BIG.halfDepth,
+  rect: { left: 0, top: 0, width: BIG.halfWidth * 2 * PX, height: BIG.halfDepth * 2 * PX },
+};
+const fakeWin = () => {
+  const handlers = new Map();
+  return {
+    handlers,
+    addEventListener: vi.fn((type, fn, opts) => handlers.set(type, { fn, opts })),
+    removeEventListener: vi.fn((type, fn) => {
+      if (handlers.get(type)?.fn === fn) handlers.delete(type);
+    }),
+  };
+};
+/** A pointer event at stage point (x, z) (die units from the stage centre). */
+const pointAt = (win, x, z, target = null) =>
+  win.handlers.get('pointermove')?.fn({
+    clientX: STAGE_BIG.rect.width / 2 + x * PX,
+    clientY: STAGE_BIG.rect.height / 2 + z * PX,
+    target,
+  });
+const dodgeMake = (over = {}) => {
+  const win = fakeWin();
+  const rolls = { n: 0 };
+  const m = make({ petStay: 60 }, { win, activeRolls: () => rolls.n, random: mulberry(5), ...over });
+  m.layer.areaChanged(STAGE_BIG);
+  return { m, win, rolls };
+};
+const posOf = (m, i = 0) => ({ x: at(m.scene, i).x, z: at(m.scene, i).z });
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+
+test('pointer near a resting pet: it moves to a spot >= 4 away; wake called', () => {
+  const { m, win } = dodgeMake();
+  rollToRest(m, 'u1');
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  const was = posOf(m);
+  const p = { x: was.x + 0.5, z: was.z + 0.3 };
+  m.deps.wake.mockClear();
+  pointAt(win, p.x, p.z);
+  expect(m.deps.wake).toHaveBeenCalled(); // the held loop is woken to dodge
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  expect(phaseOf(m)).toBe('move');
+  expect(runTo(m, clockNow + 800)).toBe('rest');
+  const now = posOf(m);
+  expect(dist(now, p)).toBeGreaterThanOrEqual(4 - 1e-9);
+  inRing(now);
+  expect(at(m.scene).y).toBe(0);
+});
+
+test('a far pointer does not wake the loop or move the pet', () => {
+  const { m, win } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  m.deps.wake.mockClear();
+  pointAt(win, was.x + 6, was.z);
+  expect(m.deps.wake).not.toHaveBeenCalled();
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  expect(posOf(m)).toEqual(was);
+});
+
+test('no dodge while activeRolls > 0, dodges after', () => {
+  const { m, win, rolls } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  rolls.n = 1;
+  pointAt(win, was.x, was.z);
+  for (let i = 0; i < 20; i++) m.layer.update((clockNow += 16));
+  expect(phaseOf(m)).not.toBe('move');
+  expect(posOf(m)).toEqual(was);
+  rolls.n = 0;
+  m.layer.update((clockNow += 16)); // the pointer has not moved since, but it was never checked
+  expect(phaseOf(m)).toBe('move');
+  runTo(m, clockNow + 800);
+  expect(dist(posOf(m), was)).toBeGreaterThanOrEqual(4 - 1e-9);
+});
+
+test('still pointer on the new spot: no second dodge within the cooldown', () => {
+  const { m, win } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  pointAt(win, was.x, was.z);
+  m.layer.update((clockNow += 16));
+  expect(runTo(m, clockNow + 700)).toBe('rest'); // arrived (the mimic moves in 450 ms)
+  const spot = posOf(m);
+  pointAt(win, spot.x, spot.z); // the cursor follows it there at once
+  for (let i = 0; i < 10; i++) m.layer.update((clockNow += 16)); // within the 600 ms cooldown
+  expect(posOf(m)).toEqual(spot);
+  expect(m.layer.update((clockNow += 16))).toBe('rest'); // nothing moves (its last pose stays 'move')
+  // the cursor stays still there: nothing moves, however long it waits
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  expect(posOf(m)).toEqual(spot);
+  // it moves again once the cursor moves, after the cooldown
+  pointAt(win, spot.x + 0.1, spot.z);
+  m.layer.update((clockNow += 16));
+  expect(phaseOf(m)).toBe('move');
+});
+
+test('a corner with no far spot: the farthest spot, then no ping-pong', () => {
+  const { m, win } = dodgeMake({ random: mulberry(9) });
+  const tiny = { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 }; // no spot is 4 from its middle
+  m.layer.begin('k', { spec: spec('u1'), edge: 0, area: tiny, centre: () => ({ x: 0, z: 0 }) });
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 400);
+  m.layer.landed('k', [d20(5)]);
+  m.layer.leave('k', 0);
+  m.layer.end('k');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  const was = posOf(m);
+  pointAt(win, 0, 0);
+  let moves = 0;
+  let last = 'rest';
+  const spots = [];
+  for (let i = 0; i < 400; i++) {
+    if (i % 6 === 0) pointAt(win, 0.1 * Math.sin(i), 0.1 * Math.cos(i)); // a jittery, near-still cursor
+    const r = m.layer.update((clockNow += 16));
+    if (r === true && last !== true) moves++; // a move starts (a resting pet draws nothing)
+    if (r === 'rest') spots.push(posOf(m));
+    last = r;
+  }
+  expect(moves).toBeLessThanOrEqual(1);
+  const final = posOf(m);
+  expect(dist(final, { x: 0, z: 0 })).toBeGreaterThanOrEqual(dist(was, { x: 0, z: 0 }) - 1e-9);
+  // once it has moved it stays
+  expect(spots.slice(-200).every((s) => s.x === final.x && s.z === final.z)).toBe(true);
+});
+
+test('puddles never dodge', () => {
+  const win = fakeWin();
+  const m = make({ petStay: 60 }, { win, activeRolls: () => 0 });
+  m.layer.areaChanged(STAGE_BIG);
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  runTo(m, clockNow + 1300);
+  expect(phaseOf(m)).toBe('puddle');
+  const was = posOf(m);
+  m.deps.wake.mockClear();
+  pointAt(win, was.x, was.z);
+  expect(m.deps.wake).not.toHaveBeenCalled();
+  for (let i = 0; i < 20; i++) m.layer.update((clockNow += 16));
+  expect(phaseOf(m)).toBe('puddle');
+  expect(posOf(m)).toEqual(was);
+});
+
+test('pointer outside the stage, or over the sidebar, is ignored', () => {
+  const { m, win } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  // the latest pointer is what counts: near the pet, then out over the sidebar (off the stage)
+  pointAt(win, was.x, was.z);
+  win.handlers.get('pointermove').fn({ clientX: STAGE_BIG.rect.width + 40, clientY: 100, target: null });
+  for (let i = 0; i < 20; i++) m.layer.update((clockNow += 16));
+  expect(posOf(m)).toEqual(was);
+  // an element of the sidebar or chat drawn over the stage
+  const overChat = { closest: (sel) => (sel.includes('#chat') ? {} : null) };
+  m.deps.wake.mockClear();
+  pointAt(win, was.x, was.z, overChat);
+  expect(m.deps.wake).not.toHaveBeenCalled();
+  for (let i = 0; i < 20; i++) m.layer.update((clockNow += 16));
+  expect(posOf(m)).toEqual(was);
+  // no stage rect yet: ignored, never a throw
+  const bare = make({ petStay: 60 }, { win: fakeWin() });
+  expect(() => bare.deps.win.handlers.get('pointermove').fn({ clientX: 5, clientY: 5 })).not.toThrow();
+});
+
+test('obstaclesFor reports a moving pet at its destination; a throw mid-dodge keeps it', () => {
+  const { m, win } = dodgeMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  pointAt(win, was.x, was.z);
+  m.layer.update((clockNow += 16));
+  m.layer.update((clockNow += 100));
+  expect(phaseOf(m)).toBe('move');
+  const [other] = m.layer.obstaclesFor({ spec: spec('u2'), edge: 1, area: BIG }).filter((o) => o.id === 'u1');
+  const [own] = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(dist(other, was)).toBeGreaterThanOrEqual(4 - 1e-9);
+  expect(own.x).toBe(other.x);
+  expect(own.z).toBe(other.z);
+  // the owner's throw starts mid-dodge: the pet watches it from that destination
+  m.layer.begin('mid', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 500);
+  expect(posOf(m).x).toBeCloseTo(own.x, 6);
+  expect(posOf(m).z).toBeCloseTo(own.z, 6);
+});
+
+test('dispose removes the listener', () => {
+  const { m, win } = dodgeMake();
+  const added = win.addEventListener.mock.calls.find(([type]) => type === 'pointermove');
+  expect(added).toBeTruthy();
+  expect(added[2]).toEqual(expect.objectContaining({ passive: true }));
+  const fn = added[1];
+  m.layer.dispose();
+  expect(win.removeEventListener).toHaveBeenCalledWith('pointermove', fn, expect.anything());
+  m.deps.wake.mockClear();
+  expect(() => fn({ clientX: 10, clientY: 10, target: null })).not.toThrow();
+  expect(m.deps.wake).not.toHaveBeenCalled();
 });

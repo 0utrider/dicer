@@ -55,8 +55,10 @@ const REST = {
   sadL: 0,
   gazeYaw: 0,
   gazePitch: -0.3,
+  tuck: 0, // legs pulled up under the body (flying)
 };
 const PK = poseKit(REST);
+const FLY_BEATS = 5; // wing beats in one dodge flight (600 ms): a fast flutter
 
 // More keyframes, hoisted so a pose allocates nothing.
 const K0 = [0, 0, 0.12, 0.2, 0.2, -0.12, 0.5, -0.04, 0.6, 0.18, 0.7, -0.04, 0.8, 0];
@@ -116,15 +118,18 @@ export function dragonling(color) {
   const belly = kit.mesh(new THREE.SphereGeometry(0.26, 10, 6), accent, squash, 0, 0.34, 0.03);
   belly.scale.set(0.9, 0.95, 0.9);
   const legGeo = kit.geo(new THREE.SphereGeometry(0.11, 8, 6));
+  const legs = []; // [mesh, home y, home z, tucked y, tucked z]
   for (const sx of [1, -1]) {
     const front = new THREE.Mesh(legGeo, body);
     front.position.set(sx * 0.17, 0.1, 0.17);
     front.scale.set(0.95, 1, 1.2);
     squash.add(front);
+    legs.push([front, 0.1, 0.17, 0.24, 0.1]);
     const hind = new THREE.Mesh(legGeo, body);
     hind.position.set(sx * 0.26, 0.15, -0.2);
     hind.scale.set(1.25, 1.35, 1.5);
     squash.add(hind);
+    legs.push([hind, 0.15, -0.2, 0.25, -0.3]);
   }
   // Dorsal spikes down the back: a row of light triangles from above.
   const spikeGeo = kit.geo(new THREE.ConeGeometry(0.07, 0.15, 4));
@@ -315,6 +320,26 @@ export function dragonling(color) {
       p.wing = 0.4 + 0.7 * Math.sin(t * TAU * 2.5) * bump(t, 0, 0.85);
       p.upper = 0.05;
       p.tailLift = 0.3 * bump(t, 0, 0.9);
+    } else if (phase === 'move') {
+      // A dodge: a crouch and a spring, then it flies (the layer lifts it in an arc): wings a fast
+      // blur, body tilted into the flight, legs tucked, tail streaming and swishing, eyes bright;
+      // then it drops onto its feet. It starts and ends on the standing pose (exit at t 1).
+      PK.reset(p);
+      const fly = plateau(t, 0.04, 0.96, 0.14);
+      const beat = Math.sin(t * TAU * FLY_BEATS);
+      p.squash = 0.16 * bump(t, 0, 0.14) - 0.06 * fly + 0.18 * bump(t, 0.84, 1);
+      p.lift = (0.3 + 0.05 * Math.sin(t * TAU * FLY_BEATS + 1.2)) * fly; // bobs with each beat
+      p.pitch = 0.4 * fly;
+      p.headPitch = -0.34 * fly; // the head stays up, looking where it goes
+      p.wing = lerp(0.4, 0.3 + 0.9 * beat, fly);
+      p.sweep = lerp(0.12, 0.02 - 0.14 * beat, fly); // forward on the downstroke
+      p.tuck = fly;
+      p.curl = lerp(0.42, 0.08, fly);
+      p.tailLift = 0.35 * fly;
+      p.sway = 0.3 * Math.sin(t * TAU * 2.5) * fly;
+      p.upper = lerp(0.1, 0, fly);
+      p.lower = lerp(0.08, 0.22, fly);
+      p.gazePitch = lerp(-0.3, 0.05, fly);
     } else if (phase === 'throw') {
       PK.reset(p);
       // Rears back with wings up, then lunges: head thrust, wings sweeping forward and down.
@@ -344,6 +369,7 @@ export function dragonling(color) {
     const sxz = 1 / Math.sqrt(Math.max(0.3, sy));
     squash.scale.set(sxz, sy, sxz);
     head.rotation.set(o.headPitch, o.headYaw, o.headRoll);
+    for (const [leg, y0, z0, y1, z1] of legs) leg.position.set(leg.position.x, lerp(y0, y1, o.tuck), lerp(z0, z1, o.tuck));
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? 1 : -1;
       const w = wings[i];

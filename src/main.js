@@ -545,6 +545,7 @@ Hooks.once('ready', async () => {
         playSound: (sound) => soundEngine?.result(sound),
         warm: (objects) => renderer.warmObjects(objects),
         wake: () => box?.wake(),
+        activeRolls: () => box?.activeRolls ?? 0,
       };
       preloadPets(); // this engine's layer (idle; the old one was released above)
       box = new DiceBox({

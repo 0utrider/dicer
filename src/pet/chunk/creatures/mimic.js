@@ -64,7 +64,10 @@ const REST = {
   tiltUp: 0, // extra upward roll of the eyes on the lid, so a shut jaw still shows them from above
   eyeScale: 1,
   crook: 0, // the lid shut askew (roll about its hinge axis)
+  stride: 0, // 0..1: the feet scuttle in diagonal pairs (a trot), by gait
+  gait: 0, // the step cycle's phase, rad
 };
+const SCUTTLE_STEPS = 5; // step cycles in one dodge (450 ms): little legs going like the clappers
 const PK = poseKit(REST);
 
 // More keyframes, hoisted so a pose allocates nothing.
@@ -116,6 +119,7 @@ export function mimic(color) {
     f.scale.set(1, 0.62, 1.2);
     f.userData.home = new THREE.Vector3(sx * 0.62, 0.09, sz * 0.44);
     f.userData.dir = sx;
+    f.userData.pair = sx * sz > 0 ? 0 : Math.PI; // diagonal pairs step together, half a cycle apart
     f.position.copy(f.userData.home);
     rig.add(f);
     feet.push(f);
@@ -311,6 +315,29 @@ export function mimic(color) {
       p.upper = 0.05;
       p.lower = 0.05;
       p.gazePitch = -0.1;
+    } else if (phase === 'move') {
+      // A dodge: it hunkers down and scuttles off on fast little legs in a trot, leaning in,
+      // waddling, its lid clacking with each step and the tongue flapping, eyes wide. It starts
+      // and ends on the standing pose (exit at t 1).
+      PK.reset(p);
+      const run = plateau(t, 0.03, 0.97, 0.12);
+      const g = t * TAU * SCUTTLE_STEPS;
+      p.gait = g;
+      p.stride = run;
+      p.squash = (0.14 + 0.04 * Math.sin(2 * g)) * run;
+      p.lift = 0.035 * Math.abs(Math.sin(g)) * run; // a bob on each step
+      p.pitch = 0.14 * run;
+      p.roll = 0.08 * Math.sin(g) * run;
+      // the jaw clacks open and shut once a step (about 5 frames at 60 fps), so the mouth still
+      // shows from above
+      p.lid = lerp(LID, 0.62 + 0.26 * Math.sin(g + 1), run);
+      p.tongue = lerp(1, 0.8, run);
+      p.wag = 0.45 * Math.sin(g) * run;
+      p.upper = lerp(0.1, 0, run);
+      p.lower = lerp(0.1, 0, run);
+      p.eyeScale = 1 + 0.12 * run;
+      p.tiltUp = 0.25 * run;
+      p.gazePitch = lerp(-0.35, -0.1, run);
     } else if (phase === 'throw') {
       PK.reset(p);
       // It spits the dice: leans back with the lid shut, then lunges with the jaw wide open.
@@ -346,10 +373,12 @@ export function mimic(color) {
     tonguePivot.visible = o.tongue > 0.02;
     for (const f of feet) {
       const h = f.userData.home;
+      const ph = o.gait + f.userData.pair;
+      // scuttling, the feet splay out from under the chest (so they read from above) and swing
       f.position.set(
-        h.x * (1 - 0.18 * o.tuck),
-        h.y + 0.05 * Math.max(0, o.tuck),
-        h.z * (1 - 0.15 * o.tuck),
+        h.x * (1 - 0.18 * o.tuck + 0.22 * o.stride),
+        h.y + 0.05 * Math.max(0, o.tuck) + 0.12 * o.stride * Math.max(0, Math.cos(ph)),
+        h.z * (1 - 0.15 * o.tuck) + 0.3 * o.stride * Math.sin(ph),
       );
     }
     for (let i = 0; i < 2; i++) {

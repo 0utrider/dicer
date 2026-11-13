@@ -194,11 +194,91 @@ const COLUMNS = [
 ];
 const KIND_COLOR = { mimic: '#c0392b', slime: '#2e9e5b', dragonling: '#7b4bc4' };
 
+// --- the dodge (pet dodge Task 2) -------------------------------------------------------------
+// The real layer: the pet rests after a roll (petStay Always), the cursor comes up beside it on
+// the table side (a pointermove through the layer's own listener), and the clock runs into the
+// move. Seeded, so every frame of a strip takes the same path.
+const MOVE_MS = { mimic: 450, slime: 450, dragonling: 600 };
+function seeded(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function stageMove({ kind, color, t = 0.5 }) {
+  clock = 0;
+  let onMove = null;
+  const win = { addEventListener: (type, fn) => type === 'pointermove' && (onMove = fn), removeEventListener() {} };
+  const layer = createPetLayer({
+    scene,
+    getSetting: (k) => (k === 'petStay' ? -1 : undefined),
+    playSound: () => {},
+    now: () => clock,
+    random: seeded(7),
+    win,
+    activeRolls: () => 0,
+  });
+  const px = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
+  layer.areaChanged({ cx: 0, cz: 0, ...STAGE, rect: { left: 0, top: 0, width: px.w, height: px.h } });
+  const at = (ms) => layer.update((clock = ms));
+  layer.begin('k', {
+    spec: { userId: 'u', kind, color, ghost: false },
+    edge: 3,
+    area: AREA,
+    centre: () => ({ x: AREA.cx, z: AREA.cz }),
+  });
+  for (let ms = 0; ms <= 900; ms += 16) at(ms);
+  clock = 1000;
+  layer.landed('k', [{ type: 'd20', value: 7 }]);
+  layer.leave('k', 0);
+  layer.end('k');
+  for (let ms = 1000; ms <= 4000; ms += 16) at(ms);
+  const pet = scene.children.find((c) => c.userData.dicerPet);
+  const from = { x: pet.position.x, z: pet.position.z };
+  // the cursor comes up on the pet's table side
+  const len = Math.hypot(from.x, from.z) || 1;
+  const cx = from.x - (from.x / len) * 0.8;
+  const cz = from.z - (from.z / len) * 0.8;
+  onMove({ clientX: px.w / 2 + cx * DIE_SIZE_PX, clientY: px.h / 2 + cz * DIE_SIZE_PX, target: null });
+  const t0 = 4016;
+  at(t0);
+  const ob = layer.obstaclesFor({ spec: null, edge: 0, area: AREA }).find((o) => o.id === 'u');
+  const to = { x: ob.x, z: ob.z };
+  if (t > 0) at(t0 + t * MOVE_MS[kind]);
+  return { layer, pet, from, to };
+}
+
+/** A fixed 3/4 view across the dodge's path, from its side, aimed at the pet's spot on the floor. */
+function moveClose(pet, w, h, bg, from, to, dist = 7.5) {
+  scene.background = new THREE.Color(bg);
+  d20.visible = false;
+  let dx = to.x - from.x;
+  let dz = to.z - from.z;
+  const len = Math.hypot(dx, dz) || 1;
+  dx /= len;
+  dz /= len;
+  // from the side of the path (its right), a little in front, above
+  const sx = dz;
+  const sz = -dx;
+  close.aspect = w / h;
+  close.position.set(pet.position.x + sx * dist + dx * 2, 4.2, pet.position.z + sz * dist + dz * 2);
+  close.up.set(0, 1, 0);
+  close.lookAt(pet.position.x, 0.9, pet.position.z);
+  close.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+  renderer.render(scene, close);
+}
+
 function shot(opts, fn) {
-  const { layer, pet } = stagePet(opts);
+  const staged = opts.phase === 'move' ? stageMove(opts) : stagePet(opts);
+  const { layer, pet } = staged;
   try {
     if (!pet) throw new Error(`no pet for ${JSON.stringify(opts)}`);
-    fn(pet);
+    fn(pet, staged);
   } finally {
     layer.dispose();
   }
@@ -279,13 +359,16 @@ const STRIP_ROWS = [
   // the game camera at the true 48 px/die, centred on the pet
   { phase: 'react', reaction: 'crit', view: 'game' },
   { phase: 'react', reaction: 'fumble', view: 'game' },
+  // the dodge out of the cursor's way: a side view across its path, then the game camera on the pet
+  { phase: 'move' },
+  { phase: 'move', view: 'game' },
 ];
 /** Each phase as 8 frames (t = 0 .. 1) of the close-up: the motion curves at a glance. */
-function strips(kinds = KINDS) {
+function strips(kinds = KINDS, only = null) {
   const LW = 120;
   const N = 8;
   const S = 130;
-  const rows = kinds.flatMap((kind) => STRIP_ROWS.map((r) => ({ kind, ...r })));
+  const rows = kinds.flatMap((kind) => STRIP_ROWS.filter((r) => !only || r.phase === only).map((r) => ({ kind, ...r })));
   const { c, g } = newSheet(LW + N * S, 24 + rows.length * S);
   for (let i = 0; i < N; i++)
     label(g, `t ${(i / (N - 1)).toFixed(2)}`, LW + i * S + S / 2, 16, {
@@ -301,8 +384,9 @@ function strips(kinds = KINDS) {
       color: '#9aa0aa',
     });
     for (let i = 0; i < N; i++) {
-      shot({ kind: row.kind, color: KIND_COLOR[row.kind], ...row, t: i / (N - 1) }, (pet) => {
+      shot({ kind: row.kind, color: KIND_COLOR[row.kind], ...row, t: i / (N - 1) }, (pet, staged) => {
         if (row.view === 'game') gameView(pet, S - 2, S - 2, BG.dark, 3, true);
+        else if (row.phase === 'move') moveClose(pet, S - 2, S - 2, '#5b616b', staged.from, staged.to);
         else
           closeUp(pet, S - 2, S - 2, '#5b616b', {
             dist: 6.4,
@@ -488,4 +572,4 @@ for (const b of document.querySelectorAll('[data-sheet]'))
   });
 show(grid());
 document.getElementById('status').textContent = 'ready';
-window.__pets = { grid, colours, strips, splat, errors, ready: true };
+window.__pets = { grid, colours, strips, splat, moves: () => strips(KINDS, 'move'), errors, ready: true };

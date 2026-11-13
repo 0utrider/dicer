@@ -87,6 +87,14 @@ const K1 = [0, 0, 0.12, 0.22, 0.24, -0.16, 0.38, 0.12, 0.5, -0.04, 0.62, 0.03, 0
 const K2 = [0, 0.18, 0.32, 0.5, 0.52, 0, 1, 0.18];
 const THROW_SQUASH = [0, 0.1, 0.32, 0.28, 0.52, -0.3, 0.75, 0.08, 1, 0];
 const THROW_SHEAR = [0, 0, 0.32, -0.25, 0.52, 0.45, 0.75, -0.12, 1, 0];
+// The dodge: two boings, airborne over t 0.1-0.4 and 0.6-0.9 (the layer moves it across then).
+// A crouch, a stretch on take-off, round in the air, a splat of a landing that is the next
+// crouch, and a last landing that rings out.
+const MOVE_SQUASH = [
+  0, 0, 0.07, 0.26, 0.12, -0.3, 0.25, -0.06, 0.38, 0, 0.45, 0.34, 0.55, 0.26, 0.62, -0.3, 0.75,
+  -0.06, 0.88, 0, 0.94, 0.32, 0.985, -0.05, 1, 0,
+];
+const MOVE_SHEAR = [0, 0, 0.11, -0.22, 0.3, 0.12, 0.45, 0.24, 0.55, 0, 0.61, -0.22, 0.8, 0.12, 0.94, 0.22, 1, 0];
 const CRIT_SQUASH = [
   0, 0, 0.14, 0.42, 0.22, -0.38, 0.4, -0.1, 0.56, -0.05, 0.62, 0.38, 0.7, -0.1, 0.8, 0.08, 0.9, 0,
 ];
@@ -243,6 +251,19 @@ export function slime(color) {
       p.upper = 0.05;
       p.lower = 0.05;
       p.open = 0.6 * bump(t, 0.1, 0.8);
+    } else if (phase === 'move') {
+      // A dodge: boing, boing. Squash and stretch on each spring, the jelly lagging behind, a
+      // delighted open grin. It starts and ends on the standing pose (exit at t 1).
+      PK.reset(p);
+      const joy = plateau(t, 0.03, 0.97, 0.1);
+      p.squash = keys(t, MOVE_SQUASH);
+      p.shear = keys(t, MOVE_SHEAR);
+      p.lift = 0.62 * Math.sin(Math.PI * span(t, 0.1, 0.4)) + 0.48 * Math.sin(Math.PI * span(t, 0.6, 0.9));
+      p.upper = lerp(0.08, 0, joy);
+      p.lower = lerp(0.08, 0.3, joy);
+      p.gazePitch = lerp(-0.3, -0.05, joy);
+      p.smile = lerp(0.6, 1, joy);
+      p.open = 0.8 * joy;
     } else if (phase === 'throw') {
       PK.reset(p);
       // A fling: it rears back, then lunges its whole jelly forward and wobbles.

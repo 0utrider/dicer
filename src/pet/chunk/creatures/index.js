@@ -12,7 +12,10 @@ import { REFORM_IN, outBack, smooth, span } from './parts.js';
  *   lean away from the die on top of the standing pose; look.leanX/leanZ is the push direction in
  *   the creature's own space, and the layer also pushes it away); 'reform' is it popping back out
  *   of the gathering goo (hidden until t 0.38, then a grow with overshoot and a stretch). Both are
- *   handled here, for every creature, on the root's scale and tilt.
+ *   handled here, for every creature, on the root's scale and tilt. 'move' is a dodge out of the
+ *   cursor's way (each creature its own: the dragonling flies, the slime boings twice, the mimic
+ *   scuttles); it starts and ends on the standing pose (exit at t 1), and the layer moves the root
+ *   across (with a flight arc for the dragonling).
  * - reaction 'crit'|'fumble'|'mixed'|'plain' (meaningful in react and exit; may be null).
  * - look.yaw is the yaw of the dice centre RELATIVE TO the body's current facing, in radians,
  *   clamped to +-0.6 and 0 outside watch/react: the head, eyes and pupils turn by it.

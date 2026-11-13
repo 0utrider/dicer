@@ -49,6 +49,18 @@ const MOVED = 1e-3; // a re-used pet farther than this from its new spot hops th
 const UI_IDS = ['ui-left', 'players', 'hotbar', 'navigation', 'ui-top'];
 const AREAS_HOOK = 'dicerRollAreasChanged';
 
+// Dodging the cursor: a resting pet within its footprint + DODGE_REACH of the pointer moves to a
+// spot at least DODGE_AWAY from it (else the farthest valid one), at most once per cooldown.
+export const DODGE_COOLDOWN_MS = 600;
+export const MOVE_MS = 450;
+export const FLY_MS = 600; // the dragonling flies
+const DODGE_REACH = 2;
+const DODGE_AWAY = 4;
+const DODGE_GAIN = 0.5; // a new spot must be at least this much farther from the cursor, or it stays
+const FLY_PEAK = 1.2; // the dragonling's flight arc, die units
+// The pointer over these is not over the table (the sidebar and chat sit beside or over it).
+const OFF_TABLE = '#sidebar, #chat, #chat-notifications';
+
 // The crit's sparkle burst: a few additive star points thrown out around the pet.
 const SPARKS = 12;
 const BURST_MS = 900; // from the start of the crit reaction
@@ -86,6 +98,7 @@ export function createPetLayer(deps) {
   const clearTimer = deps.clearTimer || ((id) => clearTimeout(id));
   const doc = deps.doc || globalThis.document; // test seam: Foundry's UI, which rest spots avoid
   const hooks = deps.hooks || globalThis.Hooks; // test seam: Foundry's hooks (area edits)
+  const win = deps.win || globalThis.window; // test seam: the pointer listener
   // The last stage DiceBox told us ({cx, cz, halfWidth, halfDepth, rect?}: rect is its px rect): a
   // rest area is always fitted inside it.
   let stage = null;
@@ -101,6 +114,8 @@ export function createPetLayer(deps) {
   let disposed = false;
   let timer = null; // the one timer, aimed at the earliest leaveAt (so a held loop wakes up)
   let timerAt = Infinity;
+  let pointer = null; // the latest pointer on the stage ({x, z}, die units), null off it
+  let pointerMoved = false; // since update last checked the dodge
 
   const makeShadow = () => {
     shadowTex ??= discTexture();
@@ -266,6 +281,7 @@ export function createPetLayer(deps) {
     if (at === Infinity || disposed) return;
     timer = setTimer(
       () => {
+        if (disposed) return;
         timer = null;
         timerAt = Infinity;
         wake();
@@ -298,13 +314,17 @@ export function createPetLayer(deps) {
    * Foundry's UI on the stage (I-4: the dice canvas draws over it), in die units from the stage
    * centre: measured now, so a players list opened since counts. Missing or hidden parts are left out.
    */
-  function uiRects() {
+  /** The page-to-stage mapping: px per die unit and the stage centre in page px; null with no stage rect. */
+  function pageMap() {
     const r = stage?.rect;
+    if (!r || !(stage.halfWidth > 0) || !(r.width > 0)) return null;
+    return { r, px: r.width / 2 / stage.halfWidth, ox: r.left + r.width / 2, oz: r.top + r.height / 2 };
+  }
+  function uiRects() {
     const out = [];
-    if (!r || !(stage.halfWidth > 0) || !(r.width > 0)) return out;
-    const px = r.width / 2 / stage.halfWidth;
-    const ox = r.left + r.width / 2;
-    const oz = r.top + r.height / 2;
+    const map = pageMap();
+    if (!map) return out;
+    const { px, ox, oz } = map;
     for (const id of UI_IDS) {
       try {
         const b = doc?.getElementById?.(id)?.getBoundingClientRect?.();
@@ -323,13 +343,84 @@ export function createPetLayer(deps) {
   }
   /**
    * A free rest spot in `area` for user `userId`'s pet of `height`: spaced from the other pets
-   * (but not `skip`, a pet about to be sent off), off Foundry's UI.
+   * (but not `skip`, a pet about to be sent off), off Foundry's UI, and `away` from the cursor.
    */
-  function spotFor(userId, area, height, skip) {
+  function spotFor(userId, area, height, skip, away) {
     const taken = [];
     for (const o of pets.values())
       if (o.userId !== userId && o !== skip && standing(o)) taken.push(spotOf(o));
-    return restSpot(area, height, taken, rand, uiRects());
+    return restSpot(area, height, taken, rand, uiRects(), away);
+  }
+
+  // ---- dodging the cursor ----
+  /** How near the cursor may come before the pet moves: its footprint plus DODGE_REACH. */
+  const reachOf = (pet) => (pet.creature.footprint ?? 0.45 * pet.creature.height) + DODGE_REACH;
+  /** Whether `pet` would dodge a cursor at `p` now: resting, in reach, past its cooldown. */
+  const dodges = (pet, p, now) =>
+    pet.state === 'rest' &&
+    !pet.gone &&
+    now >= (pet.calmUntil ?? -Infinity) &&
+    Math.hypot((pet.px ?? pet.base.x) - p.x, (pet.pz ?? pet.base.z) - p.z) <= reachOf(pet);
+  /**
+   * The passive pointermove listener: keeps the latest pointer in stage units (null off the stage,
+   * or over the sidebar or chat), and wakes a held loop only when a pet would dodge it.
+   */
+  function onPointer(e) {
+    if (disposed) return;
+    try {
+      pointerMoved = true;
+      pointer = null;
+      const map = pageMap();
+      if (!map || e?.target?.closest?.(OFF_TABLE)) return;
+      const { r, px, ox, oz } = map;
+      const x = e.clientX;
+      const y = e.clientY;
+      if (!(x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height)) return;
+      pointer = { x: (stage.cx ?? 0) + (x - ox) / px, z: (stage.cz ?? 0) + (y - oz) / px };
+      const now = clock();
+      for (const pet of pets.values())
+        if (dodges(pet, pointer, now)) return wake();
+    } catch {
+      pointer = null; // an odd event: ignored
+    }
+  }
+  const POINTER_OPTS = { passive: true };
+  try {
+    win?.addEventListener?.('pointermove', onPointer, POINTER_OPTS);
+  } catch {
+    /* no window */
+  }
+  const activeRolls = () => {
+    try {
+      return deps.activeRolls?.() ?? 0;
+    } catch {
+      return 0;
+    }
+  };
+  /** Every resting pet the cursor at `p` has come near moves away from it (update, no roll in flight). */
+  function dodge(p, now) {
+    for (const pet of pets.values()) {
+      if (!dodges(pet, p, now)) continue;
+      if (stage) pet.area = fitArea(pet.area, stage);
+      const at = { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
+      const to = spotFor(pet.userId, pet.area, pet.creature.height, null, { x: p.x, z: p.z, min: DODGE_AWAY });
+      // A corner with nowhere farther to go: it stays put (no ping-pong under a still cursor).
+      if (Math.hypot(to.x - p.x, to.z - p.z) < Math.hypot(at.x - p.x, at.z - p.z) + DODGE_GAIN) {
+        pet.calmUntil = now + DODGE_COOLDOWN_MS;
+        continue;
+      }
+      pet.goFrom = at;
+      pet.goTo = to;
+      pet.goAt = now;
+      pet.goMs = pet.kind === 'dragonling' ? FLY_MS : MOVE_MS;
+      pet.spot = to; // obstaclesFor reports the destination (a throw may start mid-move)
+      pet.state = 'move';
+      pet.yaw0 = pet.yaw;
+      pet.yawGo = Math.atan2(to.x - at.x, to.z - at.z); // faces where it goes
+      pet.yawTo = Math.atan2(at.x - to.x, at.z - to.z); // then turns back to look where it was
+      pet.calmUntil = now + pet.goMs + DODGE_COOLDOWN_MS;
+      wake();
+    }
   }
   const freeSpot = (pet) => spotFor(pet.userId, pet.area, pet.creature.height);
   const fitted = (area) => (stage ? fitArea(area, stage) : area);
@@ -364,7 +455,7 @@ export function createPetLayer(deps) {
    */
   function restingSpot(pet) {
     if (!pet) return null;
-    if (pet.state === 'hop' || pet.state === 'rest') return pet.spot ?? { x: pet.px, z: pet.pz };
+    if (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move') return pet.spot ?? { x: pet.px, z: pet.pz };
     if (pet.state === 'splat' || pet.state === 'puddle')
       return pet.moveTo ?? pet.spot ?? { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
     if (pet.state === 'reform' && pet.atRest) return { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
@@ -406,7 +497,7 @@ export function createPetLayer(deps) {
       if (p === mine || !standing(p)) continue;
       count++;
       if (
-        (p.state === 'hop' || p.state === 'rest' || p.state === 'puddle') &&
+        (p.state === 'hop' || p.state === 'rest' || p.state === 'move' || p.state === 'puddle') &&
         (!victim || p.idleAt < victim.idleAt)
       )
         victim = p;
@@ -449,7 +540,7 @@ export function createPetLayer(deps) {
       setCreature(pet, make(spec.color), spec); // the editor's Throw shows the new pick at once
     }
     const now = clock();
-    // petsStay: the pet watches from where it rests (a first appearance hops straight to a new
+    // resting is on: the pet watches from where it rests (a first appearance hops straight to a new
     // rest spot, the one obstaclesFor sent the physics); otherwise it takes the edge spot.
     const rest = stays()
       ? (restingSpot(pet) ?? newSpot(spec.userId, area, pet.creature.height, null, false))
@@ -623,6 +714,33 @@ export function createPetLayer(deps) {
     return true;
   }
 
+  /**
+   * A dodge, on the creature's 'move' pose: the dragonling takes off, flies over in an arc and
+   * lands; the slime boings over in two hops (its pose does the springs, airborne from 0.2 to 0.8
+   * of each); the mimic scuttles over low. It turns to face the way it goes, then back toward
+   * where it was (the cursor) as it settles.
+   */
+  function stepMove(pet, now, shadows) {
+    const e = clamp01((now - pet.goAt) / pet.goMs);
+    const { goFrom: from, goTo: to } = pet;
+    let s;
+    let hop = 0;
+    if (pet.kind === 'dragonling') {
+      s = smooth(clamp01((e - 0.12) / 0.78)); // up first, then across, then down
+      hop = FLY_PEAK * (smooth(clamp01(e / 0.35)) - smooth(clamp01((e - 0.65) / 0.35)));
+    } else if (pet.kind === 'slime') {
+      const i = e < 0.5 ? 0 : 1; // it travels while it is in the air
+      s = (i + smooth(clamp01((e * 2 - i - 0.2) / 0.6))) / 2;
+    } else s = smooth(e);
+    const turn = wrap(pet.yaw0 + wrap(pet.yawGo - pet.yaw0) * smooth(clamp01(e / 0.2)));
+    pet.yaw = wrap(turn + wrap(pet.yawTo - pet.yawGo) * smooth(clamp01((e - 0.75) / 0.25)));
+    const px = from.x + (to.x - from.x) * s;
+    const pz = from.z + (to.z - from.z) * s;
+    show(pet, now, 'move', e, px, pz, e >= 1 ? 0 : hop, shadows);
+    if (e >= 1) pet.state = 'rest'; // posed on the standing pose: nothing redraws from here
+    return true;
+  }
+
   /** A puddle (or a splat that is becoming one) snaps to the spot the stage change gave it. */
   function moveDown(pet) {
     const to = pet.moveTo;
@@ -709,7 +827,8 @@ export function createPetLayer(deps) {
       }
       sendOff(pet, now);
     }
-    if (pet.state === 'hop' && !stay) sendOff(pet, now);
+    if ((pet.state === 'hop' || pet.state === 'move') && !stay) sendOff(pet, now);
+    if (pet.state === 'move') return stepMove(pet, now, shadows);
     if (pet.state !== 'routine') return stepHop(pet, now, shadows);
     const { phase, t } = phaseAt(pet.track, now);
     if ((phase === 'exit' || phase === 'gone') && stay && !pet.gone) {
@@ -771,13 +890,24 @@ export function createPetLayer(deps) {
     }
     const stay = stays();
     const idle = stayFor();
+    // The cursor moved since the last check and no roll is in flight (the physics fixed every
+    // pet's spot when a throw started): resting pets near it move away. A check held back by a
+    // roll stays due until the roll is over.
+    if (pointerMoved && stay && activeRolls() === 0) {
+      pointerMoved = false;
+      try {
+        if (pointer) dodge(pointer, now);
+      } catch (err) {
+        console.warn('Dicer | pet', err);
+      }
+    }
     let nextLeave = Infinity;
     let moving = false;
     for (const pet of [...pets.values()]) {
       let alive = false;
       try {
         // a resting pet or puddle leaves once its idle time is up (a hop off, or a fade)
-        const waits = pet.state === 'rest' || pet.state === 'hop' || pet.state === 'puddle';
+        const waits = ['rest', 'hop', 'move', 'puddle'].includes(pet.state);
         pet.leaveAt = stay && idle > 0 && waits && Number.isFinite(pet.idleAt) ? pet.idleAt + idle * 1000 : null;
         if (pet.leaveAt !== null) {
           if (now >= pet.leaveAt) sendOff(pet, now);
@@ -796,7 +926,8 @@ export function createPetLayer(deps) {
 
   /**
    * The pets the physics should treat as fixed, for a throw about to start (PetHook.obstaclesFor):
-   * every standing pet, a resting one at its spot and a rolling one at its edge spot, and, for
+   * every standing pet, a resting one at its spot (one dodging the cursor at its destination) and
+   * a rolling one at its edge spot, and, for
    * `spec`'s own user, the edge spot its pet is about to take, from the same placement as begin
    * (which replaces that pet's own entry). A pet leaving, or about to be replaced, stands no more.
    */
@@ -807,7 +938,7 @@ export function createPetLayer(deps) {
     if (own?.ok) {
       const mine = pets.get(spec.userId);
       const h = mine?.creature.height ?? PET_HEIGHT;
-      // with petsStay the pet rolls from its resting spot (a first appearance: the one it will hop
+      // with resting on the pet rolls from its resting spot (a first appearance: the one it will hop
       // to, kept pending for begin); otherwise from the edge spot
       const at = stays()
         ? (restingSpot(mine) ?? newSpot(spec.userId, area, h, own.victim, true))
@@ -825,7 +956,7 @@ export function createPetLayer(deps) {
     const pet = pets.get(userId);
     if (!pet) return;
     pet.gone = true;
-    if (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'puddle')
+    if (['hop', 'rest', 'move', 'puddle'].includes(pet.state))
       sendOff(pet, clock());
   }
 
@@ -864,7 +995,7 @@ export function createPetLayer(deps) {
   function hit(id, info) {
     if (disposed) return;
     const pet = pets.get(id);
-    if (!pet || !['routine', 'hop', 'rest'].includes(pet.state)) return;
+    if (!pet || !['routine', 'hop', 'rest', 'move'].includes(pet.state)) return;
     const speed = info?.speed;
     if (!(speed >= WOBBLE_SPEED)) return; // also NaN
     const now = clock();
@@ -908,7 +1039,7 @@ export function createPetLayer(deps) {
         pet.puddleAt = now - PUDDLE_MS;
         wake();
       } else pet.spot = { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
-    } else if (pet.state === 'hop' || pet.state === 'rest') {
+    } else if (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move') {
       pet.spot = null;
       pet.atRest = false; // a new area: a new spot
       restOf(pet, now);
@@ -973,6 +1104,12 @@ export function createPetLayer(deps) {
   function dispose() {
     disposed = true;
     arm(Infinity);
+    try {
+      win?.removeEventListener?.('pointermove', onPointer, POINTER_OPTS);
+    } catch {
+      /* no window */
+    }
+    pointer = null;
     try {
       hooks?.off?.(AREAS_HOOK, areasHook);
     } catch {
