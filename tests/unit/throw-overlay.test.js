@@ -62,10 +62,34 @@ const open = (over = {}) => {
   const el = document.querySelector('.dicer-hand-overlay');
   return { box, p, el };
 };
-const ptr = (el, type, x, y, id = 1) =>
+const ptr = (el, type, x, y, id = 1, buttons = type === 'pointerup' ? 0 : 1) =>
   el.dispatchEvent(
-    new PointerEvent(type, { clientX: x, clientY: y, pointerId: id, bubbles: true, button: 0 }),
+    new PointerEvent(type, {
+      clientX: x,
+      clientY: y,
+      pointerId: id,
+      bubbles: true,
+      button: 0,
+      buttons,
+      pointerType: 'mouse',
+    }),
   );
+/** A "throw for me" launch: one entry per die, from the hand, within the caps. */
+const expectAutoLaunch = (opts, n) => {
+  expect(opts.free).toBe(true);
+  expect(opts.launch).toHaveLength(n);
+  for (const l of opts.launch) {
+    expect([...l.pos, ...l.quat, ...l.linvel, ...l.angvel].every(Number.isFinite)).toBe(true);
+    const h = Math.hypot(l.linvel[0], l.linvel[2]);
+    expect(h).toBeGreaterThanOrEqual(8 * (1 - 0.12 * 2) - 1e-9);
+    expect(h).toBeLessThanOrEqual(16 * (1 + 0.12 * 2) + 1e-9);
+    expect(l.linvel[1]).toBeGreaterThan(0);
+    expect(Math.hypot(...l.linvel)).toBeLessThanOrEqual(MAX_RELEASE_SPEED);
+    expect(Math.hypot(...l.angvel)).toBeLessThanOrEqual(MAX_RELEASE_SPIN + 1e-9);
+    expect(Math.hypot(...l.angvel)).toBeGreaterThan(4); // at least a medium shake's tumble
+  }
+  expect([0, 1, 2, 3]).toContain(opts.edge);
+};
 const key = (k, code = k) =>
   window.dispatchEvent(
     new KeyboardEvent('keydown', { key: k, code, bubbles: true, cancelable: true }),
@@ -196,26 +220,46 @@ test('the pointer maps through the stage rect even when the canvas is translated
   await p;
 });
 
-test('Space throws without launch', async () => {
+test('Space throws for me: a generated flick from the hand', async () => {
   const { box, p } = open();
   key(' ', 'Space');
   const out = await p;
   expect(box.held.release).toHaveBeenCalledTimes(1);
   const opts = box.held.release.mock.calls[0][0];
-  expect(opts.free).toBe(true);
-  expect(opts.launch).toBeUndefined();
+  expectAutoLaunch(opts, 1);
+  // from where the die is held (the area centre, drawn a little nearer the stage centre)
+  expect(opts.launch[0].pos[0]).toBeCloseTo(last(box).p.x, 9);
   expect(typeof opts.record).toBe('function');
   expect(out.values).toEqual([4]);
   expect(out.handle).toEqual({ id: 'h' });
-  expect(out.recording).toEqual({ rec: true, launch: null });
+  expect(out.recording).toEqual({ rec: true, launch: opts.launch }); // the replay has the launch
   expect(document.querySelector('.dicer-hand-overlay')).toBeNull();
 });
 
-test('the Throw for me button throws without launch, a flick throws with launch', async () => {
-  const a = open();
+test('a generated flick heads towards the area centre from near a wall', async () => {
+  for (let seed = 1; seed <= 8; seed++) {
+    const o = open({ rng: mulberry32(seed) });
+    ptr(o.el, 'pointerdown', 990, 200); // the hand at the area's +x border
+    ptr(o.el, 'pointercancel', 990, 200); // let go without a throw: it stays there
+    key(' ', 'Space');
+    await o.p;
+    const opts = o.box.held.release.mock.calls[0][0];
+    expectAutoLaunch(opts, 1);
+    expect(opts.launch[0].linvel[0]).toBeLessThan(0); // back into the area, not into the wall
+  }
+});
+
+test('the Throw for me button flicks from the hand, a pointer flick throws with launch', async () => {
+  const a = open({
+    specs: [
+      { type: 'd6', value: 1, free: true, key: '0:0:0' },
+      { type: 'd6', value: 1, free: true, key: '1:0:0' },
+      { type: 'd8', value: 1, free: true, key: '2:0:0' },
+    ],
+  });
   a.el.querySelector('[data-action="auto"]').click();
   await a.p;
-  expect(a.box.held.release.mock.calls[0][0].launch).toBeUndefined();
+  expectAutoLaunch(a.box.held.release.mock.calls[0][0], 3);
   const b = open();
   ptr(b.el, 'pointerdown', 200, 200);
   for (let i = 1; i <= 5; i++) ptr(b.el, 'pointermove', 200 + i * 20, 200);
@@ -324,4 +368,131 @@ test('lang: every DICER.Hand key the overlay uses exists, no duplicates', () => 
   const keys = usedKeys('Hand', ['src/hand/chunk/overlay.js']);
   expect(keys.length).toBeGreaterThan(0);
   for (const k of keys) expect(typeof resolve(lang, `DICER.Hand.${k}`)).toBe('string');
+});
+
+test('one overlay at a time: a second open resolves cancelled at once, the first holds on', async () => {
+  const a = open();
+  const box2 = fakeBox();
+  const second = openThrowOverlay({
+    specs: SPECS,
+    rect: RECT,
+    stage: STAGE,
+    diePx: PX,
+    diceBox: box2,
+  });
+  expect(await second).toEqual({ cancelled: true });
+  expect(box2.hold).not.toHaveBeenCalled();
+  expect(document.querySelectorAll('.dicer-hand-overlay')).toHaveLength(1);
+  expect(a.box.held.drop).not.toHaveBeenCalled();
+  key('Escape');
+  expect(await a.p).toEqual({ cancelled: true });
+  const c = open(); // free again once the first closed
+  expect(c.box.hold).toHaveBeenCalled();
+  key('Escape');
+  await c.p;
+});
+
+test('Space on a focused button is that button, not a throw', async () => {
+  const other = document.createElement('button');
+  document.body.appendChild(other);
+  const { box, p } = open();
+  other.dispatchEvent(
+    new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true }),
+  );
+  expect(box.held.release).not.toHaveBeenCalled();
+  expect(document.querySelector('.dicer-hand-overlay')).not.toBeNull();
+  key('Escape');
+  await p;
+});
+
+test('a move with no button down, or a lost capture, is the release', async () => {
+  const a = open();
+  ptr(a.el, 'pointerdown', 250, 200);
+  ptr(a.el, 'pointermove', 270, 200);
+  ptr(a.el, 'pointermove', 290, 200, 1, 0); // the button came up while the window had no focus
+  await a.p;
+  expect(a.box.held.release).toHaveBeenCalledTimes(1);
+  expect(a.box.held.release.mock.calls[0][0].launch).toHaveLength(1);
+  const b = open();
+  ptr(b.el, 'pointerdown', 250, 200);
+  ptr(b.el, 'lostpointercapture', 250, 200);
+  await b.p;
+  expect(b.box.held.release).toHaveBeenCalledTimes(1);
+  // another pointer's lost capture changes nothing
+  const c = open();
+  ptr(c.el, 'pointerdown', 250, 200);
+  ptr(c.el, 'lostpointercapture', 250, 200, 2);
+  expect(c.box.held.release).not.toHaveBeenCalled();
+  key('Escape');
+  await c.p;
+});
+
+test('a window resize re-measures the stage, the area and the overlay', async () => {
+  const box = fakeBox();
+  box._stageRect = { ...STAGE };
+  box._diePx = PX;
+  const o = open({ diceBox: box, stage: undefined, diePx: undefined });
+  expect(o.el.style.width).toBe('1000px');
+  box._stageRect = { left: 0, top: 0, width: 2000, height: 1600 }; // DiceBox heard of the resize
+  window.dispatchEvent(new Event('resize'));
+  await new Promise((r) => setTimeout(r, 80)); // a few frames
+  expect(o.el.style.width).toBe('2000px');
+  const outline = o.el.querySelector('.dicer-hand-area').style;
+  expect([outline.left, outline.top, outline.width, outline.height]).toEqual([
+    '200px',
+    '200px',
+    '600px',
+    '400px',
+  ]);
+  // the new area confines the dice: rect (200, 200, 600, 400) is cx -10, cz -8, half 6 x 4
+  ptr(o.el, 'pointerdown', 1990, 400);
+  expect(last(box).p.x).toBeCloseTo(-10 + 6 - 1, 6);
+  key('Escape');
+  await o.p;
+});
+
+test('a11y: a labelled dialog takes focus and gives it back; the countdown is live', async () => {
+  const before = document.createElement('button');
+  document.body.appendChild(before);
+  before.focus();
+  const { el, p } = open();
+  expect(el.getAttribute('role')).toBe('dialog');
+  expect(el.getAttribute('aria-label')).toBe('Attack');
+  expect(document.activeElement).toBe(el);
+  expect(el.querySelector('.dicer-hand-count').getAttribute('aria-live')).toBe('polite');
+  key('Escape');
+  await p;
+  expect(document.activeElement).toBe(before);
+});
+
+test('reduced motion: the held dice do not bob or tumble before the grab', async () => {
+  const mm = vi.fn(() => ({ matches: true }));
+  window.matchMedia = mm;
+  try {
+    const { box, p } = open();
+    await new Promise((r) => setTimeout(r, 80));
+    const first = box.poses[0];
+    const now = last(box);
+    expect(box.poses.length).toBeGreaterThan(1);
+    expect(now.p).toEqual(first.p);
+    expect(now.q).toEqual(first.q);
+    expect(mm).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
+    key('Escape');
+    await p;
+  } finally {
+    delete window.matchMedia;
+  }
+});
+
+test('the styles come with the chunk: one <style> injected on first open, none in dicer.css', async () => {
+  const a = open();
+  key('Escape');
+  await a.p;
+  const b = open();
+  key('Escape');
+  await b.p;
+  const styles = document.querySelectorAll('style#dicer-hand-style');
+  expect(styles).toHaveLength(1);
+  expect(styles[0].textContent).toContain('.dicer-hand-overlay');
+  expect(readFileSync('styles/dicer.css', 'utf8')).not.toContain('dicer-hand');
 });

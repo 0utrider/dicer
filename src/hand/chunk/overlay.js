@@ -1,8 +1,8 @@
 /**
  * The throw overlay (G10 "The throw"; lazy hand chunk only). A full-stage element above the board
  * captures the pointer while a hand throw waits: pointer down grabs the dice, moving shakes them
- * (they jiggle and tumble with the shake energy), release flicks them. "Throw for me" (Space) is a
- * free throw with no release state; Esc or Cancel cancels; a countdown shows the time left.
+ * (they jiggle and tumble with the shake energy), release flicks them. "Throw for me" (Space) flicks
+ * them from the hand for the player; Esc or Cancel cancels; a countdown shows the time left.
  *
  * The dice are DiceBox.hold()'s, posed in die units every pointer move and every frame while the
  * overlay is open; the release hands DiceBox per-die release states (`launch`) and the hold's own
@@ -12,6 +12,7 @@ import { MAX_RELEASE_SPIN } from '../../physics/protocol.js';
 import { toDieArea } from '../../areas/area-model.js';
 import { cameraHeightFor } from '../../render/scene.js';
 import { handEdge } from './edge.js';
+import { OVERLAY_CSS } from './overlay-style.js';
 
 /** The release velocity is read from the pointer's last this-many ms. */
 export const SAMPLE_WINDOW_MS = 120;
@@ -36,6 +37,9 @@ const SHAKE_DECAY_MS = 800; // energy falls to 1/e this fast once the hand is st
 const JIGGLE = 0.2; // die units of jitter at full shake
 const TUMBLE = 16; // rad/s of held tumbling at full shake (plus 1)
 const SPREAD = 0.12; // each die's release velocity varies by this fraction of the flick speed
+const AUTO_SPEED = [8, 16]; // "Throw for me": a flick of this many die units/s ...
+const AUTO_ENERGY = 0.5; // ... tumbling at least like a medium shake
+const STYLE_ID = 'dicer-hand-style';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const clamp = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
 
@@ -138,17 +142,31 @@ function randomQuat(rng) {
   };
 }
 
+/** Injects the overlay's styles once per page (they live in the lazy chunk, not dicer.css). */
+function injectStyle() {
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent = OVERLAY_CSS;
+  document.head.append(style);
+}
+
+let active = false; // one overlay at a time
+
 /**
  * Opens the throw overlay over `stage` (px {left, top, width, height}; DiceBox's stage rect by
  * default) and holds `specs` in `rect` (the roller's area, px; the stage by default). The pointer
  * maps through the stage rect, never the canvas (screen shake translates the canvas only), and
- * held dice stop at the area's border (H-12), so a release never teleports.
+ * held dice stop at the area's border (H-12), so a release never teleports. On a window resize the
+ * stage is DiceBox's again and the area `getRect()` (default: `rect` scaled with the stage).
  *
  * Resolves {values, handle, recording} once the throw lands (values null if it never does),
- * {cancelled: true} on Esc or Cancel, {timedOut: true} after `timeoutMs` (a window blur does not
- * pause it). `ghostOnRelease`: on release the held dice turn into ghost dice on this screen; their
- * values are still read and recorded (P6-D1, H-19). The overlay's DOM goes at landing, its
- * listeners and frame loop at release; DiceBox.holding is true until then (pets hold still: H-8).
+ * {cancelled: true} on Esc or Cancel (or at once while another overlay is open), {timedOut: true}
+ * after `timeoutMs` (a window blur does not pause it). "Throw for me" flicks the dice from the hand
+ * too (a generated flick), so every throw carries a launch. `ghostOnRelease`: on release the held
+ * dice turn into ghost dice on this screen; their values are still read and recorded (P6-D1,
+ * H-19). The overlay's DOM goes at landing, its listeners and frame loop at release; DiceBox.holding
+ * is true until then (pets hold still: H-8).
  */
 export function openThrowOverlay({
   specs,
@@ -160,20 +178,33 @@ export function openThrowOverlay({
   ghostOnRelease = false,
   label,
   rng = Math.random,
+  getRect,
 }) {
+  if (active) return Promise.resolve({ cancelled: true });
+  active = true;
   stage ??= diceBox._stageRect;
   diePx ??= diceBox._diePx;
   rect ??= stage;
   const n = specs.length;
-  const area = diceBox.dieArea?.(rect, n) ?? toDieArea(rect, stage, diePx);
-  // The camera looks straight down from `camH`: a die at height y shows under the pointer when it
-  // sits (camH - y) / camH of the way from the stage centre to the pointer's ground point.
-  const camH = diceBox._renderer?.camera?.position?.y || cameraHeightFor(stage.height / 2 / diePx);
-  const offsets = cluster(n, area);
-  const ex = Math.max(0, ...offsets.map((o) => Math.abs(o.x)));
-  const ez = Math.max(0, ...offsets.map((o) => Math.abs(o.z)));
-  const dice = offsets.map((o) => ({
-    o,
+  // Reduced motion: no hover bob or idle tumble (a grab still follows the hand).
+  const still = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  let area; // the die-unit area the dice stay in (the worker's, grown to hold them)
+  let camH; // the camera's height (it looks straight down)
+  let offsets; // each die's place in the held cluster
+  let ex = 0; // the cluster's half extents
+  let ez = 0;
+  /** Area, camera and cluster for the current stage, rect and diePx. */
+  function measure() {
+    area = diceBox.dieArea?.(rect, n) ?? toDieArea(rect, stage, diePx);
+    // A die at height y shows under the pointer when it sits (camH - y) / camH of the way from the
+    // stage centre to the pointer's ground point.
+    camH = diceBox._renderer?.camera?.position?.y || cameraHeightFor(stage.height / 2 / diePx);
+    offsets = cluster(n, area);
+    ex = Math.max(0, ...offsets.map((o) => Math.abs(o.x)));
+    ez = Math.max(0, ...offsets.map((o) => Math.abs(o.z)));
+  }
+  measure();
+  const dice = offsets.map(() => ({
     q: randomQuat(rng),
     axis: spinFromShake(1, rng).map((c) => c / MAX_RELEASE_SPIN),
     j: [0, 0, 0], // this frame's jiggle
@@ -182,9 +213,10 @@ export function openThrowOverlay({
   const hand = { x: area.cx, z: area.cz }; // where the cluster is centred (die units, at HOLD_Y)
   let energy = 0;
   let grab = null; // {id, samples} while the pointer holds the dice
-  let lastMove = null; // {t, vx, vz} of the previous pointer move (shake energy)
+  let lastMove = null; // {vx, vz} of the previous pointer move (shake energy)
   let frame = 0;
   let lastFrame = 0;
+  let stale = 0; // frames left to re-measure after a window resize
   let open = true;
 
   let held = null;
@@ -195,29 +227,16 @@ export function openThrowOverlay({
   }
 
   // ---- DOM ----
+  injectStyle();
   const el = document.createElement('div');
   el.className = 'dicer-hand-overlay';
-  Object.assign(el.style, {
-    left: `${stage.left}px`,
-    top: `${stage.top}px`,
-    width: `${stage.width}px`,
-    height: `${stage.height}px`,
-  });
+  el.tabIndex = -1;
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', label || loc('DICER.Hand.Hint'));
   const areaEl = document.createElement('div');
   areaEl.className = 'dicer-hand-area';
-  Object.assign(areaEl.style, {
-    left: `${rect.left - stage.left}px`,
-    top: `${rect.top - stage.top}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`,
-  });
   const bar = document.createElement('div');
   bar.className = 'dicer-hand-bar';
-  const below = rect.top - stage.top + rect.height;
-  if (below + 64 <= stage.height) bar.style.top = `${below + 10}px`;
-  else if (rect.top - stage.top >= 64)
-    bar.style.bottom = `${stage.height - (rect.top - stage.top) + 10}px`;
-  else bar.style.bottom = '16px';
   const text = (cls, s) => {
     const t = document.createElement('span');
     t.className = cls;
@@ -232,15 +251,41 @@ export function openThrowOverlay({
     return b;
   };
   const count = text('dicer-hand-count', '');
+  count.setAttribute('aria-live', 'polite');
   const auto = button('auto', 'DICER.Hand.ThrowForMe', loc('DICER.Hand.SpaceKey'));
   const cancel = button('cancel', 'DICER.Hand.Cancel', 'Esc');
   if (label) bar.append(text('dicer-hand-label', label));
   bar.append(text('dicer-hand-hint', loc('DICER.Hand.Hint')), count, auto, cancel);
   el.append(areaEl, bar);
   document.body.append(el);
-  // Centred under (or over) the area, kept on the stage: its width is known once it is laid out.
-  const half = bar.offsetWidth / 2 + 8;
-  bar.style.left = `${clamp(rect.left - stage.left + rect.width / 2, half, stage.width - half)}px`;
+  /** Places the overlay on the stage, the outline on the area, the bar under (or over) it. */
+  function place() {
+    const px = (v) => `${v}px`;
+    Object.assign(el.style, {
+      left: px(stage.left),
+      top: px(stage.top),
+      width: px(stage.width),
+      height: px(stage.height),
+    });
+    Object.assign(areaEl.style, {
+      left: px(rect.left - stage.left),
+      top: px(rect.top - stage.top),
+      width: px(rect.width),
+      height: px(rect.height),
+    });
+    const below = rect.top - stage.top + rect.height;
+    bar.style.top = bar.style.bottom = '';
+    if (below + 64 <= stage.height) bar.style.top = px(below + 10);
+    else if (rect.top - stage.top >= 64)
+      bar.style.bottom = px(stage.height - (rect.top - stage.top) + 10);
+    else bar.style.bottom = '16px';
+    // kept on the stage: its width is known once it is laid out
+    const half = bar.offsetWidth / 2 + 8;
+    bar.style.left = px(clamp(rect.left - stage.left + rect.width / 2, half, stage.width - half));
+  }
+  place();
+  const focused = document.activeElement;
+  el.focus?.({ preventScroll: true });
 
   // ---- listeners (each removed by name at release or close) ----
   const offs = [];
@@ -253,15 +298,22 @@ export function openThrowOverlay({
   const done = new Promise((r) => (finish = r));
   let timer = null;
   let ticker = null;
-  /** Stops input, the timers and the frame loop (the throw, if any, flies on). */
+  /** Stops input, the timers and the frame loop (the throw, if any, flies on); focus goes back. */
   function detach() {
     if (!open) return;
     open = false;
+    active = false;
     for (const off of offs.splice(0)) off();
     clearTimeout(timer);
     clearInterval(ticker);
     if (frame) globalThis.cancelAnimationFrame?.(frame);
     frame = 0;
+    try {
+      if (focused?.isConnected) focused.focus?.({ preventScroll: true });
+      else el.blur?.();
+    } catch {
+      /* nothing to give focus back to */
+    }
   }
   /** Closes without a throw: the held dice go. */
   function close(result) {
@@ -283,35 +335,42 @@ export function openThrowOverlay({
     x: (x - stage.left - stage.width / 2) / diePx,
     z: (y - stage.top - stage.height / 2) / diePx,
   });
-  /** Moves the hand under the pointer, inside the area (minus the cluster and a die's radius). */
-  function aim(x, y) {
-    const g = ground(x, y);
-    const k = (camH - HOLD_Y) / camH;
+  /** Keeps the hand inside the area, minus the cluster and a die's radius. */
+  function confine() {
     hand.x = clamp(
-      g.x * k,
+      hand.x,
       area.cx - area.halfWidth + EDGE + ex,
       area.cx + area.halfWidth - EDGE - ex,
     );
     hand.z = clamp(
-      g.z * k,
+      hand.z,
       area.cz - area.halfDepth + EDGE + ez,
       area.cz + area.halfDepth - EDGE - ez,
     );
+  }
+  /** Moves the hand under the pointer, inside the area. */
+  function aim(x, y) {
+    const g = ground(x, y);
+    const k = (camH - HOLD_Y) / camH;
+    hand.x = g.x * k;
+    hand.z = g.z * k;
+    confine();
   }
   /** Poses every die: the hand, its offset, and the jiggle (hovering while not grabbed). */
   function pose(now) {
     const t = now / 1000;
     dice.forEach((d, i) => {
-      const bob = grab ? 0 : 0.12 * Math.sin(t * 5 + i * 1.7);
+      const o = offsets[i];
+      const bob = grab || still ? 0 : 0.12 * Math.sin(t * 5 + i * 1.7);
       const p = {
         x: clamp(
-          hand.x + d.o.x + d.j[0],
+          hand.x + o.x + d.j[0],
           area.cx - area.halfWidth + EDGE,
           area.cx + area.halfWidth - EDGE,
         ),
-        y: HOLD_Y + d.o.y + bob + d.j[1],
+        y: HOLD_Y + o.y + bob + d.j[1],
         z: clamp(
-          hand.z + d.o.z + d.j[2],
+          hand.z + o.z + d.j[2],
           area.cz - area.halfDepth + EDGE,
           area.cz + area.halfDepth - EDGE,
         ),
@@ -320,13 +379,39 @@ export function openThrowOverlay({
       held?.setPose(i, p, d.q);
     });
   }
+  /** After a window resize: the new stage (DiceBox's), area, cluster and DOM; the hand stays in. */
+  function relayout() {
+    const s = diceBox._stageRect ?? stage;
+    const was = stage;
+    stage = { left: s.left, top: s.top, width: s.width, height: s.height };
+    diePx = diceBox._diePx ?? diePx;
+    const kx = stage.width / was.width;
+    const ky = stage.height / was.height;
+    rect = getRect?.() ?? {
+      left: stage.left + (rect.left - was.left) * kx,
+      top: stage.top + (rect.top - was.top) * ky,
+      width: rect.width * kx,
+      height: rect.height * ky,
+    };
+    measure();
+    confine();
+    place();
+  }
   function tick(now) {
     frame = 0;
     if (!open) return;
+    if (stale > 0) {
+      stale--; // DiceBox may hear of the resize a frame late: measure on two frames
+      try {
+        relayout();
+      } catch (err) {
+        console.warn('dicer: the throw overlay could not follow a resize', err);
+      }
+    }
     const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0;
     lastFrame = now;
     energy *= Math.exp((-dt * 1000) / SHAKE_DECAY_MS);
-    const rate = grab ? 1 + TUMBLE * energy : 0.6;
+    const rate = grab ? 1 + TUMBLE * energy : still ? 0 : 0.6;
     const jig = JIGGLE * energy;
     el.style.setProperty('--dicer-shake', energy.toFixed(2)); // the area glows with the shake
     for (const d of dice) {
@@ -343,30 +428,33 @@ export function openThrowOverlay({
   const clock = () => globalThis.performance?.now?.() ?? Date.now();
 
   // ---- the throw ----
-  /** Throws (launch: per-die release states; none: "throw for me") and resolves at landing. */
-  async function release(launch) {
+  /**
+   * Throws with the release states `makeLaunch()` builds (inside the try: a throw there resolves
+   * cancelled) and resolves at landing.
+   */
+  async function release(makeLaunch) {
     if (!open) return;
     detach();
     el.classList.add('dicer-hand-thrown');
     let recording = null;
     let gotRecording;
     const recorded = new Promise((r) => (gotRecording = r));
-    const options = {
-      free: true,
-      seed: Math.floor(rng() * 2 ** 32) >>> 0,
-      record: (rec) => gotRecording((recording = rec)),
-    };
-    if (launch) {
-      options.launch = launch;
-      options.edge = handEdge(launch, area);
-    }
     try {
+      const launch = makeLaunch();
+      const options = {
+        area: rect,
+        free: true,
+        seed: Math.floor(rng() * 2 ** 32) >>> 0,
+        record: (rec) => gotRecording((recording = rec)),
+        launch,
+        edge: handEdge(launch, area),
+      };
       let thrown;
       if (ghostOnRelease) {
         held.drop();
         thrown = diceBox.roll(
           specs.map((s) => ({ ...s, ghost: true })),
-          { area: rect, ...options },
+          options,
         );
       } else thrown = held.release(options);
       const values = await thrown.values;
@@ -374,14 +462,18 @@ export function openThrowOverlay({
       finish({ values: values ?? null, handle: thrown.handle, recording });
     } catch (err) {
       console.warn('dicer: a hand throw failed', err);
+      try {
+        held?.drop();
+      } catch {
+        /* already gone */
+      }
       finish({ cancelled: true });
     } finally {
       el.remove();
     }
   }
-  /** The release states of a flick: the dice where they are drawn, flying with the pointer. */
-  function launchFrom(samples) {
-    const [vx, vz] = velocityFromSamples(samples, diePx);
+  /** The release states: the dice where they are drawn, flying at (vx, vz) with a lift and spin. */
+  function launchWith(vx, vz) {
     const speed = Math.hypot(vx, vz);
     const vy = liftFromSpeed(speed);
     const spread = () => (2 * rng() - 1) * SPREAD * speed;
@@ -392,8 +484,34 @@ export function openThrowOverlay({
       angvel: spinFromShake(energy, rng),
     }));
   }
+  /** A pointer flick: the velocity of the last samples. */
+  const flick = (samples) => () => launchWith(...velocityFromSamples(samples, diePx));
+  /**
+   * "Throw for me": a generated flick from the hand, 8..16 die units/s in a random direction pulled
+   * towards the area centre (so it does not slam a wall), with at least a medium shake's tumble.
+   */
+  const autoFlick = () => {
+    energy = Math.max(energy, AUTO_ENERGY);
+    const a = 2 * Math.PI * rng();
+    const tx = area.cx - hand.x;
+    const tz = area.cz - hand.z;
+    const tl = Math.hypot(tx, tz) || 1;
+    let dx = Math.cos(a) + (2 * tx) / tl;
+    let dz = Math.sin(a) + (2 * tz) / tl;
+    if (!(Math.hypot(tx, tz) > 0.5)) [dx, dz] = [Math.cos(a), Math.sin(a)]; // at the centre: any way
+    const dl = Math.hypot(dx, dz) || 1;
+    const speed = AUTO_SPEED[0] + (AUTO_SPEED[1] - AUTO_SPEED[0]) * rng();
+    return launchWith((dx / dl) * speed, (dz / dl) * speed);
+  };
 
   // ---- input ----
+  /** The grabbing pointer lets go: throw with its flick. */
+  function letGo(e) {
+    grab.samples.push({ t: clock(), x: e.clientX, y: e.clientY });
+    aim(e.clientX, e.clientY);
+    pose(clock());
+    release(flick(grab.samples));
+  }
   on(el, 'pointerdown', (e) => {
     if (grab || e.button > 0 || e.target?.closest?.('.dicer-hand-bar')) return;
     e.preventDefault();
@@ -410,6 +528,8 @@ export function openThrowOverlay({
   });
   on(el, 'pointermove', (e) => {
     if (!grab || e.pointerId !== grab.id) return;
+    // No button down any more (released while the window had no focus): that was the release.
+    if (e.buttons === 0 && e.pointerType !== 'touch') return letGo(e);
     const t = clock();
     const prev = grab.samples[grab.samples.length - 1];
     grab.samples.push({ t, x: e.clientX, y: e.clientY });
@@ -429,11 +549,11 @@ export function openThrowOverlay({
     pose(t);
   });
   on(el, 'pointerup', (e) => {
-    if (!grab || e.pointerId !== grab.id) return;
-    grab.samples.push({ t: clock(), x: e.clientX, y: e.clientY });
-    aim(e.clientX, e.clientY);
-    pose(clock());
-    release(launchFrom(grab.samples));
+    if (grab && e.pointerId === grab.id) letGo(e);
+  });
+  // The capture was lost without a pointerup (the browser or another element took it): a release.
+  on(el, 'lostpointercapture', (e) => {
+    if (grab && e.pointerId === grab.id) letGo(e);
   });
   // A cancelled touch (the browser took the gesture): let go without throwing; grab again.
   on(el, 'pointercancel', (e) => {
@@ -442,25 +562,28 @@ export function openThrowOverlay({
     el.classList.remove('dicer-hand-grabbing');
   });
   on(el, 'contextmenu', (e) => e.preventDefault());
-  on(auto, 'click', () => release());
+  on(auto, 'click', () => release(autoFlick));
   on(cancel, 'click', () => close({ cancelled: true }));
-  // Capture, before Foundry: Space would pause the game, Esc close a window.
+  // Capture, before Foundry: Space would pause the game, Esc close a window. Space on a focused
+  // button (or a text field) is that element's own.
   on(
     window,
     'keydown',
     (e) => {
       const t = e.target;
-      if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '')) return;
       const space = e.code === 'Space' || e.key === ' ';
       if (!space && e.key !== 'Escape') return;
+      if (t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '')) return;
+      if (space && t?.tagName === 'BUTTON') return;
       e.preventDefault();
       e.stopImmediatePropagation();
       if (e.repeat) return;
-      if (space) release();
+      if (space) release(autoFlick);
       else close({ cancelled: true });
     },
     true,
   );
+  on(window, 'resize', () => (stale = 2));
 
   // ---- the countdown (wall clock: a blur or a throttled tab does not pause it) ----
   if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
