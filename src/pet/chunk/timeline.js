@@ -11,6 +11,12 @@ export const QUICK_EXIT_MS = 300;
 export const LIFE_MS = 15000;
 /** A pet's hop to a resting spot, or off the table (the same length as the old exit). */
 export const REST_HOP_MS = 450;
+/** A hit that does not splat: the jiggle. */
+export const WOBBLE_MS = 400;
+/** A splat: the burst, until it is a puddle. */
+export const SPLAT_MS = 500;
+/** A puddle pulling together into its pet, before the routine. */
+export const REFORM_MS = 400;
 
 const WATCH_FROM = ENTER_MS + THROW_MS;
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);

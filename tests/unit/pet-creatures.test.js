@@ -5,7 +5,7 @@ import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
 // as a creature beside a d20 from the top-down camera at 1.5; a d20 rests ~1.6 tall).
 const HEIGHT = 1.5;
 const TOL = 0.15;
-const PHASES = ['enter', 'throw', 'watch', 'react', 'exit'];
+const PHASES = ['enter', 'throw', 'watch', 'react', 'exit', 'wobble', 'reform'];
 const REACTIONS = ['crit', 'fumble', 'mixed', 'plain', null];
 const KINDS = ['mimic', 'slime', 'dragonling'];
 // The watch pose's measured height. The mimic's height is its closed chest, and its open jaw

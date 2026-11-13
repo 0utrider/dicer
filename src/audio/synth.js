@@ -407,12 +407,17 @@ const RESULT = {
     yield* voice(buf, sr, { ...o, freq: 660, start: 0.28, dur: 0.32, tau: 0.28, pitch: (t) => 1.02 - 0.14 * Math.min(1, t / 0.32) });
     yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
   },
+  *petSplat(sr, buf, rand) {
+    // A wet "splorch": a noisy burst whose band falls fast, over a short falling blob of a tone.
+    yield* noiseBand(buf, sr, rand, { dur: 0.3, fc: (t) => 2200 * Math.exp(-t / 0.07) + 220, q: 0.8, amp: (t) => envAt(t, 0.004, 0.09, 0.3), gain: 0.8 });
+    yield* voice(buf, sr, { freq: 240, dur: 0.25, gain: 0.5, attack: 0.006, tau: 0.07, partials: [[1, 1, 1], [1.5, 0.3, 0.6]], pitch: (t) => Math.pow(0.35, Math.min(1, t / 0.2)) });
+  },
 };
 
-const RESULT_DUR = { chime: 1.5, fanfare: 1.5, sparkle: 1.3, fizzle: 1.2, thud: 0.7, whoosh: 1.0, crackle: 1.1, zap: 0.5, boom: 1.5, petHappy: 0.45, petSad: 0.6 };
+const RESULT_DUR = { chime: 1.5, fanfare: 1.5, sparkle: 1.3, fizzle: 1.2, thud: 0.7, whoosh: 1.0, crackle: 1.1, zap: 0.5, boom: 1.5, petHappy: 0.45, petSad: 0.6, petSplat: 0.35 };
 
 /** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */
-const RESULT_PEAK = { petHappy: 0.55, petSad: 0.55 };
+const RESULT_PEAK = { petHappy: 0.55, petSad: 0.55, petSplat: 0.55 };
 
 function* resultGen(name, sampleRate) {
   const fn = RESULT[name];

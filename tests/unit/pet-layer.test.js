@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createPetLayer } from '../../src/pet/chunk/pets.js';
+import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED } from '../../src/pet/chunk/pets.js';
 
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
 let clockNow = 0;
@@ -781,4 +781,208 @@ test('obstacle radii use each creature footprint; the mimic is at least 0.85', (
   const o = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG });
   expect(o[0].r).toBeGreaterThanOrEqual(0.85);
   expect(o[0].h).toBe(1.5);
+});
+
+// ---- hits, splats, puddles ----
+const HARD = SPLAT_SPEED + 5;
+const SOFT = (WOBBLE_SPEED + SPLAT_SPEED) / 2;
+const phaseOf = (m, i = 0) => pets(m.scene)[i].userData.dicerPet.phase;
+const hitFrom = (m, id, speed, dx = 1) => {
+  const p = at(m.scene);
+  m.layer.hit(id, { speed, position: { x: p.x + dx, y: 1, z: p.z }, dieKey: 'd0' });
+};
+const splatCalls = (m) => m.playSound.mock.calls.filter(([a]) => a.builtin === 'petSplat').length;
+/** A pet at rest, then splatted into a puddle (the clock after the burst). */
+const puddled = (settings = {}, user = 'u1') => {
+  const m = make({ petsStay: true, ...settings });
+  rollToRest(m, user);
+  hitFrom(m, user, HARD);
+  runTo(m, clockNow + 1300);
+  return m;
+};
+
+test('a hard hit splats: one petSplat sound, then a puddle', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  m.deps.wake.mockClear();
+  hitFrom(m, 'u1', HARD);
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  expect(phaseOf(m)).toBe('splat');
+  expect(splatCalls(m)).toBe(1);
+  runTo(m, clockNow + 1300);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(m.layer.update((clockNow += 16))).toBe('rest'); // a puddle costs nothing
+  expect(splatCalls(m)).toBe(1);
+  expect(pets(m.scene)[0].children[0].visible).toBe(false); // the creature is hidden
+});
+
+test('a soft hit wobbles: pushed away from the die, back at rest after WOBBLE_MS, no sound', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  const rest = { x: at(m.scene).x, z: at(m.scene).z };
+  hitFrom(m, 'u1', SOFT, 1); // the die is on the +x side
+  let minX = Infinity;
+  let r;
+  for (let i = 0; i < 12; i++) {
+    r = m.layer.update((clockNow += 16));
+    minX = Math.min(minX, at(m.scene).x);
+  }
+  expect(r).toBe(true);
+  expect(minX).toBeLessThan(rest.x - 0.01);
+  runTo(m, clockNow + 500);
+  expect(at(m.scene).x).toBeCloseTo(rest.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(rest.z, 6);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  expect(phaseOf(m)).not.toBe('puddle');
+  expect(splatCalls(m)).toBe(0);
+});
+
+test('a wobble restarts on a new hit; a hit below WOBBLE_SPEED does nothing', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', WOBBLE_SPEED / 2);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  hitFrom(m, 'u1', SOFT);
+  runTo(m, clockNow + 300);
+  hitFrom(m, 'u1', SOFT); // restarts: still wobbling 300 ms later
+  runTo(m, clockNow + 300);
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  runTo(m, clockNow + 300);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+});
+
+test('petSplat off -> wobble only, and no sound', () => {
+  const m = make({ petsStay: true, petSplat: false });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  runTo(m, clockNow + 900);
+  expect(phaseOf(m)).not.toMatch(/splat|puddle/);
+  expect(splatCalls(m)).toBe(0);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+});
+
+test('three hits in one frame -> one splat', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  for (let i = 0; i < 3; i++) hitFrom(m, 'u1', HARD + i);
+  m.layer.update((clockNow += 16));
+  runTo(m, clockNow + 1300);
+  expect(splatCalls(m)).toBe(1);
+  expect(phaseOf(m)).toBe('puddle');
+});
+
+test('hits on a puddle, or on one that is splatting, are ignored; unknown ids are harmless', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  runTo(m, clockNow + 200);
+  hitFrom(m, 'u1', HARD); // mid-burst
+  runTo(m, clockNow + 1000);
+  const pos = { ...at(m.scene) };
+  hitFrom(m, 'u1', HARD);
+  hitFrom(m, 'u1', SOFT);
+  m.layer.hit('nobody', { speed: HARD, position: { x: 0, y: 0, z: 0 }, dieKey: 'x' });
+  m.layer.hit('u1', { speed: NaN, position: { x: 0, y: 0, z: 0 }, dieKey: 'x' });
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  expect(at(m.scene).x).toBe(pos.x);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(splatCalls(m)).toBe(1);
+});
+
+test('a splat mid-routine gives no reaction and no chirp', () => {
+  const m = make({ petsStay: true });
+  m.layer.begin('k', bigInfo(spec('u1')));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 700); // watching
+  hitFrom(m, 'u1', HARD, 0.5);
+  m.layer.update((clockNow += 16));
+  m.layer.landed('k', [d20(20)]); // would be a crit
+  runTo(m, clockNow + 1500);
+  m.layer.leave('k', 0);
+  m.layer.end('k');
+  runTo(m, clockNow + 1500);
+  expect(m.playSound.mock.calls.map(([a]) => a.builtin)).toEqual(['petSplat']);
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(phaseOf(m)).toBe('puddle');
+});
+
+test("the owner's next roll reforms the puddle in place and plays the routine", () => {
+  const m = puddled();
+  const spot = { x: at(m.scene).x, z: at(m.scene).z };
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  expect(phaseOf(m)).toBe('reform');
+  const start = clockNow;
+  while (clockNow < start + 350) {
+    m.layer.update((clockNow += 16));
+    expect(phaseOf(m)).toBe('reform');
+    expect(at(m.scene).x).toBeCloseTo(spot.x, 6); // in place
+    expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+  }
+  const seen = new Set();
+  while (clockNow < start + 1500) {
+    m.layer.update((clockNow += 16));
+    seen.add(phaseOf(m));
+  }
+  expect(seen.has('enter') || seen.has('throw')).toBe(true);
+  expect(seen.has('watch')).toBe(true);
+  expect(pets(m.scene)[0].children[0].visible).toBe(true);
+  m.layer.landed('again', [d20(20)]);
+  runTo(m, clockNow + 1400);
+  expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
+  m.layer.leave('again', 0);
+  m.layer.end('again');
+  expect(runTo(m, clockNow + 3000)).toBe('rest'); // rests again
+});
+
+test('a puddle counts toward the cap and is not in obstaclesFor', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD); // u1 is splatted at once, so idle the longest
+  runTo(m, clockNow + 1300);
+  clockNow += 500;
+  rollToRest(m, 'u2');
+  clockNow += 500;
+  rollToRest(m, 'u3');
+  expect(ids(m)).toEqual(['u2', 'u3']); // the puddle stands in nobody's way
+  expect(pets(m.scene)).toHaveLength(3); // ... but holds a place
+  m.layer.begin('r4', bigInfo(spec('u4'), 2)); // so the 4th replaces it
+  runTo(m, clockNow + 900);
+  expect(pets(m.scene)).toHaveLength(3);
+  expect(ids(m)).toEqual(['u2', 'u3', 'u4']);
+});
+
+test('petsStay off with a puddle -> it fades and the layer ends empty', () => {
+  const m = puddled();
+  m.settings.petsStay = false;
+  m.layer.update((clockNow += 16));
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test('a puddle fades when its user leaves', () => {
+  const m = puddled();
+  m.layer.userGone('u1');
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test("a roll that begins mid-burst reforms the puddle once the burst ends", () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  runTo(m, clockNow + 200);
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  expect(phaseOf(m)).toBe('splat');
+  const seen = new Set();
+  const end = clockNow + 1800;
+  while (clockNow < end) {
+    m.layer.update((clockNow += 16));
+    seen.add(phaseOf(m));
+  }
+  expect([...seen]).toEqual(expect.arrayContaining(['splat', 'reform', 'watch']));
+  expect(seen.has('puddle')).toBe(false);
+  expect(splatCalls(m)).toBe(1);
 });
