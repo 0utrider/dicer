@@ -2326,6 +2326,50 @@ describe('Task 8: hand rolls in the gate', () => {
     expect(box.rolls.find((r) => !sourced(r)).specs).toHaveLength(1);
   });
 
+  test('M1: the watchdog re-arms when a late replay starts, so the card waits for a long free throw', async () => {
+    gateH.onCreate(hmsg());
+    await tick(HAND_REPLAY_WAIT_MS - 100); // the trajectory comes late
+    send(handChunk.encodeTrajectory(recordingOf([D20(17)])));
+    await tick();
+    expect(sourced(box.rolls[0])).toBe(true);
+    // a long free replay (13 s of frames, slow motion, landing): the group's first deadline passes
+    await tick(WATCHDOG_MS + 100);
+    expect(gateH.isAnimating('m1')).toBe(true);
+    // re-armed from the replay's start with the hand budget: it still reveals if it never lands
+    // (started at HAND_REPLAY_WAIT_MS - 100: due WATCHDOG_MS + HAND_REPLAY_WAIT_MS after that)
+    await tick(HAND_REPLAY_WAIT_MS - 100 - 1);
+    expect(gateH.isAnimating('m1')).toBe(true);
+    await tick(1);
+    expect(gateH.isAnimating('m1')).toBe(false);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+  });
+
+  test('M1: a late fallback cast gets a full watchdog from its start', async () => {
+    gateH.onCreate(hmsg());
+    await tick(HAND_REPLAY_WAIT_MS); // no trajectory: forced throw now
+    expect(sourced(box.rolls[0])).toBe(false);
+    await tick(WATCHDOG_MS - 1);
+    expect(gateH.isAnimating('m1')).toBe(true);
+    await tick(1);
+    expect(gateH.isAnimating('m1')).toBe(false);
+  });
+
+  test("M2: a missing or rejected trajectory falls back to a throw within the receiver's maxDice", async () => {
+    settings.maxDice = 3;
+    const many = handD20(Array.from({ length: 8 }, (_, i) => i + 1), { n: 8 });
+    gateH.onCreate(hmsg({ rolls: [many] }));
+    await tick(HAND_REPLAY_WAIT_MS);
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    expect(sourced(box.rolls[0])).toBe(false);
+    expect(box.rolls[0].specs).toHaveLength(3);
+    // a rejected payload (values mismatch): the same budget
+    send(handChunk.encodeTrajectory(recordingOf([D20(3)])), { messageId: 'm2' });
+    gateH.onCreate(hmsg({ id: 'm2', rolls: [handD20([17, 2, 5, 9], { n: 1 })] }));
+    await tick();
+    expect(sourced(box.rolls[1])).toBe(false);
+    expect(box.rolls[1].specs).toHaveLength(3);
+  });
+
   test('a d100 replays from its tens and ones dice', async () => {
     const d100 = (result) => ({
       options: { dicerHand: { id: 'h1', by: 'thrower', n: 2 } },

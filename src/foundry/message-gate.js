@@ -435,26 +435,40 @@ export function createMessageGate({
    * Task 8: a hand roll seen real here (another user's) replays its thrower's trajectory: waited
    * for (HAND_REPLAY_WAIT_MS at most), sent by the author who threw it (dicerHand.by), and
    * matching the message's results by key (the chunk's replayFor). Extras beyond the recording
-   * follow as a forced throw. Anything else is today's forced throw of the results (`cast`).
+   * follow as a forced throw. Anything else is a forced throw of the results within this screen's
+   * maxDice (M2). The group's watchdog re-arms when either starts (M1): a replay gets the hand
+   * group's budget, a forced throw the usual one.
    */
   function replayHand(id, entry, message, roll, specs, opts, cast) {
     const author = message.author?.id;
     const alive = () => animating.get(id) === entry;
-    return hand.waitFor(message.id, roll.options.dicerHand.id, author).then((decoded) =>
-      alive()
-        ? (hand.replay(decoded, {
-            roll,
-            author,
-            specs,
-            opts,
-            cast,
-            diceBox,
-            alive,
-            // Every result, same looks (the decoder's 100-dice cap): look-only specs come from it.
-            full: () => planThrow(roll, { maxDice: 100, decorate: decoratorFor(message, roll) }).dice,
-          }) ?? cast())
-        : undefined,
-    );
+    const decorate = decoratorFor(message, roll);
+    return hand.waitFor(message.id, roll.options.dicerHand.id, author).then((decoded) => {
+      if (!alive()) return;
+      const p = hand.replay(decoded, {
+        roll,
+        author,
+        specs,
+        opts,
+        cast,
+        diceBox,
+        alive,
+        // Every result, same looks (the decoder's 100-dice cap): look-only specs come from it.
+        full: () => planThrow(roll, { maxDice: 100, decorate }).dice,
+      });
+      clearTimeoutFn(entry.timer);
+      entry.timer = setTimeoutFn(() => reveal(id), WATCHDOG_MS + (p ? HAND_REPLAY_WAIT_MS : 0));
+      return (
+        p ??
+        cast(
+          planThrow(roll, {
+            maxDice: Number(getSetting('maxDice')) || 20,
+            showExtra: getSetting('showExtraDice') !== false,
+            decorate,
+          }).dice,
+        )
+      );
+    });
   }
 
   /**
