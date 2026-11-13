@@ -458,7 +458,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       this.#extras = extras;
       return;
     }
-    if (el.name === 'pet.color' || el.dataset.colorFor === 'pet.color') return this.#onPetColor(el);
+    if (el.name === 'pet.color' || el.dataset.colorFor === 'pet.color') return this.#onPetColor(el, committed);
     let path = el.name;
     let value = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.colorFor) {
@@ -493,25 +493,31 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     return true;
   }
 
-  /** The pet is the user's own flag, saved at once; it is not part of the look being edited. */
-  #savePet(change) {
+  /** The pet is the user's own flag, saved at once; it is not part of the look being edited. True when saved. */
+  async #savePet(change) {
     const user = me();
-    if (!user?.setFlag) return;
-    return Promise.resolve(user.setFlag(MODULE, 'pet', { ...readPet(user), ...change })).catch(() => notify('warn', loc('DICER.Appearance.StoredUnusable')));
+    try {
+      await user.setFlag(MODULE, 'pet', { ...readPet(user), ...change });
+      return true;
+    } catch {
+      notify('warn', loc('DICER.Appearance.Pet.SaveFailed'));
+      return false;
+    }
   }
 
-  #onPetColor(el) {
+  /** Typing / dragging only mirrors the value between the picker and the hex box; the save is on `change`. */
+  async #onPetColor(el, committed) {
     const v = String(el.value).trim().toLowerCase();
     if (!HEX6.test(v)) return; // half typed: wait
     for (const input of el.closest('.dicer-ae-color')?.querySelectorAll('input') ?? []) input.value = v;
-    this.#savePet({ color: v });
+    if (!committed) return;
+    if (!(await this.#savePet({ color: v }))) await this.render(); // show the stored colour again
   }
 
   static async #onSetPet(event, target) {
     const kind = target.dataset.value;
-    if (!PET_KINDS.includes(kind)) return;
-    await this.#savePet({ kind });
-    await this.render();
+    if (!PET_KINDS.includes(kind) || kind === readPet(me()).kind) return;
+    if (await this.#savePet({ kind })) await this.render();
   }
 
   static async #onSetField(event, target) {

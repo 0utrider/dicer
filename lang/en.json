@@ -490,7 +490,8 @@
         "Slime": "Slime",
         "Dragonling": "Dragonling",
         "Color": "Colour",
-        "Hidden": "You have dice pets hidden (Dicer settings)."
+        "Hidden": "You have dice pets hidden (Dicer settings).",
+        "SaveFailed": "Could not save your pet."
       },
       "Body": {
         "Type": "Material",

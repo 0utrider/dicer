@@ -1000,6 +1000,9 @@ describe('the appearance editor', () => {
     it('a colour change saves', async () => {
       flags.pet = { kind: 'slime', color: '#445566' };
       const app = await open({ themeId: 'user.u1.mine' });
+      type(app, 'pet.color', '#abcdef', 'input'); // not committed: mirrored, not saved
+      expect(user.setFlag).not.toHaveBeenCalled();
+      expect(q(app, 'input[type="color"][data-color-for="pet.color"]').value).toBe('#abcdef');
       type(app, 'pet.color', '#abcdef', 'change');
       expect(user.setFlag).toHaveBeenCalledWith('dicer', 'pet', { kind: 'slime', color: '#abcdef' });
       const picker = q(app, 'input[type="color"][data-color-for="pet.color"]');
@@ -1008,6 +1011,25 @@ describe('the appearance editor', () => {
       expect(user.setFlag).toHaveBeenLastCalledWith('dicer', 'pet', { kind: 'slime', color: '#fedcba' });
       type(app, 'pet.color', '#12', 'input'); // half typed: nothing saved
       expect(user.setFlag).toHaveBeenCalledTimes(2);
+      await app.close();
+    });
+    it('a failed save warns, and the inputs show the stored colour again', async () => {
+      flags.pet = { kind: 'slime', color: '#445566' };
+      const app = await open({ themeId: 'user.u1.mine' });
+      user.setFlag.mockImplementation(() => {
+        throw new Error('nope'); // a synchronous throw too
+      });
+      type(app, 'pet.color', '#abcdef', 'change');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(ui.notifications.warn).toHaveBeenCalledWith(localize('DICER.Appearance.Pet.SaveFailed'));
+      expect(q(app, 'input[name="pet.color"]').value).toBe('#445566');
+      await app.close();
+    });
+    it('choosing the stored kind again does not save', async () => {
+      flags.pet = { kind: 'slime', color: '#445566' };
+      const app = await open({ themeId: 'user.u1.mine' });
+      await click(app, '[data-action="setPet"][data-value="slime"]');
+      expect(user.setFlag).not.toHaveBeenCalled();
       await app.close();
     });
     it('is absent when petsAllowed is off', async () => {
@@ -1072,7 +1094,7 @@ describe('lang/en.json', () => {
       Finish: FINISHES,
       Preset: Object.values(BODY_PRESETS).flat(),
       Section: ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras'],
-      Pet: ['Title', 'Hint', 'None', 'Mimic', 'Slime', 'Dragonling', 'Color', 'Hidden'],
+      Pet: ['Title', 'Hint', 'None', 'Mimic', 'Slime', 'Dragonling', 'Color', 'Hidden', 'SaveFailed'],
     }))
       for (const id of ids) expect(typeof lang[group][id], `${group}.${id}`).toBe('string');
   });
