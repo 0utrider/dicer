@@ -21,6 +21,22 @@ import { modelRotationFor } from '../../compat/dsn-orientation.js';
 
 /** id (roll.options.dicerHand.id) -> {recording, handle, specs} of the thrower's hand throw (Task 8). */
 export const handThrows = new Map();
+/** A stored throw no chat message took (a roll only evaluated, or discarded) goes after this long… */
+export const THROW_TTL_MS = 120000;
+/** …and at most this many are kept (the oldest goes first). */
+export const THROW_LIMIT = 16;
+
+/**
+ * Stores a thrower's hand throw under `id` for sendHand (M3): expired entries are dropped, and the
+ * oldest past THROW_LIMIT. Dropping one only lets go of its recording and its DiceBox roll handle
+ * (DiceBox removes the dice itself when they fade).
+ */
+export function storeThrow(id, entry) {
+  const now = Date.now();
+  for (const [k, e] of handThrows) if (now - e.at > THROW_TTL_MS) handThrows.delete(k);
+  handThrows.set(id, Object.defineProperty(entry, 'at', { value: now })); // not part of the entry
+  while (handThrows.size > THROW_LIMIT) handThrows.delete(handThrows.keys().next().value);
+}
 
 /**
  * H-19: modes in which the roller may not see the result (Foundry v14 messageMode, legacy rollMode).
@@ -40,18 +56,32 @@ const methodOf = (resolver, term) => {
 };
 const stateOf = (resolver) => (resolver._hand ??= { partial: 0, fallback: null });
 
+/** Text for HTML: markup a flavor may carry dropped, the rest escaped. */
+const asText = (s) =>
+  String(s)
+    .replace(/<[^>]*>/g, '')
+    .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? '&#39;');
+
 /**
- * The default "Throw by hand / Roll automatically" prompt (Foundry's DialogV2); true: by hand. It
- * closes itself after `ms` (then null: automatic).
+ * The default "Throw by hand / Roll automatically" prompt (Foundry's DialogV2), naming the roll
+ * (its flavor and formula, M6); 'yes': by hand, 'no' or null: automatic. In a `burst` (rolls
+ * queued, or right after another) it also offers 'rest': this roll and the rest of the burst roll
+ * automatically. It closes itself after `ms` (then null: automatic).
  */
-const askHand = (roll, ms) => {
+const askHand = (roll, ms, burst) => {
   let dialog;
   const timer = setTimeout(() => dialog?.close(), ms);
-  return foundry.applications.api.DialogV2.confirm({
+  const flavor = roll.options?.flavor;
+  const name = asText(flavor ? `${flavor}: ${roll.formula}` : roll.formula);
+  const buttons = [
+    { action: 'yes', label: loc('DICER.Hand.ThrowByHand'), icon: 'fa-solid fa-hand', default: true },
+    { action: 'no', label: loc('DICER.Hand.RollAuto'), icon: 'fa-solid fa-dice' },
+  ];
+  if (burst) buttons.push({ action: 'rest', label: loc('DICER.Hand.ThrowRestAuto'), icon: 'fa-solid fa-forward' });
+  return foundry.applications.api.DialogV2.wait({
     window: { title: loc('DICER.Hand.AskTitle') },
-    content: `<p>${loc('DICER.Hand.AskText')}</p>`,
-    yes: { label: loc('DICER.Hand.ThrowByHand'), icon: 'fa-solid fa-hand', default: true },
-    no: { label: loc('DICER.Hand.RollAuto'), icon: 'fa-solid fa-dice', default: false },
+    content: `<p><strong>${name}</strong></p><p>${loc('DICER.Hand.AskText')}</p>`,
+    buttons,
     rejectClose: false,
     render: (_, d) => (dialog = d),
   }).finally(() => clearTimeout(timer));
@@ -67,12 +97,36 @@ export const within = (p, ms) => {
 
 /** One interactive throw (ask prompt and overlay) at a time: each waits for the one before. */
 let queue = Promise.resolve();
+let waiting = 0; // queued() calls not finished (the one running included)
+let lastEnd = -Infinity; // when the last one finished (Date.now)
+/** A roll queued, or starting within this long of the last one's end, is part of a burst (M6). */
+export const BURST_MS = 3000;
+let resting = false; // "Throw the rest automatically" chosen in this burst
 /**
- * A hand throw (overlay open, then the dice in flight) is given handRollTimeout plus this long at
- * most; past it the roll falls back and the queue moves on. Above a free throw's 13 s
- * (MAX_FREE_STEPS) and DiceBox's landing grace, so a throw that lands is never cut.
+ * A hand throw's dice are given this long in flight, from the release (M4: a release just before
+ * handRollTimeout is never cut); past it the roll falls back and the queue moves on. Above a free
+ * throw's 13 s (MAX_FREE_STEPS) plus DiceBox's 3 s landing grace, so a throw that lands is never cut.
  */
-export const HAND_GRACE_MS = 15000;
+export const HAND_GRACE_MS = 20000;
+
+/**
+ * `overlay(o)` (openThrowOverlay) with its throw bounded: null once the dice have flown
+ * HAND_GRACE_MS from the release (its onRelease), or handRollTimeout `ms` + HAND_GRACE_MS from the
+ * opening when it never releases (the overlay times out itself at `ms`).
+ */
+export function throwWithin(overlay, o, ms) {
+  let timer;
+  let end;
+  const arm = (t) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => end(null), t);
+  };
+  const bound = new Promise((r) => (end = r));
+  arm(ms + HAND_GRACE_MS);
+  return Promise.race([overlay({ ...o, onRelease: () => arm(HAND_GRACE_MS) }), bound]).finally(() =>
+    clearTimeout(timer),
+  );
+}
 
 /**
  * Runs `fn` (an ask prompt and overlay, a tray throw) once the interactive throw before it ends,
@@ -83,13 +137,19 @@ export async function queued(ms, fn) {
   const prev = queue;
   let next;
   queue = new Promise((r) => (next = r));
+  waiting++;
   try {
     await within(prev, 2 * ms + HAND_GRACE_MS);
     return await fn();
   } finally {
+    waiting--;
+    lastEnd = Date.now();
     next();
   }
 }
+
+/** Inside queued(): whether this roll is part of a burst (others queued, or one just ended). */
+const inBurst = () => waiting > 1 || Date.now() - lastEnd < BURST_MS;
 
 let warned = false;
 /**
@@ -338,13 +398,17 @@ async function throwByHand(resolver, terms) {
   return queued(ms, async () => {
     if (resolver._closed) return fallback('cancel');
     if (d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
-      let yes = false;
+      const burst = inBurst();
+      if (!burst) resting = false; // a new burst asks again
+      if (resting) return fallback('auto');
+      let a = null;
       try {
-        yes = (await within((d.ask ?? askHand)(roll, ms), ms)) === true;
+        a = await within((d.ask ?? askHand)(roll, ms, burst), ms);
       } catch {
         /* no prompt: automatic */
       }
-      if (!yes) return fallback('auto');
+      if (a === 'rest') resting = true;
+      if (a !== true && a !== 'yes') return fallback('auto');
       if (resolver._closed) return fallback('cancel');
     }
     const rect = () => d.areas.rectFor({ rollerId: me.id });
@@ -356,8 +420,9 @@ async function throwByHand(resolver, terms) {
     let out;
     try {
       // A throw whose dice never settle (DiceBox's values pending) must not hold the queue: null.
-      out = await within(
-        openThrowOverlay({
+      out = await throwWithin(
+        openThrowOverlay,
+        {
           specs,
           rect: rect(),
           getRect: rect,
@@ -365,8 +430,8 @@ async function throwByHand(resolver, terms) {
           timeoutMs: ms,
           ghostOnRelease: ghostFor(roll, me),
           label: roll.formula,
-        }),
-        ms + HAND_GRACE_MS,
+        },
+        ms,
       );
     } catch (err) {
       console.warn('dicer: the throw overlay failed', err);
@@ -380,7 +445,7 @@ async function throwByHand(resolver, terms) {
     }
     const n = push(specs, owners, out.values);
     // Stored once pushed: a failure before this marks the roll's dicerHand a fallback (failed()).
-    handThrows.set(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });
+    storeThrow(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });
     notePartial(resolver, dropped + owners.filter(Boolean).length - n);
   });
 }

@@ -13,7 +13,7 @@
  */
 import { openThrowOverlay } from './overlay.js';
 import { handFor } from './box.js';
-import { planFor, push, handThrows, queued, within, HAND_GRACE_MS } from './resolve.js';
+import { planFor, push, handThrows, queued, storeThrow, throwWithin } from './resolve.js';
 import { handAllowed, handDeps } from '../shell.js';
 
 /** The tray's dice, in its order (Foundry denominations: d2 is a two-sided Die, dF Fate). */
@@ -81,8 +81,9 @@ export async function throwTray(
       out = await queued(ms, () => {
         handFor(deps.diceBox);
         const rect = () => deps.areas.rectFor({ rollerId: me.id });
-        return within(
-          overlay({
+        return throwWithin(
+          overlay,
+          {
             specs,
             rect: rect(),
             getRect: rect,
@@ -90,8 +91,8 @@ export async function throwTray(
             timeoutMs: ms,
             ghostOnRelease: mode === 'blind' && !me.isGM,
             label: roll.formula,
-          }),
-          ms + HAND_GRACE_MS,
+          },
+          ms,
         );
       });
     } catch (err) {
@@ -103,7 +104,7 @@ export async function throwTray(
     for (const t of owners) if (t) t.method = 'dicer';
     const partial = dropped + owners.filter(Boolean).length - n;
     if (partial) hand.partial = partial;
-    handThrows.set(id, { recording: out.recording, handle: out.handle, specs, extras: [] });
+    storeThrow(id, { recording: out.recording, handle: out.handle, specs, extras: [] });
   } else hand.fallback = 'auto';
   roll.options.dicerHand = hand;
   try {

@@ -675,7 +675,7 @@ describe('fix round 1', () => {
     const d6 = new Die({ faces: 6 });
     const r = new Resolver(rollOf(d6), deps);
     await fulfill(r);
-    expect(deps.ask).toHaveBeenCalledWith(r.roll, 20);
+    expect(deps.ask).toHaveBeenCalledWith(r.roll, 20, expect.any(Boolean)); // M6: and whether in a burst
     expect(overlay.open).not.toHaveBeenCalled();
     expect(r.roll.options.dicerHand.fallback).toBe('auto');
     // only unfair dice: nothing to throw, so nothing to ask
@@ -717,7 +717,7 @@ describe('fix round 2', () => {
     vi.useFakeTimers();
     settings.handRollTimeout = 0.01; // 10 ms: the bound is 10 ms + HAND_GRACE_MS
     const { HAND_GRACE_MS } = await import('../../src/hand/chunk/resolve.js');
-    expect(HAND_GRACE_MS).toBe(15000);
+    expect(HAND_GRACE_MS).toBe(20000); // M4: a 13 s free throw plus DiceBox's 3 s landing grace, with room
     overlay.open = vi
       .fn()
       .mockImplementationOnce(() => new Promise(() => {})) // released, then the dice never land
@@ -748,5 +748,112 @@ describe('fix round 2', () => {
     await expect(fulfill(new Resolver(roll, deps))).resolves.toBeUndefined();
     expect(roll.options.dicerHand.fallback).toBe('cancel');
     expect(handThrows.size).toBe(0);
+  });
+});
+
+describe('final review fixes', () => {
+  afterEach(() => vi.useRealTimers());
+
+  test('M4: the throw is bounded from its release, so a release near the time limit is never cut', async () => {
+    vi.useFakeTimers();
+    const { HAND_GRACE_MS } = await import('../../src/hand/chunk/resolve.js');
+    settings.handRollTimeout = 10; // 10 s
+    // released 5 ms before the limit; the dice land 18 s later (a long free throw + landing grace)
+    overlay.open = vi.fn(
+      ({ specs, onRelease }) =>
+        new Promise((res) =>
+          setTimeout(() => {
+            onRelease();
+            setTimeout(() => res({ values: specs.map(() => 4), handle: {}, recording: {} }), 18000);
+          }, 9995),
+        ),
+    );
+    const d6 = new Die({ faces: 6 });
+    const r = new Resolver(rollOf(d6), deps);
+    const p = fulfill(r);
+    await vi.advanceTimersByTimeAsync(9995 + 18000);
+    await p;
+    expect(d6.results).toEqual([{ result: 4, active: true }]);
+    expect(r.roll.options.dicerHand.fallback).toBeUndefined();
+    // released early, the dice never land: the roll falls back HAND_GRACE_MS after the release
+    overlay.open = vi.fn(({ onRelease }) => new Promise(() => setTimeout(onRelease, 1000)));
+    const r2 = new Resolver(rollOf(new Die({ faces: 6 })), deps);
+    let done = false;
+    const p2 = fulfill(r2).then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(1000 + HAND_GRACE_MS - 10);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(20);
+    await p2;
+    expect(r2.roll.options.dicerHand.fallback).toBe('timeout');
+  });
+
+  test('M3: stored throws expire after THROW_TTL_MS and at most THROW_LIMIT are kept (oldest first)', async () => {
+    vi.useFakeTimers();
+    const { THROW_TTL_MS, THROW_LIMIT } = await import('../../src/hand/chunk/resolve.js');
+    expect([THROW_TTL_MS, THROW_LIMIT]).toEqual([120000, 16]);
+    const throwOne = async () => {
+      const roll = rollOf(new Die({ faces: 6 }));
+      overlay.values = [2];
+      await fulfill(new Resolver(roll, deps));
+      return roll.options.dicerHand.id;
+    };
+    const ids = [];
+    for (let i = 0; i < THROW_LIMIT + 2; i++) ids.push(await throwOne());
+    expect(handThrows.size).toBe(THROW_LIMIT);
+    expect(handThrows.has(ids[0])).toBe(false);
+    expect(handThrows.has(ids[1])).toBe(false);
+    expect(handThrows.has(ids[2])).toBe(true);
+    // a roll that never became a chat message: swept once it is older than the TTL
+    await vi.advanceTimersByTimeAsync(THROW_TTL_MS + 1);
+    const fresh = await throwOne();
+    expect([...handThrows.keys()]).toEqual([fresh]);
+  });
+
+  test('M6: the ask prompt names the roll, and "Throw the rest automatically" covers the rest of the burst', async () => {
+    vi.useFakeTimers({ now: Date.now() + 3600e3 }); // after every earlier test's rolls
+    settings.handRolls = 'ask';
+    const answers = ['rest'];
+    deps.ask = vi.fn(async () => answers.shift() ?? true);
+    const roll = rollOf(new Die({ faces: 6 }));
+    await fulfill(new Resolver(roll, deps));
+    expect(roll.options.dicerHand.fallback).toBe('auto');
+    // the next rolls of the same burst are not asked: automatic
+    for (let i = 0; i < 3; i++) {
+      const next = rollOf(new Die({ faces: 6 }));
+      await fulfill(new Resolver(next, deps));
+      expect(next.options.dicerHand.fallback).toBe('auto');
+    }
+    expect(deps.ask).toHaveBeenCalledTimes(1);
+    expect(overlay.open).not.toHaveBeenCalled();
+    // once the burst is over (no roll for a while), the prompt is back
+    await vi.advanceTimersByTimeAsync(5000);
+    overlay.values = [3];
+    const later = rollOf(new Die({ faces: 6 }));
+    await fulfill(new Resolver(later, deps));
+    expect(deps.ask).toHaveBeenCalledTimes(2);
+    expect(later.options.dicerHand.fallback).toBeUndefined();
+  });
+
+  test("M6: the default prompt shows the roll's flavor and formula as text, with the burst choice when it applies", async () => {
+    settings.handRolls = 'ask';
+    delete deps.ask;
+    const waits = [];
+    globalThis.foundry.applications = {
+      api: { DialogV2: { wait: vi.fn(async (cfg) => (waits.push(cfg), 'no')) } },
+    };
+    const roll = rollOf(new Die({ faces: 20 }));
+    roll.formula = '1d20 + 7';
+    roll.options.flavor = '<b>Longsword</b> & <i>Strike</i>';
+    vi.useFakeTimers({ now: Date.now() + 7200e3 }); // no burst before it
+    await fulfill(new Resolver(roll, deps));
+    const [first] = waits;
+    expect(first.content).toContain('Longsword &amp; Strike: 1d20 + 7');
+    expect(first.content).not.toContain('<b>');
+    expect(first.buttons.map((b) => b.action)).toEqual(['yes', 'no']);
+    expect(roll.options.dicerHand.fallback).toBe('auto');
+    // right after another roll: part of a burst, so the third choice is offered
+    await fulfill(new Resolver(rollOf(new Die({ faces: 6 })), deps));
+    expect(waits[1].buttons.map((b) => b.action)).toEqual(['yes', 'no', 'rest']);
+    expect(waits[1].buttons[2].label).toBe('DICER.Hand.ThrowRestAuto');
   });
 });

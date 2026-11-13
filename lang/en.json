@@ -752,6 +752,7 @@
       "AskText": "Throw these dice yourself, or let them roll automatically.",
       "ThrowByHand": "Throw by hand",
       "RollAuto": "Roll automatically",
+      "ThrowRestAuto": "Throw the rest automatically",
       "Mark": "Rolled by hand",
       "MarkPartial": "Rolled by hand ({n} dice rolled automatically)",
       "MarkAuto": "Rolled automatically (no throw)"

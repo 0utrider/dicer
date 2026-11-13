@@ -142,7 +142,7 @@ A small pet can throw your dice. It hops in beside the roll, and when the dice l
 Instead of letting the computer roll, you can grab your dice, shake them and throw them yourself. The physics decides the result: the face that lands up is the number on your card. Nothing is rotated to a value.
 
 - **Turn it on**:
-  - **Roll by hand** (per player, in Dicer's settings): **Off** (the default), **Ask each time** (a small dialog on each roll: throw by hand, or roll automatically) or **Always**.
+  - **Roll by hand** (per player, in Dicer's settings): **Off** (the default), **Ask each time** or **Always**. **Ask each time** shows a small dialog on each roll, naming the roll (its flavor and formula): throw by hand, or roll automatically. When several rolls come at once (a GM rolling initiative for a group, say), it also offers **Throw the rest automatically**, which rolls this one and the rest of that group automatically.
   - **Who may roll by hand** (world, GM): **Everyone** (the default), **Trusted players and GMs**, **GMs only** or **Nobody**. **Require rolling by hand** makes everyone allowed throw, whatever their own setting says. **Hand roll time limit** (10 to 300 seconds, 60 by default) is how long a player has to throw.
   - **Dice types**: you pick them in Foundry's own **Dice Configuration** window (Configure Settings, Core, **Dice**). A die whose method is "Dicer: roll by hand" is thrown by hand.
     - With **Ask each time** or **Always**, if no die is set to Dicer yet, Dicer sets every die for you: d4, d6, d8, d10, d12, d20, d100, the coin, Fate dice and the default method. After that the window decides. Set a die back to another method and Dicer leaves it alone. If you set only some dice to Dicer yourself, only those are thrown.
