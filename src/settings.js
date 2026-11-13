@@ -597,7 +597,7 @@ export function registerSettings({
     ['handRollsRequired', 'world', Boolean, false],
     ['handRollTimeout', 'world', Number, 60, { range: { min: 10, max: 300, step: 5 } }],
     ['handReplay', 'client', Boolean, true],
-    ['diceTray', 'client', Boolean, true],
+    ['diceTray', 'client', Boolean, true, { onChange: () => ui.controls.render({ reset: true }) }], // its tool
   ];
   hand.forEach(([key, scope, type, def, more], i) =>
     register(key, {

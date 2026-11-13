@@ -751,7 +751,20 @@
       "AskTitle": "Roll by hand?",
       "AskText": "Throw these dice yourself, or let them roll automatically.",
       "ThrowByHand": "Throw by hand",
-      "RollAuto": "Roll automatically"
+      "RollAuto": "Roll automatically",
+      "Mark": "Rolled by hand",
+      "MarkPartial": "Rolled by hand ({n} dice rolled automatically)",
+      "MarkAuto": "Rolled automatically (no throw)"
+    },
+    "Tray": {
+      "Title": "Dice tray",
+      "Hint": "Pick your dice, then throw them by hand.",
+      "Modifier": "Modifier",
+      "Mode": "Roll mode",
+      "Clear": "Clear",
+      "Throw": "Throw",
+      "NoDice": "Pick at least one die to throw.",
+      "Failed": "The dice tray could not post the roll."
     }
   }
 }

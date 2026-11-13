@@ -55,7 +55,7 @@ const askHand = (roll, ms) => {
 };
 
 /** `p`, or null once `ms` have passed. */
-const within = (p, ms) => {
+export const within = (p, ms) => {
   let timer;
   return Promise.race([p, new Promise((r) => (timer = setTimeout(r, ms, null)))]).finally(() =>
     clearTimeout(timer),
@@ -70,6 +70,23 @@ let queue = Promise.resolve();
  * (MAX_FREE_STEPS) and DiceBox's landing grace, so a throw that lands is never cut.
  */
 export const HAND_GRACE_MS = 15000;
+
+/**
+ * Runs `fn` (an ask prompt and overlay, a tray throw) once the interactive throw before it ends,
+ * or after 2 × `ms` + HAND_GRACE_MS (the one before may spend its own ask and throw): nothing
+ * waits forever. Resolves with fn's value.
+ */
+export async function queued(ms, fn) {
+  const prev = queue;
+  let next;
+  queue = new Promise((r) => (next = r));
+  try {
+    await within(prev, 2 * ms + HAND_GRACE_MS);
+    return await fn();
+  } finally {
+    next();
+  }
+}
 
 let warned = false;
 /**
@@ -116,7 +133,7 @@ const readable = (s, term, part) =>
  * ('roll.dice index:result index:part') and marked free. `owners[i]` is the term spec i's value
  * goes to (a d100's ones die; null for its tens die). `dropped` counts results not thrown.
  */
-function planFor(resolver, terms, count) {
+export function planFor(resolver, terms, count) {
   const { roll, dicer: d } = resolver;
   const me = d.user();
   const all = roll.dice ?? [];
@@ -199,7 +216,7 @@ function asResult(term, v) {
  * a face of its term (defensive) takes term.randomFace() in its slot, so later results stay on
  * the keys the recording carries.
  */
-function push(specs, owners, values) {
+export function push(specs, owners, values) {
   let n = 0;
   specs.forEach((_, i) => {
     const t = owners[i];
@@ -313,13 +330,9 @@ async function throwByHand(resolver, terms) {
   const fallback = (why) => void (st.fallback = hand.fallback = why);
   if (!handAllowed(me, d.getSetting)) return fallback('auto');
   if (!specs.length) return notePartial(resolver, dropped);
-  // Queued behind any throw in progress (another roll's prompt or overlay); its timeout starts when shown.
-  const prev = queue;
-  let next;
-  queue = new Promise((r) => (next = r));
-  try {
-    // Bounded too (the one before may spend its own ask and throw): nothing waits forever.
-    await within(prev, 2 * ms + HAND_GRACE_MS);
+  // Queued behind any throw in progress (another roll's prompt or overlay, a tray throw); its
+  // timeout starts when shown.
+  return queued(ms, async () => {
     if (resolver._closed) return fallback('cancel');
     if (d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
       let yes = false;
@@ -366,9 +379,7 @@ async function throwByHand(resolver, terms) {
     // Stored once pushed: a failure before this marks the roll's dicerHand a fallback (failed()).
     handThrows.set(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });
     notePartial(resolver, dropped + owners.filter(Boolean).length - n);
-  } finally {
-    next();
-  }
+  });
 }
 
 /**

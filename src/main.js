@@ -6,8 +6,8 @@ import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
 import { loadHand, prefetchHand, handNow } from './hand/hand-loader.js';
-import { createHandGate } from './hand/gate-hand.js';
-import { registerHandMethod, setHandDeps, syncDiceConfiguration } from './hand/shell.js';
+import { createHandGate, markCard } from './hand/gate-hand.js';
+import { registerHandMethod, setHandDeps, syncDiceConfiguration, handAllowed } from './hand/shell.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
@@ -447,6 +447,27 @@ export const addDiceLookButton = guarded((app, buttons) => {
 Hooks.on('getHeaderControlsApplicationV2', addDiceLookControl);
 Hooks.on('getActorSheetHeaderButtons', addDiceLookButton);
 
+// Rolling by hand (module load, like the header controls): the card mark (H-15, every viewer) and
+// the "Dice tray" tool under the token controls (diceTray on, hand rolls allowed). The tray
+// itself is the lazy hand chunk's.
+Hooks.on('renderChatMessageHTML', markCard);
+Hooks.on('getSceneControlButtons', (c) => {
+  try {
+    const get = (k) => game.settings.get('dicer', k);
+    if (dormant || !c.tokens || !get('diceTray') || !handAllowed(game.user, get)) return;
+    c.tokens.tools.dicerTray = {
+      name: 'dicerTray',
+      order: 99,
+      title: 'DICER.Tray.Title',
+      icon: 'fa-solid fa-dice',
+      button: true,
+      onChange: () => loadHand(diceBox).then((m) => m?.openTray()),
+    };
+  } catch {
+    /* settings not registered (Dice So Nice active) */
+  }
+});
+
 Hooks.once('init', () => {
   if (dsnIsActive(game)) {
     dormant = true;
@@ -461,7 +482,7 @@ Hooks.once('init', () => {
     onLookChange,
     onQualityChange,
     onSoundChange,
-    onHandChange: syncHand,
+    onHandChange: () => (syncHand(), ui.controls.render({ reset: true })), // and the tray tool
   });
   try {
     registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver

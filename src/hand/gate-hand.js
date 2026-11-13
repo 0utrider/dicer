@@ -22,6 +22,44 @@ export const isHandRoll = (roll) => {
 };
 
 /**
+ * H-15: the chat card's note for a roll with a dicerHand flag, or null. A fallback, or a throw
+ * that held no dice, says the dice rolled automatically (its terms still carry the dicer method,
+ * so Foundry's tooltip shows the hand); `partial` counts the dice Foundry rolled.
+ */
+export const markFor = (roll) => {
+  const h = roll?.options.dicerHand; // a Foundry Roll always has options
+  const i = game.i18n;
+  return h
+    ? {
+        icon: 'fa-hand',
+        tip:
+          h.fallback || !h.n
+            ? i.localize('DICER.Hand.MarkAuto')
+            : h.partial
+              ? i.format('DICER.Hand.MarkPartial', { n: h.partial })
+              : i.localize('DICER.Hand.Mark'),
+      }
+    : null;
+};
+
+/** renderChatMessageHTML: one hand mark in the card's header, its notes joined (every viewer). */
+export function markCard(message, html) {
+  try {
+    const at = html.querySelector('.message-metadata');
+    const tips = message.rolls.map(markFor).filter(Boolean);
+    const tip = [...new Set(tips.map((m) => m.tip))].join('; ');
+    if (!tip || at.querySelector('.dicer-card-mark')) return;
+    const m = document.createElement('i');
+    m.className = 'dicer-card-mark fa-solid fa-hand';
+    m.dataset.tooltip = tip;
+    m.setAttribute('aria-label', tip);
+    at.prepend(m);
+  } catch {
+    /* no header or rolls: no mark */
+  }
+}
+
+/**
  * `importChunk()` resolves the hand chunk (null: unavailable); `chunkNow()` is the chunk when
  * already loaded (the thrower's own stored throw is read synchronously). `now` and
  * `setTimeoutFn` go to the chunk's buffer.

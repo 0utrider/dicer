@@ -16,6 +16,12 @@
   visibility: hidden;
 }
 
+/* Rolling by hand: the chat card's hand mark (its note is the tooltip). */
+.dicer-card-mark {
+  margin-inline-end: 0.35em;
+  opacity: 0.75;
+}
+
 /* Roll-area editor: a full-screen overlay above the dice canvas (z 60), below Foundry's windows. */
 .dicer-area-editor {
   position: fixed;

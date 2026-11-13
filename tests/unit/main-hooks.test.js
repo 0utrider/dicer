@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /** Module-load hook wiring of src/main.js (the parts that need no engine). */
 let hooks;
 
@@ -225,6 +226,139 @@ describe('engine start failure: the appearance re-warm', () => {
     const failed = src.slice(src.indexOf('if (!started) {'), src.indexOf('announceReady({'));
     expect(failed).toContain('appearanceRewarm.dispose()');
     expect(failed).toMatch(/Hooks\.off\('updateUser'/);
+  });
+});
+
+describe('rolling by hand: the chat card mark', () => {
+  const listener = () => hooks.on.find(([n]) => n === 'renderChatMessageHTML')?.[1];
+  const card = () => {
+    const li = document.createElement('li');
+    li.innerHTML =
+      '<header class="message-header"><h4 class="message-sender">A</h4><span class="message-metadata"><time class="message-timestamp">now</time></span></header><div class="message-content"></div>';
+    return li;
+  };
+  const roll = (dicerHand) => ({ options: dicerHand ? { dicerHand } : {} });
+  const marks = (html) => [...html.querySelectorAll('.dicer-card-mark')];
+
+  beforeEach(() => {
+    globalThis.game = {
+      modules: new Map(),
+      i18n: {
+        localize: (k) => k,
+        format: (k, d) => `${k}|${JSON.stringify(d)}`,
+      },
+    };
+  });
+
+  test('markFor: hand, partial, fallback, no throw and normal rolls', async () => {
+    const { markFor } = await import('../../src/hand/gate-hand.js');
+    expect(markFor(roll({ id: 'a', by: 'u', n: 2 }))).toEqual({ icon: 'fa-hand', tip: 'DICER.Hand.Mark' });
+    expect(markFor(roll({ id: 'a', by: 'u', n: 2, partial: 3 }))).toEqual({
+      icon: 'fa-hand',
+      tip: 'DICER.Hand.MarkPartial|{"n":3}',
+    });
+    for (const fallback of ['timeout', 'cancel', 'auto']) {
+      expect(markFor(roll({ id: 'a', by: 'u', n: 2, fallback }))).toEqual({ icon: 'fa-hand', tip: 'DICER.Hand.MarkAuto' });
+    }
+    // nothing thrown (every die dropped): automatic, even with a partial count
+    expect(markFor(roll({ id: 'a', by: 'u', n: 0, partial: 2 })).tip).toBe('DICER.Hand.MarkAuto');
+    expect(markFor(roll())).toBeNull();
+    expect(markFor(null)).toBeNull();
+    expect(markFor({ options: {} })).toBeNull();
+    const en = JSON.parse((await import('node:fs')).readFileSync('lang/en.json', 'utf8')).DICER.Hand;
+    expect([en.Mark, en.MarkPartial, en.MarkAuto]).toEqual([
+      'Rolled by hand',
+      'Rolled by hand ({n} dice rolled automatically)',
+      'Rolled automatically (no throw)',
+    ]);
+  });
+
+  test('the card mark for hand / partial / fallback / normal rolls, once per render', () => {
+    expect(listener()).toBeTypeOf('function');
+    const cases = [
+      [[roll({ id: 'a', by: 'u', n: 1 })], 'DICER.Hand.Mark'],
+      [[roll({ id: 'a', by: 'u', n: 3, partial: 1 })], 'DICER.Hand.MarkPartial|{"n":1}'],
+      [[roll({ id: 'a', by: 'u', n: 1, fallback: 'timeout' })], 'DICER.Hand.MarkAuto'],
+      // several hand rolls on one card: one mark, each different note once
+      [
+        [roll({ id: 'a', by: 'u', n: 1 }), roll(), roll({ id: 'b', by: 'u', n: 1, fallback: 'cancel' }), roll({ id: 'c', by: 'u', n: 2 })],
+        'DICER.Hand.Mark; DICER.Hand.MarkAuto',
+      ],
+    ];
+    for (const [rolls, tip] of cases) {
+      const html = card();
+      listener()({ rolls }, html);
+      listener()({ rolls }, html); // a second call on the same element adds nothing
+      expect(marks(html)).toHaveLength(1);
+      const [mark] = marks(html);
+      expect(mark.dataset.tooltip).toBe(tip);
+      expect(mark.getAttribute('aria-label')).toBe(tip);
+      expect(mark.className).toContain('fa-hand');
+      expect(mark.parentElement.className).toBe('message-metadata');
+    }
+    // a normal roll card, a card without rolls or header: nothing, never a throw
+    for (const m of [{ rolls: [roll()] }, {}, { rolls: [null] }]) {
+      const html = card();
+      listener()(m, html);
+      expect(marks(html)).toEqual([]);
+    }
+    expect(() => listener()({ rolls: [roll({ id: 'a', by: 'u', n: 1 })] }, null)).not.toThrow();
+    expect(() => listener()({ rolls: [roll({ id: 'a', by: 'u', n: 1 })] }, document.createElement('li'))).not.toThrow();
+  });
+});
+
+describe('rolling by hand: the Dice tray scene control', () => {
+  const listener = () => hooks.on.find(([n]) => n === 'getSceneControlButtons')?.[1];
+  const withSettings = (s, user = { id: 'u1', role: 1, isGM: false }) => {
+    globalThis.game = {
+      modules: new Map(),
+      i18n: { localize: (k) => k },
+      user,
+      settings: { get: (ns, k) => s[k] },
+    };
+  };
+  const controls = () => ({ tokens: { name: 'tokens', tools: { select: { name: 'select' } } } });
+
+  test('the tray tool appears only when diceTray and allowed', () => {
+    expect(listener()).toBeTypeOf('function');
+    withSettings({ diceTray: true, handRollsAllowed: 'all' });
+    const on = controls();
+    listener()(on);
+    expect(on.tokens.tools.dicerTray).toMatchObject({
+      name: 'dicerTray',
+      title: 'DICER.Tray.Title',
+      icon: 'fa-solid fa-dice',
+      button: true,
+    });
+    expect(on.tokens.tools.dicerTray.onChange).toBeTypeOf('function');
+    expect(Object.keys(on.tokens.tools)).toEqual(['select', 'dicerTray']);
+    // the client switch off
+    withSettings({ diceTray: false, handRollsAllowed: 'all' });
+    const off = controls();
+    listener()(off);
+    expect(off.tokens.tools.dicerTray).toBeUndefined();
+    // not allowed: a player under 'trusted' / 'gm' / 'none'; a GM under 'gm'
+    for (const allowed of ['trusted', 'gm', 'none']) {
+      withSettings({ diceTray: true, handRollsAllowed: allowed });
+      const c = controls();
+      listener()(c);
+      expect(c.tokens.tools.dicerTray).toBeUndefined();
+    }
+    withSettings({ diceTray: true, handRollsAllowed: 'gm' }, { id: 'g', role: 4, isGM: true });
+    const gm = controls();
+    listener()(gm);
+    expect(gm.tokens.tools.dicerTray).toBeDefined();
+  });
+
+  test('no token controls, or unregistered settings (Dice So Nice active): nothing, never a throw', () => {
+    withSettings({ diceTray: true, handRollsAllowed: 'all' });
+    expect(() => listener()({})).not.toThrow();
+    globalThis.game.settings.get = () => {
+      throw new Error('not registered');
+    };
+    const c = controls();
+    expect(() => listener()(c)).not.toThrow();
+    expect(c.tokens.tools.dicerTray).toBeUndefined();
   });
 });
 

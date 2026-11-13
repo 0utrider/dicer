@@ -5,7 +5,8 @@
 // appearance-editor.png (clear resin with a nebula inside, gold numbers), appearance-editor-metal.png
 // (edited in the window to antique metal, sharp edges, sans font; also checks the live preview follows
 // an edit), trigger-rules.png,
-// trigger-rules-selected.png (a rule clicked), damage-map.png, damage-map-player.png, benchmark.png (a finished run).
+// trigger-rules-selected.png (a rule clicked), damage-map.png, damage-map-player.png, benchmark.png (a finished run),
+// dice-tray.png (dice picked, a blind roll; chat cards with the hand mark beside it).
 // Fails on any page error. Env: DICER_VISUAL_PORT (default 5182), DICER_VISUAL_HEADED=1,
 // DICER_VISUAL_ONLY (a substring of the screenshot names to take, e.g. appearance),
 // DICER_FOUNDRY_APP (default C:/Program Files/Foundry Virtual Tabletop/resources/app).
@@ -304,6 +305,22 @@ async function main() {
     problems.push(...(await shoot(browser, 'app=damage', 'damage-map.png')));
     problems.push(...(await shoot(browser, 'app=damage&player=1', 'damage-map-player.png')));
     problems.push(...(await shoot(browser, 'app=benchmark', 'benchmark.png')));
+    // The dice tray (dice picked, a modifier, a blind roll) beside chat cards with the hand mark.
+    problems.push(
+      ...(await shoot(browser, 'app=tray', 'dice-tray.png', async (page) => {
+        await page.fill('input[name="d6"]', '2');
+        await page.fill('input[name="d20"]', '1');
+        await page.fill('input[name="modifier"]', '3');
+        await page.selectOption('select[name="mode"]', 'blind');
+        const formula = await page.textContent('.dicer-tray-formula');
+        if (formula !== '2d6 + 1d20 + 3') throw new Error(`tray: formula line shows "${formula}"`);
+        const lit = await page.$$eval('.dicer-tray-die.has-dice', (els) => els.map((e) => e.dataset.die));
+        if (lit.join() !== 'd6,d20') throw new Error(`tray: highlighted dice ${lit.join()}`);
+        const marks = await page.evaluate(() => window.__marks);
+        const want = ['Rolled by hand', 'Rolled by hand (3 dice rolled automatically)', 'Rolled automatically (no throw)', null];
+        if (JSON.stringify(marks) !== JSON.stringify(want)) throw new Error(`tray: card marks ${JSON.stringify(marks)}`);
+      })),
+    );
   } finally {
     await browser.close();
   }

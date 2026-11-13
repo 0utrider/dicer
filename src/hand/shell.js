@@ -11,6 +11,8 @@ export const HAND_DICE = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'c', 'f
 let deps = null; // main.js's at ready: diceBox, areas, decorateFor, plan, getSetting, hooks, ...
 /** The hand chunk's dependencies; every resolver made after this carries them (resolver.dicer). */
 export const setHandDeps = (d) => (deps = d);
+/** The same dependencies, for the chunk's dice tray. */
+export const handDeps = () => deps;
 
 /** May `user` roll by hand? From the world's handRollsAllowed (unreadable: 'all') and the role. */
 export function handAllowed(user, getSetting) {

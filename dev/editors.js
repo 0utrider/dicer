@@ -327,6 +327,50 @@ if (which === 'themes') {
   };
   const { BenchmarkApp } = await import('../src/bench/benchmark-app.js');
   app = new BenchmarkApp({ suite, text: 'Dicer benchmark (fake)' });
+} else if (which === 'tray') {
+  // The dice tray window (hand chunk) and, beside it, chat cards carrying the hand mark (H-15):
+  // thrown by hand, partly automatic, a fallback, and a normal roll (no mark).
+  globalThis.CONFIG = {
+    ChatMessage: {
+      modes: {
+        public: { label: 'Public Roll' },
+        gm: { label: 'Private GM Roll' },
+        blind: { label: 'Blind GM Roll' },
+        self: { label: 'Self Roll' },
+        ic: { label: 'In Character' },
+      },
+    },
+  };
+  store.messageMode = 'public';
+  globalThis.game.i18n.format = (key, data) => localize(key).replace(/{(\w+)}/g, (_, k) => data[k]);
+  const { markCard } = await import('../src/hand/gate-hand.js');
+  const log = document.createElement('ol');
+  log.id = 'dicer-dev-chat';
+  log.className = 'chat-log';
+  log.style.cssText = 'position:absolute;right:16px;top:16px;width:300px;margin:0;padding:0;list-style:none';
+  document.getElementById('stage').append(log);
+  const hand = (o) => ({ options: { dicerHand: { id: 'h', by: 'u1', n: 2, ...o } } });
+  for (const [who, rolls, total] of [
+    ['Valeros', [hand({})], 14],
+    ['Seelah', [hand({ partial: 3 })], 31],
+    ['Kyra', [hand({ fallback: 'timeout' })], 9],
+    ['Merisiel', [{ options: {} }], 17],
+  ]) {
+    const li = document.createElement('li');
+    li.className = 'chat-message message flexcol';
+    li.innerHTML = `<header class="message-header flexrow"><h4 class="message-sender">${who}</h4>
+      <span class="message-metadata"><time class="message-timestamp">1m ago</time></span></header>
+      <div class="message-content"><div class="dice-roll"><div class="dice-result">
+      <div class="dice-formula">2d6 + 1d20</div><h4 class="dice-total">${total}</h4></div></div></div>`;
+    markCard({ rolls }, li);
+    li.querySelector('.dicer-card-mark')?.setAttribute('title', li.querySelector('.dicer-card-mark').dataset.tooltip);
+    log.append(li);
+  }
+  window.__marks = [...log.querySelectorAll('.chat-message')].map(
+    (li) => li.querySelector('.dicer-card-mark')?.dataset.tooltip ?? null,
+  );
+  const { openTray } = await import('../src/hand/chunk/tray.js');
+  app = { render: () => openTray() };
 } else {
   const { DamageMapEditor } = await import('../src/ui/damage-map-editor.js');
   app = new DamageMapEditor();

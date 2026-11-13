@@ -1,0 +1,28 @@
+<div class="dicer-tray-body">
+  <p class="dicer-hint">{{localize "DICER.Tray.Hint"}}</p>
+  <div class="dicer-tray-dice">
+    {{#each dice}}
+      <label class="dicer-tray-die{{#if count}} has-dice{{/if}}" data-die="{{key}}">
+        <span class="dicer-tray-die-name">{{key}}</span>
+        <input type="number" name="{{key}}" value="{{count}}" min="0" max="99" step="1" aria-label="{{key}}">
+      </label>
+    {{/each}}
+  </div>
+  <div class="dicer-tray-row">
+    <label for="dicer-tray-modifier">{{localize "DICER.Tray.Modifier"}}</label>
+    <input type="number" id="dicer-tray-modifier" name="modifier" value="{{modifier}}" step="1">
+  </div>
+  <div class="dicer-tray-row">
+    <label for="dicer-tray-mode">{{localize "DICER.Tray.Mode"}}</label>
+    <select id="dicer-tray-mode" name="mode">
+      {{#each modes}}
+        <option value="{{value}}"{{#if selected}} selected{{/if}}>{{label}}</option>
+      {{/each}}
+    </select>
+  </div>
+  <p class="dicer-tray-formula" aria-live="polite">{{formula}}</p>
+  <footer class="form-footer">
+    <button type="button" data-action="clear"><i class="fa-solid fa-eraser"></i> {{localize "DICER.Tray.Clear"}}</button>
+    <button type="submit" class="bright"><i class="fa-solid fa-hand"></i> {{localize "DICER.Tray.Throw"}}</button>
+  </footer>
+</div>

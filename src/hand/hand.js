@@ -9,6 +9,7 @@ export { fulfill, fulfillTerm, extraResult, handThrows, HAND_GRACE_MS } from './
 export { syncConfig } from './chunk/config.js';
 export { sendHand, handRecipients } from './chunk/send.js';
 export { replayFor, handBuffer } from './chunk/replay.js';
+export { openTray, throwTray, formulaFromCounts, TRAY_DICE, TRAY_MODES } from './chunk/tray.js';
 export {
   openThrowOverlay,
   velocityFromSamples,

@@ -263,8 +263,15 @@ test('rolling by hand: the 7 keys with their defaults; the four that decide the 
   expect(r.handRollTimeout.range).toMatchObject({ min: 10, max: 300 });
   for (const key of ['handRolls', 'handRollTypes', 'handRollsAllowed', 'handRollsRequired']) r[key].onChange('x');
   expect(onHandChange).toHaveBeenCalledTimes(4);
-  for (const key of ['handRollTimeout', 'handReplay', 'diceTray']) r[key].onChange?.('x');
-  expect(onHandChange).toHaveBeenCalledTimes(4);
+  // diceTray re-prepares the scene controls, so its tool comes and goes at once
+  globalThis.ui = { controls: { render: vi.fn() } };
+  try {
+    for (const key of ['handRollTimeout', 'handReplay', 'diceTray']) r[key].onChange?.('x');
+    expect(onHandChange).toHaveBeenCalledTimes(4);
+    expect(globalThis.ui.controls.render).toHaveBeenCalledWith({ reset: true });
+  } finally {
+    delete globalThis.ui;
+  }
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER;
   for (const key of Object.keys(want).filter((k) => want[k].config)) {
     expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);

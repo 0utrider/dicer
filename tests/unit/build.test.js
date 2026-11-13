@@ -51,6 +51,9 @@ describe('build', () => {
     expect(readFileSync(hand, 'utf8')).toContain('dicer-hand-chunk');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-hand-chunk');
     expect(readFileSync('dist/dicer.js', 'utf8')).toContain(hand.slice('dist/'.length));
+    // The dice tray (window, throw, styles) is the hand chunk's; world start only adds its tool.
+    expect(readFileSync(hand, 'utf8')).toContain('dicer-tray-style');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tray');
     expect(threePoints).toBeTruthy();
     // lazy for real: only the lazy chunks import it, never the world-start bundle
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain(threePoints.slice('dist/'.length));
