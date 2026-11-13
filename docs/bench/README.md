@@ -33,6 +33,7 @@ A full run goes through 6 runs, including a 500-roll soak, a context-loss check 
 What each run covers:
 
 - Dicer, `pc` `vsync`: every scenario, including the 500-roll soak, resize, context loss and hidden tab. Context loss rolls twice: the first roll loses the WebGL context mid-roll, and once the context is restored (at most 3 s) a second roll must draw.
+- Two scenarios are `dicerOnly` (rolling by hand): `handReplay10` replays a recorded 10-dice hand throw (`tests/fixtures/trajectory-mixed10.json`, encoded) through `DiceBox` as a source (the recorded frames, never a physics throw) and `handSoak100` does it 100 times. They are the receiving player's cost of a hand throw. The G2 targets apply (first frame at most 50 ms, no task over 50 ms including the decode, stable heap and GPU counts over the soak), and Dice So Nice never runs them, so they are never in the head-to-head table.
 - Dicer, `throttled` `vsync`: `d20`, `mixed10`, `pool30`, `burst100`.
 - Dicer quality `low`, `pc` `vsync` (the effects-off partner), and DSN in `pc`, `throttled` and `pc` with effects off, all `vsync`: `d20`, `mixed10`, `pool30`, `burst100`. The two Dicer defaults runs above are DSN's defaults partners.
 

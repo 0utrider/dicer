@@ -203,3 +203,77 @@ The roll area rules (a player's area, the GM private corner) are also automated 
 1. Note the **Dicer** and **Dice So Nice** module enable states and Dicer's **Maximum dice per message**. Start `npm run test:live:bench` and wait until the first run has started.
 2. Press Ctrl+C once.
 3. Pass: the harness says it is restoring and exits; the module enable states and **Maximum dice per message** match step 1, none of the run's chat rolls are left in the chat log, a chat message you typed yourself during the run is still there, and `artifacts/bench/restore.json` is gone. If you instead kill the process, the next `npm run test:live:bench` restores the saved state before running: it deletes the saved roll messages, then every GM chat message written since the run started.
+
+Rolling by hand (checks 33 to 44). These need a real Foundry v14 world, a GM and at least one player (two players for check 41), and a real mouse and a touch screen for the first two. `npm run test:live:hand` automates the replay, privacy and fallback checks (see the README, "Rolling by hand"); the rest are by eye. Turn the player's **Roll by hand** setting to **Always** unless a check says otherwise, and leave the GM's **Who may roll by hand** on **Everyone**.
+
+## 33. Real mouse throws
+
+1. As a player, roll `1d20` from the chat (or the dice tray). The dice appear held, floating in your roll area.
+2. Grab them with the left button, shake back and forth, and flick. Try a gentle push, a hard flick, and releasing while the pointer is still.
+3. Pass: the dice follow the pointer without lag, rattle while you shake, and fly the way you flicked (faster flick, faster throw). A release never makes the dice jump. They stop at the border of your roll area while you drag, and the result is the face that lands up. Press **Escape** before releasing: the roll takes Foundry's random result and the card says it rolled automatically.
+4. Press **Space** (or **Throw for me**) instead of throwing: the dice leave your hand with a flick and land. Space does not pause the game or scroll anything.
+
+## 34. Real touch throws
+
+1. On a tablet or a touch laptop, roll `2d6` by hand.
+2. Pass: a finger grabs and flicks the dice the same way, the page does not scroll or zoom while you hold them, a second finger does not corrupt the throw, and **Throw for me** is a big enough button to hit.
+
+## 35. PF2e: attack, save and damage, with crit doubling
+
+1. In a PF2e world, make a Strike. Roll the attack, the damage and (on a critical hit) the doubled damage.
+2. Roll a saving throw from a sheet.
+3. Pass: each roll opens the throw overlay, the dice you threw give the numbers on the card (the card total matches the dice), and a critical hit's doubled damage dice are thrown too. A roll with dice you did not throw (for example the extra dice of a persistent effect) resolves without hanging, and the card notes how many dice rolled automatically.
+
+## 36. dnd5e: attack, save and damage, with crit doubling
+
+1. In a dnd5e world, make an attack roll, a saving throw and a damage roll. Roll damage as a critical hit.
+2. Pass: as in check 35. A roll with advantage or disadvantage (two d20s) is thrown as two dice, the card keeps the higher or lower, and the doubled critical damage dice are thrown.
+
+## 37. Pf2e secret checks give the thrower no faces
+
+1. As a player in a PF2e world, make a secret check (for example Recall Knowledge: any check whose roll mode is blind or GM-only).
+2. Pass: the dice are thrown, but they show as ghost dice with no numbers while they fly and when they land, and the thrower learns no result. On release, nothing in the throw reveals a face (H-19). The GM sees the real throw and the real result, and a second player sees nothing or ghost dice.
+3. Repeat with a blind roll (`/blindroll 1d20`) and a whisper to the GM (`/gmroll 1d20`). Pass: only the GM (and the whisper's recipients) replay the throw.
+
+## 38. Exploding dice and other dynamic terms
+
+1. Roll `4d6x` (or `1d6x`) by hand. Foundry adds a die whenever a 6 comes up.
+2. Pass: the dice you throw give the first results; the extra dice are thrown automatically after they land (never held for you), the total includes them, and the roll never hangs or rejects. The card marks the roll as rolled by hand.
+3. Roll a term the shape cannot be read for (a custom die with a different number of faces than its shape): Foundry rolls it and the card says some dice rolled automatically.
+
+## 39. The dice tray in each mode
+
+1. With **Dice tray** on, open the tray from the dice tools. Pick `2d6+3`, then throw.
+2. Check each roll mode in the tray: public, GM only (whisper), blind, and self.
+3. Pass: the tray posts a normal roll card whose dice are the ones you threw, the modifier is applied, and the card is marked as rolled by hand. A blind or self roll shows ghost dice only on your screen and nothing on the others'. **Clear** empties the tray, and an empty tray refuses to throw with a notice. With **Dice tray** off the button is gone.
+
+## 40. Foundry's Dice Configuration
+
+1. Open **Configure Settings, Dice Configuration** (Foundry's own window).
+2. Pass: each die denomination lists the Dicer method ("Dicer: roll by hand") next to Foundry's own choices. Pick it for d20 and roll a `1d20`: the throw overlay opens even with Dicer's **Roll by hand** setting **Off**. Set it back to Foundry's method (or Random) and the roll is automatic again.
+3. Note: using Dicer's method together with another module's interactive method (for example a Bluetooth dice module) is not supported (H-17); Foundry then picks its own generic dialog.
+
+## 41. What other players see
+
+1. As a player A, throw `1d20` and `4d6` by hand. Watch the GM's screen and a second player B's.
+2. Pass: the GM and B see the same throw A made (same path, same bounces, same final faces, no extra delay beyond the throw itself), and the card on every screen matches the dice. With **Replay hand throws** off on B's client, B sees a normal throw of the same result.
+3. Whisper the roll to the GM (`/gmroll 1d20` by hand): Pass: only the GM replays it. B sees nothing, and `npm run test:live:hand` shows B's client never received the payload.
+4. Turn the GM's **Who may roll by hand** to **GMs only**: Pass: A's rolls are automatic. Turn it to **Nobody**: nobody gets the overlay. Turn **Require rolling by hand** on with A's own setting **Off**: A is made to throw.
+
+## 42. A smaller GM window
+
+1. Shrink the GM's browser window (or give the GM a small **Roll area size**), then have the player (full-size window) throw 10d6.
+2. Pass: the replay on the GM's screen is the same throw scaled down to fit (H-11); it never goes below about 60% of the player's size, and when it overruns a very small window it stays on the stage. Dice keep their size, and the final faces match the card.
+
+## 43. Fallbacks and the card mark
+
+1. Let the throw time out: roll by hand and do nothing for the time limit (set **Hand roll time limit** to 10 seconds to speed it up).
+2. Pass: Foundry rolls the dice, the roll completes, and the card has a hand mark that says it rolled automatically. A normal hand roll's mark says rolled by hand, and a roll with some automatic dice says how many.
+3. Confirm a die type that failed the fairness run is never thrown by hand (none do today: see `docs/research/fairness.md`).
+
+## 44. Pets in hand throws
+
+1. Give two players a pet each, and roll once as player A so the pet rests in A's area.
+2. As A, throw `3d6` by hand straight at the resting pet, hard.
+3. Pass: while you hold the dice your pet keeps still. On a hard hit the pet splats on A's screen, and also on the GM's and B's screens, at the same place relative to the dice (**Dice can splat pets** on, **Show dice pets** on). A screen with **Dice can splat pets** off still sees the pet bump but not burst. The pet's owner's next roll reforms it as before.
+4. Check ghost and blind rolls: a ghost or blind hand throw never moves a pet or splats one on a screen that cannot see the roll.

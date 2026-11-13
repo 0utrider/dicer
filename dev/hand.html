@@ -32,6 +32,17 @@
         padding: 8px 12px;
         background: rgba(0, 0, 0, 0.45);
       }
+      #demos {
+        position: fixed;
+        top: 44px;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        display: flex;
+        gap: 8px;
+        padding: 6px 12px;
+        background: rgba(0, 0, 0, 0.3);
+      }
       #results {
         position: fixed;
         left: 0;
@@ -62,7 +73,16 @@
       </select>
       <label><input type="checkbox" id="ghost" /> ghost on release</label>
       <button id="open" disabled>Hold the dice</button>
+      <button id="throw-for-me" disabled>Throw for me</button>
       <span id="status">loading...</span>
+    </div>
+    <div id="demos">
+      <button id="cocked-d20" disabled>Cocked d20</button>
+      <button id="cocked-coin" disabled>Cocked coin</button>
+      <button id="d16-read" disabled>d16 read</button>
+      <button id="pet-place" disabled>Pet</button>
+      <button id="pet-splat" disabled>Splat it</button>
+      <button id="replay" disabled>Replay last (half area)</button>
     </div>
     <pre id="results"></pre>
     <script type="module" src="./hand.js"></script>

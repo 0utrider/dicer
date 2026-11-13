@@ -223,6 +223,38 @@ async function main() {
         await shot('cancelled');
       }),
     );
+    // The review page's demos (dev/hand.html): the real DiceBox, hand chunk and pet layer.
+    const snap = async (name) => page.screenshot({ path: `${OUT}/demo-${name}.png` });
+    const demo = (name) => page.evaluate((n) => window.__hand.demo(n), name);
+    for (const name of ['cocked-d20', 'cocked-coin']) {
+      const r = await demo(name);
+      await snap(name);
+      if (!r?.nudges?.[0]) problems.push(`demo ${name}: expected a nudge, got ${JSON.stringify(r)}`);
+      if (!Number.isInteger(r?.values?.[0])) problems.push(`demo ${name}: no read value`);
+      await wait(4500);
+    }
+    // the d16: a shot just after landing, while the counted face glows
+    {
+      const pending = page.evaluate(() => window.__hand.demo('d16-read'));
+      await wait(1800);
+      await snap('d16-flight');
+      const r = await pending;
+      await snap('d16-landed');
+      if (!(r?.values?.[0] >= 1 && r.values[0] <= 16)) problems.push(`demo d16: bad value ${JSON.stringify(r)}`);
+    }
+    await wait(500);
+    const replayed = await page.evaluate(() => window.__hand.replayLast());
+    await snap('replay-half-area');
+    if (!replayed?.bytes || replayed.bytes > 262144) problems.push(`demo replay: ${JSON.stringify(replayed)}`);
+    await wait(4500);
+    const placed = await demo('pet-place');
+    await snap('pet-rest');
+    if (!placed?.pet) problems.push('demo pet: the pet did not rest');
+    const splat = await demo('pet-splat');
+    await wait(500);
+    await snap('pet-splat');
+    console.log(`  pet after the throw: ${JSON.stringify(splat?.pet)}`);
+    if (!Array.isArray(splat?.values)) problems.push('demo pet splat: no values');
   } finally {
     await browser.close();
     stopServer();
