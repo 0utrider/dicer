@@ -1,6 +1,7 @@
 import { mimic } from './mimic.js';
 import { slime } from './slime.js';
 import { dragonling } from './dragonling.js';
+import { REFORM_IN, outBack, smooth, span } from './parts.js';
 
 /**
  * The creatures. Each is (color: '#rrggbb') -> Creature, where a Creature is
@@ -25,13 +26,6 @@ import { dragonling } from './dragonling.js';
  */
 // t is clamped to 0..1 (NaN -> 0) once here, so no creature can put a NaN into a matrix.
 const NO_LOOK = { yaw: 0 }; // shared: poses only read it
-const smooth = (t) => t * t * (3 - 2 * t);
-const span = (t, a, b) => {
-  const k = (t - a) / (b - a);
-  return k > 0 ? (k < 1 ? k : 1) : 0;
-};
-/** Overshoots past 1 and settles (s ~1.7 is the classic back ease). */
-const outBack = (k, s) => 1 + (s + 1) * (k - 1) ** 3 + s * (k - 1) ** 2;
 /** A hit spring: rises to 1 over `attack`, then rings down, and is exactly 0 at t = 0 and t = 1. */
 const ring = (t, attack, freq, damp) => {
   const fade = 1 - smooth(span(t, 0.72, 1));
@@ -45,9 +39,9 @@ const finite = (x) => (Number.isFinite(x) ? x : 0);
 // on its feet) away from the die, a beat behind the squash, swinging back past upright once.
 const WOBBLE_SQUASH = 0.26;
 const WOBBLE_LEAN = 0.34; // rad at the peak
-// Reform: hidden inside the gathering goo until REFORM_IN, then it pops out of the goo dome
-// (growing with a back-ease overshoot), stretching tall first and ringing down to its pose.
-const REFORM_IN = 0.38;
+// Reform: hidden inside the gathering goo until REFORM_IN (parts.js, shared with the splat), then
+// it pops out of the goo dome (growing with a back-ease overshoot), stretching tall first and
+// ringing down to its pose.
 const REFORM_POP = 0.72;
 const MIN_SCALE = 1e-3;
 

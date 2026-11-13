@@ -12,6 +12,7 @@ import {
   bump,
   palette,
   paint,
+  REFORM_IN, // the creatures' 'reform' pops out of the lump from here
 } from './creatures/parts.js';
 
 /**
@@ -53,8 +54,6 @@ const EYE_R = 0.27;
 const EYE_X = 0.33;
 const EYE_Z = 0.12;
 const MIN = 1e-3; // a scale never reaches 0, so no matrix is degenerate
-// The creatures' 'reform' pops out of the lump from here (creatures/index.js REFORM_IN).
-const REFORM_IN = 0.38;
 
 const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const inQuad = (k) => k * k;

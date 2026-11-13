@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { beforeAll, expect, test } from 'vitest';
 import { createSplat } from '../../src/pet/chunk/splat.js';
+import { REFORM_IN } from '../../src/pet/chunk/creatures/parts.js';
+import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
 import { SPLAT_SPEED, WOBBLE_SPEED } from '../../src/pet/chunk/pets.js';
 import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
@@ -43,8 +45,8 @@ test.each(KINDS)(
   },
 );
 
-test('createSplat dispose frees everything', () => {
-  const s = createSplat('slime', '#33aa55');
+test.each(KINDS)('createSplat dispose frees everything (%s)', (kind) => {
+  const s = createSplat(kind, '#33aa55');
   const geos = new Set();
   const mats = new Set();
   for (const m of parts(s.root)) {
@@ -58,6 +60,69 @@ test('createSplat dispose frees everything', () => {
   });
   s.dispose();
   for (const n of spies) expect(n()).toBeGreaterThan(0);
+});
+
+// --- the reform hand-off and the shine's yaw -----------------------------------------------------
+
+test.each(KINDS)(
+  '%s reform hands over at REFORM_IN: the creature pops out of the lump, which then goes',
+  (kind) => {
+    expect(REFORM_IN).toBeGreaterThan(0.2);
+    expect(REFORM_IN).toBeLessThan(0.6);
+    const s = createSplat(kind, '#7b4bc4');
+    const c = CREATURES[kind]('#7b4bc4');
+    const lump = named(s.root, 'splatLump')[0];
+    const eyes = named(s.root, 'splatEye');
+    const creatureSize = () => {
+      c.root.updateMatrixWorld(true);
+      return new THREE.Box3().setFromObject(c.root).getSize(new THREE.Vector3());
+    };
+    // just before: the creature is hidden and the gathered lump stands in for it, eyes on top
+    const before = REFORM_IN - 0.01;
+    s.pose('reform', before);
+    c.pose('reform', before, 'plain', { yaw: 0 });
+    expect(Math.max(...creatureSize().toArray())).toBeLessThan(0.05);
+    expect(lump.visible).toBe(true);
+    expect(lump.scale.y).toBeGreaterThan(0.5);
+    for (const e of eyes) expect(e.visible).toBe(true);
+    // at REFORM_IN: the creature appears, small enough to sit inside the lump
+    s.pose('reform', REFORM_IN + 0.005);
+    c.pose('reform', REFORM_IN + 0.005, 'plain', { yaw: 0 });
+    expect(c.root.scale.y).toBeGreaterThan(0.25);
+    expect(creatureSize().y).toBeLessThan(lump.scale.y + 0.2);
+    // by the time the creature has popped to full size the lump and the splat's eyes are gone
+    s.pose('reform', 0.72);
+    c.pose('reform', 0.72, 'plain', { yaw: 0 });
+    expect(c.root.scale.y).toBeGreaterThan(0.95);
+    expect(lump.visible).toBe(false);
+    for (const e of eyes) expect(e.visible).toBe(false);
+    s.dispose();
+    c.dispose();
+  },
+);
+
+test('the shine keeps to the light under a turned pet, and a NaN yaw stays finite', () => {
+  const s = createSplat('slime', '#2e9e5b');
+  const shine = parts(named(s.root, 'splatPuddle')[0]).find((m) => m.name !== 'splatPuddle');
+  const group = new THREE.Group();
+  group.add(s.root);
+  group.rotation.y = 1.0;
+  s.pose('puddle', 1);
+  expect(shine.rotation.y).toBeCloseTo(-1.0, 6);
+  group.updateMatrixWorld(true);
+  const w = new THREE.Quaternion();
+  shine.getWorldQuaternion(w);
+  expect(Math.abs(w.y)).toBeLessThan(1e-6); // net world turn about y is 0
+  group.rotation.y = NaN;
+  for (const phase of PHASES) {
+    s.pose(phase, 0.5);
+    expect(shine.rotation.y).toBe(0);
+    s.root.updateMatrixWorld(true);
+    s.root.traverse((o) => {
+      for (const e of o.matrixWorld.elements) expect(Number.isFinite(e)).toBe(true);
+    });
+  }
+  s.dispose();
 });
 
 // --- the thresholds, pinned against the real sim ----------------------------------------------
