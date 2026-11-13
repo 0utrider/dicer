@@ -85,46 +85,46 @@ describe('handAllowed', () => {
   });
 });
 
-describe('syncDiceConfiguration', () => {
-  const run = (settings, core, user = { role: 1, isGM: false }) => {
+describe('syncDiceConfiguration', async () => {
+  const run = async (settings, core, user = { role: 1, isGM: false }) => {
     const setCore = vi.fn(async () => {});
     const get = (k) => settings[k];
-    syncDiceConfiguration({ getSetting: get, user, getCore: () => core, setCore });
+    await syncDiceConfiguration({ getSetting: get, user, getCore: () => core, setCore });
     return setCore;
   };
   const on = { handRolls: 'always', handRollTypes: [], handRollsAllowed: 'all', handRollsRequired: false };
 
-  test('writes/removes only dicer entries; honours handRollTypes, allowed, required, default', () => {
+  test('writes/removes only dicer entries; honours handRollTypes, allowed, required, default', async () => {
     // all types: every per-die denomination plus default
-    let set = run(on, {});
+    let set = await run(on, {});
     expect(set.mock.calls[0][0]).toEqual(Object.fromEntries([...HAND_DICE, 'default'].map((k) => [k, 'dicer'])));
     expect(HAND_DICE).toEqual(['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'c', 'f']);
     // another method keeps its entries (default included); '' counts as free
-    set = run(on, { d20: 'manual', default: 'bluetooth', d6: '' });
+    set = await run(on, { d20: 'manual', default: 'bluetooth', d6: '' });
     expect(set.mock.calls[0][0]).toMatchObject({ d20: 'manual', default: 'bluetooth', d6: 'dicer', d4: 'dicer' });
     // chosen types only: no default, stale dicer entries removed
-    set = run({ ...on, handRollTypes: ['d20', 'f'] }, { d6: 'dicer', default: 'dicer', d8: 'manual' });
+    set = await run({ ...on, handRollTypes: ['d20', 'f'] }, { d6: 'dicer', default: 'dicer', d8: 'manual' });
     expect(set.mock.calls[0][0]).toEqual({ d20: 'dicer', f: 'dicer', d8: 'manual' });
     // off: only dicer entries go
-    set = run({ ...on, handRolls: 'off' }, { d6: 'dicer', d8: 'manual', default: 'dicer', d4: '' });
+    set = await run({ ...on, handRolls: 'off' }, { d6: 'dicer', d8: 'manual', default: 'dicer', d4: '' });
     expect(set.mock.calls[0][0]).toEqual({ d8: 'manual', d4: '' });
     // not allowed: removed even when on
-    set = run({ ...on, handRollsAllowed: 'gm' }, { d6: 'dicer' });
+    set = await run({ ...on, handRollsAllowed: 'gm' }, { d6: 'dicer' });
     expect(set.mock.calls[0][0]).toEqual({});
     // required forces it for allowed users even with handRolls off, over another method per die
-    set = run({ ...on, handRolls: 'off', handRollsRequired: true }, { d20: 'manual', default: 'manual' });
+    set = await run({ ...on, handRolls: 'off', handRollsRequired: true }, { d20: 'manual', default: 'manual' });
     expect(set.mock.calls[0][0]).toMatchObject({ d20: 'dicer', d6: 'dicer', default: 'manual' });
     // required but not allowed: nothing of Dicer's
-    set = run({ ...on, handRollsRequired: true, handRollsAllowed: 'none' }, { d6: 'dicer' });
+    set = await run({ ...on, handRollsRequired: true, handRollsAllowed: 'none' }, { d6: 'dicer' });
     expect(set.mock.calls[0][0]).toEqual({});
     // nothing changes: no write
-    set = run({ ...on, handRollTypes: ['d6'] }, { d6: 'dicer' });
+    set = await run({ ...on, handRollTypes: ['d6'] }, { d6: 'dicer' });
     expect(set).not.toHaveBeenCalled();
-    set = run({ ...on, handRolls: 'off' }, null);
+    set = await run({ ...on, handRolls: 'off' }, null);
     expect(set).not.toHaveBeenCalled();
   });
 
-  test('required stashes the entries it takes from another method and restores them when it ends', () => {
+  test('required stashes the entries it takes from another method and restores them when it ends', async () => {
     const store = { ...on, handRollTypes: ['d20', 'd6'], handRollsRequired: true, handRollStash: {} };
     let core = { d20: 'manual', d8: 'manual' };
     const sync = () =>
@@ -135,35 +135,72 @@ describe('syncDiceConfiguration', () => {
         setCore: (v) => (core = v),
         setSetting: (k, v) => (store[k] = v),
       });
-    sync();
+    await sync();
     expect(core).toEqual({ d20: 'dicer', d6: 'dicer', d8: 'manual' });
     expect(store.handRollStash).toEqual({ d20: 'manual' });
-    sync(); // idempotent
+    await sync(); // idempotent
     expect(core).toEqual({ d20: 'dicer', d6: 'dicer', d8: 'manual' });
     expect(store.handRollStash).toEqual({ d20: 'manual' });
     store.handRollsRequired = false; // still on by the user's own choice: d20 is manual's again
-    sync();
+    await sync();
     expect(core).toEqual({ d20: 'manual', d6: 'dicer', d8: 'manual' });
     expect(store.handRollStash).toEqual({});
     store.handRollsRequired = true;
-    sync();
+    await sync();
     store.handRolls = 'off';
     store.handRollsAllowed = 'none'; // required, but no longer allowed
-    sync();
+    await sync();
     expect(core).toEqual({ d20: 'manual', d8: 'manual' });
     expect(store.handRollStash).toEqual({});
   });
 
-  test('another interactive method (not manual) configured: nothing mapped, one warning', () => {
+  test('the gate: an "off" world never loads the chunk; a dicer entry, a stash or an allowed "on" does', async () => {
+    const load = vi.fn(() => import('../../src/hand/hand.js'));
+    _setHandImport(load);
+    const setCore = vi.fn();
+    const sync = (settings, core) =>
+      syncDiceConfiguration({ getSetting: (k) => settings[k], user: { role: 1 }, getCore: () => core, setCore });
+    await sync({ ...on, handRolls: 'off' }, { d20: 'manual' });
+    await sync({ ...on, handRollsRequired: true, handRollsAllowed: 'none' }, {});
+    await sync({ ...on, handRollsAllowed: 'trusted' }, null);
+    expect(load).not.toHaveBeenCalled();
+    expect(setCore).not.toHaveBeenCalled();
+    await sync({ ...on, handRolls: 'off' }, { d6: 'dicer' });
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(setCore).toHaveBeenLastCalledWith({});
+    await sync({ ...on, handRolls: 'off', handRollStash: { d20: 'manual' } }, { d20: 'dicer' });
+    expect(setCore).toHaveBeenLastCalledWith({ d20: 'manual' });
+    await sync(on, {});
+    expect(setCore).toHaveBeenCalledTimes(3);
+  });
+
+  test('a failed stash write rejects before the configuration is written (nothing lost)', async () => {
+    const setCore = vi.fn();
+    const store = { ...on, handRollTypes: ['d20'], handRollsRequired: true, handRollStash: {} };
+    await expect(
+      syncDiceConfiguration({
+        getSetting: (k) => store[k],
+        user: { role: 1 },
+        getCore: () => ({ d20: 'manual' }),
+        setCore,
+        setSetting: async () => {
+          throw new Error('storage full');
+        },
+      }),
+    ).rejects.toThrow('storage full');
+    expect(setCore).not.toHaveBeenCalled();
+  });
+
+  test('another interactive method (not manual) configured: nothing mapped, one warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     globalThis.CONFIG = { Dice: { fulfillment: { methods: { manual: { interactive: true }, bt: { interactive: true }, mersenne: {} } } } };
-    let set = run(on, { d20: 'bt', d6: 'dicer' });
+    let set = await run(on, { d20: 'bt', d6: 'dicer' });
     expect(set.mock.calls[0][0]).toEqual({ d20: 'bt' });
-    set = run(on, { d20: 'bt' });
+    set = await run(on, { d20: 'bt' });
     expect(set).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
     // manual and non-interactive methods do not block it
-    set = run(on, { d20: 'manual', d8: 'mersenne' });
+    set = await run(on, { d20: 'manual', d8: 'mersenne' });
     expect(set.mock.calls[0][0]).toMatchObject({ d20: 'manual', d8: 'mersenne', d6: 'dicer' });
     warn.mockRestore();
   });

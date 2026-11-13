@@ -686,3 +686,44 @@ describe('fix round 1', () => {
 const flush = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
+
+describe('fix round 2', () => {
+  afterEach(() => vi.useRealTimers());
+
+  test('a throw whose values never settle falls back after the bound, and the next queued roll proceeds', async () => {
+    vi.useFakeTimers();
+    settings.handRollTimeout = 0.01; // 10 ms: the bound is 10 ms + HAND_GRACE_MS
+    const { HAND_GRACE_MS } = await import('../../src/hand/chunk/resolve.js');
+    expect(HAND_GRACE_MS).toBe(15000);
+    overlay.open = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise(() => {})) // released, then the dice never land
+      .mockImplementationOnce(async ({ specs }) => ({ values: specs.map(() => 5), handle: {}, recording: {} }));
+    const a = new Die({ faces: 6 });
+    const b = new Die({ faces: 6 });
+    const ra = new Resolver(rollOf(a), deps);
+    const pa = fulfill(ra);
+    const pb = fulfill(new Resolver(rollOf(b), deps));
+    await vi.advanceTimersByTimeAsync(HAND_GRACE_MS); // not yet: 10 ms short
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(20);
+    await Promise.all([pa, pb]);
+    expect(a.results).toEqual([]);
+    expect(ra.roll.options.dicerHand.fallback).toBe('timeout');
+    expect(handThrows.has(ra.roll.options.dicerHand.id)).toBe(false);
+    expect(await extraResult(ra, a, 'dicer', { explode: true })).toBeUndefined();
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+    expect(b.results).toEqual([{ result: 5, active: true }]);
+  });
+
+  test('a failure while pushing a landed throw marks the dicerHand a fallback and stores nothing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d6 = new Die({ number: 1, faces: 6 });
+    d6.results = Object.freeze([]); // push throws
+    const roll = rollOf(d6);
+    overlay.values = [4];
+    await expect(fulfill(new Resolver(roll, deps))).resolves.toBeUndefined();
+    expect(roll.options.dicerHand.fallback).toBe('cancel');
+    expect(handThrows.size).toBe(0);
+  });
+});

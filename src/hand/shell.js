@@ -24,43 +24,20 @@ export function handAllowed(user, getSetting) {
   return !!user && min !== undefined && (user.isGM === true || (user.role ?? 0) >= min);
 }
 
-const differ = (a, b) => {
-  const keys = Object.keys(a);
-  return keys.length !== Object.keys(b).length || keys.some((k) => a[k] !== b[k]);
-};
-let warnedOther = false;
-
 /**
- * Brings the core diceConfiguration in line with the hand settings. Dicer's entries are removed
- * (entries required took from another method come back from the `handRollStash` client setting),
- * then, when hand rolls are on (or required) and allowed, each chosen denomination (none: all of
- * HAND_DICE, plus default) is mapped to `dicer` where no other method holds it; required also
- * takes a denomination from another method (never default), stashing it. With another
- * interactive method than manual configured (Foundry would then use its generic resolver, H-17),
- * nothing is mapped (one warning). Writes only on a change.
+ * Brings the core diceConfiguration in line with the hand settings (the body is the hand chunk's
+ * syncConfig). The chunk is loaded only when there is something to do: a dicer entry or a stash
+ * to undo, or hand rolls on (or required) for an allowed user. An "off" world never loads it.
  */
-export function syncDiceConfiguration({ getSetting, user, getCore, setCore, setSetting }) {
-  const was = getCore() ?? {};
-  const stash = { ...getSetting('handRollStash') };
-  const kept = { ...stash };
-  const out = {};
-  for (const k in was) if (was[k] !== 'dicer') out[k] = was[k];
-  for (const k in stash) if (!out[k]) out[k] = stash[k];
-  for (const k in stash) delete stash[k];
-  const req = getSetting('handRollsRequired') === true;
-  const other = Object.values(out).some(
-    (m) => m && m !== 'manual' && globalThis.CONFIG?.Dice?.fulfillment?.methods?.[m]?.interactive,
-  );
-  if (other && !warnedOther) warnedOther = !console.warn('dicer: another interactive dice method is configured; rolling by hand stays off');
-  if (!other && handAllowed(user, getSetting) && (req || getSetting('handRolls') !== 'off')) {
-    const chosen = getSetting('handRollTypes');
-    for (const k of chosen?.length ? chosen : [...HAND_DICE, 'default']) {
-      if (out[k] && req && k !== 'default') stash[k] = out[k];
-      if (!out[k] || stash[k]) out[k] = 'dicer';
-    }
+export function syncDiceConfiguration(o) {
+  const { getSetting: get, user } = o;
+  if (
+    Object.values(o.getCore() ?? {}).includes('dicer') ||
+    Object.keys(get('handRollStash') ?? {}).length ||
+    (handAllowed(user, get) && (get('handRollsRequired') === true || get('handRolls') !== 'off'))
+  ) {
+    return loadHand().then((m) => m?.syncConfig(o));
   }
-  if (differ(stash, kept)) setSetting?.('handRollStash', stash);
-  if (differ(out, was)) return setCore(out);
 }
 
 let Resolver = null;

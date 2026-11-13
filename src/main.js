@@ -131,7 +131,7 @@ function syncHand() {
         user: game.user,
         getCore,
         setCore: (v) => game.settings.set('core', 'diceConfiguration', v),
-        setSetting: (k, v) => game.settings.set('dicer', k, v).catch((err) => console.warn('dicer:', err)),
+        setSetting: (k, v) => game.settings.set('dicer', k, v), // a failure skips setCore (warned below)
       }),
     ).catch((err) => console.warn('dicer: cannot update the dice configuration', err));
   } catch (err) {

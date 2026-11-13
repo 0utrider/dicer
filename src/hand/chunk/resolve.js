@@ -29,7 +29,10 @@ const facesOf = (type) => +/^d(\d+)$/.exec(type)?.[1];
 
 /** The method the core dice configuration gives `term` (as DiceTerm's fulfillment handler). */
 const methodOf = (resolver, term) => {
-  const c = resolver.dicer?.getCore?.() ?? globalThis.game?.settings?.get('core', 'diceConfiguration') ?? {};
+  const c =
+    resolver.dicer?.getCore?.() ??
+    globalThis.game?.settings?.get('core', 'diceConfiguration') ??
+    {};
   return c[term.denomination] || c.default || globalThis.CONFIG?.Dice?.fulfillment?.defaultMethod;
 };
 const stateOf = (resolver) => (resolver._hand ??= { partial: 0, fallback: null });
@@ -54,11 +57,19 @@ const askHand = (roll, ms) => {
 /** `p`, or null once `ms` have passed. */
 const within = (p, ms) => {
   let timer;
-  return Promise.race([p, new Promise((r) => (timer = setTimeout(r, ms, null)))]).finally(() => clearTimeout(timer));
+  return Promise.race([p, new Promise((r) => (timer = setTimeout(r, ms, null)))]).finally(() =>
+    clearTimeout(timer),
+  );
 };
 
 /** One interactive throw (ask prompt and overlay) at a time: each waits for the one before. */
 let queue = Promise.resolve();
+/**
+ * A hand throw (overlay open, then the dice in flight) is given handRollTimeout plus this long at
+ * most; past it the roll falls back and the queue moves on. Above a free throw's 13 s
+ * (MAX_FREE_STEPS) and DiceBox's landing grace, so a throw that lands is never cut.
+ */
+export const HAND_GRACE_MS = 15000;
 
 let warned = false;
 /**
@@ -77,7 +88,11 @@ function failed(resolver, err) {
 /** The geometry DiceBox draws `spec` with (its #makeDie rule): a crystal-look d4 is a d4crystal. */
 function shapeTypeOf(spec, rollLook) {
   const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
-  return spec.type === 'd4' && !spec.variant && !modelRotationFor(spec) && !spec.faces && look.shapes.d4 === 'crystal'
+  return spec.type === 'd4' &&
+    !spec.variant &&
+    !modelRotationFor(spec) &&
+    !spec.faces &&
+    look.shapes.d4 === 'crystal'
     ? 'd4crystal'
     : spec.type;
 }
@@ -111,7 +126,10 @@ function planFor(resolver, terms, count) {
       t,
       [
         ...t.results.map(() => ({ hidden: true })),
-        ...Array.from({ length: terms.includes(t) ? count(t) : 0 }, () => ({ result: t.minResult, active: true })),
+        ...Array.from({ length: terms.includes(t) ? count(t) : 0 }, () => ({
+          result: t.minResult,
+          active: true,
+        })),
       ],
     ]),
   );
@@ -132,7 +150,10 @@ function planFor(resolver, terms, count) {
       const { fx, damageType, ...look } = dec(...a) ?? {};
       return look;
     });
-  const { dice: planned } = d.plan(placeholder, { maxDice: Number(d.getSetting('maxDice')) || 20, decorate });
+  const { dice: planned } = d.plan(placeholder, {
+    maxDice: Number(d.getSetting('maxDice')) || 20,
+    decorate,
+  });
   const rollLook = normalizeAppearance(d.diceBox._getAppearance?.() ?? {});
   const groups = new Map(); // 't:r' -> that result's specs
   for (const s of planned) {
@@ -205,7 +226,8 @@ function modeOf(roll) {
 }
 
 /** H-19: the roll hints that its roller must not see it (a GM sees every such roll). */
-const ghostFor = (roll, user) => !user?.isGM && !!(roll.ghost || roll.secret || SECRET.includes(modeOf(roll)));
+const ghostFor = (roll, user) =>
+  !user?.isGM && !!(roll.ghost || roll.secret || SECRET.includes(modeOf(roll)));
 
 /**
  * P6-D3: a free "throw for me" of `specs` in the roller's area (no overlay); the read values or
@@ -278,8 +300,14 @@ async function throwByHand(resolver, terms) {
   const { roll, dicer: d } = resolver;
   const st = stateOf(resolver);
   const me = d.user();
-  const hand = ((roll.options ??= {}).dicerHand = { id: foundry.utils.randomID(), by: me.id, n: 0 });
-  const { specs, owners, dropped } = planFor(resolver, terms, (t) => Math.max(0, Math.abs(t.number) - t.results.length));
+  const hand = ((roll.options ??= {}).dicerHand = {
+    id: foundry.utils.randomID(),
+    by: me.id,
+    n: 0,
+  });
+  const { specs, owners, dropped } = planFor(resolver, terms, (t) =>
+    Math.max(0, Math.abs(t.number) - t.results.length),
+  );
   hand.n = specs.length;
   const ms = Number(d.getSetting('handRollTimeout')) * 1000 || 60000;
   const fallback = (why) => void (st.fallback = hand.fallback = why);
@@ -290,7 +318,8 @@ async function throwByHand(resolver, terms) {
   let next;
   queue = new Promise((r) => (next = r));
   try {
-    await prev;
+    // Bounded too (the one before may spend its own ask and throw): nothing waits forever.
+    await within(prev, 2 * ms + HAND_GRACE_MS);
     if (resolver._closed) return fallback('cancel');
     if (d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
       let yes = false;
@@ -306,27 +335,36 @@ async function throwByHand(resolver, terms) {
     handFor(d.diceBox);
     d.hooks?.callAll('diceSoNicePendingThrowOpened', roll);
     // close() mid-throw (another app closed the resolver): the overlay cancels.
-    resolver._abort = () => globalThis.document?.querySelector?.('.dicer-hand-overlay [data-action="cancel"]')?.click();
+    resolver._abort = () =>
+      globalThis.document?.querySelector?.('.dicer-hand-overlay [data-action="cancel"]')?.click();
     let out;
     try {
-      out = await openThrowOverlay({
-        specs,
-        rect: rect(),
-        getRect: rect,
-        diceBox: d.diceBox,
-        timeoutMs: ms,
-        ghostOnRelease: ghostFor(roll, me),
-        label: roll.formula,
-      });
+      // A throw whose dice never settle (DiceBox's values pending) must not hold the queue: null.
+      out = await within(
+        openThrowOverlay({
+          specs,
+          rect: rect(),
+          getRect: rect,
+          diceBox: d.diceBox,
+          timeoutMs: ms,
+          ghostOnRelease: ghostFor(roll, me),
+          label: roll.formula,
+        }),
+        ms + HAND_GRACE_MS,
+      );
     } catch (err) {
       console.warn('dicer: the throw overlay failed', err);
     } finally {
       resolver._abort = null;
       d.hooks?.callAll('diceSoNicePendingThrowClosed', roll);
     }
-    if (!out?.values || resolver._closed) return fallback(out?.timedOut ? 'timeout' : 'cancel');
-    handThrows.set(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });
+    // null: past the bound (within); undefined: the overlay threw.
+    if (!out?.values || resolver._closed) {
+      return fallback(out === null || out?.timedOut ? 'timeout' : 'cancel');
+    }
     const n = push(specs, owners, out.values);
+    // Stored once pushed: a failure before this marks the roll's dicerHand a fallback (failed()).
+    handThrows.set(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });
     notePartial(resolver, dropped + owners.filter(Boolean).length - n);
   } finally {
     next();
@@ -349,7 +387,12 @@ export async function fulfillTerm(resolver, term) {
     const d = resolver.dicer;
     const want = count();
     if (!want) return;
-    if (!d || stateOf(resolver).fallback || resolver._closed || !handAllowed(d.user(), d.getSetting)) {
+    if (
+      !d ||
+      stateOf(resolver).fallback ||
+      resolver._closed ||
+      !handAllowed(d.user(), d.getSetting)
+    ) {
       return notePartial(resolver, want);
     }
     const { specs, owners, dropped } = planFor(resolver, [term], count);
