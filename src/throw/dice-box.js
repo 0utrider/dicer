@@ -18,6 +18,7 @@ import { modelRotationFor } from '../compat/dsn-orientation.js';
 import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
+import { throwEdge } from '../core/rng.js';
 import { fitDieCapacity, toDieArea } from '../areas/area-model.js';
 
 /** Die edge size on screen, in CSS px, at diceScale 1. One world unit is one die size. */
@@ -134,6 +135,7 @@ export class DiceBox {
     onLandedFx = () => {},
     effects = null,
     fonts = null,
+    pet = null,
   }) {
     this._renderer = renderer;
     this._physics = physics;
@@ -178,6 +180,11 @@ export class DiceBox {
     // the loop alive while they run.
     this._effects = effects;
     this._effectsWarned = false;
+    // The pet layer: a PetHook or () => PetHook|null, resolved at each roll's reveal. A roll
+    // started with a PetSpec gets begin / landed / leave / end; update(now) runs every frame.
+    this._pet = pet;
+    this._petHook = null;
+    this._petUpdateDead = false;
     this._rollSeq = 0;
     this._systemWarned = new Set(); // system id|kind: one warning each
     this._geometries = new Map(); // type|edge radius -> BufferGeometry (P2-R5, P7-D2)
@@ -304,8 +311,9 @@ export class DiceBox {
    * @param {{ area?: {left:number, top:number, width:number, height:number}, capacityDice?: number }} [options]
    *   `area`: this throw's roll area in page px (clamped inside the stage); absent, the whole stage.
    *   `capacityDice`: the dice that share this area (a throw group's total), when more than this roll's.
+   *   `pet`: the PetSpec ({ userId, kind, color, ghost }) of the pet that appears for this roll, or none.
    */
-  roll(specs, { area, capacityDice } = {}) {
+  roll(specs, { area, capacityDice, pet } = {}) {
     const roll = {
       dice: [],
       shadows: [],
@@ -314,6 +322,7 @@ export class DiceBox {
       geometries: new Set(),
       phase: 'playing',
       removed: false,
+      pet: pet ? { spec: pet, key: null, begun: false, left: false, dead: false } : null,
     };
     roll.onFirstFrame = this._armedFirstFrame;
     this._armedFirstFrame = null;
@@ -349,6 +358,7 @@ export class DiceBox {
       roll.playback = new Playback({ dice: roll.dice, area: throwArea ?? this._area });
       roll.received = 0;
       const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
+      roll.seed = seed;
       const req = { dice: roll.dice.map((d) => ({ type: d.shapeType })), seed };
       if (throwArea) req.area = throwArea;
       const stream = this._physics.throw(req);
@@ -426,6 +436,28 @@ export class DiceBox {
     die.isolated = iso;
     die.inner.material = iso;
     return iso.userData.uniforms;
+  }
+
+  /**
+   * Calls the pet layer for `roll` (or, with no roll, its per-frame update). A throwing pet warns
+   * once, and stops being called for that roll (an update that throws, for every roll in flight);
+   * a roll is never failed by its pet.
+   */
+  #petCall(fn, roll) {
+    const hook = this._petHook;
+    if (!hook) return undefined;
+    if (roll ? !roll.pet || roll.pet.dead : this._petUpdateDead) return undefined;
+    try {
+      return fn(hook);
+    } catch (err) {
+      if (roll) roll.pet.dead = true;
+      else {
+        this._petUpdateDead = true;
+        for (const r of this._rolls) if (r.pet) r.pet.dead = true;
+      }
+      console.warn('Dicer | pet', err);
+      return undefined;
+    }
   }
 
   #rollOf(die) {
@@ -1117,6 +1149,40 @@ export class DiceBox {
       roll.shadows.push(this._renderer.sceneApi.shadowFor(follow));
     }
     roll.revealed = true;
+    if (roll.pet) this.#petBegin(roll);
+  }
+
+  /** Resolves the pet hook and tells it a roll with a pet has begun at its seeded edge. */
+  #petBegin(roll) {
+    const pet = roll.pet;
+    try {
+      this._petHook = (typeof this._pet === 'function' ? this._pet() : this._pet) ?? null;
+    } catch (err) {
+      this._petHook = null;
+      console.warn('Dicer | pet', err);
+    }
+    if (!this._petHook) {
+      pet.dead = true;
+      return;
+    }
+    this._petUpdateDead = false;
+    pet.key = `${roll.id}`;
+    pet.begun = true;
+    const area = roll.record?.area ?? { cx: 0, cz: 0, ...this._area };
+    const centre = () => {
+      let x = 0;
+      let z = 0;
+      for (const d of roll.dice) {
+        x += d.outer.position.x;
+        z += d.outer.position.z;
+      }
+      const n = roll.dice.length || 1;
+      return { x: x / n, z: z / n };
+    };
+    this.#petCall(
+      (h) => h.begin(pet.key, { spec: pet.spec, edge: throwEdge(roll.seed), area: { ...area }, centre }),
+      roll,
+    );
   }
 
   /**
@@ -1145,6 +1211,14 @@ export class DiceBox {
     if (roll.record) {
       roll.record.dice = roll.dice.map((d) => ({ x: d.outer.position.x, z: d.outer.position.z }));
     }
+    if (roll.pet?.begun) {
+      const dice = roll.dice.map((d) => ({
+        type: d.dsnType ?? d.type,
+        value: d.value,
+        ghost: d.ghost === true,
+      }));
+      this.#petCall((h) => h.landed(roll.pet.key, dice), roll);
+    }
     this.#fireResults(roll);
     this.#fireFx(roll);
     roll.resolveLanded();
@@ -1152,6 +1226,7 @@ export class DiceBox {
       if (roll.removed) return;
       roll.phase = 'fading';
       roll.fadeStart = null;
+      this.#petLeave(roll, FADE_MS);
       roll.fades = roll.dice.map((die) => {
         const original = die.inner.material;
         die.inner.material = cloneForFade(original);
@@ -1159,6 +1234,14 @@ export class DiceBox {
       });
       this._renderer.startLoop(this._tick); // restarts the loop if it was stopped meanwhile
     }, this._timeBeforeHide() ?? DEFAULT_LINGER_MS);
+  }
+
+  /** Tells the pet its roll is going away in `msLeft` ms (0: at once), once. */
+  #petLeave(roll, msLeft) {
+    const pet = roll.pet;
+    if (!pet?.begun || pet.left) return;
+    pet.left = true;
+    this.#petCall((h) => h.leave(pet.key, msLeft), roll);
   }
 
   /**
@@ -1218,9 +1301,11 @@ export class DiceBox {
     }
     // Effects outlive their roll (a burst may still be settling): the loop runs while they do.
     const effects = this.#effectsCall((e) => e.update(now)) === true;
+    // A pet outlives its roll too (it walks off): the loop runs while it moves.
+    const pet = this.#petCall((h) => h.update(now)) === true;
     // A roll still waiting for its assets draws nothing: it restarts the loop when they are in.
     let shown = false;
-    let moving = effects;
+    let moving = effects || pet;
     for (const roll of this._rolls) {
       if (roll.assetsPending) continue;
       shown = true;
@@ -1229,7 +1314,7 @@ export class DiceBox {
     // P9-R18: every shown roll at rest and no effect running: this frame is drawn, then the loop
     // holds with the dice on screen. The linger timer's startLoop (the fade) or a new roll wakes it.
     if (shown) return moving ? true : 'hold';
-    return effects;
+    return effects || pet;
   }
 
   /** Hands the impacts the playhead just crossed to onImpact; a sound never fails a roll. */
@@ -1279,6 +1364,10 @@ export class DiceBox {
     clearTimeout(roll.doneTimer);
     clearTimeout(roll.landingTimer);
     clearTimeout(roll.assetTimer);
+    if (roll.pet?.begun) {
+      this.#petLeave(roll, 0);
+      this.#petCall((h) => h.end(roll.pet.key), roll);
+    }
     const scene = this._renderer.scene;
     for (const die of roll.dice) {
       scene.remove(die.outer);

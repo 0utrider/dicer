@@ -1,3 +1,11 @@
+/**
+ * The edge a seeded throw spawns from: 0 = +x, 1 = -x, 2 = +z, 3 = -z. It is the first draw of
+ * the seed's stream, which the worker's sim takes for its spawn side.
+ */
+export function throwEdge(seed) {
+  return Math.floor(mulberry32(seed)() * 4);
+}
+
 /** Deterministic 32-bit PRNG. Returns a function yielding floats in [0, 1). */
 export function mulberry32(seed) {
   let a = seed >>> 0;

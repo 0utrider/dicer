@@ -243,6 +243,7 @@ export function createSim(initialArea, hulls) {
         owner.set(floor.handle, -1);
 
         // Seeded spawn edge: 0 = +x, 1 = -x, 2 = +z, 3 = -z. Its wall starts disabled ("open").
+        // The same first draw as throwEdge(seed) (core/rng.js), which names it to the pet layer.
         const edge = Math.floor(rand() * 4);
         const walls = addWalls(world, edge, a);
         const alongX = edge < 2;
