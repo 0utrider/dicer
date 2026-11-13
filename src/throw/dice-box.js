@@ -231,9 +231,9 @@ export class DiceBox {
     return !!this._hold;
   }
 
-  /** The pet hook's alignFor (H-6: a replay moves the pets to the thrower's layout); never throws. */
+  /** The pet hook's alignFor (H-6: a replay moves the pets to the thrower's layout): the ids it aligned; never throws. */
   alignFor(list, area, paths) {
-    this.#hookCall((h) => h.alignFor?.(list, area, paths));
+    return this.#hookCall((h) => h.alignFor?.(list, area, paths));
   }
 
   /**

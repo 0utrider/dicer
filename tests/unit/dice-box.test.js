@@ -3421,7 +3421,8 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     const { box } = handSetup({ pet: hook({ alignFor }) });
     const list = [{ id: 'u', x: 1, z: 1, r: 1, h: 2 }];
     const paths = () => 9;
-    box.alignFor(list, { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 }, paths);
+    alignFor.mockReturnValueOnce(new Set(['u'])); // the ids it aligned come back
+    expect(box.alignFor(list, { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 }, paths)).toEqual(new Set(['u']));
     expect(alignFor).toHaveBeenCalledWith(
       list,
       { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 },

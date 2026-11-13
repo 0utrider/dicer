@@ -1895,3 +1895,47 @@ describe('Task 9: hand throws and alignFor', () => {
     expect(pets(m.scene)[0].children[0].visible).toBe(true);
   });
 });
+
+describe('Task 9 review fixes', () => {
+  const userOf = (id) => ({ id, flags: { dicer: { pet: { kind: 'slime', color: '#00ff00' } } } });
+  const listed = (id, x, z) => ({ id, x, z, r: 0.95, h: 1.5 });
+  const far = () => 100;
+
+  test('fix 1 (H-8): alignFor moves and places nothing while dice are held', () => {
+    let held = true;
+    const m = make({ petStay: 60 }, { userOf, holding: () => held });
+    held = false;
+    rollToRest(m, 'u1');
+    held = true;
+    const s = { x: at(m.scene).x, z: at(m.scene).z };
+    const got = m.layer.alignFor([listed('u1', -s.x, -s.z), listed('u2', 4, 3)], BIG, (x, z) => Math.hypot(x - s.x, z - s.z));
+    expect(got.size).toBe(0);
+    runTo(m, clockNow + REST_HOP_MS + 50);
+    expect(pets(m.scene)).toHaveLength(1);
+    expect(at(m.scene).x).toBe(s.x);
+    expect(at(m.scene).z).toBe(s.z);
+  });
+
+  test('fix 2: alignFor returns the ids it aligned; a mid-routine or puddle listed pet is not one', () => {
+    const m = puddled({ petStay: 60 }, 'u1');
+    m.layer.begin('r2', bigInfo(spec('u2'), 2));
+    runTo(m, clockNow + 600);
+    rollToRest(m, 'u3');
+    const got = m.layer.alignFor([listed('u1', 5, 4), listed('u2', -5, -4), listed('u3', 5, -4)], BIG, far);
+    expect([...got].sort()).toEqual(['u3']);
+    // pets hidden: nothing aligned
+    m.settings.showPets = false;
+    expect(m.layer.alignFor([listed('u3', 5, -4)], BIG, far).size).toBe(0);
+  });
+
+  test('fix 6: a pet whose owner is gone is not re-aligned', () => {
+    const m = make({ petStay: 60 }, { userOf });
+    rollToRest(m, 'u1');
+    m.layer.userGone('u1');
+    m.layer.update((clockNow += 16));
+    const got = m.layer.alignFor([listed('u1', 4, 3)], BIG, far);
+    expect(got.has('u1')).toBe(false);
+    expect(runTo(m, clockNow + 2000)).toBe(false); // it hops off and is gone
+    expect(pets(m.scene)).toHaveLength(0);
+  });
+});

@@ -2384,6 +2384,44 @@ describe('Task 8: hand rolls in the gate', () => {
     expect(box.rolls.slice(1).map(sourced)).toEqual([false, false]);
   });
 
+  test('fix 1: no alignment while this screen holds dice or another roll is still flying; lingering dice do not stop it', async () => {
+    box.alignFor = vi.fn(() => new Set(['u9']));
+    const ids = (k) => box.rolls[k].opts.source.obstacleIds;
+    box._rolls = new Set([{ phase: 'playing' }]);
+    send(handChunk.encodeTrajectory(withPet()));
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(box.alignFor).not.toHaveBeenCalled();
+    expect(sourced(box.rolls[0])).toBe(true); // the replay still plays, its dice meet empty air
+    expect(ids(0)).toEqual([undefined]); // and hit no pet
+    box.rolls[0].landed.resolve();
+    await tick();
+    box._rolls = new Set();
+    box.holding = true;
+    send(handChunk.encodeTrajectory(withPet()), { messageId: 'm2' });
+    gateH.onCreate(hmsg({ id: 'm2' }));
+    await tick();
+    expect(box.alignFor).not.toHaveBeenCalled();
+    expect(ids(1)).toEqual([undefined]);
+    box.rolls[1].landed.resolve();
+    await tick();
+    box.holding = false;
+    box._rolls = new Set([{ phase: 'lingering' }, { phase: 'fading' }]);
+    send(handChunk.encodeTrajectory(withPet()), { messageId: 'm3' });
+    gateH.onCreate(hmsg({ id: 'm3' }));
+    await tick();
+    expect(box.alignFor).toHaveBeenCalledTimes(1);
+    expect(ids(2)).toEqual(['u9']);
+  });
+
+  test("fix 2: a listed pet alignFor did not align ignores the replay's hits", async () => {
+    box.alignFor = vi.fn(() => new Set()); // u9 was mid-routine, a puddle, or had no place here
+    send(handChunk.encodeTrajectory(withPet()));
+    gateH.onCreate(hmsg());
+    await tick();
+    expect(box.rolls[0].opts.source.obstacleIds).toEqual([undefined]);
+  });
+
   test('a throwing alignFor still replays', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     box.alignFor = vi.fn(() => {
@@ -2395,6 +2433,7 @@ describe('Task 8: hand rolls in the gate', () => {
     expect(box.alignFor).toHaveBeenCalledTimes(1);
     expect(box.roll).toHaveBeenCalledTimes(1);
     expect(sourced(box.rolls[0])).toBe(true);
+    expect(box.rolls[0].opts.source.obstacleIds).toEqual([undefined]);
     expect(warn).toHaveBeenCalled();
     box.rolls[0].landed.resolve();
     await tick();

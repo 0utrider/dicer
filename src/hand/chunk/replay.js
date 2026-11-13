@@ -105,14 +105,19 @@ export function handBuffer({ now = () => Date.now(), setTimeoutFn = (fn, ms) => 
           });
         if (!r) return null;
         // H-6: this screen's pets take the thrower's layout just before the replay's roll(). Only
-        // real views reach here (H-7: the gate replays nothing for ghost or none). A throw warns
-        // once and the replay goes on.
+        // real views reach here (H-7: the gate replays nothing for ghost or none). Never while
+        // dice are held here (H-8) or another roll's dice still fly (its physics has the pets'
+        // old spots; lingering dice are at rest). Only the pets it aligned take the replay's
+        // hits; skipped, or a throw (warned once), the dice meet empty air and the replay goes on.
+        let aligned = null;
         try {
-          diceBox.alignFor?.(r.obstacles, r.area, r.paths);
+          const flying = diceBox.holding || [...(diceBox._rolls ?? [])].some((x) => x.phase === 'playing');
+          if (!flying) aligned = diceBox.alignFor?.(r.obstacles, r.area, r.paths);
         } catch (err) {
           if (!alignWarned) console.warn('dicer: pets could not take the thrower layout', err);
           alignWarned = true;
         }
+        r.source.obstacleIds = r.source.obstacleIds.map((id) => (aligned?.has?.(id) ? id : undefined));
         const first = cast(r.specs, { ...opts, source: r.source, free: true, edge: r.edge });
         return r.extras.length ? first.then(() => alive() && cast(r.extras)) : first;
       } catch (err) {

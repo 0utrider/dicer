@@ -1051,10 +1051,14 @@ export function createPetLayer(deps) {
    * its die passes over it), and one with no place or no pet here is skipped (its die bounces off
    * empty air, and its splat finds no pet). An unlisted standing pet whose footprint the paths come
    * within r + 1 of moves to a rest spot they clear, if it finds one. Nothing with pets hidden or
-   * not allowed. A placed or moved pet stays while the replay flies, even with petStay 0.
+   * not allowed, or while dice are held (H-8: the held throw's pets stay where its player aims).
+   * A pet whose owner is gone is never moved or brought back. A placed or moved pet stays while
+   * the replay flies, even with petStay 0. Returns the Set of listed ids standing at their spot
+   * (or hopping to it): only those take the replay's hits (the caller drops the others).
    */
   function alignFor(list, area, paths) {
-    if (disposed || !shown()) return;
+    const done = new Set();
+    if (disposed || !shown() || holding()) return done;
     const now = clock();
     const items = (Array.isArray(list) ? list : []).filter(
       (o) => o && o.id != null && Number.isFinite(o.x) && Number.isFinite(o.z),
@@ -1066,9 +1070,10 @@ export function createPetLayer(deps) {
       const pet = pets.get(o.id);
       const to = { x: o.x, z: o.z };
       if (!pet || pet.state === 'off') absent.push([o, to]);
-      else if (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move') {
+      else if (!pet.gone && (pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move')) {
         const at = pos(pet);
         pet.aligned = true;
+        done.add(o.id);
         if (Math.hypot(at.x - to.x, at.z - to.z) > MOVED || at.y > MOVED)
           goTo(pet, at, to, REST_HOP_MS, yawAt(to), now);
       }
@@ -1103,9 +1108,10 @@ export function createPetLayer(deps) {
       pet.idleAt = now;
       hopTo(pet, to, 'hop', now);
       pet.aligned = true;
+      done.add(o.id);
     }
     for (const pet of pets.values()) {
-      if (spare.has(pet.userId) || !(pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move')) continue;
+      if (spare.has(pet.userId) || pet.gone || !(pet.state === 'hop' || pet.state === 'rest' || pet.state === 'move')) continue;
       const r = pet.creature.footprint ?? 0.45 * pet.creature.height;
       const clear = (p) => paths(p.x, p.z) > r + 1;
       const at = spotOf(pet);
@@ -1116,6 +1122,7 @@ export function createPetLayer(deps) {
       pet.aligned = true;
       goTo(pet, pos(pet), to, REST_HOP_MS, yawAt(to), now);
     }
+    return done;
   }
 
   /** The user left: their resting pet hops off; one mid-routine leaves when its roll ends. */
