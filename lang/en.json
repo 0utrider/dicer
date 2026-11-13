@@ -81,9 +81,16 @@
         "Name": "Pet sounds",
         "Hint": "Your pet's happy and sad chirps."
       },
-      "petsStay": {
-        "Name": "Pets stay on the table",
-        "Hint": "Your and other players' pets sit on the table between rolls."
+      "petStay": {
+        "Name": "How long pets stay",
+        "Hint": "How long a pet stays on the table after its owner's last roll. Pets move out of your cursor's way while they wait.",
+        "Choices": {
+          "0": "Leave after the roll",
+          "30": "30 seconds",
+          "60": "1 minute",
+          "120": "2 minutes",
+          "-1": "Always"
+        }
       },
       "petSplat": {
         "Name": "Dice can splat pets",

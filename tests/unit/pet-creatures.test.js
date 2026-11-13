@@ -210,3 +210,132 @@ describe.each(KINDS)('%s wobble and reform', (kind) => {
     c.dispose();
   });
 });
+
+// --- the dodge move (pet dodge Task 2) ------------------------------------------------------------
+
+describe.each(KINDS)('%s move', (kind) => {
+  const snap = (c) => {
+    c.root.updateMatrixWorld(true);
+    return meshes(c.root).flatMap((m) => [...m.matrixWorld.elements]);
+  };
+  const maxDiff = (a, b) => a.reduce((d, x, i) => Math.max(d, Math.abs(x - b[i])), 0);
+
+  test("its 'move' pose is NaN-free for t in {0, .5, 1, NaN, -1, 2}", () => {
+    const c = CREATURES[kind]('#c0392b');
+    const pos = c.root.position.clone();
+    for (const t of [0, 0.5, 1, NaN, -1, 2])
+      for (const reaction of REACTIONS) {
+        c.pose('move', t, reaction, { yaw: 0 });
+        c.root.updateMatrixWorld(true);
+        c.root.traverse((o) => {
+          for (const e of o.matrixWorld.elements) expect(Number.isFinite(e)).toBe(true);
+        });
+        expect(c.root.position.equals(pos)).toBe(true);
+      }
+    c.dispose();
+  });
+
+  test('the move starts and ends on the standing pose, and is its own pose mid-way', () => {
+    const c = CREATURES[kind]('#c0392b');
+    c.pose('exit', 1, 'plain', { yaw: 0, now: 0 });
+    const stand = snap(c);
+    c.pose('move', 0, 'plain', { yaw: 0, now: 0 });
+    expect(maxDiff(snap(c), stand)).toBeLessThan(1e-3);
+    c.pose('move', 1, 'plain', { yaw: 0, now: 0 });
+    expect(maxDiff(snap(c), stand)).toBeLessThan(1e-3);
+    c.pose('move', 0.5, 'plain', { yaw: 0, now: 0 });
+    expect(maxDiff(snap(c), stand)).toBeGreaterThan(0.05);
+    c.pose('watch', 0, 'plain', { yaw: 0, now: 0 });
+    const idle = snap(c);
+    c.pose('move', 0.5, 'plain', { yaw: 0, now: 0 });
+    expect(maxDiff(snap(c), idle)).toBeGreaterThan(0.05);
+    c.dispose();
+  });
+});
+
+const rigOf = (c) => c.root.children[0].children[0]; // root > scaler > rig
+
+test('the dragonling flies: fast wing beats, body tilted forward, legs tucked', () => {
+  const c = CREATURES.dragonling('#7b4bc4');
+  const rig = rigOf(c);
+  let W = null;
+  rig.traverse((o) => {
+    if (!W && o.isGroup && o.children.some((m) => m.geometry?.type === 'ShapeGeometry')) W = o;
+  });
+  expect(W).toBeTruthy();
+  let turns = 0;
+  let prev = null;
+  let dir = 0;
+  for (let t = 0; t <= 1.0001; t += 0.01) {
+    c.pose('move', t, 'plain', { yaw: 0 });
+    const z = W.rotation.z;
+    if (prev !== null) {
+      const d = Math.sign(z - prev);
+      if (d && d !== dir) {
+        turns++;
+        dir = d;
+      }
+    }
+    prev = z;
+  }
+  expect(turns).toBeGreaterThanOrEqual(8); // at least 4 full beats in one flight
+  c.pose('move', 0.5, 'plain', { yaw: 0 });
+  expect(rig.rotation.x).toBeGreaterThan(0.2); // leaning into the flight
+  c.root.updateMatrixWorld(true);
+  expect(new THREE.Box3().setFromObject(c.root).min.y).toBeGreaterThan(0.05); // feet up off the floor
+  c.dispose();
+});
+
+test('the slime boings twice: two separate airborne springs', () => {
+  const c = CREATURES.slime('#2e9e5b');
+  const rig = rigOf(c);
+  let hops = 0;
+  let up = false;
+  let squashed = 0;
+  for (let t = 0; t <= 1.0001; t += 0.005) {
+    c.pose('move', t, 'plain', { yaw: 0 });
+    const air = rig.position.y > 0.08;
+    if (air && !up) hops++;
+    up = air;
+    if (rig.children[0].scale.y < 0.85) squashed++;
+  }
+  expect(hops).toBe(2);
+  expect(squashed).toBeGreaterThan(0); // it squashes to spring
+  c.dispose();
+});
+
+test('the mimic scuttles low: alternating feet, the chest down, the lid bobbing', () => {
+  const c = CREATURES.mimic('#c0392b');
+  const rig = rigOf(c);
+  const feet = rig.children.filter((o) => o.isMesh);
+  expect(feet).toHaveLength(4);
+  let L = null;
+  rig.traverse((o) => {
+    if (!L && o.isGroup && o.position.z < 0 && o.children.some((e) => e.isGroup && e.children.length)) L = o;
+  });
+  expect(L).toBeTruthy();
+  let swaps = 0;
+  let prev = 0;
+  let lidMin = Infinity;
+  let lidMax = -Infinity;
+  for (let t = 0.1; t <= 0.9; t += 0.005) {
+    c.pose('move', t, 'plain', { yaw: 0 });
+    // the two front feet step out of phase
+    const d = Math.sign(feet[0].position.z - feet[1].position.z);
+    if (d && d !== prev) {
+      swaps++;
+      prev = d;
+    }
+    lidMin = Math.min(lidMin, L.rotation.x);
+    lidMax = Math.max(lidMax, L.rotation.x);
+  }
+  expect(swaps).toBeGreaterThanOrEqual(6);
+  expect(lidMax - lidMin).toBeGreaterThan(0.15);
+  c.pose('exit', 1, 'plain', { yaw: 0 });
+  c.root.updateMatrixWorld(true);
+  const stand = new THREE.Box3().setFromObject(c.root).max.y;
+  c.pose('move', 0.5, 'plain', { yaw: 0 });
+  c.root.updateMatrixWorld(true);
+  expect(new THREE.Box3().setFromObject(c.root).max.y).toBeLessThan(stand - 0.05);
+  c.dispose();
+});

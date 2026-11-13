@@ -42,7 +42,7 @@ import {
 import { createDamageThemer } from './effects/damage-themes.js';
 import { createEffectLayer } from './effects/effect-layer.js';
 import { createDsnSfx } from './effects/dsn-sfx.js';
-import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting } from './settings.js';
+import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay } from './settings.js';
 
 let dormant = false;
 let gate = null;
@@ -472,6 +472,7 @@ Hooks.once('ready', async () => {
     get: getSetting,
     set: (key, value) => game.settings.set('dicer', key, value),
   }).catch((err) => console.warn('dicer: cannot move the look setting to theme', err));
+  migratePetStay(game.settings.storage.get('client'), (k, v) => game.settings.set('dicer', k, v));
   Promise.all([migrateFromDsn(), lookMigrated])
     .then(() => mirrorLookIfMissing(game.user, getSetting('theme')))
     .catch((err) => console.warn('dicer: cannot mirror the theme setting to the user flag', err));
@@ -544,6 +545,7 @@ Hooks.once('ready', async () => {
         playSound: (sound) => soundEngine?.result(sound),
         warm: (objects) => renderer.warmObjects(objects),
         wake: () => box?.wake(),
+        activeRolls: () => box?.activeRolls ?? 0,
       };
       preloadPets(); // this engine's layer (idle; the old one was released above)
       box = new DiceBox({

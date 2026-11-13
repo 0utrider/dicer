@@ -1,4 +1,4 @@
-import { registerSettings, migrateLookSetting, getSetting, clearSettingCache } from '../../src/settings.js';
+import { registerSettings, migrateLookSetting, migratePetStay, getSetting, clearSettingCache } from '../../src/settings.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { readFileSync } from 'node:fs';
 import { LOOKS } from '../../src/look/looks.js';
@@ -496,16 +496,42 @@ test('petsAllowed (world), showPets and petSounds (client) are Booleans, default
   }
 });
 
-test('petsStay and petSplat (client) are Booleans, default on, and wake the layer on change', () => {
+test('petSplat (client) is a Boolean, default on, and wakes the layer on change', () => {
   const onPetStayChange = vi.fn();
   const r = capture({ onPetStayChange });
-  for (const key of ['petsStay', 'petSplat']) {
-    expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
-    expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
-    expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
-    r[key].onChange(false);
-  }
-  expect(onPetStayChange).toHaveBeenCalledTimes(2);
+  expect(r.petSplat).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(r.petSplat.name).toBe('DICER.Settings.petSplat.Name');
+  expect(r.petSplat.hint).toBe('DICER.Settings.petSplat.Hint');
+  r.petSplat.onChange(false);
+  expect(onPetStayChange).toHaveBeenCalledTimes(1);
+});
+
+test('petStay (client) is a Number with choices 0, 30, 60, 120, -1, default 60, and wakes the layer', () => {
+  const onPetStayChange = vi.fn();
+  const r = capture({ onPetStayChange });
+  expect(r.petsStay).toBeUndefined();
+  expect(r.petStay).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Number, default: 60 });
+  expect(r.petStay.name).toBe('DICER.Settings.petStay.Name');
+  expect(r.petStay.hint).toBe('DICER.Settings.petStay.Hint');
+  expect(Object.keys(r.petStay.choices).sort()).toEqual(['-1', '0', '120', '30', '60']);
+  for (const label of Object.values(r.petStay.choices)) expect(label).toMatch(/^DICER.Settings.petStay./);
+  r.petStay.onChange(30);
+  expect(onPetStayChange).toHaveBeenCalledTimes(1);
+});
+
+test('migratePetStay: a stored petsStay=false becomes petStay 0 once; otherwise nothing', async () => {
+  const run = async (items) => {
+    const set = vi.fn(async () => {});
+    await migratePetStay({ getItem: (k) => items[k] ?? null }, set);
+    return set;
+  };
+  expect(await run({ 'dicer.petsStay': 'false' })).toHaveBeenCalledWith('petStay', 0);
+  expect(await run({ 'dicer.petsStay': 'false', 'dicer.petStay': '30' })).not.toHaveBeenCalled();
+  expect(await run({ 'dicer.petsStay': 'true' })).not.toHaveBeenCalled();
+  expect(await run({})).not.toHaveBeenCalled();
+  const throws = vi.fn();
+  await migratePetStay({ getItem: () => { throw new Error('blocked'); } }, throws);
+  expect(throws).not.toHaveBeenCalled();
 });
 
 test('petsAllowed and showPets call onPetChange; petSounds does not', () => {

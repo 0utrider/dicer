@@ -121,12 +121,22 @@ export async function migrateLookSetting({ get, set }) {
   return copy;
 }
 
+/** The old client `petsStay` (stored false) becomes petStay 0, once: `store` is the client storage. */
+export async function migratePetStay(store, set) {
+  try {
+    if (store.getItem('dicer.petsStay') === 'false' && store.getItem('dicer.petStay') === null)
+      await set('petStay', 0);
+  } catch {
+    /* storage blocked */
+  }
+}
+
 /**
  * Registers every Dicer setting.
  * @param {object} [callbacks]
  * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
  * @param {() => void} [callbacks.onPetChange] runs when petsAllowed or showPets changes
- * @param {() => void} [callbacks.onPetStayChange] runs when petsStay or petSplat changes
+ * @param {() => void} [callbacks.onPetStayChange] runs when petStay or petSplat changes
  * @param {() => void} [callbacks.onRollAreasChange] runs when rollAreas or gmPrivateArea changes
  * @param {(key: string, value: unknown) => void} [callbacks.onLookChange] runs when theme,
  *   interiors, engraving, shadows, glow, presetFaces, presetModels or effects changes
@@ -240,17 +250,25 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
-  for (const key of ['petsStay', 'petSplat']) {
-    register(key, {
-      name: t(`${key}.Name`),
-      hint: t(`${key}.Hint`),
-      scope: 'client',
-      config: true,
-      type: Boolean,
-      default: true,
-      onChange: () => onPetStayChange?.(),
-    });
-  }
+  register('petStay', {
+    name: t('petStay.Name'),
+    hint: t('petStay.Hint'),
+    scope: 'client',
+    config: true,
+    type: Number,
+    choices: Object.fromEntries([0, 30, 60, 120, -1].map((v) => [v, t(`petStay.Choices.${v}`)])),
+    default: 60,
+    onChange: () => onPetStayChange?.(),
+  });
+  register('petSplat', {
+    name: t('petSplat.Name'),
+    hint: t('petSplat.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => onPetStayChange?.(),
+  });
   register('immediatelyDisplayChatMessages', {
     name: t('immediatelyDisplayChatMessages.Name'),
     hint: t('immediatelyDisplayChatMessages.Hint'),

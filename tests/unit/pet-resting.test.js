@@ -116,3 +116,41 @@ test('an area covered by UI still gives a finite best candidate, in bounded trie
   expect(Number.isFinite(spot.x) && Number.isFinite(spot.z)).toBe(true);
   expect(draws).toBe(2 * 24);
 });
+
+// ---- away from the cursor (pet dodge Task 2) ----
+test('restSpot honours away.min over 200 seeds, with the farthest fallback', () => {
+  const taken = [{ x: AREA.cx + 6, z: AREA.cz }];
+  for (let seed = 1; seed <= 200; seed++) {
+    // the cursor at a resting spot of the ring
+    const away = { x: AREA.cx - 6, z: AREA.cz + 3, min: 4 };
+    const spot = restSpot(AREA, H, taken, mulberry32(seed), [], away);
+    expect(Math.hypot(spot.x - away.x, spot.z - away.z), `seed ${seed}`).toBeGreaterThanOrEqual(4 - 1e-9);
+    const r = ringOf(AREA, spot);
+    expect(r, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
+    expect(r, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
+    for (const o of taken) expect(Math.hypot(spot.x - o.x, spot.z - o.z)).toBeGreaterThanOrEqual(2 * H - 1e-9);
+  }
+  // no spot is far enough: the farthest valid candidate of the 24 drawn
+  const ex = Math.min(AREA.halfWidth - 1.2 * H, 0.6 * AREA.halfWidth);
+  const ez = Math.min(AREA.halfDepth - 1.2 * H, 0.6 * AREA.halfDepth);
+  for (let seed = 1; seed <= 200; seed++) {
+    const away = { x: AREA.cx + 1, z: AREA.cz - 1, min: 1000 };
+    const spot = restSpot(AREA, H, [], mulberry32(seed), [], away);
+    const r = ringOf(AREA, spot);
+    expect(r, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
+    expect(r, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
+    const rand = mulberry32(seed);
+    let far = -Infinity;
+    for (let i = 0; i < 24; i++) {
+      const c = { x: AREA.cx + (rand() * 2 - 1) * ex, z: AREA.cz + (rand() * 2 - 1) * ez };
+      const cr = ringOf(AREA, c);
+      if (cr >= RING_IN && cr <= RING_OUT) far = Math.max(far, Math.hypot(c.x - away.x, c.z - away.z));
+    }
+    expect(Math.hypot(spot.x - away.x, spot.z - away.z), `seed ${seed}`).toBeCloseTo(far, 9);
+  }
+});
+
+test('without away restSpot draws as before', () => {
+  for (const seed of [1, 2, 3])
+    expect(restSpot(AREA, H, [], mulberry32(seed), [], undefined)).toEqual(restSpot(AREA, H, [], mulberry32(seed)));
+});
