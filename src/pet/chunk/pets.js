@@ -82,6 +82,8 @@ export function createPetLayer(deps) {
   const { scene, getSetting, playSound, warm } = deps;
   const clock = deps.now || (() => performance.now()); // test seam; DiceBox's update() is on this clock
   const rand = deps.random || Math.random; // test seam: the rest spots
+  const setTimer = deps.setTimer || ((fn, ms) => setTimeout(fn, ms)); // test seams: the idle timer
+  const clearTimer = deps.clearTimer || ((id) => clearTimeout(id));
   const doc = deps.doc || globalThis.document; // test seam: Foundry's UI, which rest spots avoid
   const hooks = deps.hooks || globalThis.Hooks; // test seam: Foundry's hooks (area edits)
   // The last stage DiceBox told us ({cx, cz, halfWidth, halfDepth, rect?}: rect is its px rect): a
@@ -97,6 +99,8 @@ export function createPetLayer(deps) {
   let sparkTex = null;
   let sparkMat = null;
   let disposed = false;
+  let timer = null; // the one timer, aimed at the earliest leaveAt (so a held loop wakes up)
+  let timerAt = Infinity;
 
   const makeShadow = () => {
     shadowTex ??= discTexture();
@@ -232,11 +236,11 @@ export function createPetLayer(deps) {
       /* a stopped engine */
     }
   };
-  /** Whether resting is on: petsStay, and pets allowed and shown at all. */
+  /** Whether resting is on: petStay is not 0 (leave after the roll), and pets allowed and shown. */
   const stays = () => {
     try {
       return (
-        getSetting('petsStay') !== false &&
+        getSetting('petStay') !== 0 &&
         getSetting('petsAllowed') !== false &&
         getSetting('showPets') !== false
       );
@@ -244,6 +248,31 @@ export function createPetLayer(deps) {
       return true;
     }
   };
+  /** petStay in seconds: 0 leaves after the roll, -1 never leaves. */
+  const stayFor = () => {
+    try {
+      const v = getSetting('petStay');
+      return typeof v === 'number' ? v : 60;
+    } catch {
+      return 60;
+    }
+  };
+  /** Aims the single idle timer at `at` (Infinity: none); it only wakes the loop. */
+  function arm(at) {
+    if (at === timerAt) return;
+    if (timer !== null) clearTimer(timer);
+    timer = null;
+    timerAt = at;
+    if (at === Infinity || disposed) return;
+    timer = setTimer(
+      () => {
+        timer = null;
+        timerAt = Infinity;
+        wake();
+      },
+      Math.max(0, at - clock()),
+    );
+  }
   const pos = (pet) => ({ x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z, y: pet.hop ?? 0 });
   /** Where a pet stands (or will, at the end of its hop): what the others keep their distance from. */
   const spotOf = (pet) => pet.spot ?? pet.base;
@@ -437,6 +466,7 @@ export function createPetLayer(deps) {
       }
     } else pet.state = 'routine'; // a resting or leaving pet starts its routine from where it stands
     pet.gone = false;
+    pet.leaveAt = null; // its idle time starts again when this roll ends
     pet.spot = null;
     pet.area = { ...area }; // the owner's resting area: that of their most recent roll
     pet.rolls.set(key, { ghost: !!spec.ghost, summary: null, consumed: false });
@@ -729,7 +759,10 @@ export function createPetLayer(deps) {
    * changes (each of those wakes the loop).
    */
   function update(now) {
-    if (!pets.size) return false;
+    if (!pets.size) {
+      arm(Infinity);
+      return false;
+    }
     let shadows = true;
     try {
       shadows = getSetting('shadows') !== false; // once per frame, not per pet
@@ -737,10 +770,19 @@ export function createPetLayer(deps) {
       /* unreadable: keep the default */
     }
     const stay = stays();
+    const idle = stayFor();
+    let nextLeave = Infinity;
     let moving = false;
     for (const pet of [...pets.values()]) {
       let alive = false;
       try {
+        // a resting pet or puddle leaves once its idle time is up (a hop off, or a fade)
+        const waits = pet.state === 'rest' || pet.state === 'hop' || pet.state === 'puddle';
+        pet.leaveAt = stay && idle > 0 && waits && Number.isFinite(pet.idleAt) ? pet.idleAt + idle * 1000 : null;
+        if (pet.leaveAt !== null) {
+          if (now >= pet.leaveAt) sendOff(pet, now);
+          else nextLeave = Math.min(nextLeave, pet.leaveAt);
+        }
         alive = step(pet, now, shadows, stay);
       } catch (err) {
         console.warn('Dicer | pet', err);
@@ -748,6 +790,7 @@ export function createPetLayer(deps) {
       if (alive === false) removePet(pet);
       else if (alive === true) moving = true;
     }
+    arm(nextLeave);
     return moving ? true : pets.size > 0 ? 'rest' : false;
   }
 
@@ -929,6 +972,7 @@ export function createPetLayer(deps) {
 
   function dispose() {
     disposed = true;
+    arm(Infinity);
     try {
       hooks?.off?.(AREAS_HOOK, areasHook);
     } catch {

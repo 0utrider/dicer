@@ -57,6 +57,8 @@ test('pet layer wiring: wake dep, userConnected disconnect -> userGone, settings
     /Hooks\.on\('userConnected', \(user, connected\) => \{\s*if \(!connected\) getPets\(\)\?\.userGone\?\.\(user\.id\);\s*\}\);/,
   );
   expect(src).toMatch(/onPetStayChange: \(\) => diceBox\?\.wake\(\)/);
+  // the old petsStay=false moves to petStay 0 once, on ready
+  expect(src).toMatch(/migratePetStay\(game\.settings\.storage\.get\('client'\), \(k, v\) => game\.settings\.set\('dicer', k, v\)\)/);
   // the area change reaches the hook from DiceBox.onResize, which main's resize path calls
   const box = readFileSync('src/throw/dice-box.js', 'utf8');
   expect(box).toMatch(/areaChanged/);

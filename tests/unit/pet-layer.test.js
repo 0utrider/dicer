@@ -5,7 +5,7 @@ import { mulberry32 as mulberry } from '../../src/core/rng.js';
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
 let clockNow = 0;
 const make = (settings = {}, over = {}) => {
-  settings.petsStay ??= false; // resting has its own tests below
+  settings.petStay ??= 0; // resting has its own tests below
   clockNow = 0;
   const scene = new THREE.Scene();
   const playSound = vi.fn();
@@ -593,7 +593,7 @@ const ids = (m) =>
     .sort();
 
 test("with petsStay a pet rests after its roll and update returns 'rest'", () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   expect(pets(m.scene)).toHaveLength(1);
   expect(m.layer.update((clockNow += 16))).toBe('rest');
@@ -613,7 +613,7 @@ test("with petsStay a pet rests after its roll and update returns 'rest'", () =>
 });
 
 test("petsStay off keeps today's hop-off", () => {
-  const m = make({ petsStay: false });
+  const m = make({ petStay: 0 });
   m.layer.begin('k', bigInfo(spec()));
   m.layer.update(clockNow);
   m.layer.landed('k', [d20(5)]);
@@ -630,7 +630,7 @@ const inRing = (p) => {
 };
 
 test("the owner's roll is watched from the resting spot: no movement, the obstacle is that spot", () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   const rest = { x: at(m.scene).x, z: at(m.scene).z };
   const own = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
@@ -666,7 +666,7 @@ test("the owner's roll is watched from the resting spot: no movement, the obstac
 });
 
 test('a first appearance hops in from outside the edge to a rest spot, and the obstacle sent is that spot', () => {
-  const m = make({ petsStay: true }, { random: mulberry(11) });
+  const m = make({ petStay: 60 }, { random: mulberry(11) });
   const sent = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
   expect(sent).toHaveLength(1);
   const spot = { x: sent[0].x, z: sent[0].z };
@@ -690,7 +690,7 @@ test('a first appearance hops in from outside the edge to a rest spot, and the o
 });
 
 test('a first appearance with no prior obstaclesFor still rests in the ring', () => {
-  const m = make({ petsStay: true }, { random: mulberry(12) });
+  const m = make({ petStay: 60 }, { random: mulberry(12) });
   m.layer.begin('k', bigInfo(spec('u1'), 3));
   m.layer.update(clockNow);
   runTo(m, clockNow + 400);
@@ -700,7 +700,7 @@ test('a first appearance with no prior obstaclesFor still rests in the ring', ()
 });
 
 test('petsStay off: the obstacle is the edge spot and the pet stands there', () => {
-  const m = make({ petsStay: false });
+  const m = make({ petStay: 0 });
   const list = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
   expect(list[0].x).toBeCloseTo(BIG.halfWidth - 0.9);
   expect(list[0].z).toBeCloseTo(0);
@@ -711,7 +711,7 @@ test('petsStay off: the obstacle is the edge spot and the pet stands there', () 
 });
 
 test("obstaclesFor lists resting pets and the roller's upcoming rest spot", () => {
-  const m = make({ petsStay: true }, { random: mulberry(21) });
+  const m = make({ petStay: 60 }, { random: mulberry(21) });
   rollToRest(m, 'u1');
   const rest = { x: at(m.scene).x, z: at(m.scene).z };
   const list = m.layer.obstaclesFor({ spec: spec('u2'), edge: 1, area: BIG });
@@ -737,7 +737,7 @@ test("obstaclesFor lists resting pets and the roller's upcoming rest spot", () =
 });
 
 test('a 4th roller replaces the longest-idle resting pet, never one mid-routine; all 3 mid-routine -> no pet', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   clockNow += 500;
   rollToRest(m, 'u2');
@@ -759,7 +759,7 @@ test('a 4th roller replaces the longest-idle resting pet, never one mid-routine;
 });
 
 test('userGone hops that pet off and the layer ends empty', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   m.deps.wake.mockClear();
   m.layer.userGone('u1');
@@ -771,7 +771,7 @@ test('userGone hops that pet off and the layer ends empty', () => {
 });
 
 test('areaChanged re-places resting pets validly', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   rollToRest(m, 'u2');
   m.deps.wake.mockClear();
@@ -795,7 +795,7 @@ test('areaChanged re-places resting pets validly', () => {
 });
 
 test('a stage smaller than the remembered roll area keeps the pet inside the stage', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 });
   runTo(m, clockNow + 600);
@@ -805,11 +805,11 @@ test('a stage smaller than the remembered roll area keeps the pet inside the sta
 });
 
 test('petsStay switched off mid-rest -> all hop off, update false at the end', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   rollToRest(m, 'u2');
   expect(m.layer.update((clockNow += 16))).toBe('rest');
-  m.settings.petsStay = false;
+  m.settings.petStay = 0;
   expect(m.layer.update((clockNow += 16))).toBe(true);
   expect(runTo(m, clockNow + 1000)).toBe(false);
   expect(pets(m.scene)).toHaveLength(0);
@@ -817,7 +817,7 @@ test('petsStay switched off mid-rest -> all hop off, update false at the end', (
 
 test('petsAllowed or showPets off makes resting pets hop off too', () => {
   for (const key of ['petsAllowed', 'showPets']) {
-    const m = make({ petsStay: true });
+    const m = make({ petStay: 60 });
     rollToRest(m, 'u1');
     m.settings[key] = false;
     expect(runTo(m, clockNow + 1000)).toBe(false);
@@ -825,7 +825,7 @@ test('petsAllowed or showPets off makes resting pets hop off too', () => {
 });
 
 test('a pet whose user is gone mid-roll leaves instead of resting', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   m.layer.begin('k', bigInfo(spec('u1')));
   m.layer.update(clockNow);
   m.layer.userGone('u1');
@@ -834,7 +834,7 @@ test('a pet whose user is gone mid-roll leaves instead of resting', () => {
 });
 
 test('a pet mid-routine when the stage shrinks rests inside the smaller stage', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   m.layer.begin('k', bigInfo(spec('u1')));
   m.layer.update(clockNow);
   m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 });
@@ -848,7 +848,7 @@ test('a pet mid-routine when the stage shrinks rests inside the smaller stage', 
 });
 
 test('obstacle radii use each creature footprint; the mimic is at least 0.85', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   expect(m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG })[0].r).toBeGreaterThanOrEqual(0.85);
   m.layer.begin('k', bigInfo(spec('u1')));
   const o = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG });
@@ -867,7 +867,7 @@ const hitFrom = (m, id, speed, dx = 1) => {
 const splatCalls = (m) => m.playSound.mock.calls.filter(([a]) => a.builtin === 'petSplat').length;
 /** A pet at rest, then splatted into a puddle (the clock after the burst). */
 const puddled = (settings = {}, user = 'u1') => {
-  const m = make({ petsStay: true, ...settings });
+  const m = make({ petStay: 60, ...settings });
   rollToRest(m, user);
   hitFrom(m, user, HARD);
   runTo(m, clockNow + 1300);
@@ -875,7 +875,7 @@ const puddled = (settings = {}, user = 'u1') => {
 };
 
 test('a hard hit splats: one petSplat sound, then a puddle', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   m.deps.wake.mockClear();
   hitFrom(m, 'u1', HARD);
@@ -891,7 +891,7 @@ test('a hard hit splats: one petSplat sound, then a puddle', () => {
 });
 
 test('a soft hit wobbles: pushed away from the die, back at rest after WOBBLE_MS, no sound', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   const rest = { x: at(m.scene).x, z: at(m.scene).z };
   hitFrom(m, 'u1', SOFT, 1); // the die is on the +x side
@@ -912,7 +912,7 @@ test('a soft hit wobbles: pushed away from the die, back at rest after WOBBLE_MS
 });
 
 test('a wobble restarts on a new hit; a hit below WOBBLE_SPEED does nothing', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', WOBBLE_SPEED / 2);
   expect(m.layer.update((clockNow += 16))).toBe('rest');
@@ -926,7 +926,7 @@ test('a wobble restarts on a new hit; a hit below WOBBLE_SPEED does nothing', ()
 });
 
 test('petSplat off -> wobble only, and no sound', () => {
-  const m = make({ petsStay: true, petSplat: false });
+  const m = make({ petStay: 60, petSplat: false });
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', HARD);
   expect(m.layer.update((clockNow += 16))).toBe(true);
@@ -937,7 +937,7 @@ test('petSplat off -> wobble only, and no sound', () => {
 });
 
 test('three hits in one frame -> one splat', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   for (let i = 0; i < 3; i++) hitFrom(m, 'u1', HARD + i);
   m.layer.update((clockNow += 16));
@@ -947,7 +947,7 @@ test('three hits in one frame -> one splat', () => {
 });
 
 test('hits on a puddle, or on one that is splatting, are ignored; unknown ids are harmless', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', HARD);
   runTo(m, clockNow + 200);
@@ -965,7 +965,7 @@ test('hits on a puddle, or on one that is splatting, are ignored; unknown ids ar
 });
 
 test('a splat mid-routine gives no reaction and no chirp', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   m.layer.begin('k', bigInfo(spec('u1')));
   m.layer.update(clockNow);
   runTo(m, clockNow + 700); // watching
@@ -1034,7 +1034,7 @@ test("a puddle owner's roll reforms in place, stays there, and its obstacle is t
 });
 
 test('a puddle counts toward the cap and is not in obstaclesFor', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', HARD); // u1 is splatted at once, so idle the longest
   runTo(m, clockNow + 1300);
@@ -1052,7 +1052,7 @@ test('a puddle counts toward the cap and is not in obstaclesFor', () => {
 
 test('petsStay off with a puddle -> it fades and the layer ends empty', () => {
   const m = puddled();
-  m.settings.petsStay = false;
+  m.settings.petStay = 0;
   m.layer.update((clockNow += 16));
   expect(runTo(m, clockNow + 1000)).toBe(false);
   expect(pets(m.scene)).toHaveLength(0);
@@ -1066,7 +1066,7 @@ test('a puddle fades when its user leaves', () => {
 });
 
 test("a roll that begins mid-burst reforms the puddle once the burst ends", () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', HARD);
   runTo(m, clockNow + 200);
@@ -1102,7 +1102,7 @@ test('a puddle is moved inside the smaller stage, and its old spot keeps nobody 
 });
 
 test('a splat becoming a puddle after a stage change lands inside the new stage', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', HARD);
   m.layer.update((clockNow += 16));
@@ -1118,7 +1118,7 @@ test('a splat becoming a puddle after a stage change lands inside the new stage'
 // ---- final review fixes: the sim's splat speed, UI kept clear, area edits, unchanged resizes ----
 
 test('splatSpeed is SPLAT_SPEED while petSplat is on, null when it is off', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   expect(m.layer.splatSpeed).toBe(SPLAT_SPEED);
   m.settings.petSplat = false;
   expect(m.layer.splatSpeed).toBeNull();
@@ -1127,7 +1127,7 @@ test('splatSpeed is SPLAT_SPEED while petSplat is on, null when it is off', () =
 });
 
 test('areaChanged with an unchanged stage does not move resting pets or puddles', () => {
-  const m = make({ petsStay: true });
+  const m = make({ petStay: 60 });
   const stage = { cx: 0, cz: 0, halfWidth: 14, halfDepth: 9 };
   m.layer.areaChanged(stage);
   rollToRest(m, 'u1');
@@ -1155,7 +1155,7 @@ test("resting pets keep off Foundry's UI (measured in px, turned into die units)
   };
   for (let seed = 1; seed <= 20; seed++) {
     const r = mulberry(seed);
-    const m = make({ petsStay: true }, { doc: fakeDoc(rects), random: r });
+    const m = make({ petStay: 60 }, { doc: fakeDoc(rects), random: r });
     m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 14, halfDepth: 9, rect: { left: 0, top: 0, width: 1400, height: 900 } });
     rollToRest(m, 'u1');
     const p = at(m.scene);
@@ -1172,7 +1172,7 @@ test('an area edit re-places the resting pets whose owner area changed, and disp
     off: vi.fn((name) => handlers.delete(name)),
   };
   const areas = { u1: BIG, u2: BIG };
-  const m = make({ petsStay: true }, { hooks, areaOf: (id) => areas[id] });
+  const m = make({ petStay: 60 }, { hooks, areaOf: (id) => areas[id] });
   rollToRest(m, 'u1');
   rollToRest(m, 'u2');
   const u2 = { ...at(m.scene, 1) };
@@ -1196,7 +1196,7 @@ test('an area edit moves a puddle into its owner new area', () => {
   const handlers = new Map();
   const hooks = { on: (name, fn) => (handlers.set(name, fn), 1), off: () => {} };
   const areas = { u1: BIG };
-  const m = make({ petsStay: true }, { hooks, areaOf: (id) => areas[id] });
+  const m = make({ petStay: 60 }, { hooks, areaOf: (id) => areas[id] });
   rollToRest(m, 'u1');
   hitFrom(m, 'u1', HARD);
   runTo(m, clockNow + 1300);
@@ -1209,4 +1209,124 @@ test('an area edit moves a puddle into its owner new area', () => {
   expect(phaseOf(m)).toBe('puddle');
   expect(Math.abs(p.x - corner.cx)).toBeLessThanOrEqual(corner.halfWidth);
   expect(Math.abs(p.z - corner.cz)).toBeLessThanOrEqual(corner.halfDepth);
+});
+
+// petStay: how long a resting pet or puddle stays after its owner's last roll.
+const fakeTimers = () => {
+  const list = [];
+  return {
+    list,
+    live: () => list.filter((t) => t.live),
+    setTimer: (fn, ms) => {
+      const t = { fn, ms, live: true };
+      list.push(t);
+      return t;
+    },
+    clearTimer: (t) => {
+      t.live = false;
+    },
+  };
+};
+const stayMake = (petStay, timers = fakeTimers()) => ({
+  m: make({ petStay }, { setTimer: timers.setTimer, clearTimer: timers.clearTimer }),
+  timers,
+});
+
+test('petStay 60: a resting pet leaves 60 s after its reaction; update false afterwards', () => {
+  const { m } = stayMake(60);
+  rollToRest(m, 'u1');
+  const idle = clockNow;
+  expect(runTo(m, idle + 58000)).toBe('rest');
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(runTo(m, idle + 62000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test('a puddle fades after petStay', () => {
+  const m = puddled({ petStay: 60 });
+  const idle = clockNow;
+  expect(runTo(m, idle + 50000)).toBe('rest');
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(runTo(m, idle + 62000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test('-1 never leaves', () => {
+  const { m, timers } = stayMake(-1);
+  rollToRest(m, 'u1');
+  expect(runTo(m, clockNow + 20 * 60000)).toBe('rest');
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(timers.live()).toHaveLength(0);
+});
+
+test('0 behaves like the old petsStay off', () => {
+  const { m } = stayMake(0);
+  rollToRest(m, 'u1');
+  expect(runTo(m, clockNow + 1500)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test('a roll by the owner before the timer resets it', () => {
+  const { m } = stayMake(60);
+  rollToRest(m, 'u1');
+  const t0 = clockNow;
+  runTo(m, t0 + 50000);
+  rollToRest(m, 'u1');
+  const t1 = clockNow;
+  expect(runTo(m, t0 + 70000)).toBe('rest'); // past the first deadline
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(runTo(m, t1 + 62000)).toBe(false);
+});
+
+test('a pet that left on the timer returns as a first appearance on its next roll', () => {
+  const { m } = stayMake(30);
+  rollToRest(m, 'u1');
+  expect(runTo(m, clockNow + 32000)).toBe(false);
+  rollToRest(m, 'u1');
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+});
+
+test('changing petStay mid-wait re-arms the timer', () => {
+  const { m, timers } = stayMake(60);
+  rollToRest(m, 'u1');
+  const idle = clockNow;
+  m.layer.update((clockNow += 16));
+  const first = timers.live();
+  expect(first).toHaveLength(1);
+  expect(first[0].ms).toBeGreaterThan(50000);
+  m.settings.petStay = 30;
+  m.layer.update((clockNow += 16));
+  const now = timers.live();
+  expect(now).toHaveLength(1);
+  expect(now[0]).not.toBe(first[0]);
+  expect(first[0].live).toBe(false);
+  expect(now[0].ms).toBeLessThanOrEqual(30000);
+  expect(runTo(m, idle + 32000)).toBe(false);
+});
+
+test('dispose clears the timer (no wake after dispose)', () => {
+  const { m, timers } = stayMake(60);
+  rollToRest(m, 'u1');
+  m.layer.update((clockNow += 16));
+  expect(timers.live()).toHaveLength(1);
+  m.layer.dispose();
+  expect(timers.live()).toHaveLength(0);
+  m.deps.wake.mockClear();
+  for (const t of timers.list) if (t.live) t.fn();
+  expect(m.deps.wake).not.toHaveBeenCalled();
+});
+
+test('the timer fires through a held loop (deps.wake called)', () => {
+  const { m, timers } = stayMake(60);
+  rollToRest(m, 'u1');
+  const idle = clockNow;
+  expect(m.layer.update((clockNow += 16))).toBe('rest'); // held: nothing redraws
+  const [t] = timers.live();
+  m.deps.wake.mockClear();
+  clockNow = idle + 60000;
+  t.fn();
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(m.layer.update(clockNow)).toBe(true); // the wake runs update: it hops off
+  expect(runTo(m, clockNow + 1000)).toBe(false);
 });
