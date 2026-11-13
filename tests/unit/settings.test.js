@@ -496,6 +496,18 @@ test('petsAllowed (world), showPets and petSounds (client) are Booleans, default
   }
 });
 
+test('petsStay and petSplat (client) are Booleans, default on, and wake the layer on change', () => {
+  const onPetStayChange = vi.fn();
+  const r = capture({ onPetStayChange });
+  for (const key of ['petsStay', 'petSplat']) {
+    expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
+    expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
+    r[key].onChange(false);
+  }
+  expect(onPetStayChange).toHaveBeenCalledTimes(2);
+});
+
 test('petsAllowed and showPets call onPetChange; petSounds does not', () => {
   const onPetChange = vi.fn();
   const r = capture({ onPetChange });

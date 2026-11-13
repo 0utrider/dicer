@@ -137,6 +137,12 @@ test('a looping renderer is busy, so each roll starts from an idle one', () => {
   expect(createDicerAdapter({ _debug: debug({ isLooping: false }) }).isBusy()).toBe(false);
 });
 
+test('a held loop (resting pets, no frames) is idle, not busy', () => {
+  expect(createDicerAdapter({ _debug: debug({ isLooping: true, isHolding: true }) }).isBusy()).toBe(false);
+  expect(createDicerAdapter({ _debug: debug({ isLooping: true, isHolding: false }) }).isBusy()).toBe(true);
+  expect(createDicerAdapter({ _debug: debug({ activeRolls: 1, isLooping: true, isHolding: true }) }).isBusy()).toBe(true);
+});
+
 test('a dice cap below a scenario pool adds a note to its result', async () => {
   const sc = await import('../../src/bench/scenarios.js');
   vi.spyOn(sc, 'runSuite');

@@ -17,7 +17,7 @@ import { GHOST_APPEARANCE } from '../compat/colorset-map.js';
 import { modelRotationFor } from '../compat/dsn-orientation.js';
 import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
-import { MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
+import { MAX_OBSTACLES, MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
 import { throwEdge } from '../core/rng.js';
 import { fitDieCapacity, toDieArea } from '../areas/area-model.js';
 
@@ -185,6 +185,7 @@ export class DiceBox {
     this._pet = pet;
     this._petHook = null;
     this._petUpdateDead = false;
+    this._hookWarned = false;
     this._rollSeq = 0;
     this._systemWarned = new Set(); // system id|kind: one warning each
     this._geometries = new Map(); // type|edge radius -> BufferGeometry (P2-R5, P7-D2)
@@ -210,9 +211,9 @@ export class DiceBox {
     });
     // A hidden tab gets no animation frames, so nothing could land: drop every roll.
     this._visibility = visibility ?? null;
-    this._onVisibility = () => {
-      if (this._visibility?.hidden) this.clear();
-    };
+    // Visible again (or a restored context): resting pets are drawn again.
+    this._onVisibility = () => (this._visibility?.hidden ? this.clear() : this.wake());
+    renderer.onContextRestored?.(() => this.wake());
     this._visibility?.addEventListener?.('visibilitychange', this._onVisibility);
   }
 
@@ -233,6 +234,35 @@ export class DiceBox {
     this._renderer.sceneApi.fitArea(this._area);
     this._physics.resize(this._area);
     this._renderer.setArea(rect);
+    // The pet layer's stage: die units, plus the px rect it measures Foundry's UI against.
+    this._stage = { cx: 0, cz: 0, ...this._area, rect: this._stageRect };
+    this.#hookCall((h) => h.areaChanged?.(this._stage));
+  }
+
+  /** A px area (an area resolver's rectFor; null: the stage) as the die-unit area a throw uses there. */
+  dieArea(rect) {
+    return this.#throwArea(rect, 0)?.area ?? { cx: 0, cz: 0, ...this._area };
+  }
+
+  /** Starts the render loop when it is stopped or held (a resting pet starts to move, a setting changed). */
+  wake() {
+    this._renderer.startLoop(this._tick);
+  }
+
+  /**
+   * Calls an optional hook method outside a roll's pet bookkeeping (obstaclesFor, hit,
+   * areaChanged: they concern pets of other users too), on `hook` or, without one, on the pet
+   * hook now (a PetHook or the getter's answer). A throw warns once and is swallowed.
+   */
+  #hookCall(fn, hook) {
+    try {
+      hook ??= typeof this._pet === 'function' ? this._pet() : this._pet;
+      return hook ? fn(hook) : undefined;
+    } catch (err) {
+      if (!this._hookWarned) console.warn('Dicer | pet', err);
+      this._hookWarned = true;
+      return undefined;
+    }
   }
 
   /**
@@ -361,6 +391,21 @@ export class DiceBox {
       roll.seed = seed;
       const req = { dice: roll.dice.map((d) => ({ type: d.shapeType })), seed };
       if (throwArea) req.area = throwArea;
+      // Resting pets of any user are obstacles for every throw; the hook is the one begin uses.
+      this.#hookCall((h) => {
+        roll.hook = h;
+        const o = h.obstaclesFor?.({
+          spec: pet ?? null,
+          edge: throwEdge(seed),
+          area: { ...roll.record.area },
+          stage: this._stage,
+        });
+        const list = Array.isArray(o) ? o.filter((e) => e && typeof e === 'object').slice(0, MAX_OBSTACLES) : [];
+        if (!list.length) return;
+        roll.ids = list.map((e) => e.id);
+        req.obstacles = list.map(({ x, z, r, h }) => ({ x, z, r, h }));
+        if (h.splatSpeed > 0) req.splatSpeed = h.splatSpeed; // the sim splats too (null: petSplat off)
+      });
       const stream = this._physics.throw(req);
       // Stall guards (R12): a worker that never answers must not keep a roll alive.
       roll.firstChunkTimer = setTimeout(
@@ -1155,12 +1200,8 @@ export class DiceBox {
   /** Resolves the pet hook and tells it a roll with a pet has begun at its seeded edge. */
   #petBegin(roll) {
     const pet = roll.pet;
-    try {
-      this._petHook = (typeof this._pet === 'function' ? this._pet() : this._pet) ?? null;
-    } catch (err) {
-      this._petHook = null;
-      console.warn('Dicer | pet', err);
-    }
+    // The hook that answered obstaclesFor at throw time; resolved afresh only if there was none.
+    this._petHook = roll.hook ?? this.#hookCall((h) => h);
     if (!this._petHook) {
       pet.dead = true;
       return;
@@ -1302,7 +1343,10 @@ export class DiceBox {
     // Effects outlive their roll (a burst may still be settling): the loop runs while they do.
     const effects = this.#effectsCall((e) => e.update(now)) === true;
     // A pet outlives its roll too (it walks off): the loop runs while it moves.
-    const pet = this.#petCall((h) => h.update(now)) === true;
+    this._petHook ??= this.#hookCall((h) => h); // a held rest or wake() before any roll began
+    const petState = this.#petCall((h) => h.update(now));
+    const pet = petState === true;
+    const petRest = petState === 'rest'; // pets shown, nothing moving: hold, no rAF
     // A roll still waiting for its assets draws nothing: it restarts the loop when they are in.
     let shown = false;
     let moving = effects || pet;
@@ -1314,7 +1358,8 @@ export class DiceBox {
     // P9-R18: every shown roll at rest and no effect running: this frame is drawn, then the loop
     // holds with the dice on screen. The linger timer's startLoop (the fade) or a new roll wakes it.
     if (shown) return moving ? true : 'hold';
-    return effects || pet;
+    if (effects || pet) return true;
+    return petRest ? 'hold' : false;
   }
 
   /** Hands the impacts the playhead just crossed to onImpact; a sound never fails a roll. */
@@ -1331,9 +1376,15 @@ export class DiceBox {
         // An impact reveals no result, so ghost dice get their dust too. Before the sound: a
         // throwing sound hook must not skip it. The position is copied (the die keeps moving).
         const pos = d.outer?.position;
-        this.#effectsCall((e) =>
-          e.impact?.({ position: { x: pos?.x ?? 0, y: pos?.y ?? 0, z: pos?.z ?? 0 }, speed, surface, dieKey }),
-        );
+        const position = { x: pos?.x ?? 0, y: pos?.y ?? 0, z: pos?.z ?? 0 };
+        if (other <= -3) {
+          // A pet obstacle (-3 - i): the pet layer decides at playback time whether it splats or
+          // wobbles; its own sound covers the contact, so no die click and no dust.
+          const id = roll.ids?.[-3 - other];
+          if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey }), roll.hook);
+          continue;
+        }
+        this.#effectsCall((e) => e.impact?.({ position, speed, surface, dieKey }));
         this._onImpact({
           material: d.soundMaterial,
           surface,

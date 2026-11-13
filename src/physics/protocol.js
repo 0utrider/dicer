@@ -2,7 +2,7 @@
 
 /** Floats per die per frame: px, py, pz, qx, qy, qz, qw. */
 export const FLOATS_PER_DIE = 7;
-/** Floats per impact event: frame, die, other (die index, -1 floor, -2 wall), speed. */
+/** Floats per impact event: frame, die, other (die index, -1 floor, -2 wall, -3 - i obstacle i), speed. */
 export const IMPACT_FLOATS = 4;
 /** Most impact events kept per chunk (the fastest); a pile-up must not flood the main thread. */
 export const MAX_IMPACTS_PER_CHUNK = 64;
@@ -15,7 +15,13 @@ export const STEP_SECONDS = 1 / 60;
 /**
  * THROW: {id, dice, seed, area?}; `area` = {cx, cz, halfWidth, halfDepth} (die units relative to
  * the stage centre) is that throw's own walls/spawn/aim rectangle; absent, the stage (RESIZE).
+ * `obstacles?: {x, z, r, h}[]` are fixed pet capsules on the floor (scene units, radius r,
+ * standing height h; r > 3 or h > 6 is ignored); the caller keeps them inside the stage, off the
+ * spawn side. Impacts with obstacle i report other = -3 - i. At most MAX_OBSTACLES.
+ * `splatSpeed?`: a die contact with an obstacle at this speed or more splats that pet, and its
+ * collider is gone from the next step (absent or null: obstacles stay solid; petSplat off).
  */
+export const MAX_OBSTACLES = 3;
 export const MSG = Object.freeze({
   INIT: 'init',
   RESIZE: 'resize',

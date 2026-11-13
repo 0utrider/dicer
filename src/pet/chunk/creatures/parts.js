@@ -61,6 +61,12 @@ export function blink(ms, phase = 0) {
   return bump(p, 0.94, 0.985);
 }
 
+/**
+ * The reform hand-off (t in the reform, 0..1): the splat's goo has gathered into a lump, and the
+ * creature (hidden until now) pops out of it. Shared by splat.js and creatures/index.js.
+ */
+export const REFORM_IN = 0.38;
+
 export const nowMs = () => globalThis.performance?.now?.() ?? Date.now();
 
 const WHITE = new THREE.Color(1, 1, 1);

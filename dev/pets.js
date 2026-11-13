@@ -317,8 +317,167 @@ function strips(kinds = KINDS) {
   return c.toDataURL('image/png');
 }
 
+// --- the splat (Task 5) ---------------------------------------------------------------------
+// Each cell drives the real layer: the pet stands watching, a die hits it (PetHook.hit) at
+// HIT_AT, and the clock runs to the frame: a wobble (a slow hit), the burst (SPLAT_MS 500), the
+// puddle settling (PUDDLE_MS 600) and the reform on the owner's next roll (REFORM_MS 400).
+const HIT_AT = 700;
+const SPLAT = { wobble: 400, burst: 500, puddle: 600, reform: 400 };
+function stageSplat({ kind, color, phase, t = 0, edge = 3 }) {
+  const { layer, pet } = stagePet({ kind, color, phase: 'watch', edge });
+  // the die comes from the dice side, so the pet recoils outward
+  const [ox, oz] = OUT[edge];
+  const hitFrom = { x: pet.position.x - ox, z: pet.position.z - oz };
+  const at = (ms) => layer.update((clock = ms));
+  if (phase === 'wobble') {
+    layer.hit('u', { speed: 5, position: hitFrom });
+    at(HIT_AT + t * SPLAT.wobble);
+    return { layer, pet };
+  }
+  layer.hit('u', { speed: 20, position: hitFrom });
+  if (phase === 'burst') {
+    at(HIT_AT + t * SPLAT.burst);
+    return { layer, pet };
+  }
+  at(HIT_AT + SPLAT.burst);
+  if (phase === 'puddle') {
+    at(HIT_AT + SPLAT.burst + t * SPLAT.puddle);
+    return { layer, pet };
+  }
+  at(HIT_AT + SPLAT.burst + SPLAT.puddle + 50); // at rest
+  const t0 = HIT_AT + SPLAT.burst + SPLAT.puddle + 400;
+  clock = t0;
+  layer.begin('k2', {
+    spec: { userId: 'u', kind, color, ghost: false },
+    edge,
+    area: AREA,
+    centre: () => ({ x: AREA.cx, z: AREA.cz }),
+  });
+  at(t0);
+  at(t0 + t * SPLAT.reform);
+  return { layer, pet };
+}
+function splatShot(opts, fn) {
+  const { layer, pet } = stageSplat(opts);
+  try {
+    if (!pet) throw new Error(`no pet for ${JSON.stringify(opts)}`);
+    fn(pet);
+  } finally {
+    layer.dispose();
+  }
+}
+
+/** The game camera at 48 px/die: the pet left of centre, a d20 beside it along the edge. */
+function splatGame(pet, w, h, bg, edge = 3) {
+  scene.background = new THREE.Color(bg);
+  d20.visible = true;
+  const [ox, oz] = OUT[edge];
+  // along the edge (perpendicular to the way out)
+  const ax = -oz;
+  const az = ox;
+  d20.position.x = pet.position.x + ax * 3.0;
+  d20.position.z = pet.position.z + az * 3.0;
+  const full = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
+  camera.clearViewOffset();
+  camera.position.set(0, H, 0);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  _v.set(pet.position.x + ax * 0.45, 0.2, pet.position.z + az * 0.45).project(camera);
+  const cx = ((_v.x + 1) / 2) * full.w;
+  const cy = ((1 - _v.y) / 2) * full.h;
+  camera.setViewOffset(full.w, full.h, cx - w / 2, cy - h / 2, w, h);
+  renderer.setSize(w, h, false);
+  renderer.render(scene, camera);
+  camera.clearViewOffset();
+}
+
+/** A steep 3/4 close-up aimed at the pet's spot on the floor (the creature may be hidden). */
+function splatClose(pet, w, h, bg) {
+  scene.background = new THREE.Color(bg);
+  d20.visible = false;
+  const yaw = pet.rotation.y;
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  const tx = pet.position.x;
+  const tz = pet.position.z;
+  close.aspect = w / h;
+  close.position.set(tx + fx * 4.2 + fz * 1.6, 5.4, tz + fz * 4.2 - fx * 1.6);
+  close.up.set(0, 1, 0);
+  close.lookAt(tx, 0.35, tz);
+  close.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+  renderer.render(scene, close);
+}
+
+const SPLAT_ROWS = [
+  { name: 'wobble', phase: 'wobble', ts: [0.05, 0.15, 0.3, 0.5, 0.75] },
+  { name: 'burst', phase: 'burst', ts: [0, 0.08, 0.18, 0.3, 0.45, 0.65, 1] },
+  { name: 'puddle', phase: 'puddle', ts: [0, 0.3, 0.54, 0.8, 1] },
+  { name: 'reform', phase: 'reform', ts: [0.1, 0.25, 0.38, 0.47, 0.58, 0.75, 1] },
+];
+const SPLAT_COLOURS = ['#1b2340', '#c0392b', '#f4f1de'];
+/**
+ * Per kind: wobble, burst, puddle and reform frames (game view over close-up), then the resting
+ * puddle in a dark, a mid and a very light colour on a dark and a light map.
+ */
+function splat(kinds = KINDS) {
+  const LW = 110;
+  const CW = 236;
+  const GH = 170;
+  const CH = 160;
+  const N = 7;
+  const HEAD = 8;
+  const rowH = 18 + GH + CH + 6;
+  const colourH = 22 + GH + 6;
+  const { c, g } = newSheet(
+    LW + CW * N,
+    HEAD + kinds.length * (SPLAT_ROWS.length * rowH + colourH + 12),
+  );
+  let y = HEAD;
+  for (const kind of kinds) {
+    for (const row of SPLAT_ROWS) {
+      label(g, kind, 8, y + 34, { size: 15 });
+      label(g, row.name, 8, y + 52, { size: 12, color: '#9aa0aa' });
+      label(g, 'game (48 px/die)', 8, y + 78, { size: 10, color: '#9aa0aa' });
+      label(g, 'close-up', 8, y + 18 + GH + 20, { size: 10, color: '#9aa0aa' });
+      row.ts.forEach((t, i) => {
+        label(g, `t ${t.toFixed(2)}`, LW + i * CW + CW / 2, y + 13, {
+          size: 11,
+          align: 'center',
+          color: '#c8ccd4',
+        });
+        splatShot({ kind, color: KIND_COLOR[kind], phase: row.phase, t }, (pet) => {
+          splatGame(pet, CW - 2, GH - 2, BG.dark);
+          blit(g, LW + i * CW + 1, y + 18 + 1);
+          splatClose(pet, CW - 2, CH - 2, '#5b616b');
+          blit(g, LW + i * CW + 1, y + 18 + GH + 1);
+        });
+      });
+      y += rowH;
+    }
+    label(g, kind, 8, y + 34, { size: 15 });
+    label(g, 'puddle colours', 8, y + 52, { size: 12, color: '#9aa0aa' });
+    SPLAT_COLOURS.forEach((color, i) => {
+      ['dark map', 'light map'].forEach((map, j) => {
+        const x = LW + (i * 2 + j) * CW;
+        label(g, `${color} ${map}`, x + CW / 2, y + 15, {
+          size: 11,
+          align: 'center',
+          color: '#c8ccd4',
+        });
+        splatShot({ kind, color, phase: 'puddle', t: 1 }, (pet) => {
+          splatGame(pet, CW - 2, GH - 2, j ? BG.light : BG.dark);
+          blit(g, x + 1, y + 22 + 1);
+        });
+      });
+    });
+    y += colourH + 12;
+  }
+  return c.toDataURL('image/png');
+}
+
 const show = (url) => (document.getElementById('sheet').src = url);
-const SHEETS = { grid, colours, strips };
+const SHEETS = { grid, colours, strips, splat };
 for (const b of document.querySelectorAll('[data-sheet]'))
   b.addEventListener('click', () => {
     try {
@@ -329,4 +488,4 @@ for (const b of document.querySelectorAll('[data-sheet]'))
   });
 show(grid());
 document.getElementById('status').textContent = 'ready';
-window.__pets = { grid, colours, strips, errors, ready: true };
+window.__pets = { grid, colours, strips, splat, errors, ready: true };

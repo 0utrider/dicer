@@ -6,6 +6,7 @@ import {
   FLOATS_PER_DIE,
   IMPACT_FLOATS,
   MAX_IMPACTS_PER_CHUNK,
+  MAX_OBSTACLES,
   MAX_STEPS,
   STEP_SECONDS,
 } from './protocol.js';
@@ -14,6 +15,7 @@ const GRAVITY = -9.81 * 4;
 const DIE_RESTITUTION = 0.35;
 const DIE_FRICTION = 0.5;
 const FLOOR_FRICTION = 0.8;
+const OBSTACLE_FRICTION = 0.05; // dice slide off a pet rather than rest on it
 const WALL_HALF_HEIGHT = 12;
 const WALL_HALF_THICKNESS = 1;
 const FLOOR_MARGIN = 60; // floor extends beyond the area so spawned dice have ground
@@ -252,6 +254,28 @@ export function createSim(initialArea, hulls) {
         const spawnWall = walls[edge];
         spawnWall.setEnabled(false);
 
+        // Pets standing on the floor: fixed capsules, owner code -3 - i. No rand() draws. A die
+        // contact at splatSpeed or more splats the pet: its collider is gone from the next step.
+        const splatAt = req.splatSpeed > 0 ? req.splatSpeed : Infinity;
+        const pets = [];
+        const splatted = [];
+        const obstacles = Array.isArray(req.obstacles) ? req.obstacles.slice(0, MAX_OBSTACLES) : [];
+        obstacles.forEach((o, i) => {
+          if (!o || ![o.x, o.z, o.r, o.h].every(Number.isFinite) || o.r <= 0 || o.h <= 0 || o.r > 3 || o.h > 6)
+            return;
+          const c = world.createCollider(
+            withEvents(
+              RAPIER.ColliderDesc.capsule(Math.max(0, o.h / 2 - o.r), o.r)
+                .setTranslation(o.x, o.h / 2, o.z)
+                .setFriction(OBSTACLE_FRICTION)
+                .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min) // Min beats the die's Average
+                .setRestitution(DIE_RESTITUTION),
+            ),
+          );
+          owner.set(c.handle, -3 - i);
+          pets[i] = c;
+        });
+
         const lateralHalf = alongX ? hd : hw;
         const columns = Math.max(1, Math.floor((2 * (lateralHalf - 1)) / DIE_SPACING));
         // P5-R5: dice spawn beyond the STAGE edge on the spawn side (off-screen), never inside
@@ -333,6 +357,8 @@ export function createSim(initialArea, hulls) {
             speed = Math.hypot(preVel[die * 3], preVel[die * 3 + 1], preVel[die * 3 + 2]);
           }
           impacts.push([frame, die, other, speed]);
+          // Float32, like the copy the pet layer reads: both sides agree at the threshold.
+          if (other <= -3 && Math.fround(speed) >= splatAt) splatted.push(pets[-3 - other]);
         };
 
         for (let step = 1; step <= MAX_STEPS; step++) {
@@ -347,6 +373,7 @@ export function createSim(initialArea, hulls) {
           eventQueue.drainCollisionEvents((h1, h2, started) =>
             onCollision(h1, h2, started, frame),
           );
+          for (const c of splatted.splice(0)) c.setEnabled(false);
 
           let allInside = true;
           let allAtRest = true;

@@ -71,9 +71,8 @@ export class PhysicsClient {
     }
     const id = this._nextId++;
     this._streams.set(id, s);
-    const msg = { type: MSG.THROW, id, dice: req.dice, seed: req.seed };
-    if (req.area) msg.area = req.area;
-    this._send(msg);
+    // The whole request (dice, seed, area?, obstacles?, splatSpeed?) goes to the worker.
+    this._send({ ...req, type: MSG.THROW, id });
     return stream;
   }
 

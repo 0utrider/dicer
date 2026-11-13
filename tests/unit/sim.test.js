@@ -411,3 +411,94 @@ test('P5-R6: 12 d6 in a minimum-size area (grown for capacity) settle inside it 
     expect(ok, `area at ${raw.cx}, ${raw.cz}`).toBeGreaterThanOrEqual(19);
   }
 });
+
+// --- pet obstacles --------------------------------------------------------------------------
+
+/** runEv with obstacles (and an optional test start) on the request. */
+function runObs(dice, seed, extra) {
+  const sim = createSim(area, hulls);
+  const chunks = [];
+  const req = { dice: dice.map((type) => ({ type })), seed, ...extra };
+  const res = sim.throw(req, (c) =>
+    chunks.push({ ...c, data: c.data.slice(), events: c.events.slice() }),
+  );
+  sim.dispose();
+  return { res, chunks };
+}
+
+/** Every impact event [frame, die, other, speed] of a run. */
+function impactsOf(chunks) {
+  const out = [];
+  for (const c of chunks) {
+    for (let i = 0; i < c.events.length; i += IMPACT_FLOATS) {
+      out.push({ frame: c.events[i], die: c.events[i + 1], other: c.events[i + 2], speed: c.events[i + 3] });
+    }
+  }
+  return out;
+}
+
+/** Where a lone d6 of `seed` is on the floor-level part of its flight (a point on its path). */
+function pathPoint(seed, below = 1.2) {
+  const { chunks } = runObs(['d6'], seed);
+  const frames = chunks.flatMap((c) => {
+    const rows = [];
+    for (let s = 0; s < c.steps; s++) rows.push(Array.from(c.data.slice(s * 7, s * 7 + 3)));
+    return rows;
+  });
+  const hit = frames.slice(20).find((p) => p[1] < below);
+  return { x: hit[0], z: hit[2] };
+}
+
+const FAR = { x: -11, z: -6, r: 0.3, h: 1 }; // a corner no seed-5 die passes through
+test('a throw without obstacles is byte-identical to before', () => {
+  expect(framesHash(runObs(['d20', 'd6', 'd6'], 7, { obstacles: [] }).chunks)).toBe('1118cbd0');
+});
+
+test('a die aimed at an obstacle reports an impact with other -3', () => {
+  const p = pathPoint(5);
+  const { chunks } = runObs(['d6'], 5, { obstacles: [{ ...p, r: 0.5, h: 1.5 }] });
+  const hits = impactsOf(chunks).filter((e) => e.other === -3);
+  expect(hits.length).toBeGreaterThan(0);
+  expect(hits[0].speed).toBeGreaterThan(0);
+  expect(hits[0].die).toBe(0);
+});
+
+test('the second obstacle reports -4', () => {
+  const p = pathPoint(5);
+  const { chunks } = runObs(['d6'], 5, { obstacles: [FAR, { ...p, r: 0.5, h: 1.5 }] });
+  const others = impactsOf(chunks).map((e) => e.other);
+  expect(others).toContain(-4);
+  expect(others).not.toContain(-3);
+});
+
+test("a die dropped onto an obstacle's top slides off", () => {
+  // No manual-start seam exists (and adding one costs world-start bytes), so aim: the pet stands
+  // under the die's path where it is still 3 units up, so the die comes down on its top.
+  const restY = (chunks) => {
+    const last = chunks.at(-1);
+    return last.data[(last.steps - 1) * FLOATS_PER_DIE + 1];
+  };
+  const flat = restY(runObs(['d6'], 5).chunks);
+  const p = pathPoint(5, 3);
+  const onPet = runObs(['d6'], 5, { obstacles: [{ ...p, r: 0.5, h: 1.5 }] });
+  const hit = impactsOf(onPet.chunks).find((e) => e.other === -3);
+  expect(hit).toBeDefined();
+  // Top contact: at the first -3 impact the die's centre is above the pet's height.
+  expect(onPet.chunks.flatMap((c) => Array.from({ length: c.steps }, (_, k) => c.data[k * FLOATS_PER_DIE + 1]))[hit.frame]).toBeGreaterThan(1.5);
+  expect(Math.abs(restY(onPet.chunks) - flat)).toBeLessThan(0.05);
+});
+
+test('more than 3 obstacles: only the first 3 exist', () => {
+  const p = pathPoint(5);
+  const three = [FAR, { ...FAR, x: -10 }, { ...FAR, x: -9 }];
+  const withFourth = runObs(['d6'], 5, { obstacles: [...three, { ...p, r: 0.5, h: 1.5 }] });
+  expect(impactsOf(withFourth.chunks).some((e) => e.other <= -6)).toBe(false);
+  expect(framesHash(withFourth.chunks)).toBe(framesHash(runObs(['d6'], 5, { obstacles: three }).chunks));
+});
+
+test('NaN obstacle fields are ignored', () => {
+  const base = framesHash(runObs(['d20', 'd6', 'd6'], 7).chunks);
+  for (const bad of [{ x: NaN, z: 0, r: 0.5, h: 1.5 }, { x: 0, z: 0, r: Infinity, h: 1.5 }, { x: 0, z: 0, r: 0.5 }, { x: 0, z: 0, r: 10, h: 1.5 }, { x: 0, z: 0, r: 0.5, h: 9 }, null]) {
+    expect(framesHash(runObs(['d20', 'd6', 'd6'], 7, { obstacles: [bad] }).chunks)).toBe(base);
+  }
+});

@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import { createPetLayer } from '../../src/pet/chunk/pets.js';
+import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED } from '../../src/pet/chunk/pets.js';
+import { mulberry32 as mulberry } from '../../src/core/rng.js';
 
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
 let clockNow = 0;
 const make = (settings = {}, over = {}) => {
+  settings.petsStay ??= false; // resting has its own tests below
   clockNow = 0;
   const scene = new THREE.Scene();
   const playSound = vi.fn();
@@ -16,9 +18,10 @@ const make = (settings = {}, over = {}) => {
     playSound,
     warm,
     now: () => clockNow,
+    wake: vi.fn(),
     ...over,
   };
-  return { layer: createPetLayer(deps), scene, playSound, warm, settings };
+  return { layer: createPetLayer(deps), scene, playSound, warm, settings, deps };
 };
 const spec = (userId = 'u1', ghost = false) => ({ userId, kind: 'mimic', color: '#ff0000', ghost });
 const info = (edge = 0, s = spec()) => ({
@@ -558,4 +561,652 @@ describe('a reaction plays once per roll', () => {
     m.layer.end('A');
     expect(pets(m.scene)).toHaveLength(0);
   });
+});
+
+// ---- resting pets ----
+const BIG = { cx: 0, cz: 0, halfWidth: 14, halfDepth: 9 };
+const bigInfo = (s, edge = 0) => ({ spec: s, edge, area: BIG, centre: () => ({ x: 0, z: 0 }) });
+const runTo = (m, ms) => {
+  let r;
+  while (clockNow < ms) r = m.layer.update((clockNow += 16));
+  return r;
+};
+/** Runs a whole roll of `user`'s pet to its rest. */
+const rollToRest = (m, user) => {
+  const key = `k-${user}-${clockNow}`;
+  m.layer.begin(key, bigInfo(spec(user)));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 400);
+  m.layer.landed(key, [d20(5)]);
+  const end = clockNow + 3000;
+  let r;
+  while (clockNow < end && r !== 'rest') r = m.layer.update((clockNow += 16));
+  m.layer.leave(key, 0);
+  m.layer.end(key);
+  return key;
+};
+const at = (scene, i = 0) => pets(scene)[i].position;
+const ids = (m) =>
+  m.layer
+    .obstaclesFor({ spec: null, edge: 0, area: BIG })
+    .map((o) => o.id)
+    .sort();
+
+test("with petsStay a pet rests after its roll and update returns 'rest'", () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  const p = pets(m.scene)[0];
+  const dx = Math.abs(p.position.x - BIG.cx);
+  const dz = Math.abs(p.position.z - BIG.cz);
+  expect(dx).toBeLessThanOrEqual(BIG.halfWidth - 1.8 + 1e-6);
+  expect(dz).toBeLessThanOrEqual(BIG.halfDepth - 1.8 + 1e-6);
+  const ring = Math.max(dx / BIG.halfWidth, dz / BIG.halfDepth);
+  expect(ring).toBeGreaterThanOrEqual(0.35 - 1e-9);
+  expect(ring).toBeLessThanOrEqual(0.6 + 1e-9);
+  expect(p.position.y).toBe(0);
+  // a resting pet is not posed again
+  p.position.x = 99;
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  expect(p.position.x).toBe(99);
+});
+
+test("petsStay off keeps today's hop-off", () => {
+  const m = make({ petsStay: false });
+  m.layer.begin('k', bigInfo(spec()));
+  m.layer.update(clockNow);
+  m.layer.landed('k', [d20(5)]);
+  expect(runTo(m, 4000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+const ringOf = (p) => Math.max(Math.abs(p.x) / BIG.halfWidth, Math.abs(p.z) / BIG.halfDepth);
+const outside = (p) => Math.abs(p.x) > BIG.halfWidth || Math.abs(p.z) > BIG.halfDepth;
+const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const inRing = (p) => {
+  expect(ringOf(p)).toBeGreaterThanOrEqual(0.35 - 1e-9);
+  expect(ringOf(p)).toBeLessThanOrEqual(0.6 + 1e-9);
+};
+
+test("the owner's roll is watched from the resting spot: no movement, the obstacle is that spot", () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  const rest = { x: at(m.scene).x, z: at(m.scene).z };
+  const own = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(own).toHaveLength(1);
+  expect(own[0].id).toBe('u1');
+  expect(own[0].x).toBeCloseTo(rest.x, 6);
+  expect(own[0].z).toBeCloseTo(rest.z, 6);
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  const seen = new Set();
+  const start = clockNow;
+  while (clockNow < start + 1500) {
+    m.layer.update((clockNow += 16));
+    expect(at(m.scene).x).toBeCloseTo(rest.x, 6);
+    expect(at(m.scene).z).toBeCloseTo(rest.z, 6);
+    expect(at(m.scene).y).toBe(0);
+    seen.add(phaseOf(m));
+  }
+  expect(seen.has('throw')).toBe(true);
+  expect(seen.has('watch')).toBe(true);
+  expect(seen.has('enter')).toBe(false);
+  // it has turned toward the dice (the middle of BIG)
+  const want = Math.atan2(0 - rest.x, 0 - rest.z);
+  expect(Math.abs(wrapA(pets(m.scene)[0].rotation.y - want))).toBeLessThan(0.1);
+  m.layer.landed('again', [d20(5)]);
+  m.layer.leave('again', 0);
+  m.layer.end('again');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  expect(at(m.scene).x).toBeCloseTo(rest.x, 6); // still at the same spot
+  expect(at(m.scene).z).toBeCloseTo(rest.z, 6);
+  expect(at(m.scene).y).toBe(0);
+  expect(m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG })[0].x).toBeCloseTo(rest.x, 6);
+});
+
+test('a first appearance hops in from outside the edge to a rest spot, and the obstacle sent is that spot', () => {
+  const m = make({ petsStay: true }, { random: mulberry(11) });
+  const sent = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(sent).toHaveLength(1);
+  const spot = { x: sent[0].x, z: sent[0].z };
+  inRing(spot);
+  // asking again changes nothing
+  const again = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(again[0].x).toBe(spot.x);
+  expect(again[0].z).toBe(spot.z);
+  m.layer.begin('k', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  expect(outside(at(m.scene))).toBe(true); // it starts just outside the area
+  runTo(m, clockNow + 400);
+  expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+  m.layer.landed('k', [d20(5)]);
+  m.layer.leave('k', 0);
+  m.layer.end('k');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+});
+
+test('a first appearance with no prior obstaclesFor still rests in the ring', () => {
+  const m = make({ petsStay: true }, { random: mulberry(12) });
+  m.layer.begin('k', bigInfo(spec('u1'), 3));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 400);
+  inRing(at(m.scene));
+  const ob = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG })[0];
+  expect(ob.x).toBeCloseTo(at(m.scene).x, 6);
+});
+
+test('petsStay off: the obstacle is the edge spot and the pet stands there', () => {
+  const m = make({ petsStay: false });
+  const list = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(list[0].x).toBeCloseTo(BIG.halfWidth - 0.9);
+  expect(list[0].z).toBeCloseTo(0);
+  m.layer.begin('k', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 400);
+  expect(at(m.scene).x).toBeCloseTo(BIG.halfWidth - 0.9, 3);
+});
+
+test("obstaclesFor lists resting pets and the roller's upcoming rest spot", () => {
+  const m = make({ petsStay: true }, { random: mulberry(21) });
+  rollToRest(m, 'u1');
+  const rest = { x: at(m.scene).x, z: at(m.scene).z };
+  const list = m.layer.obstaclesFor({ spec: spec('u2'), edge: 1, area: BIG });
+  expect(list).toHaveLength(2);
+  const resting = list.find((o) => o.id === 'u1');
+  expect(resting.x).toBeCloseTo(rest.x, 6);
+  expect(resting.z).toBeCloseTo(rest.z, 6);
+  expect(resting.h).toBe(1.5);
+  expect(resting.r).toBeCloseTo(0.95);
+  const own = list.find((o) => o.id === 'u2');
+  inRing(own);
+  expect(Math.hypot(own.x - rest.x, own.z - rest.z)).toBeGreaterThanOrEqual(3 - 1e-9); // 2 x height apart
+  // no spec: only the standing pets; the owner: its own rest spot replaces nothing else
+  expect(m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG })).toHaveLength(1);
+  const mine = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(mine).toHaveLength(1);
+  expect(mine[0].x).toBeCloseTo(rest.x, 6);
+  // a rolling pet is listed at the spot it rests at during its roll
+  m.layer.begin('r', bigInfo(spec('u2'), 2));
+  const rolling = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG }).find((o) => o.id === 'u2');
+  expect(rolling.x).toBeCloseTo(own.x, 6);
+  expect(rolling.z).toBeCloseTo(own.z, 6);
+});
+
+test('a 4th roller replaces the longest-idle resting pet, never one mid-routine; all 3 mid-routine -> no pet', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  clockNow += 500;
+  rollToRest(m, 'u2');
+  m.layer.begin('r3', bigInfo(spec('u3'), 2)); // mid-routine
+  m.layer.update(clockNow);
+  m.layer.begin('r4', bigInfo(spec('u4'), 3)); // replaces u1, idle the longest
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 600);
+  expect(pets(m.scene)).toHaveLength(3);
+  expect(ids(m)).toEqual(['u2', 'u3', 'u4']);
+  m.layer.begin('r5', bigInfo(spec('u5'), 0)); // u2 is the only resting one: replaced
+  runTo(m, clockNow + 600);
+  expect(ids(m)).toEqual(['u3', 'u4', 'u5']);
+  m.layer.begin('r6', bigInfo(spec('u6'), 0)); // all three mid-routine: no pet
+  runTo(m, clockNow + 600);
+  expect(pets(m.scene)).toHaveLength(3);
+  expect(m.layer.obstaclesFor({ spec: spec('u6'), edge: 0, area: BIG }).map((o) => o.id)).not.toContain('u6');
+  expect(ids(m)).toEqual(['u3', 'u4', 'u5']);
+});
+
+test('userGone hops that pet off and the layer ends empty', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  m.deps.wake.mockClear();
+  m.layer.userGone('u1');
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(ids(m)).toHaveLength(0);
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+  m.layer.userGone('nobody'); // harmless
+});
+
+test('areaChanged re-places resting pets validly', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  rollToRest(m, 'u2');
+  m.deps.wake.mockClear();
+  const next = { cx: 0, cz: 0, halfWidth: 11, halfDepth: 7 };
+  m.layer.areaChanged(next);
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(runTo(m, clockNow + 600)).toBe('rest');
+  const ps = pets(m.scene);
+  expect(ps).toHaveLength(2);
+  for (const p of ps) {
+    const dx = Math.abs(p.position.x);
+    const dz = Math.abs(p.position.z);
+    expect(dx).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
+    expect(dz).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
+    const ring = Math.max(dx / next.halfWidth, dz / next.halfDepth);
+    expect(ring).toBeGreaterThanOrEqual(0.35 - 1e-9);
+    expect(ring).toBeLessThanOrEqual(0.6 + 1e-9);
+  }
+  const gap = Math.hypot(ps[0].position.x - ps[1].position.x, ps[0].position.z - ps[1].position.z);
+  expect(gap).toBeGreaterThanOrEqual(3 - 1e-6);
+});
+
+test('a stage smaller than the remembered roll area keeps the pet inside the stage', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 });
+  runTo(m, clockNow + 600);
+  const p = at(m.scene);
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(8 - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(6 - 1.8 + 1e-6);
+});
+
+test('petsStay switched off mid-rest -> all hop off, update false at the end', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  rollToRest(m, 'u2');
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  m.settings.petsStay = false;
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test('petsAllowed or showPets off makes resting pets hop off too', () => {
+  for (const key of ['petsAllowed', 'showPets']) {
+    const m = make({ petsStay: true });
+    rollToRest(m, 'u1');
+    m.settings[key] = false;
+    expect(runTo(m, clockNow + 1000)).toBe(false);
+  }
+});
+
+test('a pet whose user is gone mid-roll leaves instead of resting', () => {
+  const m = make({ petsStay: true });
+  m.layer.begin('k', bigInfo(spec('u1')));
+  m.layer.update(clockNow);
+  m.layer.userGone('u1');
+  m.layer.landed('k', [d20(5)]);
+  expect(runTo(m, clockNow + 4000)).toBe(false);
+});
+
+test('a pet mid-routine when the stage shrinks rests inside the smaller stage', () => {
+  const m = make({ petsStay: true });
+  m.layer.begin('k', bigInfo(spec('u1')));
+  m.layer.update(clockNow);
+  m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 });
+  m.layer.landed('k', [d20(5)]);
+  let r;
+  while (clockNow < 5000 && r !== 'rest') r = m.layer.update((clockNow += 16));
+  expect(r).toBe('rest');
+  const p = at(m.scene);
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(8 - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(6 - 1.8 + 1e-6);
+});
+
+test('obstacle radii use each creature footprint; the mimic is at least 0.85', () => {
+  const m = make({ petsStay: true });
+  expect(m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG })[0].r).toBeGreaterThanOrEqual(0.85);
+  m.layer.begin('k', bigInfo(spec('u1')));
+  const o = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG });
+  expect(o[0].r).toBeGreaterThanOrEqual(0.85);
+  expect(o[0].h).toBe(1.5);
+});
+
+// ---- hits, splats, puddles ----
+const HARD = SPLAT_SPEED + 5;
+const SOFT = (WOBBLE_SPEED + SPLAT_SPEED) / 2;
+const phaseOf = (m, i = 0) => pets(m.scene)[i].userData.dicerPet.phase;
+const hitFrom = (m, id, speed, dx = 1) => {
+  const p = at(m.scene);
+  m.layer.hit(id, { speed, position: { x: p.x + dx, y: 1, z: p.z }, dieKey: 'd0' });
+};
+const splatCalls = (m) => m.playSound.mock.calls.filter(([a]) => a.builtin === 'petSplat').length;
+/** A pet at rest, then splatted into a puddle (the clock after the burst). */
+const puddled = (settings = {}, user = 'u1') => {
+  const m = make({ petsStay: true, ...settings });
+  rollToRest(m, user);
+  hitFrom(m, user, HARD);
+  runTo(m, clockNow + 1300);
+  return m;
+};
+
+test('a hard hit splats: one petSplat sound, then a puddle', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  m.deps.wake.mockClear();
+  hitFrom(m, 'u1', HARD);
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  expect(phaseOf(m)).toBe('splat');
+  expect(splatCalls(m)).toBe(1);
+  runTo(m, clockNow + 1300);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(m.layer.update((clockNow += 16))).toBe('rest'); // a puddle costs nothing
+  expect(splatCalls(m)).toBe(1);
+  expect(pets(m.scene)[0].children[0].visible).toBe(false); // the creature is hidden
+});
+
+test('a soft hit wobbles: pushed away from the die, back at rest after WOBBLE_MS, no sound', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  const rest = { x: at(m.scene).x, z: at(m.scene).z };
+  hitFrom(m, 'u1', SOFT, 1); // the die is on the +x side
+  let minX = Infinity;
+  let r;
+  for (let i = 0; i < 12; i++) {
+    r = m.layer.update((clockNow += 16));
+    minX = Math.min(minX, at(m.scene).x);
+  }
+  expect(r).toBe(true);
+  expect(minX).toBeLessThan(rest.x - 0.01);
+  runTo(m, clockNow + 500);
+  expect(at(m.scene).x).toBeCloseTo(rest.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(rest.z, 6);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  expect(phaseOf(m)).not.toBe('puddle');
+  expect(splatCalls(m)).toBe(0);
+});
+
+test('a wobble restarts on a new hit; a hit below WOBBLE_SPEED does nothing', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', WOBBLE_SPEED / 2);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  hitFrom(m, 'u1', SOFT);
+  runTo(m, clockNow + 300);
+  hitFrom(m, 'u1', SOFT); // restarts: still wobbling 300 ms later
+  runTo(m, clockNow + 300);
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  runTo(m, clockNow + 300);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+});
+
+test('petSplat off -> wobble only, and no sound', () => {
+  const m = make({ petsStay: true, petSplat: false });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  runTo(m, clockNow + 900);
+  expect(phaseOf(m)).not.toMatch(/splat|puddle/);
+  expect(splatCalls(m)).toBe(0);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+});
+
+test('three hits in one frame -> one splat', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  for (let i = 0; i < 3; i++) hitFrom(m, 'u1', HARD + i);
+  m.layer.update((clockNow += 16));
+  runTo(m, clockNow + 1300);
+  expect(splatCalls(m)).toBe(1);
+  expect(phaseOf(m)).toBe('puddle');
+});
+
+test('hits on a puddle, or on one that is splatting, are ignored; unknown ids are harmless', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  runTo(m, clockNow + 200);
+  hitFrom(m, 'u1', HARD); // mid-burst
+  runTo(m, clockNow + 1000);
+  const pos = { ...at(m.scene) };
+  hitFrom(m, 'u1', HARD);
+  hitFrom(m, 'u1', SOFT);
+  m.layer.hit('nobody', { speed: HARD, position: { x: 0, y: 0, z: 0 }, dieKey: 'x' });
+  m.layer.hit('u1', { speed: NaN, position: { x: 0, y: 0, z: 0 }, dieKey: 'x' });
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  expect(at(m.scene).x).toBe(pos.x);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(splatCalls(m)).toBe(1);
+});
+
+test('a splat mid-routine gives no reaction and no chirp', () => {
+  const m = make({ petsStay: true });
+  m.layer.begin('k', bigInfo(spec('u1')));
+  m.layer.update(clockNow);
+  runTo(m, clockNow + 700); // watching
+  hitFrom(m, 'u1', HARD, 0.5);
+  m.layer.update((clockNow += 16));
+  m.layer.landed('k', [d20(20)]); // would be a crit
+  runTo(m, clockNow + 1500);
+  m.layer.leave('k', 0);
+  m.layer.end('k');
+  runTo(m, clockNow + 1500);
+  expect(m.playSound.mock.calls.map(([a]) => a.builtin)).toEqual(['petSplat']);
+  expect(pets(m.scene)).toHaveLength(1);
+  expect(phaseOf(m)).toBe('puddle');
+});
+
+test("the owner's next roll reforms the puddle in place and plays the routine", () => {
+  const m = puddled();
+  const spot = { x: at(m.scene).x, z: at(m.scene).z };
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  m.layer.update(clockNow);
+  expect(phaseOf(m)).toBe('reform');
+  const start = clockNow;
+  while (clockNow < start + 350) {
+    m.layer.update((clockNow += 16));
+    expect(phaseOf(m)).toBe('reform');
+    expect(at(m.scene).x).toBeCloseTo(spot.x, 6); // in place
+    expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+  }
+  const seen = new Set();
+  while (clockNow < start + 1500) {
+    m.layer.update((clockNow += 16));
+    seen.add(phaseOf(m));
+  }
+  expect(seen.has('enter') || seen.has('throw')).toBe(true);
+  expect(seen.has('watch')).toBe(true);
+  expect(pets(m.scene)[0].children[0].visible).toBe(true);
+  m.layer.landed('again', [d20(20)]);
+  runTo(m, clockNow + 1400);
+  expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
+  m.layer.leave('again', 0);
+  m.layer.end('again');
+  expect(runTo(m, clockNow + 3000)).toBe('rest'); // rests again
+});
+
+test("a puddle owner's roll reforms in place, stays there, and its obstacle is the puddle spot", () => {
+  const m = puddled();
+  const spot = { x: at(m.scene).x, z: at(m.scene).z };
+  const ob = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG });
+  expect(ob).toHaveLength(1);
+  expect(ob[0].x).toBeCloseTo(spot.x, 6);
+  expect(ob[0].z).toBeCloseTo(spot.z, 6);
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  const start = clockNow;
+  while (clockNow < start + 2000) {
+    m.layer.update((clockNow += 16));
+    expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+    expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+  }
+  expect(phaseOf(m)).toBe('watch');
+  m.layer.landed('again', [d20(5)]);
+  m.layer.leave('again', 0);
+  m.layer.end('again');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  expect(at(m.scene).x).toBeCloseTo(spot.x, 6);
+  expect(at(m.scene).z).toBeCloseTo(spot.z, 6);
+});
+
+test('a puddle counts toward the cap and is not in obstaclesFor', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD); // u1 is splatted at once, so idle the longest
+  runTo(m, clockNow + 1300);
+  clockNow += 500;
+  rollToRest(m, 'u2');
+  clockNow += 500;
+  rollToRest(m, 'u3');
+  expect(ids(m)).toEqual(['u2', 'u3']); // the puddle stands in nobody's way
+  expect(pets(m.scene)).toHaveLength(3); // ... but holds a place
+  m.layer.begin('r4', bigInfo(spec('u4'), 2)); // so the 4th replaces it
+  runTo(m, clockNow + 900);
+  expect(pets(m.scene)).toHaveLength(3);
+  expect(ids(m)).toEqual(['u2', 'u3', 'u4']);
+});
+
+test('petsStay off with a puddle -> it fades and the layer ends empty', () => {
+  const m = puddled();
+  m.settings.petsStay = false;
+  m.layer.update((clockNow += 16));
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test('a puddle fades when its user leaves', () => {
+  const m = puddled();
+  m.layer.userGone('u1');
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  expect(pets(m.scene)).toHaveLength(0);
+});
+
+test("a roll that begins mid-burst reforms the puddle once the burst ends", () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  runTo(m, clockNow + 200);
+  m.layer.begin('again', bigInfo(spec('u1'), 0));
+  expect(phaseOf(m)).toBe('splat');
+  const seen = new Set();
+  const end = clockNow + 1800;
+  while (clockNow < end) {
+    m.layer.update((clockNow += 16));
+    seen.add(phaseOf(m));
+  }
+  expect([...seen]).toEqual(expect.arrayContaining(['splat', 'reform', 'watch']));
+  expect(seen.has('puddle')).toBe(false);
+  expect(splatCalls(m)).toBe(1);
+});
+
+test('a puddle is moved inside the smaller stage, and its old spot keeps nobody away', () => {
+  const m = puddled();
+  const next = { cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 };
+  m.deps.wake.mockClear();
+  m.layer.areaChanged(next);
+  expect(m.deps.wake).toHaveBeenCalled();
+  m.layer.update((clockNow += 16)); // drawn at the new spot, then held
+  const p = at(m.scene);
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  // a pet resting afterwards is spaced from the puddle's new spot, not its old one
+  rollToRest(m, 'u2');
+  const q = at(m.scene, 1);
+  expect(Math.hypot(q.x - p.x, q.z - p.z)).toBeGreaterThanOrEqual(3 - 1e-6);
+});
+
+test('a splat becoming a puddle after a stage change lands inside the new stage', () => {
+  const m = make({ petsStay: true });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  m.layer.update((clockNow += 16));
+  const next = { cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 };
+  m.layer.areaChanged(next);
+  runTo(m, clockNow + 1300);
+  const p = at(m.scene);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(next.halfWidth - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(next.halfDepth - 1.8 + 1e-6);
+});
+
+// ---- final review fixes: the sim's splat speed, UI kept clear, area edits, unchanged resizes ----
+
+test('splatSpeed is SPLAT_SPEED while petSplat is on, null when it is off', () => {
+  const m = make({ petsStay: true });
+  expect(m.layer.splatSpeed).toBe(SPLAT_SPEED);
+  m.settings.petSplat = false;
+  expect(m.layer.splatSpeed).toBeNull();
+  m.settings.petSplat = true;
+  expect(m.layer.splatSpeed).toBe(SPLAT_SPEED);
+});
+
+test('areaChanged with an unchanged stage does not move resting pets or puddles', () => {
+  const m = make({ petsStay: true });
+  const stage = { cx: 0, cz: 0, halfWidth: 14, halfDepth: 9 };
+  m.layer.areaChanged(stage);
+  rollToRest(m, 'u1');
+  const before = { ...at(m.scene) };
+  m.deps.wake.mockClear();
+  m.layer.areaChanged({ ...stage }); // a resize event with the same size
+  expect(m.deps.wake).not.toHaveBeenCalled();
+  expect(runTo(m, clockNow + 600)).toBe('rest');
+  expect(at(m.scene).x).toBe(before.x);
+  expect(at(m.scene).z).toBe(before.z);
+});
+
+/** A fake document: getElementById answers px rects for the named ids. */
+const fakeDoc = (rects) => ({
+  getElementById: (id) =>
+    rects[id] ? { getBoundingClientRect: () => ({ ...rects[id], right: rects[id].left + rects[id].width, bottom: rects[id].top + rects[id].height }) } : null,
+});
+
+test("resting pets keep off Foundry's UI (measured in px, turned into die units)", () => {
+  // stage 1400 x 900 px at 50 px per die: 14 x 9 half units. The left 400 px and the bottom 250 px are UI.
+  const rects = {
+    'ui-left': { left: 0, top: 0, width: 400, height: 900 },
+    hotbar: { left: 400, top: 650, width: 1000, height: 250 },
+    navigation: { left: 0, top: 0, width: 0, height: 0 }, // hidden: ignored
+  };
+  for (let seed = 1; seed <= 20; seed++) {
+    const r = mulberry(seed);
+    const m = make({ petsStay: true }, { doc: fakeDoc(rects), random: r });
+    m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 14, halfDepth: 9, rect: { left: 0, top: 0, width: 1400, height: 900 } });
+    rollToRest(m, 'u1');
+    const p = at(m.scene);
+    // the left UI ends at x = 400 px = -6 units; the hotbar starts at z = 650 px = +4 units
+    expect(p.x > -6 + 0.9 || p.z < -9, `seed ${seed}`).toBe(true);
+    expect(p.z < 4 - 0.9 || p.x < -6, `seed ${seed}`).toBe(true);
+  }
+});
+
+test('an area edit re-places the resting pets whose owner area changed, and dispose stops listening', () => {
+  const handlers = new Map();
+  const hooks = {
+    on: vi.fn((name, fn) => (handlers.set(name, fn), 7)),
+    off: vi.fn((name) => handlers.delete(name)),
+  };
+  const areas = { u1: BIG, u2: BIG };
+  const m = make({ petsStay: true }, { hooks, areaOf: (id) => areas[id] });
+  rollToRest(m, 'u1');
+  rollToRest(m, 'u2');
+  const u2 = { ...at(m.scene, 1) };
+  // u1's area becomes the top-right corner of the stage
+  const corner = { cx: 8, cz: -5, halfWidth: 6, halfDepth: 4 };
+  areas.u1 = corner;
+  m.deps.wake.mockClear();
+  handlers.get('dicerRollAreasChanged')({});
+  expect(m.deps.wake).toHaveBeenCalled();
+  expect(runTo(m, clockNow + 600)).toBe('rest');
+  const p = at(m.scene, 0);
+  expect(Math.abs(p.x - corner.cx)).toBeLessThanOrEqual(corner.halfWidth);
+  expect(Math.abs(p.z - corner.cz)).toBeLessThanOrEqual(corner.halfDepth);
+  expect(at(m.scene, 1).x).toBe(u2.x); // u2's area did not change: it stays
+  expect(at(m.scene, 1).z).toBe(u2.z);
+  m.layer.dispose();
+  expect(hooks.off).toHaveBeenCalledWith('dicerRollAreasChanged', 7);
+});
+
+test('an area edit moves a puddle into its owner new area', () => {
+  const handlers = new Map();
+  const hooks = { on: (name, fn) => (handlers.set(name, fn), 1), off: () => {} };
+  const areas = { u1: BIG };
+  const m = make({ petsStay: true }, { hooks, areaOf: (id) => areas[id] });
+  rollToRest(m, 'u1');
+  hitFrom(m, 'u1', HARD);
+  runTo(m, clockNow + 1300);
+  expect(phaseOf(m)).toBe('puddle');
+  const corner = { cx: -8, cz: 5, halfWidth: 6, halfDepth: 4 };
+  areas.u1 = corner;
+  handlers.get('dicerRollAreasChanged')({});
+  m.layer.update((clockNow += 16));
+  const p = at(m.scene);
+  expect(phaseOf(m)).toBe('puddle');
+  expect(Math.abs(p.x - corner.cx)).toBeLessThanOrEqual(corner.halfWidth);
+  expect(Math.abs(p.z - corner.cz)).toBeLessThanOrEqual(corner.halfDepth);
 });

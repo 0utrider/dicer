@@ -200,3 +200,15 @@ describe('renderAll', () => {
     for (const n of RESULT_SOUNDS) same(map.get('result:' + n), renderResult(n, SR));
   });
 });
+
+describe('petSplat', () => {
+  it('renders a 0.35 s wet burst, peak no more than 0.7 x fanfare, never a user choice', () => {
+    const a = renderResult('petSplat', SR);
+    expect(a.length).toBe(Math.floor(0.35 * SR));
+    expect(a.every(Number.isFinite)).toBe(true);
+    expect(peak(a)).toBeGreaterThan(0.1);
+    expect(peak(a)).toBeLessThanOrEqual(0.7 * peak(renderResult('fanfare', SR)));
+    expect(RESULT_SOUNDS).toContain('petSplat');
+    expect(USER_SOUNDS).not.toContain('petSplat');
+  });
+});

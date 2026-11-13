@@ -29,6 +29,7 @@ import {
 
 const HEIGHT = 1.5;
 const R = 0.72; // footprint radius (design units)
+const FOOT = 1.0; // top-down body radius in scene units (measured from the built geometry)
 const TOPY = 1.0; // dome height
 const EYE_R = 0.2;
 const SKIRT = 0.22; // height of the rounded skirt below the dome
@@ -309,5 +310,5 @@ export function slime(color) {
   const h = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y;
   scaler.scale.setScalar(HEIGHT / h);
 
-  return { root, height: HEIGHT, pose, dispose: () => kit.dispose() };
+  return { root, height: HEIGHT, footprint: FOOT, pose, dispose: () => kit.dispose() };
 }

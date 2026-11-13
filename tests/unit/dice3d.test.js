@@ -127,6 +127,16 @@ test('_debug exposes isLooping and activeRolls', () => {
   expect(api._debug.activeRolls).toBe(1);
 });
 
+test('_debug.isHolding tells a held loop (pets or dice at rest, no frames) from a running one', () => {
+  const renderer = { isLooping: true, isHolding: false };
+  const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], renderer });
+  expect(a._debug.isHolding).toBe(false);
+  renderer.isHolding = true;
+  expect(a._debug.isHolding).toBe(true);
+  expect(a._debug.isLooping).toBe(true); // the raw loop state stays as it was
+  expect(createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k] })._debug.isHolding).toBe(false);
+});
+
 test('_debug.lastRollArea reads the dice box last roll area as a copy, null when absent', () => {
   expect(api._debug.lastRollArea).toBeNull();
   const last = {

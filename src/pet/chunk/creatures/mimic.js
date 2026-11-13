@@ -378,6 +378,7 @@ export function mimic(color) {
 
   return {
     root,
+    footprint: 0.95, // the chest half-width, measured from the built geometry in XZ
     height: HEIGHT,
     pose,
     dispose: () => kit.dispose(),

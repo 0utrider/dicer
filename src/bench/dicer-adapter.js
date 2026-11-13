@@ -114,7 +114,8 @@ export function createDicerAdapter(api, { roll, gpu, version, win = globalThis, 
   return {
     product: 'dicer',
     roll: roll ?? defaultRoll,
-    isBusy: () => (debug().activeRolls ?? 0) > 0 || debug().isLooping === true,
+    // A held loop (resting pets) draws no frames: idle.
+    isBusy: () => (debug().activeRolls ?? 0) > 0 || (debug().isLooping === true && debug().isHolding !== true),
     resources: () => debug().resources ?? null,
     async heap() {
       const used = win.performance?.memory?.usedJSHeapSize;

@@ -165,3 +165,13 @@ test('the physics client sends hulls for d14, d16 and d4crystal at init', () => 
     expect(hulls[t].radius, t).toBeGreaterThan(0);
   }
 });
+
+test('throw passes pet obstacles and splatSpeed through to the worker', () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  w.emit({ type: 'ready' });
+  const obstacles = [{ x: 1, z: 2, r: 0.9, h: 1.5 }];
+  client.throw({ dice: [{ type: 'd6' }], seed: 3, obstacles, splatSpeed: 10 });
+  const msg = w.sent.find((s) => s.m.type === 'throw').m;
+  expect(msg).toMatchObject({ seed: 3, obstacles, splatSpeed: 10 });
+});
