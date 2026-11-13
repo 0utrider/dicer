@@ -63,8 +63,11 @@ and the pet comes back on its owner's next roll. A gentle hit only knocks it and
   - its owner disconnects;
   - the resting setting is turned off;
   - pets are no longer allowed or shown;
-  - the dice engine restarts or the roll area changes size, in which case it is re-placed at a new
-    random spot, not removed.
+  - the roll area changes size, in which case it is re-placed at a new random spot, not removed.
+
+  When the dice engine restarts (rare: a quality change or a lost GPU context), resting pets and
+  puddles are cleared, and each comes back on its owner's next roll. This is the builder's call:
+  carrying pet state across a rebuilt scene is not worth the code.
 
   A puddle goes the same way.
 - **S-9 Dice see pets as obstacles only while they are on screen.** Each throw tells the physics
