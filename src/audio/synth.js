@@ -411,12 +411,15 @@ const RESULT = {
 
 const RESULT_DUR = { chime: 1.5, fanfare: 1.5, sparkle: 1.3, fizzle: 1.2, thud: 0.7, whoosh: 1.0, crackle: 1.1, zap: 0.5, boom: 1.5, petHappy: 0.45, petSad: 0.6 };
 
+/** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */
+const RESULT_PEAK = { petHappy: 0.55, petSad: 0.55 };
+
 function* resultGen(name, sampleRate) {
   const fn = RESULT[name];
   if (!fn) throw new RangeError(`Unknown result sound: ${name}`);
   const buf = new Float32Array(Math.floor(RESULT_DUR[name] * sampleRate));
   yield* fn(sampleRate, buf, mulberry32(hash(`result:${name}`)));
-  return fadeOut(normalize(buf, 0.85), sampleRate, 10);
+  return fadeOut(normalize(buf, RESULT_PEAK[name] ?? 0.85), sampleRate, 10);
 }
 
 /** Drive a generator to completion and return its Float32Array. */

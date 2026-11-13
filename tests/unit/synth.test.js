@@ -145,7 +145,7 @@ describe('renderSurface / renderResult', () => {
       expect(a.length).toBe(Math.floor(dur * SR));
       expect(a.every(Number.isFinite)).toBe(true);
       expect(peak(a)).toBeGreaterThan(0.1);
-      expect(peak(a)).toBeLessThanOrEqual(fan + 1e-6);
+      expect(peak(a)).toBeLessThanOrEqual(0.7 * fan);
     }
   });
 
