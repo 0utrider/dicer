@@ -28,6 +28,7 @@ import {
  */
 
 const HEIGHT = 1.5;
+const FOOT = 0.85; // top-down body radius in scene units, wings and tail tips excluded (measured)
 const EYE_R = 0.17;
 const TAIL_N = 6;
 
@@ -368,5 +369,5 @@ export function dragonling(color) {
   const h = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y;
   scaler.scale.setScalar(HEIGHT / h);
 
-  return { root, height: HEIGHT, pose, dispose: () => kit.dispose() };
+  return { root, height: HEIGHT, footprint: FOOT, pose, dispose: () => kit.dispose() };
 }

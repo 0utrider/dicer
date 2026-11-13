@@ -1,4 +1,4 @@
-import { restSpot, fitArea, offPoint, edgeSpot, PET_HEIGHT } from '../../src/pet/chunk/resting.js';
+import { restSpot, fitArea, offPoint, edgeSpot, PET_HEIGHT, KIND_FOOTPRINT } from '../../src/pet/chunk/resting.js';
 import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
 import { mulberry32 } from '../../src/core/rng.js';
 
@@ -64,6 +64,11 @@ test('PET_HEIGHT matches every creature', () => {
   for (const make of Object.values(CREATURES)) {
     const c = make('#ffffff');
     expect(c.height).toBe(PET_HEIGHT);
+    expect(c.footprint).toBe(KIND_FOOTPRINT[c.root.name]);
     c.dispose();
   }
+});
+
+test('a NaN rand never yields null', () => {
+  expect(restSpot(AREA, H, [], () => NaN)).toEqual({ x: AREA.cx, z: AREA.cz });
 });

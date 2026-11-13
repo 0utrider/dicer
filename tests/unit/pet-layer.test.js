@@ -650,7 +650,7 @@ test("obstaclesFor lists resting pets and the roller's upcoming edge spot", () =
   expect(resting.x).toBeCloseTo(rest.x, 6);
   expect(resting.z).toBeCloseTo(rest.z, 6);
   expect(resting.h).toBe(1.5);
-  expect(resting.r).toBeCloseTo(0.675);
+  expect(resting.r).toBeCloseTo(0.95);
   const own = list.find((o) => o.id === 'u2');
   expect(own.x).toBeCloseTo(-(BIG.halfWidth - 0.9));
   expect(own.z).toBeCloseTo(0);
@@ -758,4 +758,27 @@ test('a pet whose user is gone mid-roll leaves instead of resting', () => {
   m.layer.userGone('u1');
   m.layer.landed('k', [d20(5)]);
   expect(runTo(m, clockNow + 4000)).toBe(false);
+});
+
+test('a pet mid-routine when the stage shrinks rests inside the smaller stage', () => {
+  const m = make({ petsStay: true });
+  m.layer.begin('k', bigInfo(spec('u1')));
+  m.layer.update(clockNow);
+  m.layer.areaChanged({ cx: 0, cz: 0, halfWidth: 8, halfDepth: 6 });
+  m.layer.landed('k', [d20(5)]);
+  let r;
+  while (clockNow < 5000 && r !== 'rest') r = m.layer.update((clockNow += 16));
+  expect(r).toBe('rest');
+  const p = at(m.scene);
+  expect(Math.abs(p.x)).toBeLessThanOrEqual(8 - 1.8 + 1e-6);
+  expect(Math.abs(p.z)).toBeLessThanOrEqual(6 - 1.8 + 1e-6);
+});
+
+test('obstacle radii use each creature footprint; the mimic is at least 0.85', () => {
+  const m = make({ petsStay: true });
+  expect(m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area: BIG })[0].r).toBeGreaterThanOrEqual(0.85);
+  m.layer.begin('k', bigInfo(spec('u1')));
+  const o = m.layer.obstaclesFor({ spec: null, edge: 0, area: BIG });
+  expect(o[0].r).toBeGreaterThanOrEqual(0.85);
+  expect(o[0].h).toBe(1.5);
 });

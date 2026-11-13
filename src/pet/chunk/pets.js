@@ -3,7 +3,7 @@ import { CREATURES } from './creatures/index.js';
 import { phaseAt, ENTER_MS, REACT_MS, REST_HOP_MS } from './timeline.js';
 import { summarize, merge, reactionSound } from './reaction.js';
 import { discTexture, starTexture } from './textures.js';
-import { edgeSpot, restSpot, offPoint, fitArea, obstacle, SLIDE, PET_HEIGHT } from './resting.js';
+import { edgeSpot, restSpot, offPoint, fitArea, obstacle, SLIDE, PET_HEIGHT, KIND_FOOTPRINT } from './resting.js';
 
 /** At most this many pets on screen at once. */
 export const MAX_PETS = 3;
@@ -43,6 +43,7 @@ export function createPetLayer(deps) {
   const { scene, getSetting, playSound, warm } = deps;
   const clock = deps.now || (() => performance.now()); // test seam; DiceBox's update() is on this clock
   const rand = deps.random || Math.random; // test seam: the rest spots
+  let stage = null; // the last stage areaChanged told us: a rest area is always fitted inside it
   const pets = new Map(); // userId -> pet
   const keyOwner = new Map(); // roll key -> userId
   let shadowTex = null;
@@ -188,6 +189,7 @@ export function createPetLayer(deps) {
   }
   const restOf = (pet, now) => {
     if (pet.state === 'routine') pet.idleAt = now; // idle since its routine ended
+    if (stage) pet.area = fitArea(pet.area, stage);
     const taken = [];
     for (const o of pets.values()) if (o !== pet && standing(o)) taken.push(spotOf(o));
     hopTo(pet, restSpot(pet.area, pet.creature.height, taken, rand), 'hop', now);
@@ -451,11 +453,11 @@ export function createPetLayer(deps) {
     const list = [];
     if (own?.ok) {
       const h = pets.get(spec.userId)?.creature.height ?? PET_HEIGHT;
-      list.push(obstacle(edgeSpot(edge, area, h).base, h, spec.userId));
+      list.push(obstacle(edgeSpot(edge, area, h).base, h, spec.userId, KIND_FOOTPRINT[spec.kind]));
     }
     for (const p of pets.values())
       if (standing(p) && p !== own?.victim && !(own?.ok && p.userId === spec.userId))
-        list.push(obstacle(spotOf(p), p.creature.height, p.userId));
+        list.push(obstacle(spotOf(p), p.creature.height, p.userId, p.creature.footprint));
     return list;
   }
 
@@ -472,11 +474,11 @@ export function createPetLayer(deps) {
    * the area of that owner's most recent roll (kept on the pet at begin), shrunk and shifted to fit
    * the new stage. Rolling pets keep their edge spot: their roll has its own area.
    */
-  function areaChanged(stage) {
+  function areaChanged(next) {
+    stage = next;
     const now = clock();
     for (const pet of pets.values()) {
       if (pet.state !== 'hop' && pet.state !== 'rest') continue;
-      pet.area = fitArea(pet.area, stage);
       pet.spot = null; // its old spot keeps nobody away
       restOf(pet, now);
     }

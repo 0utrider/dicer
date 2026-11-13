@@ -16,6 +16,8 @@ export const TRIES = 24;
 export const FOOTPRINT = 0.45; // of the height: an obstacle's radius
 /** The standing height of every creature (creatures/*.js; a test keeps this in step). */
 export const PET_HEIGHT = 1.5;
+/** Each kind's `footprint` (creatures/*.js), for a pet not made yet; a test keeps these in step. */
+export const KIND_FOOTPRINT = { mimic: 0.95, slime: 1.0, dragonling: 0.85 };
 
 /** The spot a pet stands on at `edge` of `area`, its outward direction and the yaw facing in. */
 export function edgeSpot(edge, area, height) {
@@ -30,7 +32,8 @@ export function edgeSpot(edge, area, height) {
 }
 
 /** The obstacle the physics sees for a pet of `height` standing at `at` (puddles are not obstacles). */
-export const obstacle = (at, height, id) => ({ x: at.x, z: at.z, r: FOOTPRINT * height, h: height, id });
+/** r is the creature's own `footprint` (scene units) or FOOTPRINT x height. */
+export const obstacle = (at, height, id, footprint) => ({ x: at.x, z: at.z, r: footprint ?? FOOTPRINT * height, h: height, id });
 
 /**
  * How well a spot honours the rules, as the smallest slack over them: >= 0 is valid (the inner
@@ -68,7 +71,7 @@ export function restSpot(area, height, taken, rand) {
       best = { x, z };
     }
   }
-  return best;
+  return best ?? { x: area.cx, z: area.cz }; // a NaN rand never yields null
 }
 
 /** Where a pet at `from` hops to leave: straight out through the area's edge, then SLIDE beyond. */
