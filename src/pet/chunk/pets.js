@@ -208,7 +208,7 @@ export function createPetLayer(deps) {
     } else if (make && (pet.kind !== spec.kind || pet.color !== spec.color)) {
       setCreature(pet, make(spec.color), spec); // the editor's Throw shows the new pick at once
     }
-    pet.rolls.set(key, { ghost: !!spec.ghost, summary: null });
+    pet.rolls.set(key, { ghost: !!spec.ghost, summary: null, consumed: false });
     keyOwner.set(key, spec.userId);
     // The newest roll (pet.current) owns the throw, the place and the leave; each roll keeps its
     // own ghost flag and summary for the merged reaction.
@@ -235,14 +235,20 @@ export function createPetLayer(deps) {
     return u === undefined ? null : pets.get(u) || null;
   };
 
-  /** Starts the reaction once every live roll of the pet has landed, to their merged summaries. */
+  /**
+   * Starts the reaction once every live, not yet reacted-to roll of the pet has landed, to their
+   * merged summaries; those rolls are then consumed, so a roll is reacted to once (a later roll
+   * of the same roller never re-cheers an earlier 20). A consumed roll keeps the pet until its end.
+   */
   function settle(pet) {
     if (pet.track.landedAt != null) return;
     const summaries = [];
     for (const r of pet.rolls.values()) {
+      if (r.consumed) continue;
       if (!r.summary) return;
       summaries.push(r.summary);
     }
+    for (const r of pet.rolls.values()) r.consumed = true;
     pet.reaction = merge(summaries);
     pet.soundDone = false;
     pet.track.landedAt = clock();

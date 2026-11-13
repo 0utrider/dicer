@@ -502,3 +502,60 @@ describe('the crit sparkle burst', () => {
     expect(matDisposed).toBe(1);
   });
 });
+
+describe('a reaction plays once per roll', () => {
+  const run = (m, from, to) => {
+    for (let t = from; t <= to; t += 16) m.layer.update((clockNow = t));
+  };
+  const phaseOf = (scene) => pets(scene)[0]?.userData.dicerPet.phase;
+
+  test('A crit reacted, then B begins and lands plain (A still on screen): B is plain, no second cheer', () => {
+    const m = make();
+    m.layer.begin('A', info(0, spec('u1')));
+    run(m, 0, 700);
+    clockNow = 700;
+    m.layer.landed('A', [d20(20)]);
+    run(m, 700, 1000);
+    expect(m.playSound).toHaveBeenCalledTimes(1);
+    clockNow = 1000;
+    m.layer.begin('B', info(0, spec('u1')));
+    run(m, 1000, 1700);
+    clockNow = 1700;
+    m.layer.landed('B', [d20(7)]);
+    run(m, 1700, 2000);
+    expect(phaseOf(m.scene)).toBe('react');
+    expect(m.playSound).toHaveBeenCalledTimes(1);
+    expect(pets(m.scene)[0].children.find((c) => c.isPoints).visible).toBe(false);
+  });
+
+  test('A crit reacted, then a ghost B (a blind roll) lands: plain and silent', () => {
+    const m = make();
+    m.layer.begin('A', info(0, spec('u1')));
+    run(m, 0, 700);
+    clockNow = 700;
+    m.layer.landed('A', [d20(20)]);
+    run(m, 700, 1000);
+    m.playSound.mockClear();
+    clockNow = 1000;
+    m.layer.begin('B', info(0, spec('u1', true)));
+    run(m, 1000, 1700);
+    clockNow = 1700;
+    m.layer.landed('B', [d20(undefined, true)]);
+    run(m, 1700, 2000);
+    expect(phaseOf(m.scene)).toBe('react');
+    expect(m.playSound).not.toHaveBeenCalled();
+    expect(pets(m.scene)[0].children.find((c) => c.isPoints).visible).toBe(false);
+  });
+
+  test('a consumed key still keeps the pet until its end', () => {
+    const m = make();
+    m.layer.begin('A', info(0, spec('u1')));
+    m.layer.begin('B', info(0, spec('u1')));
+    m.layer.landed('A', [d20(5)]);
+    m.layer.landed('B', [d20(5)]);
+    m.layer.end('B');
+    expect(pets(m.scene)).toHaveLength(1);
+    m.layer.end('A');
+    expect(pets(m.scene)).toHaveLength(0);
+  });
+});

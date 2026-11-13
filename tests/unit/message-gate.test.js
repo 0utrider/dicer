@@ -1922,3 +1922,42 @@ describe("the roller's dice pet", () => {
     ]);
   });
 });
+
+describe("the roller's dice pet: secret and appended rolls", () => {
+  const player = { id: 'p2', isGM: false };
+  const gmUser = { id: 'gm', isGM: true };
+  const author = { id: 'p1', flags: { dicer: { pet: { kind: 'slime', color: '#abcdef' } } } };
+  const petOf = (call) => call[1]?.pet ?? null;
+
+  test('a secret roll seen by a player is not thrown, so no pet', () => {
+    makeGate({ currentUser: () => player }).onCreate(
+      message('m1', { author, rolls: [{ ...d20Roll(20), secret: true }] }),
+    );
+    expect(diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('a secret roll seen by a GM who can see it: the pet with ghost false', () => {
+    makeGate({ currentUser: () => gmUser }).onCreate(
+      message('m1', { author, rolls: [{ ...d20Roll(20), secret: true }] }),
+    );
+    expect(petOf(diceBox.roll.mock.calls[0])).toEqual({ userId: 'p1', kind: 'slime', color: '#abcdef', ghost: false });
+  });
+
+  test('an appended secret roll seen by a player gets no pet; an appended real roll does', async () => {
+    const g = makeGate({ currentUser: () => player });
+    const msg = message('m1', { author });
+    g.onCreate(msg);
+    diceBox.rolls.at(-1).landed.resolve();
+    await flush();
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    msg.rolls = [...msg.rolls, { ...d20Roll(20), secret: true }];
+    g.onUpdate(msg, { rolls: msg.rolls });
+    await flush();
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    msg.rolls = [...msg.rolls, d20Roll(5)];
+    g.onUpdate(msg, { rolls: msg.rolls });
+    await flush();
+    expect(diceBox.roll).toHaveBeenCalledTimes(2);
+    expect(petOf(diceBox.roll.mock.calls[1])).toMatchObject({ userId: 'p1', ghost: false });
+  });
+});

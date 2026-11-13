@@ -3,7 +3,11 @@ export const THROW_MS = 250;
 export const REACT_MS = 1200;
 export const EXIT_MS = 450;
 export const QUICK_EXIT_MS = 300;
-/** The hard cap on one throw's pet: a roll that never lands or leaves cannot keep the loop alive. */
+/**
+ * The hard cap on one throw's pet: a roll that never lands or leaves cannot keep the loop alive.
+ * Kept equal to DONE_TIMEOUT_MS in src/throw/dice-box.js (a roll's own stall cap): change them
+ * together. Not imported, so the lazy pet chunk does not reach into the world-start DiceBox module.
+ */
 export const LIFE_MS = 15000;
 
 const WATCH_FROM = ENTER_MS + THROW_MS;
