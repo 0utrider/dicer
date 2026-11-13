@@ -1670,3 +1670,65 @@ test('pointerout to another element keeps the pointer (a held-back dodge still h
   runTo(m, clockNow + 800);
   expect(dist(posOf(m), was)).toBeGreaterThanOrEqual(4 - 1e-9);
 });
+
+// ---- rolling by hand: pets hold still while dice are held (H-8) ----
+const heldMake = () => {
+  const timers = fakeTimers();
+  const win = fakeWin();
+  const held = { on: false };
+  const m = make(
+    { petStay: 60 },
+    {
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+      activeRolls: () => 0,
+      holding: () => held.on,
+      win,
+      random: mulberry(5),
+    },
+  );
+  m.layer.areaChanged(STAGE_BIG);
+  return { m, timers, win, held };
+};
+
+test('no dodge while holding()', () => {
+  const { m, win, held } = heldMake();
+  rollToRest(m, 'u1');
+  const was = posOf(m);
+  held.on = true; // the overlay holds dice: the player may aim at the pet
+  m.deps.wake.mockClear();
+  pointAt(win, was.x, was.z);
+  expect(m.deps.wake).not.toHaveBeenCalled(); // no dodge to wake for
+  for (let i = 0; i < 20; i++) m.layer.update((clockNow += 16));
+  expect(phaseOf(m)).not.toBe('move');
+  expect(posOf(m)).toEqual(was);
+  held.on = false; // released: dodging resumes
+  m.layer.update((clockNow += 16));
+  expect(phaseOf(m)).toBe('move');
+});
+
+test('no idle leave while holding(); the timer re-arms after release', () => {
+  const { m, timers, held } = heldMake();
+  rollToRest(m, 'u1');
+  const idle = clockNow;
+  m.layer.update((clockNow += 16));
+  expect(timers.live()).toHaveLength(1); // aimed at idle + 60 s
+  held.on = true;
+  m.layer.update((clockNow += 16));
+  expect(timers.live()).toHaveLength(0); // nothing armed while dice are held
+  expect(runTo(m, idle + 62000)).toBe('rest');
+  expect(pets(m.scene)).toHaveLength(1); // overdue, but it stays while held
+  expect(timers.live()).toHaveLength(0);
+  held.on = false;
+  expect(m.layer.update((clockNow += 16))).toBe(true); // released: the overdue leave goes now
+  expect(runTo(m, clockNow + 1000)).toBe(false);
+  // a leave not yet due is armed again on release
+  const n = heldMake();
+  rollToRest(n.m, 'u1');
+  n.held.on = true;
+  n.m.layer.update((clockNow += 16));
+  expect(n.timers.live()).toHaveLength(0);
+  n.held.on = false;
+  n.m.layer.update((clockNow += 16));
+  expect(n.timers.live()).toHaveLength(1);
+});

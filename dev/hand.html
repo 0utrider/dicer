@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dicer throw by hand</title>
+    <link rel="stylesheet" href="/styles/dicer.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        color: #e8e8e8;
+        font:
+          14px system-ui,
+          sans-serif;
+        /* a battle-map-ish board under the dice */
+        background:
+          repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 64px),
+          repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 64px), #4a5240;
+      }
+      #bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.45);
+      }
+      #results {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 100;
+        margin: 0;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.45);
+        font:
+          12px ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <select id="dice">
+        <option value="d20">1d20</option>
+        <option value="d6,d6">2d6</option>
+        <option value="d20,d6,d8,d4">d20 d6 d8 d4</option>
+        <option value="d6,d6,d6,d6,d6,d6,d6,d6,d6,d6">10d6</option>
+      </select>
+      <select id="where">
+        <option value="area">player area (bottom left)</option>
+        <option value="stage">whole stage</option>
+      </select>
+      <label><input type="checkbox" id="ghost" /> ghost on release</label>
+      <button id="open" disabled>Hold the dice</button>
+      <span id="status">loading...</span>
+    </div>
+    <pre id="results"></pre>
+    <script type="module" src="./hand.js"></script>
+  </body>
+</html>

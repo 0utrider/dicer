@@ -6,6 +6,14 @@ export const CHUNK = 'dicer-hand-chunk';
 export { handFor, readFree, RESULT_GLOW_MS } from './chunk/box.js';
 export { handEdge } from './chunk/edge.js';
 export {
+  openThrowOverlay,
+  velocityFromSamples,
+  liftFromSpeed,
+  spinFromShake,
+  MAX_FLICK_SPEED,
+  SAMPLE_WINDOW_MS,
+} from './chunk/overlay.js';
+export {
   encodeTrajectory,
   decodeTrajectory,
   placeTrajectory,

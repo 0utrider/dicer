@@ -5,7 +5,7 @@ import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
-import { loadHand } from './hand/hand-loader.js';
+import { loadHand, prefetchHand } from './hand/hand-loader.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
@@ -78,28 +78,28 @@ const landedFx = createLandedFx({
   fromUuid: (uuid) => globalThis.fromUuid(uuid),
 });
 
+/** Runs `run` in an idle callback (a 200 ms timer where there is none). */
+const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run) : setTimeout(run, 200));
+
 /** Renders the sounds in an idle callback (never on a roll's frames). */
 function preloadSounds() {
   if (!soundEngine || getSetting('sounds') === false) return;
   const run = () => soundEngine?.preload();
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
-  else setTimeout(run, 200);
+  idle(run);
 }
 
 /** Fetches the effects library in an idle callback, so it is in before the first effect. */
 function preloadEffects() {
   if (!effectLayer || getSetting('effects') === false) return;
   const run = () => effectLayer?.prefetch();
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
-  else setTimeout(run, 200);
+  idle(run);
 }
 
 /** Fetches the pet chunk in an idle callback, only when pets are allowed and shown. */
 function preloadPets() {
   if (!petDeps || getSetting('petsAllowed') === false || getSetting('showPets') === false) return;
   const run = () => petDeps && requestPets(petDeps);
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
-  else setTimeout(run, 200);
+  idle(run);
 }
 
 /** Fetches the editor chunks (triggers, damage map, roll areas, themes, appearance) in an idle callback (they are small), so opening one is instant. */
@@ -115,8 +115,7 @@ export function preloadEditors(
       }
     }
   };
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(run);
-  else setTimeout(run, 200);
+  idle(run);
 }
 
 function onSoundChange(key, value) {
@@ -548,6 +547,7 @@ Hooks.once('ready', async () => {
         warm: (objects) => renderer.warmObjects(objects),
         wake: () => box?.wake(),
         activeRolls: () => box?.activeRolls ?? 0,
+        holding: () => box?.holding, // H-8: pets hold still while dice are held
       };
       preloadPets(); // this engine's layer (idle; the old one was released above)
       box = new DiceBox({
@@ -664,8 +664,10 @@ Hooks.once('ready', async () => {
       });
       dice3d = api;
       game.dice3d = api;
-      // The lazy hand chunk, attached to this engine's DiceBox (on demand; live tests and later tasks).
-      api._debug.hand = () => loadHand(box);
+      // The lazy hand chunk on demand, attached to this engine's DiceBox; with options it opens the
+      // throw overlay ({specs, rect?, timeoutMs?, ...}: live checks until the resolver opens it).
+      api._debug.hand = (o) =>
+        loadHand(box).then((m) => (o ? m.openThrowOverlay({ diceBox: box, ...o }) : m));
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(resizeDice);
       // The look-extras chunk landed: later rolls draw the real looks, not their fallbacks.
@@ -717,4 +719,5 @@ Hooks.once('ready', async () => {
   preloadEffects();
   preloadPets();
   preloadEditors();
+  idle(() => prefetchHand(diceBox, () => getSetting('handRollsAllowed'))); // H-20
 });

@@ -458,6 +458,8 @@ export class DiceBox {
       roll.revealed = false; // a released hold is revealed again: its pet begins then
       roll.free = free === true || roll.dice.some((d) => d.free);
       for (const die of roll.dice) die.free = roll.free;
+      // Free dice are read by the hand chunk: without it they land unread (values null).
+      if (roll.free && !this.hand) this._freeWarned ||= !console.warn('dicer: free dice need the hand chunk');
       roll.keep = !!(record || source); // chunks the recording or the source still owns
       const n = roll.dice.length;
       const thrown = this.#throwArea(

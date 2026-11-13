@@ -367,16 +367,25 @@ export function createPetLayer(deps) {
       return 0;
     }
   };
+  /** True while the throw overlay holds dice (H-8: pets hold still, so a player may aim at one). */
+  const holding = () => {
+    try {
+      return deps.holding?.() === true;
+    } catch {
+      return false;
+    }
+  };
   /**
    * Whether `pet` would dodge a cursor at `p` now: no roll in flight (a lingering roll's frames
-   * are not woken per move), resting, in reach, past its cooldown.
+   * are not woken per move) and no dice held by hand, resting, in reach, past its cooldown.
    */
   const dodges = (pet, p, now) =>
     pet.state === 'rest' &&
     !pet.gone &&
     now >= (pet.calmUntil ?? -Infinity) &&
     Math.hypot((pet.px ?? pet.base.x) - p.x, (pet.pz ?? pet.base.z) - p.z) <= reachOf(pet) &&
-    activeRolls() === 0;
+    activeRolls() === 0 &&
+    !holding();
   /** Whether a pet would dodge the pointer now; its target (the sidebar or chat?) is asked last. */
   function anyDodges(now) {
     if (!hasPointer) return false;
@@ -940,7 +949,10 @@ export function createPetLayer(deps) {
     // The cursor moved since the last check and no roll is in flight (the physics fixed every
     // pet's spot when a throw started): resting pets near it move away. A check held back by a
     // roll stays due until the roll is over.
-    const busy = activeRolls() > 0; // once per frame
+    // Dice held by hand (H-8) count as busy too, and no idle leave is armed while they are: the
+    // first frame after the release (or drop) arms it again.
+    const held = holding();
+    const busy = held || activeRolls() > 0; // once per frame
     if (pointerMoved && stay && !busy) {
       pointerMoved = false;
       try {
@@ -963,7 +975,7 @@ export function createPetLayer(deps) {
           // not aimed at it (it would spin the loop), and the roll's end runs update anyway.
           if (now >= pet.leaveAt) {
             if (!busy) sendOff(pet, now);
-          } else nextLeave = Math.min(nextLeave, pet.leaveAt);
+          } else if (!held) nextLeave = Math.min(nextLeave, pet.leaveAt);
         }
         alive = step(pet, now, shadows, stay);
       } catch (err) {

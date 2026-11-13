@@ -3086,6 +3086,20 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     expect(handEdge(at([-4, 0]), { ...area, cx: 5 })).toBe(1);
   });
 
+  test('a free roll without the hand chunk attached warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { box } = setup();
+    box.roll([{ type: 'd6', value: 1 }], { free: true });
+    box.roll([{ type: 'd6', value: 1, free: true }]);
+    box.roll([{ type: 'd6', value: 1 }]); // a forced roll needs no chunk
+    expect(warn.mock.calls.filter((c) => /hand chunk/.test(String(c[0])))).toHaveLength(1);
+    const ok = handSetup();
+    warn.mockClear();
+    ok.box.roll([{ type: 'd6', value: 1 }], { free: true });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   test('values resolves in spec order at landing (free and forced)', async () => {
     const { renderer, physics, box } = handSetup();
     const free = box.roll(

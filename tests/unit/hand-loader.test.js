@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { loadHand, _setHandImport } from '../../src/hand/hand-loader.js';
+import { loadHand, prefetchHand, _setHandImport } from '../../src/hand/hand-loader.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -50,3 +50,42 @@ test('the real chunk is marked and carries the hand code', async () => {
   ])
     expect(typeof m[k]).toBe('function');
 });
+
+describe('H-20: the chunk is prefetched at idle after ready', () => {
+  test('prefetchHand loads the chunk for the box', async () => {
+    const handFor = vi.fn();
+    const load = vi.fn(async () => ({ handFor }));
+    _setHandImport(load);
+    const box = {};
+    prefetchHand(box, () => 'all');
+    await flush();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(handFor).toHaveBeenCalledWith(box);
+  });
+
+  test("never when handRollsAllowed is 'none'; an unregistered setting reads as allowed ('all')", async () => {
+    const load = vi.fn(async () => ({ handFor: () => {} }));
+    _setHandImport(load);
+    prefetchHand({}, () => 'none');
+    await flush();
+    expect(load).not.toHaveBeenCalled();
+    for (const v of ['gm', 'trusted', 'all']) prefetchHand({}, () => v);
+    prefetchHand({}, () => {
+      throw new Error('not a registered game setting');
+    });
+    await flush();
+    expect(load).toHaveBeenCalledTimes(1); // imported once
+  });
+
+  test('main.js prefetches in an idle callback at ready, and the pets read DiceBox.holding', () => {
+    const src = readFileSync('src/main.js', 'utf8');
+    const ready = src.slice(src.indexOf("Hooks.once('ready'"));
+    expect(ready).toContain("idle(() => prefetchHand(diceBox, () => getSetting('handRollsAllowed')))");
+    expect(src).toContain(
+      "const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run) : setTimeout(run, 200));",
+    );
+    expect(src).toContain('holding: () => box?.holding');
+  });
+});
+
+const flush = () => new Promise((r) => setTimeout(r, 0));

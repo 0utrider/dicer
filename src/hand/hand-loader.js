@@ -11,6 +11,19 @@ export const loadHand = (box) =>
     (m) => (m && box && m.handFor(box), m),
   );
 
+/**
+ * H-20: fetches the chunk for `box` (main.js calls it in an idle callback after ready), unless
+ * `allowed()` (the world's handRollsAllowed) is 'none'. An unreadable setting is the default, 'all'.
+ */
+export function prefetchHand(box, allowed) {
+  try {
+    if (allowed() === 'none') return;
+  } catch {
+    /* not registered */
+  }
+  loadHand(box);
+}
+
 /** Test seam: replaces the chunk import and resets the state. */
 export function _setHandImport(fn) {
   load = fn;
