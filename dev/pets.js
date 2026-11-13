@@ -112,11 +112,11 @@ const OUT = [
 function gameView(pet, w, h, bg, edge = 3, onPet = false) {
   scene.background = new THREE.Color(bg);
   d20.visible = true;
-  // The pet's standing place (as pets.js computes it) and a d20 beside it along the edge.
+  // Where the pet is (it rests in the ring around the middle, or is hopping there) and a d20
+  // beside it, along the edge.
   const [ox, oz] = OUT[edge];
-  const d = (edge < 2 ? AREA.halfWidth : AREA.halfDepth) - 0.6 * 1.5;
-  const bx = AREA.cx + ox * d;
-  const bz = AREA.cz + oz * d;
+  const bx = pet.position.x;
+  const bz = pet.position.z;
   d20.position.x = bx - oz * 2.3;
   d20.position.z = bz + ox * 2.3;
   const full = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
