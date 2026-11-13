@@ -123,6 +123,50 @@ describe('syncDiceConfiguration', () => {
     set = run({ ...on, handRolls: 'off' }, null);
     expect(set).not.toHaveBeenCalled();
   });
+
+  test('required stashes the entries it takes from another method and restores them when it ends', () => {
+    const store = { ...on, handRollTypes: ['d20', 'd6'], handRollsRequired: true, handRollStash: {} };
+    let core = { d20: 'manual', d8: 'manual' };
+    const sync = () =>
+      syncDiceConfiguration({
+        getSetting: (k) => store[k],
+        user: { role: 1 },
+        getCore: () => core,
+        setCore: (v) => (core = v),
+        setSetting: (k, v) => (store[k] = v),
+      });
+    sync();
+    expect(core).toEqual({ d20: 'dicer', d6: 'dicer', d8: 'manual' });
+    expect(store.handRollStash).toEqual({ d20: 'manual' });
+    sync(); // idempotent
+    expect(core).toEqual({ d20: 'dicer', d6: 'dicer', d8: 'manual' });
+    expect(store.handRollStash).toEqual({ d20: 'manual' });
+    store.handRollsRequired = false; // still on by the user's own choice: d20 is manual's again
+    sync();
+    expect(core).toEqual({ d20: 'manual', d6: 'dicer', d8: 'manual' });
+    expect(store.handRollStash).toEqual({});
+    store.handRollsRequired = true;
+    sync();
+    store.handRolls = 'off';
+    store.handRollsAllowed = 'none'; // required, but no longer allowed
+    sync();
+    expect(core).toEqual({ d20: 'manual', d8: 'manual' });
+    expect(store.handRollStash).toEqual({});
+  });
+
+  test('another interactive method (not manual) configured: nothing mapped, one warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    globalThis.CONFIG = { Dice: { fulfillment: { methods: { manual: { interactive: true }, bt: { interactive: true }, mersenne: {} } } } };
+    let set = run(on, { d20: 'bt', d6: 'dicer' });
+    expect(set.mock.calls[0][0]).toEqual({ d20: 'bt' });
+    set = run(on, { d20: 'bt' });
+    expect(set).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    // manual and non-interactive methods do not block it
+    set = run(on, { d20: 'manual', d8: 'mersenne' });
+    expect(set.mock.calls[0][0]).toMatchObject({ d20: 'manual', d8: 'mersenne', d6: 'dicer' });
+    warn.mockRestore();
+  });
 });
 
 describe('DicerResolver (shell)', () => {
@@ -171,6 +215,25 @@ describe('DicerResolver (shell)', () => {
     expect(r._closed).toBe(true);
     expect(abort).toHaveBeenCalled();
     expect(RESOLVERS.has(roll)).toBe(false);
+  });
+
+  test('never rejects: a throwing chunk resolves undefined, and close() still clears RESOLVERS', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const boom = () => {
+      throw new Error('bug');
+    };
+    _setHandImport(async () => ({ handFor: () => {}, fulfill: boom, fulfillTerm: async () => boom(), extraResult: boom }));
+    const R = dicerResolver(FakeBase);
+    const roll = { id: 3 };
+    const r = new R(roll);
+    RESOLVERS.set(roll, r);
+    await expect(r.awaitFulfillment()).resolves.toBeUndefined();
+    await expect(r.addTerm({})).resolves.toBeUndefined();
+    await expect(r.resolveResult({}, 'dicer', {})).resolves.toBeUndefined();
+    await r.close();
+    expect(RESOLVERS.has(roll)).toBe(false);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   test('a failed chunk import never hangs: no fulfilment, no extra result', async () => {

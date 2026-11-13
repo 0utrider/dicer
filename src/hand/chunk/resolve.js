@@ -34,15 +34,45 @@ const methodOf = (resolver, term) => {
 };
 const stateOf = (resolver) => (resolver._hand ??= { partial: 0, fallback: null });
 
-/** The default "Throw by hand / Roll automatically" prompt (Foundry's DialogV2); true: by hand. */
-const askHand = () =>
-  foundry.applications.api.DialogV2.confirm({
+/**
+ * The default "Throw by hand / Roll automatically" prompt (Foundry's DialogV2); true: by hand. It
+ * closes itself after `ms` (then null: automatic).
+ */
+const askHand = (roll, ms) => {
+  let dialog;
+  const timer = setTimeout(() => dialog?.close(), ms);
+  return foundry.applications.api.DialogV2.confirm({
     window: { title: loc('DICER.Hand.AskTitle') },
     content: `<p>${loc('DICER.Hand.AskText')}</p>`,
     yes: { label: loc('DICER.Hand.ThrowByHand'), icon: 'fa-solid fa-hand', default: true },
     no: { label: loc('DICER.Hand.RollAuto'), icon: 'fa-solid fa-dice', default: false },
     rejectClose: false,
-  });
+    render: (_, d) => (dialog = d),
+  }).finally(() => clearTimeout(timer));
+};
+
+/** `p`, or null once `ms` have passed. */
+const within = (p, ms) => {
+  let timer;
+  return Promise.race([p, new Promise((r) => (timer = setTimeout(r, ms, null)))]).finally(() => clearTimeout(timer));
+};
+
+/** One interactive throw (ask prompt and overlay) at a time: each waits for the one before. */
+let queue = Promise.resolve();
+
+let warned = false;
+/**
+ * A failure inside the resolver body (a throwing planner, decorator, look, DiceBox or Foundry
+ * term): warned once, and the roll falls back, so Foundry rolls what is missing and the roll
+ * still finishes. A roll whose hand throw already landed keeps its dicerHand as it is.
+ */
+function failed(resolver, err) {
+  if (!warned) warned = !console.warn('dicer: a hand roll failed; Foundry rolls the dice', err);
+  const st = stateOf(resolver);
+  st.fallback ||= 'cancel';
+  const h = resolver.roll?.options?.dicerHand;
+  if (h && !h.fallback && !handThrows.has(h.id)) h.fallback = st.fallback;
+}
 
 /** The geometry DiceBox draws `spec` with (its #makeDie rule): a crystal-look d4 is a d4crystal. */
 function shapeTypeOf(spec, rollLook) {
@@ -143,33 +173,60 @@ function asResult(term, v) {
   return r;
 }
 
-/** Pushes each read value into its term in order; returns how many were pushed. */
+/**
+ * Pushes each read value into its term in order; returns how many were read. A value that is not
+ * a face of its term (defensive) takes term.randomFace() in its slot, so later results stay on
+ * the keys the recording carries.
+ */
 function push(specs, owners, values) {
   let n = 0;
   specs.forEach((_, i) => {
-    const r = owners[i] && asResult(owners[i], values?.[i]);
-    if (r) n += owners[i].results.push(r) && 1;
+    const t = owners[i];
+    if (!t) return;
+    const r = asResult(t, values[i]);
+    if (r) n++;
+    t.results.push(r ?? asResult(t, t.randomFace()) ?? { result: t.minResult, active: true });
   });
   return n;
 }
 
-/** H-19: the roll hints that its roller must not see it (a GM sees every such roll). */
-const ghostFor = (roll, user) =>
-  !user?.isGM &&
-  !!(roll.ghost || roll.secret || SECRET.includes(roll.options?.messageMode ?? roll.options?.rollMode));
+/** The chat mode a roll goes out in: its own, else the core chat mode (as Roll#toMessage). */
+function modeOf(roll) {
+  const own = roll.options?.messageMode ?? roll.options?.rollMode;
+  if (own) return own;
+  for (const k of ['messageMode', 'rollMode']) {
+    try {
+      const v = game.settings.get('core', k);
+      if (v) return v;
+    } catch {
+      /* not registered (rollMode in v14) */
+    }
+  }
+}
 
-/** P6-D3: a free "throw for me" of `specs` in the roller's area (no overlay); the read values or null. */
+/** H-19: the roll hints that its roller must not see it (a GM sees every such roll). */
+const ghostFor = (roll, user) => !user?.isGM && !!(roll.ghost || roll.secret || SECRET.includes(modeOf(roll)));
+
+/**
+ * P6-D3: a free "throw for me" of `specs` in the roller's area (no overlay); the read values or
+ * null. It is recorded under the roll's hand throw (handThrows entry `extras`), for Task 8.
+ */
 async function throwFree(resolver, specs) {
   const { roll, dicer: d } = resolver;
   const me = d.user();
   handFor(d.diceBox);
   const ghost = ghostFor(roll, me);
+  const entry = { specs, handle: null, recording: null };
   try {
     const thrown = d.diceBox.roll(ghost ? specs.map((s) => ({ ...s, ghost })) : specs, {
       area: d.areas.rectFor({ rollerId: me.id }),
       free: true,
+      record: (rec) => (entry.recording = rec),
     });
-    return await thrown.values;
+    entry.handle = thrown.handle;
+    const values = await thrown.values;
+    if (values) handThrows.get(roll.options?.dicerHand?.id)?.extras.push(entry);
+    return values;
   } catch (err) {
     console.warn('dicer: a free throw failed', err);
     return null;
@@ -187,27 +244,32 @@ function notePartial(resolver, n) {
 /**
  * The first pass (DicerResolver#awaitFulfillment): the roll's dicer terms are thrown by hand in
  * the throw overlay (after the ask prompt in 'ask' mode), their read values pushed in order;
- * manual terms then get Foundry's form. A timeout, cancel, failed throw or close pushes nothing:
- * the roll is in fallback and every later resolveResult answers undefined (Foundry's random).
+ * manual terms then get Foundry's form. A timeout, cancel, failed throw, failure or close pushes
+ * nothing: the roll is in fallback and every later resolveResult answers undefined (Foundry's
+ * random). Never rejects for its own part.
  */
 export async function fulfill(resolver) {
   const { roll, dicer: d } = resolver;
-  const mine = [];
   let manual = false;
-  for (const t of foundry.dice.Roll.defaultImplementation.identifyFulfillableTerms(roll.terms)) {
-    if (t._id) continue;
-    if (methodOf(resolver, t) !== 'dicer') manual = true;
-    else {
-      // Pre-set (R9): Foundry's form skips a term that has an _id.
-      t._id = foundry.utils.randomID();
-      t.method = 'dicer';
-      mine.push(t);
+  try {
+    const mine = [];
+    for (const t of foundry.dice.Roll.defaultImplementation.identifyFulfillableTerms(roll.terms)) {
+      if (t._id) continue;
+      if (methodOf(resolver, t) !== 'dicer') manual = true;
+      else {
+        // Pre-set (R9): Foundry's form skips a term that has an _id.
+        t._id = foundry.utils.randomID();
+        t.method = 'dicer';
+        mine.push(t);
+      }
     }
-  }
-  if (mine.length) {
-    foundry.dice.Roll.defaultImplementation.RESOLVERS.set(roll, resolver);
-    if (d) await throwByHand(resolver, mine);
-    else stateOf(resolver).fallback = 'auto'; // no engine: Foundry's random
+    if (mine.length) {
+      foundry.dice.Roll.defaultImplementation.RESOLVERS.set(roll, resolver);
+      if (d) await throwByHand(resolver, mine);
+      else stateOf(resolver).fallback = 'auto'; // no engine: Foundry's random
+    }
+  } catch (err) {
+    failed(resolver, err);
   }
   if (manual && !resolver._closed) await resolver._base('awaitFulfillment');
 }
@@ -216,87 +278,108 @@ async function throwByHand(resolver, terms) {
   const { roll, dicer: d } = resolver;
   const st = stateOf(resolver);
   const me = d.user();
+  const hand = ((roll.options ??= {}).dicerHand = { id: foundry.utils.randomID(), by: me.id, n: 0 });
   const { specs, owners, dropped } = planFor(resolver, terms, (t) => Math.max(0, Math.abs(t.number) - t.results.length));
-  const hand = (roll.options ??= {}).dicerHand = { id: foundry.utils.randomID(), by: me.id, n: specs.length };
-  let auto = !handAllowed(me, d.getSetting);
-  if (!auto && d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
-    try {
-      auto = (await (d.ask ?? askHand)(roll)) !== true;
-    } catch {
-      auto = true;
-    }
-  }
-  if (auto || resolver._closed) return void (st.fallback = hand.fallback = auto ? 'auto' : 'cancel');
+  hand.n = specs.length;
+  const ms = Number(d.getSetting('handRollTimeout')) * 1000 || 60000;
+  const fallback = (why) => void (st.fallback = hand.fallback = why);
+  if (!handAllowed(me, d.getSetting)) return fallback('auto');
   if (!specs.length) return notePartial(resolver, dropped);
-  const rect = () => d.areas.rectFor({ rollerId: me.id });
-  handFor(d.diceBox);
-  d.hooks?.callAll('diceSoNicePendingThrowOpened', roll);
-  // close() mid-throw (another app closed the resolver): the overlay cancels.
-  resolver._abort = () => globalThis.document?.querySelector?.('.dicer-hand-overlay [data-action="cancel"]')?.click();
-  let out;
+  // Queued behind any throw in progress (another roll's prompt or overlay); its timeout starts when shown.
+  const prev = queue;
+  let next;
+  queue = new Promise((r) => (next = r));
   try {
-    out = await openThrowOverlay({
-      specs,
-      rect: rect(),
-      getRect: rect,
-      diceBox: d.diceBox,
-      timeoutMs: Number(d.getSetting('handRollTimeout')) * 1000 || 60000,
-      ghostOnRelease: ghostFor(roll, me),
-      label: roll.formula,
-    });
-  } catch (err) {
-    console.warn('dicer: the throw overlay failed', err);
+    await prev;
+    if (resolver._closed) return fallback('cancel');
+    if (d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
+      let yes = false;
+      try {
+        yes = (await within((d.ask ?? askHand)(roll, ms), ms)) === true;
+      } catch {
+        /* no prompt: automatic */
+      }
+      if (!yes) return fallback('auto');
+      if (resolver._closed) return fallback('cancel');
+    }
+    const rect = () => d.areas.rectFor({ rollerId: me.id });
+    handFor(d.diceBox);
+    d.hooks?.callAll('diceSoNicePendingThrowOpened', roll);
+    // close() mid-throw (another app closed the resolver): the overlay cancels.
+    resolver._abort = () => globalThis.document?.querySelector?.('.dicer-hand-overlay [data-action="cancel"]')?.click();
+    let out;
+    try {
+      out = await openThrowOverlay({
+        specs,
+        rect: rect(),
+        getRect: rect,
+        diceBox: d.diceBox,
+        timeoutMs: ms,
+        ghostOnRelease: ghostFor(roll, me),
+        label: roll.formula,
+      });
+    } catch (err) {
+      console.warn('dicer: the throw overlay failed', err);
+    } finally {
+      resolver._abort = null;
+      d.hooks?.callAll('diceSoNicePendingThrowClosed', roll);
+    }
+    if (!out?.values || resolver._closed) return fallback(out?.timedOut ? 'timeout' : 'cancel');
+    handThrows.set(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });
+    const n = push(specs, owners, out.values);
+    notePartial(resolver, dropped + owners.filter(Boolean).length - n);
   } finally {
-    resolver._abort = null;
-    d.hooks?.callAll('diceSoNicePendingThrowClosed', roll);
+    next();
   }
-  if (!out?.values || resolver._closed) {
-    st.fallback = hand.fallback = out?.timedOut ? 'timeout' : 'cancel';
-    return;
-  }
-  const n = push(specs, owners, out.values);
-  handThrows.set(hand.id, { recording: out.recording, handle: out.handle, specs });
-  notePartial(resolver, dropped + owners.filter(Boolean).length - n);
 }
 
 /**
  * DicerResolver#addTerm: a dynamic or intermediate term. A manual one is Foundry's; a dicer one
  * gets its _id and method and its dice thrown free in the roller's area (P6-D3), unless the roll
  * is in fallback or the user may not roll by hand: then nothing (Foundry's random), counted in
- * `partial`.
+ * `partial`. A failure falls back the same way.
  */
 export async function fulfillTerm(resolver, term) {
-  const method = methodOf(resolver, term);
-  if (method !== 'dicer') return resolver._base('addTerm', term);
-  if (!term.number || !term.faces) return;
-  term._id ??= foundry.utils.randomID();
-  term.method = 'dicer';
-  const d = resolver.dicer;
+  if (methodOf(resolver, term) !== 'dicer') return resolver._base('addTerm', term);
   const count = () => Math.max(0, Math.abs(term.number) - term.results.length);
-  const want = count();
-  if (!want) return;
-  if (!d || stateOf(resolver).fallback || resolver._closed || !handAllowed(d.user(), d.getSetting)) {
-    return notePartial(resolver, want);
+  try {
+    if (!term.number || !term.faces) return;
+    term._id ??= foundry.utils.randomID();
+    term.method = 'dicer';
+    const d = resolver.dicer;
+    const want = count();
+    if (!want) return;
+    if (!d || stateOf(resolver).fallback || resolver._closed || !handAllowed(d.user(), d.getSetting)) {
+      return notePartial(resolver, want);
+    }
+    const { specs, owners, dropped } = planFor(resolver, [term], count);
+    const values = specs.length ? await throwFree(resolver, specs) : null;
+    const n = values ? push(specs, owners, values) : 0;
+    notePartial(resolver, dropped + owners.filter(Boolean).length - n);
+  } catch (err) {
+    failed(resolver, err);
+    notePartial(resolver, count() || 0);
   }
-  const { specs, owners, dropped } = planFor(resolver, [term], count);
-  const n = specs.length ? push(specs, owners, await throwFree(resolver, specs)) : 0;
-  notePartial(resolver, dropped + owners.filter(Boolean).length - n);
 }
 
 /**
  * DicerResolver#resolveResult: an explosion or reroll of a dicer term is one free die thrown in
  * the same area (P6-D3), answered with its read result. A missing die (dropped from the throw),
- * a roll in fallback, an unreadable shape or a failed throw answer undefined: Foundry's random.
- * Manual terms are Foundry's.
+ * a roll in fallback, an unreadable shape, a failed throw or a failure answer undefined: Foundry's
+ * random. Manual terms are Foundry's.
  */
 export async function extraResult(resolver, term, method, options) {
   if (method !== 'dicer') return resolver._base('resolveResult', term, method, options);
-  const d = resolver.dicer;
-  if (!(options?.explode || options?.reroll) || !d || resolver._closed) return undefined;
-  if (stateOf(resolver).fallback || !handAllowed(d.user(), d.getSetting)) return undefined;
-  const { specs, owners } = planFor(resolver, [term], () => 1);
-  if (!specs.length) return undefined;
-  const values = await throwFree(resolver, specs);
-  const i = owners.findIndex(Boolean);
-  return asResult(term, values?.[i])?.result;
+  try {
+    const d = resolver.dicer;
+    if (!(options?.explode || options?.reroll) || !d || resolver._closed) return undefined;
+    if (stateOf(resolver).fallback || !handAllowed(d.user(), d.getSetting)) return undefined;
+    const { specs, owners } = planFor(resolver, [term], () => 1);
+    if (!specs.length) return undefined;
+    const values = await throwFree(resolver, specs);
+    return asResult(term, values?.[owners.findIndex(Boolean)])?.result;
+  } catch (err) {
+    failed(resolver, err);
+    return undefined;
+  }
 }

@@ -24,28 +24,52 @@ export function handAllowed(user, getSetting) {
   return !!user && min !== undefined && (user.isGM === true || (user.role ?? 0) >= min);
 }
 
+const differ = (a, b) => {
+  const keys = Object.keys(a);
+  return keys.length !== Object.keys(b).length || keys.some((k) => a[k] !== b[k]);
+};
+let warnedOther = false;
+
 /**
- * Brings the core diceConfiguration in line with the hand settings. Dicer's entries are removed,
+ * Brings the core diceConfiguration in line with the hand settings. Dicer's entries are removed
+ * (entries required took from another method come back from the `handRollStash` client setting),
  * then, when hand rolls are on (or required) and allowed, each chosen denomination (none: all of
  * HAND_DICE, plus default) is mapped to `dicer` where no other method holds it; required also
- * takes a denomination from another method (never default). Writes only on a change.
+ * takes a denomination from another method (never default), stashing it. With another
+ * interactive method than manual configured (Foundry would then use its generic resolver, H-17),
+ * nothing is mapped (one warning). Writes only on a change.
  */
-export function syncDiceConfiguration({ getSetting, user, getCore, setCore }) {
+export function syncDiceConfiguration({ getSetting, user, getCore, setCore, setSetting }) {
   const was = getCore() ?? {};
+  const stash = { ...getSetting('handRollStash') };
+  const kept = { ...stash };
   const out = {};
   for (const k in was) if (was[k] !== 'dicer') out[k] = was[k];
+  for (const k in stash) if (!out[k]) out[k] = stash[k];
+  for (const k in stash) delete stash[k];
   const req = getSetting('handRollsRequired') === true;
-  if (handAllowed(user, getSetting) && (req || getSetting('handRolls') !== 'off')) {
+  const other = Object.values(out).some(
+    (m) => m && m !== 'manual' && globalThis.CONFIG?.Dice?.fulfillment?.methods?.[m]?.interactive,
+  );
+  if (other && !warnedOther) warnedOther = !console.warn('dicer: another interactive dice method is configured; rolling by hand stays off');
+  if (!other && handAllowed(user, getSetting) && (req || getSetting('handRolls') !== 'off')) {
     const chosen = getSetting('handRollTypes');
     for (const k of chosen?.length ? chosen : [...HAND_DICE, 'default']) {
-      if (!out[k] || (req && k !== 'default')) out[k] = 'dicer';
+      if (out[k] && req && k !== 'default') stash[k] = out[k];
+      if (!out[k] || stash[k]) out[k] = 'dicer';
     }
   }
-  const keys = Object.keys(out);
-  if (keys.length !== Object.keys(was).length || keys.some((k) => out[k] !== was[k])) return setCore(out);
+  if (differ(stash, kept)) setSetting?.('handRollStash', stash);
+  if (differ(out, was)) return setCore(out);
 }
 
 let Resolver = null;
+
+/** `fn(chunk)`, never rejecting: a failure (or no chunk) is undefined, Foundry's random. */
+const chunk = (fn) =>
+  loadHand()
+    .then((m) => (m ? fn(m) : undefined)) // never null: Foundry rolls random only for undefined
+    .catch((err) => console.warn('dicer: a hand roll failed', err));
 
 /**
  * DicerResolver, made once from Foundry's RollResolver (at init: the base is a Foundry global).
@@ -61,16 +85,13 @@ export function dicerResolver(Base = foundry.applications.dice.RollResolver) {
     }
     /** The chunk's fulfill(this), or nothing when the chunk is unavailable. */
     awaitFulfillment() {
-      return Promise.race([
-        loadHand().then((m) => m?.fulfill(this)),
-        new Promise((r) => (this._release = r)),
-      ]);
+      return Promise.race([chunk((m) => m.fulfill(this)), new Promise((r) => (this._release = r))]);
     }
     addTerm(term) {
-      return loadHand().then((m) => m?.fulfillTerm(this, term));
+      return chunk((m) => m.fulfillTerm(this, term));
     }
     resolveResult(term, method, options) {
-      return loadHand().then((m) => m?.extraResult(this, term, method, options));
+      return chunk((m) => m.extraResult(this, term, method, options));
     }
     close(options) {
       this._closed = true;

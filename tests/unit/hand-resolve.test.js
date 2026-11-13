@@ -28,6 +28,9 @@ class DiceTerm {
   get maxResult() {
     return this.minValue + this.faces - 1;
   }
+  randomFace() {
+    return this.maxResult; // deterministic stand-in for Foundry's PRNG
+  }
 }
 class Die extends DiceTerm {
   static DENOMINATION = 'd';
@@ -141,12 +144,15 @@ beforeEach(() => {
   const diceBox = {
     hand: {}, // the hand chunk is attached
     _getAppearance: () => ({}),
-    roll: vi.fn((specs) => ({
-      values: Promise.resolve(specs.map((s) => (s.variant === 'd100tens' ? null : boxValues.shift()))),
-      handle: {},
-      landed: Promise.resolve(),
-      finished: Promise.resolve(),
-    })),
+    roll: vi.fn((specs, opts) => {
+      opts?.record?.({ rec: specs.length }); // DiceBox records at physics done, before landing
+      return {
+        values: Promise.resolve(specs.map((s) => (s.variant === 'd100tens' ? null : boxValues.shift()))),
+        handle: { free: specs.length },
+        landed: Promise.resolve(),
+        finished: Promise.resolve(),
+      };
+    }),
   };
   deps = {
     diceBox,
@@ -171,6 +177,8 @@ beforeEach(() => {
 afterEach(() => {
   delete globalThis.foundry;
   delete globalThis.CONFIG;
+  delete globalThis.game;
+  vi.restoreAllMocks();
 });
 
 test('2d6 + 1d20: term.results filled from overlay values in order', async () => {
@@ -199,7 +207,7 @@ test('2d6 + 1d20: term.results filled from overlay values in order', async () =>
   // H-15 and the store for Task 8
   const hand = roll.options.dicerHand;
   expect(hand).toEqual({ id: hand.id, by: 'u1', n: 3 });
-  expect(handThrows.get(hand.id)).toEqual({ recording: { rec: 1 }, handle: { h: 1 }, specs });
+  expect(handThrows.get(hand.id)).toEqual({ recording: { rec: 1 }, handle: { h: 1 }, specs, extras: [] });
   // Foundry's terms got the method and an id (its form skips them)
   expect([d6.method, d20.method]).toEqual(['dicer', 'dicer']);
   expect(d6._id).toBeTruthy();
@@ -511,11 +519,170 @@ test("a roll with options.messageMode 'blind' opens with ghostOnRelease", async 
   expect(await ghostFor({ options: { messageMode: 'blind' } }, { id: 'g', isGM: true, role: 4 })).toBe(false);
 });
 
-test('a malformed read value is never pushed (Foundry rolls that die)', async () => {
+
+test('an out-of-range read takes randomFace() in its slot (counted in partial), so keys stay aligned', async () => {
   const d6 = new Die({ number: 2, faces: 6 });
   const roll = rollOf(d6);
   overlay.values = [9, 3];
   await fulfill(new Resolver(roll, deps));
-  expect(d6.results).toEqual([{ result: 3, active: true }]);
+  expect(d6.results).toEqual([
+    { result: 6, active: true }, // randomFace() for the unreadable value, in the recorded slot 0:0:0
+    { result: 3, active: true },
+  ]);
   expect(roll.options.dicerHand.partial).toBe(1);
 });
+
+describe('fix round 1', () => {
+  test('rolls never reject: a throwing planner -> the roll evaluates with random results', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    deps.plan = () => {
+      throw new Error('planner bug');
+    };
+    const d6 = new Die({ number: 2, faces: 6, modifiers: ['x'] });
+    const roll = rollOf(d6);
+    const r = new Resolver(roll, deps);
+    await expect(evaluate(r)).resolves.toBeUndefined();
+    expect(d6.results.every((x) => x.random)).toBe(true);
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(roll.options.dicerHand.fallback).toBe('cancel');
+    // the dynamic and extra paths too
+    const late = new Die({ number: 1, faces: 6 });
+    const r2 = new Resolver(rollOf(new Die({ faces: 8 })), deps);
+    await expect(fulfillTerm(r2, late)).resolves.toBeUndefined();
+    expect(late.results).toEqual([]);
+    await expect(extraResult(r2, late, 'dicer', { explode: true })).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  test('rolls never reject: a throwing decorateFor -> the same; manual terms still get the form', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    deps.decorateFor = () => {
+      throw new Error('look bug');
+    };
+    config.d8 = 'manual';
+    const d6 = new Die({ number: 1, faces: 6 });
+    const d8 = new Die({ number: 1, faces: 8 });
+    const r = new Resolver(rollOf(d6, d8), deps);
+    await expect(evaluate(r)).resolves.toBeUndefined();
+    expect(d6.results[0].random).toBe(true);
+    expect(r.form).toEqual([d8]);
+    // an extra failing after a landed hand throw: undefined, and the landed throw keeps its dicerHand
+    deps.decorateFor = vi.fn(() => undefined);
+    const d20 = new Die({ number: 1, faces: 20 });
+    const roll = rollOf(d20);
+    const r3 = new Resolver(roll, deps);
+    overlay.values = [20];
+    await fulfill(r3);
+    deps.diceBox._getAppearance = () => {
+      throw new Error('look gone');
+    };
+    expect(await extraResult(r3, d20, 'dicer', { explode: true })).toBeUndefined();
+    expect(roll.options.dicerHand.fallback).toBeUndefined();
+  });
+
+  test('ghost by chat mode: no messageMode on the roll + core messageMode blind -> ghostOnRelease', async () => {
+    const core = { messageMode: 'blind' };
+    globalThis.game = {
+      settings: {
+        get: (ns, k) => {
+          if (k in core) return core[k];
+          throw new Error('not a registered setting');
+        },
+      },
+    };
+    overlay.values = [1];
+    await fulfill(new Resolver(rollOf(new Die({ faces: 6 })), deps));
+    expect(overlay.open.mock.calls[0][0].ghostOnRelease).toBe(true);
+    core.messageMode = 'public';
+    await fulfill(new Resolver(rollOf(new Die({ faces: 6 })), deps));
+    expect(overlay.open.mock.calls[1][0].ghostOnRelease).toBe(false);
+    // the roll's own mode wins over the core one
+    core.messageMode = 'blind';
+    const r = rollOf(new Die({ faces: 6 }));
+    r.options.messageMode = 'public';
+    await fulfill(new Resolver(r, deps));
+    expect(overlay.open.mock.calls[2][0].ghostOnRelease).toBe(false);
+  });
+
+  test('two rolls evaluated concurrently are both thrown by hand, in order', async () => {
+    const landers = [];
+    overlay.open = vi.fn(
+      ({ specs }) =>
+        new Promise((res) => landers.push(() => res({ values: specs.map(() => 4), handle: {}, recording: {} }))),
+    );
+    const a = new Die({ number: 1, faces: 6 });
+    const b = new Die({ number: 2, faces: 8 });
+    const pa = evaluate(new Resolver(rollOf(a), deps));
+    const pb = evaluate(new Resolver(rollOf(b), deps));
+    await flush();
+    expect(overlay.open).toHaveBeenCalledTimes(1); // the second roll waits for the first overlay
+    expect(overlay.open.mock.calls[0][0].specs[0].type).toBe('d6');
+    landers[0]();
+    await flush();
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+    expect(overlay.open.mock.calls[1][0].specs[0].type).toBe('d8');
+    landers[1]();
+    await Promise.all([pa, pb]);
+    expect(a.results).toEqual([{ result: 4, active: true }]);
+    expect(b.results.map((x) => x.result)).toEqual([4, 4]);
+  });
+
+  test('a queued roll whose resolver closes while waiting falls back without an overlay', async () => {
+    let land;
+    overlay.open = vi.fn(
+      ({ specs }) => new Promise((res) => (land = () => res({ values: specs.map(() => 2), handle: {}, recording: {} }))),
+    );
+    const pa = fulfill(new Resolver(rollOf(new Die({ faces: 6 })), deps));
+    const b = new Die({ faces: 6 });
+    const rb = new Resolver(rollOf(b), deps);
+    const pb = fulfill(rb);
+    await flush();
+    rb._closed = true;
+    land();
+    await Promise.all([pa, pb]);
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(b.results).toEqual([]);
+    expect(rb.roll.options.dicerHand.fallback).toBe('cancel');
+  });
+
+  test('the ask prompt races handRollTimeout (then automatic); no prompt when no die can be thrown', async () => {
+    settings.handRolls = 'ask';
+    settings.handRollTimeout = 0.02; // 20 ms
+    deps.ask = vi.fn(() => new Promise(() => {})); // never answered
+    const d6 = new Die({ faces: 6 });
+    const r = new Resolver(rollOf(d6), deps);
+    await fulfill(r);
+    expect(deps.ask).toHaveBeenCalledWith(r.roll, 20);
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(r.roll.options.dicerHand.fallback).toBe('auto');
+    // only unfair dice: nothing to throw, so nothing to ask
+    deps.ask.mockClear();
+    unfair.push('d20');
+    const only = rollOf(new Die({ faces: 20 }));
+    await fulfill(new Resolver(only, deps));
+    expect(deps.ask).not.toHaveBeenCalled();
+    expect(only.options.dicerHand).toMatchObject({ n: 0, partial: 1 });
+  });
+
+  test('extras and dynamic-term free throws are stored under the hand throw id', async () => {
+    const d6 = new Die({ number: 2, faces: 6, modifiers: ['x'] });
+    const roll = rollOf(d6);
+    const r = new Resolver(roll, deps);
+    overlay.values = [6, 2];
+    boxValues = [3];
+    await evaluate(r);
+    const late = new Die({ number: 2, faces: 4 });
+    boxValues = [1, 4];
+    await fulfillTerm(r, late);
+    const entry = handThrows.get(roll.options.dicerHand.id);
+    expect(entry.extras).toHaveLength(2);
+    expect(entry.extras[0]).toMatchObject({ handle: { free: 1 }, recording: { rec: 1 } });
+    expect(entry.extras[0].specs.map((s) => s.key)).toEqual(['0:2:0']);
+    expect(entry.extras[1]).toMatchObject({ handle: { free: 2 }, recording: { rec: 2 } });
+    expect(entry.handle).toEqual({ h: 1 }); // the hand throw's own handle stays
+  });
+});
+
+const flush = async () => {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+};

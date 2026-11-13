@@ -611,6 +611,8 @@ export function registerSettings({
       ...(i < 4 ? { onChange: () => onHandChange?.() } : {}),
     }),
   );
+  // The dice configuration entries handRollsRequired took from another method, restored when it ends.
+  register('handRollStash', { scope: 'client', config: false, type: Object, default: {} });
   registerNoticeSetting();
 }
 
