@@ -59,8 +59,11 @@ function diceIn(formula) {
  * @param {string} [opts.version] The Dicer version, for `info()`.
  * @param {object} [opts.win] The window (default globalThis), for tests.
  * @param {number} [opts.startTimeoutMs] Bound on the wait for the first frame.
+ * @param {object | (() => Promise<object>)} [opts.fixture] The encoded hand throw (a trajectory
+ *   payload) the hand scenarios replay (tests/fixtures/trajectory-mixed10.json). Without one a
+ *   hand scenario's roll fails.
  */
-export function createDicerAdapter(api, { roll, gpu, version, win = globalThis, startTimeoutMs = START_TIMEOUT_MS } = {}) {
+export function createDicerAdapter(api, { roll, gpu, version, fixture, win = globalThis, startTimeoutMs = START_TIMEOUT_MS } = {}) {
   const debug = () => api?._debug ?? {};
 
   /**
@@ -111,9 +114,31 @@ export function createDicerAdapter(api, { roll, gpu, version, win = globalThis, 
     return { done, started };
   }
 
+  /**
+   * A hand scenario: the fixture throw replayed through the api's bench hook (DiceBox source: the
+   * recorded frames, no physics, never a THROW). The first call loads the hand chunk, so the replay
+   * itself starts synchronously after the first-frame arm, like showForRoll's dice.
+   */
+  async function handRoll() {
+    if (!fixture) throw new Error('a hand scenario needs a fixture (the recorded throw)');
+    const payload = await (typeof fixture === 'function' ? fixture() : fixture);
+    await api._benchHand();
+    const { started, disarm } = armStarted();
+    let shown;
+    try {
+      shown = api._benchHand(payload);
+    } finally {
+      disarm();
+    }
+    const done = Promise.resolve(shown).then((ok) => {
+      if (ok === false) throw new Error('the hand replay showed nothing');
+    });
+    return { done, started };
+  }
+
   return {
     product: 'dicer',
-    roll: roll ?? defaultRoll,
+    roll: (formula, scenario) => (scenario?.hand ? handRoll() : (roll ?? defaultRoll)(formula)),
     // A held loop (resting pets) draws no frames: idle.
     isBusy: () => (debug().activeRolls ?? 0) > 0 || (debug().isLooping === true && debug().isHolding !== true),
     resources: () => debug().resources ?? null,

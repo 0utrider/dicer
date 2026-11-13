@@ -128,6 +128,25 @@ export function handBuffer({ now = () => Date.now(), setTimeoutFn = (fn, ms) => 
   };
 }
 
+/**
+ * The benchmark's hand replay (api._benchHand): an encoded throw played through `box.roll` as a
+ * source (its recorded frames, no physics, never a THROW) over the whole stage, with look-only dice.
+ * Returns the roll's landed promise, or false for a payload that does not decode.
+ */
+export function benchReplay(box, payload) {
+  const d = decodeTrajectory(payload);
+  if (!d) return false;
+  const specs = d.shapes.map((shape, i) => ({
+    type: shape === 'd4crystal' ? 'd4' : shape,
+    shapeType: shape,
+    value: d.values[i] ?? 1,
+    free: true,
+    key: d.keys[i],
+  }));
+  const placed = placeTrajectory(d, { cx: 0, cz: 0, ...box._area }, box._area);
+  return box.roll(specs, { source: replaySource(placed), free: true, edge: d.edge }).landed;
+}
+
 /** The Foundry result a planned die stands for (a d100's tens die: its tens part, as readResult). */
 const resultOfSpec = (s) => (s.variant === 'd100tens' ? s.value : resultOf(s.value, s.variant));
 

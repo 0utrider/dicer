@@ -16,6 +16,11 @@ export const SCENARIOS = Object.freeze(
     // Roll 1 loses the context mid-roll; roll 2, after the restore, must draw (adapter.verifyRecovered).
     { id: 'contextLoss', kind: 'perturb', formula: MIXED, rolls: 2, recover: true },
     { id: 'hidden', kind: 'perturb', formula: MIXED, rolls: 1 },
+    // Rolling by hand: a recorded throw (tests/fixtures/trajectory-mixed10.json) replayed through
+    // DiceBox source, the receiver's cost of a hand throw. dicerOnly: DSN has no such thing, so
+    // the head-to-head leaves them out; the G2 targets still judge them.
+    { id: 'handReplay10', kind: 'typical', formula: MIXED, rolls: 1, hand: true, dicerOnly: true },
+    { id: 'handSoak100', kind: 'soak', rolls: 100, hand: true, dicerOnly: true },
   ].map((s) => Object.freeze(s)),
 );
 
@@ -39,7 +44,7 @@ const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 /**
  * @typedef {object} ProductAdapter
  * @property {'dicer'|'dice-so-nice'} product
- * @property {(formula: string) => Promise<{messageId?: string} | {done: Promise<unknown>, started?: Promise<unknown>}>} roll
+ * @property {(formula: string, scenario: object) => Promise<{messageId?: string} | {done: Promise<unknown>, started?: Promise<unknown>}>} roll
  *   Chat path: resolves {messageId}; start/completion arrive via the diceSoNiceRollStart/Complete hooks.
  *   No-message path: resolves {done, started?}; done settles at animation completion, started at roll start
  *   (without it firstFrame is null for that roll). A result with neither messageId nor done is a failure.
@@ -176,7 +181,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
       pendingRoll = true;
       let res;
       try {
-        res = await Promise.race([Promise.resolve().then(() => adapter.roll(scenario.formula)), deadline]);
+        res = await Promise.race([Promise.resolve().then(() => adapter.roll(scenario.formula, scenario)), deadline]);
       } catch (e) {
         failures++;
         notes.push(`roll threw: ${e?.message ?? e}`);

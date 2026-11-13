@@ -13,6 +13,7 @@ import { areaDefFor, withArea } from '../areas/area-store.js';
 import { isGmOnly } from '../areas/gm-only.js';
 import { petFor } from '../pet/pet-for.js';
 import { isHandRoll } from '../hand/gate-hand.js';
+import { loadHand, handNow } from '../hand/hand-loader.js';
 
 const STANDARD_SYSTEM = 'standard';
 /** The gate and showForRoll hooks enableDebugMode logs. */
@@ -946,6 +947,10 @@ export function createDice3dApi({
       value(cb) {
         diceBox.armFirstFrame?.(cb);
       },
+    },
+    /** The benchmark's hand replay: no payload loads the chunk, a payload replays it (landed, or false). */
+    _benchHand: {
+      value: (p) => (p && handNow() ? handNow().benchReplay(diceBox, p) : loadHand(diceBox)),
     },
     /**
      * The in-game benchmark (Plan 8): rolls a few scenarios locally (showForRoll, no synchronize, no

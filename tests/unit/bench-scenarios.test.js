@@ -108,6 +108,8 @@ test('SCENARIOS is the frozen spec list', () => {
     ['resize', 'perturb', mixed, 1],
     ['contextLoss', 'perturb', mixed, 2],
     ['hidden', 'perturb', mixed, 1],
+    ['handReplay10', 'typical', mixed, 1],
+    ['handSoak100', 'soak', undefined, 100],
   ]);
   expect(by('contextLoss').recover).toBe(true);
   expect(by('resize').recover).toBeFalsy();
@@ -737,4 +739,50 @@ test('normal frames, and the hidden scenario itself, are not starved', async () 
   r = await p;
   expect(r.failures).toBe(0);
   expect(r.starved).toBeUndefined();
+});
+
+test('handReplay10 and handSoak100 exist and are dicerOnly', () => {
+  expect(by('handReplay10')).toMatchObject({ kind: 'typical', formula: '1d4+2d6+2d8+2d10+2d12+1d20', rolls: 1, hand: true, dicerOnly: true });
+  expect(by('handSoak100')).toMatchObject({ kind: 'soak', rolls: 100, hand: true, dicerOnly: true });
+  // nothing else is dicerOnly or hand
+  expect(SCENARIOS.filter((s) => s.dicerOnly).map((s) => s.id)).toEqual(['handReplay10', 'handSoak100']);
+  expect(SCENARIOS.filter((s) => s.hand).map((s) => s.id)).toEqual(['handReplay10', 'handSoak100']);
+});
+
+test('the head-to-head skips dicerOnly: not in a DSN run, not in a comparison row', async () => {
+  const { matrix, verdicts } = await import('../../tests/live/bench-lib.mjs');
+  for (const e of matrix().filter((x) => x.product === 'dice-so-nice')) {
+    expect(e.ids).not.toContain('handReplay10');
+    expect(e.ids).not.toContain('handSoak100');
+  }
+  const dicerRun = matrix().find((x) => x.product === 'dicer' && x.profile === 'pc' && x.variant === 'defaults');
+  expect(dicerRun.ids).toContain('handReplay10');
+  const r = (scenario, kind) => ({ scenario, kind, product: 'dicer', rolls: 1, failures: 0, frame: { p95: 10 }, busy: { msPerSec: 5 } });
+  const rows = verdicts([
+    { entry: dicerRun, suite: { results: [r('d20', 'typical'), r('handReplay10', 'typical'), r('handSoak100', 'soak')] } },
+  ]);
+  expect(rows.filter((x) => x.type === 'h2h').map((x) => x.scenario)).toEqual(['d20']);
+  // but the G2 targets still judge them
+  expect(rows.some((x) => x.type === 'target' && x.scenario === 'handReplay10')).toBe(true);
+  expect(rows.some((x) => x.type === 'target' && x.scenario === 'handSoak100')).toBe(true);
+});
+
+test('checkTargets judges the hand scenarios: first frame and long tasks for the replay, heap and resources for the soak', async () => {
+  const { checkTargets } = await import('../../src/bench/report.js');
+  const replay = checkTargets({ kind: 'typical', product: 'dicer', frame: { p95: 10 }, longTasks: { maxMs: 30 }, firstFrame: { p95: 40 } });
+  expect(replay.map((c) => [c.id, c.pass])).toEqual([['frameP95Ms', true], ['longTaskMs', true], ['firstFrameMs', true]]);
+  const slow = checkTargets({ kind: 'typical', product: 'dicer', frame: { p95: 10 }, longTasks: { maxMs: 80 }, firstFrame: { p95: 90 } });
+  expect(slow.filter((c) => c.pass === false).map((c) => c.id)).toEqual(['longTaskMs', 'firstFrameMs']);
+  const soak = checkTargets({ kind: 'soak', product: 'dicer', frame: { p95: 10 }, heap: { before: 1e8, after: 1.01e8 }, resources: { before: { geometries: 5 }, after: { geometries: 6 } } });
+  expect(soak.find((c) => c.id === 'heapGrowth').pass).toBe(true);
+  expect(soak.find((c) => c.id === 'resources').pass).toBe(false);
+});
+
+test('a roll receives its scenario (the hand scenarios replay a fixture, not a formula)', async () => {
+  const hooks = fakeHooks();
+  const a = adapterFor(hooks);
+  a.roll = vi.fn(async () => ({ done: Promise.resolve(), started: Promise.resolve() }));
+  const sc = { ...by('handReplay10') };
+  await runScenario(sc, a, { hooks, win: fakeWin(), timeoutMs: 1000 });
+  expect(a.roll).toHaveBeenCalledWith(sc.formula, sc);
 });

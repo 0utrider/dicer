@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { createDicerAdapter } from '../../src/bench/dicer-adapter.js';
 
 const debug = (over = {}) => ({
@@ -174,4 +175,57 @@ test('M2: an idle display below 60 Hz makes the frame checks n/a, with a summary
   const fast = await run(4);
   expect(fast.suite.notes ?? []).toEqual([]);
   expect(fast.suite.results[0].refreshLimited).toBeUndefined();
+});
+
+describe('hand scenarios (rolling by hand)', () => {
+  const fixture = JSON.parse(readFileSync('tests/fixtures/trajectory-mixed10.json', 'utf8'));
+
+  test('hand scenarios replay the fixture through source, never THROW', async () => {
+    // The chunk's replay, on a DiceBox stand-in: roll() gets {source}; the physics worker is never asked.
+    const hand = await import('../../src/hand/hand.js');
+    const box = {
+      _area: { halfWidth: 12, halfDepth: 7 },
+      _physics: { throw: vi.fn() },
+      roll: vi.fn(() => ({ landed: Promise.resolve() })),
+    };
+    const landed = hand.benchReplay(box, fixture);
+    expect(landed).toBeInstanceOf(Promise);
+    await landed;
+    expect(box.roll).toHaveBeenCalledTimes(1);
+    const [specs, opts] = box.roll.mock.calls[0];
+    expect(specs).toHaveLength(10);
+    expect(specs.every((s) => s.free && s.shapeType === s.type)).toBe(true);
+    expect(opts.free).toBe(true);
+    expect(typeof opts.source.onChunk).toBe('function');
+    expect(opts.launch).toBeUndefined();
+    expect(box._physics.throw).not.toHaveBeenCalled();
+    // a malformed payload throws nothing and shows nothing
+    expect(hand.benchReplay(box, { v: 1 })).toBe(false);
+    expect(box.roll).toHaveBeenCalledTimes(1);
+  });
+
+  test('the adapter warms the chunk, arms the first frame, then replays the fixture through the api hook', async () => {
+    const calls = [];
+    const api = {
+      _debug: debug(),
+      _benchArmFirstFrame: vi.fn((cb) => calls.push(cb ? 'arm' : 'disarm')),
+      _benchHand: vi.fn((p) => {
+        calls.push(p ? 'replay' : 'warm');
+        return p ? Promise.resolve(true) : Promise.resolve({});
+      }),
+      showForRoll: vi.fn(),
+    };
+    const ad = createDicerAdapter(api, { fixture: async () => fixture, startTimeoutMs: 50 });
+    const res = await ad.roll(undefined, { id: 'handReplay10', hand: true });
+    expect(calls).toEqual(['warm', 'arm', 'replay', 'disarm']);
+    expect(api._benchHand).toHaveBeenLastCalledWith(fixture);
+    expect(api.showForRoll).not.toHaveBeenCalled();
+    await res.done;
+    // a replay that shows nothing fails the roll; no fixture fails it too
+    api._benchHand = vi.fn((p) => Promise.resolve(p ? false : {}));
+    await expect((await ad.roll(undefined, { hand: true })).done).rejects.toThrow();
+    await expect(createDicerAdapter(api).roll(undefined, { hand: true })).rejects.toThrow(/fixture/);
+    // a plain scenario is unchanged
+    expect(await createDicerAdapter(api, { roll: async (f) => ({ messageId: f }) }).roll('1d20', { id: 'd20' })).toEqual({ messageId: '1d20' });
+  });
 });

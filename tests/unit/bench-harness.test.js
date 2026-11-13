@@ -50,6 +50,8 @@ const ALL = [
   'resize',
   'contextLoss',
   'hidden',
+  'handReplay10',
+  'handSoak100',
 ];
 
 const sum = (p95) => ({ n: 10, mean: p95, p50: p95, p95, p99: p95, max: p95 });

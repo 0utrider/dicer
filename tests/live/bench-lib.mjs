@@ -52,7 +52,11 @@ export function modes() {
   };
 }
 
+/** Scenarios only Dicer has (rolling by hand): never in a DSN run or a comparison. */
+const DICER_ONLY = new Set(SCENARIOS.filter((s) => s.dicerOnly).map((s) => s.id));
+
 function mk(product, profile, mode, variant, ids) {
+  if (product !== 'dicer') ids = ids.filter((id) => !DICER_ONLY.has(id));
   const dicerQuality =
     product !== 'dicer' ? null : variant === 'low' ? 'low' : profiles()[profile].dicerQuality;
   return Object.freeze({
@@ -219,6 +223,7 @@ export function verdicts(reports) {
     for (const r of [...(d?.suite?.results ?? []), ...(s?.suite?.results ?? [])])
       if (!ids.includes(r.scenario)) ids.push(r.scenario);
     for (const id of ids) {
+      if (DICER_ONLY.has(id)) continue;
       const dr = d?.suite?.results?.find((r) => r.scenario === id) ?? null;
       const sr = s?.suite?.results?.find((r) => r.scenario === id) ?? null;
       const c = compareBusy(dr ?? { scenario: id }, sr ?? { scenario: id });

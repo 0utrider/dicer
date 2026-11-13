@@ -607,6 +607,9 @@ function benchAdapter(product, createDicerAdapter, { created, gpu }) {
       roll,
       gpu,
       version: game.modules.get('dicer')?.version ?? null,
+      // The hand scenarios replay this recorded throw (scripts/hand-fixture.mjs writes it).
+      fixture: () =>
+        fetch('/modules/dicer/tests/fixtures/trajectory-mixed10.json').then((r) => r.json()),
     });
     return {
       ...base,
