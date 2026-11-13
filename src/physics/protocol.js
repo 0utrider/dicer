@@ -18,6 +18,8 @@ export const STEP_SECONDS = 1 / 60;
  * `obstacles?: {x, z, r, h}[]` are fixed pet capsules on the floor (scene units, radius r,
  * standing height h; r > 3 or h > 6 is ignored); the caller keeps them inside the stage, off the
  * spawn side. Impacts with obstacle i report other = -3 - i. At most MAX_OBSTACLES.
+ * `splatSpeed?`: a die contact with an obstacle at this speed or more splats that pet, and its
+ * collider is gone from the next step (absent or null: obstacles stay solid; petSplat off).
  */
 export const MAX_OBSTACLES = 3;
 export const MSG = Object.freeze({
