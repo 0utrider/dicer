@@ -62,6 +62,13 @@
   - Fate (`f`) is a fulfillment denomination.
 - **Size:** world start is 4,103,020 B today (headroom 91,284 B), and the ratchet base is 4,102,587 (+433 of 512 used).
 
+## Owner decisions (2026-11-14)
+
+- **World start:** allowance +12,288 B over 4,103,020, re-based at Task 3.
+- **A shape that fails the fairness run** and can't be fixed is not thrown by hand. Foundry rolls it, and the chat card notes it.
+- **During a hand replay,** other screens move their pets to the thrower's layout, so a shared splat lines up.
+- **d16:** read the face on the table and report its paired top face, with a short glow on that face.
+
 ## Design calls (owner can overturn)
 
 Kept: P6-D1 (blind sheet rolls are never thrown by hand), P6-D2 (trajectory after the message exists), P6-D3 (extras thrown automatically), P6-D4 (hand rolls off by default, GM allows all), P6-D6 (the fairness script stays separate from the suite). Refined: P6-D5 (see H-11).
