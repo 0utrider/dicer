@@ -41,6 +41,7 @@ function discTexture() {
  */
 export function createPetLayer(deps) {
   const { scene, getSetting, playSound, warm } = deps;
+  const clock = deps.now || (() => performance.now()); // test seam; DiceBox's update() is on this clock
   const pets = new Map(); // userId -> pet
   const keyOwner = new Map(); // roll key -> userId
   let shadowTex = null;
@@ -104,18 +105,23 @@ export function createPetLayer(deps) {
       pet = { userId: spec.userId, creature, group, shadow, keys: new Set() };
       pets.set(spec.userId, pet);
     }
-    pet.live = pet.live || new Set();
     pet.keys.add(key);
-    pet.live.add(key);
     keyOwner.set(key, spec.userId);
+    // ghost, reaction, soundDone and current belong to the pet, not to a roll: the newest roll
+    // (pet.current) owns them, and a stale key's landed/leave is ignored.
+    pet.current = key;
     pet.ghost = !!spec.ghost;
     pet.centre = centre;
     place(pet, edge, area);
     pet.yaw = pet.inward;
     pet.reaction = 'plain';
     pet.soundDone = false;
-    pet.track = { beganAt: null };
-    pet.stamp = { began: fresh ? 0 : ENTER_MS }; // a re-used pet restarts from the throw
+    pet.slide = pet.hop = 0;
+    pet.exitFrom = null;
+    const now = clock();
+    pet.lastNow = now;
+    // A re-used pet restarts from the throw, with no re-enter.
+    pet.track = { beganAt: fresh ? now : now - ENTER_MS };
   }
 
   const petOf = (key) => {
@@ -125,17 +131,17 @@ export function createPetLayer(deps) {
 
   function landed(key, dice) {
     const pet = petOf(key);
-    if (!pet) return;
+    if (!pet || pet.current !== key) return;
     pet.reaction = summarize(dice, pet.ghost);
     pet.soundDone = false;
-    pet.stamp.landed = true;
+    pet.track.landedAt = clock();
   }
 
   function leave(key, msLeft) {
     const pet = petOf(key);
-    if (!pet) return;
-    pet.live.delete(key);
-    if (pet.live.size === 0) pet.stamp.leave = msLeft;
+    if (!pet || pet.current !== key) return;
+    pet.track.leaveAt = clock();
+    pet.track.leaveMs = msLeft;
   }
 
   function end(key) {
@@ -143,26 +149,11 @@ export function createPetLayer(deps) {
     keyOwner.delete(key);
     if (!pet) return;
     pet.keys.delete(key);
-    pet.live.delete(key);
     if (pet.keys.size === 0) removePet(pet);
   }
 
   function step(pet, now) {
-    const { stamp, track } = pet;
-    if (stamp.began !== undefined) {
-      track.beganAt = now - stamp.began;
-      delete track.landedAt;
-      delete track.leaveAt;
-      delete track.leaveMs;
-      pet.lastNow = now;
-    }
-    if (stamp.landed) track.landedAt = now;
-    if (stamp.leave !== undefined) {
-      track.leaveAt = now;
-      track.leaveMs = stamp.leave;
-    }
-    pet.stamp = {};
-    const { phase, t } = phaseAt(track, now);
+    const { phase, t } = phaseAt(pet.track, now);
     if (phase === 'gone') return false;
     const h = pet.creature.height;
     const { base, out } = pet;
@@ -173,10 +164,14 @@ export function createPetLayer(deps) {
       slide = (1 - e) * SLIDE * h;
       hop = Math.sin(e * Math.PI) * HOP * h;
     } else if (phase === 'exit') {
+      // Leave from wherever the pet is now (a leave can land mid-hop), not from its base.
+      pet.exitFrom ??= { slide: pet.slide, hop: pet.hop };
       const e = smooth(t);
-      slide = e * SLIDE * h;
-      hop = Math.sin(e * Math.PI) * HOP * h;
+      slide = pet.exitFrom.slide + (SLIDE * h - pet.exitFrom.slide) * e;
+      hop = pet.exitFrom.hop * (1 - e) + Math.sin(e * Math.PI) * HOP * h;
     }
+    pet.slide = slide;
+    pet.hop = hop;
     const px = base.x + out[0] * slide;
     const pz = base.z + out[1] * slide;
     const dt = Math.max(0, now - (pet.lastNow ?? now));
@@ -184,9 +179,9 @@ export function createPetLayer(deps) {
     let look = 0;
     if (phase === 'watch' || phase === 'react') {
       const c = pet.centre();
-      const diff = wrap(Math.atan2(c.x - px, c.z - pz) - pet.yaw);
-      pet.yaw = wrap(pet.yaw + diff * (1 - Math.exp(-dt / 90)));
-      look = Math.max(-LOOK_MAX, Math.min(LOOK_MAX, wrap(Math.atan2(c.x - px, c.z - pz) - pet.yaw)));
+      const toDice = Math.atan2(c.x - px, c.z - pz);
+      pet.yaw = wrap(pet.yaw + wrap(toDice - pet.yaw) * (1 - Math.exp(-dt / 90)));
+      look = Math.max(-LOOK_MAX, Math.min(LOOK_MAX, wrap(toDice - pet.yaw)));
     }
     pet.group.position.set(px, hop, pz);
     pet.group.rotation.y = pet.yaw;

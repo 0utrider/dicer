@@ -1,6 +1,6 @@
+import { summarize } from '../../src/pet/chunk/reaction.js';
 import {
   phaseAt,
-  summarize,
   ENTER_MS,
   REACT_MS,
   EXIT_MS,
@@ -36,6 +36,16 @@ test('leave after the natural exit changes nothing', () => {
   const tr = { beganAt: 0, landedAt: 1000, leaveAt: 9000, leaveMs: 400 };
   expect(phaseAt(tr, 2200).phase).toBe('exit');
   expect(phaseAt(tr, 2200 + EXIT_MS).phase).toBe('gone');
+});
+
+test('a leave landing early in the natural exit window still ends by the fade', () => {
+  for (const into of [0, 50, 100, 200]) {
+    const exitAt = 1000 + 1200;
+    const leaveAt = exitAt + into;
+    const tr = { beganAt: 0, landedAt: 1000, leaveAt, leaveMs: 400 };
+    expect(phaseAt(tr, leaveAt + 400).phase).toBe('gone');
+    for (let t = leaveAt + 400; t < leaveAt + 600; t += 10) expect(phaseAt(tr, t).phase).toBe('gone');
+  }
 });
 
 test('leave with 0 is instant', () => {

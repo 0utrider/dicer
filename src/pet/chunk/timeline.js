@@ -1,5 +1,3 @@
-export { summarize } from './reaction.js';
-
 export const ENTER_MS = 350;
 export const THROW_MS = 250;
 export const REACT_MS = 1200;
@@ -21,15 +19,15 @@ export function phaseAt(track, now) {
   let exitAt = reactAt + REACT_MS;
   let exitMs = EXIT_MS;
   if (leaveAt != null) {
-    if (leaveMs <= 0) {
-      if (now >= leaveAt) return { phase: 'gone', t: 1 };
-    } else {
-      const capped = leaveAt + leaveMs - QUICK_EXIT_MS;
-      if (capped < exitAt) {
-        exitAt = capped;
-        exitMs = QUICK_EXIT_MS;
-      }
+    // The pet is always gone by leaveAt + leaveMs (the dice have faded by then).
+    const deadline = leaveAt + leaveMs;
+    if (now >= deadline) return { phase: 'gone', t: 1 };
+    const capped = Math.max(deadline - QUICK_EXIT_MS, leaveAt); // never before the leave itself
+    if (capped < exitAt) {
+      exitAt = capped;
+      exitMs = QUICK_EXIT_MS;
     }
+    exitMs = Math.min(exitMs, deadline - exitAt);
   }
   if (now >= exitAt) {
     const t = (now - exitAt) / exitMs;
