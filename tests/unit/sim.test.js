@@ -1,13 +1,26 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { beforeAll, expect, test } from 'vitest';
+import { beforeAll, expect, test, vi } from 'vitest';
 import { getShape } from '../../src/core/dice-shapes.js';
-import { faceNormals, readTopFace } from '../../src/core/face-reader.js';
-import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
-import { computeHulls } from '../../src/physics/hulls.js';
+import {
+  faceNormals,
+  isCocked,
+  readTopFace,
+  topFaceClearance,
+} from '../../src/core/face-reader.js';
+import { clearanceOf, createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
+import { computeHulls, computeReaders } from '../../src/physics/hulls.js';
 import { throwEdge } from '../../src/core/rng.js';
 import { fitDieCapacity } from '../../src/areas/area-model.js';
-import { FLOATS_PER_DIE, IMPACT_FLOATS, MAX_STEPS } from '../../src/physics/protocol.js';
+import {
+  FLOATS_PER_DIE,
+  IMPACT_FLOATS,
+  MAX_FREE_STEPS,
+  MAX_NUDGES,
+  MAX_RELEASE_SPEED,
+  MAX_RELEASE_SPIN,
+  MAX_STEPS,
+} from '../../src/physics/protocol.js';
 
 const area = { halfWidth: 12, halfDepth: 7 };
 
@@ -500,5 +513,276 @@ test('NaN obstacle fields are ignored', () => {
   const base = framesHash(runObs(['d20', 'd6', 'd6'], 7).chunks);
   for (const bad of [{ x: NaN, z: 0, r: 0.5, h: 1.5 }, { x: 0, z: 0, r: Infinity, h: 1.5 }, { x: 0, z: 0, r: 0.5 }, { x: 0, z: 0, r: 10, h: 1.5 }, { x: 0, z: 0, r: 0.5, h: 9 }, null]) {
     expect(framesHash(runObs(['d20', 'd6', 'd6'], 7, { obstacles: [bad] }).chunks)).toBe(base);
+  }
+});
+
+// --- free throws, nudges and launch states (rolling by hand, Task 2) ------------------------
+
+const readers = computeReaders();
+const GRAVITY_ABS = 9.81 * 4;
+
+/** One throw on a sim built with readers (`rd`), keeping copies of frames and events. */
+function runHand(dice, seed, extra = {}, rd = readers, stage = area) {
+  const sim = createSim(stage, hulls, rd);
+  const chunks = [];
+  const req = { dice: dice.map((type) => ({ type })), seed, ...extra };
+  const res = sim.throw(req, (c) =>
+    chunks.push({ ...c, data: c.data.slice(), events: c.events.slice() }),
+  );
+  sim.dispose();
+  return { res, chunks };
+}
+
+/** Every frame as an array of per-die poses {p: [x, y, z], q: {x, y, z, w}}. */
+function posesOf(chunks, n) {
+  const out = [];
+  for (const c of chunks) {
+    for (let s = 0; s < c.steps; s++) {
+      const row = [];
+      for (let d = 0; d < n; d++) {
+        const o = (s * n + d) * FLOATS_PER_DIE;
+        const v = c.data;
+        row.push({
+          p: [v[o], v[o + 1], v[o + 2]],
+          q: { x: v[o + 3], y: v[o + 4], z: v[o + 5], w: v[o + 6] },
+        });
+      }
+      out.push(row);
+    }
+  }
+  return out;
+}
+
+const L = (pos, quat = [0, 0, 0, 1], linvel = [0, 0, 0], angvel = [0, 0, 0]) => ({
+  pos,
+  quat,
+  linvel,
+  angvel,
+});
+const aboutZ = (t) => [0, 0, Math.sin(t / 2), Math.cos(t / 2)];
+const aboutX = (t) => [Math.sin(t / 2), 0, 0, Math.cos(t / 2)];
+const inside = (p, a = area) =>
+  Math.abs(p[0] - (a.cx ?? 0)) < a.halfWidth && Math.abs(p[2] - (a.cz ?? 0)) < a.halfDepth;
+const moved = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/**
+ * R5: a deterministic cocked die. Die 0 sits flat; die 1 is released tipped well past its edge
+ * towards die 0, so it topples onto it and stays leaning on it (cocked) unless nudged.
+ */
+const LEAN = { dice: ['d6', 'd6'], launch: [L([0, 1, 0]), L([-1.3, 1, 0], aboutZ(-0.8))] };
+
+test('the worker clearance equals topFaceClearance for sampled poses of every shape', () => {
+  for (const [type, rd] of Object.entries(readers)) {
+    const shape = getShape(type);
+    for (let i = 0; i < 40; i++) {
+      const u = [((i * 0.6180339) % 1) * 0.998 + 1e-3, (i * 0.4142135) % 1, (i * 0.7320508) % 1];
+      const q = new THREE.Quaternion(
+        Math.sqrt(1 - u[0]) * Math.sin(2 * Math.PI * u[1]),
+        Math.sqrt(1 - u[0]) * Math.cos(2 * Math.PI * u[1]),
+        Math.sqrt(u[0]) * Math.sin(2 * Math.PI * u[2]),
+        Math.sqrt(u[0]) * Math.cos(2 * Math.PI * u[2]),
+      );
+      expect(clearanceOf(rd, q, type === 'd2'), `${type} pose ${i}`).toBeCloseTo(
+        topFaceClearance(shape, q),
+        5,
+      );
+    }
+  }
+});
+
+test('a throw without free or launch is byte-identical to before (hash, with and without obstacles)', () => {
+  expect(framesHash(runHand(['d20', 'd6', 'd6'], 7).chunks)).toBe('1118cbd0');
+  expect(framesHash(runHand(['d20', 'd6', 'd6'], 7, { launch: [] }).chunks)).toBe('1118cbd0');
+  const small = { halfWidth: 9, halfDepth: 5 };
+  expect(framesHash(runHand(['d8', 'd10', 'd12', 'd4', 'd2'], 42, {}, readers, small).chunks)).toBe(
+    '1662dbb4',
+  );
+  // Recorded at 73b3cda, before free throws and launch states existed.
+  const obstacles = [
+    { x: 1, z: 0.5, r: 0.6, h: 1.5 },
+    { x: -3, z: -2, r: 0.5, h: 1.2 },
+  ];
+  expect(framesHash(runHand(['d20', 'd6', 'd6'], 7, { obstacles, splatSpeed: 8 }).chunks)).toBe(
+    '3d028bef',
+  );
+  const pet = [{ x: 0, z: 0, r: 0.8, h: 2 }];
+  expect(
+    framesHash(runHand(['d2', 'd4crystal', 'd16', 'd14'], 99, { obstacles: pet }).chunks),
+  ).toBe('c95198b1');
+  expect(runHand(['d6', 'd6'], 7).res.nudges).toEqual([0, 0]);
+});
+
+test("a free throw that needs no nudge has the automatic throw's frames (the main stream is untouched)", () => {
+  const auto = runHand(['d20', 'd6', 'd6'], 7);
+  const free = runHand(['d20', 'd6', 'd6'], 7, { free: true });
+  expect(free.res.nudges).toEqual([0, 0, 0]);
+  expect(framesHash(free.chunks)).toBe(framesHash(auto.chunks));
+});
+
+test('a free throw with a die launched balanced on an edge ends clean, with a nudge in the frames', () => {
+  // R5: leaned on a die rather than balanced, so the cocked rest is deterministic.
+  const shape = getShape('d6');
+  const plain = runHand(LEAN.dice, 3, { launch: LEAN.launch });
+  const plainLast = posesOf(plain.chunks, 2).at(-1);
+  expect(isCocked(shape, plainLast[1].q), 'without free the die stays leaning').toBe(true);
+
+  const { res, chunks } = runHand(LEAN.dice, 3, { free: true, launch: LEAN.launch });
+  expect(res.nudges[1]).toBeGreaterThanOrEqual(1);
+  expect(res.nudges[1]).toBeLessThanOrEqual(MAX_NUDGES);
+  const frames = posesOf(chunks, 2);
+  // In the frames: the die rests cocked, then moves again after the nudge.
+  const restedCocked = frames.findIndex(
+    (f, k) => k >= 10 && isCocked(shape, f[1].q) && moved(f[1].p, frames[k - 10][1].p) < 0.02,
+  );
+  expect(restedCocked).toBeGreaterThan(0);
+  const later = frames.slice(restedCocked);
+  expect(Math.max(...later.map((f) => moved(f[1].p, later[0][1].p)))).toBeGreaterThan(0.2);
+  for (const d of frames.at(-1)) {
+    expect(isCocked(shape, d.q)).toBe(false);
+    expect(inside(d.p)).toBe(true);
+  }
+});
+
+test('a free throw with a die launched outside the area ends inside it', () => {
+  // R5: die 1 has no launch entry, so it is a seeded spawn beyond the stage edge, and the walls
+  // stay open for it (walls open iff any die has no launch).
+  const launch = [L([2, 2, 1], [0, 0, 0, 1], [-3, 0, 2])];
+  const { res, chunks } = runHand(['d6', 'd8'], 11, { free: true, launch });
+  const frames = posesOf(chunks, 2);
+  expect(inside(frames[0][1].p)).toBe(false);
+  expect(res.settledStep).toBeLessThanOrEqual(MAX_FREE_STEPS);
+  frames.at(-1).forEach((d, i) => {
+    expect(inside(d.p), `die ${i}`).toBe(true);
+    expect(isCocked(getShape(['d6', 'd8'][i]), d.q), `die ${i}`).toBe(false);
+  });
+});
+
+test('a coin launched on its rim ends flat', () => {
+  const shape = getShape('d2');
+  const rim = [L([0, 1, 0], aboutX(Math.PI / 2))];
+  const plain = runHand(['d2'], 5, { launch: rim });
+  expect(
+    isCocked(shape, posesOf(plain.chunks, 1).at(-1)[0].q),
+    'without free it stays on its rim',
+  ).toBe(true);
+  const { res, chunks } = runHand(['d2'], 5, { free: true, launch: rim });
+  expect(res.nudges[0]).toBeGreaterThanOrEqual(1);
+  const last = posesOf(chunks, 1).at(-1)[0];
+  expect(topFaceClearance(shape, last.q)).toBeGreaterThan(0.9);
+});
+
+test('same seed + same launch -> identical frames and nudges', () => {
+  const a = runHand(LEAN.dice, 3, { free: true, launch: LEAN.launch });
+  const b = runHand(LEAN.dice, 3, { free: true, launch: LEAN.launch });
+  expect(a.res).toEqual(b.res);
+  expect(framesHash(a.chunks)).toBe(framesHash(b.chunks));
+  // The nudges are seeded: another seed nudges differently.
+  const c = runHand(LEAN.dice, 4, { free: true, launch: LEAN.launch });
+  expect(framesHash(c.chunks)).not.toBe(framesHash(a.chunks));
+});
+
+test("a launched throw's first frame equals the clamped launch states", () => {
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, 1.1, -0.4));
+  const launch = [
+    L([3, 2.5, -1], [q.x, q.y, q.z, q.w], [4, 1, -2], [1, 2, 3]),
+    L([40, 9, -30], [0, 0, 0, 2]), // outside the area and too high: clamped (margin 1, y <= 6)
+    L([0, 0.2, 0]), // too low: y >= 1
+  ];
+  const { chunks } = runHand(['d6', 'd20', 'd8'], 9, { launch });
+  const [first] = posesOf(chunks, 3);
+  const want = [
+    { p: [3, 2.5, -1], q },
+    { p: [area.halfWidth - 1, 6, -(area.halfDepth - 1)], q: { x: 0, y: 0, z: 0, w: 1 } },
+    { p: [0, 1, 0], q: { x: 0, y: 0, z: 0, w: 1 } },
+  ];
+  want.forEach((w, d) => {
+    w.p.forEach((v, j) => expect(first[d].p[j], `die ${d} p${j}`).toBeCloseTo(v, 5));
+    for (const k of ['x', 'y', 'z', 'w'])
+      expect(first[d].q[k], `die ${d} q${k}`).toBeCloseTo(w.q[k], 5);
+  });
+});
+
+test('extreme release speeds are capped', () => {
+  const launch = [L([0, 3, 0], [0, 0, 0, 1], [900, 50, -700], [0, 400, 0])];
+  const { chunks } = runHand(['d6'], 2, { launch });
+  const frames = posesOf(chunks, 1);
+  const [f0, f1] = frames;
+  const speed = moved(f1[0].p, f0[0].p) * 60;
+  expect(speed).toBeLessThanOrEqual(MAX_RELEASE_SPEED + 1);
+  expect(speed).toBeGreaterThan(MAX_RELEASE_SPEED * 0.9);
+  const a = new THREE.Quaternion(f0[0].q.x, f0[0].q.y, f0[0].q.z, f0[0].q.w);
+  const b = new THREE.Quaternion(f1[0].q.x, f1[0].q.y, f1[0].q.z, f1[0].q.w);
+  expect(a.angleTo(b) * 60).toBeLessThanOrEqual(MAX_RELEASE_SPIN + 0.5);
+  expect(a.angleTo(b) * 60).toBeGreaterThan(MAX_RELEASE_SPIN * 0.9);
+  // All four walls are up from step 0: the die cannot leave the area.
+  for (const f of frames) expect(inside(f[0].p)).toBe(true);
+});
+
+test('a launch over an obstacle is lifted and no impact with it exceeds the drop speed', () => {
+  const pet = { x: 2, z: 1, r: 0.8, h: 1.5 };
+  const launch = [L([2.3, 1.2, 1.2])];
+  const { chunks } = runHand(['d6'], 6, { launch, obstacles: [pet] });
+  const frames = posesOf(chunks, 1);
+  expect(frames[0][0].p[1]).toBeCloseTo(pet.h + 1.2, 5);
+  const drop = Math.sqrt(2 * GRAVITY_ABS * (pet.h + 1.2));
+  const hits = impactsOf(chunks).filter((e) => e.other === -3);
+  expect(hits.length).toBeGreaterThan(0);
+  for (const e of hits) expect(e.speed).toBeLessThanOrEqual(drop);
+  // No explosive depenetration anywhere in the flight either.
+  for (let k = 1; k < frames.length; k++)
+    expect(moved(frames[k][0].p, frames[k - 1][0].p) * 60).toBeLessThan(drop + 1);
+});
+
+test('a free throw never exceeds MAX_FREE_STEPS', () => {
+  // A reader that calls every pose cocked: every die is nudged until MAX_NUDGES or the step cap.
+  const always = Object.fromEntries(
+    Object.entries(readers).map(([t, r]) => [t, { ...r, gap: 100 }]),
+  );
+  const many = runHand(Array(8).fill('d6'), 1, { free: true }, always);
+  expect(many.res.settledStep).toBeLessThanOrEqual(MAX_FREE_STEPS);
+  expect(many.chunks.reduce((s, c) => s + c.steps, 0)).toBeLessThanOrEqual(MAX_FREE_STEPS);
+  for (const k of many.res.nudges) expect(k).toBeLessThanOrEqual(MAX_NUDGES);
+  const one = runHand(['d6'], 1, { free: true }, always);
+  expect(one.res.nudges).toEqual([MAX_NUDGES]);
+  expect(one.res.settledStep).toBeLessThanOrEqual(MAX_FREE_STEPS);
+  // A launched free throw has one extra frame (the release pose) and the same step cap.
+  const launched = runHand(['d6'], 1, { free: true, launch: [L([0, 2, 0])] }, always);
+  expect(launched.res.settledStep).toBeLessThanOrEqual(MAX_FREE_STEPS);
+  expect(launched.chunks.reduce((s, c) => s + c.steps, 0)).toBe(launched.res.settledStep + 1);
+});
+
+test('dice without a launch entry match the seeded spawn', () => {
+  const auto = posesOf(runHand(['d6', 'd20', 'd8'], 13).chunks, 3);
+  const mixed = posesOf(
+    runHand(['d6', 'd20', 'd8'], 13, { launch: [L([0, 2, 0]), undefined, null] }).chunks,
+    3,
+  );
+  // Frame 0 of a launched throw is the release; frame k + 1 is the automatic throw's frame k.
+  for (const d of [1, 2]) {
+    expect(mixed[1][d].p).toEqual(auto[0][d].p);
+    expect(mixed[1][d].q).toEqual(auto[0][d].q);
+  }
+});
+
+test('missing readers -> free throws read nothing and never nudge (warn once)', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    const sim = createSim(area, hulls);
+    const out = [];
+    for (let k = 0; k < 2; k++) {
+      const req = {
+        dice: LEAN.dice.map((type) => ({ type })),
+        seed: 3,
+        free: true,
+        launch: LEAN.launch,
+      };
+      out.push(sim.throw(req, () => {}));
+    }
+    sim.dispose();
+    for (const r of out) expect(r.nudges).toEqual([0, 0]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toMatch(/dicer/);
+  } finally {
+    warn.mockRestore();
   }
 });

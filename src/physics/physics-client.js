@@ -12,10 +12,10 @@ export function createPhysicsWorker() {
 export class PhysicsClient {
   /**
    * @param {() => Worker} createWorker
-   * @param {{ hulls?: Record<string, { points: Float32Array, radius: number }>, area?: object }} [options] hulls come from
-   *   `computeHulls()` (main thread); the worker never builds geometry.
+   * @param {{ hulls?: Record<string, { points: Float32Array, radius: number }>, area?: object, readers?: object }} [options] hulls come from
+   *   `computeHulls()` and readers from `computeReaders()` (main thread); the worker never builds geometry.
    */
-  constructor(createWorker, { hulls, area } = {}) {
+  constructor(createWorker, { hulls, area, readers } = {}) {
     this._worker = createWorker();
     this._isReady = false;
     this._failed = null;
@@ -35,7 +35,7 @@ export class PhysicsClient {
     };
     this._worker.onmessageerror = () =>
       this._fail(new Error('dicer: physics worker message could not be deserialized'));
-    this._worker.postMessage({ type: MSG.INIT, hulls, area });
+    this._worker.postMessage({ type: MSG.INIT, hulls, area, readers });
   }
 
   ready() {
@@ -49,7 +49,8 @@ export class PhysicsClient {
   /**
    * @param {{ dice: {type: string}[], seed: number, area?: {cx:number, cz:number, halfWidth:number, halfDepth:number} }} req
    *   `area`: this throw's own rectangle (die units, relative to the stage centre); absent: the stage.
-   * @returns {{ onChunk(cb): void, done: Promise<{settledStep:number}> }}
+   *   `free?`, `launch?`: a hand throw (protocol.js).
+   * @returns {{ onChunk(cb): void, done: Promise<{settledStep:number, nudges:number[]}> }}
    */
   throw(req) {
     const s = { cb: null, pending: [], resolve: null, reject: null };
@@ -125,7 +126,7 @@ export class PhysicsClient {
       else s.pending.push(chunk);
     } else if (m.type === MSG.DONE && s) {
       this._streams.delete(m.id);
-      s.resolve({ settledStep: m.settledStep });
+      s.resolve({ settledStep: m.settledStep, nudges: m.nudges });
     } else if (m.type === MSG.ERROR) {
       const err = new Error(m.message);
       if (s) {

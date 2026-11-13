@@ -20,8 +20,27 @@ export const STEP_SECONDS = 1 / 60;
  * spawn side. Impacts with obstacle i report other = -3 - i. At most MAX_OBSTACLES.
  * `splatSpeed?`: a die contact with an obstacle at this speed or more splats that pet, and its
  * collider is gone from the next step (absent or null: obstacles stay solid; petSplat off).
+ * `free?: true` (rolling by hand): once the dice settle, a die that is cocked (INIT's readers) or
+ * whose centre is outside the area gets a nudge from mulberry32(seed ^ 0x9e3779b9), and the same
+ * world runs on: at most MAX_NUDGES per die, within MAX_FREE_STEPS. Then the reading stands.
+ * `launch?: ({pos:[x,y,z], quat:[x,y,z,w], linvel:[x,y,z], angvel:[x,y,z]} | null)[]`: die i
+ * starts at launch[i] (die units relative to the stage centre; clamped into the area with a
+ * margin of 1, y to [1, 6], speeds and spins capped; lifted to h + 1.2 within r + 1 of an
+ * obstacle); a missing entry is a seeded spawn. Frame 0 of a launched throw is the release
+ * state, so its impacts' frames are one later. All four walls stand from step 0 unless a die
+ * has no launch (then the seeded spawn's wall opens as usual).
+ * DONE: {id, settledStep, nudges: number[]} (nudges per die, all 0 unless free).
  */
 export const MAX_OBSTACLES = 3;
+export const MAX_NUDGES = 3;
+/** A nudge needs this many steps left before MAX_FREE_STEPS to settle again. */
+export const NUDGE_STEPS = 60;
+/** 13 s: under the pet LIFE_MS and DiceBox DONE_TIMEOUT_MS of 15 s. */
+export const MAX_FREE_STEPS = 780;
+export const MAX_RELEASE_SPEED = 40;
+export const MAX_RELEASE_SPIN = 30;
+/** H-2: cocked below this fraction of the shape's own flat gap (face-reader.js and the worker). */
+export const COCKED_FRACTION = 0.5;
 export const MSG = Object.freeze({
   INIT: 'init',
   RESIZE: 'resize',

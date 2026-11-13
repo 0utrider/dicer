@@ -175,3 +175,27 @@ test('throw passes pet obstacles and splatSpeed through to the worker', () => {
   const msg = w.sent.find((s) => s.m.type === 'throw').m;
   expect(msg).toMatchObject({ seed: 3, obstacles, splatSpeed: 10 });
 });
+
+test('done carries nudges', async () => {
+  const w = new FakeWorker();
+  const client = new PhysicsClient(() => w);
+  w.emit({ type: 'ready' });
+  const launch = [{ pos: [0, 2, 0], quat: [0, 0, 0, 1], linvel: [1, 0, 0], angvel: [0, 0, 0] }];
+  const stream = client.throw({
+    dice: [{ type: 'd6' }, { type: 'd8' }],
+    seed: 4,
+    free: true,
+    launch,
+  });
+  const msg = w.sent.find((s) => s.m.type === 'throw').m;
+  expect(msg).toMatchObject({ free: true, launch });
+  w.emit({ type: 'done', id: msg.id, settledStep: 300, nudges: [1, 0] });
+  await expect(stream.done).resolves.toEqual({ settledStep: 300, nudges: [1, 0] });
+});
+
+test('init posts the readers with the hulls', () => {
+  const w = new FakeWorker();
+  const readers = { d6: { normals: new Float32Array(18), read: null, mode: 1, gap: 1 } };
+  new PhysicsClient(() => w, { hulls: {}, readers });
+  expect(w.sent[0].m).toMatchObject({ type: 'init', readers });
+});

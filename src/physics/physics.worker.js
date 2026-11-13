@@ -12,7 +12,7 @@ self.onmessage = async (e) => {
   try {
     if (msg.type === MSG.INIT) {
       ready = initPhysics(wasmUrl).then(() => {
-        sim = createSim(msg.area ?? DEFAULT_AREA, msg.hulls);
+        sim = createSim(msg.area ?? DEFAULT_AREA, msg.hulls, msg.readers);
         // Pre-warm every die type (colliders, hulls, wasm paths) before announcing ready.
         prewarm(sim, [...Object.keys(msg.hulls ?? {}), 'd2']);
       });
@@ -26,11 +26,11 @@ self.onmessage = async (e) => {
     } else if (msg.type === MSG.RECYCLE) {
       sim.recycle(msg.buffer, msg.events);
     } else if (msg.type === MSG.THROW) {
-      // The request as sent: dice, seed, area?, obstacles?, splatSpeed? (protocol.js).
-      const { settledStep } = sim.throw(msg, (c) =>
+      // The request as sent: dice, seed, area?, obstacles?, splatSpeed?, free?, launch? (protocol.js).
+      const { settledStep, nudges } = sim.throw(msg, (c) =>
         self.postMessage({ type: MSG.CHUNK, id: msg.id, ...c }, [c.data.buffer, c.events.buffer]),
       );
-      self.postMessage({ type: MSG.DONE, id: msg.id, settledStep });
+      self.postMessage({ type: MSG.DONE, id: msg.id, settledStep, nudges });
     }
   } catch (err) {
     self.postMessage({ type: MSG.ERROR, id: msg.id, message: String(err?.message ?? err) });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resultOf } from './dice-shapes.js';
+import { COCKED_FRACTION } from '../physics/protocol.js';
 
 const _n = new THREE.Vector3();
 
@@ -51,7 +52,7 @@ function rank(shape, q, sign) {
 export const readTopFace = (shape, q) => rank(shape, q, shape.readMode === 'down' ? -1 : 1)[0];
 
 /** H-2: a die is cocked below this fraction of its own flat gap (a coin: cap |y| below 0.5). */
-export const COCKED_FRACTION = 0.5;
+export { COCKED_FRACTION };
 
 // A resting d16 has two equally-up kites (gap 0), so it is read from below (H-1).
 const isD16 = (shape) => shape.type === 'd16';

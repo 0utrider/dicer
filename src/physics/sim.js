@@ -3,11 +3,17 @@ import * as glue from '@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.js';
 import { mulberry32 } from '../core/rng.js';
 import {
   CHUNK_STEPS,
+  COCKED_FRACTION,
   FLOATS_PER_DIE,
   IMPACT_FLOATS,
+  MAX_FREE_STEPS,
   MAX_IMPACTS_PER_CHUNK,
+  MAX_NUDGES,
   MAX_OBSTACLES,
+  MAX_RELEASE_SPEED,
+  MAX_RELEASE_SPIN,
   MAX_STEPS,
+  NUDGE_STEPS,
   STEP_SECONDS,
 } from './protocol.js';
 
@@ -32,6 +38,12 @@ const COIN_ANGULAR_DAMPING = 3; // a cylinder has no rolling resistance and woul
 const RELAX_FROM_STEP = 120; // after this the rest thresholds widen: a coin leaning on a pile
 const RELAX_PER_STEP = 1 / 30; // can pivot slowly for ever, and must not hold playback to 10 s
 const POOL_LIMIT = 8;
+const LAUNCH_MARGIN = 1; // a launched centre stays this far inside the area's walls
+const LIFT_CLEARANCE = 1.2; // a launch over a pet starts this far above its top
+const NUDGE_SPIN = 6; // a nudge spins a die by 6..12 rad/s about a seeded horizontal axis
+const NUDGE_POP = 2.5; // ... and pops a cocked die up (units/s) so it can tip off its support
+const NUDGE_HOP = 6; // an outside die hops (units/s) towards the area centre ...
+const NUDGE_REACH = 12; // ... at up to this speed
 
 let initialised = null;
 
@@ -95,6 +107,60 @@ function randomQuaternion(u1, u2, u3) {
   };
 }
 
+/**
+ * The read-side clearance of a die at rotation q from INIT's reader data (hulls.js
+ * computeReaders): best minus second-best world normal Y times mode, among the read set; a coin's
+ * cap |y|. The same number as face-reader's topFaceClearance, without three.js or shapes.
+ */
+export function clearanceOf({ normals: N, read, mode }, q, coin) {
+  // Row Y of q's rotation matrix: the world Y of a local vector.
+  const ax = 2 * (q.x * q.y + q.w * q.z);
+  const ay = 1 - 2 * (q.x * q.x + q.z * q.z);
+  const az = 2 * (q.y * q.z - q.w * q.x);
+  let b = -Infinity;
+  let s = -Infinity;
+  for (let i = 0; i < N.length / 3; i++) {
+    if (read && !read.includes(i)) continue;
+    const y = mode * (ax * N[3 * i] + ay * N[3 * i + 1] + az * N[3 * i + 2]);
+    if (y > b) [s, b] = [b, y];
+    else if (y > s) s = y;
+  }
+  return coin ? b : b - s;
+}
+
+/** v clamped to centre c ± (half - LAUNCH_MARGIN), or to c when the area is narrower. */
+const within = (v, c, half) => {
+  const m = Math.max(0, half - LAUNCH_MARGIN);
+  return Math.min(c + m, Math.max(c - m, v));
+};
+/** [x, y, z] as {x, y, z}, scaled down to length max at most. */
+const capped = ([x, y, z], max) => {
+  const k = Math.min(1, max / (Math.hypot(x, y, z) || 1));
+  return { x: x * k, y: y * k, z: z * k };
+};
+
+/**
+ * A launch entry as a body start {p, q, v, w}, clamped into area a (margin 1, y in [1, 6]) with
+ * speed and spin capped; null when malformed (that die is then a seeded spawn).
+ */
+function launchState(s, a) {
+  const parts = [s?.pos, s?.quat, s?.linvel, s?.angvel];
+  if (!parts.every((v, i) => v?.length === (i === 1 ? 4 : 3) && [...v].every(Number.isFinite)))
+    return null;
+  const len = Math.hypot(...s.quat);
+  const [x, y, z, w] = len > 1e-9 ? [...s.quat].map((c) => c / len) : [0, 0, 0, 1];
+  return {
+    p: {
+      x: within(s.pos[0], a.cx, a.halfWidth),
+      y: Math.min(6, Math.max(1, s.pos[1])),
+      z: within(s.pos[2], a.cz, a.halfDepth),
+    },
+    q: { x, y, z, w },
+    v: capped(s.linvel, MAX_RELEASE_SPEED),
+    w: capped(s.angvel, MAX_RELEASE_SPIN),
+  };
+}
+
 const finitePositive = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 const finiteOr0 = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
@@ -136,9 +202,10 @@ export function prewarm(sim, types) {
  * within the area's lateral span, and fly in through the open area wall; without it the throw uses the resized stage area at the
  * origin (bit-identical to before per-throw areas). The floor is shared and covers both.
  */
-export function createSim(initialArea, hulls) {
+export function createSim(initialArea, hulls, readers) {
   let area = { ...initialArea };
   let disposed = false;
+  let warned = false;
   /** Buffer pool keyed by full-chunk float length. */
   const pool = new Map();
   /** Pool of impact-event buffers (fixed size, one per chunk in flight). */
@@ -227,6 +294,15 @@ export function createSim(initialArea, hulls) {
       const floorHd = Math.max(area.halfDepth, Math.abs(cz) + hd);
       const rand = mulberry32(req.seed);
       const n = req.dice.length;
+      const free = req.free === true;
+      if (free && !readers && !warned) {
+        warned = true;
+        console.warn('dicer: no face readers, free dice are never nudged');
+      }
+      const launch = req.dice.map((_, i) => launchState(req.launch?.[i], a));
+      const launched = launch.some(Boolean);
+      // R5: the walls stand from step 0 (no herding) only when every die is launched.
+      const allLaunched = n > 0 && launch.every(Boolean);
       const world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
       world.timestep = STEP_SECONDS;
       const eventQueue = new RAPIER.EventQueue(true);
@@ -252,16 +328,24 @@ export function createSim(initialArea, hulls) {
         const sign = edge % 2 === 0 ? 1 : -1;
         for (const w of walls) owner.set(w.handle, -2);
         const spawnWall = walls[edge];
-        spawnWall.setEnabled(false);
+        if (!allLaunched) spawnWall.setEnabled(false);
 
         // Pets standing on the floor: fixed capsules, owner code -3 - i. No rand() draws. A die
         // contact at splatSpeed or more splats the pet: its collider is gone from the next step.
         const splatAt = req.splatSpeed > 0 ? req.splatSpeed : Infinity;
         const pets = [];
+        const placed = [];
         const splatted = [];
         const obstacles = Array.isArray(req.obstacles) ? req.obstacles.slice(0, MAX_OBSTACLES) : [];
         obstacles.forEach((o, i) => {
-          if (!o || ![o.x, o.z, o.r, o.h].every(Number.isFinite) || o.r <= 0 || o.h <= 0 || o.r > 3 || o.h > 6)
+          if (
+            !o ||
+            ![o.x, o.z, o.r, o.h].every(Number.isFinite) ||
+            o.r <= 0 ||
+            o.h <= 0 ||
+            o.r > 3 ||
+            o.h > 6
+          )
             return;
           const c = world.createCollider(
             withEvents(
@@ -274,6 +358,7 @@ export function createSim(initialArea, hulls) {
           );
           owner.set(c.handle, -3 - i);
           pets[i] = c;
+          placed.push(o);
         });
 
         const lateralHalf = alongX ? hd : hw;
@@ -290,28 +375,38 @@ export function createSim(initialArea, hulls) {
           const row = Math.floor(i / columns);
           const lateral = (col - (columns - 1) / 2) * DIE_SPACING + (rand() - 0.5) * 0.3;
           const out = spawnFrom + SPAWN_GAP + 0.5 + row * DIE_SPACING + rand() * 0.3;
-          const y = 2 + rand() * 3;
-          const px = alongX ? sign * out : cx + lateral;
-          const pz = alongX ? cz + lateral : sign * out;
+          let y = 2 + rand() * 3;
+          let px = alongX ? sign * out : cx + lateral;
+          let pz = alongX ? cz + lateral : sign * out;
           // Aim at a seeded point inside the inner 60% of the area.
           const tx = cx + (rand() * 2 - 1) * INNER_FRACTION * hw;
           const tz = cz + (rand() * 2 - 1) * INNER_FRACTION * hd;
           const flight = 0.7 + row * 0.1 + rand() * 0.3;
-          const vx = (tx - px) / flight;
-          const vz = (tz - pz) / flight;
-          const vy = (1 - y + 0.5 * -GRAVITY * flight * flight) / flight;
-          const q = randomQuaternion(rand(), rand(), rand());
-          const spin = {
+          let vel = {
+            x: (tx - px) / flight,
+            y: (1 - y + 0.5 * -GRAVITY * flight * flight) / flight,
+            z: (tz - pz) / flight,
+          };
+          let q = randomQuaternion(rand(), rand(), rand());
+          let spin = {
             x: (rand() * 2 - 1) * 18,
             y: (rand() * 2 - 1) * 18,
             z: (rand() * 2 - 1) * 18,
           };
+          const l = launch[i];
+          if (l) {
+            // The seeded draws above are still taken, so unlaunched dice keep their spawn.
+            ({ x: px, y, z: pz } = l.p);
+            for (const o of placed)
+              if (Math.hypot(px - o.x, pz - o.z) < o.r + 1) y = Math.max(y, o.h + LIFT_CLEARANCE);
+            [q, vel, spin] = [l.q, l.v, l.w];
+          }
           const coin = isCoin(req.dice[i].type);
           const body = world.createRigidBody(
             RAPIER.RigidBodyDesc.dynamic()
               .setTranslation(px, y, pz)
               .setRotation(q)
-              .setLinvel(vx, vy, vz)
+              .setLinvel(vel.x, vel.y, vel.z)
               .setAngvel(spin)
               .setLinearDamping(0.05)
               .setAngularDamping(coin ? COIN_ANGULAR_DAMPING : 0.1)
@@ -330,9 +425,65 @@ export function createSim(initialArea, hulls) {
         let buf = takeBuffer(fullLength);
         let inChunk = 0;
         let chunkIndex = 0;
-        let wallClosed = false;
+        let wallClosed = allLaunched;
         let restSteps = 0;
-        let settledStep = MAX_STEPS;
+        const maxSteps = free ? MAX_FREE_STEPS : MAX_STEPS;
+        let settledStep = maxSteps;
+        const nudges = Array(n).fill(0);
+        const nudgeRand = mulberry32(req.seed ^ 0x9e3779b9);
+        let relaxFrom = 0; // the rest thresholds widen from here (the last nudge)
+        /** Writes die d's pose into frame slot `slot` of buf; returns its position. */
+        const put = (slot, d) => {
+          const b = bodies[d];
+          const p = b.translation();
+          const r = b.rotation();
+          const o = (slot * n + d) * FLOATS_PER_DIE;
+          buf[o] = p.x;
+          buf[o + 1] = p.y;
+          buf[o + 2] = p.z;
+          buf[o + 3] = r.x;
+          buf[o + 4] = r.y;
+          buf[o + 5] = r.z;
+          buf[o + 6] = r.w;
+          return p;
+        };
+        // A launched throw's frame 0 is the release state itself; step s is then frame s.
+        const frame0 = launched ? 1 : 0;
+        if (launched) {
+          for (let d = 0; d < n; d++) put(0, d);
+          inChunk = 1;
+        }
+        /** Nudge every cocked or outside die that has nudges left; false when none needed one. */
+        const nudge = () => {
+          let any = false;
+          bodies.forEach((b, d) => {
+            const p = b.translation();
+            const dx = cx - p.x;
+            const dz = cz - p.z;
+            const dist = Math.hypot(dx, dz);
+            const out = Math.abs(dx) > hw || Math.abs(dz) > hd;
+            const type = req.dice[d].type;
+            const rd = readers[type];
+            const cocked =
+              rd && clearanceOf(rd, b.rotation(), isCoin(type)) < COCKED_FRACTION * rd.gap;
+            if (nudges[d] >= MAX_NUDGES || !(out || cocked)) return;
+            nudges[d]++;
+            any = true;
+            // Spin about a seeded horizontal axis; a cocked die pops up off its support, an
+            // outside one hops towards the area centre.
+            const turn = nudgeRand() * 2 * Math.PI;
+            const w = NUDGE_SPIN * (1 + nudgeRand());
+            const av = b.angvel();
+            b.setAngvel(
+              { x: av.x + Math.cos(turn) * w, y: av.y, z: av.z + Math.sin(turn) * w },
+              true,
+            );
+            const m = b.mass();
+            const k = out ? (m * Math.min(NUDGE_REACH, 3 + 2 * dist)) / dist : 0;
+            b.applyImpulse({ x: k * dx, y: m * (out ? NUDGE_HOP : NUDGE_POP), z: k * dz }, true);
+          });
+          return any;
+        };
         // Linear velocities just before each step (the impact speed is read from these).
         const preVel = new Float64Array(n * 3);
         let impacts = []; // this chunk's events: [frame, die, other, speed]
@@ -361,7 +512,7 @@ export function createSim(initialArea, hulls) {
           if (other <= -3 && Math.fround(speed) >= splatAt) splatted.push(pets[-3 - other]);
         };
 
-        for (let step = 1; step <= MAX_STEPS; step++) {
+        for (let step = 1; step <= maxSteps; step++) {
           for (let d = 0; d < n; d++) {
             const v = bodies[d].linvel();
             preVel[d * 3] = v.x;
@@ -369,28 +520,16 @@ export function createSim(initialArea, hulls) {
             preVel[d * 3 + 2] = v.z;
           }
           world.step(eventQueue);
-          const frame = step - 1; // global frame index == Playback's playhead unit
-          eventQueue.drainCollisionEvents((h1, h2, started) =>
-            onCollision(h1, h2, started, frame),
-          );
+          const frame = step - 1 + frame0; // global frame index == Playback's playhead unit
+          eventQueue.drainCollisionEvents((h1, h2, started) => onCollision(h1, h2, started, frame));
           for (const c of splatted.splice(0)) c.setEnabled(false);
 
           let allInside = true;
           let allAtRest = true;
-          const relax = 1 + Math.max(0, step - RELAX_FROM_STEP) * RELAX_PER_STEP;
-          const base = inChunk * floatsPerStep;
+          const relax = 1 + Math.max(0, step - relaxFrom - RELAX_FROM_STEP) * RELAX_PER_STEP;
           for (let d = 0; d < n; d++) {
             const b = bodies[d];
-            const p = b.translation();
-            const r = b.rotation();
-            const o = base + d * FLOATS_PER_DIE;
-            buf[o] = p.x;
-            buf[o + 1] = p.y;
-            buf[o + 2] = p.z;
-            buf[o + 3] = r.x;
-            buf[o + 4] = r.y;
-            buf[o + 5] = r.z;
-            buf[o + 6] = r.w;
+            const p = put(inChunk, d);
             if (!wallClosed) {
               // Distance beyond the spawn-side wall plane (positive = outside the area).
               const beyond = alongX ? sign * (p.x - cx) - hw : sign * (p.z - cz) - hd;
@@ -425,7 +564,16 @@ export function createSim(initialArea, hulls) {
           }
 
           restSteps = wallClosed && allAtRest ? restSteps + 1 : 0;
-          const finished = restSteps >= SETTLE_STEPS || step === MAX_STEPS;
+          let finished = step === maxSteps;
+          if (restSteps >= SETTLE_STEPS) {
+            // A free throw runs on after a nudge, while a nudge still has time to settle.
+            if (free && readers && step + NUDGE_STEPS <= maxSteps && nudge()) {
+              restSteps = 0;
+              relaxFrom = step;
+            } else {
+              finished = true;
+            }
+          }
           if (finished) settledStep = step;
           if (inChunk === CHUNK_STEPS || finished) {
             const data = new Float32Array(buf.buffer, 0, inChunk * floatsPerStep);
@@ -448,7 +596,7 @@ export function createSim(initialArea, hulls) {
             inChunk = 0;
           }
         }
-        return { settledStep };
+        return { settledStep, nudges };
       } finally {
         eventQueue.free();
         world.free();

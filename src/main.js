@@ -1,6 +1,6 @@
 import { dropCoreDiceSound } from './foundry/core-dice-sound.js';
 import { createPhysicsWorker, PhysicsClient } from './physics/physics-client.js';
-import { computeHulls } from './physics/hulls.js';
+import { computeHulls, computeReaders } from './physics/hulls.js';
 import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
@@ -481,7 +481,8 @@ Hooks.once('ready', async () => {
     // loadDigitAtlas appends /digits.json and /digits.png to this folder.
     loadAtlas: () => loadDigitAtlas(foundry.utils.getRoute('modules/dicer/assets/fonts')),
     // No initial area: DiceBox sends the real one through resize() on construction.
-    createPhysics: () => new PhysicsClient(createPhysicsWorker, { hulls: computeHulls() }),
+    createPhysics: () =>
+      new PhysicsClient(createPhysicsWorker, { hulls: computeHulls(), readers: computeReaders() }),
     createRenderer: () =>
       new DiceRenderer({
         container: createLayer(),
