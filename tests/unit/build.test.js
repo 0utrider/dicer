@@ -42,8 +42,12 @@ describe('build', () => {
     const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
     const benchReport = lazy.find((p) => /report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
     const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
-    const pets = lazy.find((p) => /pet-/.test(p)); // the dice pet layer
+    const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
+    const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
     expect(pets).toBeTruthy();
+    expect(threePoints).toBeTruthy();
+    // lazy for real: only the lazy chunks import it, never the world-start bundle
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain(threePoints.slice('dist/'.length));
     expect(lookExtras).toBeTruthy();
     expect(readFileSync(lookExtras, 'utf8')).toContain('dicer-look-extras');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-look-extras');
@@ -119,6 +123,7 @@ describe('build', () => {
         benchReport,
         lookExtras,
         pets,
+        threePoints,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),

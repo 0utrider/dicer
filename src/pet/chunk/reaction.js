@@ -12,6 +12,21 @@ export function summarize(dice, ghost) {
   return crit ? 'crit' : fumble ? 'fumble' : 'plain';
 }
 
+/**
+ * One reaction for several rolls of one roller (each already summarized with its own ghost flag,
+ * so a ghost roll only ever adds 'plain'): crit and fumble together are mixed.
+ */
+export function merge(summaries) {
+  let crit = false;
+  let fumble = false;
+  for (const s of summaries) {
+    if (s === 'crit' || s === 'mixed') crit = true;
+    if (s === 'fumble' || s === 'mixed') fumble = true;
+  }
+  if (crit && fumble) return 'mixed';
+  return crit ? 'crit' : fumble ? 'fumble' : 'plain';
+}
+
 /** The builtin sound name for a reaction, or null (mixed and plain are silent). */
 export const reactionSound = (reaction) =>
   reaction === 'crit' ? 'petHappy' : reaction === 'fumble' ? 'petSad' : null;

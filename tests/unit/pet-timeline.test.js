@@ -5,6 +5,7 @@ import {
   REACT_MS,
   EXIT_MS,
   QUICK_EXIT_MS,
+  LIFE_MS,
 } from '../../src/pet/chunk/timeline.js';
 
 test('phases in order with exact boundaries', () => {
@@ -16,7 +17,7 @@ test('phases in order with exact boundaries', () => {
   expect(phaseAt(tr, 2000)).toEqual({ phase: 'react', t: 0 });
   expect(phaseAt(tr, 2000 + REACT_MS)).toEqual({ phase: 'exit', t: 0 });
   expect(phaseAt(tr, 2000 + REACT_MS + EXIT_MS)).toEqual({ phase: 'gone', t: 1 });
-  expect(phaseAt({ beganAt: 0 }, 99999).phase).toBe('watch');
+  expect(phaseAt({ beganAt: 0 }, 9999).phase).toBe('watch');
 });
 
 test('a landing before the throw ends reacts after the throw', () => {
@@ -63,4 +64,14 @@ test('summarize', () => {
   expect(summarize([d('d20', 20, true)], false)).toBe('plain');
   expect(summarize([d('d20', 20)], true)).toBe('plain');
   expect(summarize([d('d20', 20), d('d6', 1)], false)).toBe('crit');
+});
+
+test('a roll that never lands or leaves is force-exited by LIFE_MS after it began', () => {
+  expect(LIFE_MS).toBe(15000);
+  const tr = { beganAt: 1000 };
+  expect(phaseAt(tr, 1000 + LIFE_MS - QUICK_EXIT_MS - 1).phase).toBe('watch');
+  expect(phaseAt(tr, 1000 + LIFE_MS - QUICK_EXIT_MS).phase).toBe('exit');
+  expect(phaseAt(tr, 1000 + LIFE_MS).phase).toBe('gone');
+  // landed but never left: the normal exit still ends it well before the cap
+  expect(phaseAt({ beganAt: 0, landedAt: 2000 }, 2000 + REACT_MS + EXIT_MS).phase).toBe('gone');
 });
