@@ -39,5 +39,14 @@ test('the real chunk is marked and carries the hand code', async () => {
   _setHandImport(() => import('../../src/hand/hand.js'));
   const m = await loadHand();
   expect(m.CHUNK).toBe('dicer-hand-chunk');
-  for (const k of ['handFor', 'readFree', 'handEdge']) expect(typeof m[k]).toBe('function');
+  for (const k of [
+    'handFor',
+    'readFree',
+    'handEdge',
+    'encodeTrajectory',
+    'decodeTrajectory',
+    'placeTrajectory',
+    'replaySource',
+  ])
+    expect(typeof m[k]).toBe('function');
 });

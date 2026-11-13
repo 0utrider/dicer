@@ -35,7 +35,9 @@ export function readFree(dice, data, offset) {
     const t = dice[d - 1]; // a d100's ones die follows its tens die
     if (die.free && !die.ghost) {
       die.value =
-        t?.free && t.variant === 'd100tens' ? combineD100(t.readValue, die.readValue) : die.readValue;
+        t?.free && t.variant === 'd100tens'
+          ? combineD100(t.readValue, die.readValue)
+          : die.readValue;
     }
   });
 }
@@ -88,6 +90,8 @@ function boxHand(box) {
           area: { ...roll.record.area },
           obstacles: (req.obstacles ?? []).map((o, i) => ({ id: roll.ids[i], ...o })),
           splatSpeed: req.splatSpeed ?? null,
+          edge: roll.edge, // the replay's pet edge (R10)
+          hand: roll.free,
         });
       } catch (err) {
         console.warn('dicer: a throw recorder threw', err);

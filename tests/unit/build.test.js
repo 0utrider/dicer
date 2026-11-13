@@ -136,6 +136,18 @@ describe('build', () => {
       ].sort(),
     );
   });
+  it("hand chunk is lazy and dist/dicer.js does not contain 'dicer-hand-chunk'", () => {
+    const hand = distFiles().find((p) => /^dist\/hand-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(hand).toBeTruthy();
+    expect(isLazy(hand)).toBe(true);
+    expect(worldStartFiles()).not.toContain(hand);
+    const chunk = readFileSync(hand, 'utf8');
+    expect(chunk).toContain('dicer-hand-chunk');
+    expect(chunk).toContain('dicer: a throw recorder threw'); // the hand half of DiceBox lives here
+    const main = readFileSync('dist/dicer.js', 'utf8');
+    expect(main).not.toContain('dicer-hand-chunk');
+    expect(main).not.toContain('dicer: a throw recorder threw');
+  });
   it('keeps the built-in theme table under 6 KiB minified (P5-R1)', () => {
     const js = readFileSync('dist/dicer.js', 'utf8');
     const a = js.indexOf('@@dicer-themes-start');
