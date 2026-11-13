@@ -385,15 +385,14 @@ export class DiceBox {
       const req = { dice: roll.dice.map((d) => ({ type: d.shapeType })), seed };
       if (throwArea) req.area = throwArea;
       // Resting pets of any user are obstacles for every throw; the hook is the one begin uses.
-      const obstacles = this.#hookCall((h) => {
+      this.#hookCall((h) => {
         roll.hook = h;
-        return h.obstaclesFor?.({ spec: pet ?? null, edge: throwEdge(seed), area: { ...roll.record.area } });
-      });
-      if (obstacles?.length) {
-        const list = obstacles.slice(0, MAX_OBSTACLES);
-        roll.ids = list.map((o) => o.id);
+        const o = h.obstaclesFor?.({ spec: pet ?? null, edge: throwEdge(seed), area: { ...roll.record.area } });
+        const list = Array.isArray(o) ? o.filter((e) => e && typeof e === 'object').slice(0, MAX_OBSTACLES) : [];
+        if (!list.length) return;
+        roll.ids = list.map((e) => e.id);
         req.obstacles = list.map(({ x, z, r, h }) => ({ x, z, r, h }));
-      }
+      });
       const stream = this._physics.throw(req);
       // Stall guards (R12): a worker that never answers must not keep a roll alive.
       roll.firstChunkTimer = setTimeout(

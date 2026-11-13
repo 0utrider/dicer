@@ -2883,6 +2883,44 @@ describe('pet hook', () => {
       box.clear();
     });
 
+    test('a bad obstacle list never fails a throw: junk entries are dropped, a non-array sends none', () => {
+      const hit = vi.fn();
+      const good = { x: 0, z: 1, r: 1, h: 2, id: 'a' };
+      const pet = fakePet({ obstaclesFor: () => [null, 5, good], hit });
+      const { renderer, physics, box } = setup({ pet });
+      physics.events = [new Float32Array(0), new Float32Array([45, 0, -3, 12])];
+      box.roll([{ type: 'd6', value: 3 }]);
+      expect(physics.streams[0].req.obstacles).toEqual([{ x: 0, z: 1, r: 1, h: 2 }]);
+      pump(renderer, physics);
+      expect(hit.mock.calls.map((c) => c[0])).toEqual(['a']);
+      box.clear();
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const bad = setup({ pet: fakePet({ obstaclesFor: () => 'oops' }) });
+      const { landed } = bad.box.roll([{ type: 'd6', value: 3 }]);
+      expect(bad.physics.streams).toHaveLength(1);
+      expect('obstacles' in bad.physics.streams[0].req).toBe(false);
+      expect(landed).toBeInstanceOf(Promise);
+      warn.mockRestore();
+      bad.box.clear();
+    });
+
+    test('two concurrent rolls map -3 to their own ids', () => {
+      const hit = vi.fn();
+      let n = 0;
+      const pet = fakePet({
+        obstaclesFor: () => [{ x: 0, z: 0, r: 1, h: 2, id: `r${++n}` }],
+        hit,
+      });
+      const { renderer, physics, box } = setup({ pet });
+      physics.events = [new Float32Array(0), new Float32Array([45, 0, -3, 12])];
+      box.roll([{ type: 'd6', value: 3 }]);
+      box.roll([{ type: 'd6', value: 4 }]);
+      pump(renderer, physics);
+      expect(hit.mock.calls.map((c) => c[0]).sort()).toEqual(['r1', 'r2']);
+      box.clear();
+    });
+
     test('onResize tells the hook the new area through areaChanged', () => {
       const pet = fakePet({ areaChanged: vi.fn() });
       let r = rect;
