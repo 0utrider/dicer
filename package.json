@@ -16,6 +16,7 @@
     "test:visual": "node tests/visual/looks.mjs",
     "test:visual:themes": "node tests/visual/themes.mjs",
     "test:visual:editors": "node tests/visual/editors.mjs",
+    "test:visual:pets": "node tests/visual/pets.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

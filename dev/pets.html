@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dicer pets review</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #23262c;
+        color: #e8e8e8;
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      #bar {
+        padding: 8px 12px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      #sheet {
+        display: block;
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <button data-sheet="grid">Grid</button>
+      <button data-sheet="colours">Colours</button>
+      <button data-sheet="strips">Strips</button>
+      <span id="status">loading...</span>
+    </div>
+    <img id="sheet" alt="" />
+    <script type="module" src="./pets.js"></script>
+  </body>
+</html>
