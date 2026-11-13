@@ -5,6 +5,7 @@
 export const CHUNK = 'dicer-hand-chunk';
 export { handFor, readFree, RESULT_GLOW_MS } from './chunk/box.js';
 export { handEdge } from './chunk/edge.js';
+export { fulfill, fulfillTerm, extraResult, handThrows } from './chunk/resolve.js';
 export {
   openThrowOverlay,
   velocityFromSamples,

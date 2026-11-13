@@ -243,6 +243,37 @@ describe('effects settings', () => {
   });
 });
 
+test('rolling by hand: the 7 keys with their defaults; the four that decide the dice config call onHandChange', () => {
+  const onHandChange = vi.fn();
+  const r = capture({ onHandChange });
+  const want = {
+    handRolls: { scope: 'client', type: String, default: 'off', config: true },
+    handRollTypes: { scope: 'client', type: Array, default: [], config: false },
+    handRollsAllowed: { scope: 'world', type: String, default: 'all', config: true },
+    handRollsRequired: { scope: 'world', type: Boolean, default: false, config: true },
+    handRollTimeout: { scope: 'world', type: Number, default: 60, config: true },
+    handReplay: { scope: 'client', type: Boolean, default: true, config: true },
+    diceTray: { scope: 'client', type: Boolean, default: true, config: true },
+  };
+  for (const [key, cfg] of Object.entries(want)) expect(r[key]).toMatchObject({ ns: 'dicer', ...cfg });
+  expect(Object.keys(r.handRolls.choices)).toEqual(['off', 'ask', 'always']);
+  expect(Object.keys(r.handRollsAllowed.choices)).toEqual(['all', 'trusted', 'gm', 'none']);
+  expect(r.handRollTimeout.range).toMatchObject({ min: 10, max: 300 });
+  for (const key of ['handRolls', 'handRollTypes', 'handRollsAllowed', 'handRollsRequired']) r[key].onChange('x');
+  expect(onHandChange).toHaveBeenCalledTimes(4);
+  for (const key of ['handRollTimeout', 'handReplay', 'diceTray']) r[key].onChange?.('x');
+  expect(onHandChange).toHaveBeenCalledTimes(4);
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER;
+  for (const key of Object.keys(want).filter((k) => want[k].config)) {
+    expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
+    expect(typeof en.Settings[key]?.Name).toBe('string');
+    expect(typeof en.Settings[key]?.Hint).toBe('string');
+  }
+  for (const k of ['off', 'ask', 'always']) expect(typeof en.Settings.handRolls.Choices[k]).toBe('string');
+  for (const k of ['all', 'trusted', 'gm', 'none']) expect(typeof en.Settings.handRollsAllowed.Choices[k]).toBe('string');
+  for (const k of ['Method', 'AskTitle', 'AskText', 'ThrowByHand', 'RollAuto']) expect(typeof en.Hand[k]).toBe('string');
+});
+
 test('every effects setting has its English name and hint', () => {
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings;
   for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake', 'impactEffects']) {

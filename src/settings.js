@@ -143,6 +143,8 @@ export async function migratePetStay(store, set) {
  * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
  *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
  * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
+ * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
+ *   or handRollsRequired changes (the core dice configuration is re-synced)
  */
 export function registerSettings({
   onAreaChange,
@@ -152,6 +154,7 @@ export function registerSettings({
   onLookChange,
   onQualityChange,
   onSoundChange,
+  onHandChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   register('enabled', {
@@ -584,6 +587,30 @@ export function registerSettings({
     default: { preset: 'corner' },
     onChange: () => onRollAreasChange?.(),
   });
+  // Rolling by hand (G10, P6-D4: off by default; the GM allows everyone). The four that decide the
+  // core dice configuration re-sync it on change (handRollsAllowed and -Required fire on every client).
+  const choices = (key, keys) => Object.fromEntries(keys.map((k) => [k, t(`${key}.Choices.${k}`)]));
+  const hand = [
+    ['handRolls', 'client', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always']) }],
+    ['handRollTypes', 'client', Array, [], { config: false }], // Foundry denominations; empty: all
+    ['handRollsAllowed', 'world', String, 'all', { choices: choices('handRollsAllowed', ['all', 'trusted', 'gm', 'none']) }],
+    ['handRollsRequired', 'world', Boolean, false],
+    ['handRollTimeout', 'world', Number, 60, { range: { min: 10, max: 300, step: 5 } }],
+    ['handReplay', 'client', Boolean, true],
+    ['diceTray', 'client', Boolean, true],
+  ];
+  hand.forEach(([key, scope, type, def, more], i) =>
+    register(key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope,
+      config: true,
+      type,
+      default: def,
+      ...more,
+      ...(i < 4 ? { onChange: () => onHandChange?.() } : {}),
+    }),
+  );
   registerNoticeSetting();
 }
 

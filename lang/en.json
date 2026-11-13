@@ -96,6 +96,45 @@
         "Name": "Dice can splat pets",
         "Hint": "A die that hits a pet hard enough splats it until its owner rolls again."
       },
+      "handRolls": {
+        "Name": "Roll by hand",
+        "Hint": "Grab, shake and throw your own dice: the face that lands up is the result. Ask lets you choose for each roll.",
+        "Choices": {
+          "off": "Off",
+          "ask": "Ask each time",
+          "always": "Always"
+        }
+      },
+      "handRollTypes": {
+        "Name": "Dice rolled by hand",
+        "Hint": "The dice types thrown by hand. None chosen means all."
+      },
+      "handRollsAllowed": {
+        "Name": "Who may roll by hand",
+        "Hint": "Players who may throw their own dice. Everyone else's dice roll automatically.",
+        "Choices": {
+          "all": "Everyone",
+          "trusted": "Trusted players and GMs",
+          "gm": "GMs only",
+          "none": "Nobody"
+        }
+      },
+      "handRollsRequired": {
+        "Name": "Require rolling by hand",
+        "Hint": "Players allowed to roll by hand always do, whatever their own setting."
+      },
+      "handRollTimeout": {
+        "Name": "Hand roll time limit (seconds)",
+        "Hint": "How long a player has to throw. After that the dice roll automatically."
+      },
+      "handReplay": {
+        "Name": "Replay hand throws",
+        "Hint": "Show other players' hand throws exactly as they threw them. Off shows a normal throw of the same result."
+      },
+      "diceTray": {
+        "Name": "Dice tray",
+        "Hint": "A dice tray button for free rolls by hand."
+      },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
         "Hint": "Roll messages appear in the chat at once instead of waiting for the dice to land. The dice still animate."
@@ -707,7 +746,12 @@
       "Hint": "Grab the dice, shake them, and flick to throw.",
       "ThrowForMe": "Throw for me",
       "SpaceKey": "Space",
-      "Cancel": "Cancel"
+      "Cancel": "Cancel",
+      "Method": "Dicer: roll by hand",
+      "AskTitle": "Roll by hand?",
+      "AskText": "Throw these dice yourself, or let them roll automatically.",
+      "ThrowByHand": "Throw by hand",
+      "RollAuto": "Roll automatically"
     }
   }
 }

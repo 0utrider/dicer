@@ -6,6 +6,7 @@ import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
 import { loadHand, prefetchHand } from './hand/hand-loader.js';
+import { registerHandMethod, setHandDeps, syncDiceConfiguration } from './hand/shell.js';
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
@@ -116,6 +117,25 @@ export function preloadEditors(
     }
   };
   idle(run);
+}
+
+/** The core client setting Foundry's dice fulfillment reads (Roll.DICE_CONFIGURATION_SETTING). */
+const getCore = () => game.settings.get('core', 'diceConfiguration');
+
+/** Rolling by hand: maps this user's dice to the `dicer` method, or removes Dicer's entries (ready, settings). */
+function syncHand() {
+  try {
+    Promise.resolve(
+      syncDiceConfiguration({
+        getSetting,
+        user: game.user,
+        getCore,
+        setCore: (v) => game.settings.set('core', 'diceConfiguration', v),
+      }),
+    ).catch((err) => console.warn('dicer: cannot update the dice configuration', err));
+  } catch (err) {
+    console.warn('dicer: cannot update the dice configuration', err);
+  }
 }
 
 function onSoundChange(key, value) {
@@ -433,7 +453,13 @@ Hooks.once('init', () => {
     onLookChange,
     onQualityChange,
     onSoundChange,
+    onHandChange: syncHand,
   });
+  try {
+    registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver
+  } catch (err) {
+    console.warn('dicer: cannot register rolling by hand', err);
+  }
   loadPublicApi();
   // On the author's client, before the message is stored: everyone then skips Foundry's clatter.
   Hooks.on('preCreateChatMessage', (message) =>
@@ -473,6 +499,7 @@ Hooks.once('ready', async () => {
     set: (key, value) => game.settings.set('dicer', key, value),
   }).catch((err) => console.warn('dicer: cannot move the look setting to theme', err));
   migratePetStay(game.settings.storage.get('client'), (k, v) => game.settings.set('dicer', k, v));
+  syncHand();
   Promise.all([migrateFromDsn(), lookMigrated])
     .then(() => mirrorLookIfMissing(game.user, getSetting('theme')))
     .catch((err) => console.warn('dicer: cannot mirror the theme setting to the user flag', err));
@@ -668,6 +695,17 @@ Hooks.once('ready', async () => {
       // throw overlay ({specs, rect?, timeoutMs?, ...}: live checks until the resolver opens it).
       api._debug.hand = (o) =>
         loadHand(box).then((m) => (o ? m.openThrowOverlay({ diceBox: box, ...o }) : m));
+      // What the DicerResolver's body (the hand chunk) throws with.
+      setHandDeps({
+        diceBox: box,
+        areas,
+        decorateFor,
+        plan,
+        getSetting,
+        getCore,
+        hooks: Hooks,
+        user: () => game.user,
+      });
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(resizeDice);
       // The look-extras chunk landed: later rolls draw the real looks, not their fallbacks.
@@ -705,6 +743,7 @@ Hooks.once('ready', async () => {
     effectLayer = null;
     releasePets();
     petDeps = null;
+    setHandDeps(null); // a dicer roll then falls back to Foundry's random
     stopWatchingArea?.();
     stopWatchingArea = null;
     stopLookExtras?.(); // idempotent: no reset needed
