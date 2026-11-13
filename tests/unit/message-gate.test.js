@@ -2045,23 +2045,38 @@ describe('Task 8: hand rolls in the gate', () => {
     expect(el.classList.contains('dsn-hide')).toBe(false);
   });
 
-  test("R8: the thrower's blind tray roll and secret roll take the normal path (ghost / none), never decorateLanded", async () => {
+  test("R8: the thrower's blind tray roll and secret roll are never thrown again here (its overlay threw ghosts), never decorateLanded", async () => {
+    user = { id: 'thrower', isGM: false };
+    settings.showGhostDice = true;
+    const onStarted = vi.fn();
+    gateH = make({ onStarted });
+    handChunk.handThrows.set('h1', { handle: {}, recording: null, specs: [], extras: [] });
+    const el = li('m1');
+    gateH.onCreate(hmsg({ blind: true, whisper: ['gm'], isContentVisible: false }));
+    await tick();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+    expect(box.roll).not.toHaveBeenCalled(); // no second ghost throw
+    expect(onStarted).toHaveBeenCalledTimes(1); // sendHand still runs (GMs replay it)
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+    expect(gateH.isAnimating('m1')).toBe(false);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+    // a secret resolver roll, the same
+    gateH.onCreate(hmsg({ id: 'm2', rolls: [{ ...handD20([17]), secret: true }] }));
+    await tick();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+    expect(box.roll).not.toHaveBeenCalled();
+    expect(gateH.isAnimating('m2')).toBe(false); // never animated: main's createChatMessage sends it
+  });
+
+  test("the thrower's blind hand roll beside a normal roll: only the normal roll is thrown", async () => {
     user = { id: 'thrower', isGM: false };
     settings.showGhostDice = true;
     gateH = make();
     handChunk.handThrows.set('h1', { handle: {}, recording: null, specs: [], extras: [] });
-    gateH.onCreate(hmsg({ blind: true, whisper: ['gm'], isContentVisible: false }));
+    gateH.onCreate(hmsg({ rolls: [{ ...handD20([17]), ghost: true }, d20Roll(5)] }));
     await tick();
-    expect(box.decorateLanded).not.toHaveBeenCalled();
     expect(box.roll).toHaveBeenCalledTimes(1);
-    expect(box.roll.mock.calls[0][0]).toEqual([expect.objectContaining({ ghost: true, value: 1 })]);
-    box.rolls[0].landed.resolve();
-    await tick();
-    gateH.onCreate(hmsg({ id: 'm2', rolls: [{ ...handD20([17]), secret: true }] }));
-    await tick();
-    expect(box.decorateLanded).not.toHaveBeenCalled();
-    expect(box.roll).toHaveBeenCalledTimes(1); // none: nothing thrown
-    expect(gateH.isAnimating('m2')).toBe(false);
+    expect(box.roll.mock.calls[0][0]).toEqual([expect.objectContaining({ value: 5 })]);
   });
 
   test("the thrower's other client (no stored throw) throws the result at once", async () => {

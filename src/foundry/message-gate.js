@@ -604,7 +604,13 @@ export function createMessageGate({
 
       const rolls = message.rolls.slice();
       rolls[from] = context.dsnRoll ?? first;
-      const views = onlyFrom(viewsOf(message, { before, ...flags }), from);
+      // This client's own hand throw seen ghost (a blind tray roll, a secret roll): its overlay
+      // already threw ghosts here, so nothing is thrown again ('none'); they fade on their own.
+      const views = onlyFrom(viewsOf(message, { before, ...flags }), from).map((v, i) =>
+        own && v !== 'real' && hand?.isHand(message.rolls[i]) && hand.ownHandle(message.rolls[i])
+          ? 'none'
+          : v,
+      );
       recordViews(id, views);
       // RollStart can only change the views or replace the first animated roll. The maxDice
       // budget is shared, so any such change re-plans every animated roll.

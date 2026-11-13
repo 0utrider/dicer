@@ -118,6 +118,12 @@ test("formulaFromCounts({d6: 2, d20: 1}, 3) -> '2d6 + 1d20 + 3'; dF -> '1dF'", (
   expect(formulaFromCounts({ d6: -1, d8: 'x', d12: 1.7 }, 'y')).toBe('1d12');
   expect(formulaFromCounts({}, 4)).toBe('4');
   expect(formulaFromCounts({}, 0)).toBe('');
+  // the modifier is a finite integer within ±9999
+  expect(formulaFromCounts({ d6: 1 }, 1e9)).toBe('1d6 + 9999');
+  expect(formulaFromCounts({ d6: 1 }, -Infinity)).toBe('1d6 - 9999');
+  expect(formulaFromCounts({ d6: 1 }, Infinity)).toBe('1d6 + 9999');
+  expect(formulaFromCounts({ d6: 1 }, NaN)).toBe('1d6');
+  expect(trayContext({ modifier: '123456' }).modifier).toBe(9999);
   expect(TRAY_DICE).toEqual(['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'd2', 'dF']);
 });
 

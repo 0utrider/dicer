@@ -45,7 +45,7 @@ import {
 import { createDamageThemer } from './effects/damage-themes.js';
 import { createEffectLayer } from './effects/effect-layer.js';
 import { createDsnSfx } from './effects/dsn-sfx.js';
-import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay } from './settings.js';
+import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay, resetControls } from './settings.js';
 
 let dormant = false;
 let gate = null;
@@ -482,7 +482,7 @@ Hooks.once('init', () => {
     onLookChange,
     onQualityChange,
     onSoundChange,
-    onHandChange: () => (syncHand(), ui.controls.render({ reset: true })), // and the tray tool
+    onHandChange: () => (syncHand(), resetControls()), // and the tray tool
   });
   try {
     registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver

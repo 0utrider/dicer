@@ -22,17 +22,20 @@ export const TRAY_DICE = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'd2', '
 export const TRAY_MODES = ['public', 'gm', 'blind', 'self'];
 /** A count above this is clamped (Foundry rolls what the throw cannot hold anyway). */
 const MAX_COUNT = 99;
+const MAX_MODIFIER = 9999;
 
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const int = (v) => Math.trunc(Number(v)) || 0;
 const countOf = (v) => Math.min(MAX_COUNT, Math.max(0, int(v)));
+/** The modifier, a finite integer within ±MAX_MODIFIER. */
+const modOf = (v) => Math.min(MAX_MODIFIER, Math.max(-MAX_MODIFIER, int(v)));
 
 /** '2d6 + 1d20 + 3' from {d6: 2, d20: 1} and 3: the dice in tray order, then the modifier. */
 export function formulaFromCounts(counts, modifier) {
   let f = TRAY_DICE.filter((k) => countOf(counts?.[k]) > 0)
     .map((k) => `${countOf(counts[k])}${k}`)
     .join(' + ');
-  const m = int(modifier);
+  const m = modOf(modifier);
   if (m) f = f ? `${f} ${m < 0 ? '-' : '+'} ${Math.abs(m)}` : String(m);
   return f;
 }
@@ -118,7 +121,7 @@ export function trayContext({ counts = {}, modifier = 0, mode } = {}) {
   mode = TRAY_MODES.includes(mode) ? mode : coreMode();
   return {
     dice: TRAY_DICE.map((key) => ({ key, count: countOf(counts[key]) })),
-    modifier: int(modifier),
+    modifier: modOf(modifier),
     modes: TRAY_MODES.map((value) => ({
       value,
       label: loc(modes[value]?.label ?? value),
@@ -169,7 +172,7 @@ const choiceOf = (form) => {
   const v = (name) => form.elements.namedItem(name)?.value;
   return {
     counts: Object.fromEntries(TRAY_DICE.map((k) => [k, countOf(v(k))])),
-    modifier: int(v('modifier')),
+    modifier: modOf(v('modifier')),
     mode: v('mode'),
   };
 };

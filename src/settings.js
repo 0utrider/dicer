@@ -146,6 +146,15 @@ export async function migratePetStay(store, set) {
  * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
  *   or handRollsRequired changes (the core dice configuration is re-synced)
  */
+/** Re-prepares Foundry's scene controls (the Dice tray tool comes and goes); never throws. */
+export const resetControls = () => {
+  try {
+    ui.controls.render({ reset: true });
+  } catch {
+    /* no controls yet */
+  }
+};
+
 export function registerSettings({
   onAreaChange,
   onRollAreasChange,
@@ -597,7 +606,7 @@ export function registerSettings({
     ['handRollsRequired', 'world', Boolean, false],
     ['handRollTimeout', 'world', Number, 60, { range: { min: 10, max: 300, step: 5 } }],
     ['handReplay', 'client', Boolean, true],
-    ['diceTray', 'client', Boolean, true, { onChange: () => ui.controls.render({ reset: true }) }], // its tool
+    ['diceTray', 'client', Boolean, true, { onChange: resetControls }], // its tool
   ];
   hand.forEach(([key, scope, type, def, more], i) =>
     register(key, {

@@ -269,6 +269,9 @@ test('rolling by hand: the 7 keys with their defaults; the four that decide the 
     for (const key of ['handRollTimeout', 'handReplay', 'diceTray']) r[key].onChange?.('x');
     expect(onHandChange).toHaveBeenCalledTimes(4);
     expect(globalThis.ui.controls.render).toHaveBeenCalledWith({ reset: true });
+    // no controls yet, or a throwing render: never thrown into Foundry's setting change
+    globalThis.ui = {};
+    expect(() => r.diceTray.onChange(true)).not.toThrow();
   } finally {
     delete globalThis.ui;
   }

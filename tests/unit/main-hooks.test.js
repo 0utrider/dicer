@@ -263,6 +263,10 @@ describe('rolling by hand: the chat card mark', () => {
     // nothing thrown (every die dropped): automatic, even with a partial count
     expect(markFor(roll({ id: 'a', by: 'u', n: 0, partial: 2 })).tip).toBe('DICER.Hand.MarkAuto');
     expect(markFor(roll())).toBeNull();
+    // a forged flag never puts markup into the tooltip: only a number, or no count at all
+    expect(markFor(roll({ id: 'a', by: 'u', n: 2, partial: '<img src=x onerror=alert(1)>' })).tip).toBe('DICER.Hand.Mark');
+    expect(markFor(roll({ id: 'a', by: 'u', n: 2, partial: '2.7' })).tip).toBe('DICER.Hand.MarkPartial|{"n":2}');
+    expect(markFor(roll({ id: 'a', by: 'u', n: 2, partial: { toString: () => '<b>' } })).tip).toBe('DICER.Hand.Mark');
     expect(markFor(null)).toBeNull();
     expect(markFor({ options: {} })).toBeNull();
     const en = JSON.parse((await import('node:fs')).readFileSync('lang/en.json', 'utf8')).DICER.Hand;

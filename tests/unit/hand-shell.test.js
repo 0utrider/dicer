@@ -56,7 +56,7 @@ test('main.js registers at init, syncs at ready and on the hand settings, and in
   const src = readFileSync('src/main.js', 'utf8').replace(/\r\n/g, '\n');
   const init = src.slice(src.indexOf("Hooks.once('init'"), src.indexOf("Hooks.once('ready'"));
   // re-syncs, and re-prepares the scene controls (the Dice tray tool follows handRollsAllowed)
-  expect(init).toContain('onHandChange: () => (syncHand(), ui.controls.render({ reset: true })),');
+  expect(init).toContain('onHandChange: () => (syncHand(), resetControls()),');
   expect(init).toContain('registerHandMethod();');
   const ready = src.slice(src.indexOf("Hooks.once('ready'"));
   expect(ready).toContain('syncHand();');

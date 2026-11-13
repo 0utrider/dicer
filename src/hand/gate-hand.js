@@ -29,14 +29,16 @@ export const isHandRoll = (roll) => {
 export const markFor = (roll) => {
   const h = roll?.options.dicerHand; // a Foundry Roll always has options
   const i = game.i18n;
+  // Message flags are anyone's: only a number reaches the tooltip (Foundry renders it as HTML).
+  const n = Math.trunc(h?.partial) || 0;
   return h
     ? {
         icon: 'fa-hand',
         tip:
           h.fallback || !h.n
             ? i.localize('DICER.Hand.MarkAuto')
-            : h.partial
-              ? i.format('DICER.Hand.MarkPartial', { n: h.partial })
+            : n
+              ? i.format('DICER.Hand.MarkPartial', { n })
               : i.localize('DICER.Hand.Mark'),
       }
     : null;
