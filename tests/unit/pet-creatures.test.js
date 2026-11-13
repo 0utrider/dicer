@@ -8,6 +8,9 @@ const TOL = 0.15;
 const PHASES = ['enter', 'throw', 'watch', 'react', 'exit'];
 const REACTIONS = ['crit', 'fumble', 'mixed', 'plain', null];
 const KINDS = ['mimic', 'slime', 'dragonling'];
+// The watch pose's measured height. The mimic's height is its closed chest, and its open jaw
+// rises above it (see creatures/index.js), so its open pose may stand up to 2.5.
+const WATCH_MAX = { mimic: 2.5 };
 
 const meshes = (root) => {
   const out = [];
@@ -40,8 +43,17 @@ describe.each(KINDS)('%s', (kind) => {
     const box = new THREE.Box3().setFromObject(c.root);
     const size = box.getSize(new THREE.Vector3());
     expect(size.y).toBeGreaterThanOrEqual(HEIGHT - TOL);
-    expect(size.y).toBeLessThanOrEqual(HEIGHT + TOL);
+    expect(size.y).toBeLessThanOrEqual(WATCH_MAX[kind] ?? HEIGHT + TOL);
     expect(Math.abs(box.min.y)).toBeLessThan(0.06); // stands on the floor
+    c.dispose();
+  });
+
+  test('its top-down footprint is about a d20 wide (>= 1.6)', () => {
+    const c = CREATURES[kind]('#c0392b');
+    c.pose('watch', 0, null, { yaw: 0, now: 0 });
+    c.root.updateMatrixWorld(true);
+    const size = new THREE.Box3().setFromObject(c.root).getSize(new THREE.Vector3());
+    expect(Math.max(size.x, size.z)).toBeGreaterThanOrEqual(1.6);
     c.dispose();
   });
 

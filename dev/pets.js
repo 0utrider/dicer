@@ -109,7 +109,7 @@ const OUT = [
   [0, 1],
   [0, -1],
 ];
-function gameView(pet, w, h, bg, edge = 3) {
+function gameView(pet, w, h, bg, edge = 3, onPet = false) {
   scene.background = new THREE.Color(bg);
   d20.visible = true;
   // The pet's standing place (as pets.js computes it) and a d20 beside it along the edge.
@@ -124,7 +124,8 @@ function gameView(pet, w, h, bg, edge = 3) {
   camera.position.set(0, H, 0);
   camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld(true);
-  _v.set((bx + d20.position.x) / 2, 0.5, (bz + d20.position.z) / 2).project(camera);
+  if (onPet) _v.set(pet.position.x, 0.5, pet.position.z).project(camera);
+  else _v.set((bx + d20.position.x) / 2, 0.5, (bz + d20.position.z) / 2).project(camera);
   const cx = ((_v.x + 1) / 2) * full.w;
   const cy = ((1 - _v.y) / 2) * full.h;
   camera.setViewOffset(full.w, full.h, cx - w / 2, cy - h / 2, w, h);
@@ -146,6 +147,11 @@ function closeUp(pet, w, h, bg, { dist = 4.6, height = 2.6, side = 1.6, follow =
     ? new THREE.Box3().setFromObject(pet.children[0]).getCenter(_v)
     : _v.set(pet.position.x, 0.9, pet.position.z);
   target.y = Math.max(0.6, target.y);
+  // back off for the mimic's wide chest, so every pet fills the cell alike
+  const wide = pet.children[0].name === 'mimic' ? 1.3 : 1;
+  dist *= wide;
+  height = 0.6 + (height - 0.6) * wide;
+  side *= wide;
   close.aspect = w / h;
   close.position.set(
     target.x + fx * dist + fz * side,
@@ -270,6 +276,9 @@ const STRIP_ROWS = [
   { phase: 'react', reaction: 'mixed' },
   { phase: 'react', reaction: 'plain' },
   { phase: 'exit', reaction: 'fumble' },
+  // the game camera at the true 48 px/die, centred on the pet
+  { phase: 'react', reaction: 'crit', view: 'game' },
+  { phase: 'react', reaction: 'fumble', view: 'game' },
 ];
 /** Each phase as 8 frames (t = 0 .. 1) of the close-up: the motion curves at a glance. */
 function strips(kinds = KINDS) {
@@ -286,13 +295,21 @@ function strips(kinds = KINDS) {
   rows.forEach((row, r) => {
     const y = 24 + r * S;
     label(g, row.kind, 6, y + 20, { size: 13 });
-    label(g, row.reaction ? `${row.phase}: ${row.reaction}` : row.phase, 6, y + 38, {
+    const name = row.reaction ? `${row.phase}: ${row.reaction}` : row.phase;
+    label(g, row.view ? `${name} (game)` : name, 6, y + 38, {
       size: 11,
       color: '#9aa0aa',
     });
     for (let i = 0; i < N; i++) {
       shot({ kind: row.kind, color: KIND_COLOR[row.kind], ...row, t: i / (N - 1) }, (pet) => {
-        closeUp(pet, S - 2, S - 2, '#5b616b', { dist: 6.4, height: 3.4, side: 2.2, follow: false });
+        if (row.view === 'game') gameView(pet, S - 2, S - 2, BG.dark, 3, true);
+        else
+          closeUp(pet, S - 2, S - 2, '#5b616b', {
+            dist: 6.4,
+            height: 3.4,
+            side: 2.2,
+            follow: false,
+          });
         blit(g, LW + i * S + 1, y + 1);
       });
     }

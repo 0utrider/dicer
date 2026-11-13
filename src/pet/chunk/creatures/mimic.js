@@ -28,6 +28,10 @@ import {
  * into a sulk; mixed: a tilt and one squinting eye; plain: a contented double chomp.
  */
 
+// The standing height of the CLOSED chest (feet to lid top, eyes included), fitted at build. The
+// open jaw rises above it (about 2.3 in watch): the mimic's footprint then matches the slime's
+// and a d20's width from the top-down camera, and the layer's inset, hop and shadow (all scaled
+// by height) follow the chest, not the lid.
 const HEIGHT = 1.5;
 // Design units (scaled to HEIGHT at build).
 const W = 1.45; // base width (x)
@@ -58,6 +62,8 @@ const REST = {
   gazeYaw: 0,
   gazePitch: -0.35,
   tiltUp: 0, // extra upward roll of the eyes on the lid, so a shut jaw still shows them from above
+  eyeScale: 1,
+  crook: 0, // the lid shut askew (roll about its hinge axis)
 };
 const PK = poseKit(REST);
 
@@ -194,7 +200,8 @@ export function mimic(color) {
   }
   const eyes = [1, -1].map((side) => {
     const e = createEye(kit, { r: EYE_R, side, detail, lid: body });
-    e.socket.position.set(side * 0.34, LID_H - 0.02, D * 0.9); // on the lid edge: seen from the front and from above
+    // on the lid edge: seen from the front and from above
+    e.socket.position.set(side * 0.34, LID_H - 0.02, D * 0.9);
     e.socket.rotation.order = 'YXZ';
     e.socket.rotation.set(-0.55, side * 0.18, 0);
     lid.add(e.socket);
@@ -228,17 +235,22 @@ export function mimic(color) {
     } else if (reaction === 'fumble') {
       const droop = smooth(span(t, 0.05, 0.5));
       const sigh = bump(t, 0.6, 0.85);
-      o.lid = lerp(LID, 0.1, smooth(span(t, 0.03, 0.22))) + 0.14 * bump(t, 0.8, 0.97); // a sulky peek
+      // The jaw slams shut askew, the chest sags to one side, and two big droopy eyes peek over
+      // the lid's front edge, looking down: a sulk that reads from straight above.
+      o.lid = lerp(LID, 0.12, smooth(span(t, 0.03, 0.22))) + 0.12 * bump(t, 0.8, 0.97); // a sulky peek
+      o.crook = 0.16 * droop;
+      o.roll = -0.12 * droop;
       o.tongue = lerp(1, 0, smooth(span(t, 0, 0.18)));
-      o.squash = 0.2 * droop - 0.05 * sigh;
-      o.lift = -0.05 * droop;
-      o.pitch = 0.16 * droop + 0.03 * sigh;
+      o.squash = 0.18 * droop - 0.05 * sigh;
+      o.lift = -0.04 * droop;
+      o.pitch = 0.04 * droop + 0.03 * sigh;
       o.tuck = -0.6 * droop; // feet splay out as it sinks
-      o.tiltUp = 0.95 * droop; // sad eyes still turned up to the camera
-      o.upper = lerp(0.2, 0.42, droop);
-      o.lower = lerp(0.1, 0.05, droop);
-      o.sad = 0.45 * droop;
-      o.gazePitch = lerp(-0.35, -0.5, droop);
+      o.tiltUp = 1.05 * droop; // the sad eyes still turn up to the camera
+      o.eyeScale = 1 + 0.32 * droop;
+      o.upper = lerp(0.2, 0.56, droop); // heavy half-moon lids over pupils that look down
+      o.lower = lerp(0.1, 0.0, droop);
+      o.sad = 0.5 * droop;
+      o.gazePitch = lerp(-0.35, -0.75, droop);
       o.gazeYaw = 0.15 * Math.sin(t * TAU * 0.8) * droop;
     } else if (reaction === 'mixed') {
       const tilt = outBack(span(t, 0.04, 0.32), 2.2) * (1 - smooth(span(t, 0.82, 1)));
@@ -326,7 +338,7 @@ export function mimic(color) {
     const sy = 1 - o.squash;
     const sxz = 1 / Math.sqrt(Math.max(0.2, sy));
     squash.scale.set(sxz, sy, sxz);
-    lid.rotation.x = -Math.max(-0.02, o.lid);
+    lid.rotation.set(-Math.max(-0.02, o.lid), 0, o.crook);
     const out = Math.min(1.3, Math.max(0, o.tongue));
     tonguePivot.position.z = -0.24 + 0.2 * out;
     tonguePivot.rotation.set(0.09 * out, o.wag, 0);
@@ -344,6 +356,7 @@ export function mimic(color) {
       const side = i === 0 ? 1 : -1;
       // the eyes roll against the jaw, so a wide-open lid still looks up at the camera
       eyes[i].socket.rotation.x = -0.55 - o.tiltUp + 0.85 * Math.max(0, o.lid - LID);
+      eyes[i].socket.scale.setScalar(o.eyeScale);
       eyes[i].set(
         o.gazeYaw,
         o.gazePitch,
@@ -354,8 +367,9 @@ export function mimic(color) {
     }
   }
 
-  // Fit the standing pose to HEIGHT.
+  // Fit the closed chest to HEIGHT.
   PK.reset(p);
+  p.lid = 0;
   apply(p);
   root.updateMatrixWorld(true);
   const h = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y;
