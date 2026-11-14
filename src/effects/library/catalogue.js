@@ -480,13 +480,20 @@ function alongLine(line, f) {
  * The frost patch on the table: a pale, matte disc of value-noise rime with a ragged outline and
  * a few brighter flecks, drawn "over" (premultiplied normal blend) rather than added, so it reads
  * as a white frost on a light map as well as on a dark table. uAlpha is its opacity.
+ * Cost: the quad's corners (r > 1) are discarded at once; a pixel past the ragged outline after
+ * the 3 outline noise calls; one inside takes 4 more (7 value-noise calls, sin-free hashes).
  */
 const FROST_PATCH_FRAGMENT = /* glsl */ `
 uniform vec3 uColor;
 uniform float uAlpha;
 uniform float uSeed;
 varying vec2 vUv;
-float hash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+// A sin-free hash (Hoskins): cheap, and stable at large inputs on mediump GPUs.
+float hash( vec2 p ) {
+	vec3 p3 = fract( vec3( p.xyx ) * 0.1031 );
+	p3 += dot( p3, p3.yzx + 33.33 );
+	return fract( ( p3.x + p3.y ) * p3.z );
+}
 float noise( vec2 p ) {
 	vec2 i = floor( p );
 	vec2 f = fract( p );
@@ -494,28 +501,23 @@ float noise( vec2 p ) {
 	return mix( mix( hash( i ), hash( i + vec2( 1.0, 0.0 ) ), f.x ),
 		mix( hash( i + vec2( 0.0, 1.0 ) ), hash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
 }
-// Four octaves, each turned ~37 degrees, so no lattice shows.
-float fbm( vec2 p ) {
-	const mat2 turn = mat2( 0.8, 0.6, -0.6, 0.8 );
-	float s = 0.0;
-	float w = 0.5;
-	for ( int i = 0; i < 4; i++ ) {
-		s += w * noise( p );
-		p = turn * p * 2.03 + 17.0;
-		w *= 0.5;
-	}
-	return s / 0.9375;
+// Two octaves, the second turned ~37 degrees so no lattice shows.
+float fbm2( vec2 p ) {
+	return ( 2.0 * noise( p ) + noise( mat2( 0.8, 0.6, -0.6, 0.8 ) * p * 2.03 + 17.0 ) ) / 3.0;
 }
 void main() {
+	if ( uAlpha <= 0.0 ) discard;
 	vec2 p = vUv * 2.0 - 1.0;
 	float r = length( p );
+	if ( r >= 1.0 ) discard; // the quad's corners: the outline never reaches past r = 1
 	vec2 dir = p / max( r, 0.0001 );
-	// A ragged outline: fbm around the circle plus a finer fringe.
-	float outline = 0.66 + 0.24 * fbm( dir * 2.2 + uSeed ) + 0.1 * noise( dir * 14.0 + uSeed );
+	// A ragged outline: two lobed octaves around the circle plus a finer fringe.
+	float outline = 0.66 + 0.24 * fbm2( dir * 2.2 + uSeed ) + 0.1 * noise( dir * 14.0 + uSeed );
+	if ( r >= outline ) discard;
 	float inside = 1.0 - smoothstep( outline - 0.12, outline, r );
 	// Frost feathers: fibres that run outward (noise mostly of the angle), over a fine rime grain.
-	float fibre = fbm( dir * 7.0 + vec2( r * 1.6, -r * 1.1 ) + uSeed );
-	float grain = fbm( p * 9.0 - uSeed );
+	float fibre = fbm2( dir * 7.0 + vec2( r * 1.6, -r * 1.1 ) + uSeed );
+	float grain = fbm2( p * 9.0 - uSeed );
 	float n = 0.55 * fibre + 0.45 * grain;
 	float rim = smoothstep( outline - 0.3, outline - 0.06, r ) * inside; // the denser growing edge
 	float fleck = smoothstep( 0.62, 0.78, grain );
@@ -592,6 +594,7 @@ function frostCrystal(cx, cz, reach) {
 const rayTaper = (t) => 1 - 0.9 * t ** 1.4;
 const spikeTaper = (t) => 1 - 0.92 * t;
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
+const GROW_STEP = 0.008; // the smallest growth step worth a ribbon rebuild (under a pixel per step)
 
 export const frost = Object.freeze({
   id: 'frost',
@@ -639,6 +642,8 @@ export const frost = Object.freeze({
     // The edge tint, lifted halfway to the die colour (an edge alone is a dull grey) then paled.
     const discBase = pal.rim ?? (nearWhite ? pal.edge : pal.edge.clone().lerp(pal.mid, 0.6));
     const discColor = discBase.clone().lerp(white, 0.5);
+    // (A plane: its corners, past r = 1, are discarded before any noise. THREE.CircleGeometry would
+    // split into a shared chunk and grow the world-start download.)
     const disc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), frostPatchMaterial(discColor));
     disc.rotation.x = -Math.PI / 2;
     disc.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
@@ -658,9 +663,12 @@ export const frost = Object.freeze({
     };
 
     const cold = glowColor.clone().lerp(white, 0.55);
-    const shardBody = pal.rim ? pal.mid : nearWhite ? pal.edge : pal.mid;
+    // A near-black die's crystals are dark ice tinted toward its rim, not black triangles.
+    const shardBody = pal.rim ? pal.mid.clone().lerp(pal.rim, 0.45) : nearWhite ? pal.edge : pal.mid;
+    const shardEnd = pal.rim ? pal.mid.clone().lerp(pal.rim, 0.25) : pal.edge;
     const mistColor = glowColor.clone().lerp(white, pal.rim ? 0.45 : 0.7);
     let popped = false;
+    let drawn = -1; // the growth the ribbons were last built at
     const pop = (e, now) => {
       popped = true;
       const pool = ctx.particles;
@@ -679,7 +687,7 @@ export const frost = Object.freeze({
           gravity: -4,
           life,
           color: shardBody,
-          colorEnd: pal.edge,
+          colorEnd: shardEnd,
           size: 0.3 * k,
           spin: 2,
           kind: KIND.SHARD,
@@ -744,14 +752,19 @@ export const frost = Object.freeze({
       (e, now) => {
         mist(e, now);
         const g = growAt(e);
-        ray.mesh.userData.grow = g;
-        const rayLines = rays.map((pts) => prefixOf(pts, g));
-        const spikeLines = spikes.map((s) => prefixOf(s.pts, (g - s.at) / (1 - s.at)));
-        ray.setPolylines(rayLines);
-        spike.setPolylines(spikeLines);
-        const all = rayLines.concat(spikeLines);
-        halo.setPolylines(all);
-        shadow.setPolylines(all);
+        // Rebuild (and re-upload) the four ribbons only when the growth has visibly moved: at most
+        // ~1/GROW_STEP times per play whatever the frame rate, and never once the crystal is grown.
+        if (g - drawn >= GROW_STEP || (g === 1 && drawn < 1)) {
+          drawn = g;
+          ray.mesh.userData.grow = g;
+          const rayLines = rays.map((pts) => prefixOf(pts, g));
+          const spikeLines = spikes.map((s) => prefixOf(s.pts, (g - s.at) / (1 - s.at)));
+          ray.setPolylines(rayLines);
+          spike.setPolylines(spikeLines);
+          const all = rayLines.concat(spikeLines);
+          halo.setPolylines(all);
+          shadow.setPolylines(all);
+        }
         if (!popped && g >= 0.9) pop(e, now);
         const a = bright * levelAt(e);
         ray.alpha = Math.min(ALPHA_CAP, 1.15 * a);

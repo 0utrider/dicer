@@ -487,20 +487,41 @@ describe('frost', () => {
     pool.dispose();
   });
 
-  test('frost brightness is capped: at intensity 2 no additive layer alpha exceeds 1.5', () => {
-    for (const color of ['#a8e4ff', '#f4f4f4', '#141418', '#e02020']) {
-      const { scene, pool, h } = play({ intensity: 2, color: new THREE.Color(color) });
-      const layers = scene.children.filter((c) => c.material?.uniforms?.uAlpha);
-      expect(layers.length, color).toBeGreaterThan(1);
-      let max = 0;
-      for (let t = 0; t < 1000; t += 10) {
-        h.update(t);
-        for (const l of layers) max = Math.max(max, l.material.uniforms.uAlpha.value);
-      }
-      expect(max, color).toBeLessThanOrEqual(1.5);
-      expect(max, color).toBeGreaterThan(0.3);
-      h.stop();
-      pool.dispose();
+  /** Per drawn layer (scene order): peak uAlpha, colour, width; plus the additive particle colours. */
+  const layersAt = (intensity, color) => {
+    const { scene, pool, emit, h } = play({ intensity, color: new THREE.Color(color) });
+    const layers = scene.children.filter((c) => c.material?.uniforms?.uAlpha);
+    const peak = layers.map(() => 0);
+    for (let t = 0; t < 1000; t += 10) {
+      h.update(t);
+      layers.forEach((l, i) => (peak[i] = Math.max(peak[i], l.material.uniforms.uAlpha.value)));
+    }
+    const out = {
+      peak,
+      hsl: layers.map((l) => l.material.uniforms.uColor.value.getHSL({})),
+      width: layers.map((l) => l.material.uniforms.uWidthPx?.value ?? 0),
+      glow: emit.mock.calls.map(([s]) => s).filter((s) => s.blend !== 'normal').map((s) => new THREE.Color(s.color).getHex()),
+    };
+    h.stop();
+    pool.dispose();
+    return out;
+  };
+
+  test('frost at intensity 2 keeps the die colour: no layer brighter than at intensity 1, same hues, alpha <= 1.5', () => {
+    for (const color of ['#e02020', '#2050ff', '#f4f4f4', '#141418']) {
+      const one = layersAt(1, color);
+      const two = layersAt(2, color);
+      expect(two.peak.length, color).toBe(one.peak.length);
+      expect(Math.max(...one.peak), color).toBeGreaterThan(0.3);
+      two.peak.forEach((p, i) => {
+        // Brighter than intensity 1 would push the additive layers toward white: it may only grow.
+        expect(p, `${color} layer ${i}`).toBeLessThanOrEqual(one.peak[i] * 1.001);
+        expect(p, `${color} layer ${i}`).toBeLessThanOrEqual(1.5);
+        expect(two.hsl[i].h, `${color} layer ${i} hue`).toBeCloseTo(one.hsl[i].h, 5);
+        expect(two.hsl[i].s, `${color} layer ${i} saturation`).toBeCloseTo(one.hsl[i].s, 5);
+        expect(two.width[i], `${color} layer ${i} width`).toBeGreaterThanOrEqual(one.width[i]);
+      });
+      expect(new Set(two.glow), color).toEqual(new Set(one.glow)); // no whiter additive particles
     }
   });
 });
