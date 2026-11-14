@@ -767,7 +767,7 @@ describe('insides', () => {
 
       test('eye, runes, dragon: a life touch reading uInteriorTime only with insideMotion', () => {
         const touches = {
-          eye: ['smoothstep( 0.0, 0.5, uInteriorTime )', 'q -= '],
+          eye: ['smoothstep( 0.0, 0.5, uInteriorTime )', 'q += 0.15 * smoothstep( 0.0, 0.5, uInteriorTime ) * vec2( dot( rd, t1 ), dot( rd, t2 ) );'],
           runes: ['dcRuPulse = 0.85 + 0.15 * sin( uInteriorTime * 2.5133 )', 'dcRuPulse;'],
           dragon: ['0.9 + 0.1 * sin( uInteriorTime * 2.0944 )', '* glow * '],
         };

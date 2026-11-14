@@ -147,15 +147,15 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 `;
 
 /**
- * With insideMotion (`live`): the pupil's centre moves in the iris plane towards the view ray's
- * projection, up to 0.15 iris radii, eased in over the first 0.5 s of the roll (uInteriorTime,
+ * With insideMotion (`live`): the pupil's centre moves in the iris plane towards the camera (the view ray reversed: +rd's
+ * projection is subtracted), up to 0.15 iris radii, eased in over the first 0.5 s of the roll (uInteriorTime,
  * MOTION_PARS in the pars). The pupil, ruff, fibres and collarette follow it; the limbal ring
  * stays on the iris (rho0). No extra noise lookup.
  */
 const PUPIL_AT = 'vec2 q = vec2( dot( xi, t1 ), dot( xi, t2 ) ) / DC_EY_IRIS;';
 const PUPIL_MOVE = `
 	float rho0 = min( length( q ), 1.0 );
-	q -= 0.15 * smoothstep( 0.0, 0.5, uInteriorTime ) * vec2( dot( rd, t1 ), dot( rd, t2 ) );`;
+	q += 0.15 * smoothstep( 0.0, 0.5, uInteriorTime ) * vec2( dot( rd, t1 ), dot( rd, t2 ) );`;
 const LIMBAL_AT = 'smoothstep( 0.78, 1.0, rho )';
 
 /**
