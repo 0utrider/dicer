@@ -489,7 +489,7 @@ export function openThrowOverlay({
         // Live hand throws: the values as physics read them, while the dice still fly here; the
         // overlay's DOM stays until they land (the finally below waits for keepUntil).
         keepUntil = thrown.landed;
-        const values = await thrown.read;
+        const values = await (thrown.read ?? thrown.values);
         if (values && !recording) await Promise.race([recorded, thrown.finished]);
         finish({ values: values ?? null, handle: thrown.handle, recording, landed: thrown.landed });
         return;

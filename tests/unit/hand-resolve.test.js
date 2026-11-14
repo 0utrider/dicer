@@ -978,6 +978,29 @@ describe('follow-up rolls', () => {
       expect(done).toBe(true);
     });
 
+    test('an explosion is thrown only after the hand throw has landed (no early extra die)', async () => {
+      let land;
+      const landed = new Promise((r) => (land = r));
+      overlay.open = vi.fn(async ({ specs }) => ({
+        values: specs.map(() => 6),
+        handle: { h: 1 },
+        recording: { rec: 1 },
+        landed,
+      }));
+      const d6 = new Die({ number: 1, faces: 6, modifiers: ['x'] });
+      const r = new Resolver(rollOf(d6), deps);
+      boxValues = [2];
+      let done = false;
+      const p = evaluate(r).then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(deps.diceBox.roll).not.toHaveBeenCalled(); // the first die still flies
+      expect(done).toBe(false);
+      land();
+      await p;
+      expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+      expect(d6.results.map((x) => x.result)).toEqual([6, 2]);
+    });
+
     test('a live follow-up resolves on its read; the next waits for its landing', async () => {
       overlay.values = [12];
       await rollD20(); // lands at once (no landed in the fake overlay result)

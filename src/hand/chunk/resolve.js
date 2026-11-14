@@ -351,6 +351,11 @@ const ghostFor = (roll, user) =>
  * null. It is recorded under the roll's hand throw (handThrows entry `extras`), for Task 8.
  */
 async function throwFree(resolver, specs) {
+  // Live hand throws resolve before their dice land: an explosion or reroll is thrown only once
+  // the hand throw's dice have landed here, as before (no early extra die gives the result away,
+  // and it follows the throw as the replays elsewhere play it).
+  const main = handThrows.get(resolver.roll.options?.dicerHand?.id);
+  if (main?.landed) await within(Promise.resolve(main.landed), HAND_GRACE_MS);
   const entry = await castFree(resolver, specs);
   if (entry.values) handThrows.get(resolver.roll.options?.dicerHand?.id)?.extras.push(entry);
   return entry.values;
@@ -460,7 +465,7 @@ async function throwByHand(resolver, terms) {
       if (!entry?.values || resolver._closed) return fallback(entry ? 'cancel' : 'timeout');
       hand.follow = true;
       const n = push(specs, owners, entry.values);
-      storeThrow(hand.id, { recording: entry.recording, handle: entry.handle, specs, extras: [] });
+      storeThrow(hand.id, { recording: entry.recording, handle: entry.handle, specs, extras: [], landed: entry.landed });
       return notePartial(resolver, dropped + owners.filter(Boolean).length - n);
     }
     if (d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
@@ -514,7 +519,7 @@ async function throwByHand(resolver, terms) {
     openFollowWindow(out.landed); // until FOLLOW_MS after the landing
     const n = push(specs, owners, out.values);
     // Stored once pushed: a failure before this marks the roll's dicerHand a fallback (failed()).
-    storeThrow(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });
+    storeThrow(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [], landed: out.landed });
     notePartial(resolver, dropped + owners.filter(Boolean).length - n);
   });
 }

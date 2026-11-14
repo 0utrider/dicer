@@ -2047,6 +2047,20 @@ describe('Task 8: hand rolls in the gate', () => {
     expect(el.classList.contains('dsn-hide')).toBe(false);
   });
 
+  test('own live hand roll deleted mid-flight: no decorate at its landing', async () => {
+    user = { id: 'thrower', isGM: false };
+    gateH = make();
+    const landing = deferred();
+    handChunk.handThrows.set('h1', { handle: { landed: landing.promise }, recording: null, specs: [], extras: [] });
+    const msg = hmsg();
+    gateH.onCreate(msg);
+    await tick(500);
+    gateH.onDelete(msg);
+    landing.resolve();
+    await tick();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+  });
+
   test('own hand roll: no throw, decorateLanded called, RollStart and RollComplete once, revealed at once', async () => {
     user = { id: 'thrower', isGM: false };
     gateH = make();

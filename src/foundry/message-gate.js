@@ -515,7 +515,10 @@ export function createMessageGate({
           // A live hand throw resolves before its dice land here: the card waits for the landing.
           if (owned[k]) {
             const h = owned[k];
-            return Promise.resolve(h.landed).then(() => void diceBox.decorateLanded?.(h, specs));
+            return Promise.resolve(h.landed).then(() => {
+              // Deleted or revealed (watchdog) meanwhile: no landed effects for a gone card.
+              if (animating.get(id) === entry) diceBox.decorateLanded?.(h, specs);
+            });
           }
           return hand?.isHand(roll) &&
             groups[i].views[j] === 'real' &&

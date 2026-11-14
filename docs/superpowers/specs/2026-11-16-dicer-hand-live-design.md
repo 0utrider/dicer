@@ -51,8 +51,15 @@ later.
 - **`castFree(resolver, specs, full, early)`:** the same `read` and `landed` behaviour.
 - **resolve.js `queued(ms, fn)`:**
   - `fn` receives `hold(promise)`;
-  - the next queued throw starts only after the held promise settles, bounded by
-    `HAND_GRACE_MS + 2 × ms`, so the next prompt never opens while dice still fly.
+  - the next queued throw starts only after the held promise settles, bounded by `HAND_GRACE_MS`
+    (20 s), so the next prompt never opens while dice still fly.
+- **Extras (explosions, rerolls, dynamic terms; P6-D3):** `throwFree` first waits for the stored
+  hand throw's `landed`, bounded by `HAND_GRACE_MS`. An extra die never appears while the first
+  still flies, which would give the result away, and the order matches the replays. An exploding
+  roll's message therefore still waits for its extras to land, so it doesn't gain the live head
+  start. This was accepted (review finding 1).
+- **Owned path guard:** the decoration at landing is skipped if the message was deleted or revealed
+  in the meantime.
 - **Follow-up window:**
   - `lastLanded` is set when the values are read;
   - a new `followUntil` is Infinity until landing, then landing + `FOLLOW_MS`;
