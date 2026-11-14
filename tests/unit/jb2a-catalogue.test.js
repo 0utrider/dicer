@@ -25,9 +25,9 @@ describe('JB2A catalogue', () => {
 
     it('picks the variant nearest in hue', () => {
         const layer = JB2A_EFFECTS.shockwave[0];
-        expect(pickFile(layer, hex('#4a8cff'))).toBe('Impact_01_Regular_Blue_400x400.webm');
-        expect(pickFile(layer, hex('#ff9030'))).toBe('Impact_01_Regular_Orange_400x400.webm');
-        expect(pickFile(layer, null)).toBe('Impact_01_Regular_Yellow_400x400.webm');
+        expect(pickFile(layer, hex('#4a8cff'))).toBe('Impact_04_Regular_Blue_400x400.webm');
+        expect(pickFile(layer, hex('#ff9030'))).toBe('Impact_04_Regular_Orange_400x400.webm');
+        expect(pickFile(layer, null)).toBe('Impact_04_Regular_Yellow_400x400.webm');
     });
 
     it('ignores colour for layers without variants', () => {

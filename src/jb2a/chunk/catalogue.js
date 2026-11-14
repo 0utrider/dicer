@@ -38,7 +38,7 @@ export const JB2A_EFFECTS = Object.freeze({
         layer('UI', 'CriticalMiss_02_Red_200x200.webm', 'over', 5, -1.9)
     ]),
     frost: Object.freeze([layer('Impact', 'FrostImpact_01_Regular_Blue_600x600.webm', 'table', 6)]),
-    lightning: Object.freeze([layer('Lightning', 'LightningStrike01_01_Regular_Blue_800x800.webm', 'over', 16, -1.6)]),
+    lightning: Object.freeze([layer('Lightning', 'LightningStrike01_01_Regular_Blue_800x800.webm', 'over', 16, -0.2)]),
     smoke: Object.freeze([layer('Smoke', 'SmokePuff01_01_Dark_Black_400x400.webm', 'over', 5)]),
     sparkles: Object.freeze([
         STARS,
@@ -51,13 +51,13 @@ export const JB2A_EFFECTS = Object.freeze({
             'Orange'
         )
     ]),
-    // The four below are candidates; Task 4 tunes their choice and sizes.
+    // The four below were tuned by eye on a d20 (tests/visual/jb2a.mjs).
     shockwave: Object.freeze([
         variantLayer(
             'Impact',
-            'Impact_01_Regular_<v>_400x400.webm',
+            'Impact_04_Regular_<v>_400x400.webm',
             'table',
-            6,
+            8,
             { Blue: '#4a8cff', Green: '#4ae07a', Orange: '#ff8a2a', PinkPurple: '#d05aff', Yellow: '#ffe27a' },
             'Yellow'
         )
@@ -67,7 +67,7 @@ export const JB2A_EFFECTS = Object.freeze({
             'Explosion',
             'Explosion_01_<v>_400x400.webm',
             'over',
-            5,
+            6,
             { Blue: '#4a8cff', Green: '#4ae07a', Orange: '#ff8a2a', Purple: '#a05aff', Yellow: '#ffe27a' },
             'Yellow'
         )
