@@ -500,7 +500,6 @@ export const frost = Object.freeze({
       maxPoints: lines.reduce((n, l) => n + l.pts.length, 0),
       widthPx: 2.5,
       color: ctx.color,
-      glow: 0.8,
     });
     ribbon.alpha = 0;
     ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
@@ -597,7 +596,7 @@ export const lightning = Object.freeze({
   start(ctx) {
     const arcs = ctx.intensity >= 1 ? 3 : 2;
     const SEGS = 9;
-    const ribbon = createRibbon({ maxPoints: arcs * (SEGS + 1 + 5), widthPx: 3, color: ctx.color, glow: 1.0 });
+    const ribbon = createRibbon({ maxPoints: arcs * (SEGS + 1 + 5), widthPx: 3, color: ctx.color });
     ribbon.alpha = 0;
     ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
     const reach = 2.4 * Math.max(0.4, Math.sqrt(ctx.intensity));
@@ -817,7 +816,6 @@ const crackPart = Object.freeze({
       maxPoints: lines.reduce((n, l) => n + l.length, 0),
       widthPx: 3,
       color: ctx.color,
-      glow: 0.2,
     });
     ribbon.alpha = 0;
     ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it

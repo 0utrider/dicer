@@ -31,10 +31,12 @@ test('setPolylines writes 2 vertices per point and degenerate joins between line
   r.dispose();
 });
 
-test('glow fragment uses defined GLSL (ordered smoothstep edges, clamped pow base)', () => {
+test('fragment uses defined GLSL (ordered smoothstep edges, exponential glow, whitened core)', () => {
   const r = createRibbon({ maxPoints: 4, widthPx: 6, color: new THREE.Color('#fff') });
   const f = r.mesh.material.fragmentShader;
-  expect(f).toContain('1.0 - smoothstep( 0.0, 0.35, w )');
+  expect(f).toContain('1.0 - smoothstep( uCore * 0.6, uCore, d )');
+  expect(f).toContain('exp( - d / uGlow )');
+  expect(f).toContain('mix( uColor, vec3( 1.0 ), 0.7 )');
   expect(f).not.toContain('pow(');
   r.dispose();
 });
@@ -81,4 +83,45 @@ test('the vertex stage uses few attributes (ANGLE limit)', () => {
   const r = createRibbon({ maxPoints: 4, widthPx: 6, color: new THREE.Color('#fff') });
   expect(Object.keys(r.mesh.geometry.attributes).length).toBeLessThanOrEqual(4);
   r.dispose();
+});
+
+test('taper is written into |aSide| along the line', () => {
+  const r = createRibbon({ maxPoints: 8, widthPx: 6, color: new THREE.Color('#fff'), taper: (t) => 1 - t });
+  r.setPolylines([line(3)]);
+  const side = Array.from(r.mesh.geometry.attributes.aSide.array.slice(0, 6));
+  expect(side.map(Math.abs)).toEqual([1, 1, 0.5, 0.5, 0, 0]);
+  r.dispose();
+});
+
+test('taper t is the cumulative length fraction, not the index fraction', () => {
+  const r = createRibbon({ maxPoints: 8, widthPx: 6, color: new THREE.Color('#fff'), taper: (t) => t });
+  r.setPolylines([[{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 4, y: 0, z: 0 }]]);
+  const side = Array.from(r.mesh.geometry.attributes.aSide.array.slice(0, 6)).map(Math.abs);
+  expect(side).toEqual([0, 0, 0.25, 0.25, 1, 1]);
+  r.dispose();
+});
+
+test('the across-stroke side comes from gl_VertexID, not from aSide', () => {
+  const r = createRibbon({ maxPoints: 4, widthPx: 6, color: new THREE.Color('#fff') });
+  expect(r.mesh.material.vertexShader).toContain('gl_VertexID & 1');
+  r.dispose();
+});
+
+test('ribbon geometry still has exactly four attributes', () => {
+  const r = createRibbon({ maxPoints: 4, widthPx: 6, color: new THREE.Color('#fff'), taper: () => 0.5 });
+  r.setPolylines([line(3)]);
+  expect(Object.keys(r.mesh.geometry.attributes).sort()).toEqual(['aNext', 'aPrev', 'aSide', 'position']);
+  r.dispose();
+});
+
+test('core and glow are uniforms', () => {
+  const r = createRibbon({ maxPoints: 4, widthPx: 6, color: new THREE.Color('#fff'), core: 0.4, glow: 0.7 });
+  const u = r.mesh.material.uniforms;
+  expect(u.uCore.value).toBe(0.4);
+  expect(u.uGlow.value).toBe(0.7);
+  const d = createRibbon({ maxPoints: 4, widthPx: 6, color: new THREE.Color('#fff') });
+  expect(d.mesh.material.uniforms.uCore.value).toBe(0.25);
+  expect(d.mesh.material.uniforms.uGlow.value).toBe(0.5);
+  r.dispose();
+  d.dispose();
 });

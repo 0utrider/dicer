@@ -7,7 +7,10 @@ import * as THREE from 'three';
  * scales with the real buffer height (uHeightPx / 1080).
  *
  * Vertex attributes are kept to four (position, aPrev, aNext, aSide): ANGLE's D3D11 backend
- * fails to link a program with too many. Every point is emitted twice (side -1 and +1); the
+ * fails to link a program with too many. aSide = +-taper(t): its magnitude is the width factor
+ * along the line (t = cumulative length fraction, 0 at the first point). Its sign is not read
+ * (a zero taper would lose it); the across-stroke side comes from gl_VertexID parity (even
+ * vertex = -1, odd = +1), so the taper needs no fifth attribute. Every point is emitted twice; the
  * vertex shader projects prev/this/next, takes the screen-space tangent and extrudes along its
  * perpendicular. Lines are joined into one strip by repeating the last vertex of a line and the
  * first of the next (degenerate triangles), then the strip is expanded to a triangle list
@@ -34,7 +37,7 @@ attribute float aSide;
 uniform vec2 uViewport;
 uniform float uHeightPx;
 uniform float uWidthPx;
-varying float vW;
+varying float vAcross;
 vec4 project( vec3 p ) {
 	return projectionMatrix * modelViewMatrix * vec4( p, 1.0 );
 }
@@ -48,32 +51,39 @@ void main() {
 	float len = length( t );
 	t = len > 0.0001 ? t / len : vec2( 1.0, 0.0 );
 	vec2 n = vec2( - t.y, t.x );
-	float offPx = aSide * 0.5 * uWidthPx * uHeightPx / ${REFERENCE_HEIGHT.toFixed(1)};
+	float across = ( gl_VertexID & 1 ) == 0 ? -1.0 : 1.0;
+	float offPx = across * abs( aSide ) * 0.5 * uWidthPx * uHeightPx / ${REFERENCE_HEIGHT.toFixed(1)};
 	cur.xy += n * offPx / ( 0.5 * uViewport ) * cur.w;
 	gl_Position = cur;
-	vW = aSide;
+	vAcross = across;
 }
 `;
 
 const FRAGMENT = /* glsl */ `
 uniform vec3 uColor;
 uniform float uAlpha;
+uniform float uCore;
 uniform float uGlow;
-varying float vW;
+varying float vAcross;
 void main() {
-	float w = abs( vW );
-	float core = 1.0 - smoothstep( 0.0, 0.35, w );
-	float k = max( 0.0, 1.0 - w );
-	float halo = k * k * uGlow;
-	vec3 c = ( uColor * ( core + halo ) + vec3( core * 0.6 ) ) * uAlpha;
+	float d = abs( vAcross );
+	float core = 1.0 - smoothstep( uCore * 0.6, uCore, d );
+	float edge = 1.0 - smoothstep( 0.75, 1.0, d );
+	float halo = exp( - d / uGlow ) * 0.6 * edge;
+	vec3 hot = mix( uColor, vec3( 1.0 ), 0.7 );
+	vec3 c = ( hot * core + uColor * halo ) * uAlpha;
 	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 }
 `;
 
 /**
- * @param {{ maxPoints: number, widthPx: number, color: THREE.Color, glow?: number }} spec
+ * @param {{ maxPoints: number, widthPx: number, color: THREE.Color,
+ *   taper?: (t: number) => number, core?: number, glow?: number }} spec
+ *   taper: width factor along each line, t 0..1 by cumulative length (default constant 1);
+ *   core: whitened core width as a fraction of the half-width; glow: exponential falloff length
+ *   as a fraction of the half-width.
  */
-export function createRibbon({ maxPoints, widthPx, color, glow = 0.6 }) {
+export function createRibbon({ maxPoints, widthPx, color, taper = () => 1, core = 0.25, glow = 0.5 }) {
   const cap = Math.max(2, Math.floor(maxPoints));
   const geometry = new THREE.BufferGeometry();
   const pos = new Float32Array(cap * 2 * 3);
@@ -99,6 +109,7 @@ export function createRibbon({ maxPoints, widthPx, color, glow = 0.6 }) {
     uniforms: {
       uColor: { value: color.clone() },
       uAlpha: { value: 1 },
+      uCore: { value: core },
       uGlow: { value: glow },
       uWidthPx: { value: widthPx },
       uHeightPx: { value: REFERENCE_HEIGHT },
@@ -134,8 +145,14 @@ export function createRibbon({ maxPoints, widthPx, color, glow = 0.6 }) {
       if (n < 2) continue;
       left -= n;
       const base = v;
+      const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+      let total = 0;
+      for (let i = 1; i < n; i++) total += dist(line[i], line[i - 1]);
+      let run = 0;
       for (let i = 0; i < n; i++) {
         const p = line[i];
+        if (i > 0) run += dist(p, line[i - 1]);
+        const w = Math.abs(taper(total > 0 ? run / total : 0));
         const a = line[Math.max(0, i - 1)];
         const b = line[Math.min(n - 1, i + 1)];
         for (let k = 0; k < 2; k++) {
@@ -149,7 +166,7 @@ export function createRibbon({ maxPoints, widthPx, color, glow = 0.6 }) {
           next[o] = b.x;
           next[o + 1] = b.y;
           next[o + 2] = b.z;
-          side[v] = k === 0 ? -1 : 1;
+          side[v] = k === 0 ? -w : w;
           v++;
         }
       }
