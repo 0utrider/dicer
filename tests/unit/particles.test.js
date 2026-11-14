@@ -2,6 +2,13 @@ import * as THREE from 'three';
 import { createParticlePool, KIND } from '../../src/effects/library/particles.js';
 import { SHAPE, SHAPE_GLSL } from '../../src/effects/library/shapes.js';
 import { TIERS } from '../../src/render/quality.js';
+import { EFFECTS } from '../../src/effects/library/index.js';
+import * as textures from '../../src/effects/library/textures.js';
+
+vi.mock('../../src/effects/library/textures.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, getTexture: vi.fn(real.getTexture), disposeTextures: vi.fn(real.disposeTextures) };
+});
 
 const spec = (o = {}) => ({
   count: 1,
@@ -230,14 +237,98 @@ describe('v2 renderer: instanced quads with procedural shapes', () => {
     expect(pool.layers[1].material.blending).toBe(THREE.NormalBlending);
   });
 
-  test('a context restore leaves the pool usable; no texture is used', () => {
+  test('a context restore leaves the pool usable; its only texture keeps its CPU data', () => {
     const pool = createParticlePool(new THREE.Scene(), 16);
     pool.emit(spec({ count: 2, now: 0 }));
     for (const layer of pool.layers) {
       for (const attr of Object.values(layer.geometry.attributes)) attr.needsUpdate = true;
-      for (const u of Object.values(layer.material.uniforms)) expect(u.value?.isTexture).not.toBe(true);
+      for (const u of Object.values(layer.material.uniforms))
+        if (u.value?.isTexture) expect(u.value.image.data?.length, 'texture CPU data').toBeGreaterThan(0);
     }
     pool.emit(spec({ count: 2, now: 10 }));
     expect(pool.update(20)).toBe(true);
+  });
+});
+
+describe('textured soft sprites with halos', () => {
+  test('additive particles get a default halo of 0.6 and normal ones 0', () => {
+    const pool = createParticlePool(new THREE.Scene(), 16);
+    pool.emit(spec({ count: 2 }));
+    pool.emit(spec({ count: 2, blend: 'normal' }));
+    pool.emit(spec({ count: 1, halo: 0.25 }));
+    pool.emit(spec({ count: 1, halo: 9 }));
+    const add = pool.layers[0].attrs.aHalo;
+    const nor = pool.layers[1].attrs.aHalo;
+    expect(add.getX(0)).toBeCloseTo(0.6);
+    expect(add.getX(1)).toBeCloseTo(0.6);
+    expect(nor.getX(0)).toBe(0);
+    expect(nor.getX(1)).toBe(0);
+    expect(add.getX(2)).toBeCloseTo(0.25);
+    expect(add.getX(3)).toBe(1); // clamped to 0..1
+    expect(add.data.updateRanges.length).toBeGreaterThan(0);
+    pool.dispose();
+  });
+
+  test('the pool samples one atlas texture per layer', () => {
+    const pool = createParticlePool(new THREE.Scene(), 16);
+    for (const layer of pool.layers) {
+      const u = layer.material.uniforms.uAtlas;
+      expect(u?.value).toBeInstanceOf(THREE.Texture);
+      expect(u.value).toBe(pool.layers[0].material.uniforms.uAtlas.value); // one atlas shared
+      // 5 masks side by side at height 128; the CPU copy is kept for a context restore.
+      expect(u.value.image.height).toBe(128);
+      expect(u.value.image.width).toBe(64 + 128 + 64 + 64 + 64);
+      expect(u.value.image.data).toBeInstanceOf(Uint8Array);
+    }
+    pool.dispose();
+  });
+
+  test('10 sparkles share one atlas: getTexture is called once per kind', () => {
+    textures.getTexture.mockClear();
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 2048);
+    const mod = EFFECTS.sparkles;
+    const die = new THREE.Group();
+    die.position.set(0, 0.5, 0);
+    for (let i = 0; i < 10; i++) {
+      const handle = mod.start({
+        scene,
+        camera: new THREE.PerspectiveCamera(),
+        die: { outer: die, inner: die, uniforms: {} },
+        position: die.position.clone(),
+        color: new THREE.Color(mod.defaults.color),
+        intensity: 1,
+        duration: mod.defaults.duration,
+        options: {},
+        particles: pool,
+        isolate: () => ({}),
+        shake: () => {},
+        tier: TIERS.ultra,
+      });
+      handle?.update?.(100 * i);
+    }
+    const kinds = textures.getTexture.mock.calls.map((c) => c[0]);
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(kinds.length).toBeLessThanOrEqual(5);
+    expect(new Set(kinds).size).toBe(kinds.length); // once per kind
+    pool.dispose();
+  });
+
+  test('dispose calls disposeTextures', () => {
+    const pool = createParticlePool(new THREE.Scene(), 16);
+    textures.disposeTextures.mockClear();
+    pool.dispose();
+    expect(textures.disposeTextures).toHaveBeenCalledTimes(1);
+  });
+
+  test('the halo and the atlas stay within one extra vertex attribute and one draw per layer', () => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 16);
+    expect(scene.children).toHaveLength(2);
+    const vs = pool.layers[0].material.vertexShader;
+    expect((vs.match(/^attribute /gm) ?? []).length).toBeLessThanOrEqual(8);
+    expect(vs).toContain('aHalo');
+    expect(pool.layers[0].material.fragmentShader).toContain('uAtlas');
+    pool.dispose();
   });
 });

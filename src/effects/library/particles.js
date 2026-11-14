@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { SHAPE, SHAPE_GLSL } from './shapes.js';
+import { SHAPE, SHAPE_GLSL, buildAtlas } from './shapes.js';
+import { disposeTextures } from './textures.js';
 
 /**
  * The shared GPU particle pool. Two instanced meshes (additive and normal blending), one draw
@@ -10,8 +11,10 @@ import { SHAPE, SHAPE_GLSL } from './shapes.js';
  *   position = origin + v * (1 - e^(-k t)) / k + 1/2 g t^2   (k = drag of the particle)
  *
  * Each quad faces the camera (it is built in screen space around the projected centre), takes a
- * procedural shape (shapes.js, no textures), lerps colour and size from birth to death, spins,
- * and a STREAK is stretched along its on-screen motion.
+ * shape (shapes.js: a soft sprite from the one shared atlas texture, or procedural), lerps colour
+ * and size from birth to death, spins, and a STREAK is stretched along its on-screen motion.
+ * A particle's halo (0..1; default 0.6 additive, 0 normal) enlarges its quad by 1 + 1.5 x halo,
+ * draws the shape in the inner part and adds a wide soft glow around it, so light reads as light.
  *
  * Capacity (additive layer) is the constructor argument, normally round(2048 x particleScale);
  * the normal-blend layer is a quarter of it. A full layer overwrites its oldest particles.
@@ -53,9 +56,10 @@ const ADDITIVE = {
 };
 
 /**
- * Per-instance data, packed four floats per GPU attribute (iA..iF + aCorner = 7 vertex
- * attributes: one per field would be 15, and ANGLE's D3D11 backend fails to link past ~15).
- * Each packed buffer also carries named views (aOrigin, aBirth, ...) for the CPU side.
+ * Per-instance data, packed four floats per GPU attribute (iA..iG + aCorner = 8 vertex
+ * attributes: one per field would be 16, and ANGLE's D3D11 backend fails to link past ~15).
+ * iG holds only the halo: iA..iF are full. Each packed buffer also carries named views
+ * (aOrigin, aBirth, ...) for the CPU side.
  */
 const PACKED = [
   ['iA', [['aOrigin', 3], ['aBirth', 1]]],
@@ -64,7 +68,11 @@ const PACKED = [
   ['iD', [['aColorEnd', 3], ['aSizeEnd', 1]]],
   ['iE', [['aKind', 1], ['aGravity', 1], ['aShape', 1], ['aStretch', 1]]],
   ['iF', [['aSpin', 1], ['aDrag', 1], ['aSeed', 1], ['aAlpha', 1]]],
+  ['iG', [['aHalo', 1]]],
 ];
+/** The halo's quad growth and glow strength (alpha = shape + halo x glow(r) x HALO_GLOW). */
+const HALO_GROW = 1.5;
+const HALO_GLOW = 0.35;
 
 const VERTEX = /* glsl */ `
 attribute vec2 aCorner;
@@ -74,6 +82,8 @@ attribute vec4 iC; // color.rgb, size
 attribute vec4 iD; // colorEnd.rgb, sizeEnd
 attribute vec4 iE; // kind, gravity, shape, stretch
 attribute vec4 iF; // spin, drag, seed, alpha
+attribute float iG; // halo
+#define aHalo iG
 #define aOrigin iA.xyz
 #define aBirth iA.w
 #define aVelocity iB.xyz
@@ -93,10 +103,8 @@ attribute vec4 iF; // spin, drag, seed, alpha
 uniform float uTime;
 uniform vec2 uViewport;
 varying vec3 vColor;
-varying float vAlpha;
 varying vec2 vQ;
-varying float vShape;
-varying float vSeed;
+varying vec4 vInfo; // shape, seed, alpha, halo
 vec3 travel( float t, int kind ) {
 	float d = max( aDrag, 0.0001 );
 	vec3 disp = aVelocity * ( ( 1.0 - exp( - d * t ) ) / d );
@@ -138,6 +146,7 @@ void main() {
 		float a = aSpin * t + seed * 6.2831853;
 		axis = vec2( cos( a ), sin( a ) );
 	}
+	halfPx *= 1.0 + ${HALO_GROW.toFixed(2)} * aHalo;
 	vec2 offPx = axis * ( aCorner.x * halfPx.x ) + vec2( - axis.y, axis.x ) * ( aCorner.y * halfPx.y );
 	clip.xy += offPx / ( 0.5 * uViewport ) * clip.w;
 	gl_Position = clip;
@@ -146,32 +155,31 @@ void main() {
 	else if ( kind == 2 ) alpha *= 0.55;
 	else if ( kind == 3 ) alpha = 1.0 - smoothstep( 0.7, 1.0, k );
 	else if ( kind == 5 ) alpha *= 0.5 + 0.5 * sin( t * 30.0 + aBirth * 11.0 );
-	vAlpha = alpha * aAlpha;
 	vColor = mix( aColor, aColorEnd, k );
 	vQ = aCorner;
-	vShape = aShape;
-	vSeed = seed;
+	vInfo = vec4( aShape, seed, alpha * aAlpha, aHalo );
 }
 `;
 const FRAGMENT = /* glsl */ `
 varying vec3 vColor;
-varying float vAlpha;
 varying vec2 vQ;
-varying float vShape;
-varying float vSeed;
+varying vec4 vInfo; // shape, seed, alpha, halo
 ${SHAPE_GLSL}
 void main() {
-	float a = shapeAlpha( int( vShape + 0.5 ), vQ, vSeed ) * vAlpha;
+	float halo = vInfo.w;
+	// The shape fills the inner 1 / (1 + 1.5 halo) of the quad; the glow spans all of it.
+	float a = shapeAlpha( int( vInfo.x + 0.5 ), vQ * ( 1.0 + ${HALO_GROW.toFixed(2)} * halo ), vInfo.y );
+	a = ( a + halo * shapeGlow( vQ ) * ${HALO_GLOW.toFixed(2)} ) * vInfo.z;
 #ifdef ADDITIVE
 	vec3 c = vColor * a;
 	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 #else
-	gl_FragColor = vec4( vColor, a );
+	gl_FragColor = vec4( vColor, min( a, 1.0 ) );
 #endif
 }
 `;
 
-function makeLayer(scene, capacity, additive) {
+function makeLayer(scene, capacity, additive, atlas) {
   const geometry = new THREE.InstancedBufferGeometry();
   geometry.setIndex([0, 1, 2, 0, 2, 3]);
   geometry.setAttribute('aCorner', new THREE.Float32BufferAttribute([-1, -1, 1, -1, 1, 1, -1, 1], 2));
@@ -181,10 +189,11 @@ function makeLayer(scene, capacity, additive) {
   const attrs = {};
   const buffers = [];
   for (const [packed, fields] of PACKED) {
-    const buffer = new THREE.InstancedInterleavedBuffer(new Float32Array(capacity * 4), 4, 1);
+    const stride = fields.reduce((s, [, size]) => s + size, 0);
+    const buffer = new THREE.InstancedInterleavedBuffer(new Float32Array(capacity * stride), stride, 1);
     buffer.setUsage(THREE.DynamicDrawUsage);
     buffers.push(buffer);
-    geometry.setAttribute(packed, new THREE.InterleavedBufferAttribute(buffer, 4, 0));
+    geometry.setAttribute(packed, new THREE.InterleavedBufferAttribute(buffer, stride, 0));
     let offset = 0;
     for (const [name, size] of fields) {
       // Views share the packed buffer (one GL buffer); unused by the shader, so never bound.
@@ -198,6 +207,8 @@ function makeLayer(scene, capacity, additive) {
     uniforms: {
       uTime: { value: 0 },
       uViewport: { value: new THREE.Vector2(800, 600) },
+      uAtlas: { value: atlas.texture },
+      uTile: { value: atlas.tiles },
     },
     defines: additive ? { ADDITIVE: '' } : {},
     vertexShader: VERTEX,
@@ -234,7 +245,11 @@ function setColor(target, value, fallback) {
  */
 export function createParticlePool(scene, capacity) {
   const cap = Math.max(1, Math.round(capacity));
-  const layers = [makeLayer(scene, cap, true), makeLayer(scene, Math.max(1, Math.ceil(cap / 4)), false)];
+  const atlas = buildAtlas(); // one texture shared by both layers
+  const layers = [
+    makeLayer(scene, cap, true, atlas),
+    makeLayer(scene, Math.max(1, Math.ceil(cap / 4)), false, atlas),
+  ];
   let epoch = null; // ms; aBirth/uTime are seconds since it, so float32 stays precise
   let deathMs = -Infinity; // the latest death time over every live particle
   let disposed = false;
@@ -252,7 +267,8 @@ export function createParticlePool(scene, capacity) {
    * Emits `spec.count` particles. v1 fields: count, origin, dir, speed, spread, life, size,
    * kind, gravity, color, blend ('normal' for the second layer), now. v2 fields (each defaults
    * from the kind, then the shape): shape, colorEnd, sizeEnd, stretch, spin (rad/s, random sign),
-   * drag, alpha (0..1, default 1: scales the final alpha of both layers).
+   * drag, alpha (0..1, default 1: scales the final alpha of both layers), halo (0..1, default
+   * 0.6 additive and 0 normal: the strength of the soft glow around each particle).
    */
   function emit(spec = {}) {
     if (disposed) return;
@@ -276,6 +292,7 @@ export function createParticlePool(scene, capacity) {
     const spin = num(spec.spin, SPIN[shape] ?? 0);
     const drag = Math.max(0, num(spec.drag, DRAG[kind] ?? DRAG[0]));
     const alpha = Math.min(1, Math.max(0, num(spec.alpha, 1)));
+    const halo = Math.min(1, Math.max(0, num(spec.halo, layer === layers[0] ? 0.6 : 0)));
     setColor(tint, spec.color, '#ffffff');
     setColor(tintEnd, spec.colorEnd, tint);
     const a = layer.attrs;
@@ -339,6 +356,7 @@ export function createParticlePool(scene, capacity) {
       a.aDrag.setX(idx, drag);
       a.aSeed.setX(idx, Math.random());
       a.aAlpha.setX(idx, alpha);
+      a.aHalo.setX(idx, halo);
       deathMs = Math.max(deathMs, nowMs + l * 1000);
     }
     mark(layer, first, run);
@@ -393,6 +411,8 @@ export function createParticlePool(scene, capacity) {
         l.geometry.dispose();
         l.material.dispose();
       }
+      atlas.texture.dispose();
+      disposeTextures();
     },
   };
 }

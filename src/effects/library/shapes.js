@@ -1,8 +1,15 @@
+import * as THREE from 'three';
+import { TEX, getTexture } from './textures.js';
+
 /**
- * Procedural particle shapes (no textures, so nothing to re-upload after a context restore).
+ * Particle shapes. DOT, SMOKE, GLINT, SHARD and FLAME sample the generated sprite masks
+ * (textures.js), packed side by side into one atlas so each pool layer stays a single draw;
+ * STREAK, RING and FLAKE stay procedural.
  * `SHAPE_GLSL` defines `float shapeAlpha(int shape, vec2 q, float seed)`: the coverage (0..1) of
- * a shape at q in -1..1 across the particle's quad (+y up, +x along a streak's motion); `seed`
- * is a per-particle random 0..1 that varies the noisy and irregular shapes.
+ * a shape at q in -1..1 across the particle's quad (+y up, +x along a streak's motion; 0 outside
+ * the quad); `seed` is a per-particle random 0..1 that mirrors or varies the shape. It also
+ * defines `float shapeGlow(vec2 q)` (the GLOW mask, for halos) and needs the uniforms
+ * `uAtlas` and `uTile[5]` from `buildAtlas()`.
  */
 export const SHAPE = Object.freeze({
   DOT: 0,
@@ -15,55 +22,59 @@ export const SHAPE = Object.freeze({
   RING: 7,
 });
 
-export const SHAPE_GLSL = /* glsl */ `
-float shapeHash( vec2 p ) {
-	return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 );
+/** The atlas tiles, left to right (the index is the tile number in uTile). */
+const ATLAS = [TEX.GLOW, TEX.PUFF, TEX.SPARK, TEX.FLAME, TEX.SHARD];
+const ATLAS_H = 128;
+
+/**
+ * Copies the five masks side by side into one RGBA8 DataTexture (height 128, the shorter masks
+ * padded with zeros above). The CPU data stays on `image.data`, so a context restore re-uploads it.
+ * `tiles[i]` is tile i's rect (u0, v0, du, dv), inset half a texel so filtering stays in the tile.
+ * @returns {{texture: THREE.DataTexture, tiles: THREE.Vector4[]}}
+ */
+export function buildAtlas() {
+  const masks = ATLAS.map((kind) => getTexture(kind).image);
+  const W = masks.reduce((s, m) => s + m.width, 0);
+  const data = new Uint8Array(W * ATLAS_H * 4);
+  const tiles = [];
+  let x0 = 0;
+  for (const { width: w, height: h, data: src } of masks) {
+    for (let y = 0; y < h; y++) data.set(src.subarray(y * w * 4, (y + 1) * w * 4), (y * W + x0) * 4);
+    tiles.push(new THREE.Vector4((x0 + 0.5) / W, 0.5 / ATLAS_H, (w - 1) / W, (h - 1) / ATLAS_H));
+    x0 += w;
+  }
+  const texture = new THREE.DataTexture(data, W, ATLAS_H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return { texture, tiles };
 }
-float shapeNoise( vec2 p ) {
-	vec2 i = floor( p );
-	vec2 f = fract( p );
-	vec2 u = f * f * ( 3.0 - 2.0 * f );
-	float a = shapeHash( i );
-	float b = shapeHash( i + vec2( 1.0, 0.0 ) );
-	float c = shapeHash( i + vec2( 0.0, 1.0 ) );
-	float d = shapeHash( i + vec2( 1.0, 1.0 ) );
-	return mix( mix( a, b, u.x ), mix( c, d, u.x ), u.y );
+
+export const SHAPE_GLSL = /* glsl */ `
+uniform sampler2D uAtlas;
+uniform vec4 uTile[ 5 ];
+float shapeTexel( int tile, vec2 q ) {
+	vec4 rect = uTile[ tile ];
+	float inside = step( max( abs( q.x ), abs( q.y ) ), 1.0 );
+	return texture2D( uAtlas, rect.xy + clamp( q * 0.5 + 0.5, 0.0, 1.0 ) * rect.zw ).a * inside;
+}
+float shapeGlow( vec2 q ) {
+	return shapeTexel( 0, q );
 }
 float shapeAlpha( int shape, vec2 q, float seed ) {
 	float r = length( q );
+	// DOT -> GLOW (0), SMOKE -> PUFF (1), GLINT -> SPARK (2), FLAME -> FLAME (3), SHARD -> SHARD (4).
+	int tile = shape == 0 ? 0 : shape == 2 ? 1 : shape == 3 ? 2 : shape == 5 ? 3 : shape == 4 ? 4 : -1;
+	// Puffs and shards are mirrored for half the particles, so a burst does not repeat one sprite.
+	vec2 tq = ( ( shape == 2 || shape == 4 ) && seed > 0.5 ) ? vec2( - q.x, q.y ) : q;
+	// The fetch is outside any branch (mipmapped sampling needs uniform control flow).
+	float tex = shapeTexel( max( tile, 0 ), tq );
+	if ( tile >= 0 ) return tex;
 	if ( shape == 1 ) {
 		// STREAK: a soft capsule along x.
 		float d = length( vec2( max( abs( q.x ) - 0.55, 0.0 ) / 0.45, q.y ) );
 		return 1.0 - smoothstep( 0.35, 1.0, d );
-	}
-	if ( shape == 2 ) {
-		// SMOKE: 3-octave value noise inside a soft disc.
-		vec2 p = q * 1.7 + seed * 37.0;
-		float n = 0.5 * shapeNoise( p ) + 0.3 * shapeNoise( p * 2.1 + 5.3 ) + 0.2 * shapeNoise( p * 4.3 + 9.1 );
-		float disc = 1.0 - smoothstep( 0.25, 1.0, r );
-		return disc * smoothstep( 0.25, 0.75, n + 0.25 * disc );
-	}
-	if ( shape == 3 ) {
-		// GLINT: a four-point star (two crossed thin ellipses) and a hot core.
-		float h = 1.0 - smoothstep( 0.0, 1.0, length( vec2( q.x, q.y * 7.0 ) ) );
-		float v = 1.0 - smoothstep( 0.0, 1.0, length( vec2( q.x * 7.0, q.y ) ) );
-		float core = 1.0 - smoothstep( 0.0, 0.3, r );
-		return max( max( h, v ), core );
-	}
-	if ( shape == 4 ) {
-		// SHARD: a triangle, its apex skewed per particle.
-		float ax = ( seed - 0.5 ) * 0.7;
-		float y = ( q.y + 0.7 ) / 1.6; // 0 at the base, 1 at the apex
-		float halfW = 0.85 * ( 1.0 - y );
-		float edge = halfW - abs( q.x - ax * y );
-		return smoothstep( 0.0, 0.06, edge ) * smoothstep( 0.0, 0.06, y ) * step( y, 1.0 );
-	}
-	if ( shape == 5 ) {
-		// FLAME: a teardrop, round at the bottom and narrow at the top.
-		float y = ( q.y + 1.0 ) * 0.5;
-		float halfW = 1.6 * sqrt( max( y, 0.0 ) ) * max( 1.0 - y, 0.0 ) + 0.001;
-		float a = 1.0 - smoothstep( halfW * 0.45, halfW, abs( q.x ) );
-		return a * ( 1.0 - 0.5 * smoothstep( 0.6, 1.0, y ) );
 	}
 	if ( shape == 6 ) {
 		// FLAKE: a diamond.
@@ -74,9 +85,6 @@ float shapeAlpha( int shape, vec2 q, float seed ) {
 		// RING: a thin annulus.
 		return 1.0 - smoothstep( 0.0, 0.14, abs( r - 0.78 ) );
 	}
-	// DOT: a soft disc with a hot core.
-	float soft = 1.0 - smoothstep( 0.2, 1.0, r );
-	float hot = 1.0 - smoothstep( 0.0, 0.4, r );
-	return clamp( 0.6 * soft + 0.5 * hot, 0.0, 1.0 );
+	return 0.0;
 }
 `;
