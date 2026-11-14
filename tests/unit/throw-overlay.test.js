@@ -8,6 +8,8 @@ import {
   spinFromShake,
   SAMPLE_WINDOW_MS,
   MAX_FLICK_SPEED,
+  FLICK_SOFTNESS,
+  flickSpeed,
   GENTLE_THROW,
 } from '../../src/hand/chunk/overlay.js';
 import { MAX_RELEASE_SPIN, MAX_RELEASE_SPEED } from '../../src/physics/protocol.js';
@@ -102,20 +104,22 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-test('velocityFromSamples direction, scale, cap, gentle default', () => {
-  // 100 px to the right and 50 px down in 100 ms: 1000, 500 px/s = 20, 10 die units/s at 50 px
+test('velocityFromSamples direction, scale, soft cap, gentle default', () => {
+  // 100 px to the right and 50 px down in 100 ms: 1000, 500 px/s = 20, 10 die units/s at 50 px,
+  // a pointer speed of √500 units/s eased by flickSpeed, direction kept
   const s = [0, 25, 50, 75, 100].map((t) => ({ t, x: t, y: t / 2 }));
   const [vx, vz] = velocityFromSamples(s, PX);
-  expect(vx).toBeCloseTo(20, 6);
-  expect(vz).toBeCloseTo(10, 6);
+  expect(Math.hypot(vx, vz)).toBeCloseTo(flickSpeed(Math.hypot(20, 10)), 6);
+  expect(vx / vz).toBeCloseTo(2, 6);
   // only the last SAMPLE_WINDOW_MS count: an old drag the other way is ignored
   const late = [{ t: -500, x: 2000, y: 0 }, { t: -400, x: 1000, y: 0 }, ...s];
-  expect(velocityFromSamples(late, PX)[0]).toBeCloseTo(20, 6);
+  expect(velocityFromSamples(late, PX)[0]).toBeCloseTo(vx, 6);
   expect(SAMPLE_WINDOW_MS).toBe(120);
-  // a very fast flick is capped, keeping its direction
+  // a very fast flick nears MAX_FLICK_SPEED without passing it, keeping its direction
   const fast = [0, 10, 20].map((t) => ({ t, x: t * 100, y: -t * 100 }));
   const [fx, fz] = velocityFromSamples(fast, PX);
-  expect(Math.hypot(fx, fz)).toBeCloseTo(MAX_FLICK_SPEED, 6);
+  expect(Math.hypot(fx, fz)).toBeLessThanOrEqual(MAX_FLICK_SPEED);
+  expect(Math.hypot(fx, fz)).toBeGreaterThan(MAX_FLICK_SPEED * 0.99);
   expect(fx).toBeCloseTo(-fz, 6);
   expect(MAX_FLICK_SPEED).toBeLessThanOrEqual(MAX_RELEASE_SPEED);
   // too few samples (in the window): a gentle default toss
@@ -137,6 +141,17 @@ test('velocityFromSamples direction, scale, cap, gentle default', () => {
   expect(liftFromSpeed(0)).toBeGreaterThan(0);
   expect(liftFromSpeed(20)).toBeGreaterThan(liftFromSpeed(5));
   expect(Math.hypot(MAX_FLICK_SPEED, liftFromSpeed(1000))).toBeLessThanOrEqual(MAX_RELEASE_SPEED);
+});
+
+test('flick strength: real mouse flicks (1,000 to 4,500 px/s at 48 px a die) stay clearly apart', () => {
+  expect(FLICK_SOFTNESS).toBe(36);
+  const at = (pxPerS) => flickSpeed(pxPerS / 48);
+  const speeds = [500, 1000, 1500, 2500, 3500, 4500].map(at);
+  for (let i = 1; i < speeds.length; i++) expect(speeds[i] - speeds[i - 1]).toBeGreaterThan(1.5);
+  expect(at(4500)).toBeLessThan(MAX_FLICK_SPEED);
+  expect(at(500)).toBeGreaterThan(5); // a slow flick is still a toss, not a drop
+  expect(flickSpeed(0)).toBe(0);
+  expect(flickSpeed(NaN)).toBe(0);
 });
 
 test('spinFromShake bounded and seeded', () => {

@@ -18,6 +18,15 @@ import { OVERLAY_CSS } from './overlay-style.js';
 export const SAMPLE_WINDOW_MS = 120;
 /** Horizontal release speed cap (die units/s); with the most lift it stays under MAX_RELEASE_SPEED. */
 export const MAX_FLICK_SPEED = 30;
+/**
+ * The pointer speed (die units/s) where a flick reaches 63% of MAX_FLICK_SPEED. A hard cap at
+ * MAX_FLICK_SPEED (1,440 px/s at 48 px a die) flattened nearly every real mouse flick (1,000 to
+ * 5,000 px/s) to the same throw; easing towards it keeps them apart.
+ */
+export const FLICK_SOFTNESS = 36;
+/** The release speed for a pointer speed `v` (die units/s): eased towards MAX_FLICK_SPEED. */
+export const flickSpeed = (v) =>
+  Number.isFinite(v) && v > 0 ? MAX_FLICK_SPEED * (1 - Math.exp(-v / FLICK_SOFTNESS)) : 0;
 /** A release with too few recent samples (a click, a still hand): a gentle toss down-screen. */
 export const GENTLE_THROW = Object.freeze([0, 3]);
 /** The lowest held die's height above the table (die units). */
@@ -46,7 +55,7 @@ const clamp = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo
 /**
  * The flick velocity [vx, vz] in die units/s (x right, z down-screen) from pointer samples
  * [{t (ms), x, y (px)}]: the least-squares slope over the last SAMPLE_WINDOW_MS, converted at
- * `diePx` px per die unit and capped at MAX_FLICK_SPEED. Fewer than 2 samples in the window (or
+ * `diePx` px per die unit and eased towards MAX_FLICK_SPEED (flickSpeed). Fewer than 2 samples in the window (or
  * no time between them): GENTLE_THROW.
  */
 export function velocityFromSamples(samples, diePx) {
@@ -67,11 +76,12 @@ export function velocityFromSamples(samples, diePx) {
   }
   if (!(tt > 0)) return [...GENTLE_THROW];
   const k = 1000 / diePx / tt; // px/ms -> die units/s
-  let vx = tx * k;
-  let vz = ty * k;
+  const vx = tx * k;
+  const vz = ty * k;
   const v = Math.hypot(vx, vz);
-  if (v > MAX_FLICK_SPEED) [vx, vz] = [(vx / v) * MAX_FLICK_SPEED, (vz / v) * MAX_FLICK_SPEED];
-  return [vx, vz];
+  if (!(v > 0)) return [0, 0];
+  const f = flickSpeed(v) / v;
+  return [vx * f, vz * f];
 }
 
 /** The upward release speed (die units/s) for a flick of `speed`: a faster flick tosses higher. */
