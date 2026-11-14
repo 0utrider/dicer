@@ -453,8 +453,43 @@ export const smoke = Object.freeze({
   start: smokeStart(),
 });
 
-/** Fumble's own smoke: same puffs, but they always darken to grey (not in CATALOGUE). */
-const fumbleSmoke = Object.freeze({ ...smoke, id: 'fumble-smoke', start: smokeStart('#3a3a40') });
+const FUMBLE_SMOKE_DARK = '#242226';
+const FUMBLE_SMOKE_END = '#3a3a40';
+
+/**
+ * Fumble's own smoke (not in CATALOGUE): darker, heavier and slower than `smoke`. Big, opaque PUFF
+ * clouds in a sooty version of the die colour (a near-black die's lit by its rim, so it shows on a
+ * dark table) heave up off the die, spread wide and sag back down as they grow, curling, to grey.
+ */
+const fumbleSmoke = Object.freeze({
+  ...smoke,
+  id: 'fumble-smoke',
+  start(ctx) {
+    if (!ctx.particles) return NOOP;
+    const pal = palette(ctx.color);
+    const k = sizeK(ctx);
+    const body = (pal.rim ?? ctx.color).clone().lerp(new THREE.Color(FUMBLE_SMOKE_DARK), pal.rim ? 0.55 : 0.4);
+    const calm = ctx.reducedMotion;
+    const emit = trickle(ctx, countFor(18, ctx), 0.5, {
+      origin: originOf(ctx, DIE_TOP),
+      jitter: 0.9 * k,
+      dir: { x: 0, y: 1, z: 0 },
+      speed: calm ? 0.4 : 1.6,
+      spread: 1.35, // wide: seen from above, heavy smoke rolls outward
+      gravity: -0.7, // and sinks back as it slows
+      life: 1.4,
+      color: body,
+      colorEnd: FUMBLE_SMOKE_END,
+      size: 1.1 * k,
+      sizeEnd: 2.6,
+      spin: calm ? 0.25 : 0.9,
+      kind: KIND.SMOKE,
+      shape: SHAPE.SMOKE,
+      blend: 'normal',
+    });
+    return timed(ctx.duration, emit, () => {});
+  },
+});
 
 // Per additive layer: brighter saturates to white and loses the die colour (frost, lightning).
 const ALPHA_CAP = 1.5;
@@ -1089,29 +1124,6 @@ const glitterPart = Object.freeze({
   },
 });
 
-/** Grey cracks spreading over the table from the die: a ribbon of random jagged rays. */
-function crackLines(cx, cz, radius, rays) {
-  const lines = [];
-  const at = (ang, r) => ({ x: cx + Math.cos(ang) * r, y: FLOOR_Y, z: cz + Math.sin(ang) * r });
-  for (let i = 0; i < rays; i++) {
-    let ang = (i / rays) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-    const line = [at(ang, 0.25)];
-    const steps = 4;
-    for (let s = 1; s <= steps; s++) {
-      ang += (Math.random() - 0.5) * 0.35;
-      const r = 0.25 + (((radius - 0.25) * s) / steps) * (0.85 + Math.random() * 0.3);
-      const p = at(ang, r);
-      line.push(p);
-      if (s === 2) {
-        const ba = ang + (Math.random() < 0.5 ? -0.7 : 0.7);
-        lines.push([p, { x: p.x + Math.cos(ba) * radius * 0.3, y: FLOOR_Y, z: p.z + Math.sin(ba) * radius * 0.3 }]);
-      }
-    }
-    lines.push(line);
-  }
-  return lines;
-}
-
 /** The first `k` (0..1) of a polyline, by point: whole points plus one interpolated tip. */
 function prefixOf(line, k) {
   const f = clamp01(k) * (line.length - 1);
@@ -1126,54 +1138,260 @@ function prefixOf(line, k) {
   return out;
 }
 
+// Fumble's ember: a die colour with little hue of its own (grey, near-white, near-black, or muted
+// like fizzle's default tan) glows in EMBER; a vivid die glows in its own colour. EMBER_HOT is a
+// spark's white-hot start, EMBER_DEAD what it cools to.
+const EMBER = '#ff3a12';
+const EMBER_HOT = '#ffb060';
+const EMBER_DEAD = '#1a0602';
+/** The palette of a vivid colour (sRGB saturation >= 0.5, not near-white/black), else null. */
+const vividPalette = (color) => {
+  const pal = palette(color);
+  const s = color.getHSL({}, THREE.SRGBColorSpace).s;
+  return pal.rim || s < 0.5 || pal.core.equals(new THREE.Color(WHITE)) ? null : pal;
+};
+
+const CRACK_BASE = 0.3; // fissures start under the die
+const CRACK_LEVELS = 3; // 9 points per fissure: a few sharp kinks, not a wriggle
+const CRACK_BRANCH_LEVELS = 2; // 5 points per branch
+const CRACK_TWIG_LEVELS = 2; // 5 points per twig
+// Width along a fissure: full where it leaves the die, a hairline at its (growing) tip.
+const crackTaper = (t) => 1 - 0.88 * t ** 1.1;
+
+/** A jagged line flat on the floor (jagged() also kinks up and down, which a crack must not). */
+const floorJagged = (a, b, levels, rough) => jagged(a, b, levels, rough).map((p) => ({ x: p.x, y: FLOOR_Y, z: p.z }));
+
+/**
+ * The cracked floor: 5-7 jagged fissures out from under the die, each with 1-2 branches forking
+ * off its middle, and a twig off about half the branches. Every branch and twig carries `at`, the share of the
+ * opening at which it starts to split off its parent, and `pts` (fissures have at 0).
+ */
+function crackWeb(cx, cz, reach) {
+  const lines = [];
+  const n = 5 + Math.floor(Math.random() * 3);
+  const turn = Math.random() * Math.PI * 2;
+  const at = (ang, r) => ({ x: cx + Math.cos(ang) * r, y: FLOOR_Y, z: cz + Math.sin(ang) * r });
+  for (let i = 0; i < n; i++) {
+    const ang = turn + (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+    const len = reach * (0.65 + Math.random() * 0.35);
+    const pts = floorJagged(at(ang, CRACK_BASE), at(ang + (Math.random() - 0.5) * 0.3, len), CRACK_LEVELS, 0.42);
+    lines.push({ pts, at: 0 });
+    const forks = 1 + Math.floor(Math.random() * 2);
+    for (let f = 0; f < forks; f++) {
+      const rootAt = 0.3 + Math.random() * 0.35;
+      const root = pts[Math.round(rootAt * (pts.length - 1))];
+      const side = (f % 2 === 0 ? 1 : -1) * (Math.random() < 0.5 ? 1 : -1);
+      const ba = ang + side * (0.45 + Math.random() * 0.5);
+      const bl = (len - CRACK_BASE) * (0.3 + Math.random() * 0.2);
+      const bTip = { x: root.x + Math.cos(ba) * bl, y: FLOOR_Y, z: root.z + Math.sin(ba) * bl };
+      const branch = floorJagged(root, bTip, CRACK_BRANCH_LEVELS, 0.4);
+      lines.push({ pts: branch, at: rootAt });
+      if (Math.random() < 0.5) continue; // a twig off every other branch
+      const tRoot = branch[Math.round(branch.length * 0.5)];
+      const ta = ba - side * (0.6 + Math.random() * 0.4);
+      const tl = bl * (0.35 + Math.random() * 0.2);
+      const tTip = { x: tRoot.x + Math.cos(ta) * tl, y: FLOOR_Y, z: tRoot.z + Math.sin(ta) * tl };
+      lines.push({ pts: floorJagged(tRoot, tTip, CRACK_TWIG_LEVELS, 0.3), at: rootAt + (1 - rootAt) * 0.5 });
+    }
+  }
+  return lines;
+}
+
+/**
+ * The floor cracking open under the die: a dark-cored, tapered, jagged crack web with a dim ember
+ * glow at its edges. It opens (spreads and widens) over about 200 ms with a flare of heat, then
+ * smoulders, and fades over the last third. Two ribbons: the additive ember glow, and the dark
+ * core drawn over it ("over" in black), so the glow shows only at the edges. One scene child: the
+ * glow and a dim ember floor glow are children of the core. The geometry is rebuilt only while
+ * the crack spreads. As it splits, ember-lit haze breathes out of the fissures.
+ * (Perf: the glow ribbon's width is fill-rate bound; 54 px failed the perf probe, 36 px passes.)
+ */
 const crackPart = Object.freeze({
   id: 'crack',
   cost: 1,
   defaults: Object.freeze({ color: '#5a5a60', intensity: 1, duration: 1000 }),
   start(ctx) {
-    const lines = crackLines(ctx.position.x, ctx.position.z, 1.5 * Math.max(0.3, ctx.intensity), 6);
-    const ribbon = createRibbon({
-      maxPoints: lines.reduce((n, l) => n + l.length, 0),
-      widthPx: 3,
-      color: ctx.color,
-    });
-    ribbon.alpha = 0;
-    ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
-    const spread = Math.min(250, ctx.duration / 2);
-    return timed(
-      ctx.duration,
-      (e) => {
-        ribbon.setPolylines(lines.map((l) => prefixOf(l, e / spread)));
-        ribbon.alpha = Math.max(0, ctx.intensity) * envelope(e, ctx.duration);
+    const pal = vividPalette(ctx.color);
+    const emberColor = pal ? pal.mid.clone().lerp(pal.core, 0.25) : new THREE.Color(EMBER);
+    const k = sizeK(ctx);
+    const kw = Math.min(k, 1.2); // widths stop growing at k 1.2
+    const bright = Math.min(1, Math.max(0, ctx.intensity)); // and brightness at intensity 1
+    const D = Math.max(1, ctx.duration);
+    const OPEN = Math.min(200, 0.4 * D);
+    const web = crackWeb(ctx.position.x, ctx.position.z, 3.2 * Math.max(0.5, k));
+    const points = web.reduce((n, l) => n + l.pts.length + 1, 0);
+    const glowPx = 36 * kw;
+    const corePx = 13 * kw;
+    const glow = createRibbon({ maxPoints: points, widthPx: glowPx, color: emberColor, taper: crackTaper, core: 0.02, glow: 0.55 });
+    const core = createRibbon({ maxPoints: points, widthPx: corePx, color: new THREE.Color(WHITE), taper: crackTaper, core: 0.45, glow: 0.35 });
+    Object.assign(core.mesh.material, SHADOW_BLEND);
+    glow.mesh.renderOrder = 3;
+    core.mesh.renderOrder = 4; // on top: it darkens the glow's middle
+    glow.alpha = 0;
+    core.alpha = 0;
+    core.mesh.userData.open = 0;
+    core.mesh.add(glow.mesh); // both are placed in world space by their shaders
+    ctx.scene.add(core.mesh); // core.dispose() removes it
+    let drawn = -1;
+    const fade = (e) => (1 - clamp01((e - 0.65 * D) / (0.35 * D))) ** 1.5;
+    let heat = 0;
+    // A dim ember pool of light on the floor under the web (also a child of the core, so the part
+    // stays one scene object), at the crack's heat.
+    // (Object.create: a composite part's ctx keeps its fields on its prototype, which a spread drops.)
+    const underglow = floorGlow(
+      Object.create(ctx, { scene: { value: core.mesh }, color: { value: emberColor }, intensity: { value: bright } }),
+      { radius: 1.5 * Math.max(0.5, k), peak: 0.4, ms: D, curve: () => heat },
+    );
+    // Smoke lit by the embers below, breathed out of the fissures as they split (additive: it is
+    // what makes the fumble's smoke read on a dark table).
+    let breathed = false;
+    const breathe = (e, now) => {
+      breathed = true;
+      const life = Math.max(0.3, (D - e) / 1000) * 0.7;
+      const haze = emberColor.clone().multiplyScalar(0.6);
+      for (const l of web) {
+        if (l.at > 0) continue;
+        for (const f of [0.45, 0.85]) {
+          const p = alongLine(l.pts, f);
+          ctx.particles?.emit({
+            now,
+            count: countFor(1, ctx),
+            origin: { x: p.x, y: 0.15, z: p.z },
+            dir: { x: 0, y: 1, z: 0 },
+            speed: ctx.reducedMotion ? 0.1 : 0.6,
+            spread: 0.8,
+            life,
+            color: haze,
+            colorEnd: EMBER_DEAD,
+            size: 0.8 * k,
+            sizeEnd: 2,
+            spin: 0.6,
+            kind: KIND.SMOKE,
+            shape: SHAPE.SMOKE,
+            halo: 0,
+            alpha: 0.4,
+          });
+        }
+      }
+    };
+    const cracking = timed(
+      D,
+      (e, now) => {
+        const g = easeOutCubic(clamp01(e / OPEN));
+        if (!breathed && g >= 0.5) breathe(e, now);
+        if (g - drawn >= GROW_STEP || (g === 1 && drawn < 1)) {
+          drawn = g;
+          core.mesh.userData.open = g;
+          const lines = web.map((l) => prefixOf(l.pts, (g - l.at) / (1 - l.at)));
+          core.setPolylines(lines);
+          glow.setPolylines(lines);
+        }
+        // It widens as it opens (a uniform: no rebuild).
+        const wide = 0.45 + 0.55 * g;
+        core.mesh.material.uniforms.uWidthPx.value = corePx * wide;
+        glow.mesh.material.uniforms.uWidthPx.value = glowPx * wide;
+        const f = fade(e);
+        // Heat: a flare as the floor splits, settling to a smoulder (a slow uneven pulse).
+        const flare = Math.exp(-(((e - OPEN) / (0.7 * OPEN)) ** 2));
+        const pulse = ctx.reducedMotion ? 1 : 1 + 0.12 * Math.sin(e * 0.021) * Math.sin(e * 0.013 + 1);
+        heat = Math.min(1, g * 2) * (0.75 + 0.5 * flare) * pulse * f;
+        glow.alpha = Math.min(ALPHA_CAP, bright * heat);
+        core.alpha = Math.min(ALPHA_CAP, (0.3 + 0.65 * g) * f);
       },
       () => {
-        ribbon.dispose();
+        glow.dispose();
+        core.dispose();
       },
     );
+    return together(underglow, cracking);
   },
 });
 
-/** A few dim embers dropping off the die once it has gone cold. */
+/**
+ * A few dying sparks: they spit out sideways from the die's foot, arc, fall and go dark; with a
+ * couple of flickering embers, and a few dark cinders (normal blend) that show on a light map.
+ * Each particle is its own emit, born on a ring just outside the die (seen from above, anything
+ * born over the die is hidden by it) and flying outward from it.
+ */
 const fizzlePart = Object.freeze({
   id: 'fizzle',
   cost: 1,
   defaults: Object.freeze({ color: '#c8a070', intensity: 1, duration: 600 }),
   start(ctx) {
-    ctx.particles?.emit({
-      count: countFor(8, ctx),
-      origin: originOf(ctx, DIE_Y + 0.3),
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 1.2,
-      spread: 1.3,
-      gravity: -6,
-      life: 0.6,
-      color: ctx.color,
-      colorEnd: '#402010',
-      size: 0.08 * Math.sqrt(Math.max(0.2, ctx.intensity)),
-      kind: KIND.STREAK,
-      alpha: 0.6,
-    });
-    return NOOP;
+    const pool = ctx.particles;
+    if (!pool) return NOOP;
+    const pal = vividPalette(ctx.color);
+    const hot = pal ? pal.core : new THREE.Color(EMBER_HOT);
+    const ember = pal ? pal.mid : new THREE.Color(EMBER);
+    const dead = pal ? pal.mid.clone().multiplyScalar(0.015) : new THREE.Color(EMBER_DEAD); // (linear: very dark)
+    const cinder = ember.clone().multiplyScalar(0.5);
+    const k = sizeK(ctx);
+    const life = Math.max(0.3, ctx.duration / 1000) * 1.4;
+    const calm = ctx.reducedMotion;
+    const { x: cx, z: cz } = ctx.position;
+    const spit = (now, n, spec) => {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const ux = Math.cos(a);
+        const uz = Math.sin(a);
+        pool.emit({
+          ...spec,
+          now,
+          count: 1,
+          origin: { x: cx + ux * 0.55, y: 0.8, z: cz + uz * 0.55 },
+          dir: { x: ux, y: 0.9, z: uz },
+          spread: 0.35,
+        });
+      }
+    };
+    // Emitted on the first update, with its `now`: the pool's clock is the render loop's, so a
+    // particle born at start() on performance.now() could be off that clock (and never show).
+    const burst = (now) => {
+      spit(now, countFor(8, ctx), {
+        speed: calm ? 1.2 : 3.4,
+        gravity: -8,
+        life,
+        color: hot,
+        colorEnd: dead,
+        size: 0.26 * k,
+        kind: KIND.STREAK,
+        shape: SHAPE.DOT, // a round hot point (the streak sprite reads as a square this small)
+        halo: 0.7,
+      });
+      spit(now, countFor(3, ctx), {
+        speed: calm ? 0.8 : 1.8,
+        gravity: -3,
+        life: life * 1.15,
+        color: ember,
+        colorEnd: dead,
+        size: 0.3 * k,
+        kind: KIND.EMBER,
+        shape: SHAPE.DOT,
+        halo: 0.6,
+        alpha: 0.85,
+      });
+      spit(now, countFor(4, ctx), {
+        speed: calm ? 1 : 2.6,
+        gravity: -8,
+        life,
+        color: cinder,
+        colorEnd: '#0c0a0a',
+        size: 0.12 * k,
+        kind: KIND.SPARK,
+        shape: SHAPE.DOT,
+        blend: 'normal',
+      });
+    };
+    let fired = false;
+    return timed(
+      ctx.duration,
+      (e, now) => {
+        if (fired) return;
+        fired = true;
+        burst(now);
+      },
+      () => {},
+    );
   },
 });
 
@@ -1193,13 +1411,16 @@ export const celebrate = composite({
   ],
 });
 
+/** Fumble's private parts, exported for tests only (not effect ids). */
+export const FUMBLE_PARTS = Object.freeze({ smoke: fumbleSmoke, crack: crackPart, fizzle: fizzlePart });
+
 export const fumble = composite({
   id: 'fumble',
   defaults: { color: '#8c8c92', intensity: 1, duration: 1500 },
   parts: [
     { mod: fumbleSmoke, at: 0 },
     { mod: DIE_EFFECTS['color-shift'], at: 0, color: '#3a3a40', intensity: 0.8 },
-    { mod: crackPart, at: 80 },
+    { mod: crackPart, at: 80, duration: 1400 }, // the cracked floor stays until near the end
     { mod: fizzlePart, at: 150 },
     { mod: tinyShake('fumble-shake', 0.15, 220), at: 80 },
   ],

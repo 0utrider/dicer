@@ -4,6 +4,7 @@ import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { KIND } from '../../src/effects/library/particles.js';
 import { TIERS } from '../../src/render/quality.js';
 import { EFFECT_IDS } from '../../src/effects/effect-ids.js';
+import { FUMBLE_PARTS } from '../../src/effects/library/catalogue.js';
 
 const IDS = [
   'glow-pulse',
@@ -522,6 +523,147 @@ describe('frost', () => {
         expect(two.width[i], `${color} layer ${i} width`).toBeGreaterThanOrEqual(one.width[i]);
       });
       expect(new Set(two.glow), color).toEqual(new Set(one.glow)); // no whiter additive particles
+    }
+  });
+});
+
+describe('fumble parts', () => {
+  const isRibbon = (o) => !!o.material?.uniforms?.uWidthPx;
+  const ribbonsOf = (scene) => {
+    const out = [];
+    scene.traverse((o) => isRibbon(o) && out.push(o));
+    return out;
+  };
+  const play = (part, over = {}) => {
+    const mod = FUMBLE_PARTS[part];
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 2048);
+    const ctx = ctxFor(mod, { scene, pool, ...over });
+    const emit = vi.spyOn(pool, 'emit');
+    const h = mod.start(ctx);
+    return { scene, pool, ctx, emit, h, specs: () => emit.mock.calls.map(([s]) => s) };
+  };
+  const lum = (c) => new THREE.Color(c).getHSL({}, THREE.SRGBColorSpace).l;
+
+  test('fumble crack is a tapered ribbon that opens over ~200 ms', () => {
+    const { scene, pool, h } = play('crack', { duration: 1000 });
+    const ribbons = ribbonsOf(scene);
+    expect(ribbons.length).toBeGreaterThanOrEqual(2); // a dark core and an ember edge glow
+    const core = ribbons.find((r) => typeof r.userData.open === 'number');
+    expect(core, 'the core ribbon exposes userData.open').toBeTruthy();
+    // The core is dark: drawn "over" in black (src colour ignored), after (on top of) the glow.
+    expect(core.material.blendSrc).toBe(THREE.ZeroFactor);
+    const glow = ribbons.find((r) => r !== core && r.material.blendDst === THREE.OneFactor);
+    expect(glow, 'an additive edge glow').toBeTruthy();
+    expect(core.renderOrder).toBeGreaterThan(glow.renderOrder);
+    for (let t = 0; t <= 100; t += 10) h.update(t);
+    const half = core.userData.open;
+    const halfCount = core.geometry.drawRange.count;
+    expect(half).toBeGreaterThan(0.2);
+    expect(half).toBeLessThan(0.97);
+    for (let t = 110; t <= 230; t += 10) h.update(t);
+    expect(core.userData.open).toBe(1);
+    expect(core.geometry.drawRange.count).toBeGreaterThan(halfCount);
+    // Tapered: full width at the die, a fine point at each tip.
+    const side = core.geometry.getAttribute('aSide').array;
+    const drawn = [];
+    for (let i = 0; i < core.geometry.drawRange.count; i++) drawn.push(Math.abs(side[core.geometry.index.array[i]]));
+    expect(Math.max(...drawn)).toBeGreaterThan(0.9);
+    expect(Math.min(...drawn)).toBeLessThan(0.35);
+    // Opened: no more geometry rebuilds (CPU) for the rest of the play.
+    const version = core.geometry.getAttribute('position').version;
+    for (let t = 240; t < 1000; t += 10) h.update(t);
+    expect(core.geometry.getAttribute('position').version).toBe(version);
+    h.stop();
+    expect(ribbonsOf(scene)).toHaveLength(0);
+    pool.dispose();
+  });
+
+  test('fumble smoke uses PUFF, normal blend, at least 8 puffs at intensity 1', () => {
+    const { pool, h, specs, ctx } = play('smoke');
+    for (let t = 0; t <= ctx.duration; t += 20) h.update(t);
+    const puffs = specs();
+    expect(puffs.reduce((n, s) => n + s.count, 0)).toBeGreaterThanOrEqual(8);
+    expect(puffs.every((s) => s.kind === KIND.SMOKE && s.shape === 2 && s.blend === 'normal')).toBe(true);
+    h.stop();
+    pool.dispose();
+  });
+
+  test('fumble smoke is darker, slower and heavier than the plain smoke, in any colour', () => {
+    for (const color of ['#8c8c92', '#e02020', '#f4f4f4']) {
+      const over = { color: new THREE.Color(color), options: { color } };
+      const f = play('smoke', over);
+      const s = { ctx: ctxFor(EFFECTS.smoke, over) };
+      const emit = vi.spyOn(s.ctx.particles, 'emit');
+      const hs = EFFECTS.smoke.start(s.ctx);
+      for (let t = 0; t <= 1500; t += 20) {
+        f.h.update(t);
+        hs.update(t);
+      }
+      const fs = f.specs()[0];
+      const ps = emit.mock.calls[0][0];
+      expect(lum(fs.color), color).toBeLessThan(lum(ps.color));
+      expect(fs.speed, color).toBeLessThan(ps.speed);
+      expect(fs.gravity, color).toBeLessThan(0); // it sags back down
+      f.h.stop();
+      hs.stop();
+    }
+  });
+
+  test('fumble fizzle: a few sparks that fall and go dark', () => {
+    const { pool, h, specs } = play('fizzle');
+    h.update(0);
+    const sparks = specs().filter((s) => s.blend !== 'normal');
+    expect(sparks.length).toBeGreaterThan(0);
+    expect(sparks.some((s) => s.kind === KIND.STREAK)).toBe(true);
+    const n = sparks.reduce((k, s) => k + s.count, 0);
+    expect(n).toBeGreaterThan(2);
+    expect(n).toBeLessThanOrEqual(20); // a few, not a burst (ultra scales counts by 1.5)
+    for (const s of sparks) {
+      expect(s.gravity).toBeLessThan(0);
+      expect(lum(s.colorEnd)).toBeLessThan(0.15);
+    }
+    h.stop();
+    pool.dispose();
+  });
+
+  /** Crack ribbons and fizzle sparks: peak uAlpha, colour, width per ribbon, and additive spark colours. */
+  const layersAt = (intensity, color) => {
+    const over = { intensity, duration: 1000, color: new THREE.Color(color), options: { color } };
+    const c = play('crack', over);
+    const z = play('fizzle', over);
+    const ribbons = ribbonsOf(c.scene);
+    const peak = ribbons.map(() => 0);
+    for (let t = 0; t < 1000; t += 10) {
+      c.h.update(t);
+      z.h.update(t);
+      ribbons.forEach((r, i) => (peak[i] = Math.max(peak[i], r.material.uniforms.uAlpha.value)));
+    }
+    const out = {
+      peak,
+      hsl: ribbons.map((r) => r.material.uniforms.uColor.value.getHSL({})),
+      width: ribbons.map((r) => r.material.uniforms.uWidthPx.value),
+      glow: z.specs().filter((s) => s.blend !== 'normal').map((s) => new THREE.Color(s.color).getHex()),
+    };
+    c.h.stop();
+    z.h.stop();
+    return out;
+  };
+
+  test('fumble at intensity 2 keeps the die colour: crack and sparks no brighter than at 1, same hues, alpha <= 1.5', () => {
+    for (const color of ['#5a5a60', '#e02020', '#2050ff', '#f4f4f4', '#141418']) {
+      const one = layersAt(1, color);
+      const two = layersAt(2, color);
+      expect(two.peak.length, color).toBe(one.peak.length);
+      expect(Math.max(...one.peak), color).toBeGreaterThan(0.3);
+      two.peak.forEach((p, i) => {
+        expect(p, `${color} ribbon ${i}`).toBeLessThanOrEqual(one.peak[i] * 1.001);
+        expect(p, `${color} ribbon ${i}`).toBeLessThanOrEqual(1.5);
+        expect(two.hsl[i].h, `${color} ribbon ${i} hue`).toBeCloseTo(one.hsl[i].h, 5);
+        expect(two.hsl[i].s, `${color} ribbon ${i} saturation`).toBeCloseTo(one.hsl[i].s, 5);
+        expect(two.width[i], `${color} ribbon ${i} width`).toBeGreaterThanOrEqual(one.width[i]);
+      });
+      expect(new Set(two.glow), color).toEqual(new Set(one.glow));
     }
   });
 });
