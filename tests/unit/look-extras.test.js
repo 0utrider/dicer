@@ -31,6 +31,8 @@ import { WEAPON, WE_KINDS, weaponFrame, weaponsInside } from '../../src/render/e
 import { CARD_AXIS, upFrame, upFrameGLSL } from '../../src/render/extras/insides/frame.js';
 import { DRAGON, dragonExtent, dragonFrame, dragonInside } from '../../src/render/extras/insides/dragon.js';
 import { RUNES, RU_STEM, RU_STROKES, runeGlyphs, runesFrame, runesInside } from '../../src/render/extras/insides/runes.js';
+import { LIVING, USES_NOISE as LIVING_NOISE, livingInside } from '../../src/render/extras/insides/living.js';
+import { _resetInsideMotion, motionUniforms } from '../../src/render/extras/insides/live.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -591,8 +593,8 @@ describe('insides', () => {
       expect(wants(a, unset)).toBe(false); // unset: off
     });
 
-    test("today's insides get a uniforms-only patch with the four motion uniforms at their defaults", () => {
-      for (const it of TODAY) {
+    test("today's four shapes get a uniforms-only patch with the four motion uniforms at their defaults", () => {
+      for (const it of TODAY.filter((x) => x.type === 'shape')) {
         const p = insidePatch(resin(it), LIVE);
         expect(Object.keys(p)).toEqual(['uniforms']);
         expect(Object.keys(p.uniforms).sort()).toEqual(MOTION);
@@ -621,7 +623,9 @@ describe('insides', () => {
       const still = mat(a, { ...LIVE, insideMotion: false });
       expect(still.userData.programKey).not.toContain('|mo');
       expect(still.userData.uniforms.uInteriorTime).toBeUndefined();
-      expect(patched(live).fragmentShader).toBe(patched(still).fragmentShader); // Task 2: no GLSL reads them yet
+      // the four built-in shapes stay still: no GLSL reads the uniforms there
+      const star = resin({ type: 'shape', shape: 'star' });
+      expect(patched(mat(star, LIVE)).fragmentShader).toBe(patched(mat(star, { ...LIVE, insideMotion: false })).fragmentShader);
       _setLookExtrasImport(() => new Promise(() => {}));
       try {
         const missing = mat(a, LIVE);
@@ -644,6 +648,152 @@ describe('insides', () => {
       lookExtras.insideMotion.step(die, u, q, 5, { factor: 1 });
       expect(u.uInteriorTime.value).toBeCloseTo(0.1, 6); // clamped to 0.1 s
       expect(u.uInteriorLag.value.length()).toBeCloseTo(1, 6);
+    });
+
+    test('frame: a throw warns once (Dicer |) and stops stepping, never reaching the render loop', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const a = resin({ type: 'liquid' });
+        const die = { appearance: a, inner: { material: { userData: { uniforms: motionUniforms() } } } };
+        const box = {
+          isolate: vi.fn(() => {
+            throw new Error('boom');
+          }),
+        };
+        const roll = { phase: 'playing', flags: LIVE, dice: [die] };
+        expect(() => lookExtras.insideMotion.frame(box, roll, 100)).not.toThrow();
+        expect(lookExtras.insideMotion.frame(box, roll, 116)).toBe(false);
+        expect(box.isolate).toHaveBeenCalledTimes(1); // stopped after the throw
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0][0])).toMatch(/^Dicer \|/);
+      } finally {
+        _resetInsideMotion();
+        warn.mockRestore();
+      }
+    });
+
+    describe('animated GLSL (Task 3)', () => {
+      const BASE = ['liquid', 'glitter', 'swirl', 'nebula'];
+      const COLORS = { colors: ['#3a7fd0', '#e0f0ff'], density: 0.5 };
+
+      test('with insideMotion, liquid/glitter/swirl/nebula get the living patch and read uInteriorTime', () => {
+        for (const type of BASE) {
+          const a = resin({ type, ...COLORS });
+          const p = insidePatch(a, LIVE);
+          expect(Object.keys(p).sort()).toEqual(['interior', 'uniforms']);
+          expect(p.interior.main).toBe(marchWithUp());
+          const { body } = livingInside(a);
+          expect(count(p.interior.pars, body)).toBe(1);
+          for (const d of DECL) expect(count(p.interior.pars, d)).toBe(1);
+          expect(count(p.interior.pars, NOISE_GLSL)).toBe(1);
+          expect(Object.keys(p.uniforms).sort()).toEqual(MOTION);
+          defaults(p.uniforms);
+          // the animation is wired: the GLSL reads the time uniform
+          expect(body).toMatch(/\buInteriorTime\b/);
+          expect(body).not.toMatch(/\buInteriorFlare\b/); // Task 9's
+          expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
+          // today's GLSL is not it
+          expect(interiorChunk(type).pars).not.toContain(body);
+          // still: no patch, today's shader
+          expect(insidePatch(a, { ...LIVE, insideMotion: false })).toEqual({});
+        }
+        expect(LIVING_NOISE).toBe(true);
+      });
+
+      test("liquid's living patch reads uInteriorLag, not dcIUp, for the surface", () => {
+        const { body } = livingInside(resin({ type: 'liquid', ...COLORS }));
+        expect(body).toMatch(/\buInteriorLag\b/);
+        expect(body).not.toContain('dcIUp');
+        // glitter turns about the spin axis, faster with the spin: a rotation vector of
+        // time x ( 0.15 up + weighted spin ), so its angle is about time x ( 0.15 + |spin| )
+        const gl = livingInside(resin({ type: 'glitter', ...COLORS })).body;
+        expect(gl).toContain('vec3 v = uInteriorTime * ( vec3( 0.0, 0.15, 0.0 ) + DC_LV_SPIN * uInteriorSpin );');
+        expect(gl).toMatch(/float w = length\( v \);/);
+        // no living inside reads the die's true up (motion has its own frame)
+        for (const type of BASE) expect(livingInside(resin({ type, ...COLORS })).body).not.toContain('dcIUp');
+      });
+
+      test('liquid bubble / sand use the lagged surface, smoke drifts, only with insideMotion', () => {
+        for (const opt of [{ bubble: true }, { sand: true }, { bubble: true, sand: true }]) {
+          const a = resin({ type: 'liquid', ...opt, ...COLORS });
+          const live = insidePatch(a, LIVE).interior.pars;
+          const still = insidePatch(a, { ...LIVE, insideMotion: false }).interior.pars;
+          expect(live).toMatch(/\buInteriorLag\b/);
+          expect(live.split('vec3 dcIUp;')[1]).not.toContain('dcIUp'); // declared, never read
+          expect(still.split('vec3 dcIUp;')[1]).toContain('dcIUp');
+          expect(still).toContain(liquidExtrasInside(a).body);
+          expect(still).not.toMatch(/\buInteriorLag\b/);
+        }
+        const sm = resin({ type: 'smoke', ...COLORS });
+        const live = insidePatch(sm, LIVE).interior.pars;
+        const still = insidePatch(sm, { ...LIVE, insideMotion: false }).interior.pars;
+        expect(live.split('uniform float uInteriorFlare;')[1]).toMatch(/\buInteriorTime\b/);
+        expect(still).toContain(smokeInside(sm).body);
+        expect(smokeInside(sm).body).not.toMatch(/\buInteriorTime\b/);
+      });
+
+      test('chunk missing: insideMotion looks render today\'s shader', async () => {
+        const cases = [...BASE.map((type) => ({ type })), { type: 'smoke' }, { type: 'liquid', bubble: true }];
+        const still = cases.map((it) => patched(mat(resin({ ...it, ...COLORS }), { ...LIVE, insideMotion: false })).fragmentShader);
+        // with the chunk: animated, so different from the still shader
+        cases.forEach((it, i) => expect(patched(mat(resin({ ...it, ...COLORS }), LIVE)).fragmentShader).not.toBe(still[i]));
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        _setLookExtrasImport(() => new Promise(() => {}));
+        try {
+          // today's insides: exactly today's shader; the new ones: their fallback look, never motion
+          BASE.forEach((type, i) => {
+            const m = mat(resin({ type, ...COLORS }), LIVE);
+            expect(patched(m).fragmentShader).toBe(still[i]);
+            expect(m.userData.programKey).not.toContain('|mo');
+          });
+          for (const it of cases) expect(patched(mat(resin({ ...it, ...COLORS }), LIVE)).fragmentShader).not.toMatch(/\buInteriorTime\b/);
+        } finally {
+          warn.mockRestore();
+          _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+          await requestLookExtras();
+        }
+      });
+
+      test('every living inside compiles at 16 and 48 steps', () => {
+        for (const type of BASE) {
+          const a = resin({ type, ...COLORS });
+          const { body } = livingInside(a);
+          // dcLv names only (besides the shared interior names), no derivatives, pow of max(...)
+          const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23])\s+(dc\w+)\s*\(/g)].map((x) => x[1]);
+          for (const name of own) if (name !== 'dcInterior') expect(name).toMatch(/^dcLv/);
+          for (const [, name] of body.matchAll(/#define\s+(\w+)/g)) expect(name).toMatch(/^DC_LV_/);
+          expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+          for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^max\(/);
+          for (const steps of [16, 48]) {
+            for (const shape of [s, getShape('d2')]) {
+              const f = { ...LIVE, interiorSteps: steps };
+              const m = createDiceMaterial(a, atlas, shape, labels, f);
+              expect(m.userData.programKey).toBe(programKey(a, f));
+              expect(m.userData.programKey).toContain(`|${type}:${steps}|`);
+              expect(m.userData.programKey).toMatch(/\|mo$/);
+              expect(m.defines.DICER_STEPS).toBe(steps);
+              const fs = patched(m).fragmentShader;
+              expect(count(fs, body)).toBe(1);
+              expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+              expect(count(fs, 'uniform float uInteriorTime;')).toBe(1);
+              expect(count(fs, '#define DC_NOISE')).toBe(1);
+              expect(count(fs, 'vec3 dcIUp;')).toBe(1);
+              expect(fs).toContain(marchWithUp());
+              for (const k of MOTION) expect(m.userData.uniforms[k]).toBeDefined();
+            }
+          }
+        }
+      });
+
+      test("the living GLSL's local constants match interior.js", () => {
+        expect(LIVING).toEqual({
+          radius: INTERIOR.radius,
+          glitterCells: INTERIOR.glitterCells,
+          starCells: INTERIOR.starCells,
+          cellMin: INTERIOR.cellMin,
+          cellMax: INTERIOR.cellMax,
+        });
+      });
     });
   });
 

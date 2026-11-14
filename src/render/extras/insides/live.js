@@ -46,6 +46,14 @@ export function _resetReducedMotion() {
   reduced = null;
 }
 
+// set when frame() threw: it warned once and steps nothing more (the insides stay where they are)
+let failed = false;
+
+/** Test seam: forget a frame() failure. */
+export function _resetInsideMotion() {
+  failed = false;
+}
+
 // die -> { m: motion state, u: the die's isolated uniforms, last: ms of its last step }
 const states = new WeakMap();
 // the inner mesh's world rotation (outer x inner), reused every frame
@@ -91,8 +99,21 @@ export const insideMotion = {
    * wants motion (and whose material carries the motion uniforms), with
    * factor = restFactor(now - roll.landedAt). True while any such die still moves (factor > 0),
    * so a lingering roll keeps the loop running until its insides come to rest.
+   * DiceBox calls it unguarded: a throw warns once and stops all stepping (false from then on).
    */
   frame(box, roll, now) {
+    if (failed) return false;
+    try {
+      return this.frameRoll(box, roll, now);
+    } catch (err) {
+      failed = true;
+      console.warn('Dicer | living insides stopped', err);
+      return false;
+    }
+  },
+
+  /** frame()'s body. */
+  frameRoll(box, roll, now) {
     if (roll.phase !== 'playing') roll.landedAt ??= now;
     const factor = restFactor(roll.landedAt == null ? null : now - roll.landedAt);
     let moving = false;

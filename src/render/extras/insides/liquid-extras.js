@@ -177,11 +177,15 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 `;
 
 /**
+ * @param {boolean} [live] insideMotion: the bubble and the sand follow the lagged up
+ *   (uInteriorLag, MOTION_PARS in the pars) instead of dcIUp, so they trail the die's turns and
+ *   settle like the liquid's surface (living.js)
  * @returns {{ body: string }} the liquid GLSL with the look's options as defines (every colour
  * and the density are uniforms)
  */
-export function liquidExtrasInside(a) {
+export function liquidExtrasInside(a, live = false) {
   const i = a.interior;
   const defs = [i.bubble ? '#define DC_LQ_BUBBLE' : '', i.sand ? '#define DC_LQ_SAND' : ''].filter(Boolean);
-  return { body: [...defs, BODY].join('\n') };
+  const body = live ? BODY.replaceAll('dcIUp', 'uInteriorLag') : BODY;
+  return { body: [...defs, body].join('\n') };
 }

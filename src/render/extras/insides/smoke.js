@@ -80,7 +80,15 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 }
 `;
 
+/**
+ * With insideMotion (`live`): the stretched sample space slides down over time, so the tendrils
+ * rise through the column, about one feature per 4 s (uInteriorTime, MOTION_PARS in the pars).
+ * The anchor carries no whitespace: the build strips the template's indentation.
+ */
+const RISE = 's.y -= 0.25 * uInteriorTime;\n';
+const RISE_AT = 'vec2 wv = ';
+
 /** @returns {{ body: string }} the smoke GLSL (every colour and the density are uniforms) */
-export function smokeInside(_a) {
-  return { body: BODY };
+export function smokeInside(_a, live = false) {
+  return { body: live ? BODY.replace(RISE_AT, RISE + RISE_AT) : BODY };
 }

@@ -9,6 +9,7 @@ import * as liquidExtras from './liquid-extras.js';
 import * as weapons from './weapons.js';
 import * as dragon from './dragon.js';
 import * as runes from './runes.js';
+import * as living from './living.js';
 import { insideMotion, motionUniforms, MOTION_PARS } from './live.js';
 
 /**
@@ -84,27 +85,30 @@ const isFantasy = (i) => i.type === 'shape' && !BUILT_IN_SHAPES.includes(i.shape
  * - fake (steps 0): `{ uniforms: { uResinTint } }` with w = INSIDE_TINT[type] (liquid keeps
  *   today's fake: {}).
  * With insideMotion.wants(a, flags) (live.js), the marched patch also declares the four motion
- * uniforms in its pars (MOTION_PARS) and supplies them at their defaults; today's insides
- * (liquid, glitter, swirl, nebula, the four built-in shapes) then get `{ uniforms }` with only
- * those four. Without it, every patch is exactly as before.
+ * uniforms in its pars (MOTION_PARS) and supplies them at their defaults, and each module's build
+ * gets `live` (true) as its second argument (smoke drifts, liquid-extras uses the lagged up);
+ * today's liquid, glitter, swirl and nebula are drawn by living.js (animated) and the four
+ * built-in shapes get `{ uniforms }` with only the four. Without it, every patch is exactly as before.
  */
 export function insidePatch(a, flags) {
   const i = a.interior;
   if (a.body?.type !== 'resin' || !i || !flags.interiors) return {};
   const live = insideMotion.wants(a, flags);
   const isNew = Object.hasOwn(INSIDE_TINT, i.type);
-  // today's insides (interior.js draws them): with motion, only the four motion uniforms
-  if (!isNew && !hasLiquidExtras(i) && !isFantasy(i)) return live ? { uniforms: motionUniforms() } : {};
+  const today = !isNew && !hasLiquidExtras(i) && !isFantasy(i); // interior.js draws it
+  const animated = live && today && living.LIVING_TYPES.includes(i.type);
+  // today's insides: still, no patch; with motion, the built-in shapes get only the four uniforms
+  if (today && !animated) return live ? { uniforms: motionUniforms() } : {};
   if (!(flags.interiorSteps > 0)) {
     if (!isNew) return {};
     const t = tintTarget(a);
     return { uniforms: { uResinTint: { value: new THREE.Vector4(t.r, t.g, t.b, INSIDE_TINT[i.type]) } } };
   }
   const key = hasLiquidExtras(i) ? 'liquid' : isFantasy(i) ? i.shape : i.type;
-  const mod = Object.hasOwn(MODULES, key) ? MODULES[key] : null;
+  const mod = animated ? [living.livingInside, living.USES_NOISE] : Object.hasOwn(MODULES, key) ? MODULES[key] : null;
   if (!mod) throw new Error(`dicer: no inside module for "${key}"`);
   const [build, usesNoise] = mod;
-  const { body, uniforms = {} } = build(a);
+  const { body, uniforms = {} } = build(a, live);
   const pars = [usesNoise ? NOISE_GLSL : '', INTERIOR_PARS, live ? MOTION_PARS : '', 'vec3 dcIUp;', body]
     .filter(Boolean)
     .join('\n');

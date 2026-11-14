@@ -817,7 +817,7 @@ export class DiceBox {
     const was = prev.userData.uniforms;
     const now = iso.userData.uniforms;
     // its effects' fx uniforms and its living inside's motion (uInteriorTime/Spin/Lag/Flare)
-    for (const k in was) if (/^u(Fx|Interior[TSLF])/.test(k)) now[k] = was[k];
+    for (const k in was) if (/^u(Fx(Tint|Flare)|Interior(Time|Spin|Lag|Flare))$/.test(k)) now[k] = was[k];
     prev.dispose();
     die.isolated = iso;
     return iso;
