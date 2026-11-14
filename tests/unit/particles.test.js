@@ -283,10 +283,54 @@ describe('textured soft sprites with halos', () => {
     pool.dispose();
   });
 
+  test('a DOT at the default halo is at least as wide and as bright overall as the old procedural DOT', () => {
+    // The shader draws, at rho (in units of the particle size, 0 = centre):
+    //   glow(rho) [the shape, in the inner 1 / 1.9 of the 1.9x quad] + 0.6 * 0.35 * glow(rho / 1.9) [the halo]
+    // with glow() the GLOW mask, sampled here bilinearly along its centre row.
+    textures.disposeTextures();
+    const { width: w, data } = textures.getTexture(textures.TEX.GLOW).image;
+    const c = w / 2;
+    const texel = (x) => (data[((c - 1) * w + x) * 4] + data[(c * w + x) * 4]) / 2 / 255;
+    const glow = (r) => {
+      if (r >= 1) return 0;
+      const f = (r + 1) * c - 0.5;
+      const i = Math.min(Math.floor(f), w - 2);
+      return texel(i) + (texel(i + 1) - texel(i)) * (f - i);
+    };
+    const drawn = (rho) => glow(rho) + 0.6 * 0.35 * glow(rho / 1.9);
+    const clamp = (x) => Math.min(1, Math.max(0, x));
+    const sm = (a, b, x) => {
+      const t = clamp((x - a) / (b - a));
+      return t * t * (3 - 2 * t);
+    };
+    // The old procedural DOT over its 1x quad: 0.6 soft disc + 0.5 hot core.
+    const old = (r) => (r > 1 ? 0 : clamp(0.6 * (1 - sm(0.2, 1, r)) + 0.5 * (1 - sm(0, 0.4, r))));
+    const profile = (f) => {
+      let half = 0;
+      let energy = 0;
+      const N = 2000;
+      for (let k = 0; k < N; k++) {
+        const r = ((k + 0.5) / N) * 2;
+        const v = f(r);
+        energy += v * 2 * Math.PI * r * (2 / N);
+        if (v >= 0.5 * f(0)) half = r;
+      }
+      return { half, energy };
+    };
+    const before = profile(old);
+    const now = profile(drawn);
+    const shapeOnly = profile(glow);
+    expect(now.half).toBeGreaterThanOrEqual(before.half);
+    expect(shapeOnly.half).toBeGreaterThanOrEqual(0.55); // the review's 0.55 x size, even without the halo
+    expect(now.energy).toBeGreaterThanOrEqual(before.energy);
+  });
+
   test('10 sparkles share one atlas: getTexture is called once per kind', () => {
-    textures.getTexture.mockClear();
+    textures.disposeTextures();
+    textures.getTexture.mockClear(); // counted across pool creation and all 10 starts
     const scene = new THREE.Scene();
     const pool = createParticlePool(scene, 2048);
+    const atlas = pool.layers[0].material.uniforms.uAtlas.value;
     const mod = EFFECTS.sparkles;
     const die = new THREE.Group();
     die.position.set(0, 0.5, 0);
@@ -305,12 +349,15 @@ describe('textured soft sprites with halos', () => {
         shake: () => {},
         tier: TIERS.ultra,
       });
-      handle?.update?.(100 * i);
+      handle.update(1000 * i); // the first update starts its clock
+      handle.update(1000 * i + 500); // half-way: it emits
     }
     const kinds = textures.getTexture.mock.calls.map((c) => c[0]);
     expect(kinds.length).toBeGreaterThan(0);
     expect(kinds.length).toBeLessThanOrEqual(5);
     expect(new Set(kinds).size).toBe(kinds.length); // once per kind
+    for (const layer of pool.layers) expect(layer.material.uniforms.uAtlas.value).toBe(atlas); // never rebuilt
+    expect(pool.layers[0].mesh.visible).toBe(true); // the starts really emitted into this pool
     pool.dispose();
   });
 

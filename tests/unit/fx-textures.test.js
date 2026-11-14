@@ -28,6 +28,17 @@ describe('fx textures', () => {
     expect(d[0]).toBe(0);
   });
 
+  test('GLOW is wide: at r = 0.55 it is still at least half its centre (a DOT sprite stays full-size)', () => {
+    const { width: w, data } = getTexture(TEX.GLOW).image;
+    const c = w / 2;
+    // Average the two centre rows; column c + 0.55 * c along +u.
+    const at = (x) => (data[((c - 1) * w + x) * 4] + data[(c * w + x) * 4]) / 2;
+    const x = c + 0.55 * c; // 49.6 -> interpolate texels 49 and 50 (centres at u = (x + 0.5) / c - 1)
+    const fx = x - 0.5;
+    const v = at(Math.floor(fx)) + (at(Math.floor(fx) + 1) - at(Math.floor(fx))) * (fx - Math.floor(fx));
+    expect(v / ((at(c - 1) + at(c)) / 2)).toBeGreaterThanOrEqual(0.5);
+  });
+
   test('pixels are single-channel coverage (R=G=B=A) for every kind', () => {
     for (const k of Object.values(TEX)) {
       const d = getTexture(k).image.data;

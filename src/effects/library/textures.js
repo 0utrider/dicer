@@ -69,8 +69,9 @@ function fbm(x, y, octaves, seed) {
 const GENERATORS = {
   [TEX.GLOW]: (u, v) => {
     const r2 = u * u + v * v;
-    // Gaussian falloff, forced to exactly 0 at the quad edge so it never shows a seam.
-    return r2 >= 1 ? 0 : Math.exp(-r2 * 6) * smooth(1, 0.8, Math.sqrt(r2));
+    // Wide Gaussian falloff (still over half its centre at r = 0.55, so a DOT particle drawn with it
+    // is as large as the old procedural dot), forced to exactly 0 at the quad edge so it never shows a seam.
+    return r2 >= 1 ? 0 : Math.exp(-r2 * 2) * smooth(1, 0.6, Math.sqrt(r2));
   },
   [TEX.PUFF]: (u, v) => {
     const r = Math.hypot(u, v);
