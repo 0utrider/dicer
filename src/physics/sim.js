@@ -23,6 +23,11 @@ const DIE_FRICTION = 0.5;
 const FLOOR_FRICTION = 0.8;
 const OBSTACLE_FRICTION = 0.05; // dice slide off a pet rather than rest on it
 const WALL_HALF_HEIGHT = 12;
+/**
+ * A hand throw's walls (every die launched): livelier than a die, combined by Max, so a hard flick
+ * smashes into the bound and ricochets while a gentle one still just bumps it.
+ */
+export const HAND_WALL_RESTITUTION = 0.85;
 const WALL_HALF_THICKNESS = 1;
 const FLOOR_MARGIN = 60; // floor extends beyond the area so spawned dice have ground
 const SPAWN_GAP = 1.5; // minimum distance beyond the wall plane
@@ -234,7 +239,7 @@ export function createSim(initialArea, hulls, readers) {
    * along the travel direction are extended outwards on the spawn side so thrown dice cannot
    * leave sideways before it closes.
    */
-  function addWalls(world, edge, a) {
+  function addWalls(world, edge, a, hand = false) {
     const { cx, cz, halfWidth: hw, halfDepth: hd } = a;
     const t = WALL_HALF_THICKNESS;
     const h = WALL_HALF_HEIGHT;
@@ -244,7 +249,10 @@ export function createSim(initialArea, hulls, readers) {
       world.createCollider(
         RAPIER.ColliderDesc.cuboid(hx, h, hz)
           .setTranslation(x, h, z)
-          .setRestitution(DIE_RESTITUTION)
+          .setRestitution(hand ? HAND_WALL_RESTITUTION : DIE_RESTITUTION)
+          .setRestitutionCombineRule(
+            hand ? RAPIER.CoefficientCombineRule.Max : RAPIER.CoefficientCombineRule.Average,
+          )
           .setFriction(DIE_FRICTION),
       );
     // Span [lo, hi] of a side wall along its axis, extended on the spawn side if it applies.
@@ -328,7 +336,7 @@ export function createSim(initialArea, hulls, readers) {
         // Seeded spawn edge: 0 = +x, 1 = -x, 2 = +z, 3 = -z. Its wall starts disabled ("open").
         // The same first draw as throwEdge(seed) (core/rng.js), which names it to the pet layer.
         const edge = Math.floor(rand() * 4);
-        const walls = addWalls(world, edge, a);
+        const walls = addWalls(world, edge, a, allLaunched);
         const alongX = edge < 2;
         const sign = edge % 2 === 0 ? 1 : -1;
         for (const w of walls) owner.set(w.handle, -2);

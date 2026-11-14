@@ -17,13 +17,13 @@ import { OVERLAY_CSS } from './overlay-style.js';
 /** The release velocity is read from the pointer's last this-many ms. */
 export const SAMPLE_WINDOW_MS = 120;
 /** Horizontal release speed cap (die units/s); with the most lift it stays under MAX_RELEASE_SPEED. */
-export const MAX_FLICK_SPEED = 30;
+export const MAX_FLICK_SPEED = 38;
 /**
  * The pointer speed (die units/s) where a flick reaches 63% of MAX_FLICK_SPEED. A hard cap at
- * MAX_FLICK_SPEED (1,440 px/s at 48 px a die) flattened nearly every real mouse flick (1,000 to
+ * 30 die units/s (1,440 px/s at 48 px a die) flattened nearly every real mouse flick (1,000 to
  * 5,000 px/s) to the same throw; easing towards it keeps them apart.
  */
-export const FLICK_SOFTNESS = 36;
+export const FLICK_SOFTNESS = 40;
 /** The release speed for a pointer speed `v` (die units/s): eased towards MAX_FLICK_SPEED. */
 export const flickSpeed = (v) =>
   Number.isFinite(v) && v > 0 ? MAX_FLICK_SPEED * (1 - Math.exp(-v / FLICK_SOFTNESS)) : 0;

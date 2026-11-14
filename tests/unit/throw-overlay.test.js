@@ -144,7 +144,7 @@ test('velocityFromSamples direction, scale, soft cap, gentle default', () => {
 });
 
 test('flick strength: real mouse flicks (1,000 to 4,500 px/s at 48 px a die) stay clearly apart', () => {
-  expect(FLICK_SOFTNESS).toBe(36);
+  expect([MAX_FLICK_SPEED, FLICK_SOFTNESS]).toEqual([38, 40]);
   const at = (pxPerS) => flickSpeed(pxPerS / 48);
   const speeds = [500, 1000, 1500, 2500, 3500, 4500].map(at);
   for (let i = 1; i < speeds.length; i++) expect(speeds[i] - speeds[i - 1]).toBeGreaterThan(1.5);

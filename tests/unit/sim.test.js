@@ -802,3 +802,42 @@ test('missing readers -> free throws read nothing and never nudge (warn once)', 
     warn.mockRestore();
   }
 });
+
+test('hand throws: the walls are livelier, so a hard flick smashes and ricochets, a gentle one never does', () => {
+  const stage = { halfWidth: 7.5, halfDepth: 5 }; // a corner area on a 1080p screen
+  /** Per throw of two d20s flicked at `sp` units/s (lift 2 + 0.2 sp, max 9) towards +x: wall hits, peak wall impact, die 0's path after its first wall hit. */
+  const smash = (sp) => {
+    let hits = 0;
+    let peak = 0;
+    let after = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const lift = Math.min(9, 2 + 0.2 * sp);
+      const launch = [0, 1].map((i) => L([-3, 2.2, i * 1.4 - 0.7], [0, 0, 0, 1], [sp, lift, 0], [5, 3, 2]));
+      const { chunks } = runHand(['d20', 'd20'], seed, { free: true, launch }, readers, stage);
+      let hit = false;
+      let prev = null;
+      for (const c of chunks) {
+        for (let k = 0; k < c.events.length; k += IMPACT_FLOATS) {
+          if (c.events[k + 2] !== -2) continue;
+          hits++;
+          hit = true;
+          peak = Math.max(peak, c.events[k + 3]);
+        }
+        for (let st = 0; st < c.steps; st++) {
+          const o = st * 2 * FLOATS_PER_DIE;
+          const p = [c.data[o], c.data[o + 2]];
+          if (hit && prev) after += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+          prev = p;
+        }
+      }
+    }
+    return { hits: hits / 6, peak, after: after / 6 };
+  };
+  const gentle = smash(8.7); // ~500 px/s
+  const medium = smash(20.5); // ~1,500 px/s
+  const hard = smash(33); // ~4,000 px/s
+  expect(gentle.hits).toBe(0);
+  expect(hard.peak).toBeGreaterThan(medium.peak * 1.8);
+  expect(hard.after).toBeGreaterThan(medium.after * 3);
+  expect(hard.after).toBeGreaterThan(20); // across a 15-unit area and back
+});
