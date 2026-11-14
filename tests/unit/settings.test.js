@@ -243,7 +243,7 @@ describe('effects settings', () => {
   });
 });
 
-test('rolling by hand: the 7 keys with their defaults; the four that decide the dice config call onHandChange', () => {
+test('rolling by hand: the 8 keys with their defaults; the four that decide the dice config call onHandChange', () => {
   const onHandChange = vi.fn();
   const r = capture({ onHandChange });
   const want = {
@@ -253,6 +253,7 @@ test('rolling by hand: the 7 keys with their defaults; the four that decide the 
     handRollsRequired: { scope: 'world', type: Boolean, default: false, config: true },
     handRollTimeout: { scope: 'world', type: Number, default: 60, config: true },
     handReplay: { scope: 'client', type: Boolean, default: true, config: true },
+    handFollowUps: { scope: 'client', type: Boolean, default: true, config: true },
     diceTray: { scope: 'client', type: Boolean, default: true, config: true },
   };
   for (const [key, cfg] of Object.entries(want)) expect(r[key]).toMatchObject({ ns: 'dicer', ...cfg });

@@ -156,6 +156,17 @@ export async function queued(ms, fn) {
 /** Inside queued(): whether this roll is part of a burst (others queued, or one just ended). */
 const inBurst = () => waiting > 1 || Date.now() - lastEnd < BURST_MS;
 
+/**
+ * A hand roll starting this long after the last overlay throw landed is a follow-up (a flat
+ * check, an automatic damage roll): thrown free, with no ask prompt and no throw screen.
+ */
+export const FOLLOW_MS = 3000;
+let lastLanded = -Infinity; // when the last overlay throw's values arrived; follow-ups never set it
+const isFollowUp = (getSetting) =>
+  getSetting('handFollowUps') === true &&
+  getSetting('handRollsRequired') !== true &&
+  Date.now() - lastLanded < FOLLOW_MS;
+
 let warned = false;
 /**
  * A failure inside the resolver body (a throwing planner, decorator, look, DiceBox or Foundry
@@ -319,25 +330,37 @@ const ghostFor = (roll, user) =>
  * null. It is recorded under the roll's hand throw (handThrows entry `extras`), for Task 8.
  */
 async function throwFree(resolver, specs) {
+  const entry = await castFree(resolver, specs);
+  if (entry.values) handThrows.get(resolver.roll.options?.dicerHand?.id)?.extras.push(entry);
+  return entry.values;
+}
+
+/**
+ * A free throw of `specs` in the roller's area (ghosts when the roller must not see the roll):
+ * {specs, values, handle, recording}, values null when it fails. With `full`, it also waits for
+ * the recording (DiceBox records at physics done; a follow-up's recording is its replay).
+ */
+async function castFree(resolver, specs, full = false) {
   const { roll, dicer: d } = resolver;
   const me = d.user();
   handFor(d.diceBox);
   const ghost = ghostFor(roll, me);
-  const entry = { specs, handle: null, recording: null };
+  const entry = { specs, values: null, handle: null, recording: null };
   try {
+    let gotRecording;
+    const recorded = new Promise((r) => (gotRecording = r));
     const thrown = d.diceBox.roll(ghost ? specs.map((s) => ({ ...s, ghost })) : specs, {
       area: d.areas.rectFor({ rollerId: me.id }),
       free: true,
-      record: (rec) => (entry.recording = rec),
+      record: (rec) => gotRecording((entry.recording = rec)),
     });
     entry.handle = thrown.handle;
-    const values = await thrown.values;
-    if (values) handThrows.get(roll.options?.dicerHand?.id)?.extras.push(entry);
-    return values;
+    entry.values = (await thrown.values) ?? null;
+    if (full && entry.values && !entry.recording) await Promise.race([recorded, thrown.finished]);
   } catch (err) {
     console.warn('dicer: a free throw failed', err);
-    return null;
   }
+  return entry;
 }
 
 /** Notes `partial` on the roll's dicerHand (H-15), when there is one. */
@@ -402,6 +425,15 @@ async function throwByHand(resolver, terms) {
   // timeout starts when shown.
   return queued(ms, async () => {
     if (resolver._closed) return fallback('cancel');
+    if (isFollowUp(d.getSetting)) {
+      // Bounded: dice that never settle must not hold the queue.
+      const entry = await within(castFree(resolver, specs, true), HAND_GRACE_MS);
+      if (!entry?.values || resolver._closed) return fallback(entry ? 'cancel' : 'timeout');
+      hand.follow = true;
+      const n = push(specs, owners, entry.values);
+      storeThrow(hand.id, { recording: entry.recording, handle: entry.handle, specs, extras: [] });
+      return notePartial(resolver, dropped + owners.filter(Boolean).length - n);
+    }
     if (d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
       const burst = inBurst();
       if (!burst) resting = false; // a new burst asks again
@@ -448,6 +480,7 @@ async function throwByHand(resolver, terms) {
     if (!out?.values || resolver._closed) {
       return fallback(out === null || out?.timedOut ? 'timeout' : 'cancel');
     }
+    lastLanded = Date.now(); // opens the follow-up window (FOLLOW_MS)
     const n = push(specs, owners, out.values);
     // Stored once pushed: a failure before this marks the roll's dicerHand a fallback (failed()).
     storeThrow(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });

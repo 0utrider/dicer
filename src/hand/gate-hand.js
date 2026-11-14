@@ -39,7 +39,7 @@ export const markFor = (roll) => {
             ? i.localize('DICER.Hand.MarkAuto')
             : n
               ? i.format('DICER.Hand.MarkPartial', { n })
-              : i.localize('DICER.Hand.Mark'),
+              : i.localize(h.follow === true ? 'DICER.Hand.MarkFollow' : 'DICER.Hand.Mark'),
       }
     : null;
 };

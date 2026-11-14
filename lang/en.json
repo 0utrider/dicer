@@ -131,6 +131,10 @@
         "Name": "Replay hand throws",
         "Hint": "Show other players' hand throws exactly as they threw them. Off shows a normal throw of the same result."
       },
+      "handFollowUps": {
+        "Name": "Throw follow-up rolls automatically",
+        "Hint": "A roll that starts within 3 seconds of your hand throw landing (a flat check, an automatic damage roll) is thrown for you, with no second throw screen. Ignored when the GM requires hand rolls."
+      },
       "diceTray": {
         "Name": "Dice tray",
         "Hint": "A dice tray button for free rolls by hand."
@@ -755,7 +759,8 @@
       "ThrowRestAuto": "Throw the rest automatically",
       "Mark": "Rolled by hand",
       "MarkPartial": "Rolled by hand ({n} dice rolled automatically)",
-      "MarkAuto": "Rolled automatically (no throw)"
+      "MarkAuto": "Rolled automatically (no throw)",
+      "MarkFollow": "Thrown automatically after your hand throw"
     },
     "Tray": {
       "Title": "Dice tray",

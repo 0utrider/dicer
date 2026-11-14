@@ -879,3 +879,141 @@ describe('final review fixes', () => {
     expect(waits[1].buttons[2].label).toBe('DICER.Hand.ThrowRestAuto');
   });
 });
+
+describe('follow-up rolls', () => {
+  let t0 = Date.now() + 30 * 3600e3;
+  beforeEach(() => {
+    t0 += 3600e3; // clear of every earlier throw's window
+    vi.useFakeTimers({ now: t0 });
+    settings.handFollowUps = true;
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** One d20 roll through fulfill; its roll. */
+  const rollD20 = async (prep) => {
+    const roll = rollOf(new Die({ faces: 20 }));
+    prep?.(roll);
+    await fulfill(new Resolver(roll, deps));
+    return roll;
+  };
+
+  test('FOLLOW_MS is 3 s', async () => {
+    const { FOLLOW_MS } = await import('../../src/hand/chunk/resolve.js');
+    expect(FOLLOW_MS).toBe(3000);
+  });
+
+  test('a roll 1 s after a hand throw lands is thrown free: no overlay, values from DiceBox, follow flag, stored recording', async () => {
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(1000);
+    boxValues = [2];
+    const next = await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    const [specs, opts] = deps.diceBox.roll.mock.calls.at(-1);
+    expect(specs.map((s) => s.type)).toEqual(['d20']);
+    expect(opts).toMatchObject({ free: true, area: RECT });
+    expect(next.terms[0].results).toEqual([{ result: 2, active: true }]);
+    const h = next.options.dicerHand;
+    expect(h).toMatchObject({ follow: true, n: 1 });
+    expect(h.fallback).toBeUndefined();
+    expect(handThrows.get(h.id).recording).toEqual({ rec: 1 });
+  });
+
+  test('a roll 3.5 s after the landing opens the throw screen', async () => {
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(3500);
+    const next = await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+    expect(next.options.dicerHand.follow).toBeUndefined();
+  });
+
+  test('a follow-up does not extend the window', async () => {
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(2000);
+    boxValues = [5];
+    await rollD20(); // follow-up, 2 s after
+    await vi.advanceTimersByTimeAsync(2000); // 4 s after the hand throw
+    await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+  });
+
+  test('handFollowUps off, or hand rolls required, opens the throw screen', async () => {
+    for (const set of [{ handFollowUps: false }, { handRollsRequired: true }]) {
+      Object.assign(settings, { handFollowUps: true, handRollsRequired: false }, set);
+      overlay.open.mockClear();
+      overlay.values = [12];
+      await rollD20();
+      await vi.advanceTimersByTimeAsync(500);
+      await rollD20();
+      expect(overlay.open).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+  });
+
+  test('ask mode: a follow-up is not asked', async () => {
+    settings.handRolls = 'ask';
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(500);
+    boxValues = [7];
+    const next = await rollD20();
+    expect(deps.ask).toHaveBeenCalledTimes(1);
+    expect(next.options.dicerHand.follow).toBe(true);
+    expect(next.terms[0].results[0].result).toBe(7);
+  });
+
+  test('a fallback does not open the window', async () => {
+    overlay.open = vi.fn(async () => ({ values: null, handle: null, recording: null })); // cancelled
+    await rollD20();
+    overlay.open = vi.fn(async ({ specs }) => ({ values: specs.map(() => 9), handle: {}, recording: {} }));
+    await vi.advanceTimersByTimeAsync(500);
+    await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+  });
+
+  test("a follow-up whose dice never settle falls back 'timeout' after HAND_GRACE_MS", async () => {
+    const { HAND_GRACE_MS } = await import('../../src/hand/chunk/resolve.js');
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(500);
+    deps.diceBox.roll.mockImplementationOnce(() => ({
+      values: new Promise(() => {}),
+      handle: {},
+      landed: new Promise(() => {}),
+      finished: new Promise(() => {}),
+    }));
+    const roll = rollOf(new Die({ faces: 20 }));
+    let done = false;
+    const p = fulfill(new Resolver(roll, deps)).then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(HAND_GRACE_MS - 10);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(20);
+    await p;
+    expect(roll.options.dicerHand.fallback).toBe('timeout');
+  });
+
+  test('a closed resolver falls back as cancelled', async () => {
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(500);
+    const roll = rollOf(new Die({ faces: 20 }));
+    const r = new Resolver(roll, deps);
+    r._closed = true;
+    const calls = deps.diceBox.roll.mock.calls.length;
+    await fulfill(r);
+    expect(roll.options.dicerHand.fallback).toBe('cancel');
+    expect(deps.diceBox.roll.mock.calls.length).toBe(calls);
+  });
+
+  test('a blind follow-up throws ghost dice for the roller', async () => {
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(500);
+    boxValues = [4];
+    await rollD20((r) => (r.ghost = true));
+    const [specs] = deps.diceBox.roll.mock.calls.at(-1);
+    expect(specs.every((s) => s.ghost === true)).toBe(true);
+  });
+});
