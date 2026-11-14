@@ -424,6 +424,17 @@ describe('elementalDamageInsides (living insides, round 2)', () => {
     expect(hoard.appearance).toBe(findTheme('dragon-hoard').appearance);
   });
 
+  test('a remap to the built-in fire theme selects that row with its elemental inside', () => {
+    const t = resolveDamageTheme('radiant', ctx({ elemental: true, worldMap: { radiant: 'fire' } }));
+    expect(t.id).toBe('fire');
+    expect(t.appearance.interior.type).toBe('fire');
+  });
+
+  test('a remap to a colorset keeps the colorset look', () => {
+    const t = resolveDamageTheme('fire', ctx({ elemental: true, worldMap: { fire: 'ice' } }));
+    expect(t.appearance).toEqual(colorsetToAppearance(BUILTIN_COLORSETS.ice, { index: 0 }));
+  });
+
   test('the themer reads the setting per roll, so a toggle needs no reload', () => {
     const registry = createRegistry({ warn: () => {} });
     const s = { damagePresets: true };

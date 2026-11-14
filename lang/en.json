@@ -141,7 +141,7 @@
       },
       "elementalDamageInsides": {
         "Name": "Elemental damage dice",
-        "Hint": "Fire, cold and electricity damage dice get flame, frost and storm insides instead of resin ones. Off keeps the resin look. A damage type you remapped yourself is not affected."
+        "Hint": "Fire, cold and electricity damage dice get flame, frost and storm insides instead of resin ones. Off keeps the resin look. A damage type remapped to a colorset or your own theme is not affected."
       },
       "diceTray": {
         "Name": "Dice tray",
