@@ -93,7 +93,7 @@ const GENERATORS = {
     const wob = (fbm(u * 3 + 2, v * 3, 3, 23) - 0.5) * 0.45 * t;
     const d = Math.abs(u - wob) / half;
     const body = 1 - smooth(0.45, 1.0, d);
-    return clamp01(body * (1 - smooth(0.9, 1.0, t)) * (0.75 + 0.5 * (1 - t)));
+    return clamp01(body * smooth(0, 0.08, t) * (1 - smooth(0.9, 1.0, t)) * (0.75 + 0.5 * (1 - t)));
   },
   [TEX.SHARD]: (u, v) => {
     // Irregular triangle (distorted vertices) with a soft fill and one bright edge.
@@ -119,7 +119,7 @@ const GENERATORS = {
 
 function build(kind) {
   const size = SIZES[kind];
-  if (!size) throw new Error(`Unknown texture kind: ${kind}`);
+  if (!Object.hasOwn(SIZES, kind)) throw new Error(`Unknown texture kind: ${kind}`);
   const [w, h] = size;
   const gen = GENERATORS[kind];
   const data = new Uint8Array(w * h * 4);

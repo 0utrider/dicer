@@ -22,7 +22,7 @@ describe('fx palette', () => {
     const p = palette('#141418');
     expect(p.rim.getHexString()).toBe('9aa3b5');
     const q = palette('#200808');
-    expect(q.rim.getHSL({}).l).toBeCloseTo(0.6, 2);
+    expect(q.rim.getHSL({}, THREE.SRGBColorSpace).l).toBeCloseTo(0.6, 2);
     expect(q.core.getHexString()).toBe('200808');
   });
 
@@ -31,5 +31,17 @@ describe('fx palette', () => {
     const before = c.getHex();
     palette(c);
     expect(c.getHex()).toBe(before);
+  });
+
+  test('mid grey and dark saturated colours take the normal branch', () => {
+    expect(palette('#595959').rim).toBeNull();
+    expect(palette('#006400').rim).toBeNull();
+  });
+
+  test('near-black rim keeps the source hue (sRGB)', () => {
+    const src = new THREE.Color('#200808').getHSL({}, THREE.SRGBColorSpace);
+    const rim = palette('#200808').rim.getHSL({}, THREE.SRGBColorSpace);
+    expect(rim.h).toBeCloseTo(src.h, 2);
+    expect(rim.l).toBeCloseTo(0.6, 2);
   });
 });

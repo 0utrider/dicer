@@ -57,7 +57,22 @@ describe('fx textures', () => {
     expect(b).toEqual(a);
   });
 
-  test('unknown kind throws', () => {
+  test('every texture fades to ~0 at its border', () => {
+    for (const k of Object.values(TEX)) {
+      const { width: w, height: h, data } = getTexture(k).image;
+      for (let x = 0; x < w; x++) {
+        expect(data[x * 4]).toBeLessThanOrEqual(3);
+        expect(data[((h - 1) * w + x) * 4]).toBeLessThanOrEqual(3);
+      }
+      for (let y = 0; y < h; y++) {
+        expect(data[y * w * 4]).toBeLessThanOrEqual(3);
+        expect(data[(y * w + w - 1) * 4]).toBeLessThanOrEqual(3);
+      }
+    }
+  });
+
+  test('unknown kind throws, including inherited names', () => {
+    expect(() => getTexture('constructor')).toThrow(/Unknown texture kind/);
     expect(() => getTexture('nope')).toThrow();
   });
 });

@@ -14,8 +14,9 @@ import * as THREE from 'three';
 const WHITE_MIN_L = 0.85;
 const WHITE_MAX_S = 0.15;
 const BLACK_MAX_L = 0.1;
-// getHSL works in three.js's linear working space, where '#141418' (a barely tinted black) has
-// s ~ 0.13; the neutral-rim cut sits just above that.
+// All lightness/saturation checks and the rim are done in sRGB (perceptual), not three.js's linear
+// working space, where l <= 0.1 would catch greys up to ~#595959 and dark saturated colours.
+// '#141418' (a barely tinted black) has sRGB s ~ 0.09, so the neutral-rim cut sits just above it.
 const NO_HUE_S = 0.15;
 const WARM = '#fff1d6';
 const COOL = '#a9c4ff';
@@ -23,7 +24,7 @@ const NEUTRAL_RIM = '#9aa3b5';
 
 export function palette(color) {
   const c = new THREE.Color(color);
-  const hsl = c.getHSL({});
+  const hsl = c.getHSL({}, THREE.SRGBColorSpace);
   if (hsl.l >= WHITE_MIN_L && hsl.s <= WHITE_MAX_S) {
     return {
       core: new THREE.Color(1, 1, 1),
@@ -36,7 +37,7 @@ export function palette(color) {
     const rim =
       hsl.s < NO_HUE_S
         ? new THREE.Color(NEUTRAL_RIM)
-        : new THREE.Color().setHSL(hsl.h, Math.max(hsl.s, 0.5), 0.6);
+        : new THREE.Color().setHSL(hsl.h, Math.max(hsl.s, 0.5), 0.6, THREE.SRGBColorSpace);
     return { core: c.clone(), mid: c.clone(), edge: c.clone(), rim };
   }
   return {
