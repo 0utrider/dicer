@@ -136,20 +136,27 @@ export function throwWithin(overlay, o, ms) {
 /**
  * Runs `fn` (an ask prompt and overlay, a tray throw) once the interactive throw before it ends,
  * or after 2 × `ms` + HAND_GRACE_MS (the one before may spend its own ask and throw): nothing
- * waits forever. Resolves with fn's value.
+ * waits forever. Resolves with fn's value. `fn(hold)`: `hold(promise)` keeps the queue (not the
+ * caller) until that promise settles, at most HAND_GRACE_MS: a live hand throw resolves its roll at
+ * the read while the next throw still waits for its dice to land.
  */
 export async function queued(ms, fn) {
   const prev = queue;
   let next;
   queue = new Promise((r) => (next = r));
   waiting++;
-  try {
-    await within(prev, 2 * ms + HAND_GRACE_MS);
-    return await fn();
-  } finally {
+  let held = null;
+  const end = () => {
     waiting--;
     lastEnd = Date.now();
     next();
+  };
+  try {
+    await within(prev, 2 * ms + HAND_GRACE_MS);
+    return await fn((p) => void (held = p));
+  } finally {
+    if (held) within(Promise.resolve(held), HAND_GRACE_MS).then(end, end);
+    else end();
   }
 }
 
@@ -162,11 +169,24 @@ const inBurst = () => waiting > 1 || Date.now() - lastEnd < BURST_MS;
  */
 export const FOLLOW_MS = 3000;
 let lastLanded = -Infinity; // when the last overlay throw's values arrived; follow-ups never set it
+// The window's end: FOLLOW_MS after that throw's dice land (Infinity while a live throw still flies).
+let followUntil = -Infinity;
 /** `startedAt`: when the roll started, before any queue wait (a roll queued behind a throw is not its follow-up). */
 const isFollowUp = (getSetting, startedAt) =>
   getSetting('handFollowUps') === true && // also while hand rolls are required: still a real throw
   startedAt >= lastLanded &&
-  startedAt - lastLanded < FOLLOW_MS;
+  startedAt < followUntil;
+
+/** Opens the follow-up window at the read; it closes FOLLOW_MS after `landed` (now when absent). */
+function openFollowWindow(landed) {
+  const at = (lastLanded = Date.now());
+  if (!landed) return void (followUntil = at + FOLLOW_MS);
+  followUntil = Infinity;
+  const close = () => {
+    if (lastLanded === at) followUntil = Date.now() + FOLLOW_MS; // a later throw owns the window
+  };
+  within(Promise.resolve(landed), HAND_GRACE_MS).then(close, close); // dice that never land too
+}
 
 let warned = false;
 /**
@@ -341,7 +361,7 @@ async function throwFree(resolver, specs) {
  * {specs, values, handle, recording}, values null when it fails. With `full`, it also waits for
  * the recording (DiceBox records at physics done; a follow-up's recording is its replay).
  */
-async function castFree(resolver, specs, full = false) {
+async function castFree(resolver, specs, full = false, early = false) {
   const { roll, dicer: d } = resolver;
   const me = d.user();
   handFor(d.diceBox);
@@ -356,7 +376,10 @@ async function castFree(resolver, specs, full = false) {
       record: (rec) => gotRecording((entry.recording = rec)),
     });
     entry.handle = thrown.handle;
-    entry.values = (await thrown.values) ?? null;
+    // Live: the values physics read, while the dice still fly (landed for the queue's hold).
+    const live = early && thrown.read;
+    if (live) entry.landed = thrown.landed;
+    entry.values = (await (live ? thrown.read : thrown.values)) ?? null;
     if (full && entry.values && !entry.recording) await Promise.race([recorded, thrown.finished]);
   } catch (err) {
     console.warn('dicer: a free throw failed', err);
@@ -425,11 +448,15 @@ async function throwByHand(resolver, terms) {
   // Queued behind any throw in progress (another roll's prompt or overlay, a tray throw); its
   // timeout starts when shown.
   const startedAt = Date.now();
-  return queued(ms, async () => {
+  // Live hand throws: the roll resolves when physics reads the values, seconds before this
+  // screen's dice land, so its message (and the trajectory for the others) goes out at once.
+  const early = d.getSetting('handLiveShare') !== false;
+  return queued(ms, async (hold) => {
     if (resolver._closed) return fallback('cancel');
     if (isFollowUp(d.getSetting, startedAt)) {
       // Bounded: dice that never settle must not hold the queue.
-      const entry = await within(castFree(resolver, specs, true), HAND_GRACE_MS);
+      const entry = await within(castFree(resolver, specs, true, early), HAND_GRACE_MS);
+      if (entry?.landed) hold(entry.landed);
       if (!entry?.values || resolver._closed) return fallback(entry ? 'cancel' : 'timeout');
       hand.follow = true;
       const n = push(specs, owners, entry.values);
@@ -469,6 +496,7 @@ async function throwByHand(resolver, terms) {
           timeoutMs: ms,
           ghostOnRelease: ghostFor(roll, me),
           label: roll.formula,
+          early,
         },
         ms,
       );
@@ -482,7 +510,8 @@ async function throwByHand(resolver, terms) {
     if (!out?.values || resolver._closed) {
       return fallback(out === null || out?.timedOut ? 'timeout' : 'cancel');
     }
-    lastLanded = Date.now(); // opens the follow-up window (FOLLOW_MS)
+    if (out.landed) hold(out.landed); // the next throw waits for these dice to land
+    openFollowWindow(out.landed); // until FOLLOW_MS after the landing
     const n = push(specs, owners, out.values);
     // Stored once pushed: a failure before this marks the roll's dicerHand a fallback (failed()).
     storeThrow(hand.id, { recording: out.recording, handle: out.handle, specs, extras: [] });

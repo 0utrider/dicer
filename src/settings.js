@@ -607,6 +607,7 @@ export function registerSettings({
     ['handRollTimeout', 'world', Number, 60, { range: { min: 10, max: 300, step: 5 } }],
     ['handReplay', 'client', Boolean, true],
     ['handFollowUps', 'client', Boolean, true], // a roll right after a hand throw throws itself
+    ['handLiveShare', 'world', Boolean, true], // a hand throw reaches the others as it flies
     ['diceTray', 'client', Boolean, true, { onChange: resetControls }], // its tool
   ];
   hand.forEach(([key, scope, type, def, more], i) =>

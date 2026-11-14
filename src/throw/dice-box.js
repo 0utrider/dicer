@@ -384,6 +384,7 @@ export class DiceBox {
       const roll = this._newRoll();
       this._armedFirstFrame = null;
       roll.resolveValues(specs?.length ? null : []);
+      roll.resolveRead(specs?.length ? null : []);
       roll.resolveLanded();
       roll.resolveFinished();
       return roll.result;
@@ -421,7 +422,8 @@ export class DiceBox {
     roll.landed = new Promise((r) => (roll.resolveLanded = r));
     roll.finished = new Promise((r) => (roll.resolveFinished = r));
     const values = new Promise((r) => (roll.resolveValues = r));
-    roll.result = { landed: roll.landed, finished: roll.finished, values, handle: roll };
+    const read = new Promise((r) => (roll.resolveRead = r));
+    roll.result = { landed: roll.landed, finished: roll.finished, values, read, handle: roll };
     roll.assets = Promise.resolve();
     if (specs) {
       try {
@@ -558,6 +560,9 @@ export class DiceBox {
       stream.done.then(
         (res) => {
           if (record) this.hand?.record(record, roll, req, res); // the chunk builds the recording
+          // Live hand throws: Playback read the final frame when the done chunk came in, so the
+          // values are known now, seconds before this screen's dice land.
+          if (!roll.removed) roll.resolveRead(this.hand?.values?.(roll) ?? null);
           this.#armLandingTimer(roll, res?.settledStep);
         },
         (err) => this.#fail(roll, err),
@@ -1382,7 +1387,9 @@ export class DiceBox {
     clearTimeout(roll.landingTimer);
     roll.phase = 'lingering';
     // The hand chunk counts the values and lights a hand-read d16's counted face (roll.glows).
-    roll.resolveValues(this.hand?.land(roll, now) ?? null);
+    const landedValues = this.hand?.land(roll, now) ?? null;
+    roll.resolveRead(landedValues); // no-op when physics done already read them
+    roll.resolveValues(landedValues);
     if (roll.record) {
       roll.record.dice = roll.dice.map((d) => ({ x: d.outer.position.x, z: d.outer.position.z }));
     }
@@ -1613,6 +1620,7 @@ export class DiceBox {
       roll.playback = null;
     }
     roll.resolveValues(null); // no-op once landed
+    roll.resolveRead(null); // no-op once read
     roll.resolveLanded();
     roll.resolveFinished();
   }

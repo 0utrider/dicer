@@ -54,7 +54,20 @@ export function handFor(box) {
   return box.hand;
 }
 
-/** The hooks DiceBox calls: read (Playback's free-dice reader), land, record, decorate, hold. */
+/**
+ * A roll's values in spec order: a free die's read result (a ghost's too: only this screen draws
+ * it as one), a forced die's own; a d100 in its ones-die slot, its tens slot null.
+ */
+function valuesOf(roll) {
+  const v = (d) => (d.free ? d.readValue : d.value);
+  return roll.dice.map((d, i) => {
+    const t = roll.dice[i - 1];
+    if (d.variant === 'd100tens') return null;
+    return t?.variant === 'd100tens' ? combineD100(v(t), v(d)) : v(d);
+  });
+}
+
+/** The hooks DiceBox calls: read (Playback's free-dice reader), land, values, record, decorate, hold. */
 function boxHand(box) {
   return {
     read: readFree,
@@ -64,18 +77,15 @@ function boxHand(box) {
      * in its ones-die slot, its tens slot null), and the d16 result glow (roll.glows).
      */
     land(roll, now) {
-      // A free die's result is its read value (a ghost's too: only this screen draws it as one).
-      const v = (d) => (d.free ? d.readValue : d.value);
       const meshes = roll.dice
         .filter((d) => d.free && !d.ghost && d.shapeType === 'd16')
         .map(glowMesh);
       if (meshes.length) roll.glows = (t) => glowAt(meshes, (t - now) / RESULT_GLOW_MS);
-      return roll.dice.map((d, i) => {
-        const t = roll.dice[i - 1];
-        if (d.variant === 'd100tens') return null;
-        return t?.variant === 'd100tens' ? combineD100(v(t), v(d)) : v(d);
-      });
+      return valuesOf(roll);
     },
+
+    /** The values land() returns, without its glow: DiceBox's early `read` at physics done. */
+    values: valuesOf,
 
     /** Builds a free throw's recording at physics done and hands it to `record` (DiceBox.roll). */
     record(record, roll, req, res) {

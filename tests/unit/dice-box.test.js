@@ -3100,6 +3100,48 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     warn.mockRestore();
   });
 
+  test('read resolves at physics done, before landing, with the values landing gives', async () => {
+    const { renderer, physics, box } = handSetup();
+    const order = [];
+    const r = box.roll(
+      [
+        { type: 'd6', value: 1 },
+        { type: 'd10', value: 0, variant: 'd100tens' },
+        { type: 'd10', value: 10 },
+      ],
+      { free: true, record: () => order.push('record') },
+    );
+    r.read.then(() => order.push('read'));
+    const landed = settled(r.landed);
+    physics.flush();
+    await flushMicrotasks();
+    expect(order).toEqual(['record', 'read']);
+    expect(landed()).toBe(false);
+    const early = await r.read;
+    renderer.tick(0);
+    renderer.tick(5000);
+    expect(await r.values).toEqual(early);
+    expect(r.handle.dice.some((d) => d.glows)).toBe(false); // no d16 glow from the early read
+  });
+
+  test('read resolves null for a roll that fails, and null without the hand chunk', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { physics, box } = handSetup();
+    const r = box.roll([{ type: 'd6', value: 1 }], { free: true });
+    physics.fail(0);
+    expect(await r.read).toBeNull();
+    const bare = setup();
+    const b = bare.box.roll([{ type: 'd6', value: 1 }], { free: true });
+    bare.physics.flush();
+    await flushMicrotasks();
+    expect(await b.read).toBeNull();
+    const hidden = setup({ visibility: { hidden: true, addEventListener() {} } });
+    expect(await hidden.box.roll([{ type: 'd6', value: 1 }]).read).toBeNull();
+    warn.mockRestore();
+    err.mockRestore();
+  });
+
   test('values resolves in spec order at landing (free and forced)', async () => {
     const { renderer, physics, box } = handSetup();
     const free = box.roll(

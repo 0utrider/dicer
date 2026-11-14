@@ -179,7 +179,8 @@ const FADE = 'dicer-hand-open';
  * dice turn into ghost dice on this screen; their values are still read and recorded (P6-D1,
  * H-19). The overlay's DOM goes at landing, its listeners and frame loop at release; DiceBox.holding
  * is true until then (pets hold still: H-8). `onRelease()` is called once when the dice leave the
- * hand (the caller bounds the flight from there).
+ * hand (the caller bounds the flight from there). `early` (live hand throws): resolves as soon as
+ * physics has read the values (DiceBox's `read`), with `landed` added, while the dice still fly.
  *
  * I3: while the dice are held, Foundry's windows (a sheet the roll came from) fade and let the
  * pointer through (body class `dicer-hand-open`), restored at release, cancel, timeout or a failed
@@ -198,6 +199,7 @@ export function openThrowOverlay({
   rng = Math.random,
   getRect,
   onRelease,
+  early = false,
 }) {
   if (active) return Promise.resolve({ cancelled: true });
   active = true;
@@ -462,6 +464,7 @@ export function openThrowOverlay({
     }
     el.classList.add('dicer-hand-thrown');
     let recording = null;
+    let keepUntil = null; // early: the landing the overlay's DOM waits for
     let gotRecording;
     const recorded = new Promise((r) => (gotRecording = r));
     try {
@@ -482,6 +485,15 @@ export function openThrowOverlay({
           options,
         );
       } else thrown = held.release(options);
+      if (early) {
+        // Live hand throws: the values as physics read them, while the dice still fly here; the
+        // overlay's DOM stays until they land (the finally below waits for keepUntil).
+        keepUntil = thrown.landed;
+        const values = await thrown.read;
+        if (values && !recording) await Promise.race([recorded, thrown.finished]);
+        finish({ values: values ?? null, handle: thrown.handle, recording, landed: thrown.landed });
+        return;
+      }
       const values = await thrown.values;
       if (values && !recording) await Promise.race([recorded, thrown.finished]);
       finish({ values: values ?? null, handle: thrown.handle, recording });
@@ -494,7 +506,8 @@ export function openThrowOverlay({
       }
       finish({ cancelled: true });
     } finally {
-      el.remove();
+      if (keepUntil) Promise.resolve(keepUntil).finally(() => el.remove());
+      else el.remove();
     }
   }
   /** The release states: the dice where they are drawn, flying at (vx, vz) with a lift and spin. */

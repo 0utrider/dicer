@@ -897,6 +897,114 @@ describe('follow-up rolls', () => {
     return roll;
   };
 
+  describe('live hand throws (handLiveShare)', () => {
+    /** The overlay resolves at the read; its dice land when `land()` is called. */
+    const flying = () => {
+      let land;
+      const landed = new Promise((r) => (land = r));
+      overlay.open = vi.fn(async ({ specs }) => ({
+        values: specs.map(() => 12),
+        handle: { h: 1 },
+        recording: { rec: 1 },
+        landed,
+      }));
+      return () => land();
+    };
+
+    test('the overlay is opened early, and the roll resolves before its dice land', async () => {
+      const land = flying();
+      const roll = await rollD20(); // not landed yet: the roll is already done
+      expect(overlay.open.mock.calls[0][0].early).toBe(true);
+      expect(roll.terms[0].results).toEqual([{ result: 12, active: true }]);
+      land(); // frees the module-level queue for the next test
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    test('handLiveShare off: the overlay waits for landing (no early)', async () => {
+      settings.handLiveShare = false;
+      overlay.values = [12];
+      await rollD20();
+      expect(overlay.open.mock.calls[0][0].early).toBe(false);
+    });
+
+    test('the next throw waits for the flying dice to land', async () => {
+      const land = flying();
+      await rollD20();
+      boxValues = [4];
+      let done = false;
+      const next = rollD20().then((r) => ((done = true), r));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(deps.diceBox.roll).not.toHaveBeenCalled();
+      expect(done).toBe(false);
+      land();
+      const r = await next;
+      expect(deps.diceBox.roll).toHaveBeenCalledTimes(1); // a follow-up, thrown after landing
+      expect(r.options.dicerHand.follow).toBe(true);
+    });
+
+    test('a roll started mid-flight is a follow-up even past FOLLOW_MS after the read', async () => {
+      const land = flying();
+      await rollD20();
+      await vi.advanceTimersByTimeAsync(3500); // still flying 3.5 s after the read
+      boxValues = [4];
+      const next = rollD20();
+      await vi.advanceTimersByTimeAsync(500);
+      land();
+      expect((await next).options.dicerHand.follow).toBe(true);
+    });
+
+    test('the follow-up window closes FOLLOW_MS after the landing', async () => {
+      const land = flying();
+      await rollD20();
+      await vi.advanceTimersByTimeAsync(2000);
+      land();
+      await vi.advanceTimersByTimeAsync(3500); // 3.5 s after the landing
+      overlay.open = vi.fn(async ({ specs }) => ({ values: specs.map(() => 9), handle: {}, recording: {} }));
+      const next = await rollD20();
+      expect(overlay.open).toHaveBeenCalledTimes(1);
+      expect(next.options.dicerHand.follow).toBeUndefined();
+    });
+
+    test('dice that never land hold the queue at most HAND_GRACE_MS', async () => {
+      const { HAND_GRACE_MS } = await import('../../src/hand/chunk/resolve.js');
+      flying(); // never landed
+      await rollD20();
+      boxValues = [4];
+      let done = false;
+      rollD20().then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(HAND_GRACE_MS - 10);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+      expect(done).toBe(true);
+    });
+
+    test('a live follow-up resolves on its read; the next waits for its landing', async () => {
+      overlay.values = [12];
+      await rollD20(); // lands at once (no landed in the fake overlay result)
+      let land;
+      deps.diceBox.roll.mockImplementationOnce((specs, opts) => {
+        opts.record({ rec: 1 });
+        return {
+          read: Promise.resolve([3]),
+          values: new Promise(() => {}),
+          handle: {},
+          landed: new Promise((r) => (land = r)),
+          finished: new Promise(() => {}),
+        };
+      });
+      const follow = await rollD20();
+      expect(follow.terms[0].results[0].result).toBe(3);
+      boxValues = [5];
+      let done = false;
+      rollD20().then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(done).toBe(false);
+      land();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(done).toBe(true);
+    });
+  });
+
   test('FOLLOW_MS is 3 s', async () => {
     const { FOLLOW_MS } = await import('../../src/hand/chunk/resolve.js');
     expect(FOLLOW_MS).toBe(3000);

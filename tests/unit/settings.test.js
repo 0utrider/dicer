@@ -260,6 +260,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
     handRollTimeout: { scope: 'world', type: Number, default: 60, config: true },
     handReplay: { scope: 'client', type: Boolean, default: true, config: true },
     handFollowUps: { scope: 'client', type: Boolean, default: true, config: true },
+    handLiveShare: { scope: 'world', type: Boolean, default: true, config: true },
     diceTray: { scope: 'client', type: Boolean, default: true, config: true },
   };
   for (const [key, cfg] of Object.entries(want)) expect(r[key]).toMatchObject({ ns: 'dicer', ...cfg });

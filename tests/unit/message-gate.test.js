@@ -2026,6 +2026,27 @@ describe('Task 8: hand rolls in the gate', () => {
     gateH = make();
   });
 
+  test('own live hand roll still flying: hidden until its dice land, then decorated and revealed', async () => {
+    user = { id: 'thrower', isGM: false };
+    gateH = make();
+    const landing = deferred();
+    const handle = { landed: landing.promise };
+    handChunk.handThrows.set('h1', { handle, recording: null, specs: [], extras: [] });
+    const el = li('m1');
+    gateH.onCreate(hmsg());
+    await tick(500);
+    expect(box.roll).not.toHaveBeenCalled();
+    expect(box.decorateLanded).not.toHaveBeenCalled();
+    expect(gateH.isAnimating('m1')).toBe(true);
+    expect(el.classList.contains('dsn-hide')).toBe(true); // no spoiler before this screen's dice land
+    landing.resolve();
+    await tick();
+    expect(box.decorateLanded).toHaveBeenCalledTimes(1);
+    expect(box.decorateLanded.mock.calls[0][0]).toBe(handle);
+    expect(gateH.isAnimating('m1')).toBe(false);
+    expect(el.classList.contains('dsn-hide')).toBe(false);
+  });
+
   test('own hand roll: no throw, decorateLanded called, RollStart and RollComplete once, revealed at once', async () => {
     user = { id: 'thrower', isGM: false };
     gateH = make();

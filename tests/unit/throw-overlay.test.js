@@ -251,6 +251,47 @@ test('Space throws for me: a generated flick from the hand', async () => {
   expect(document.querySelector('.dicer-hand-overlay')).toBeNull();
 });
 
+test('early: finishes on the physics-done read, hands back landed, and keeps the DOM until landing', async () => {
+  let land;
+  const landed = new Promise((r) => (land = r));
+  const box = fakeBox();
+  box.held.release = vi.fn((opts) => {
+    opts.record({ rec: true });
+    return {
+      landed,
+      finished: new Promise(() => {}),
+      values: new Promise(() => {}), // landing never comes before the read here
+      read: Promise.resolve([7]),
+      handle: { id: 'h' },
+    };
+  });
+  const { p, el } = open({ diceBox: box, early: true });
+  el.querySelector('[data-action="auto"]').click();
+  const out = await p;
+  expect(out.values).toEqual([7]);
+  expect(out.landed).toBe(landed);
+  expect(out.recording).toEqual({ rec: true });
+  expect(document.querySelector('.dicer-hand-overlay')).not.toBeNull(); // still flying
+  land();
+  await landed;
+  await Promise.resolve();
+  expect(document.querySelector('.dicer-hand-overlay')).toBeNull();
+});
+
+test('without early the overlay still waits for values (landing)', async () => {
+  const box = fakeBox();
+  box.held.release = vi.fn(() => ({
+    landed: Promise.resolve(),
+    finished: Promise.resolve(),
+    values: Promise.resolve([2]),
+    read: new Promise(() => {}),
+    handle: {},
+  }));
+  const { p, el } = open({ diceBox: box });
+  el.querySelector('[data-action="auto"]').click();
+  expect((await p).values).toEqual([2]);
+});
+
 test('a generated flick heads towards the area centre from near a wall', async () => {
   for (let seed = 1; seed <= 8; seed++) {
     const o = open({ rng: mulberry32(seed) });
