@@ -72,8 +72,8 @@ export const JB2A_EFFECTS = Object.freeze({
             'Yellow'
         )
     ]),
-    embers: Object.freeze([layer('Impact', 'ImpactFire01_01_Regular_Orange_600x600.webm', 'over', 6)]),
-    shatter: Object.freeze([layer('Impact', 'ImpactIceShard01_01_Regular_Blue_400x400.webm', 'over', 6)])
+    embers: Object.freeze([layer('Impact', 'ImpactFire01_01_Regular_Orange_600x600.webm', 'table', 7)]),
+    shatter: Object.freeze([layer('Impact', 'ImpactIceShard01_01_Regular_Blue_400x400.webm', 'table', 7)])
 });
 
 const _hsl = { h: 0, s: 0, l: 0 };
