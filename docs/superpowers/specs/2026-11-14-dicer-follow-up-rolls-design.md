@@ -48,8 +48,9 @@ rolls right after a hand throw: flat checks, Workbench auto damage, and so on.
 
 ## Calls made by Claude (owner can override)
 
-- When the GM requires hand rolls (`handRollsRequired`), follow-ups still open the throw screen.
-  Required means every roll is grabbed.
+- ~~When the GM requires hand rolls, follow-ups still open the throw screen.~~ Changed by the
+  owner after live testing: follow-ups apply while `handRollsRequired` is on too, because a
+  follow-up is still a real throw.
 - Tray throws always open the screen. They are deliberate.
 - The 3 s window matches the existing burst window (`BURST_MS`).
 

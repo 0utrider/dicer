@@ -164,8 +164,7 @@ export const FOLLOW_MS = 3000;
 let lastLanded = -Infinity; // when the last overlay throw's values arrived; follow-ups never set it
 /** `startedAt`: when the roll started, before any queue wait (a roll queued behind a throw is not its follow-up). */
 const isFollowUp = (getSetting, startedAt) =>
-  getSetting('handFollowUps') === true &&
-  getSetting('handRollsRequired') !== true &&
+  getSetting('handFollowUps') === true && // also while hand rolls are required: still a real throw
   startedAt >= lastLanded &&
   startedAt - lastLanded < FOLLOW_MS;
 

@@ -133,7 +133,7 @@
       },
       "handFollowUps": {
         "Name": "Throw follow-up rolls automatically",
-        "Hint": "A roll that starts within 3 seconds of your hand throw landing (a flat check, an automatic damage roll) is thrown for you, with no second throw screen. Ignored when the GM requires hand rolls."
+        "Hint": "A roll that starts within 3 seconds of your hand throw landing (a flat check, an automatic damage roll) is thrown for you, with no second throw screen. Also applies when the GM requires hand rolls."
       },
       "diceTray": {
         "Name": "Dice tray",

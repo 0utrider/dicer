@@ -939,17 +939,25 @@ describe('follow-up rolls', () => {
     expect(overlay.open).toHaveBeenCalledTimes(2);
   });
 
-  test('handFollowUps off, or hand rolls required, opens the throw screen', async () => {
-    for (const set of [{ handFollowUps: false }, { handRollsRequired: true }]) {
-      Object.assign(settings, { handFollowUps: true, handRollsRequired: false }, set);
-      overlay.open.mockClear();
-      overlay.values = [12];
-      await rollD20();
-      await vi.advanceTimersByTimeAsync(500);
-      await rollD20();
-      expect(overlay.open).toHaveBeenCalledTimes(2);
-      await vi.advanceTimersByTimeAsync(5000);
-    }
+  test('handFollowUps off opens the throw screen', async () => {
+    settings.handFollowUps = false;
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(500);
+    await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+  });
+
+  test('hand rolls required: a follow-up still throws itself', async () => {
+    settings.handRollsRequired = true;
+    overlay.values = [12];
+    await rollD20();
+    await vi.advanceTimersByTimeAsync(500);
+    boxValues = [6];
+    const next = await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(next.options.dicerHand.follow).toBe(true);
+    expect(next.terms[0].results[0].result).toBe(6);
   });
 
   test('ask mode: a follow-up is not asked', async () => {
