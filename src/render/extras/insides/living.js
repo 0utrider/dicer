@@ -3,19 +3,20 @@
  * draws the still ones, at world start, untouched). insidePatch routes those four types here when
  * insideMotion.wants() (live.js) is true; the pars then hold MOTION_PARS, so the GLSL may read
  * uInteriorTime (seconds, already scaled by the motion factor: it stops after landing and runs at a
- * quarter under reduced motion, so it is never re-scaled here), uInteriorSpin (rad/s, canonical
- * frame) and uInteriorLag (unit, canonical frame). uInteriorFlare is Task 9's, not read here.
+ * quarter under reduced motion, so it is never re-scaled here), uInteriorLag (unit, canonical
+ * frame) and uInteriorSwirl (rotation vector, canonical frame). uInteriorFlare is Task 9's, not
+ * read here.
  *
  * Each variant is today's GLSL with its sample positions moved, never extra noise lookups (the
  * inside must hold up at 16 march steps):
  * - liquid: the core pools along the lagged down: its centre sinks a little and a flat surface
  *   across uInteriorLag cuts its top (lit as a meniscus), so the surface trails the die's turns,
  *   overshoots once and settles (the slosh spring is CPU side, live.js). Its waves drift.
- * - glitter: each flake's centre (and normal) turns about the spin axis, by an angle that grows with
- *   time and with the spin, more near the centre than at the rim (a swirl, not a rigid turn). The
- *   rotation vector is time x (0.15 up + DC_LV_SPIN x spin): about time x (0.15 + |spin|), with the
- *   spin weighted down so the swirl does not unwind visibly when the spin dies at landing, and as a
- *   vector so there is no axis flip as the spin passes through zero. The flake test stays exact:
+ * - glitter: each flake's centre (and normal) turns by the swirl rotation vector uInteriorSwirl,
+ *   more near the centre than at the rim (a swirl, not a rigid turn). The vector is integrated on
+ *   the CPU (motion.js: += dt x rate x (0.15 local up + 0.08 spin)), so it speeds up with the spin,
+ *   only slows when the spin dies at landing (never unwinds) and stops with the motion factor; as a
+ *   vector it has no axis flip as the spin passes through zero. The flake test stays exact:
  *   the candidate cells are those of the segment's ends turned back, and the ray is tested against
  *   the turned disc.
  * - swirl: the vortex turns about y, faster at the core.
@@ -72,7 +73,6 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 
 const GLITTER = /* glsl */ `
 #define DC_LV_CELLS ${f(LIVING.glitterCells)}
-#define DC_LV_SPIN 0.08
 #define DC_LV_FALL ${f(0.6 / LIVING.radius)}
 vec3 dcLvHash33( vec3 p ) {
 	return vec3( dcHash13( p ), dcHash13( p + 19.19 ), dcHash13( p + 47.77 ) );
@@ -106,10 +106,9 @@ vec4 dcLvFlake( vec3 cell, vec3 p, vec3 rd, float dt, vec3 k, float w ) {
 	return vec4( rad * 0.85, 0.85 );
 }
 vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
-	// the swirl's rotation vector: time x ( 0.15 + spin ), the spin weighted by DC_LV_SPIN
-	vec3 v = uInteriorTime * ( vec3( 0.0, 0.15, 0.0 ) + DC_LV_SPIN * uInteriorSpin );
-	float w = length( v );
-	vec3 k = w > 1e-5 ? v / w : vec3( 0.0, 1.0, 0.0 );
+	// the swirl's rotation vector, integrated on the CPU (motion.js SWIRL)
+	float w = length( uInteriorSwirl );
+	vec3 k = w > 1e-5 ? uInteriorSwirl / w : vec3( 0.0, 1.0, 0.0 );
 	// the candidate cells: the segment's ends turned back by the swirl at their radius
 	vec3 e = p + rd * dt;
 	vec3 c0 = floor( dcLvTurn( p, k, - w * ( 1.0 - DC_LV_FALL * length( p ) ) ) * DC_LV_CELLS );

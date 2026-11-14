@@ -2,12 +2,14 @@
 export const SLOSH = Object.freeze({ omega: 13.5, zeta: 0.5 });
 export const REST_EASE = Object.freeze({ from: 8000, to: 10000 });
 export const SPIN_TAU = 0.15;
+// glitter swirl: rotation vector += dt x rate x (rest x local up + spin x spin), rad
+export const SWIRL = Object.freeze({ rest: 0.15, spin: 0.08 });
 
 const REDUCED_RATE = 0.25;
 const MAX_SUBSTEP = 1 / 120;
 
 export function createMotion() {
-  return { time: 0, spin: [0, 0, 0], lag: [0, 1, 0], lagVel: [0, 0, 0], prevQuat: null };
+  return { time: 0, spin: [0, 0, 0], lag: [0, 1, 0], lagVel: [0, 0, 0], swirl: [0, 0, 0], prevQuat: null };
 }
 
 // Rotate v by the inverse of unit quaternion q (world -> die-local).
@@ -52,6 +54,8 @@ export function stepMotion(state, quat, dtSec, { reduced = false, factor = 1 } =
     const raw = rotateInv(quat, worldOmega(state.prevQuat, quat, dtSec));
     const a = 1 - Math.exp(-dtSec / SPIN_TAU);
     for (let i = 0; i < 3; i++) state.spin[i] += (raw[i] * rate - state.spin[i]) * a;
+    // integrated, so it only ever slows when the spin dies (no unwind) and stops at rate 0
+    for (let i = 0; i < 3; i++) state.swirl[i] += dtSec * rate * (SWIRL.rest * up[i] + SWIRL.spin * state.spin[i]);
 
     const omega = reduced ? SLOSH.omega * REDUCED_RATE : SLOSH.omega;
     const damp = 2 * SLOSH.zeta * omega;

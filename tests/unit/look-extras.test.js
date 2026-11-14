@@ -566,18 +566,20 @@ describe('insides', () => {
 
   describe('living insides: motion uniforms (insideMotion on)', () => {
     const LIVE = { ...FLAGS, insideMotion: true };
-    const MOTION = ['uInteriorFlare', 'uInteriorLag', 'uInteriorSpin', 'uInteriorTime'];
+    const MOTION = ['uInteriorFlare', 'uInteriorLag', 'uInteriorSpin', 'uInteriorSwirl', 'uInteriorTime'];
     const DECL = [
       'uniform float uInteriorTime;',
       'uniform vec3 uInteriorSpin;',
       'uniform vec3 uInteriorLag;',
       'uniform float uInteriorFlare;',
+      'uniform vec3 uInteriorSwirl;',
     ];
     const defaults = (u) => {
       expect(u.uInteriorTime.value).toBe(0);
       expect(u.uInteriorSpin.value.toArray()).toEqual([0, 0, 0]);
       expect(u.uInteriorLag.value.toArray()).toEqual([0, 1, 0]);
       expect(u.uInteriorFlare.value).toBe(0);
+      expect(u.uInteriorSwirl.value.toArray()).toEqual([0, 0, 0]);
     };
     const { wants } = lookExtras.insideMotion;
 
@@ -648,6 +650,10 @@ describe('insides', () => {
       lookExtras.insideMotion.step(die, u, q, 5, { factor: 1 });
       expect(u.uInteriorTime.value).toBeCloseTo(0.1, 6); // clamped to 0.1 s
       expect(u.uInteriorLag.value.length()).toBeCloseTo(1, 6);
+      // the swirl: 0.1 s of 0.15 rad/s about local up (-z here), the die not turning
+      expect(u.uInteriorSwirl.value.z).toBeCloseTo(-0.015, 6);
+      lookExtras.insideMotion.step(die, u, q, 0.05, { factor: 0 });
+      expect(u.uInteriorSwirl.value.z).toBeCloseTo(-0.015, 6); // frozen at factor 0
     });
 
     test('frame: a throw warns once (Dicer |) and stops stepping, never reaching the render loop', () => {
@@ -688,8 +694,8 @@ describe('insides', () => {
           expect(count(p.interior.pars, NOISE_GLSL)).toBe(1);
           expect(Object.keys(p.uniforms).sort()).toEqual(MOTION);
           defaults(p.uniforms);
-          // the animation is wired: the GLSL reads the time uniform
-          expect(body).toMatch(/\buInteriorTime\b/);
+          // the animation is wired: the GLSL reads the time uniform (glitter: the CPU-integrated swirl)
+          expect(body).toMatch(type === 'glitter' ? /\buInteriorSwirl\b/ : /\buInteriorTime\b/);
           expect(body).not.toMatch(/\buInteriorFlare\b/); // Task 9's
           expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
           // today's GLSL is not it
@@ -704,11 +710,11 @@ describe('insides', () => {
         const { body } = livingInside(resin({ type: 'liquid', ...COLORS }));
         expect(body).toMatch(/\buInteriorLag\b/);
         expect(body).not.toContain('dcIUp');
-        // glitter turns about the spin axis, faster with the spin: a rotation vector of
-        // time x ( 0.15 up + weighted spin ), so its angle is about time x ( 0.15 + |spin| )
+        // glitter turns by the CPU-integrated swirl rotation vector (motion.js), never by a
+        // time x spin product that would unwind when the spin dies at landing
         const gl = livingInside(resin({ type: 'glitter', ...COLORS })).body;
-        expect(gl).toContain('vec3 v = uInteriorTime * ( vec3( 0.0, 0.15, 0.0 ) + DC_LV_SPIN * uInteriorSpin );');
-        expect(gl).toMatch(/float w = length\( v \);/);
+        expect(gl).toContain('float w = length( uInteriorSwirl );');
+        expect(gl).not.toMatch(/\buInteriorTime\b|\buInteriorSpin\b/);
         // no living inside reads the die's true up (motion has its own frame)
         for (const type of BASE) expect(livingInside(resin({ type, ...COLORS })).body).not.toContain('dcIUp');
       });

@@ -144,3 +144,36 @@ test('factor 0 freezes time and spin', () => {
   expect(s.time).toBe(0);
   expect(s.spin).toEqual([0, 0, 0]);
 });
+
+test('swirl: accumulates rate x (0.15 up + 0.08 spin); never turns back; frozen at factor 0; x0.25 reduced', () => {
+  const s = createMotion();
+  expect(s.swirl).toEqual([0, 0, 0]);
+  const w = 10; // rad/s about world y (die-local y here)
+  let q = qAxis([0, 1, 0], 0);
+  stepMotion(s, q, DT, {});
+  expect(s.swirl).toEqual([0, 0, 0]); // the first step only seeds
+  let prev = [...s.swirl];
+  // spin for 1 s, then the die stops (landing): the spin dies, the swirl only slows
+  for (let i = 1; i * DT <= 2; i++) {
+    if (i * DT <= 1) q = qAxis([0, 1, 0], w * i * DT);
+    stepMotion(s, q, DT, {});
+    const d = s.swirl[1] - prev[1];
+    expect(d).toBeGreaterThan(0); // forward every step: no reversal
+    prev = [...s.swirl];
+  }
+  // about 1 s of 0.15 + 0.08 x ~10, plus 1 s of 0.15 and the spin's tail
+  expect(s.swirl[1]).toBeGreaterThan(0.15 * 2 + 0.08 * w * 0.8);
+  expect(s.swirl[1]).toBeLessThan(0.15 * 2 + 0.08 * w * 1.2);
+  // at rest the swirl keeps 0.15 rad/s about local up
+  const before = s.swirl[1];
+  for (let i = 0; i < 120; i++) stepMotion(s, q, DT, {});
+  expect(s.swirl[1] - before).toBeCloseTo(0.15, 3);
+  // factor 0: frozen exactly, even for a die still turning
+  const held = [...s.swirl];
+  for (let i = 0; i < 120; i++) stepMotion(s, qAxis([1, 0, 0], 3 * i * DT), DT, { factor: 0 });
+  expect(s.swirl).toEqual(held);
+  // reduced: the rest rate at a quarter
+  const r = createMotion();
+  for (let i = 0; i <= 120; i++) stepMotion(r, qAxis([0, 1, 0], 0), DT, { reduced: true });
+  expect(r.swirl[1]).toBeCloseTo(0.15 * 0.25, 4);
+});

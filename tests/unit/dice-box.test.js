@@ -3577,7 +3577,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
 });
 
 describe('living insides: per-die motion (insideMotion)', () => {
-  const MOTION = ['uInteriorTime', 'uInteriorSpin', 'uInteriorLag', 'uInteriorFlare'];
+  const MOTION = ['uInteriorTime', 'uInteriorSpin', 'uInteriorLag', 'uInteriorFlare', 'uInteriorSwirl'];
   const resinLiquid = {
     body: { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 },
     interior: { type: 'liquid', colors: ['#3fa7ff', '#1b3a8a'], density: 0.5 },
@@ -3647,7 +3647,7 @@ describe('living insides: per-die motion (insideMotion)', () => {
     box.clear();
   });
 
-  test('a look change mid-roll keeps the same uInteriorTime/Spin/Lag/Flare objects', () => {
+  test('a look change mid-roll keeps the same uInteriorTime/Spin/Lag/Flare/Swirl objects', () => {
     const { renderer, physics, box, dice } = rollWith(ON, [{ type: 'd6', value: 1 }]);
     physics.flush();
     renderer.tick(0);

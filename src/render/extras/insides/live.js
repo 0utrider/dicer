@@ -8,13 +8,15 @@ import { createMotion, stepMotion, restFactor } from './motion.js';
  * - uInteriorTime (float): seconds since the die's roll first drew, scaled by the motion factor;
  * - uInteriorSpin (vec3): the die's smoothed angular velocity, canonical (die-local) frame;
  * - uInteriorLag (vec3, unit): a damped spring chasing world up in the die-local frame;
- * - uInteriorFlare (float 0..1): written by inside flares, never here.
+ * - uInteriorFlare (float 0..1): written by inside flares, never here;
+ * - uInteriorSwirl (vec3): glitter's swirl rotation vector, integrated (motion.js SWIRL).
  */
 export const MOTION_PARS = [
   'uniform float uInteriorTime;',
   'uniform vec3 uInteriorSpin;',
   'uniform vec3 uInteriorLag;',
   'uniform float uInteriorFlare;',
+  'uniform vec3 uInteriorSwirl;',
 ].join('\n');
 
 /** Fresh motion uniforms at their defaults. */
@@ -23,6 +25,7 @@ export const motionUniforms = () => ({
   uInteriorSpin: { value: new THREE.Vector3(0, 0, 0) },
   uInteriorLag: { value: new THREE.Vector3(0, 1, 0) },
   uInteriorFlare: { value: 0 },
+  uInteriorSwirl: { value: new THREE.Vector3(0, 0, 0) },
 });
 
 /** Longest step one frame may take: a paused tab must not mean hundreds of spring substeps. */
@@ -91,6 +94,7 @@ export const insideMotion = {
     uniforms.uInteriorTime.value = m.time;
     uniforms.uInteriorSpin.value.set(m.spin[0], m.spin[1], m.spin[2]);
     uniforms.uInteriorLag.value.set(m.lag[0], m.lag[1], m.lag[2]);
+    uniforms.uInteriorSwirl.value.set(m.swirl[0], m.swirl[1], m.swirl[2]);
     return m;
   },
 
