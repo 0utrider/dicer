@@ -1078,3 +1078,21 @@ describe('inside flare (living insides round 3)', () => {
     }
   });
 });
+
+test('number-flare (intensity 2.5) under reduced motion: the inside flare still rises softly (< 0.5 at 80 ms)', () => {
+  const die = makeDie();
+  die.uniforms.uInteriorFlare = { value: 0 };
+  die.inner.material.userData.uniforms = die.uniforms;
+  const mod = EFFECTS['number-flare'];
+  const ctx = ctxFor(mod, { die, reducedMotion: true, setting: () => undefined });
+  expect(ctx.intensity).toBe(2.5);
+  const h = mod.start(ctx);
+  h.update(0);
+  h.update(80);
+  expect(die.uniforms.uInteriorFlare.value).toBeLessThan(0.5);
+  h.update(300);
+  expect(die.uniforms.uInteriorFlare.value).toBeGreaterThan(0.9);
+  h.update(600);
+  expect(die.uniforms.uInteriorFlare.value).toBeLessThan(0.7); // decaying, no plateau at 1
+  h.stop();
+});

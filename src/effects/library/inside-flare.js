@@ -60,7 +60,9 @@ export function flareInside(ctx, die, { amount = 1, duration = ctx?.duration } =
   const uniform = ctx.isolate?.(die)?.uInteriorFlare;
   if (!uniform) return NOOP;
   const D = Math.max(0, Number(duration) || 0);
-  const k = Math.max(0, Number(amount) || 0);
+  // capped per flare: an amount above 1 (number-flare's intensity 2.5) must not saturate early,
+  // which would shorten the reduced-motion 300 ms rise and hold a flat plateau at 1
+  const k = Math.min(1, Math.max(0, Number(amount) || 0));
   const reduced = !!ctx.reducedMotion;
   const me = { v: 0 };
   let set = active.get(uniform);

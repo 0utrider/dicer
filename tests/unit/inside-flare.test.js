@@ -91,19 +91,26 @@ describe('flareInside', () => {
     const die = insideDie();
     const ctx = ctxFor(die);
     const a = flareInside(ctx, die, { amount: 2.5, duration: 900 });
-    const b = flareInside(ctx, die, { amount: 0.6, duration: 2000 });
+    const b = flareInside(ctx, die, { amount: 0.3, duration: 2000 });
+    const c = flareInside(ctx, die, { amount: 1, duration: 900 });
     a.update(0);
     b.update(0);
+    c.update(0);
     a.update(80);
     b.update(80);
-    expect(die.uniforms.uInteriorFlare.value).toBe(1); // capped
+    c.update(80);
+    expect(die.uniforms.uInteriorFlare.value).toBe(1); // two at full: still 1
+    // an amount above 1 is capped per flare: no saturated plateau, it follows the envelope
+    c.stop();
+    a.update(490);
+    expect(die.uniforms.uInteriorFlare.value).toBeCloseTo(flareLevel(490, 900, false), 5);
     // a ends: b's own level takes over (not a's leftover, not zero)
     b.update(900);
     a.update(900);
-    const bLevel = 0.6 * flareLevel(900, 2000, false);
+    const bLevel = 0.3 * flareLevel(900, 2000, false);
     expect(die.uniforms.uInteriorFlare.value).toBeCloseTo(bLevel, 5);
     b.update(1000);
-    expect(die.uniforms.uInteriorFlare.value).toBeCloseTo(0.6 * flareLevel(1000, 2000, false), 5);
+    expect(die.uniforms.uInteriorFlare.value).toBeCloseTo(0.3 * flareLevel(1000, 2000, false), 5);
     b.stop();
     expect(die.uniforms.uInteriorFlare.value).toBe(0);
   });
@@ -118,6 +125,18 @@ describe('flareInside', () => {
     weak.update(80);
     weak.update(160);
     expect(die.uniforms.uInteriorFlare.value).toBeCloseTo(flareLevel(80, 900, false), 5);
+  });
+
+  test('an amount above 1 keeps the reduced-motion 300 ms rise (capped, not saturated early)', () => {
+    const die = insideDie();
+    const h = flareInside(ctxFor(die, { reducedMotion: true }), die, { amount: 2.5, duration: 900 });
+    h.update(0);
+    h.update(80);
+    expect(die.uniforms.uInteriorFlare.value).toBeLessThan(0.5);
+    h.update(200);
+    expect(die.uniforms.uInteriorFlare.value).toBeLessThan(0.95);
+    h.update(600);
+    expect(die.uniforms.uInteriorFlare.value).toBeCloseTo(flareLevel(600, 900, true), 5); // no plateau
   });
 
   test('reduced motion: the written flare rises over 300 ms', () => {
@@ -161,12 +180,20 @@ describe('flareInside', () => {
     expect(d3.uniforms.uInteriorFlare.value).toBe(0);
     // no die at all
     expect(() => flareInside(ctxFor(null), null, {}).update(0)).not.toThrow();
-    // a throwing setting reader counts as on (the layer's setting() never throws; be safe anyway)
+    // a missing or throwing setting reader counts as on (the layer's setting() never throws; be safe anyway)
     const d4 = insideDie();
     const h4 = flareInside(ctxFor(d4, { setting: undefined }), d4, {});
     h4.update(0);
     h4.update(80);
     expect(d4.uniforms.uInteriorFlare.value).toBeGreaterThan(0.9);
+    const d5 = insideDie();
+    const throwing = () => {
+      throw new Error('settings not ready');
+    };
+    const h5 = flareInside(ctxFor(d5, { setting: throwing }), d5, {});
+    h5.update(0);
+    h5.update(80);
+    expect(d5.uniforms.uInteriorFlare.value).toBeGreaterThan(0.9);
   });
 
   test('stop() before the end resets the flare; stop twice is harmless', () => {

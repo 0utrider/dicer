@@ -146,7 +146,9 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float haze = ( 0.25 + 1.6 * smoothstep( DC_FR_IN - 0.1, DC_FR_WALL, r ) ) * ( 0.4 + n ) * mix( 0.6, 1.4, uInteriorDensity ) * env;
 	float a = dcIAlpha( haze, dt );
 	vec4 acc = dcFrHits( sp, lim, haze );
-	vec3 hc = uInteriorColors[ 1 ] * ( dcILight * 0.55 + 0.2 );
+	// the inside flare: the haze lights up from within, a cold glow tinted toward colors[0] (pale
+	// spikes saturate, so the flash shows in the haze between them); flare 0 changes nothing
+	vec3 hc = uInteriorColors[ 1 ] * ( dcILight * 0.55 + 0.2 ) * ( 1.0 + 0.7 * DC_FR_FLARE ) + uInteriorColors[ 0 ] * ( 0.15 * DC_FR_FLARE );
 	return acc + ( 1.0 - acc.a ) * vec4( min( hc, vec3( 1.0 ) ) * a, a );
 }
 `;

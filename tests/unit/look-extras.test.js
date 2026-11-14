@@ -865,7 +865,15 @@ describe('insides', () => {
         const fi = fireInside(resin({ type: 'fire', ...COLORS }), true).body;
         expect(count(fi, '( 1.0 + fl )')).toBe(2);
         // frost flashes: glint x ( 1 + 3 flare )
-        expect(frostInside(resin({ type: 'frost', ...COLORS }), true).body).toContain('( 1.0 + 3.0 * DC_FR_FLARE )');
+        const fr = frostInside(resin({ type: 'frost', ...COLORS }), true).body;
+        expect(fr).toContain('( 1.0 + 3.0 * DC_FR_FLARE )');
+        // ... and visibly: the haze between the (saturating) pale spikes lights up, tinted colors[0]
+        expect(fr).toContain('( 1.0 + 0.7 * DC_FR_FLARE ) + uInteriorColors[ 0 ] * ( 0.15 * DC_FR_FLARE )');
+        // lava cracks wide, held back for the numbers: at least half open, a third wider, hotter lips
+        const la = lavaInside(resin({ type: 'lava', ...COLORS }), true).body;
+        expect(la).toContain('0.5 * DC_LA_FLARE )');
+        expect(la).toContain('( 1.0 + 0.35 * DC_LA_FLARE )');
+        expect(la).not.toMatch(/max\( [^;]*, DC_LA_FLARE \)/); // never fully open at flare 1
       });
 
       test('storm strikes: flare-only extra sparks (rate x ( 1 + 5 flare )), the base slots untouched; calm holds', () => {

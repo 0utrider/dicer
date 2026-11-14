@@ -16,7 +16,8 @@
  *
  * Motion: DC_LA_T is uInteriorTime with insideMotion, the constant 0 without (a still frame, no
  * uniform read). DC_LA_FLARE is uInteriorFlare (0..1, roll effects: effects/library/inside-flare.js)
- * with insideMotion, the constant 0 without: the cracks all open and widen (lava cracks wide).
+ * with insideMotion, the constant 0 without: the cracks all open at least half way, widen a third
+ * and their lips glow hotter (lava cracks wide), held back so the numbers still read at landing.
  *
  * Cost: an early out outside the pool, then three noise lookups per sample; the first opaque
  * sample usually ends the march.
@@ -66,9 +67,10 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float n2 = dcNoise3( ps * 7.0 + 1.9 );
 	float n3 = dcNoise3( ps * 15.0 - 5.2 );
 	float ridge = 1.0 - abs( 2.0 * mix( n2, n3, 0.3 ) - 1.0 );
-	// the inside flare cracks it wide: every crack opens, up to twice as wide
-	float open = max( 0.5 + 0.5 * sin( DC_LA_T * DC_LA_W + n1 * 9.0 ), DC_LA_FLARE );
-	float wid = mix( 0.02, 0.14, open ) * ( 1.0 + DC_LA_FLARE ) + dt * 0.3;
+	// the inside flare cracks it wide, held back so the numbers still read: every crack opens at
+	// least half way and widens a third; the lips glow hotter (below)
+	float open = max( 0.5 + 0.5 * sin( DC_LA_T * DC_LA_W + n1 * 9.0 ), 0.5 * DC_LA_FLARE );
+	float wid = mix( 0.02, 0.14, open ) * ( 1.0 + 0.35 * DC_LA_FLARE ) + dt * 0.3;
 	float crack = smoothstep( 1.0 - wid, 1.0 - 0.35 * wid, ridge );
 	float crust = shell * ( 1.0 - crack );
 	// the molten body: cool edge to hot core with the churn, brightest in the open cracks
@@ -77,7 +79,7 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	// the crust: the lava's colour darkened, lit a little by the key, warm at the crack lips
 	float lip = smoothstep( 1.0 - 3.0 * wid, 1.0 - wid, ridge );
 	float lit = 0.3 + 0.7 * max( dot( dcIUp, dcIKey ), 0.0 );
-	vec3 rock = uInteriorColors[ 1 ] * ( 0.025 *( dcILight * lit + 0.25 ) + 0.4 * lip * lip );
+	vec3 rock = uInteriorColors[ 1 ] * ( 0.025 *( dcILight * lit + 0.25 ) + 0.4 * ( 1.0 + DC_LA_FLARE ) * lip * lip );
 	vec3 col = mix( molten, rock, crust );
 	float a = dcIAlpha( 70.0, dt );
 	return vec4( min( col, vec3( 1.0 ) ) * a, a );
