@@ -1,4 +1,5 @@
 import { CARD_AXIS, upFrame, upFrameGLSL } from './frame.js';
+import { swap } from './live.js';
 
 /**
  * Magic circle inside (plan 3b): a glowing arcane circle of runes cast flat in the resin.
@@ -237,6 +238,13 @@ ${upFrameGLSL('dcRu', `vec3( ${RUNES.axis.map(f).join(', ')} )`)}
  * @param {object} _a normalized appearance whose interior is type 'shape' with shape runes
  * @returns {{ body: string }} the circle's GLSL (every colour and the density are uniforms)
  */
-export function runesInside(_a) {
-  return { body: body() };
+export function runesInside(_a, live = false) {
+  const b = body();
+  if (!live) return { body: b };
+  // insideMotion: the glow pulses 0.7 .. 1.0 over 2.5 s (uInteriorTime, MOTION_PARS in the pars)
+  const g = f(RUNES.glow);
+  const g0 = `vec3 dcRuG0 = uInteriorColors[ 0 ] * ${g};`;
+  const g1 = `vec3 dcRuG1 = uInteriorColors[ 1 ] * ${g};`;
+  const pulse = 'float dcRuPulse = 0.85 + 0.15 * sin( uInteriorTime * 2.5133 );\n\t';
+  return { body: swap(swap(b, g0, `${pulse}${g0.slice(0, -1)} * dcRuPulse;`), g1, `${g1.slice(0, -1)} * dcRuPulse;`) };
 }

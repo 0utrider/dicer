@@ -18,6 +18,8 @@
  * three octaves plus one, and its stars). The sheets' width grows with the segment length, so
  * they stay solid at the lowest marched tier instead of breaking into step noise.
  */
+import { swap } from './live.js';
+
 export const USES_NOISE = true; // dcNoise3
 
 /** Plume geometry (canonical frame; the march sphere has radius 0.62). */
@@ -83,12 +85,13 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 /**
  * With insideMotion (`live`): the stretched sample space slides down over time, so the tendrils
  * rise through the column, about one feature per 4 s (uInteriorTime, MOTION_PARS in the pars).
- * The anchor carries no whitespace: the build strips the template's indentation.
+ * The anchor sits mid-line (it has no leading indentation, so the inserted line takes the
+ * template's tab and the anchor line starts at column 0); swap() throws where it is missing.
  */
 const RISE = 's.y -= 0.25 * uInteriorTime;\n';
 const RISE_AT = 'vec2 wv = ';
 
 /** @returns {{ body: string }} the smoke GLSL (every colour and the density are uniforms) */
 export function smokeInside(_a, live = false) {
-  return { body: live ? BODY.replace(RISE_AT, RISE + RISE_AT) : BODY };
+  return { body: live ? swap(BODY, RISE_AT, RISE + RISE_AT) : BODY };
 }

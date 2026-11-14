@@ -32,7 +32,7 @@ import { CARD_AXIS, upFrame, upFrameGLSL } from '../../src/render/extras/insides
 import { DRAGON, dragonExtent, dragonFrame, dragonInside } from '../../src/render/extras/insides/dragon.js';
 import { RUNES, RU_STEM, RU_STROKES, runeGlyphs, runesFrame, runesInside } from '../../src/render/extras/insides/runes.js';
 import { LIVING, USES_NOISE as LIVING_NOISE, livingInside } from '../../src/render/extras/insides/living.js';
-import { _resetInsideMotion, motionUniforms } from '../../src/render/extras/insides/live.js';
+import { _resetInsideMotion, motionUniforms, swap } from '../../src/render/extras/insides/live.js';
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -736,6 +736,64 @@ describe('insides', () => {
         expect(live.split('uniform float uInteriorFlare;')[1]).toMatch(/\buInteriorTime\b/);
         expect(still).toContain(smokeInside(sm).body);
         expect(smokeInside(sm).body).not.toMatch(/\buInteriorTime\b/);
+      });
+
+      test('smoke: the rise anchor is present, so a missing anchor fails loudly', () => {
+        const sm = resin({ type: 'smoke', ...COLORS });
+        const live = smokeInside(sm, true).body;
+        expect(live).toContain('s.y -= 0.25 * uInteriorTime;\nvec2 wv = ');
+        expect(count(live, 'vec2 wv = ')).toBe(1);
+        expect(smokeInside(sm).body).toContain('\tvec2 wv = ');
+        expect(() => swap('no anchor here', 'vec2 wv = ', 'x')).toThrow(/anchor/);
+      });
+
+      test('liquid bubble / sand: the core is the living liquid and reads uInteriorLag', () => {
+        for (const opt of [{ bubble: true }, { sand: true }, { bubble: true, sand: true }]) {
+          const a = resin({ type: 'liquid', ...opt, ...COLORS });
+          const live = liquidExtrasInside(a, true).body;
+          const still = liquidExtrasInside(a).body;
+          const core = live.slice(live.indexOf('vec4 dcLvLiquid('), live.indexOf('// the bubble'));
+          expect(core).toMatch(/\buInteriorLag\b/); // the surface across the lagged up
+          expect(core).toMatch(/\buInteriorTime\b/); // drifting waves, as plain living liquid
+          expect(core).toContain('coreR -= dent;'); // the bubble still dents it
+          expect(live).not.toContain('dcLqLiquid');
+          expect(live).not.toContain('dcIUp');
+          expect(livingInside(resin({ type: 'liquid', ...COLORS })).body).toContain('vec4 dcLvLiquid( vec3 p, float dt, float dent )');
+          // still: today's core, untouched
+          expect(still).toContain('vec4 dcLqLiquid(');
+          expect(still).not.toMatch(/\buInteriorLag\b|\buInteriorTime\b/);
+        }
+      });
+
+      test('eye, runes, dragon: a life touch reading uInteriorTime only with insideMotion', () => {
+        const touches = {
+          eye: ['smoothstep( 0.0, 0.5, uInteriorTime )', 'q -= '],
+          runes: ['dcRuPulse = 0.85 + 0.15 * sin( uInteriorTime * 2.5133 )', 'dcRuPulse;'],
+          dragon: ['0.9 + 0.1 * sin( uInteriorTime * 2.0944 )', '* glow * '],
+        };
+        for (const [shape, type, build] of [
+          ['eye', 'eye', eyeInside],
+          ['runes', 'shape', runesInside],
+          ['dragon', 'shape', dragonInside],
+        ]) {
+          const a = resin({ type, ...(type === 'shape' ? { shape } : {}), ...COLORS });
+          const live = build(a, true).body;
+          const still = build(a).body;
+          for (const t of touches[shape]) expect(live).toContain(t);
+          expect(live).toMatch(/\buInteriorTime\b/);
+          expect(live).not.toMatch(/\buInteriorFlare\b/);
+          expect(still).not.toMatch(/\buInteriorTime\b/);
+          // through the patch: only with insideMotion, and then declared in the pars
+          const lp = insidePatch(a, LIVE).interior.pars;
+          const sp = insidePatch(a, { ...LIVE, insideMotion: false }).interior.pars;
+          expect(lp.split('uniform float uInteriorFlare;')[1]).toContain(live);
+          expect(sp).toContain(still);
+          expect(sp).not.toMatch(/\buInteriorTime\b/);
+          expect(live).not.toBe(still);
+        }
+        // the eye's limbal ring stays on the iris, not on the moved pupil
+        const e = resin({ type: 'eye', ...COLORS });
+        expect(eyeInside(e, true).body).toContain('smoothstep( 0.78, 1.0, rho0 )');
       });
 
       test('chunk missing: insideMotion looks render today\'s shader', async () => {

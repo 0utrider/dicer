@@ -19,6 +19,16 @@ export const MOTION_PARS = [
   'uniform vec3 uInteriorSwirl;',
 ].join('\n');
 
+/**
+ * `text` with the first `from` replaced by `to`; throws where `from` is missing, so a GLSL edit
+ * whose anchor drifted fails loudly (patchMaterial then draws the fallback look) instead of
+ * silently leaving the inside still.
+ */
+export function swap(text, from, to) {
+  if (!text.includes(from)) throw new Error(`dicer: inside motion anchor missing: ${from}`);
+  return text.replace(from, () => to);
+}
+
 /** Fresh motion uniforms at their defaults. */
 export const motionUniforms = () => ({
   uInteriorTime: { value: 0 },

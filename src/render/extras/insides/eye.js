@@ -20,6 +20,8 @@
  * - light: wrapped key-light diffuse plus the inner light, a sharp wet highlight from the key
  *   light and a Fresnel reflection of the sky above the die (towards dcIUp).
  */
+import { swap } from './live.js';
+
 export const USES_NOISE = true; // dcNoise3
 
 export const EYE = Object.freeze({
@@ -144,7 +146,23 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 }
 `;
 
-/** @returns {{ body: string }} the eye GLSL (every colour and the density are uniforms) */
-export function eyeInside(_a) {
-  return { body: BODY };
+/**
+ * With insideMotion (`live`): the pupil's centre moves in the iris plane towards the view ray's
+ * projection, up to 0.15 iris radii, eased in over the first 0.5 s of the roll (uInteriorTime,
+ * MOTION_PARS in the pars). The pupil, ruff, fibres and collarette follow it; the limbal ring
+ * stays on the iris (rho0). No extra noise lookup.
+ */
+const PUPIL_AT = 'vec2 q = vec2( dot( xi, t1 ), dot( xi, t2 ) ) / DC_EY_IRIS;';
+const PUPIL_MOVE = `
+	float rho0 = min( length( q ), 1.0 );
+	q -= 0.15 * smoothstep( 0.0, 0.5, uInteriorTime ) * vec2( dot( rd, t1 ), dot( rd, t2 ) );`;
+const LIMBAL_AT = 'smoothstep( 0.78, 1.0, rho )';
+
+/**
+ * @param {boolean} [live] insideMotion: the pupil follows the view ray
+ * @returns {{ body: string }} the eye GLSL (every colour and the density are uniforms)
+ */
+export function eyeInside(_a, live = false) {
+  if (!live) return { body: BODY };
+  return { body: swap(swap(BODY, PUPIL_AT, PUPIL_AT + PUPIL_MOVE), LIMBAL_AT, 'smoothstep( 0.78, 1.0, rho0 )') };
 }

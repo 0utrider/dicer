@@ -44,16 +44,21 @@ const R = f(LIVING.radius);
 /** GLSL: a point in [cellMin, cellMax] of a cell from hash h in [0, 1). */
 const cellPos = (h) => `${f(LIVING.cellMin)} + ${f(LIVING.cellMax - LIVING.cellMin)} * ${h}`;
 
-const LIQUID = /* glsl */ `
+/**
+ * The living liquid core over length dt (dent shrinks it: 0 for plain liquid, the air bubble's
+ * dent for liquid-extras.js, which reuses this text as its core while moving).
+ */
+export const LIQUID_CORE = /* glsl */ `
 #define DC_LV_SINK 0.06
 #define DC_LV_LEVEL 0.4
-vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
+vec4 dcLvLiquid( vec3 p, float dt, float dent ) {
 	// the core's centre sits a little down the lagged up; its waves drift (one width per ~4 s)
 	vec3 q = p + uInteriorLag * DC_LV_SINK;
 	float r = length( q );
 	float wave = dcNoise3( p * 4.0 + 1.7 + uInteriorTime * vec3( 0.2, 0.12, - 0.1 ) ) * 0.65
 		+ dcNoise3( p * 9.0 - 3.1 + uInteriorTime * vec3( - 0.15, 0.17, 0.1 ) ) * 0.35;
 	float coreR = mix( 0.16, 0.42, uInteriorDensity ) + 0.10 * ( wave - 0.5 );
+	coreR -= dent;
 	// the surface: a plane across the lagged up, so it trails the die's turns and settles
 	float y = dot( q, uInteriorLag );
 	float ys = DC_LV_LEVEL * coreR;
@@ -68,6 +73,12 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	vec3 hazeCol = uInteriorColors[ 1 ] * ( dcILight + 0.25 );
 	float a = dcIAlpha( core * 60.0 + 1.6 * dcIEdge( p ), dt );
 	return vec4( min( mix( hazeCol, coreCol, core ), vec3( 1.0 ) ) * a, a );
+}
+`;
+
+const LIQUID = /* glsl */ `${LIQUID_CORE}
+vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
+	return dcLvLiquid( p, dt, 0.0 );
 }
 `;
 
