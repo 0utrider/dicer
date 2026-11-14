@@ -155,6 +155,10 @@
         "Name": "Dice interiors",
         "Hint": "Draw the liquid, glitter, swirl and nebula interiors of resin dice. Off is faster."
       },
+      "insideMotion": {
+        "Name": "Living insides",
+        "Hint": "The insides of resin dice move: liquid sloshes as the die tumbles and settles about 10 seconds after it lands. Off keeps them still."
+      },
       "engraving": {
         "Name": "Engraved numbers",
         "Hint": "Shade the numbers as engraved into the die. Off draws them flat."

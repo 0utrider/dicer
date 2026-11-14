@@ -90,6 +90,7 @@ export async function runProbe(
       engraving: true,
       glow: true,
       interiorSteps: TIERS.high.interiorSteps,
+      insideMotion: false, // the still inside: the probe never pulls the look-extras chunk
     });
     geometry = buildDieGeometry(shape);
     const scene = new THREE.Scene();

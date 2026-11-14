@@ -38,7 +38,8 @@ const atlas = {
 };
 const s = getShape('d20');
 const labels = s.values.map((v) => labelFor('d20', v));
-const FLAGS = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32 };
+// insideMotion off: these tests pin the still insides (living insides set it on explicitly)
+const FLAGS = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32, insideMotion: false };
 const look = (partial) => normalizeAppearance(partial);
 const count = (text, part) => text.split(part).length - 1;
 
@@ -529,7 +530,9 @@ describe('insides', () => {
   ];
 
   test("today's insides get no inside patch and keep today's shader with the chunk loaded", async () => {
-    const FL = [FLAGS, { ...FLAGS, interiorSteps: 16 }, { ...FLAGS, interiorSteps: 0 }];
+    // insideMotion off: today's insides exactly as before living insides
+    const STILL = { ...FLAGS, insideMotion: false };
+    const FL = [STILL, { ...STILL, interiorSteps: 16 }, { ...STILL, interiorSteps: 0 }];
     const run = () =>
       TODAY.flatMap((it) =>
         FL.map((f) => {
@@ -540,8 +543,8 @@ describe('insides', () => {
     for (const it of TODAY) {
       for (const f of FL) expect(insidePatch(resin(it), f)).toEqual({});
       // also when the look needs the chunk for another reason (luminous)
-      expect(insidePatch(resin(it, { luminous: 1 }), FLAGS)).toEqual({});
-      expect(lookExtras.patchMaterial(resin(it, { luminous: 1 }), FLAGS, {}).interior).toBeUndefined();
+      expect(insidePatch(resin(it, { luminous: 1 }), STILL)).toEqual({});
+      expect(lookExtras.patchMaterial(resin(it, { luminous: 1 }), STILL, {}).interior).toBeUndefined();
     }
     const loaded = run();
     _setLookExtrasImport(() => new Promise(() => {}));
@@ -557,6 +560,91 @@ describe('insides', () => {
       _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
       await requestLookExtras();
     }
+  });
+
+  describe('living insides: motion uniforms (insideMotion on)', () => {
+    const LIVE = { ...FLAGS, insideMotion: true };
+    const MOTION = ['uInteriorFlare', 'uInteriorLag', 'uInteriorSpin', 'uInteriorTime'];
+    const DECL = [
+      'uniform float uInteriorTime;',
+      'uniform vec3 uInteriorSpin;',
+      'uniform vec3 uInteriorLag;',
+      'uniform float uInteriorFlare;',
+    ];
+    const defaults = (u) => {
+      expect(u.uInteriorTime.value).toBe(0);
+      expect(u.uInteriorSpin.value.toArray()).toEqual([0, 0, 0]);
+      expect(u.uInteriorLag.value.toArray()).toEqual([0, 1, 0]);
+      expect(u.uInteriorFlare.value).toBe(0);
+    };
+    const { wants } = lookExtras.insideMotion;
+
+    test('wants: resin + an inside + interiors + steps > 0 + insideMotion, nothing less', () => {
+      const a = resin({ type: 'liquid' });
+      expect(wants(a, LIVE)).toBe(true);
+      expect(wants(resin({ type: 'none' }), LIVE)).toBe(false);
+      expect(wants(look({ body: { type: 'opaque' }, interior: { type: 'liquid' } }), LIVE)).toBe(false);
+      expect(wants(a, { ...LIVE, interiorSteps: 0 })).toBe(false);
+      expect(wants(a, { ...LIVE, interiors: false })).toBe(false);
+      expect(wants(a, { ...LIVE, insideMotion: false })).toBe(false);
+      const { insideMotion: _, ...unset } = LIVE;
+      expect(wants(a, unset)).toBe(false); // unset: off
+    });
+
+    test("today's insides get a uniforms-only patch with the four motion uniforms at their defaults", () => {
+      for (const it of TODAY) {
+        const p = insidePatch(resin(it), LIVE);
+        expect(Object.keys(p)).toEqual(['uniforms']);
+        expect(Object.keys(p.uniforms).sort()).toEqual(MOTION);
+        defaults(p.uniforms);
+        // fresh objects per patch: dice never share motion state
+        expect(insidePatch(resin(it), LIVE).uniforms.uInteriorTime).not.toBe(p.uniforms.uInteriorTime);
+        expect(insidePatch(resin(it), { ...LIVE, interiorSteps: 0 })).toEqual({});
+      }
+    });
+
+    test('a marched new inside declares the four uniforms in its pars (once) and supplies them with its own', () => {
+      const a = resin({ type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 });
+      const p = insidePatch(a, LIVE);
+      for (const d of DECL) expect(count(p.interior.pars, d)).toBe(1);
+      defaults(p.uniforms);
+      const still = insidePatch(a, { ...LIVE, insideMotion: false });
+      for (const d of DECL) expect(still.interior.pars).not.toContain(d);
+      expect(Object.keys(p.uniforms).sort()).toEqual([...Object.keys(still.uniforms), ...MOTION].sort());
+    });
+
+    test("a today's-inside material carries the uniforms and the 'mo' key with the chunk; without it, today's material and key", async () => {
+      const a = resin({ type: 'liquid' });
+      const live = mat(a, LIVE);
+      expect(live.userData.programKey).toMatch(/\|mo$/);
+      defaults(live.userData.uniforms);
+      const still = mat(a, { ...LIVE, insideMotion: false });
+      expect(still.userData.programKey).not.toContain('|mo');
+      expect(still.userData.uniforms.uInteriorTime).toBeUndefined();
+      expect(patched(live).fragmentShader).toBe(patched(still).fragmentShader); // Task 2: no GLSL reads them yet
+      _setLookExtrasImport(() => new Promise(() => {}));
+      try {
+        const missing = mat(a, LIVE);
+        expect(missing.userData.programKey).toBe(still.userData.programKey);
+        expect(missing.userData.uniforms.uInteriorTime).toBeUndefined();
+      } finally {
+        _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+        await requestLookExtras();
+      }
+    });
+
+    test('step writes time, spin and a unit lag from the die rotation; frame clamps dt', () => {
+      const u = insidePatch(resin({ type: 'liquid' }), LIVE).uniforms;
+      const die = {};
+      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+      lookExtras.insideMotion.step(die, u, q, 0, { factor: 1 });
+      // first step: the lag starts at world up in the die frame (+y turned -90° about x: -z)
+      expect(u.uInteriorLag.value.x).toBeCloseTo(0, 6);
+      expect(u.uInteriorLag.value.z).toBeCloseTo(-1, 6);
+      lookExtras.insideMotion.step(die, u, q, 5, { factor: 1 });
+      expect(u.uInteriorTime.value).toBeCloseTo(0.1, 6); // clamped to 0.1 s
+      expect(u.uInteriorLag.value.length()).toBeCloseTo(1, 6);
+    });
   });
 
   test('foil: interior pars/main come from the patch; dcIUp declared once; the up line inserted once after dcIKey; NOISE_GLSL once', () => {

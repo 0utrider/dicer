@@ -205,6 +205,7 @@ export function createQualityController({
         engraving: getSetting('engraving'),
         glow: getSetting('glow'),
         effects: getSetting('effects'),
+        insideMotion: getSetting('insideMotion'),
       };
       return flagsFor(TIERS[tier], settings, { safe });
     },

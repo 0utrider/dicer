@@ -148,6 +148,7 @@ describe('flagsFor (one source for production, gallery and preview)', () => {
       effects: true,
       interiorSteps: 0,
       safe: false,
+      insideMotion: true,
     });
     expect(flagsFor(TIERS.high, on)).toMatchObject({ interiors: true, interiorSteps: 32 });
   });
@@ -159,7 +160,13 @@ describe('flagsFor (one source for production, gallery and preview)', () => {
       effects: true,
       interiorSteps: 16,
       safe: false,
+      insideMotion: true,
     });
+  });
+  test('insideMotion: on unless the setting is false; absent under safe flags', () => {
+    expect(flagsFor(TIERS.high, { insideMotion: false }).insideMotion).toBe(false);
+    expect(flagsFor(TIERS.high, { insideMotion: undefined }).insideMotion).toBe(true);
+    expect(flagsFor(TIERS.high, { insideMotion: true }, { safe: true }).insideMotion).toBeUndefined();
   });
   test('effects: on unless the setting is false; never under safe flags', () => {
     expect(flagsFor(TIERS.low, { effects: false }).effects).toBe(false);

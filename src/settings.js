@@ -399,7 +399,7 @@ export function registerSettings({
     default: 'ultra',
     onChange: (value) => onQualityChange?.('qualityCap', value),
   });
-  for (const key of ['interiors', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels']) {
+  for (const key of ['interiors', 'insideMotion', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels']) {
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),

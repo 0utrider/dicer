@@ -3575,3 +3575,104 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     box.clear();
   });
 });
+
+describe('living insides: per-die motion (insideMotion)', () => {
+  const MOTION = ['uInteriorTime', 'uInteriorSpin', 'uInteriorLag', 'uInteriorFlare'];
+  const resinLiquid = {
+    body: { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 },
+    interior: { type: 'liquid', colors: ['#3fa7ff', '#1b3a8a'], density: 0.5 },
+  };
+  const opaque = { body: { type: 'opaque', color: '#b3202a' } };
+  const ON = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32, insideMotion: true };
+
+  beforeEach(async () => {
+    vi.useRealTimers(); // the chunk import settles through real promise hops
+    _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+    expect(await requestLookExtras()).not.toBeNull();
+    vi.useFakeTimers();
+  });
+
+  function rollWith(flags, specs, opts = {}) {
+    let f = flags;
+    const made = setup({ appearance: undefined, getAppearance: () => resinLiquid, getFlags: () => f, ...opts });
+    made.box.roll(specs);
+    made.dice = made.box._rolls.values().next().value.dice;
+    made.setFlags = (next) => (f = next);
+    return made;
+  }
+
+  test('a resin die with an inside is isolated from its first frame when insideMotion is on; an opaque die and a low-tier die are not', () => {
+    const { renderer, physics, box, dice } = rollWith(ON, [
+      { type: 'd6', value: 1 },
+      { type: 'd6', value: 2, appearance: opaque },
+    ]);
+    physics.flush();
+    renderer.tick(0);
+    const [inside, plain] = dice;
+    expect(inside.isolated).toBeTruthy();
+    expect(inside.inner.material).toBe(inside.isolated);
+    for (const k of MOTION) expect(inside.isolated.userData.uniforms[k]).toBeDefined();
+    expect(plain.isolated).toBeFalsy();
+    box.clear();
+
+    const low = rollWith({ ...ON, interiorSteps: 0 }, [{ type: 'd6', value: 1 }]);
+    low.physics.flush();
+    low.renderer.tick(0);
+    expect(low.dice[0].isolated).toBeFalsy();
+    low.box.clear();
+  });
+
+  test('#frame advances uInteriorTime on an isolated inside die (dt clamped to 0.1 s)', () => {
+    const { renderer, physics, box, dice } = rollWith(ON, [{ type: 'd6', value: 1 }]);
+    physics.flush();
+    renderer.tick(0);
+    const u = dice[0].isolated.userData.uniforms;
+    expect(u.uInteriorTime.value).toBe(0);
+    renderer.tick(50);
+    expect(u.uInteriorTime.value).toBeCloseTo(0.05, 6);
+    renderer.tick(1050); // a long gap counts as 0.1 s
+    expect(u.uInteriorTime.value).toBeCloseTo(0.15, 6);
+    expect(u.uInteriorLag.value.length()).toBeCloseTo(1, 6);
+    box.clear();
+  });
+
+  test("a lingering roll with a moving inside returns true until 10 s after landing, then 'hold'", async () => {
+    const { renderer, physics, box } = rollWith(ON, [{ type: 'd6', value: 1 }], { timeBeforeHide: () => 60000 });
+    physics.flush();
+    renderer.tick(0);
+    expect(renderer.tick(2000)).toBe(true); // lands this frame: the inside still moves
+    expect(renderer.tick(8000)).toBe(true);
+    expect(renderer.tick(11990)).toBe(true);
+    expect(renderer.tick(12000)).toBe('hold');
+    box.clear();
+  });
+
+  test('a look change mid-roll keeps the same uInteriorTime/Spin/Lag/Flare objects', () => {
+    const { renderer, physics, box, dice } = rollWith(ON, [{ type: 'd6', value: 1 }]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(50);
+    const iso = dice[0].isolated;
+    const held = MOTION.map((k) => iso.userData.uniforms[k]);
+    box.invalidateMaterials({ replaceInFlight: true });
+    const now = dice[0].inner.material;
+    expect(now).not.toBe(iso);
+    expect(now.userData.uniforms).not.toBe(iso.userData.uniforms);
+    MOTION.forEach((k, i) => expect(now.userData.uniforms[k]).toBe(held[i]));
+    renderer.tick(100);
+    expect(now.userData.uniforms.uInteriorTime.value).toBeCloseTo(0.1, 6);
+    box.clear();
+  });
+
+  test('insideMotion off: nothing isolated for motion, frame result as today', () => {
+    const { renderer, physics, box, dice } = rollWith({ ...ON, insideMotion: false }, [{ type: 'd6', value: 1 }], {
+      timeBeforeHide: () => 60000,
+    });
+    physics.flush();
+    renderer.tick(0);
+    expect(dice[0].isolated).toBeFalsy();
+    expect(dice[0].inner.material.userData.uniforms.uInteriorTime).toBeUndefined();
+    expect(renderer.tick(2000)).toBe('hold');
+    box.clear();
+  });
+});

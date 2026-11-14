@@ -7,6 +7,7 @@ import {
   isolateMaterial,
   DEFAULT_FLAGS,
 } from '../render/dice-material.js';
+import { getLookExtras } from '../render/extras-loader.js';
 import {
   DEFAULT_APPEARANCE,
   appearanceKey,
@@ -815,7 +816,8 @@ export class DiceBox {
     const iso = isolateMaterial(mat);
     const was = prev.userData.uniforms;
     const now = iso.userData.uniforms;
-    for (const k of ['uFxTint', 'uFxFlare']) if (was[k]) now[k] = was[k];
+    // its effects' fx uniforms and its living inside's motion (uInteriorTime/Spin/Lag/Flare)
+    for (const k in was) if (/^u(Fx|Interior[TSLF])/.test(k)) now[k] = was[k];
     prev.dispose();
     die.isolated = iso;
     return iso;
@@ -1511,7 +1513,8 @@ export class DiceBox {
     for (const roll of this._rolls) {
       if (roll.assetsPending) continue;
       shown = true;
-      if (roll.phase !== 'lingering' || roll.glows) moving = true;
+      // Living insides (the look-extras chunk): stepped every frame, moving until they rest.
+      if (getLookExtras()?.insideMotion.frame(this, roll, now) || roll.phase !== 'lingering' || roll.glows) moving = true;
     }
     // Held dice follow the pointer: the loop runs while they are shown.
     if (this._hold?.revealed) return true;

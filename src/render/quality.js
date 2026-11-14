@@ -87,6 +87,7 @@ export function flagsFor(tierConfig, settings, { safe = false } = {}) {
     effects: settings.effects !== false,
     interiorSteps: tierConfig.interiorSteps,
     safe: false,
+    insideMotion: settings.insideMotion !== false, // living insides: on unless the setting is off
   };
 }
 

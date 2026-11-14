@@ -9,6 +9,7 @@ import * as liquidExtras from './liquid-extras.js';
 import * as weapons from './weapons.js';
 import * as dragon from './dragon.js';
 import * as runes from './runes.js';
+import { insideMotion, motionUniforms, MOTION_PARS } from './live.js';
 
 /**
  * Inside modules: one per new resin inside (foil, eye, botanical, smoke), plus `liquid` for
@@ -82,12 +83,18 @@ const isFantasy = (i) => i.type === 'shape' && !BUILT_IN_SHAPES.includes(i.shape
  *   otherwise call interiorChunk() with a type it does not know, outside its try/catch);
  * - fake (steps 0): `{ uniforms: { uResinTint } }` with w = INSIDE_TINT[type] (liquid keeps
  *   today's fake: {}).
+ * With insideMotion.wants(a, flags) (live.js), the marched patch also declares the four motion
+ * uniforms in its pars (MOTION_PARS) and supplies them at their defaults; today's insides
+ * (liquid, glitter, swirl, nebula, the four built-in shapes) then get `{ uniforms }` with only
+ * those four. Without it, every patch is exactly as before.
  */
 export function insidePatch(a, flags) {
   const i = a.interior;
   if (a.body?.type !== 'resin' || !i || !flags.interiors) return {};
+  const live = insideMotion.wants(a, flags);
   const isNew = Object.hasOwn(INSIDE_TINT, i.type);
-  if (!isNew && !hasLiquidExtras(i) && !isFantasy(i)) return {};
+  // today's insides (interior.js draws them): with motion, only the four motion uniforms
+  if (!isNew && !hasLiquidExtras(i) && !isFantasy(i)) return live ? { uniforms: motionUniforms() } : {};
   if (!(flags.interiorSteps > 0)) {
     if (!isNew) return {};
     const t = tintTarget(a);
@@ -98,6 +105,8 @@ export function insidePatch(a, flags) {
   if (!mod) throw new Error(`dicer: no inside module for "${key}"`);
   const [build, usesNoise] = mod;
   const { body, uniforms = {} } = build(a);
-  const pars = [usesNoise ? NOISE_GLSL : '', INTERIOR_PARS, 'vec3 dcIUp;', body].filter(Boolean).join('\n');
-  return { interior: { pars, main: marchWithUp() }, uniforms };
+  const pars = [usesNoise ? NOISE_GLSL : '', INTERIOR_PARS, live ? MOTION_PARS : '', 'vec3 dcIUp;', body]
+    .filter(Boolean)
+    .join('\n');
+  return { interior: { pars, main: marchWithUp() }, uniforms: live ? { ...motionUniforms(), ...uniforms } : uniforms };
 }

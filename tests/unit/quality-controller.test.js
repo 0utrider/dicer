@@ -269,6 +269,7 @@ test('flags(): interiorSteps comes from the tier; interiors is the client settin
     effects: true,
     interiorSteps: 32,
     safe: false,
+    insideMotion: true,
   });
   values.interiors = false;
   values.engraving = false;
@@ -280,9 +281,13 @@ test('flags(): interiorSteps comes from the tier; interiors is the client settin
     effects: true,
     interiorSteps: 32,
     safe: false,
+    insideMotion: true,
   });
   values.effects = false;
   expect(qc.flags().effects).toBe(false);
+  values.insideMotion = false; // the insideMotion client setting feeds flags.insideMotion
+  expect(qc.flags().insideMotion).toBe(false);
+  values.insideMotion = true;
   values.effects = true;
   values.interiors = true;
   values.qualityCap = 'low';

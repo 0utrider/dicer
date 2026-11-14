@@ -30,6 +30,8 @@ import { insidePatch } from './insides/index.js';
 import { mergePatches } from './merge.js';
 
 export { mergePatches };
+// Living insides: per-die motion state, stepped from DiceBox.#frame (insides/live.js).
+export { insideMotion } from './insides/live.js';
 
 /** Build-test marker: present in this chunk, never in the world-start bundle. */
 export const EXTRAS_ID = 'dicer-look-extras';

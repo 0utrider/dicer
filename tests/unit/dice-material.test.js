@@ -833,7 +833,9 @@ describe('look extras (lazy chunk)', () => {
     expect(fs).toContain('float dcDepth = 1.0 * ');
     expect(m.defines.DICER_X).toBe('');
     expect(shader.uniforms.uX.value).toBe(1);
-    expect(m.userData.programKey).toBe(programKey(a, FLAGS));
+    // FLAGS leaves insideMotion unset: createDiceMaterial's default (on) applies, so the patched
+    // resin nebula is keyed with motion ('mo')
+    expect(m.userData.programKey).toBe(programKey(a, { ...FLAGS, insideMotion: true }));
     expect(m.userData.programKey).toContain('|n:holo+r');
   });
 

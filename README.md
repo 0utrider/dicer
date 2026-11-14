@@ -109,6 +109,7 @@ In the theme browser press **New theme** (or duplicate a theme and edit it). The
 - **Crit and fumble icons**: a starburst, crown, skull, broken shield, heart or flame in place of the 20 and the 1. Only d20s show icons; every other die keeps its numbers.
 - **Edges**: five steps of sharpness, from sharp to very round. The d4 can be **classic** (the usual pyramid with the numbers at the corners) or **crystal** (a stretched double pyramid, like a crystal).
 - **Glow**, a look **per die type**, and the **sound and celebrations**.
+- **Living insides** (a setting, per player, on by default): the inside of a resin die moves while it rolls and comes to rest about 10 seconds after it lands. Turn it off to keep insides still. With your operating system's reduced motion on, they move more slowly.
 
 Every look is saved as a theme, so it can be your default, be used for one die type, one kind of roll or one character, be exported, and (GM) be published to the world.
 

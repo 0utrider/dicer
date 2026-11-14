@@ -206,9 +206,11 @@ describe('build', () => {
     // pet dodge plan: 512 B over 4,102,587
     // rolling by hand plan: 12,288 B cap over 4,103,020 (owner approval, 2026-11-14). Re-based once,
     // at its Task 1 (pre-flight R1), so no later task re-bases it.
-    const growth = worldStartBytes() - 4_103_020;
-    console.info(`dicer world-start growth since the rolling-by-hand base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(12_288);
+    // living insides plan: 1,536 B cap over 4,115,282 for the whole plan, all rounds (controller
+    // ruling, ledger).
+    const growth = worldStartBytes() - 4_115_282;
+    console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
+    expect(growth).toBeLessThanOrEqual(1_536);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

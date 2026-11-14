@@ -48,6 +48,7 @@ export const DEFAULT_FLAGS = Object.freeze({
   effects: true,
   interiorSteps: 32,
   safe: false,
+  insideMotion: true,
 });
 
 /**
@@ -263,9 +264,11 @@ export function createDiceMaterial(
     };
   }
   // The lazy look-extras chunk: its fallback look until it lands (and always under safe flags).
+  // A marched inside with insideMotion needs it too (its motion uniforms); without the chunk the
+  // die draws today's still inside, keyed with motion off.
   let p;
   const x = getLookExtras();
-  if (needsLookExtras(a)) {
+  if (needsLookExtras(a) || (f.insideMotion && interiorMode(a, f) === 'march')) {
     if (!x) requestLookExtras();
     else if (!f.safe) {
       try {
@@ -278,6 +281,7 @@ export function createDiceMaterial(
   if (!p) {
     a = fallbackLook(a); // a itself for a look without the new options
     p = {};
+    f.insideMotion = false;
   }
   labels = p.labels ?? labels;
   atlas = p.atlas ?? atlas;

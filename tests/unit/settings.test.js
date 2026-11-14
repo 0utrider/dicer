@@ -131,6 +131,19 @@ test.each(['interiors', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetMo
   },
 );
 
+test('insideMotion is registered (client, true) and has strings; a change rebuilds materials like interiors', () => {
+  const onLookChange = vi.fn();
+  const cfg = capture({ onLookChange }).insideMotion;
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(cfg.name).toBe('DICER.Settings.insideMotion.Name');
+  expect(cfg.hint).toBe('DICER.Settings.insideMotion.Hint');
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+  expect(en.DICER.Settings.insideMotion.Name).toEqual(expect.any(String));
+  expect(en.DICER.Settings.insideMotion.Hint).toEqual(expect.any(String));
+  cfg.onChange(false);
+  expect(onLookChange).toHaveBeenCalledWith('insideMotion', false);
+});
+
 test('onChange routes look and feature toggles to onLookChange, quality and qualityCap to onQualityChange', () => {
   const onLookChange = vi.fn();
   const onQualityChange = vi.fn();
