@@ -574,8 +574,15 @@ describe('fumble parts', () => {
     const version = core.geometry.getAttribute('position').version;
     for (let t = 240; t < 1000; t += 10) h.update(t);
     expect(core.geometry.getAttribute('position').version).toBe(version);
+    const planes = () => {
+      let n = 0;
+      scene.traverse((o) => o.geometry?.type === 'PlaneGeometry' && n++);
+      return n;
+    };
+    expect(planes(), 'the ember underglow plane').toBe(1);
     h.stop();
     expect(ribbonsOf(scene)).toHaveLength(0);
+    expect(planes(), 'the underglow is gone after stop()').toBe(0);
     pool.dispose();
   });
 
@@ -589,24 +596,43 @@ describe('fumble parts', () => {
     pool.dispose();
   });
 
-  test('fumble smoke is darker, slower and heavier than the plain smoke, in any colour', () => {
-    for (const color of ['#8c8c92', '#e02020', '#f4f4f4']) {
-      const over = { color: new THREE.Color(color), options: { color } };
-      const f = play('smoke', over);
-      const s = { ctx: ctxFor(EFFECTS.smoke, over) };
-      const emit = vi.spyOn(s.ctx.particles, 'emit');
-      const hs = EFFECTS.smoke.start(s.ctx);
-      for (let t = 0; t <= 1500; t += 20) {
-        f.h.update(t);
-        hs.update(t);
+  // What a colour looks like on screen: the pool writes its (linear) colour values straight to the
+  // canvas, so a hex's linear components are its displayed sRGB values. Backdrops: the dark studio
+  // table (#2b2f36) and the light parchment map (#e6d2a2), as displayed.
+  const shown = (c) => {
+    const { r, g, b } = new THREE.Color(c);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  // A CSS backdrop's hex is already its displayed sRGB.
+  const relLum = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return 0.2126 * ((n >> 16) & 255) / 255 + 0.7152 * ((n >> 8) & 255) / 255 + 0.0722 * (n & 255) / 255;
+  };
+  const DARK_TABLE = relLum('#2b2f36');
+  const LIGHT_MAP = relLum('#e6d2a2');
+
+  test('fumble smoke is a mid-tone plume that contrasts with both a dark table and a light map, in any colour', () => {
+    for (const color of [null, '#f4f4f4', '#141418', '#e02020', '#2050ff']) {
+      const over = color ? { color: new THREE.Color(color), options: { color } } : {};
+      const { h, specs, pool } = play('smoke', over);
+      for (let t = 0; t <= 1500; t += 20) h.update(t);
+      const body = specs().filter((p) => p.kind === KIND.SMOKE && p.blend === 'normal');
+      // The main plume (the first emit): clearly lighter than the dark table, clearly darker than the map.
+      const main = body[0];
+      expect(shown(main.color) - DARK_TABLE, `${color} vs dark table`).toBeGreaterThan(0.15);
+      expect(LIGHT_MAP - shown(main.color), `${color} vs light map`).toBeGreaterThan(0.25);
+      // Big, long-lived puffs that grow well past the die's footprint (one edge = 1) and last out
+      // the effect; they rise (speed up) and then sag (gravity < 0).
+      for (const p of body) {
+        expect(p.size * p.sizeEnd, color).toBeGreaterThan(3);
+        expect(p.life, color).toBeGreaterThanOrEqual(1.5);
+        expect(p.gravity, color).toBeLessThan(0);
       }
-      const fs = f.specs()[0];
-      const ps = emit.mock.calls[0][0];
-      expect(lum(fs.color), color).toBeLessThan(lum(ps.color));
-      expect(fs.speed, color).toBeLessThan(ps.speed);
-      expect(fs.gravity, color).toBeLessThan(0); // it sags back down
-      f.h.stop();
-      hs.stop();
+      expect(main.speed, color).toBeGreaterThan(1.5);
+      // Darker soot at the edges: a second, darker body of puffs.
+      expect(body.some((p) => shown(p.color) < shown(main.color) - 0.1), `${color} soot`).toBe(true);
+      h.stop();
+      pool.dispose();
     }
   });
 
@@ -785,7 +811,8 @@ describe('staged celebrate and fumble', () => {
     h.update(0);
     h.update(60);
     expect(kinds(emit)).toEqual([KIND.SMOKE]);
-    expect(emit.mock.calls[0][0].colorEnd).toBe('#3a3a40');
+    const { color: c0, colorEnd: c1 } = emit.mock.calls[0][0];
+    expect(new THREE.Color(c1).getHSL({}).l).toBeLessThan(new THREE.Color(c0).getHSL({}).l); // it darkens as it ages
     expect(meshes(scene, base)).toHaveLength(0);
     expect(shakes).toHaveLength(0);
     h.update(100);

@@ -453,14 +453,18 @@ export const smoke = Object.freeze({
   start: smokeStart(),
 });
 
-const FUMBLE_SMOKE_DARK = '#242226';
-const FUMBLE_SMOKE_END = '#3a3a40';
-
 /**
- * Fumble's own smoke (not in CATALOGUE): darker, heavier and slower than `smoke`. Big, opaque PUFF
- * clouds in a sooty version of the die colour (a near-black die's lit by its rim, so it shows on a
- * dark table) heave up off the die, spread wide and sag back down as they grow, curling, to grey.
+ * Fumble's own smoke (not in CATALOGUE): a heavy, curling plume that heaves up off the die and
+ * sags back. Pool colours reach the screen as their linear values, so the greys below are set as
+ * displayed values (setRGB in the linear working space): a smoky mid-grey (~0.5 on screen) that
+ * is lighter than a dark table and darker than a light map, tinted 18% toward the die (a near-black
+ * die's rim), darkening as it ages; then, from a quarter of the way in, bigger darker soot puffs
+ * low around it give the plume dark edges on either backdrop. Later than `smoke`'s rise and fall:
+ * slower to clear, and it sinks (gravity < 0) as it spreads. Normal blend, no halo.
  */
+const FUMBLE_SMOKE_GREY = new THREE.Color().setRGB(0.5, 0.49, 0.51);
+const FUMBLE_SOOT = new THREE.Color().setRGB(0.1, 0.095, 0.1);
+
 const fumbleSmoke = Object.freeze({
   ...smoke,
   id: 'fumble-smoke',
@@ -468,26 +472,52 @@ const fumbleSmoke = Object.freeze({
     if (!ctx.particles) return NOOP;
     const pal = palette(ctx.color);
     const k = sizeK(ctx);
-    const body = (pal.rim ?? ctx.color).clone().lerp(new THREE.Color(FUMBLE_SMOKE_DARK), pal.rim ? 0.55 : 0.4);
+    const D = Math.max(1, ctx.duration);
+    const body = FUMBLE_SMOKE_GREY.clone().lerp(pal.rim ?? ctx.color, 0.18);
     const calm = ctx.reducedMotion;
-    const emit = trickle(ctx, countFor(18, ctx), 0.5, {
-      origin: originOf(ctx, DIE_TOP),
-      jitter: 0.9 * k,
-      dir: { x: 0, y: 1, z: 0 },
-      speed: calm ? 0.4 : 1.6,
-      spread: 1.35, // wide: seen from above, heavy smoke rolls outward
-      gravity: -0.7, // and sinks back as it slows
-      life: 1.4,
-      color: body,
-      colorEnd: FUMBLE_SMOKE_END,
-      size: 1.1 * k,
-      sizeEnd: 2.6,
+    // The plume leans one way (a random draught per play): seen from straight above, smoke that
+    // only rises would sit on the die; leaning, it trails out past the die as it climbs.
+    const lean = Math.random() * Math.PI * 2;
+    const puff = {
       spin: calm ? 0.25 : 0.9,
       kind: KIND.SMOKE,
       shape: SHAPE.SMOKE,
       blend: 'normal',
+    };
+    const plume = trickle(ctx, countFor(24, ctx), 0.55, {
+      ...puff,
+      origin: originOf(ctx, DIE_TOP),
+      jitter: 0.6 * k,
+      dir: { x: Math.cos(lean) * 0.7, y: 1, z: Math.sin(lean) * 0.7 },
+      speed: calm ? 0.5 : 2.4, // up and out past the die...
+      spread: 0.75,
+      gravity: -0.55, // ...then it sags back as it slows
+      life: 1.7,
+      color: body,
+      colorEnd: body.clone().multiplyScalar(0.55),
+      size: 1.5 * k,
+      sizeEnd: 2.7,
     });
-    return timed(ctx.duration, emit, () => {});
+    const soot = trickle(ctx, countFor(8, ctx), 0.4, {
+      ...puff,
+      origin: originOf(ctx, DIE_Y),
+      jitter: 1.0 * k,
+      dir: { x: 0, y: 1, z: 0 },
+      speed: calm ? 0.4 : 1.2,
+      spread: 1.5, // rolling out low around the plume
+      gravity: -0.6,
+      life: 1.6,
+      color: FUMBLE_SOOT.clone().lerp(body, 0.15),
+      colorEnd: FUMBLE_SOOT,
+      size: 1.6 * k,
+      sizeEnd: 2.4,
+      alpha: 0.8,
+    });
+    const sootAt = 0.25 * D;
+    return timed(D, (e, now) => {
+      plume(e, now);
+      soot(e - sootAt, now); // nothing until a quarter of the way in
+    }, () => {});
   },
 });
 
