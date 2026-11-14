@@ -299,7 +299,7 @@ describe('rebuilt looks', () => {
     };
     expect(total('embers', KIND.STREAK, { tier: 'ultra' })).toBe(9); // 6 x 1.5
     expect(total('embers', KIND.STREAK, { tier: 'high', intensity: 0.5 })).toBe(3);
-    expect(total('frost', KIND.SMOKE, { tier: 'ultra' })).toBe(3); // 2 x 1.5
+    expect(total('frost', KIND.SMOKE, { tier: 'ultra' })).toBe(5); // round(3 x 1.5)
     expect(total('frost', KIND.SMOKE, { tier: 'low' })).toBe(1); // at least 1
   });
 
@@ -317,12 +317,16 @@ describe('rebuilt looks', () => {
     h.stop();
   });
 
-  test('frost: spinning SHARD spray and two pale mist puffs', () => {
-    const { specs, h } = run('frost', { tier: 'high' }, 400);
-    expect(specs.some((s) => s.kind === KIND.SHARD && s.spin > 0)).toBe(true);
+  test('frost: spinning SHARD crystals (solid and glowing) and three faint mist puffs', () => {
+    const { specs, h } = run('frost', { tier: 'high' }, 1800);
+    const shards = specs.filter((s) => s.kind === KIND.SHARD);
+    expect(shards.length).toBeGreaterThan(0);
+    expect(shards.every((s) => s.spin > 0)).toBe(true);
+    expect(shards.some((s) => s.blend === 'normal')).toBe(true);
+    expect(shards.some((s) => s.blend !== 'normal')).toBe(true);
     const mist = specs.filter((s) => s.kind === KIND.SMOKE);
-    expect(mist.reduce((n, s) => n + s.count, 0)).toBe(2);
-    expect(mist.every((s) => s.color === '#e8f8ff' && s.alpha === 0.3)).toBe(true);
+    expect(mist.reduce((n, s) => n + s.count, 0)).toBe(3);
+    expect(mist.every((s) => s.alpha === 0.32)).toBe(true);
     h.stop();
   });
 
@@ -431,6 +435,73 @@ describe('lightning', () => {
     expect(ribbonOf(scene, 7), 'branches are a 7 px ribbon').toBeTruthy();
     h.stop();
     pool.dispose();
+  });
+});
+
+describe('frost', () => {
+  const play = (over = {}) => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 2048);
+    const ctx = ctxFor(EFFECTS.frost, { scene, pool, duration: 1000, ...over });
+    const emit = vi.spyOn(pool, 'emit');
+    const h = EFFECTS.frost.start(ctx);
+    return { scene, pool, ctx, emit, h };
+  };
+
+  test('frost grows rays: visible ray length at 30% duration < at 60%', () => {
+    const { scene, pool, h } = play();
+    const ray = scene.children.find((c) => typeof c.userData?.grow === 'number');
+    expect(ray, 'the ray ribbon exposes userData.grow').toBeTruthy();
+    for (let t = 0; t <= 300; t += 10) h.update(t);
+    const early = ray.userData.grow;
+    const earlyCount = ray.geometry.drawRange.count;
+    for (let t = 310; t <= 600; t += 10) h.update(t);
+    expect(early).toBeGreaterThan(0);
+    expect(early).toBeLessThan(ray.userData.grow);
+    expect(earlyCount).toBeLessThanOrEqual(ray.geometry.drawRange.count);
+    h.stop();
+    pool.dispose();
+  });
+
+  test('frost spawns SHARD crystals at the ray tips', () => {
+    const { pool, emit, h, ctx } = play();
+    for (let t = 0; t <= 1000; t += 10) h.update(t);
+    const shards = emit.mock.calls.map(([s]) => s).filter((s) => s.shape === 4);
+    expect(shards.length).toBeGreaterThan(0);
+    // Out at the tips, beyond the die's footprint, not on the die itself.
+    for (const s of shards) {
+      const d = Math.hypot(s.origin.x - ctx.position.x, s.origin.z - ctx.position.z);
+      expect(d).toBeGreaterThan(0.9);
+    }
+    h.stop();
+    pool.dispose();
+  });
+
+  test('frost mist is PUFF smoke with normal blend', () => {
+    const { pool, emit, h } = play();
+    for (let t = 0; t <= 1000; t += 10) h.update(t);
+    const mist = emit.mock.calls.map(([s]) => s).filter((s) => s.kind === KIND.SMOKE);
+    expect(mist.length).toBeGreaterThan(0);
+    expect(mist.every((s) => s.shape === 2 && s.blend === 'normal')).toBe(true);
+    h.stop();
+    pool.dispose();
+  });
+
+  test('frost brightness is capped: at intensity 2 no additive layer alpha exceeds 1.5', () => {
+    for (const color of ['#a8e4ff', '#f4f4f4', '#141418', '#e02020']) {
+      const { scene, pool, h } = play({ intensity: 2, color: new THREE.Color(color) });
+      const layers = scene.children.filter((c) => c.material?.uniforms?.uAlpha);
+      expect(layers.length, color).toBeGreaterThan(1);
+      let max = 0;
+      for (let t = 0; t < 1000; t += 10) {
+        h.update(t);
+        for (const l of layers) max = Math.max(max, l.material.uniforms.uAlpha.value);
+      }
+      expect(max, color).toBeLessThanOrEqual(1.5);
+      expect(max, color).toBeGreaterThan(0.3);
+      h.stop();
+      pool.dispose();
+    }
   });
 });
 

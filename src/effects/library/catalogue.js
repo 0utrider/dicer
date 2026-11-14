@@ -456,98 +456,314 @@ export const smoke = Object.freeze({
 /** Fumble's own smoke: same puffs, but they always darken to grey (not in CATALOGUE). */
 const fumbleSmoke = Object.freeze({ ...smoke, id: 'fumble-smoke', start: smokeStart('#3a3a40') });
 
-/**
- * Frost cracks on the floor: `rays` nearly straight crystalline rays, each with a side branch
- * or two. Every line carries `t0` (0..1): when, in the spread, it starts to grow (a branch
- * starts when the ray reaches its root).
- */
-function frostLines(cx, cz, radius, rays) {
-  const lines = [];
-  const at = (ang, r) => ({ x: cx + Math.cos(ang) * r, y: FLOOR_Y, z: cz + Math.sin(ang) * r });
-  const STEPS = 5;
-  for (let i = 0; i < rays; i++) {
-    let ang = (i / rays) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
-    const reach = radius * (0.7 + Math.random() * 0.3);
-    const ray = [at(ang, 0.3)];
-    for (let s = 1; s <= STEPS; s++) {
-      ang += (Math.random() - 0.5) * 0.18;
-      const r = 0.3 + ((reach - 0.3) * s) / STEPS;
-      const p = at(ang, r);
-      ray.push(p);
-      if (s < STEPS - 1 && (s === 2 || Math.random() < 0.35)) {
-        const side = Math.random() < 0.5 ? -1 : 1;
-        const len = reach * (0.18 + Math.random() * 0.14);
-        const ba = ang + side * (0.5 + Math.random() * 0.3);
-        const mid = { x: p.x + Math.cos(ba) * len * 0.5, y: FLOOR_Y, z: p.z + Math.sin(ba) * len * 0.5 };
-        const tip = { x: p.x + Math.cos(ba + side * 0.15) * len, y: FLOOR_Y, z: p.z + Math.sin(ba + side * 0.15) * len };
-        lines.push({ pts: [p, mid, tip], t0: s / STEPS });
-      }
-    }
-    lines.unshift({ pts: ray, t0: 0 });
-  }
-  return lines;
+// Per additive layer: brighter saturates to white and loses the die colour (frost, lightning).
+const ALPHA_CAP = 1.5;
+// Black "over" (premultiplied): colour = dst x (1 - a), a = the ribbon's glow profile.
+const SHADOW_BLEND = Object.freeze({
+  blendSrc: THREE.ZeroFactor,
+  blendDst: THREE.OneMinusSrcAlphaFactor,
+  blendSrcAlpha: THREE.OneFactor,
+  blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+});
+
+/** A point `f` (0..1) of the way along a polyline whose points are evenly spaced. */
+function alongLine(line, f) {
+  const x = clamp01(f) * (line.length - 1);
+  const i = Math.min(line.length - 2, Math.floor(x));
+  const a = line[i];
+  const b = line[i + 1];
+  const u = x - i;
+  return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, z: a.z + (b.z - a.z) * u };
 }
 
-const FROST_SPREAD_MS = 300;
+/**
+ * The frost patch on the table: a pale, matte disc of value-noise rime with a ragged outline and
+ * a few brighter flecks, drawn "over" (premultiplied normal blend) rather than added, so it reads
+ * as a white frost on a light map as well as on a dark table. uAlpha is its opacity.
+ */
+const FROST_PATCH_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uAlpha;
+uniform float uSeed;
+varying vec2 vUv;
+float hash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+float noise( vec2 p ) {
+	vec2 i = floor( p );
+	vec2 f = fract( p );
+	f = f * f * ( 3.0 - 2.0 * f );
+	return mix( mix( hash( i ), hash( i + vec2( 1.0, 0.0 ) ), f.x ),
+		mix( hash( i + vec2( 0.0, 1.0 ) ), hash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+}
+// Four octaves, each turned ~37 degrees, so no lattice shows.
+float fbm( vec2 p ) {
+	const mat2 turn = mat2( 0.8, 0.6, -0.6, 0.8 );
+	float s = 0.0;
+	float w = 0.5;
+	for ( int i = 0; i < 4; i++ ) {
+		s += w * noise( p );
+		p = turn * p * 2.03 + 17.0;
+		w *= 0.5;
+	}
+	return s / 0.9375;
+}
+void main() {
+	vec2 p = vUv * 2.0 - 1.0;
+	float r = length( p );
+	vec2 dir = p / max( r, 0.0001 );
+	// A ragged outline: fbm around the circle plus a finer fringe.
+	float outline = 0.66 + 0.24 * fbm( dir * 2.2 + uSeed ) + 0.1 * noise( dir * 14.0 + uSeed );
+	float inside = 1.0 - smoothstep( outline - 0.12, outline, r );
+	// Frost feathers: fibres that run outward (noise mostly of the angle), over a fine rime grain.
+	float fibre = fbm( dir * 7.0 + vec2( r * 1.6, -r * 1.1 ) + uSeed );
+	float grain = fbm( p * 9.0 - uSeed );
+	float n = 0.55 * fibre + 0.45 * grain;
+	float rim = smoothstep( outline - 0.3, outline - 0.06, r ) * inside; // the denser growing edge
+	float fleck = smoothstep( 0.62, 0.78, grain );
+	float a = clamp( inside * ( 0.45 + 0.55 * n + 0.3 * rim ) * uAlpha, 0.0, 1.0 );
+	gl_FragColor = vec4( mix( uColor, vec3( 1.0 ), 0.25 + 0.5 * max( fleck, rim ) ) * a, a );
+}
+`;
+
+function frostPatchMaterial(color) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: color.clone() }, uAlpha: { value: 0 }, uSeed: { value: Math.random() * 50 } },
+    vertexShader: QUAD_VERTEX,
+    fragmentShader: FROST_PATCH_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+  });
+}
+
+const FROST_STEPS = 6; // segments per ray
+const FROST_SPIKES = [0.28, 0.48, 0.68]; // where a ray's side-spike pairs root (fraction of its length)
+const FROST_BASE = 0.45; // rays start at the die's base: half an edge out from its centre
+
+/**
+ * The ice crystal: 6-8 nearly straight rays out from the die's base, evenly spaced with a little
+ * jitter, each with a pair of forward-swept side spikes at every FROST_SPIKES root (longer near
+ * the root, like a frost dendrite). Every spike carries `at`: the share of its ray's growth at
+ * which it sprouts.
+ */
+function frostCrystal(cx, cz, reach) {
+  const rays = [];
+  const spikes = [];
+  const n = 6 + Math.floor(Math.random() * 3);
+  const turn = Math.random() * Math.PI * 2;
+  for (let i = 0; i < n; i++) {
+    let ang = turn + (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+    const len = reach * (0.72 + Math.random() * 0.28);
+    const pts = [];
+    for (let s = 0; s <= FROST_STEPS; s++) {
+      if (s > 0) ang += (Math.random() - 0.5) * 0.05;
+      const r = FROST_BASE + ((len - FROST_BASE) * s) / FROST_STEPS;
+      pts.push({ x: cx + Math.cos(ang) * r, y: FLOOR_Y, z: cz + Math.sin(ang) * r });
+    }
+    rays.push(pts);
+    for (const f0 of FROST_SPIKES) {
+      const f = f0 + (Math.random() - 0.5) * 0.06;
+      const root = alongLine(pts, f);
+      const a = pts.at(-1);
+      const dir = Math.atan2(a.z - pts[0].z, a.x - pts[0].x);
+      for (const side of [-1, 1]) {
+        const sl = (len - FROST_BASE) * 0.34 * (1 - 0.6 * f) * (0.8 + Math.random() * 0.4);
+        const sa = dir + side * (0.9 + (Math.random() - 0.5) * 0.2);
+        const tip = { x: root.x + Math.cos(sa) * sl, y: FLOOR_Y, z: root.z + Math.sin(sa) * sl };
+        spikes.push({ pts: [root, tip], ray: rays.length - 1, at: f });
+      }
+    }
+  }
+  // A short minor ray between each pair of rays, sprouting a little later: it fills the crystal.
+  for (let i = 0; i < n; i++) {
+    const ang = turn + ((i + 0.5) / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+    const r1 = FROST_BASE + (reach - FROST_BASE) * (0.3 + Math.random() * 0.15);
+    const at = (r) => ({ x: cx + Math.cos(ang) * r, y: FLOOR_Y, z: cz + Math.sin(ang) * r });
+    spikes.push({ pts: [at(FROST_BASE), at((FROST_BASE + r1) / 2), at(r1)], at: 0.12 });
+  }
+  return { rays, spikes };
+}
+
+// Width along a ray or spike: full at its root, a needle point at its (growing) tip.
+const rayTaper = (t) => 1 - 0.9 * t ** 1.4;
+const spikeTaper = (t) => 1 - 0.92 * t;
+const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 
 export const frost = Object.freeze({
   id: 'frost',
   cost: 2,
   defaults: Object.freeze({ color: '#a8e4ff', intensity: 1, duration: 1800 }),
   start(ctx) {
-    const power = Math.max(0.2, ctx.intensity);
-    const lines = frostLines(ctx.position.x, ctx.position.z, 1.6 * power, 9);
-    const ribbon = createRibbon({
-      maxPoints: lines.reduce((n, l) => n + l.pts.length, 0),
-      widthPx: 2.5,
-      color: ctx.color,
-    });
-    ribbon.alpha = 0;
-    ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
-    const spread = Math.min(FROST_SPREAD_MS, ctx.duration / 2);
-    const shards = trickle(ctx, countFor(22, ctx), 0.2, {
-      origin: originOf(ctx, DIE_TOP),
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 2,
-      spread: 1.35,
-      gravity: -5,
-      life: 0.9,
-      color: ctx.color.clone().lerp(new THREE.Color(WHITE), 0.4),
-      colorEnd: ctx.color,
-      size: 0.15 * Math.sqrt(power),
-      kind: KIND.SHARD,
-      shape: SHAPE.SHARD,
-      spin: 7,
-    });
-    // A pale, low mist over the cracks (normal blend: it veils rather than glows).
-    const mist = trickle(ctx, countFor(2, ctx), 0.1, {
-      origin: originOf(ctx, DIE_TOP),
-      jitter: 0.5,
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 0.25,
-      spread: 1.4,
+    const pal = palette(ctx.color);
+    const white = new THREE.Color(WHITE);
+    // A near-white die has a warm mid; ice wants its cool edge. A near-black die glows in its rim.
+    const nearWhite = !pal.rim && pal.core.equals(white);
+    const glowColor = pal.rim ?? (nearWhite ? pal.edge : pal.mid);
+    const k = sizeK(ctx);
+    // Above intensity 1 the crystal grows (k) but not brighter; widths stop growing at k 1.2.
+    const kw = Math.min(k, 1.2);
+    const bright = Math.min(1, Math.max(0, ctx.intensity));
+    const lum = glowColor.getHSL({}, THREE.SRGBColorSpace).l;
+    // Pale ice gets a stronger dark band (it must read on a light map); the near-black rim a wider halo.
+    const shadowGain = 0.25 + 0.95 * lum;
+    const haloGain = pal.rim ? 1.4 : 1.0;
+    const D = Math.max(1, ctx.duration);
+    const reach = 2.3 * Math.max(0.5, k);
+    const { rays, spikes } = frostCrystal(ctx.position.x, ctx.position.z, reach);
+    const rayPts = rays.length * (FROST_STEPS + 2);
+    const allPts = rayPts + spikes.length * 3;
+
+    const ribbon = (widthPx, maxPoints, taper, core, glow, color = glowColor) => {
+      const r = createRibbon({ maxPoints, widthPx, color, taper, core, glow });
+      r.alpha = 0;
+      ctx.scene.add(r.mesh); // r.dispose() removes it
+      return r;
+    };
+    // Drawn in this order: a soft dark band (pale ice on a light map), a wide coloured halo, then
+    // the crystal itself (rays and their side spikes, each with a whitened core).
+    const shadow = ribbon(36 * kw, allPts, rayTaper, 0.02, 0.8, white);
+    Object.assign(shadow.mesh.material, SHADOW_BLEND);
+    shadow.mesh.renderOrder = 2;
+    const halo = ribbon((pal.rim ? 60 : 42) * kw, allPts, rayTaper, 0.02, pal.rim ? 0.55 : 0.42);
+    const ray = ribbon(13 * kw, rayPts, rayTaper, 0.42, 0.5);
+    const spike = ribbon(7 * kw, spikes.length * 3, spikeTaper, 0.45, 0.5);
+    const ribbons = [shadow, halo, ray, spike];
+    ray.mesh.userData.grow = 0;
+
+    // The frost disc: a pale glow in the palette's edge tint, spreading out under the crystal.
+    const scope = scoped(ctx.scene);
+    // The edge tint, lifted halfway to the die colour (an edge alone is a dull grey) then paled.
+    const discBase = pal.rim ?? (nearWhite ? pal.edge : pal.edge.clone().lerp(pal.mid, 0.6));
+    const discColor = discBase.clone().lerp(white, 0.5);
+    const disc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), frostPatchMaterial(discColor));
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
+    disc.scale.setScalar(0.01);
+    disc.renderOrder = 1;
+    scope.add(disc);
+
+    // Growth: eased out over the first 55% (a quick start, a slow settle into place), then held.
+    const G = 0.55 * D;
+    const growAt = (e) => easeOutCubic(clamp01(e / G));
+    // Brightness: in over 80 ms, a glint as the crystal locks in, held, faded over the last 40%.
+    const levelAt = (e) => {
+      const rise = clamp01(e / 80);
+      const fade = (1 - clamp01((e - 0.6 * D) / (0.4 * D))) ** 1.5;
+      const glint = ctx.reducedMotion ? 0 : 0.25 * Math.exp(-(((e - G) / (0.08 * D)) ** 2));
+      return rise * rise * (3 - 2 * rise) * fade * (1 + glint);
+    };
+
+    const cold = glowColor.clone().lerp(white, 0.55);
+    const shardBody = pal.rim ? pal.mid : nearWhite ? pal.edge : pal.mid;
+    const mistColor = glowColor.clone().lerp(white, pal.rim ? 0.45 : 0.7);
+    let popped = false;
+    const pop = (e, now) => {
+      popped = true;
+      const pool = ctx.particles;
+      if (!pool) return;
+      const life = Math.max(0.25, ((D - e) / 1000) * 0.95);
+      for (const pts of rays) {
+        const tip = pts.at(-1);
+        const origin = { x: tip.x, y: 0.06, z: tip.z };
+        // Solid ice crystals (normal blend: they read on a light map too), then a cold glint of light.
+        pool.emit({
+          count: countFor(2, ctx),
+          origin,
+          dir: { x: 0, y: 1, z: 0 },
+          speed: ctx.reducedMotion ? 0.2 : 1.1,
+          spread: 0.9,
+          gravity: -4,
+          life,
+          color: shardBody,
+          colorEnd: pal.edge,
+          size: 0.3 * k,
+          spin: 2,
+          kind: KIND.SHARD,
+          shape: SHAPE.SHARD,
+          blend: 'normal',
+          now,
+        });
+        pool.emit({
+          count: countFor(2, ctx),
+          origin,
+          dir: { x: 0, y: 1, z: 0 },
+          speed: ctx.reducedMotion ? 0.2 : 1.4,
+          spread: 1.1,
+          gravity: -4,
+          life,
+          color: cold,
+          colorEnd: glowColor,
+          size: 0.22 * k,
+          spin: 3,
+          kind: KIND.SHARD,
+          shape: SHAPE.SHARD,
+          halo: 0.5,
+          now,
+        });
+        pool.emit({
+          count: 1,
+          origin: { x: tip.x, y: 0.12, z: tip.z },
+          speed: 0,
+          life: 0.45,
+          color: cold,
+          colorEnd: glowColor,
+          size: 0.55 * k,
+          spin: 1.5,
+          kind: KIND.SPARK,
+          shape: SHAPE.GLINT,
+          halo: 0.8,
+          now,
+        });
+      }
+    };
+    // A low cold mist rolling out over the crystal (normal blend: it veils rather than glows).
+    const mist = trickle(ctx, countFor(3, ctx), 0.3, {
+      origin: originOf(ctx, 0.25),
+      jitter: 1.2 * k,
+      dir: { x: 0, y: 0.15, z: 0 },
+      speed: ctx.reducedMotion ? 0 : 0.35,
+      spread: 1.5,
       gravity: 0,
-      life: Math.max(0.3, ctx.duration / 1000) * 0.85,
-      color: '#e8f8ff',
-      size: 1.3 * Math.sqrt(power),
-      sizeEnd: 2.6,
-      spin: 0.4,
+      life: Math.max(0.3, D / 1000) * 0.8,
+      color: mistColor,
+      size: 1.4 * k,
+      sizeEnd: 2.2,
+      spin: 0.3,
       kind: KIND.SMOKE,
       shape: SHAPE.SMOKE,
       blend: 'normal',
-      alpha: 0.3,
+      alpha: 0.32,
     });
+
     return timed(
-      ctx.duration,
+      D,
       (e, now) => {
-        shards(e, now);
         mist(e, now);
-        const k = e / spread;
-        ribbon.setPolylines(lines.map((l) => prefixOf(l.pts, (k - l.t0) / Math.max(0.01, 1 - l.t0))));
-        ribbon.alpha = Math.max(0, ctx.intensity) * envelope(e, ctx.duration);
+        const g = growAt(e);
+        ray.mesh.userData.grow = g;
+        const rayLines = rays.map((pts) => prefixOf(pts, g));
+        const spikeLines = spikes.map((s) => prefixOf(s.pts, (g - s.at) / (1 - s.at)));
+        ray.setPolylines(rayLines);
+        spike.setPolylines(spikeLines);
+        const all = rayLines.concat(spikeLines);
+        halo.setPolylines(all);
+        shadow.setPolylines(all);
+        if (!popped && g >= 0.9) pop(e, now);
+        const a = bright * levelAt(e);
+        ray.alpha = Math.min(ALPHA_CAP, 1.15 * a);
+        spike.alpha = Math.min(ALPHA_CAP, a);
+        halo.alpha = Math.min(ALPHA_CAP, haloGain * a);
+        shadow.alpha = Math.min(ALPHA_CAP, shadowGain * a);
+        disc.scale.setScalar(2 * (0.7 + reach * 0.95 * easeOutCubic(clamp01(e / (0.8 * G)))));
+        disc.material.uniforms.uAlpha.value = Math.min(1, 0.9 * a); // an opacity, not a light
       },
       () => {
-        ribbon.dispose();
+        for (const r of ribbons) r.dispose();
+        scope.dispose();
       },
     );
   },
@@ -590,17 +806,9 @@ const BOLT_LEVELS = 6; // 65 points
 const BRANCH_LEVELS = 4; // 17 points
 const MAX_BRANCHES = 4;
 const STRIKES = [0, 0.22, 0.48]; // fractions of the duration
-const STRIKE_PEAK = [1.35, 1.2, 1.1];
-const ALPHA_CAP = 1.5; // per additive layer: brighter saturates to white and loses the colour // each re-strike flashes above the fading previous one
+const STRIKE_PEAK = [1.35, 1.2, 1.1]; // each re-strike flashes above the fading previous one
 // Width factor along a line: full at t = 0 (the impact end of the bolt, the root of a branch),
 // 30% at the tip. Held near full for the first stretch so the strike reads thick where it lands.
-// Black "over" (premultiplied): colour = dst x (1 - a), a = the ribbon's glow profile.
-const SHADOW_BLEND = Object.freeze({
-  blendSrc: THREE.ZeroFactor,
-  blendDst: THREE.OneMinusSrcAlphaFactor,
-  blendSrcAlpha: THREE.OneFactor,
-  blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
-});
 const boltTaper = (t) => 1 - 0.7 * t ** 2.2;
 
 /**
