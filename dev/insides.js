@@ -15,7 +15,7 @@ import { restingQuaternion, minY } from '../src/core/resting.js';
 import { LOOKS } from '../src/look/looks.js';
 import { TIERS, flagsFor } from '../src/render/quality.js';
 import { createMotion, stepMotion } from '../src/render/extras/insides/motion.js';
-import { insideMotion } from '../src/render/extras/insides/live.js';
+import { insideMotion, _resetReducedMotion, _setReducedMotion } from '../src/render/extras/insides/live.js';
 
 const CLEAR = { type: 'resin', color: '#eef4f6', color2: '#c9d8e0', roughness: 0.05 };
 const from = (id, interior, body) => ({
@@ -45,6 +45,8 @@ export const INSIDES = {
   dragon: () => withBody(CLEAR, { type: 'shape', shape: 'dragon', colors: ['#8a1c1c', '#d9603a'], density: 0.5 }),
   fire: () => withBody({ ...CLEAR, color: '#3a3438', color2: '#1a1618' }, { type: 'fire', colors: ['#ffd36a', '#d8401a'], density: 0.6 }),
   lava: () => withBody({ ...CLEAR, color: '#3a3438', color2: '#1a1618' }, { type: 'lava', colors: ['#ffb030', '#c0300c'], density: 0.55 }),
+  storm: () => withBody({ ...CLEAR, color: '#7a8292', color2: '#424a58' }, { type: 'storm', colors: ['#cfe0ff', '#262a36'], density: 0.6 }),
+  frost: () => withBody({ ...CLEAR, color: '#e4f0f6', color2: '#b0c8d8' }, { type: 'frost', colors: ['#e6f6ff', '#7fa6c4'], density: 0.55 }),
 };
 
 const params = new URLSearchParams(location.search);
@@ -165,7 +167,11 @@ function buildSheet() {
   ROWS.forEach((r, row) =>
     COLUMNS.forEach((c, col) => {
       if (r.reduced && !c.motion) return;
+      // the reduced-motion row: the chunk reads prefers-reduced-motion when it patches (storm's
+      // DICER_CALM), so force it while that row's materials are built
+      if (r.reduced) _setReducedMotion(true);
       const mesh = new THREE.Mesh(geometry, makeMaterial(appearance, { interiorSteps: r.steps, insideMotion: c.motion }));
+      if (r.reduced) _resetReducedMotion();
       mesh.position.y = REST_Y;
       mesh.visible = false;
       scene.add(mesh);

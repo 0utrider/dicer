@@ -431,8 +431,8 @@ describe('dice designs plan 3: insides', () => {
       expect(fallbackLook(a)).toBe(a);
     }
   });
-  test('fire and lava normalize as interior types', () => {
-    for (const type of ['fire', 'lava']) {
+  test('fire, lava, storm and frost normalize as interior types', () => {
+    for (const type of ['fire', 'lava', 'storm', 'frost']) {
       const a = ins({ type, colors: ['#ffb030', '#c0300c'], density: 0.7 });
       expect(a.interior).toMatchObject({ type, colors: ['#ffb030', '#c0300c'], density: 0.7 });
       expect(normalizeAppearance(a)).toEqual(a);
@@ -457,9 +457,11 @@ describe('dice designs plan 3: insides', () => {
     expect(fb({ type: 'smoke' }).type).toBe('swirl');
     expect(fb({ type: 'fire' }).type).toBe('liquid');
     expect(fb({ type: 'lava' }).type).toBe('liquid');
+    expect(fb({ type: 'storm' }).type).toBe('nebula');
+    expect(fb({ type: 'frost' }).type).toBe('glitter');
     expect(fb({ type: 'liquid', bubble: true, sand: true })).toMatchObject({ type: 'liquid', bubble: false, sand: false });
     expect(fb({ type: 'foil', colors: ['#112233', '#445566'], density: 0.3 })).toMatchObject({ colors: ['#112233', '#445566'], density: 0.3 });
-    for (const type of ['foil', 'eye', 'botanical', 'smoke', 'fire', 'lava']) expect(needsLookExtras(fallbackLook(ins({ type })))).toBe(false);
+    for (const type of ['foil', 'eye', 'botanical', 'smoke', 'fire', 'lava', 'storm', 'frost']) expect(needsLookExtras(fallbackLook(ins({ type })))).toBe(false);
     // a look that needs the chunk only for another reason keeps its shape and today's type
     const holo = normalizeAppearance({ interior: { type: 'shape', shape: 'heart' }, numbers: { fill: 'holo' } });
     expect(fallbackLook(holo).interior).toMatchObject({ type: 'shape', shape: 'heart' });

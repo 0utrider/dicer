@@ -7,15 +7,18 @@ import * as botanical from './botanical.js';
 import * as smoke from './smoke.js';
 import * as fire from './fire.js';
 import * as lava from './lava.js';
+import * as storm from './storm.js';
+import * as frost from './frost.js';
 import * as liquidExtras from './liquid-extras.js';
 import * as weapons from './weapons.js';
 import * as dragon from './dragon.js';
 import * as runes from './runes.js';
 import * as living from './living.js';
-import { insideMotion, motionUniforms, MOTION_PARS } from './live.js';
+import { insideMotion, motionUniforms, MOTION_PARS, prefersReduced } from './live.js';
 
 /**
- * Inside modules: one per new resin inside (foil, eye, botanical, smoke, fire, lava), plus `liquid` for
+ * Inside modules: one per new resin inside (foil, eye, botanical, smoke, fire, lava, storm,
+ * frost), plus `liquid` for
  * liquid with the bubble and / or sand options (plain liquid stays interior.js's, unpatched), plus
  * one per fantasy shape of type 'shape' under its shape id (weapons.js serves sword, axe and
  * shield; dragon.js the dragon; runes.js the magic circle). Insides combine with the resin body only.
@@ -38,6 +41,8 @@ export const MODULES = {
   smoke: [smoke.smokeInside, smoke.USES_NOISE],
   fire: [fire.fireInside, fire.USES_NOISE],
   lava: [lava.lavaInside, lava.USES_NOISE],
+  storm: [storm.stormInside, storm.USES_NOISE],
+  frost: [frost.frostInside, frost.USES_NOISE],
   liquid: [liquidExtras.liquidExtrasInside, liquidExtras.USES_NOISE], // only with bubble / sand
   // fantasy shapes of type 'shape', by shape id
   sword: [weapons.weaponsInside, weapons.USES_NOISE],
@@ -48,7 +53,7 @@ export const MODULES = {
 };
 
 /** Share of the tint target mixed into the resin body at low tier (steps 0), per new inside. */
-export const INSIDE_TINT = Object.freeze({ foil: 0.15, eye: 0.2, botanical: 0.25, smoke: 0.4, fire: 0.45, lava: 0.45 });
+export const INSIDE_TINT = Object.freeze({ foil: 0.15, eye: 0.2, botanical: 0.25, smoke: 0.4, fire: 0.45, lava: 0.45, storm: 0.45, frost: 0.3 });
 
 const UP_LINE = 'dcIUp = normalize( transpose( dcRm ) * vec3( 0.0, 1.0, 0.0 ) * dcIs );';
 
@@ -93,6 +98,11 @@ const isFantasy = (i) => i.type === 'shape' && !BUILT_IN_SHAPES.includes(i.shape
  * gets `live` (true) as its second argument (smoke drifts, liquid-extras uses the lagged up);
  * today's liquid, glitter, swirl and nebula are drawn by living.js (animated) and the four
  * built-in shapes get `{ uniforms }` with only the four. Without it, every patch is exactly as before.
+ * Under prefers-reduced-motion (live.js prefersReduced, read in this chunk), a live marched patch
+ * also carries the define DICER_CALM (storm's sparks hold at half brightness instead of flashing).
+ * three's program cache key includes material.defines, so a calm program never stands in for a
+ * flashing one; the answer is read once per session, so the DiceBox material cache (keyed by
+ * programKey) never mixes the two either.
  */
 export function insidePatch(a, flags) {
   const i = a.interior;
@@ -116,5 +126,7 @@ export function insidePatch(a, flags) {
   const pars = [usesNoise ? NOISE_GLSL : '', INTERIOR_PARS, live ? MOTION_PARS : '', 'vec3 dcIUp;', body]
     .filter(Boolean)
     .join('\n');
-  return { interior: { pars, main: marchWithUp() }, uniforms: live ? { ...motionUniforms(), ...uniforms } : uniforms };
+  const out = { interior: { pars, main: marchWithUp() }, uniforms: live ? { ...motionUniforms(), ...uniforms } : uniforms };
+  if (live && prefersReduced()) out.defines = { DICER_CALM: '' };
+  return out;
 }

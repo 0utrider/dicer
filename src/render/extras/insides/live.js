@@ -42,8 +42,12 @@ export const motionUniforms = () => ({
 const MAX_DT = 0.1;
 
 let reduced = null;
-/** prefers-reduced-motion, read once (false where matchMedia is missing). */
-function prefersReduced() {
+/**
+ * prefers-reduced-motion, read once (false where matchMedia is missing). The motion stepping
+ * reads it, and so does insidePatch (index.js): a live inside's patch gets the DICER_CALM define
+ * under reduced motion (storm's sparks hold instead of flashing).
+ */
+export function prefersReduced() {
   if (reduced === null) {
     try {
       reduced = !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
@@ -57,6 +61,11 @@ function prefersReduced() {
 /** Test seam: forget the cached reduced-motion answer. */
 export function _resetReducedMotion() {
   reduced = null;
+}
+
+/** Test / sheet seam: force the reduced-motion answer (dev/insides.js builds its reduced row with it). */
+export function _setReducedMotion(v) {
+  reduced = !!v;
 }
 
 // set when frame() threw: it warned once and steps nothing more (the insides stay where they are)

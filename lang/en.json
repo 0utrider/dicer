@@ -626,7 +626,9 @@
         "botanical": "Inclusion",
         "smoke": "Smoke",
         "fire": "Fire",
-        "lava": "Lava"
+        "lava": "Lava",
+        "storm": "Storm",
+        "frost": "Frost"
       },
       "Inclusion": {
         "flower": "Flower",
