@@ -27,7 +27,6 @@ const DEAD = Object.freeze({ update: () => false, stop() {} });
 export function createJb2aPlayer({
     source,
     createVideo = () => document.createElement('video'),
-    now = () => performance.now(),
     setTimer = (fn, ms) => setTimeout(fn, ms),
     clearTimer = (id) => clearTimeout(id)
 }) {
@@ -137,6 +136,10 @@ export function createJb2aPlayer({
             const entry = acquire(url);
             if (!entry) return fail(null); // per-file pool exhausted: busy, not missing
             const { video } = entry;
+            if (video.error != null) {
+                entry.busy = false; // errored during preload
+                return fail(url);
+            }
             const over = layer.place === 'over';
             const texture = new THREE.VideoTexture(video);
             texture.colorSpace = THREE.SRGBColorSpace;
@@ -208,6 +211,7 @@ export function createJb2aPlayer({
                 id,
                 cost: costOf(builtin),
                 defaults: builtin?.defaults,
+                bindsDie: true,
                 start: (ctx) => start(id, builtin ?? null, safe, ctx)
             };
         },

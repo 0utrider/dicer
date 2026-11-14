@@ -641,6 +641,14 @@ describe('JB2A animations', () => {
     expect(calls.moduleFor.find((c) => c.id === 'frost').safe).toBe(true);
   });
 
+  test('damage-theme landings stay built-in; other rules with the same effect play JB2A', async () => {
+    const { layer, log } = jb2aSetup();
+    await layer.prefetch();
+    layer.play(makeDie(), [{ ruleId: 'damage:fire', effect: { id: 'frost' }, sound: null }]);
+    layer.play(makeDie(), [{ ruleId: 'r0', effect: { id: 'frost' }, sound: null }]);
+    expect(started(log)).toEqual(['frost', 'jb2a:frost']);
+  });
+
   test('prefetch loads the chunk once, builds the player on jb2a.source and preloads', async () => {
     const { layer, jb2a, calls } = jb2aSetup();
     await layer.prefetch();

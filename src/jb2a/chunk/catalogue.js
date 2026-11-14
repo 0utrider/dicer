@@ -89,6 +89,12 @@ export function hueDistance(a, b) {
 /** The file name for a layer: the variant nearest `color` in hue, or the layer's default file. */
 export function pickFile(layer, color) {
     if (!layer.variants || !color) return layer.file;
+    const hsl = color.getHSL({ h: 0, s: 0, l: 0 });
+    if (hsl.s < 0.15) {
+        // grey/white: hue is meaningless, so use a variant that is itself low-saturation (White)
+        const grey = layer.variants.find((v) => new THREE.Color(v.color).getHSL({ h: 0, s: 0, l: 0 }).s < 0.15);
+        return grey ? grey.file : layer.file;
+    }
     let best = layer.file;
     let bestDist = Infinity;
     for (const v of layer.variants) {

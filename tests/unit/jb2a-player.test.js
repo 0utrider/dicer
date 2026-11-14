@@ -7,6 +7,7 @@ class FakeVideo extends EventTarget {
     constructor() {
         super();
         this.src = '';
+        this.error = null;
         this.preload = '';
         this.muted = false;
         this.playsInline = false;
@@ -123,6 +124,23 @@ describe('jb2a player', () => {
         expect(player.moduleFor('frost', b)).toBeNull();
     });
 
+    it('moduleFor modules bind the die, so releaseDie can stop them', () => {
+        const { player, builtin } = setup();
+        expect(player.moduleFor('frost', builtin()).bindsDie).toBe(true);
+    });
+
+    it('an element that already errored during preload is marked missing and falls back', () => {
+        const { player, videos, scene, ctx, builtin } = setup();
+        player.preload(['frost']);
+        videos[0].error = { code: 4 };
+        const b = builtin();
+        player.moduleFor('frost', b).start(ctx());
+        expect(b.start).toHaveBeenCalledTimes(1);
+        expect(player.missing.size).toBe(1);
+        expect(scene.children).toHaveLength(0);
+        expect(player.moduleFor('frost', b)).toBeNull();
+    });
+
     it('falls back when canplay does not arrive in time', () => {
         const { player, videos, scene, ctx, builtin } = setup();
         const b = builtin();
@@ -173,7 +191,6 @@ describe('jb2a player', () => {
         fresh.videos.find((v) => v.src.includes('FrostImpact')).fire('ended');
         expect(fresh.player.playing).toBe(MAX_PLAYING - 1);
         expect(fresh.player.moduleFor('frost', fresh.builtin())).not.toBeNull();
-        expect(videos.length).toBeGreaterThan(0);
     });
 
     it('per-file pool exhaustion falls back without marking the file missing', () => {
