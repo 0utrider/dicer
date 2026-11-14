@@ -135,7 +135,7 @@ export function createJb2aPlayer({
             if (finished) return;
             const url = urls[i];
             const entry = acquire(url);
-            if (!entry) return fail(url);
+            if (!entry) return fail(null); // per-file pool exhausted: busy, not missing
             const { video } = entry;
             const over = layer.place === 'over';
             const texture = new THREE.VideoTexture(video);
@@ -185,9 +185,9 @@ export function createJb2aPlayer({
             if (video.readyState >= 3) onCanPlay();
             else l.timer = setTimer(() => fail(url), CANPLAY_MS);
             try {
-                Promise.resolve(video.play()).catch(() => fail(url));
+                Promise.resolve(video.play()).catch(() => fail(null)); // e.g. autoplay policy: not a missing file
             } catch {
-                fail(url);
+                fail(null);
             }
         });
         return fallback ?? handle;

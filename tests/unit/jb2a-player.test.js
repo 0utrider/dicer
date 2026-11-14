@@ -176,6 +176,36 @@ describe('jb2a player', () => {
         expect(videos.length).toBeGreaterThan(0);
     });
 
+    it('per-file pool exhaustion falls back without marking the file missing', () => {
+        const { player, ctx, builtin } = setup();
+        const b = builtin();
+        const m = player.moduleFor('frost', b);
+        for (let i = 0; i < 4; i++) m.start(ctx());
+        expect(b.start).not.toHaveBeenCalled();
+        m.start(ctx());
+        expect(b.start).toHaveBeenCalledTimes(1);
+        expect(player.missing.size).toBe(0);
+        expect(player.moduleFor('frost', b)).not.toBeNull();
+    });
+
+    it('a play() rejection falls back without marking the file missing', async () => {
+        const s = setup();
+        const b = s.builtin();
+        const player = createJb2aPlayer({
+            source: () => SRC,
+            createVideo: () => {
+                const v = new FakeVideo();
+                v.play = vi.fn(() => Promise.reject(new Error('blocked')));
+                return v;
+            }
+        });
+        player.moduleFor('frost', b).start(s.ctx());
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(b.start).toHaveBeenCalledTimes(1);
+        expect(player.missing.size).toBe(0);
+    });
+
     it('stop releases videos, meshes and gpu resources', () => {
         const { player, videos, scene, ctx, builtin } = setup();
         const h = player.moduleFor('celebrate', builtin()).start(ctx());
