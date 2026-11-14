@@ -98,7 +98,8 @@ export function flareInside(ctx, die, { amount = 1, duration = ctx?.duration } =
  * only; opts {amount, duration} default 1 and 900 ms), `mk(die)` making each die's ctx and
  * `add(handle, die)` taking each real handle (never a no-op). True when any die flared.
  */
-export function flareRolls(rolls, opts = {}, mk, add) {
+export function flareRolls(rolls, opts, mk, add) {
+  opts ??= {}; // the public hook may pass null
   let any = false;
   for (const die of rolls.flatMap((r) => (Number.isInteger(opts.die) ? [r.dice[opts.die]] : r.dice))) {
     const h = die && flareInside({ ...mk(die), duration: 900 }, die, opts);

@@ -1084,6 +1084,27 @@ describe('inside flare (living insides round 3)', () => {
     }
   });
 
+  test('layer.flare (the public hook): null opts do not throw; the master effects setting off returns false', async () => {
+    for (const effects of [true, false]) {
+      const die = insideDie();
+      const layer = createEffectLayer({
+        scene: new THREE.Scene(),
+        camera: new THREE.PerspectiveCamera(),
+        canvas: { style: {} },
+        getTier: () => TIERS.ultra,
+        getSetting: (k) => (k === 'effects' ? effects : undefined),
+        loadLibrary: async () => ({ EFFECTS, createParticlePool, flareRolls }),
+        isolate: (d) => d.uniforms,
+        matchMedia: () => ({ matches: false }),
+      });
+      await layer.prefetch();
+      expect(() => layer.flare([{ dice: [die] }], null)).not.toThrow();
+      expect(layer.flare([{ dice: [die] }], undefined)).toBe(effects);
+      expect(layer.flare([{ dice: [die] }], null)).toBe(effects);
+      layer.dispose();
+    }
+  });
+
   test('through the layer: the insideFlare setting reaches the flare (off: no write)', async () => {
     for (const on of [true, false]) {
       const die = insideDie();

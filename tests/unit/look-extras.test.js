@@ -599,15 +599,16 @@ describe('insides', () => {
       expect(wants(a, unset)).toBe(false); // unset: off
     });
 
-    test("today's four shapes get a uniforms-only patch with the four motion uniforms at their defaults", () => {
+    test('the four built-in shapes are never live: wants false, an empty patch, no mo key (no GLSL reads the uniforms); the fantasy shapes keep motion', () => {
       for (const it of TODAY.filter((x) => x.type === 'shape')) {
-        const p = insidePatch(resin(it), LIVE);
-        expect(Object.keys(p)).toEqual(['uniforms']);
-        expect(Object.keys(p.uniforms).sort()).toEqual(MOTION);
-        defaults(p.uniforms);
-        // fresh objects per patch: dice never share motion state
-        expect(insidePatch(resin(it), LIVE).uniforms.uInteriorTime).not.toBe(p.uniforms.uInteriorTime);
-        expect(insidePatch(resin(it), { ...LIVE, interiorSteps: 0 })).toEqual({});
+        expect(wants(resin(it), LIVE)).toBe(false);
+        expect(insidePatch(resin(it), LIVE)).toEqual({});
+        expect(programKey(resin(it), LIVE)).not.toContain('|mo');
+        expect(programKey(resin(it), { ...LIVE, interiorSteps: 0 })).not.toContain('|mo');
+      }
+      for (const shape of ['sword', 'axe', 'shield', 'dragon', 'runes']) {
+        expect(wants(resin({ type: 'shape', shape }), LIVE)).toBe(true);
+        expect(programKey(resin({ type: 'shape', shape }), LIVE)).toMatch(/\|mo$/);
       }
     });
 

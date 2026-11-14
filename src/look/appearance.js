@@ -179,7 +179,7 @@ export function programKey(a, flags) {
   const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
   const parts = [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'];
   if (a.body.luminous > 0) parts.push('lum');
-  if (active && flags.insideMotion) parts.push('mo'); // living insides (the look-extras chunk's)
+  if (active && flags.insideMotion && (type !== 'shape' || SHAPES.indexOf(shape) > 3)) parts.push('mo'); // living insides (the look-extras chunk's)
   const { fill, relief } = a.numbers;
   if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
   return parts.join('|');

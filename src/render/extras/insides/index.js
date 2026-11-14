@@ -14,7 +14,7 @@ import * as weapons from './weapons.js';
 import * as dragon from './dragon.js';
 import * as runes from './runes.js';
 import * as living from './living.js';
-import { insideMotion, motionUniforms, MOTION_PARS, prefersReduced } from './live.js';
+import { insideMotion, motionUniforms, MOTION_PARS, prefersReduced, BUILT_IN_SHAPES } from './live.js';
 
 /**
  * Inside modules: one per new resin inside (foil, eye, botanical, smoke, fire, lava, storm,
@@ -77,10 +77,9 @@ function tintTarget(a) {
 }
 
 const hasLiquidExtras = (i) => i.type === 'liquid' && (i.bubble || i.sand);
-// the closed list of shapes interior.js draws itself (the keys of its SDF_NAME, pinned by a test):
+// BUILT_IN_SHAPES (live.js): the closed list of shapes interior.js draws itself (the keys of its SDF_NAME, pinned by a test):
 // every other shape of type 'shape' (plan 3b: sword, axe, shield, dragon, runes) is a module in
 // MODULES under its shape id
-const BUILT_IN_SHAPES = ['star', 'heart', 'skull', 'sphere'];
 const isFantasy = (i) => i.type === 'shape' && !BUILT_IN_SHAPES.includes(i.shape);
 
 /**
@@ -96,8 +95,8 @@ const isFantasy = (i) => i.type === 'shape' && !BUILT_IN_SHAPES.includes(i.shape
  * With insideMotion.wants(a, flags) (live.js), the marched patch also declares the four motion
  * uniforms in its pars (MOTION_PARS) and supplies them at their defaults, and each module's build
  * gets `live` (true) as its second argument (smoke drifts, liquid-extras uses the lagged up);
- * today's liquid, glitter, swirl and nebula are drawn by living.js (animated) and the four
- * built-in shapes get `{ uniforms }` with only the four. Without it, every patch is exactly as before.
+ * today's liquid, glitter, swirl and nebula are drawn by living.js (animated); the four built-in
+ * shapes are never live (no GLSL of theirs reads the uniforms). Without it, every patch is exactly as before.
  * Under prefers-reduced-motion (live.js prefersReduced, read in this chunk), a live marched patch
  * also carries the define DICER_CALM (storm's sparks hold at half brightness instead of flashing).
  * three's program cache key includes material.defines, so a calm program never stands in for a

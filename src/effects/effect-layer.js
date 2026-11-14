@@ -381,6 +381,7 @@ export function createEffectLayer({
      * die has a moving inside. Free of budget; releaseDie stops it with its die.
      */
     flare(rolls, opts) {
+      if (gate() === 'off') return false;
       if (!flareRolls) return prefetch(), false;
       return flareRolls(
         rolls,

@@ -26,7 +26,7 @@ import { FATE_FACES } from '../../src/compat/faces.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { foundryRoll, Coin } from './foundry-roll.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
-import { EFFECTS } from '../../src/effects/library/index.js';
+import { EFFECTS, flareRolls } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
 import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
@@ -2010,6 +2010,27 @@ describe('effect runtime (Task 8)', () => {
     expect(flare).toHaveBeenLastCalledWith([], {});
   });
 
+  test('flareInside with null opts does not throw and leaves the effect-layer warning armed', async () => {
+    const { box } = await withEffects();
+    const effects = createEffectLayer({
+      scene: new THREE.Scene(),
+      camera: new THREE.PerspectiveCamera(),
+      canvas: { style: { transform: '' } },
+      getTier: () => TIERS.ultra,
+      getSetting: () => undefined,
+      loadLibrary: async () => ({ EFFECTS, flareRolls }),
+      isolate: () => null,
+      matchMedia: () => ({ matches: false }),
+      debug: () => {},
+    });
+    await effects.prefetch();
+    box._effects = effects;
+    box.roll([{ type: 'd20', value: 20 }]);
+    const roll = box._rolls.values().next().value;
+    expect(box.flareInside(roll.id, null)).toBe(false);
+    expect(box._effectsWarned).toBe(false);
+  });
+
   test('flareInside restarts the render loop for a lingering roll at rest', async () => {
     const { renderer, physics, box, effects } = await withEffects();
     box.roll([{ type: 'd20', value: 20 }]);
@@ -3654,6 +3675,19 @@ describe('living insides: per-die motion (insideMotion)', () => {
     low.renderer.tick(0);
     expect(low.dice[0].isolated).toBeFalsy();
     low.box.clear();
+  });
+
+  test('a die with a built-in shape inside (star) is not isolated for motion, a fantasy shape (sword) is', () => {
+    const shaped = (shape) => ({ ...resinLiquid, interior: { type: 'shape', shape, colors: ['#ffd24a', '#c28a00'], density: 0.5 } });
+    const { renderer, physics, box, dice } = rollWith(ON, [
+      { type: 'd6', value: 1, appearance: shaped('star') },
+      { type: 'd6', value: 2, appearance: shaped('sword') },
+    ]);
+    physics.flush();
+    renderer.tick(0);
+    expect(dice[0].isolated).toBeFalsy();
+    expect(dice[1].isolated).toBeTruthy();
+    box.clear();
   });
 
   test('#frame advances uInteriorTime on an isolated inside die (dt clamped to 0.1 s)', () => {

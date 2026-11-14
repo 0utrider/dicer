@@ -111,6 +111,9 @@ function worldQuat(die) {
   return quat;
 }
 
+// the closed list of shapes interior.js draws itself: no GLSL of theirs reads the motion uniforms
+export const BUILT_IN_SHAPES = ['star', 'heart', 'skull', 'sphere'];
+
 export const insideMotion = {
   /** True when this look's inside is marched with motion: resin, an inside, interiors on, steps > 0, insideMotion. */
   wants(a, flags) {
@@ -119,6 +122,7 @@ export const insideMotion = {
       a?.body?.type === 'resin' &&
       !!type &&
       type !== 'none' &&
+      !(type === 'shape' && BUILT_IN_SHAPES.includes(a.interior.shape)) &&
       !!flags?.interiors &&
       flags.interiorSteps > 0 &&
       !!flags.insideMotion

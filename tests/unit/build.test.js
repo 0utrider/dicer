@@ -206,8 +206,9 @@ describe('build', () => {
     // pet dodge plan: 512 B over 4,102,587
     // rolling by hand plan: 12,288 B cap over 4,103,020 (owner approval, 2026-11-14). Re-based once,
     // at its Task 1 (pre-flight R1), so no later task re-bases it.
-    // living insides plan: 1,536 B cap over 4,115,282 for the whole plan, all rounds (controller
-    // ruling, ledger).
+    // living insides plan: re-based on the bundle as it stood after rolling-by-hand plus later plans
+    // (4,115,282, i.e. 13.6 KB past the rolling-by-hand base, beyond that plan's 12,288 B cap); this
+    // plan may spend 1,536 B (controller ruling during the plan; owner informed at sign-off).
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
     expect(growth).toBeLessThanOrEqual(1_536);
