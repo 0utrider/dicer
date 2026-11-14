@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dicer insides</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #3a3f48;
+        color: #e8e8e8;
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      #sheet {
+        display: inline-block;
+        padding: 10px 14px 14px;
+        background: #3a3f48;
+      }
+      #title {
+        font-weight: 600;
+        font-size: 15px;
+        margin-bottom: 6px;
+      }
+      #grid {
+        display: grid;
+      }
+      #grid .head,
+      #grid .row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #c8ceda;
+      }
+      #grid .row {
+        justify-content: flex-end;
+        padding-right: 10px;
+        text-align: right;
+        white-space: pre-line;
+      }
+      #stage {
+        position: relative;
+      }
+      #stage canvas {
+        display: block;
+      }
+      #status.bad {
+        color: #ff6b6b;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="sheet">
+      <div id="title"></div>
+      <div id="grid"></div>
+    </div>
+    <div id="status">loading...</div>
+    <script type="module" src="./insides.js"></script>
+  </body>
+</html>

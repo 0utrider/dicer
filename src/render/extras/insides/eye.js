@@ -152,14 +152,15 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
  * MOTION_PARS in the pars). The pupil, ruff, fibres and collarette follow it; the limbal ring
  * stays on the iris (rho0). No extra noise lookup.
  */
-const PUPIL_AT = 'vec2 q = vec2( dot( xi, t1 ), dot( xi, t2 ) ) / DC_EY_IRIS;';
+// q is the sample coordinate, so adding d moves the pupil by -d (towards the camera for d = +rd's projection)
+const PUPIL_AT ='vec2 q = vec2( dot( xi, t1 ), dot( xi, t2 ) ) / DC_EY_IRIS;';
 const PUPIL_MOVE = `
 	float rho0 = min( length( q ), 1.0 );
 	q += 0.15 * smoothstep( 0.0, 0.5, uInteriorTime ) * vec2( dot( rd, t1 ), dot( rd, t2 ) );`;
 const LIMBAL_AT = 'smoothstep( 0.78, 1.0, rho )';
 
 /**
- * @param {boolean} [live] insideMotion: the pupil follows the view ray
+ * @param {boolean} [live] insideMotion: the pupil moves toward the camera
  * @returns {{ body: string }} the eye GLSL (every colour and the density are uniforms)
  */
 export function eyeInside(_a, live = false) {

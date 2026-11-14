@@ -20,6 +20,8 @@
     "test:visual:fx": "node tests/visual/builtin-fx.mjs",
     "test:visual:fx-perf": "node tests/visual/fx-perf.mjs",
     "test:visual:pets": "node tests/visual/pets.mjs",
+    "test:visual:insides": "node tests/visual/insides.mjs",
+    "test:visual:insides-perf": "node tests/visual/insides-perf.mjs",
     "test:watch": "vitest",
     "test:fairness": "node scripts/fairness.mjs",
     "lint": "eslint .",
