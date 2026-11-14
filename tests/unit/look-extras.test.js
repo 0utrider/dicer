@@ -24,6 +24,8 @@ import { MARCH_RADIUS, FOIL, FOIL_WALK } from '../../src/render/extras/insides/f
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
 import { BO_KINDS, CARDS, CARD_RADIUS, TILT, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
 import { smokeInside } from '../../src/render/extras/insides/smoke.js';
+import { fireInside, USES_NOISE as FIRE_NOISE } from '../../src/render/extras/insides/fire.js';
+import { lavaInside, USES_NOISE as LAVA_NOISE } from '../../src/render/extras/insides/lava.js';
 import { LQ, liquidExtrasInside } from '../../src/render/extras/insides/liquid-extras.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { fallbackLook, needsLookExtras } from '../../src/look/appearance.js';
@@ -1132,6 +1134,113 @@ describe('insides', () => {
     expect(patched(mat(a, low)).fragmentShader).not.toContain('dcInterior');
   });
 
+  describe('elemental insides: fire and lava (Task 6)', () => {
+    const LIVE = { ...FLAGS, insideMotion: true };
+    const ELEMENTAL = [
+      ['fire', fireInside, FIRE_NOISE, 'dcFi', 'DC_FI_', ['#ffd36a', '#d8401a']],
+      ['lava', lavaInside, LAVA_NOISE, 'dcLa', 'DC_LA_', ['#ffb030', '#c0300c']],
+    ];
+    const noiseCalls = (body) => (body.match(/\b(?:dcNoise3|dcFbm3)\s*\(/g) || []).length;
+
+    test('fire/lava compile at 16 and 48 steps and stay within four noise lookups', () => {
+      for (const [type, build, usesNoise, prefix, def, colors] of ELEMENTAL) {
+        expect(usesNoise).toBe(true);
+        expect(MODULES[type]).toEqual([build, true]);
+        const a = resin({ type, colors, density: 0.5 });
+        for (const live of [false, true]) {
+          const { body } = build(a, live);
+          expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
+          expect(noiseCalls(body)).toBeGreaterThan(0);
+          expect(noiseCalls(body)).toBeLessThanOrEqual(4);
+          // flames and crust follow the die's true up
+          expect(body).toContain('dcIUp');
+          expect(body).not.toMatch(/\b(dFdx|dFdy|fwidth)\b/);
+          for (const [, base] of body.matchAll(/pow\( ([^,]+),/g)) expect(base).toMatch(/^max\(/);
+          const own = [...body.matchAll(/\b(?:vec[234]|float|int|bool|mat[23])\s+(dc\w+)\s*\(/g)].map((x) => x[1]);
+          for (const name of own) if (name !== 'dcInterior') expect(name.startsWith(prefix)).toBe(true);
+          for (const [, name] of body.matchAll(/#define\s+(\w+)/g)) expect(name.startsWith(def)).toBe(true);
+        }
+        for (const steps of [16, 48]) {
+          for (const [flags, body] of [
+            [{ ...FLAGS, interiorSteps: steps }, build(a).body],
+            [{ ...LIVE, interiorSteps: steps }, build(a, true).body],
+          ]) {
+            for (const shape of [s, getShape('d2')]) {
+              const m = createDiceMaterial(a, atlas, shape, labels, flags);
+              expect(m.userData.programKey).toBe(programKey(a, flags));
+              expect(m.userData.programKey).toContain(`|${type}:${steps}|`);
+              expect(m.defines.DICER_STEPS).toBe(steps);
+              const fs = patched(m).fragmentShader;
+              expect(count(fs, body)).toBe(1);
+              expect(count(fs, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+              expect(count(fs, '#define DC_NOISE')).toBe(1);
+              expect(count(fs, 'vec3 dcIUp;')).toBe(1);
+              expect(count(fs, UP_LINE)).toBe(1);
+              expect(count(fs, 'uniform float uInteriorTime;')).toBe(flags.insideMotion ? 1 : 0);
+            }
+          }
+        }
+        // one program for every colour and density
+        const other = mat(resin({ type, colors: ['#30a0ff', '#e8e8f0'], density: 0.9 }));
+        expect(other.userData.programKey).toBe(mat(a).userData.programKey);
+        expect(patched(other).fragmentShader).toBe(patched(mat(a)).fragmentShader);
+        // fake mode: the tint share 0.45, no interior
+        const low = { ...FLAGS, interiorSteps: 0 };
+        expect(insidePatch(a, low).uniforms.uResinTint.value.w).toBeCloseTo(0.45, 6);
+        expect(patched(mat(a, low)).fragmentShader).not.toContain('dcInterior');
+      }
+    });
+
+    test('motion off: they render a still frame (time read is constant 0)', () => {
+      for (const [type, build, , , def] of ELEMENTAL) {
+        const a = resin({ type, density: 0.5 });
+        const still = build(a).body;
+        const live = build(a, true).body;
+        // still: time is the constant 0, no motion uniform is read (none is declared)
+        expect(still).toContain(`#define ${def}T 0.0`);
+        expect(still).not.toMatch(/\buInteriorTime\b|\buInteriorFlare\b|\buInteriorSpin\b|\buInteriorLag\b|\buInteriorSwirl\b/);
+        expect(insidePatch(a, FLAGS).interior.pars).not.toMatch(/\buInteriorTime\b/);
+        // live: the same GLSL with time read from the uniform
+        expect(live).toContain(`#define ${def}T uInteriorTime`);
+        const frozen = live
+          .replace(`#define ${def}T uInteriorTime`, `#define ${def}T 0.0`)
+          .replace('#define DC_FI_FLARE ( 1.0 + uInteriorFlare )', '#define DC_FI_FLARE 1.0');
+        expect(frozen).toBe(still);
+        expect(live).not.toBe(still);
+        const lp = insidePatch(a, LIVE);
+        expect(lp.interior.pars.split('uniform vec3 uInteriorSwirl;')[1]).toContain(live);
+      }
+      // fire roars with the flare (Task 9 drives it); still, the flare is the constant 1
+      const f = resin({ type: 'fire' });
+      expect(fireInside(f, true).body).toContain('#define DC_FI_FLARE ( 1.0 + uInteriorFlare )');
+      expect(fireInside(f).body).toContain('#define DC_FI_FLARE 1.0');
+    });
+
+    test('chunk missing: fire draws liquid, lava draws liquid', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      _setLookExtrasImport(() => new Promise(() => {}));
+      try {
+        for (const type of ['fire', 'lava']) {
+          for (const flags of [FLAGS, LIVE]) {
+            const a = resin({ type, colors: ['#ffb030', '#c0300c'], density: 0.5 });
+            const m = mat(a, flags);
+            expect(fallbackLook(a).interior.type).toBe('liquid');
+            // the fallback look, never motion (as today's insides with the chunk missing)
+            expect(m.userData.programKey).toBe(programKey(fallbackLook(a), { ...flags, insideMotion: false }));
+            expect(m.userData.programKey).toContain('|liquid:32|');
+            const fs = patched(m).fragmentShader;
+            expect(fs).toBe(patched(mat(resin({ type: 'liquid', colors: ['#ffb030', '#c0300c'], density: 0.5 }), { ...flags, insideMotion: false })).fragmentShader);
+            expect(fs).not.toMatch(/\buInteriorTime\b/);
+          }
+        }
+      } finally {
+        warn.mockRestore();
+        _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+        await requestLookExtras();
+      }
+    });
+  });
+
   test('liquid + bubble / sand / both: patched, dcIUp used, keys distinct; plain liquid unpatched', () => {
     const colors = ['#1f7fd1', '#bfe6ff'];
     const plain = resin({ type: 'liquid', colors, density: 0.5 });
@@ -1235,7 +1344,7 @@ describe('insides', () => {
   });
 
   test('fake mode: uResinTint.w = INSIDE_TINT.foil, no interior chunk', () => {
-    expect(INSIDE_TINT).toEqual({ foil: 0.15, eye: 0.2, botanical: 0.25, smoke: 0.4 });
+    expect(INSIDE_TINT).toEqual({ foil: 0.15, eye: 0.2, botanical: 0.25, smoke: 0.4, fire: 0.45, lava: 0.45 });
     const low = { ...FLAGS, interiorSteps: 0 };
     const a = resin({ type: 'foil', colors: ['#ffcf5a', '#d9814a'] }, { color: '#304050' });
     const patch = insidePatch(a, low);
@@ -1267,7 +1376,7 @@ describe('insides', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const cases = [
-        ...['foil', 'eye', 'botanical', 'smoke'].map((type) => ({ type })),
+        ...['foil', 'eye', 'botanical', 'smoke', 'fire', 'lava'].map((type) => ({ type })),
         { type: 'liquid', bubble: true },
         { type: 'liquid', sand: true },
         { type: 'liquid', bubble: true, sand: true },

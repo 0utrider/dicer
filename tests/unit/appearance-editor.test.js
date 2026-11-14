@@ -207,7 +207,7 @@ describe('bodies, presets, finishes and luminous in the form', () => {
 });
 
 describe('the new insides in the form', () => {
-  const NEW_TYPES = ['foil', 'eye', 'botanical', 'smoke'];
+  const NEW_TYPES = ['foil', 'eye', 'botanical', 'smoke', 'fire', 'lava'];
   it('form round-trips every new inside, inclusion, bubble and sand', () => {
     for (const type of NEW_TYPES)
       for (const inclusion of ['flower', 'moss', 'butterfly']) {

@@ -1,0 +1,86 @@
+/**
+ * Lava inside: a slow glowing body under a dark crust that cracks and reseals.
+ *
+ * Shape (canonical interior frame, heights along dcIUp, the die's world up, so the lava pools at
+ * the bottom whichever way the die lies):
+ * - a pool filling the volume up to a gently heaving surface (density sets the fill), kept just
+ *   inside the march sphere so its flanks are crusted too;
+ * - a crust shell along the pool's surface and flanks, thick enough to be hit by a sample at the
+ *   lowest marched tier; under it the molten body, opaque and glowing;
+ * - cracks in the crust: thin lines from a ridged noise (two lookups), each opening and resealing
+ *   over about 3 s, out of phase across the crust (the phase comes from the churn noise).
+ *
+ * Colour: the molten body runs from colors[1] (cool edge) to colors[0] (hot core) with a slow
+ * churn (a third, large noise rising very slowly); the crust is the lava's colour darkened (lit a
+ * little by the key light) and glows warm at the lips of the cracks.
+ *
+ * Motion: DC_LA_T is uInteriorTime with insideMotion, the constant 0 without (a still frame, no
+ * uniform read).
+ *
+ * Cost: an early out outside the pool, then three noise lookups per sample; the first opaque
+ * sample usually ends the march.
+ */
+export const USES_NOISE = true; // dcNoise3
+
+/** Pool geometry (canonical frame; the march sphere has radius 0.62). */
+export const LAVA = Object.freeze({
+  /** surface height along up at density 0 and 1 */
+  fill: [-0.34, 0.34],
+  /** the pool's flanks stop this far from the centre (inside the edge fade) */
+  wall: 0.55,
+  /** crack cycle, seconds */
+  period: 3,
+});
+
+const f = (x) => x.toFixed(4);
+
+const BODY = /* glsl */ `
+#define DC_LA_WALL ${f(LAVA.wall)}
+#define DC_LA_W ${f((2 * Math.PI) / LAVA.period)}
+vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
+	float y = dot( p, dcIUp );
+	// the churn: large slow blobs rising through the body (also the surface's heave)
+	float n1 = dcNoise3( p * 2.6 - dcIUp * ( DC_LA_T * 0.05 ) + 4.3 );
+	float surf = mix( ${f(LAVA.fill[0])}, ${f(LAVA.fill[1])}, uInteriorDensity ) + 0.08 * ( n1 - 0.5 );
+	// depth into the lava: under the surface and inside the flanks
+	float r = length( p );
+	float top = surf - y;
+	float side = DC_LA_WALL - r;
+	float depth = min( top, side );
+	if ( depth <= 0.0 ) return vec4( 0.0 );
+	// the crust shell: at least one sample deep at 16 steps
+	float th = max( 0.06, dt * 1.5 );
+	float shell = 1.0 - smoothstep( th, 1.6 * th, depth );
+	// cracks: ridged noise lines, each opening and resealing over the cycle, out of phase; read on
+	// the nearest boundary point, so the jittered sample depth does not hatch them
+	vec3 ps = top < side ? p + dcIUp * top : p * ( DC_LA_WALL / max( r, 1e-4 ) );
+	float n2 = dcNoise3( ps * 7.0 + 1.9 );
+	float n3 = dcNoise3( ps * 15.0 - 5.2 );
+	float ridge = 1.0 - abs( 2.0 * mix( n2, n3, 0.3 ) - 1.0 );
+	float open = 0.5 + 0.5 * sin( DC_LA_T * DC_LA_W + n1 * 9.0 );
+	float wid = mix( 0.02, 0.14, open ) + dt * 0.3;
+	float crack = smoothstep( 1.0 - wid, 1.0 - 0.35 * wid, ridge );
+	float crust = shell * ( 1.0 - crack );
+	// the molten body: cool edge to hot core with the churn, brightest in the open cracks
+	float heat = 0.5 + 0.5 * smoothstep( 0.3, 0.8, n1 );
+	vec3 molten = mix( uInteriorColors[ 1 ], uInteriorColors[ 0 ], heat ) * ( 0.75 + 0.5 * heat + 0.25 * open * shell );
+	// the crust: the lava's colour darkened, lit a little by the key, warm at the crack lips
+	float lip = smoothstep( 1.0 - 3.0 * wid, 1.0 - wid, ridge );
+	float lit = 0.3 + 0.7 * max( dot( dcIUp, dcIKey ), 0.0 );
+	vec3 rock = uInteriorColors[ 1 ] * ( 0.035 * ( dcILight * lit + 0.25 ) + 0.4 * lip * lip );
+	vec3 col = mix( molten, rock, crust );
+	float a = dcIAlpha( 70.0, dt );
+	return vec4( min( col, vec3( 1.0 ) ) * a, a );
+}
+`;
+
+const STILL = '#define DC_LA_T 0.0\n';
+const LIVE = '#define DC_LA_T uInteriorTime\n';
+
+/**
+ * @returns {{ body: string }} the lava GLSL (every colour and the density are uniforms); `live`
+ * (insideMotion) reads time from the motion uniform, otherwise it is the constant 0
+ */
+export function lavaInside(_a, live = false) {
+  return { body: (live ? LIVE : STILL) + BODY };
+}

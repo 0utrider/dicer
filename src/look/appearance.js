@@ -9,10 +9,10 @@ export const BODY_PRESETS = Object.freeze({
 const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
 const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
 const AGED = ['patina', 'worn']; // metal finishes drawn by the look-extras chunk
-const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke'];
+const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke', 'fire', 'lava'];
 const INCLUSIONS = ['flower', 'moss', 'butterfly'];
 // the new insides (drawn by the look-extras chunk) and what they draw while it is missing
-const NEW_INSIDES = { foil: { type: 'glitter' }, eye: { type: 'shape', shape: 'sphere' }, botanical: { type: 'swirl' }, smoke: { type: 'swirl' } };
+const NEW_INSIDES = { foil: { type: 'glitter' }, eye: { type: 'shape', shape: 'sphere' }, botanical: { type: 'swirl' }, smoke: { type: 'swirl' }, fire: { type: 'liquid' }, lava: { type: 'liquid' } };
 const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes']; // those after the first four: look-extras chunk
 const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 const RELIEFS = ['engraved', 'raised'];

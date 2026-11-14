@@ -21,7 +21,7 @@ export const BODY_PRESET_LISTS = {
   gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
   wood: ['oak', 'walnut', 'cherry', 'ebony'],
 };
-export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke'];
+export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke', 'fire', 'lava'];
 // Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
 export const INCLUSION_LIST = ['flower', 'moss', 'butterfly'];
 export const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];

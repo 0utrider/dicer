@@ -624,7 +624,9 @@
         "foil": "Foil flakes",
         "eye": "Floating eye",
         "botanical": "Inclusion",
-        "smoke": "Smoke"
+        "smoke": "Smoke",
+        "fire": "Fire",
+        "lava": "Lava"
       },
       "Inclusion": {
         "flower": "Flower",
