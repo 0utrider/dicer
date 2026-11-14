@@ -18,7 +18,7 @@
  * three octaves plus one, and its stars). The sheets' width grows with the segment length, so
  * they stay solid at the lowest marched tier instead of breaking into step noise.
  */
-import { swap } from './live.js';
+import { brighten, swap } from './live.js';
 
 export const USES_NOISE = true; // dcNoise3
 
@@ -91,7 +91,10 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 const RISE = 's.y -= 0.25 * uInteriorTime;\n';
 const RISE_AT = 'vec2 wv = ';
 
-/** @returns {{ body: string }} the smoke GLSL (every colour and the density are uniforms) */
+/**
+ * @returns {{ body: string }} the smoke GLSL (every colour and the density are uniforms); `live`
+ * also brightens with the inside flare (live.js brighten)
+ */
 export function smokeInside(_a, live = false) {
-  return { body: live ? swap(BODY, RISE_AT, RISE + RISE_AT) : BODY };
+  return { body: live ? brighten(swap(BODY, RISE_AT, RISE + RISE_AT), 'Sm') : BODY };
 }

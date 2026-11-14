@@ -5,6 +5,7 @@ import { SHAPE } from './shapes.js';
 import { composite } from './timeline.js';
 import { createRibbon } from './ribbon.js';
 import { palette } from './palette.js';
+import { insideFlarePart, withInsideFlare } from './inside-flare.js';
 
 /**
  * The particle and mesh effects. World units: one die edge is 1 (so a size of 0.2 is a fifth
@@ -240,7 +241,7 @@ export const lightBurst = Object.freeze({
       },
       () => scope.dispose(),
     );
-    return together(halo, floorGlow(ctx, { radius: 2.5, peak: 0.7, ms: ctx.duration }));
+    return withInsideFlare(ctx, together(halo, floorGlow(ctx, { radius: 2.5, peak: 0.7, ms: ctx.duration })));
   },
 });
 
@@ -297,7 +298,7 @@ export const shockwave = Object.freeze({
         });
       }
     };
-    return timed(
+    const rings = timed(
       ctx.duration,
       (e, now) => {
         if (!dusted) dust(now);
@@ -314,6 +315,7 @@ export const shockwave = Object.freeze({
       },
       () => scope.dispose(),
     );
+    return withInsideFlare(ctx, rings);
   },
 });
 
@@ -834,7 +836,7 @@ export const frost = Object.freeze({
       alpha: 0.32,
     });
 
-    return timed(
+    const run = timed(
       D,
       (e, now) => {
         mist(e, now);
@@ -866,6 +868,7 @@ export const frost = Object.freeze({
         scope.dispose();
       },
     );
+    return withInsideFlare(ctx, run); // the frost flashes inside the die too
   },
 });
 
@@ -1052,7 +1055,7 @@ export const lightning = Object.freeze({
         for (const r of ribbons) r.dispose();
       },
     );
-    return together(strikes, glow);
+    return withInsideFlare(ctx, together(strikes, glow)); // the strike reaches inside the die
   },
 });
 
@@ -1475,6 +1478,7 @@ export const fumble = composite({
     { mod: crackPart, at: 80, duration: 1400 }, // the cracked floor stays until near the end
     { mod: fizzlePart, at: 150 },
     { mod: tinyShake('fumble-shake', 0.15, 220), at: 80 },
+    { mod: insideFlarePart, at: 0 }, // free: the inside flares with the fumble on every tier
   ],
 });
 

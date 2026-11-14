@@ -17,6 +17,8 @@
  * up) and a narrow, strong flash where a facet mirrors the key light into the eye. colors[0] is
  * the main foil, colors[1] the foil of about FOIL.second of the shards.
  */
+import { brighten } from './live.js';
+
 export const USES_NOISE = true; // dcHash13
 
 export const FOIL = Object.freeze({
@@ -134,7 +136,10 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 }
 `;
 
-/** @returns {{ body: string }} the foil GLSL (every colour and the density are uniforms) */
-export function foilInside(_a) {
-  return { body: BODY };
+/**
+ * @returns {{ body: string }} the foil GLSL (every colour and the density are uniforms); `live`
+ * (insideMotion) brightens with the inside flare (live.js brighten), otherwise as before
+ */
+export function foilInside(_a, live = false) {
+  return { body: live ? brighten(BODY, 'Fo') : BODY };
 }

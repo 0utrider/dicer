@@ -1,5 +1,5 @@
 import { CARD_AXIS, upFrame, upFrameGLSL } from './frame.js';
-import { swap } from './live.js';
+import { brighten, swap } from './live.js';
 
 /**
  * Magic circle inside (plan 3b): a glowing arcane circle of runes cast flat in the resin.
@@ -246,5 +246,6 @@ export function runesInside(_a, live = false) {
   const g0 = `vec3 dcRuG0 = uInteriorColors[ 0 ] * ${g};`;
   const g1 = `vec3 dcRuG1 = uInteriorColors[ 1 ] * ${g};`;
   const pulse = 'float dcRuPulse = 0.85 + 0.15 * sin( uInteriorTime * 2.5133 );\n\t';
-  return { body: swap(swap(b, g0, `${pulse}${g0.slice(0, -1)} * dcRuPulse;`), g1, `${g1.slice(0, -1)} * dcRuPulse;`) };
+  // and the inside flare brightens it (live.js brighten)
+  return { body: brighten(swap(swap(b, g0, `${pulse}${g0.slice(0, -1)} * dcRuPulse;`), g1, `${g1.slice(0, -1)} * dcRuPulse;`), 'Ru') };
 }

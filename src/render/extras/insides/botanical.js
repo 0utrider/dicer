@@ -37,6 +37,8 @@
  *
  * density sets the card size (flower, butterfly) or the cushion size (moss).
  */
+import { brighten } from './live.js';
+
 export const USES_NOISE = true; // dcNoise3, dcFbm3, dcHash13
 
 /** The inclusion kinds in uBoKind order (appearance.js INCLUSIONS; a local copy, pinned by a test). */
@@ -385,9 +387,10 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 
 /**
  * @returns {{ body: string, uniforms: { uBoKind: { value: number } } }} the botanical GLSL (one
- * program: every colour, the density and the kind are uniforms)
+ * program: every colour, the density and the kind are uniforms); `live` (insideMotion) brightens
+ * with the inside flare (live.js brighten), otherwise as before
  */
-export function botanicalInside(a) {
+export function botanicalInside(a, live = false) {
   const k = BO_KINDS.indexOf(a.interior.inclusion);
-  return { body: BODY, uniforms: { uBoKind: { value: Math.max(k, 0) } } };
+  return { body: live ? brighten(BODY, 'Bo') : BODY, uniforms: { uBoKind: { value: Math.max(k, 0) } } };
 }

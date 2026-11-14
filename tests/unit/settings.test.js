@@ -626,3 +626,16 @@ test('elementalDamageInsides is registered (world, true) and has strings', () =>
   expect(en.DICER.Settings.elementalDamageInsides.Name).toEqual(expect.any(String));
   expect(en.DICER.Settings.elementalDamageInsides.Hint).toEqual(expect.any(String));
 });
+
+test('insideFlare registered (client, true) with strings', () => {
+  const cfg = capture().insideFlare;
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(cfg.name).toBe('DICER.Settings.insideFlare.Name');
+  expect(cfg.hint).toBe('DICER.Settings.insideFlare.Hint');
+  const onLookChange = vi.fn();
+  capture({ onLookChange }).insideFlare.onChange(false);
+  expect(onLookChange).not.toHaveBeenCalled(); // read when an effect starts: nothing to rebuild
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+  expect(en.DICER.Settings.insideFlare.Name).toEqual(expect.any(String));
+  expect(en.DICER.Settings.insideFlare.Hint).toEqual(expect.any(String));
+});

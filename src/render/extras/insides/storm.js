@@ -25,10 +25,14 @@
  * first slot's spark at full flash, no uniform read). Under prefers-reduced-motion the patch
  * carries DICER_CALM (index.js): the first three slots' sparks held steady, nothing strobes: their
  * light on the cloud at half a flash, the bolts at three quarters so they still read as sparks (the
- * cloud still drifts at the reduced time). Storm does not read uInteriorFlare (Task 9's agitation).
+ * cloud still drifts at the reduced time). DC_ST_FLARE is uInteriorFlare (0..1, roll effects:
+ * effects/library/inside-flare.js) with insideMotion, the constant 0 without: the storm strikes,
+ * extra sparks from a second, five times faster stream of slots, each lit with probability flare
+ * (rate x (1 + 5 flare)); under DICER_CALM the held sparks only brighten x (1 + flare).
  *
  * Cost: an early out outside the volume, two noise lookups per sample; the bolt (four
- * ray / segment tests) only while a spark is lit (three bolts under DICER_CALM).
+ * ray / segment tests) only while a spark is lit (three bolts under DICER_CALM); while flared,
+ * one hash per sample and a second bolt while an extra spark is lit.
  */
 export const USES_NOISE = true; // dcNoise3, dcHash13
 
@@ -48,6 +52,7 @@ const BODY = /* glsl */ `
 #define DC_ST_PERIOD ${f(STORM.period)}
 #define DC_ST_FLASH ${f(STORM.flash)}
 #define DC_ST_LEN ${f(STORM.length)}
+#define DC_ST_FAST ( DC_ST_PERIOD / 5.0 )
 // closest approach of the ray p + rd * s to the segment a..b: ( distance, s )
 vec2 dcStSeg( vec3 p, vec3 rd, vec3 a, vec3 b ) {
 	vec3 ab = b - a;
@@ -105,13 +110,14 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 #ifdef DICER_CALM
 	// reduced motion: the first three sparks held steady, nothing flashes: their light on the cloud
 	// at half a flash, the bolts themselves at three quarters so they still read as sparks
-	float e = 0.5;
-	float eb = 0.75;
+	// (the inside flare only brightens them, a soft rise and fall: no extra sparks, no flash)
+	float e = 0.5 * ( 1.0 + DC_ST_FLARE );
+	float eb = 0.75 * ( 1.0 + DC_ST_FLARE );
 	vec3 c0 = dcStSpot( 0.0 );
 	vec3 c1 = dcStSpot( 1.0 );
 	vec3 c2 = dcStSpot( 2.0 );
 	vec3 dd = vec3( length( p - c0 ), length( p - c1 ), length( p - c2 ) );
-	float near = dot( exp( - dd * 5.0 ), vec3( 1.0 ) );
+	float lite = e * dot( exp( - dd * 5.0 ), vec3( 1.0 ) );
 	float hole = dot( exp( - dd * 4.0 ), vec3( 1.0 ) ) + dcStWin( p, rd, c0 ) + dcStWin( p, rd, c1 ) + dcStWin( p, rd, c2 );
 #else
 	// this slot's spark: a flash of DC_ST_FLASH with a flicker (the second stroke), then a fast fade
@@ -122,8 +128,24 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float eb = e;
 	vec3 c0 = dcStSpot( k );
 	float d0 = length( p - c0 );
-	float near = exp( - d0 * 5.0 );
+	float lite = e * exp( - d0 * 5.0 );
 	float hole = e > 0.003 ? ( exp( - d0 * 4.0 ) + dcStWin( p, rd, c0 ) ) * min( e * 1.5, 1.0 ) : 0.0;
+	// the inside flare's extra sparks: a second stream of slots, five per DC_ST_PERIOD, each lit
+	// when its hash falls under the flare, so sparks strike ( 1 + 5 flare ) times as often. The
+	// slot index above is untouched (still time / period): a flare never makes it jump
+	float e2 = 0.0;
+	float k2 = 0.0;
+	vec3 c3 = c0;
+	if ( DC_ST_FLARE > 0.0 ) {
+		k2 = floor( DC_ST_T / DC_ST_FAST );
+		float u2 = DC_ST_T - k2 * DC_ST_FAST;
+		if ( dcHash13( vec3( k2, 3.3, 5.5 ) ) < DC_ST_FLARE ) e2 = u2 < 0.03 ? 1.0 : exp( - ( u2 - 0.03 ) * 40.0 );
+		k2 += 1000.0; // its spot and bolt hashes never meet a base slot's
+		c3 = dcStSpot( k2 );
+		float d3 = length( p - c3 );
+		lite += e2 * exp( - d3 * 5.0 );
+		hole += e2 > 0.003 ? ( exp( - d3 * 4.0 ) + dcStWin( p, rd, c3 ) ) * min( e2 * 1.5, 1.0 ) : 0.0;
+	}
 #endif
 	// the cloud: slow billows with gaps between them, denser towards the middle; a strike clears
 	// the cloud round it and in front of it, so its bolt shows from every side
@@ -142,22 +164,23 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float ex = dcIVolume( p, rd ).y;
 	float lim = ex - dt < dt ? ex : dt;
 #ifdef DICER_CALM
-	float gl = dcStBolt( p, rd, 0.0, c0, lim, sig ) + dcStBolt( p, rd, 1.0, c1, lim, sig ) + dcStBolt( p, rd, 2.0, c2, lim, sig );
+	float gl = ( dcStBolt( p, rd, 0.0, c0, lim, sig ) + dcStBolt( p, rd, 1.0, c1, lim, sig ) + dcStBolt( p, rd, 2.0, c2, lim, sig ) ) * eb;
 #else
-	float gl = e > 0.003 ? dcStBolt( p, rd, k, c0, lim, sig ) : 0.0;
+	float gl = e > 0.003 ? dcStBolt( p, rd, k, c0, lim, sig ) * eb : 0.0;
+	if ( e2 > 0.003 ) gl += dcStBolt( p, rd, k2, c3, lim, sig ) * e2;
 #endif
 	// a white-hot core tinted colors[0], so it reads on a body of its own colour
-	vec3 spark = ( mix( uInteriorColors[ 0 ], vec3( 1.0 ), 0.55 ) * 2.0 ) * ( gl * eb );
+	vec3 spark = ( mix( uInteriorColors[ 0 ], vec3( 1.0 ), 0.55 ) * 2.0 ) * gl;
 	// the flash lights the cloud round the spot
-	cloud += uInteriorColors[ 0 ] * ( e * 2.2 * near * ( 0.3 + dens ) );
+	cloud += uInteriorColors[ 0 ] * ( 2.2 * lite * ( 0.3 + dens ) );
 	// the spark is not clamped: which march segment claims each bolt segment depends on the jitter,
 	// so a clamp of their sum (or with the cloud) would dither the bolt
 	return vec4( min( cloud, vec3( 1.0 ) ) * a + spark, a );
 }
 `;
 
-const STILL = '#define DC_ST_T 0.0\n';
-const LIVE = '#define DC_ST_T uInteriorTime\n';
+const STILL = '#define DC_ST_T 0.0\n#define DC_ST_FLARE 0.0\n';
+const LIVE = '#define DC_ST_T uInteriorTime\n#define DC_ST_FLARE uInteriorFlare\n';
 
 /**
  * @returns {{ body: string }} the storm GLSL (every colour and the density are uniforms); `live`

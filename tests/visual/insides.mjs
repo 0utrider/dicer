@@ -5,15 +5,18 @@
 // program info logs included) in artifacts/insides/console.json and prints them verbatim.
 // Exits 1 on a page error or a shader compile error; D3D info-log warnings are listed, not fatal.
 // Args / env: --round <name> (default round-1), DICER_INSIDES=a,b (subset), DICER_VISUAL_*.
+// --flare (default with --round round-3): the inside-flare sheet (dev/insides.html?flare=1): the
+// moving columns are both 300 ms after landing, flare 0 and flare 1.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { PORT, ARGS, startServer, stopServer } from './fx-common.mjs';
 
-const ALL = ['liquid', 'liquid-bubble', 'liquid-sand', 'glitter', 'swirl', 'nebula', 'smoke', 'eye', 'runes', 'dragon', 'fire', 'lava', 'storm', 'frost'];
+const ALL = ['liquid', 'liquid-bubble', 'liquid-sand', 'glitter', 'swirl', 'nebula', 'smoke', 'eye', 'runes', 'dragon', 'foil', 'botanical', 'sword', 'fire', 'lava', 'storm', 'frost'];
 const roundAt = process.argv.indexOf('--round');
 const ROUND = roundAt > 0 ? process.argv[roundAt + 1] : process.env.DICER_FX_ROUND || 'round-1';
 const OUT = `docs/signoff/insides/${ROUND}`;
 const ids = process.env.DICER_INSIDES?.split(',').filter(Boolean) ?? ALL;
+const FLARE = process.argv.includes('--flare') || ROUND === 'round-3';
 
 async function main() {
   await mkdir(OUT, { recursive: true });
@@ -29,7 +32,7 @@ async function main() {
       page.on('console', (m) => ['error', 'warning'].includes(m.type()) && msgs.push(`${m.type()}: ${m.text()}`));
       page.on('pageerror', (e) => msgs.push(`pageerror: ${e.message}`));
       page.on('response', (r) => r.status() >= 400 && msgs.push(`http ${r.status()} ${r.url()}`));
-      const url = `http://localhost:${PORT}/dev/insides.html?inside=${id}`;
+      const url = `http://localhost:${PORT}/dev/insides.html?inside=${id}${FLARE ? '&flare=1' : ''}`;
       for (let attempt = 0; ; attempt++) {
         await page.goto(url, { waitUntil: 'load' });
         try {

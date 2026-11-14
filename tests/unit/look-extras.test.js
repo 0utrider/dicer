@@ -20,7 +20,7 @@ import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 import { insidePatch, INSIDE_TINT, marchWithUp, MODULES } from '../../src/render/extras/insides/index.js';
 import { INTERIOR, INTERIOR_MARCH, INTERIOR_PARS, SHAPE_ROT, interiorChunk } from '../../src/render/shaders/interior.js';
-import { MARCH_RADIUS, FOIL, FOIL_WALK } from '../../src/render/extras/insides/foil.js';
+import { MARCH_RADIUS, FOIL, FOIL_WALK, foilInside } from '../../src/render/extras/insides/foil.js';
 import { eyeInside } from '../../src/render/extras/insides/eye.js';
 import { BO_KINDS, CARDS, CARD_RADIUS, TILT, botanicalInside, cardFrames } from '../../src/render/extras/insides/botanical.js';
 import { smokeInside } from '../../src/render/extras/insides/smoke.js';
@@ -660,6 +660,24 @@ describe('insides', () => {
       expect(u.uInteriorSwirl.value.z).toBeCloseTo(-0.015, 6); // frozen at factor 0
     });
 
+    test("frame feeds each die's own uInteriorFlare to its swirl (glitter scatters)", () => {
+      const a = resin({ type: 'glitter' });
+      const mk = () => {
+        const u = motionUniforms();
+        return { appearance: a, outer: new THREE.Object3D(), inner: new THREE.Object3D(), u };
+      };
+      const calm = mk();
+      const flared = mk();
+      for (const d of [calm, flared]) d.inner.material = { userData: { uniforms: d.u } };
+      flared.u.uInteriorFlare.value = 1;
+      const box = { isolate: (d) => d.u };
+      const roll = { phase: 'playing', flags: LIVE, dice: [calm, flared] };
+      lookExtras.insideMotion.frame(box, roll, 0);
+      lookExtras.insideMotion.frame(box, roll, 100);
+      expect(calm.u.uInteriorSwirl.value.y).toBeCloseTo(0.015, 6);
+      expect(flared.u.uInteriorSwirl.value.y).toBeCloseTo(0.015 * 5, 6);
+    });
+
     test('frame: a throw warns once (Dicer |) and stops stepping, never reaching the render loop', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       try {
@@ -700,7 +718,7 @@ describe('insides', () => {
           defaults(p.uniforms);
           // the animation is wired: the GLSL reads the time uniform (glitter: the CPU-integrated swirl)
           expect(body).toMatch(type === 'glitter' ? /\buInteriorSwirl\b/ : /\buInteriorTime\b/);
-          expect(body).not.toMatch(/\buInteriorFlare\b/); // Task 9's
+          expect(body).toMatch(/\buInteriorFlare\b/); // agitated by roll effects (inside-flare.js)
           expect(body).toContain('vec4 dcInterior( vec3 p, vec3 rd, float dt )');
           // today's GLSL is not it
           expect(interiorChunk(type).pars).not.toContain(body);
@@ -785,8 +803,8 @@ describe('insides', () => {
           const still = build(a).body;
           for (const t of touches[shape]) expect(live).toContain(t);
           expect(live).toMatch(/\buInteriorTime\b/);
-          expect(live).not.toMatch(/\buInteriorFlare\b/);
-          expect(still).not.toMatch(/\buInteriorTime\b/);
+          expect(live).toMatch(/\buInteriorFlare\b/);
+          expect(still).not.toMatch(/\buInteriorTime\b|\buInteriorFlare\b/);
           // through the patch: only with insideMotion, and then declared in the pars
           const lp = insidePatch(a, LIVE).interior.pars;
           const sp = insidePatch(a, { ...LIVE, insideMotion: false }).interior.pars;
@@ -798,6 +816,69 @@ describe('insides', () => {
         // the eye's limbal ring stays on the iris, not on the moved pupil
         const e = resin({ type: 'eye', ...COLORS });
         expect(eyeInside(e, true).body).toContain('smoothstep( 0.78, 1.0, rho0 )');
+      });
+
+      // every marched inside with a moving variant: today's four (living.js), liquid with bubble /
+      // sand, every module of MODULES (the fantasy shapes by shape id)
+      const FLARE_CASES = [
+        ...BASE.map((type) => ({ type })),
+        { type: 'liquid', bubble: true },
+        { type: 'liquid', sand: true },
+        ...['foil', 'eye', 'botanical', 'smoke', 'fire', 'lava', 'storm', 'frost'].map((type) => ({ type })),
+        ...['sword', 'axe', 'shield', 'dragon', 'runes'].map((shape) => ({ type: 'shape', shape })),
+      ];
+
+      test("every inside's body reads uInteriorFlare (live only); the still body never does", () => {
+        // the list covers every module
+        const keys = new Set(FLARE_CASES.map((it) => (it.type === 'shape' ? it.shape : it.type)));
+        for (const k of Object.keys(MODULES)) expect(keys.has(k), k).toBe(true);
+        for (const it of FLARE_CASES) {
+          const a = resin({ ...it, ...COLORS });
+          const body = insidePatch(a, LIVE).interior.pars.split('vec3 dcIUp;')[1];
+          expect(body, JSON.stringify(it)).toMatch(/\buInteriorFlare\b/);
+          const still = insidePatch(a, { ...LIVE, insideMotion: false });
+          if (still.interior) expect(still.interior.pars, JSON.stringify(it)).not.toMatch(/\buInteriorFlare\b/);
+        }
+      });
+
+      test('flare 0 changes nothing: emission x ( 1 + flare ), the base dcInterior kept whole', () => {
+        // the inside modules with no agitation of their own brighten through one wrapper
+        for (const [a, build, prefix] of [
+          [resin({ type: 'foil', ...COLORS }), foilInside, 'dcFo'],
+          [resin({ type: 'botanical', ...COLORS }), botanicalInside, 'dcBo'],
+          [resin({ type: 'shape', shape: 'sword', ...COLORS }), weaponsInside, 'dcWe'],
+          [resin({ type: 'smoke', ...COLORS }), smokeInside, 'dcSm'],
+          [resin({ type: 'eye', ...COLORS }), eyeInside, 'dcEy'],
+          [resin({ type: 'shape', shape: 'runes', ...COLORS }), runesInside, 'dcRu'],
+          [resin({ type: 'shape', shape: 'dragon', ...COLORS }), dragonInside, 'dcDr'],
+        ]) {
+          const live = build(a, true).body;
+          expect(live).toContain(`vec4 ${prefix}Base( vec3 p, vec3 rd, float dt )`);
+          expect(count(live, 'vec4 dcInterior( vec3 p, vec3 rd, float dt )')).toBe(1);
+          expect(live).toContain(`return vec4( c.rgb * ( 1.0 + uInteriorFlare ), c.a );`);
+          // still: no wrapper
+          expect(build(a).body).not.toContain(`${prefix}Base(`);
+        }
+        // liquid boils: the waves' amplitude x ( 1 + 3 flare )
+        expect(livingInside(resin({ type: 'liquid', ...COLORS })).body).toContain('0.10 * ( 1.0 + 3.0 * uInteriorFlare ) * ( wave - 0.5 )');
+        // fire roars: height and brightness x ( 1 + flare )
+        const fi = fireInside(resin({ type: 'fire', ...COLORS }), true).body;
+        expect(count(fi, '( 1.0 + fl )')).toBe(2);
+        // frost flashes: glint x ( 1 + 3 flare )
+        expect(frostInside(resin({ type: 'frost', ...COLORS }), true).body).toContain('( 1.0 + 3.0 * DC_FR_FLARE )');
+      });
+
+      test('storm strikes: flare-only extra sparks (rate x ( 1 + 5 flare )), the base slots untouched; calm holds', () => {
+        const live = stormInside(resin({ type: 'storm', ...COLORS }), true).body;
+        expect(live).toContain('#define DC_ST_FAST ( DC_ST_PERIOD / 5.0 )');
+        // the base slot index is still time / period: a flare never makes it jump
+        expect(live).toContain('float tt = DC_ST_T / DC_ST_PERIOD;');
+        // the extra slots: lit with probability = flare
+        expect(live).toMatch(/dcHash13\( vec3\( k2, [^)]*\) \) < DC_ST_FLARE/);
+        // under DICER_CALM, no extra (flashing) sparks: the held ones only brighten
+        const calm = activeGlsl(live, { DICER_CALM: '' });
+        expect(calm).not.toContain('k2');
+        expect(calm).toContain('float e = 0.5 * ( 1.0 + DC_ST_FLARE );');
       });
 
       test('chunk missing: insideMotion looks render today\'s shader', async () => {
@@ -1206,16 +1287,16 @@ describe('insides', () => {
         expect(live).toContain(`#define ${def}T uInteriorTime`);
         const frozen = live
           .replace(`#define ${def}T uInteriorTime`, `#define ${def}T 0.0`)
-          .replace('#define DC_FI_FLARE ( 1.0 + uInteriorFlare )', '#define DC_FI_FLARE 1.0');
+          .replace(`#define ${def}FLARE uInteriorFlare`, `#define ${def}FLARE 0.0`);
         expect(frozen).toBe(still);
         expect(live).not.toBe(still);
         const lp = insidePatch(a, LIVE);
         expect(lp.interior.pars.split('uniform vec3 uInteriorSwirl;')[1]).toContain(live);
       }
-      // fire roars with the flare (Task 9 drives it); still, the flare is the constant 1
+      // fire roars with the flare (inside-flare.js drives it); still, the flare is the constant 0
       const f = resin({ type: 'fire' });
-      expect(fireInside(f, true).body).toContain('#define DC_FI_FLARE ( 1.0 + uInteriorFlare )');
-      expect(fireInside(f).body).toContain('#define DC_FI_FLARE 1.0');
+      expect(fireInside(f, true).body).toContain('#define DC_FI_FLARE uInteriorFlare');
+      expect(fireInside(f).body).toContain('#define DC_FI_FLARE 0.0');
     });
 
     test('chunk missing: fire draws liquid, lava draws liquid', async () => {
@@ -1322,7 +1403,9 @@ describe('insides', () => {
         expect(still).not.toMatch(/\buInteriorTime\b|\buInteriorFlare\b|\buInteriorSpin\b|\buInteriorLag\b|\buInteriorSwirl\b/);
         expect(insidePatch(a, FLAGS).interior.pars).not.toMatch(/\buInteriorTime\b/);
         expect(live).toContain(`#define ${def}T uInteriorTime`);
-        expect(live.replace(`#define ${def}T uInteriorTime`, `#define ${def}T 0.0`)).toBe(still);
+        expect(
+          live.replace(`#define ${def}T uInteriorTime`, `#define ${def}T 0.0`).replace(`#define ${def}FLARE uInteriorFlare`, `#define ${def}FLARE 0.0`),
+        ).toBe(still);
         expect(live).not.toBe(still);
         const lp = insidePatch(a, LIVE);
         expect(lp.interior.pars.split('uniform vec3 uInteriorSwirl;')[1]).toContain(live);
@@ -1381,14 +1464,16 @@ describe('insides', () => {
         .slice(1)
         .map((x) => x.split('#else')[0])
         .join('\n');
-      expect(calm).toMatch(/float e = 0\.5;/);
+      // (an inside flare only brightens them, x (1 + flare): a soft rise and fall, no flash)
+      expect(calm).toContain('float e = 0.5 * ( 1.0 + DC_ST_FLARE );');
       // the held bolts themselves stay clearly visible (only the flash's light on the cloud is halved)
-      expect(calm).toMatch(/float eb = 0\.75;/);
+      expect(calm).toContain('float eb = 0.75 * ( 1.0 + DC_ST_FLARE );');
       for (const i of ['0.0', '1.0', '2.0']) expect(calm).toContain(`dcStBolt( p, rd, ${i}, c${i[0]}, lim, sig )`);
       expect(calm).not.toMatch(/DC_ST_T|uInteriorTime/);
       const fs = activeGlsl(patched(withReducedMotion(() => mat(a, LIVE))).fragmentShader, { DICER_CALM: '' });
-      expect(fs).toContain('float e = 0.5;');
+      expect(fs).toContain('float e = 0.5 * ( 1.0 + DC_ST_FLARE );');
       expect(fs).not.toContain('DC_ST_T / DC_ST_PERIOD');
+      expect(fs).not.toContain('DC_ST_T / DC_ST_FAST'); // no flare-only (flashing) sparks either
     });
 
     test('chunk missing: storm draws nebula, frost draws glitter', async () => {

@@ -20,7 +20,7 @@
  * - light: wrapped key-light diffuse plus the inner light, a sharp wet highlight from the key
  *   light and a Fresnel reflection of the sky above the die (towards dcIUp).
  */
-import { swap } from './live.js';
+import { brighten, swap } from './live.js';
 
 export const USES_NOISE = true; // dcNoise3
 
@@ -165,5 +165,6 @@ const LIMBAL_AT = 'smoothstep( 0.78, 1.0, rho )';
  */
 export function eyeInside(_a, live = false) {
   if (!live) return { body: BODY };
-  return { body: swap(swap(BODY, PUPIL_AT, PUPIL_AT + PUPIL_MOVE), LIMBAL_AT, 'smoothstep( 0.78, 1.0, rho0 )') };
+  // and the inside flare brightens it (live.js brighten)
+  return { body: brighten(swap(swap(BODY, PUPIL_AT, PUPIL_AT + PUPIL_MOVE), LIMBAL_AT, 'smoothstep( 0.78, 1.0, rho0 )'), 'Ey') };
 }

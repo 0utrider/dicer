@@ -1,5 +1,5 @@
 import { CARD_AXIS, upFrame, upFrameGLSL } from './frame.js';
-import { swap } from './live.js';
+import { brighten, swap } from './live.js';
 
 /**
  * Dragon inside (plan 3b): one detailed dragon cast in the resin, a fine pressed inclusion in
@@ -502,5 +502,7 @@ export function dragonInside(_a, live = false) {
   const b = body();
   // insideMotion: the eye's glow breathes 0.8 .. 1.0 over 3 s (uInteriorTime, MOTION_PARS in the pars)
   const at = 'col += vec3( 1.0, 0.85, 0.4 ) * glow;';
-  return { body: live ? swap(b, at, 'col += vec3( 1.0, 0.85, 0.4 ) * glow * ( 0.9 + 0.1 * sin( uInteriorTime * 2.0944 ) );') : b };
+  // and the inside flare brightens it (live.js brighten)
+  if (!live) return { body: b };
+  return { body: brighten(swap(b, at, 'col += vec3( 1.0, 0.85, 0.4 ) * glow * ( 0.9 + 0.1 * sin( uInteriorTime * 2.0944 ) );'), 'Dr') };
 }

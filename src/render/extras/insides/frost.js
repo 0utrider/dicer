@@ -23,6 +23,8 @@
  *
  * Motion: DC_FR_T is uInteriorTime with insideMotion, the constant 0 without (a still frame, no
  * uniform read): the glint crawls and the haze drifts with time; the spikes hold still.
+ * DC_FR_FLARE is uInteriorFlare (0..1, roll effects: effects/library/inside-flare.js) with
+ * insideMotion, the constant 0 without: the glint flashes x (1 + 3 flare).
  *
  * Cost: once per pixel, FROST.spikes ray / segment tests (three hashes each); per sample an exit
  * test, then an early out past the haze's edge (only the spike hits), else one noise lookup.
@@ -95,7 +97,8 @@ void dcFrRay( vec3 o, vec3 rd ) {
 		float spec = pow( max( dot( reflect( rd, nrm ), dcIKey ), 0.0 ), 28.0 );
 		// the glint: a band crawling from the tip to the root, out of phase across the spikes
 		float gb = ( dsu.z - fract( DC_FR_T * 0.22 + hs.z * 3.7 ) ) * 6.0;
-		float glint = exp( - gb * gb ) * ( 0.35 + 2.5 * spec );
+		// the inside flare makes the frost flash: glint x ( 1 + 3 flare )
+		float glint = exp( - gb * gb ) * ( 0.35 + 2.5 * spec ) * ( 1.0 + 3.0 * DC_FR_FLARE );
 		vec3 ice = mix( uInteriorColors[ 0 ], uInteriorColors[ 1 ], 0.25 * dsu.z );
 		ice = mix( ice, vec3( 1.0 ), 0.3 * ( 1.0 - dsu.z ) );
 		vec3 col = ice * ( dcILight * diff * 0.8 + 0.3 ) + ( ice + 0.3 ) * ( rim * rim * rim * 0.5 ) + vec3( spec * 0.9 + glint );
@@ -148,8 +151,8 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 }
 `;
 
-const STILL = '#define DC_FR_T 0.0\n';
-const LIVE = '#define DC_FR_T uInteriorTime\n';
+const STILL = '#define DC_FR_T 0.0\n#define DC_FR_FLARE 0.0\n';
+const LIVE = '#define DC_FR_T uInteriorTime\n#define DC_FR_FLARE uInteriorFlare\n';
 
 /**
  * @returns {{ body: string }} the frost GLSL (every colour and the density are uniforms); `live`

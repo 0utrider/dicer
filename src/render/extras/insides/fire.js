@@ -16,8 +16,9 @@
  * thick they are.
  *
  * Motion: DC_FI_T is uInteriorTime with insideMotion, the constant 0 without (a still frame, no
- * uniform read). DC_FI_FLARE is 1 + uInteriorFlare (Task 9 drives the flare): the flames reach
- * higher and burn brighter, the fire roars; without motion it is the constant 1.
+ * uniform read). DC_FI_FLARE is uInteriorFlare (0..1, roll effects: effects/library/inside-flare.js):
+ * the flames reach higher and burn brighter, height and brightness x (1 + flare), the fire roars;
+ * without motion it is the constant 0 (no change).
  *
  * Cost: an early out outside the volume, then two noise lookups per sample, only inside the
  * flame bed. Edges widen with the segment length, so the flames stay solid at the lowest marched
@@ -57,7 +58,7 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 		// rising turbulence, squashed along up (tall features), tearing the tips into licks
 		float n2 = dcNoise3( ( p - 0.65 * y * dcIUp ) * 7.0 + vec3( 7.1, 3.3, 1.7 ) - dcIUp * ( DC_FI_T * 3.0 ) );
 		// how high the flames reach: density, and the flare makes them roar
-		float reach = mix( 0.55, 1.0, uInteriorDensity ) * ( 0.8 + 0.2 * fl ) * ( 0.22 + 1.05 * n1 );
+		float reach = mix( 0.55, 1.0, uInteriorDensity ) * ( 1.0 + fl ) * ( 0.22 + 1.05 * n1 );
 		float heat = 1.0 - h / max( reach, 0.05 ) + ( n2 - 0.5 ) * ( 0.25 + 0.9 * h );
 		heat *= 1.0 - smoothstep( 0.4 * w, w + dt * 0.5, r + ( n2 - 0.5 ) * 0.16 );
 		heat *= smoothstep( DC_FI_BASE - 0.05, DC_FI_BASE + 0.1, y );
@@ -68,14 +69,14 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 		// fire glows: emission along the segment, with only a light absorption
 		float body = smoothstep( 0.02, 0.3 + dt, heat );
 		a = dcIAlpha( body * mix( 3.0, 10.0, uInteriorDensity ), dt );
-		rad = col * body * ( 0.2 + 1.1 * heat ) * ( 0.85 + 0.15 * fl ) * min( dt * 11.0, 1.0 );
+		rad = col * body * ( 0.2 + 1.1 * heat ) * ( 1.0 + fl ) * min( dt * 11.0, 1.0 );
 	}
 	return vec4( min( rad, vec3( 1.0 ) ), a );
 }
 `;
 
-const STILL = '#define DC_FI_T 0.0\n#define DC_FI_FLARE 1.0\n';
-const LIVE = '#define DC_FI_T uInteriorTime\n#define DC_FI_FLARE ( 1.0 + uInteriorFlare )\n';
+const STILL = '#define DC_FI_T 0.0\n#define DC_FI_FLARE 0.0\n';
+const LIVE = '#define DC_FI_T uInteriorTime\n#define DC_FI_FLARE uInteriorFlare\n';
 
 /**
  * @returns {{ body: string }} the fire GLSL (every colour and the density are uniforms); `live`

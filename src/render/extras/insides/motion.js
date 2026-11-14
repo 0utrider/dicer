@@ -2,8 +2,8 @@
 export const SLOSH = Object.freeze({ omega: 13.5, zeta: 0.5 });
 export const REST_EASE = Object.freeze({ from: 8000, to: 10000 });
 export const SPIN_TAU = 0.15;
-// glitter swirl: rotation vector += dt x rate x (rest x local up + spin x spin), rad
-export const SWIRL = Object.freeze({ rest: 0.15, spin: 0.08 });
+// glitter swirl: rotation vector += dt x rate x (1 + flare x the inside flare) x (rest x local up + spin x spin), rad
+export const SWIRL = Object.freeze({ rest: 0.15, spin: 0.08, flare: 4 });
 
 const REDUCED_RATE = 0.25;
 const MAX_SUBSTEP = 1 / 120;
@@ -64,8 +64,10 @@ export function stepMotion(state, quat, dtSec, opts = NO_OPTS) {
     const raw = rotateInv(quat, worldOmega(state.prevQuat, quat, dtSec, _om), _raw);
     const a = 1 - Math.exp(-dtSec / SPIN_TAU);
     for (let i = 0; i < 3; i++) state.spin[i] += (raw[i] * rate - state.spin[i]) * a;
-    // integrated, so it only ever slows when the spin dies (no unwind) and stops at rate 0
-    for (let i = 0; i < 3; i++) state.swirl[i] += dtSec * rate * (SWIRL.rest * up[i] + SWIRL.spin * state.spin[i]);
+    // integrated, so it only ever slows when the spin dies (no unwind) and stops at rate 0; an
+    // inside flare (0..1) speeds it x (1 + 4 flare): the glitter scatters, and never jumps back
+    const sw = dtSec * rate * (1 + SWIRL.flare * (opts.flare ?? 0));
+    for (let i = 0; i < 3; i++) state.swirl[i] += sw * (SWIRL.rest * up[i] + SWIRL.spin * state.spin[i]);
 
     const omega = reduced ? SLOSH.omega * REDUCED_RATE : SLOSH.omega;
     const damp = 2 * SLOSH.zeta * omega;

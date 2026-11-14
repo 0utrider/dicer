@@ -242,6 +242,10 @@
         "Name": "Use JB2A animations",
         "Hint": "Play JB2A's animated effects (Jules & Ben's Animated Assets) at the dice instead of the built-in ones, when the JB2A module is installed and active. Does nothing without JB2A."
       },
+      "insideFlare": {
+        "Name": "Effects flare insides",
+        "Hint": "Crit and fumble effects reach into a resin die's inside: liquid boils, glitter scatters, fire roars, storms strike, frost flashes, the others brighten. Needs Living insides on."
+      },
       "perPlayerAreas": {
         "Name": "Per-player roll areas",
         "Hint": "Throw each player's dice in the area the GM gave them, on every screen. Off throws everyone's dice in the default area."

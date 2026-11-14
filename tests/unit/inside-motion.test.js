@@ -177,3 +177,25 @@ test('swirl: accumulates rate x (0.15 up + 0.08 spin); never turns back; frozen 
   for (let i = 0; i <= 120; i++) stepMotion(r, qAxis([0, 1, 0], 0), DT, { reduced: true });
   expect(r.swirl[1]).toBeCloseTo(0.15 * 0.25, 4);
 });
+
+test('glitter scatters: the flare speeds the swirl x (1 + 4 flare), integrated (no jump when it changes)', () => {
+  const a = createMotion();
+  const b = createMotion();
+  const q = qAxis([0, 1, 0], 0);
+  stepMotion(a, q, DT, {});
+  stepMotion(b, q, DT, { flare: 1 });
+  for (let i = 0; i < 120; i++) {
+    stepMotion(a, q, DT, {});
+    stepMotion(b, q, DT, { flare: 1 });
+  }
+  expect(a.swirl[1]).toBeCloseTo(0.15, 3);
+  expect(b.swirl[1]).toBeCloseTo(0.15 * 5, 3);
+  // the flare dropping to 0 only slows it: the next step adds the calm rate, nothing jumps back
+  const before = b.swirl[1];
+  stepMotion(b, q, DT, { flare: 0 });
+  expect(b.swirl[1] - before).toBeCloseTo(0.15 * DT, 6);
+  // frozen at factor 0 whatever the flare
+  const held = b.swirl[1];
+  stepMotion(b, q, DT, { factor: 0, flare: 1 });
+  expect(b.swirl[1]).toBe(held);
+});

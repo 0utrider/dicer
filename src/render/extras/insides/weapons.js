@@ -1,4 +1,5 @@
 import { upFrame, upFrameGLSL } from './frame.js';
+import { brighten } from './live.js';
 
 /**
  * Weapons inside (plan 3b): a floating sword, axe or shield, one program per shape (programKey
@@ -327,10 +328,12 @@ ${upFrameGLSL('dcWe', `vec3( ${WEAPON.axis.map(f).join(', ')} )`)}
 
 /**
  * @param {object} a normalized appearance whose interior is type 'shape' with shape sword, axe or shield
+ * @param {boolean} [live] insideMotion: brightens with the inside flare (live.js brighten)
  * @returns {{ body: string }} the weapon's GLSL (every colour and the density are uniforms)
  */
-export function weaponsInside(a) {
+export function weaponsInside(a, live = false) {
   const kind = WE_KINDS.indexOf(a.interior.shape);
   if (kind < 0) throw new Error(`dicer: not a weapon shape "${a.interior.shape}"`);
-  return { body: `#define DC_WE_KIND ${kind}\n${COMMON}${KINDS[kind].map}${march(kind)}` };
+  const body = `#define DC_WE_KIND ${kind}\n${COMMON}${KINDS[kind].map}${march(kind)}`;
+  return { body: live ? brighten(body, 'We') : body };
 }

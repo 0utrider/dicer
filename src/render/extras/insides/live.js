@@ -8,7 +8,8 @@ import { createMotion, stepMotion, restFactor } from './motion.js';
  * - uInteriorTime (float): seconds since the die's roll first drew, scaled by the motion factor;
  * - uInteriorSpin (vec3): the die's smoothed angular velocity, canonical (die-local) frame;
  * - uInteriorLag (vec3, unit): a damped spring chasing world up in the die-local frame;
- * - uInteriorFlare (float 0..1): written by inside flares, never here;
+ * - uInteriorFlare (float 0..1): written by inside flares (effects/library/inside-flare.js), never
+ *   here; read here only to speed glitter's swirl;
  * - uInteriorSwirl (vec3): glitter's swirl rotation vector, integrated (motion.js SWIRL).
  */
 export const MOTION_PARS = [
@@ -27,6 +28,23 @@ export const MOTION_PARS = [
 export function swap(text, from, to) {
   if (!text.includes(from)) throw new Error(`dicer: inside motion anchor missing: ${from}`);
   return text.replace(from, () => to);
+}
+
+const INTERIOR_SIG = 'vec4 dcInterior( vec3 p, vec3 rd, float dt )';
+
+/**
+ * A moving inside's `body` brightened by the inside flare: its dcInterior renamed
+ * `dc<prefix>Base` and wrapped, the colour (premultiplied: the emission) x (1 + uInteriorFlare),
+ * the opacity kept. Flare 0 changes nothing; no extra noise lookup. For the insides with no
+ * agitation of their own (the flare's "others brighten").
+ */
+export function brighten(body, prefix) {
+  return `${swap(body, INTERIOR_SIG, `vec4 dc${prefix}Base( vec3 p, vec3 rd, float dt )`)}
+${INTERIOR_SIG} {
+	vec4 c = dc${prefix}Base( p, rd, dt );
+	return vec4( c.rgb * ( 1.0 + uInteriorFlare ), c.a );
+}
+`;
 }
 
 /** Fresh motion uniforms at their defaults. */
@@ -81,7 +99,7 @@ const states = new WeakMap();
 // the inner mesh's world rotation (outer x inner), reused every frame
 const quat = { x: 0, y: 0, z: 0, w: 1 };
 // the step options, reused every call (stepMotion reads them synchronously)
-const stepOpts = { reduced: false, factor: 1 };
+const stepOpts = { reduced: false, factor: 1, flare: 0 };
 
 function worldQuat(die) {
   const a = die.outer.quaternion;
@@ -152,9 +170,12 @@ export const insideMotion = {
         if (!die.inner?.material?.userData?.uniforms?.uInteriorTime) continue;
         const u = box.isolate(die);
         if (!u?.uInteriorTime) continue;
+        stepOpts.flare = 0;
         this.step(die, u, worldQuat(die), 0, stepOpts);
         st = states.get(die);
       } else {
+        // the die's inside flare (inside-flare.js) speeds glitter's swirl (motion.js)
+        stepOpts.flare = st.u.uInteriorFlare?.value ?? 0;
         this.step(die, st.u, worldQuat(die), (now - st.last) / 1000, stepOpts);
       }
       st.last = now;

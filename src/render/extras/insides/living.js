@@ -4,8 +4,10 @@
  * insideMotion.wants() (live.js) is true; the pars then hold MOTION_PARS, so the GLSL may read
  * uInteriorTime (seconds, already scaled by the motion factor: it stops after landing and runs at a
  * quarter under reduced motion, so it is never re-scaled here), uInteriorLag (unit, canonical
- * frame) and uInteriorSwirl (rotation vector, canonical frame). uInteriorFlare is Task 9's, not
- * read here.
+ * frame) and uInteriorSwirl (rotation vector, canonical frame). uInteriorFlare (0..1, roll effects:
+ * effects/library/inside-flare.js) agitates them: the liquid boils (wave amplitude x (1 + 3 flare)),
+ * glitter scatters (its swirl speed x (1 + 4 flare), integrated in motion.js) and, with swirl and
+ * nebula, brightens (emission x (1 + flare)). Flare 0 changes nothing.
  *
  * Each variant is today's GLSL with its sample positions moved, never extra noise lookups (the
  * inside must hold up at 16 march steps):
@@ -25,6 +27,8 @@
  *
  * Contract as the other inside modules (index.js): dcInterior, INTERIOR_PARS names, own dcLv names.
  */
+import { brighten } from './live.js';
+
 export const USES_NOISE = true; // dcNoise3, dcFbm3, dcHash13
 
 /**
@@ -57,7 +61,8 @@ vec4 dcLvLiquid( vec3 p, float dt, float dent ) {
 	float r = length( q );
 	float wave = dcNoise3( p * 4.0 + 1.7 + uInteriorTime * vec3( 0.2, 0.12, - 0.1 ) ) * 0.65
 		+ dcNoise3( p * 9.0 - 3.1 + uInteriorTime * vec3( - 0.15, 0.17, 0.1 ) ) * 0.35;
-	float coreR = mix( 0.16, 0.42, uInteriorDensity ) + 0.10 * ( wave - 0.5 );
+	// the inside flare boils it: the waves' amplitude x ( 1 + 3 flare )
+	float coreR = mix( 0.16, 0.42, uInteriorDensity ) + 0.10 * ( 1.0 + 3.0 * uInteriorFlare ) * ( wave - 0.5 );
 	coreR -= dent;
 	// the surface: a plane across the lagged up, so it trails the die's turns and settles
 	float y = dot( q, uInteriorLag );
@@ -179,7 +184,9 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 }
 `;
 
-const BODIES = { liquid: LIQUID, glitter: GLITTER, swirl: SWIRL, nebula: NEBULA };
+// glitter scatters with the inside flare (its swirl runs faster: motion.js, CPU side) and, like
+// swirl and nebula, brightens: emission x ( 1 + flare ) (live.js brighten)
+const BODIES = { liquid: LIQUID, glitter: brighten(GLITTER, 'Lv'), swirl: brighten(SWIRL, 'Lv'), nebula: brighten(NEBULA, 'Lv') };
 
 /** The types this module animates (today's insides drawn by shaders/interior.js). */
 export const LIVING_TYPES = Object.freeze(Object.keys(BODIES));

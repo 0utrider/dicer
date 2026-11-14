@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { withInsideFlare } from './inside-flare.js';
 
 /**
  * Die effects: they change the landed die itself. color-shift and number-flare write the fx
@@ -90,13 +91,17 @@ export const numberFlare = Object.freeze({
     if (!out) return NOOP;
     const { r, g, b } = ctx.color;
     const strength = Math.max(0, ctx.intensity);
-    return timed(
-      ctx.duration,
-      (e) => {
-        const s = strength * flare(e, ctx.duration);
-        out.set(r * s, g * s, b * s);
-      },
-      () => out.set(0, 0, 0),
+    // the number flares and so does the die's living inside, if it has one (inside-flare.js)
+    return withInsideFlare(
+      ctx,
+      timed(
+        ctx.duration,
+        (e) => {
+          const s = strength * flare(e, ctx.duration);
+          out.set(r * s, g * s, b * s);
+        },
+        () => out.set(0, 0, 0),
+      ),
     );
   },
 });

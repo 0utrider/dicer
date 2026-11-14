@@ -1000,3 +1000,81 @@ test('floorGlow adds one floor mesh coloured and scaled by ctx and removes it at
   again.stop();
   expect(ctx.scene.children.length).toBe(before);
 });
+
+describe('inside flare (living insides round 3)', () => {
+  // a die whose look has a moving inside: its material carries uInteriorFlare
+  const insideDie = () => {
+    const die = makeDie();
+    die.uniforms.uInteriorFlare = { value: 0 };
+    die.inner.material.userData.uniforms = die.uniforms;
+    return die;
+  };
+  const FLARING = ['lightning', 'frost', 'fumble', 'celebrate', 'light-burst', 'shockwave', 'number-flare'];
+
+  test.each(FLARING)('%s on a die with an inside raises uInteriorFlare, then lets it fall to 0', (id) => {
+    const mod = EFFECTS[id];
+    const die = insideDie();
+    const ctx = ctxFor(mod, { die, setting: () => undefined });
+    const base = ctx.scene.children.length;
+    const h = mod.start(ctx);
+    let peak = 0;
+    for (let t = 0; t <= 400; t += 20) {
+      h.update(t);
+      peak = Math.max(peak, die.uniforms.uInteriorFlare.value);
+    }
+    expect(peak).toBeGreaterThan(0.5);
+    expect(peak).toBeLessThanOrEqual(1);
+    for (let t = 420; h.update(t); t += 50);
+    h.stop();
+    expect(die.uniforms.uInteriorFlare.value).toBe(0);
+    expect(ctx.scene.children.length).toBe(base);
+  });
+
+  test('lightning/frost/fumble on a die with an inside raise uInteriorFlare; off: no write', () => {
+    for (const id of ['lightning', 'frost', 'fumble']) {
+      const die = insideDie();
+      const ctx = ctxFor(EFFECTS[id], { die, setting: (k) => (k === 'insideFlare' ? false : undefined) });
+      const h = EFFECTS[id].start(ctx);
+      for (let t = 0; t <= 300; t += 20) h.update(t);
+      expect(die.uniforms.uInteriorFlare.value, id).toBe(0);
+      h.stop();
+    }
+  });
+
+  test('a die without a moving inside is never isolated for the flare (light-burst, shockwave)', () => {
+    for (const id of ['light-burst', 'shockwave']) {
+      const die = makeDie();
+      const isolate = vi.fn(() => die.uniforms);
+      const ctx = ctxFor(EFFECTS[id], { die, isolate, setting: () => undefined });
+      const h = EFFECTS[id].start(ctx);
+      for (let t = 0; t <= 200; t += 20) h.update(t);
+      expect(isolate, id).not.toHaveBeenCalled();
+      expect(die.uniforms.uInteriorFlare).toBeUndefined();
+      h.stop();
+    }
+  });
+
+  test('through the layer: the insideFlare setting reaches the flare (off: no write)', async () => {
+    for (const on of [true, false]) {
+      const die = insideDie();
+      const layer = createEffectLayer({
+        scene: new THREE.Scene(),
+        camera: new THREE.PerspectiveCamera(),
+        canvas: { style: {} },
+        getTier: () => TIERS.ultra,
+        getSetting: (k) => (k === 'insideFlare' ? on : undefined),
+        loadLibrary: async () => ({ EFFECTS, createParticlePool }),
+        isolate: (d) => d.uniforms,
+        matchMedia: () => ({ matches: false }),
+      });
+      await layer.prefetch();
+      layer.play(die, [{ effect: { id: 'lightning' } }]);
+      layer.update(0);
+      layer.update(100);
+      if (on) expect(die.uniforms.uInteriorFlare.value).toBeGreaterThan(0.5);
+      else expect(die.uniforms.uInteriorFlare.value).toBe(0);
+      layer.dispose();
+      expect(die.uniforms.uInteriorFlare.value).toBe(0);
+    }
+  });
+});

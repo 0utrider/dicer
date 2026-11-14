@@ -1,8 +1,11 @@
 // Living-insides sheet and perf page. ?inside=<id> builds one sheet of d20s: the inside at rest
 // with motion off, then 400 ms into a scripted tumble and 1 s after landing (the motion driven
 // directly through motion.js stepMotion, written into each die's own material uniforms), on a dark
-// and a light table at steps 16 and 48, plus a reduced-motion row. One renderer, a viewport per
-// cell, render on demand. window.__insides also serves the perf probe (20 dice, moving vs frozen).
+// and a light table at steps 16 and 48, plus a reduced-motion row. With ?flare=1 (the round-3 sheet)
+// the moving columns are both 300 ms after landing, flare 0 and flare 1 (a crit's inside flare at
+// its peak: uInteriorFlare written, glitter's swirl stepped with it since the landing). One
+// renderer, a viewport per cell, render on demand. window.__insides also serves the perf probe
+// (20 dice, moving vs frozen).
 import * as THREE from 'three';
 import { buildScene } from '../src/render/scene.js';
 import { configureRenderer } from '../src/render/renderer.js';
@@ -43,6 +46,10 @@ export const INSIDES = {
   runes: () =>
     withBody({ ...CLEAR, color: '#1a2036', color2: '#0a0d18' }, { type: 'shape', shape: 'runes', colors: ['#7fd0ff', '#c8a2ff'], density: 0.5 }),
   dragon: () => withBody(CLEAR, { type: 'shape', shape: 'dragon', colors: ['#8a1c1c', '#d9603a'], density: 0.5 }),
+  // still insides until round 3: with motion on they only brighten with the inside flare
+  foil: () => withBody({ ...CLEAR, color: '#1c2a3a', color2: '#0c1420' }, { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 }),
+  botanical: () => withBody(CLEAR, { type: 'botanical', inclusion: 'flower', colors: ['#d04a7a', '#3f8a3a'], density: 0.5 }),
+  sword: () => withBody(CLEAR, { type: 'shape', shape: 'sword', colors: ['#c8d0dc', '#8a5a2a'], density: 0.5 }),
   fire: () => withBody({ ...CLEAR, color: '#3a3438', color2: '#1a1618' }, { type: 'fire', colors: ['#ffd36a', '#d8401a'], density: 0.6 }),
   lava: () => withBody({ ...CLEAR, color: '#3a3438', color2: '#1a1618' }, { type: 'lava', colors: ['#ffb030', '#c0300c'], density: 0.55 }),
   // the electricity damage theme's resin and colours (damage-themes.js), where Task 8 puts storm
@@ -59,6 +66,8 @@ const TUMBLE = { axis: new THREE.Vector3(0.4, 1, 0.3).normalize(), angle: 4, sec
 const DT = 1 / 60;
 const FLIGHT_MS = 400;
 const LAND_MS = 1000;
+const FLARE = params.get('flare') === '1';
+const FLARE_MS = 300;
 
 const errors = [];
 const $ = (id) => document.getElementById(id);
@@ -105,17 +114,20 @@ function tumbleQuat(t, out = new THREE.Quaternion()) {
   return out.multiply(REST);
 }
 
-/** Steps a fresh motion over the script to `endSec` and returns it. */
-function simulate(endSec, reduced) {
+/** Steps a fresh motion over the script to `endSec` (with `flare` from the landing on) and returns it. */
+function simulate(endSec, reduced, flare = 0) {
   const m = createMotion();
   const q = new THREE.Quaternion();
-  for (let t = 0; t <= endSec + 1e-9; t += DT) stepMotion(m, tumbleQuat(t, q), t === 0 ? 0 : DT, { reduced, factor: 1 });
+  for (let t = 0; t <= endSec + 1e-9; t += DT) {
+    stepMotion(m, tumbleQuat(t, q), t === 0 ? 0 : DT, { reduced, factor: 1, flare: t >= TUMBLE.seconds ? flare : 0 });
+  }
   return m;
 }
 
-function writeMotion(material, m) {
+function writeMotion(material, m, flare = 0) {
   const u = material.userData.uniforms;
   if (!u.uInteriorTime) return false;
+  u.uInteriorFlare.value = flare;
   u.uInteriorTime.value = m.time;
   u.uInteriorSpin.value.set(m.spin[0], m.spin[1], m.spin[2]);
   u.uInteriorLag.value.set(m.lag[0], m.lag[1], m.lag[2]);
@@ -124,11 +136,17 @@ function writeMotion(material, m) {
 }
 
 // ---- the sheet -----------------------------------------------------------------------------
-const COLUMNS = [
-  { name: 'motion off\n(at rest)', motion: false, at: null },
-  { name: `400 ms into flight`, motion: true, at: FLIGHT_MS / 1000 },
-  { name: `1 s after landing`, motion: true, at: TUMBLE.seconds + LAND_MS / 1000 },
-];
+const COLUMNS = FLARE
+  ? [
+      { name: 'motion off\n(at rest)', motion: false, at: null },
+      { name: `${FLARE_MS} ms after landing\nflare 0`, motion: true, at: TUMBLE.seconds + FLARE_MS / 1000, flare: 0 },
+      { name: `${FLARE_MS} ms after landing\nflare 1 (crit)`, motion: true, at: TUMBLE.seconds + FLARE_MS / 1000, flare: 1 },
+    ]
+  : [
+      { name: 'motion off\n(at rest)', motion: false, at: null },
+      { name: `400 ms into flight`, motion: true, at: FLIGHT_MS / 1000 },
+      { name: `1 s after landing`, motion: true, at: TUMBLE.seconds + LAND_MS / 1000 },
+    ];
 const ROWS = [
   { name: 'dark table\nsteps 16', table: 'dark', steps: 16 },
   { name: 'dark table\nsteps 48', table: 'dark', steps: 48 },
@@ -140,7 +158,7 @@ const cells = [];
 
 function buildSheet() {
   const appearance = INSIDES[INSIDE]();
-  $('title').textContent = `${INSIDE}: ${appearance.body.type} ${appearance.body.color}, inside ${appearance.interior.type}${appearance.interior.shape && appearance.interior.type === 'shape' ? ' ' + appearance.interior.shape : ''}${appearance.interior.bubble ? ' + bubble' : ''}${appearance.interior.sand ? ' + sand' : ''}`;
+  $('title').textContent = `${INSIDE}${FLARE ? ' (inside flare)' : ''}: ${appearance.body.type} ${appearance.body.color}, inside ${appearance.interior.type}${appearance.interior.shape && appearance.interior.type === 'shape' ? ' ' + appearance.interior.shape : ''}${appearance.interior.bubble ? ' + bubble' : ''}${appearance.interior.sand ? ' + sand' : ''}`;
   const grid = $('grid');
   grid.style.gridTemplateColumns = `${ROW_LABEL_PX}px repeat(${COLUMNS.length}, ${CELL}px)`;
   grid.style.gridTemplateRows = `36px repeat(${ROWS.length}, ${CELL}px)`;
@@ -179,8 +197,8 @@ function buildSheet() {
       const shadow = sceneApi.shadowFor({ position: mesh.position, geometry });
       shadow.visible = false;
       if (c.motion) {
-        const m = simulate(c.at, !!r.reduced);
-        if (!writeMotion(mesh.material, m)) report(`${INSIDE} row ${r.name} col ${c.name}: material has no motion uniforms`);
+        const m = simulate(c.at, !!r.reduced, c.flare ?? 0);
+        if (!writeMotion(mesh.material, m, c.flare ?? 0)) report(`${INSIDE} row ${r.name} col ${c.name}: material has no motion uniforms`);
         tumbleQuat(c.at, mesh.quaternion);
       } else mesh.quaternion.copy(REST);
       cells.push({ row, col, mesh, shadow, table: r.table });

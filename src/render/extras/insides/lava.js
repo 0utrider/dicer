@@ -15,7 +15,8 @@
  * little by the key light) and glows warm at the lips of the cracks.
  *
  * Motion: DC_LA_T is uInteriorTime with insideMotion, the constant 0 without (a still frame, no
- * uniform read).
+ * uniform read). DC_LA_FLARE is uInteriorFlare (0..1, roll effects: effects/library/inside-flare.js)
+ * with insideMotion, the constant 0 without: the cracks all open and widen (lava cracks wide).
  *
  * Cost: an early out outside the pool, then three noise lookups per sample; the first opaque
  * sample usually ends the march.
@@ -65,8 +66,9 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float n2 = dcNoise3( ps * 7.0 + 1.9 );
 	float n3 = dcNoise3( ps * 15.0 - 5.2 );
 	float ridge = 1.0 - abs( 2.0 * mix( n2, n3, 0.3 ) - 1.0 );
-	float open = 0.5 + 0.5 * sin( DC_LA_T * DC_LA_W + n1 * 9.0 );
-	float wid = mix( 0.02, 0.14, open ) + dt * 0.3;
+	// the inside flare cracks it wide: every crack opens, up to twice as wide
+	float open = max( 0.5 + 0.5 * sin( DC_LA_T * DC_LA_W + n1 * 9.0 ), DC_LA_FLARE );
+	float wid = mix( 0.02, 0.14, open ) * ( 1.0 + DC_LA_FLARE ) + dt * 0.3;
 	float crack = smoothstep( 1.0 - wid, 1.0 - 0.35 * wid, ridge );
 	float crust = shell * ( 1.0 - crack );
 	// the molten body: cool edge to hot core with the churn, brightest in the open cracks
@@ -82,8 +84,8 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 }
 `;
 
-const STILL = '#define DC_LA_T 0.0\n';
-const LIVE = '#define DC_LA_T uInteriorTime\n';
+const STILL = '#define DC_LA_T 0.0\n#define DC_LA_FLARE 0.0\n';
+const LIVE = '#define DC_LA_T uInteriorTime\n#define DC_LA_FLARE uInteriorFlare\n';
 
 /**
  * @returns {{ body: string }} the lava GLSL (every colour and the density are uniforms); `live`
