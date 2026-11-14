@@ -71,6 +71,8 @@ export function _resetInsideMotion() {
 const states = new WeakMap();
 // the inner mesh's world rotation (outer x inner), reused every frame
 const quat = { x: 0, y: 0, z: 0, w: 1 };
+// the step options, reused every call (stepMotion reads them synchronously)
+const stepOpts = { reduced: false, factor: 1 };
 
 function worldQuat(die) {
   const a = die.outer.quaternion;
@@ -131,17 +133,20 @@ export const insideMotion = {
     if (roll.phase !== 'playing') roll.landedAt ??= now;
     const factor = restFactor(roll.landedAt == null ? null : now - roll.landedAt);
     let moving = false;
-    for (const die of roll.dice) {
+    stepOpts.reduced = prefersReduced();
+    stepOpts.factor = factor;
+    for (let d = 0; d < roll.dice.length; d++) {
+      const die = roll.dice[d];
       if (!this.wants(die.appearance, roll.flags)) continue;
       let st = states.get(die);
       if (!st) {
         if (!die.inner?.material?.userData?.uniforms?.uInteriorTime) continue;
         const u = box.isolate(die);
         if (!u?.uInteriorTime) continue;
-        this.step(die, u, worldQuat(die), 0, { reduced: prefersReduced(), factor });
+        this.step(die, u, worldQuat(die), 0, stepOpts);
         st = states.get(die);
       } else {
-        this.step(die, st.u, worldQuat(die), (now - st.last) / 1000, { reduced: prefersReduced(), factor });
+        this.step(die, st.u, worldQuat(die), (now - st.last) / 1000, stepOpts);
       }
       st.last = now;
       if (factor > 0) moving = true;

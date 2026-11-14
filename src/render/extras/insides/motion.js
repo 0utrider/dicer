@@ -12,22 +12,27 @@ export function createMotion() {
   return { time: 0, spin: [0, 0, 0], lag: [0, 1, 0], lagVel: [0, 0, 0], swirl: [0, 0, 0], prevQuat: null };
 }
 
-// Rotate v by the inverse of unit quaternion q (world -> die-local).
-function rotateInv(q, v) {
+// scratch vectors: stepMotion allocates nothing per call
+const UP_AXIS = [0, 1, 0];
+const _up = [0, 0, 0];
+const _raw = [0, 0, 0];
+const _om = [0, 0, 0];
+
+// Rotate v by the inverse of unit quaternion q (world -> die-local), into out.
+function rotateInv(q, v, out) {
   const x = -q.x, y = -q.y, z = -q.z, w = q.w;
   // t = 2 * cross(qv, v); v' = v + w*t + cross(qv, t)
   const tx = 2 * (y * v[2] - z * v[1]);
   const ty = 2 * (z * v[0] - x * v[2]);
   const tz = 2 * (x * v[1] - y * v[0]);
-  return [
-    v[0] + w * tx + (y * tz - z * ty),
-    v[1] + w * ty + (z * tx - x * tz),
-    v[2] + w * tz + (x * ty - y * tx),
-  ];
+  out[0] = v[0] + w * tx + (y * tz - z * ty);
+  out[1] = v[1] + w * ty + (z * tx - x * tz);
+  out[2] = v[2] + w * tz + (x * ty - y * tx);
+  return out;
 }
 
-// World-frame angular velocity (rad/s) turning prev into cur over dt.
-function worldOmega(prev, cur, dt) {
+// World-frame angular velocity (rad/s) turning prev into cur over dt, into out.
+function worldOmega(prev, cur, dt, out) {
   // dq = cur * conj(prev)
   const px = -prev.x, py = -prev.y, pz = -prev.z, pw = prev.w;
   let w = cur.w * pw - cur.x * px - cur.y * py - cur.z * pz;
@@ -36,22 +41,27 @@ function worldOmega(prev, cur, dt) {
   let z = cur.w * pz + cur.x * py - cur.y * px + cur.z * pw;
   if (w < 0) { w = -w; x = -x; y = -y; z = -z; } // shortest arc
   const s = Math.hypot(x, y, z);
-  if (s < 1e-9) return [0, 0, 0];
+  if (s < 1e-9) { out[0] = out[1] = out[2] = 0; return out; }
   const k = (2 * Math.atan2(s, w)) / s / dt;
-  return [x * k, y * k, z * k];
+  out[0] = x * k; out[1] = y * k; out[2] = z * k;
+  return out;
 }
 
-export function stepMotion(state, quat, dtSec, { reduced = false, factor = 1 } = {}) {
+const NO_OPTS = Object.freeze({});
+
+export function stepMotion(state, quat, dtSec, opts = NO_OPTS) {
+  const reduced = opts.reduced ?? false;
+  const factor = opts.factor ?? 1;
   const rate = factor * (reduced ? REDUCED_RATE : 1);
-  const up = rotateInv(quat, [0, 1, 0]);
+  const up = rotateInv(quat, UP_AXIS, _up);
   state.time += dtSec * rate;
 
   if (!state.prevQuat) {
-    state.spin = [0, 0, 0];
-    state.lag = up;
-    state.lagVel = [0, 0, 0];
+    state.spin[0] = state.spin[1] = state.spin[2] = 0;
+    state.lag[0] = up[0]; state.lag[1] = up[1]; state.lag[2] = up[2];
+    state.lagVel[0] = state.lagVel[1] = state.lagVel[2] = 0;
   } else if (dtSec > 0) {
-    const raw = rotateInv(quat, worldOmega(state.prevQuat, quat, dtSec));
+    const raw = rotateInv(quat, worldOmega(state.prevQuat, quat, dtSec, _om), _raw);
     const a = 1 - Math.exp(-dtSec / SPIN_TAU);
     for (let i = 0; i < 3; i++) state.spin[i] += (raw[i] * rate - state.spin[i]) * a;
     // integrated, so it only ever slows when the spin dies (no unwind) and stops at rate 0
@@ -69,7 +79,7 @@ export function stepMotion(state, quat, dtSec, { reduced = false, factor = 1 } =
       }
     }
     const len = Math.hypot(lag[0], lag[1], lag[2]);
-    if (len > 1e-9) { lag[0] /= len; lag[1] /= len; lag[2] /= len; } else state.lag = up;
+    if (len > 1e-9) { lag[0] /= len; lag[1] /= len; lag[2] /= len; } else { lag[0] = up[0]; lag[1] = up[1]; lag[2] = up[2]; }
   }
 
   const p = state.prevQuat || (state.prevQuat = { x: 0, y: 0, z: 0, w: 1 });
