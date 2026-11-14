@@ -837,13 +837,7 @@ export function createDice3dApi({
      * ms. True when at least one die flared; false for the insideFlare setting off, an unknown
      * target, or no die with a moving inside.
      */
-    flareInside(target, { die, amount = 1, duration = 900 } = {}) {
-      try {
-        return diceBox.flareInside?.(target, { die, amount, duration }) === true;
-      } catch {
-        return false;
-      }
-    },
+    flareInside: (target, opts) => diceBox.flareInside?.(target, opts) === true,
 
     /** The legacy `{throws: [{dice: [{type, result, resultLabel?, options?}]}]}` payload. */
     show(data, user = undefined, synchronize = false, users = null, blind = false) {

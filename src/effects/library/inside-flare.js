@@ -93,10 +93,18 @@ export function flareInside(ctx, die, { amount = 1, duration = ctx?.duration } =
   };
 }
 
-/** flareInside's handle, or null when it is a no-op (the layer's flare hook keeps only real ones). */
-export function flareDie(ctx, die, opts) {
-  const h = flareInside(ctx, die, opts);
-  return h === NOOP ? null : h;
+/**
+ * The public hook's body (effect-layer flare): flares the dice of `rolls` (opts.die: one index
+ * only; opts {amount, duration} default 1 and 900 ms), `mk(die)` making each die's ctx and
+ * `add(handle, die)` taking each real handle (never a no-op). True when any die flared.
+ */
+export function flareRolls(rolls, opts = {}, mk, add) {
+  let any = false;
+  for (const die of rolls.flatMap((r) => (Number.isInteger(opts.die) ? [r.dice[opts.die]] : r.dice))) {
+    const h = die && flareInside({ ...mk(die), duration: 900 }, die, opts);
+    if (h && h !== NOOP) add(h, die), (any = true);
+  }
+  return any;
 }
 
 /**

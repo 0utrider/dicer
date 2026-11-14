@@ -60,7 +60,7 @@ export function createEffectLayer({
 }) {
   let library = null; // id -> module, once loaded
   let createPool = null; // the library's createParticlePool, once loaded
-  let flareDie = null; // the library's flareDie (inside-flare.js), once loaded
+  let flareRolls = null; // the library's flareRolls (inside-flare.js), once loaded
   let impactFx = null; // the library's impact emitter (createImpactFx in library/particles.js), once loaded
   let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
@@ -126,7 +126,7 @@ export function createEffectLayer({
         if (!disposed) {
           library = effects;
           createPool = typeof mod.createParticlePool === 'function' ? mod.createParticlePool : null;
-          flareDie = typeof mod.flareDie === 'function' ? mod.flareDie : null;
+          flareRolls = typeof mod.flareRolls === 'function' ? mod.flareRolls : null;
           impactFx = typeof mod.createImpactFx === 'function' ? mod.createImpactFx({ getPool, getTier, now }) : null;
           prewarmPool();
         }
@@ -380,17 +380,14 @@ export function createEffectLayer({
      * false while the library is not loaded (it is asked for), when insideFlare is off or no
      * die has a moving inside. Free of budget; releaseDie stops it with its die.
      */
-    flare(dice, opts) {
-      if (!flareDie) {
-        prefetch();
-        return false;
-      }
-      let any = false;
-      for (const die of dice) {
-        const handle = flareDie({ die, setting, isolate, reducedMotion: reducedMotion() }, die, opts);
-        if (handle) running.push({ handle, die, cost: 0, bound: true, id: 'inside-flare' }), (any = true);
-      }
-      return any;
+    flare(rolls, opts) {
+      if (!flareRolls) return prefetch(), false;
+      return flareRolls(
+        rolls,
+        opts,
+        (die) => ({ die, setting, isolate, reducedMotion: reducedMotion() }),
+        (handle, die) => running.push({ handle, die, cost: 0, bound: true, id: 'inside-flare' }),
+      );
     },
 
     /**
@@ -455,7 +452,7 @@ export function createEffectLayer({
       this.clear();
       disposePool();
       disposed = true;
-      library = flareDie = null;
+      library = flareRolls = null;
       try {
         player?.dispose();
       } catch {

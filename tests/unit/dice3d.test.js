@@ -1329,7 +1329,7 @@ describe('flareInside (public hook, local only)', () => {
     const flare = vi.fn(() => true);
     const a = make(flare);
     expect(a.flareInside('msg1')).toBe(true);
-    expect(flare).toHaveBeenCalledWith('msg1', { die: undefined, amount: 1, duration: 900 });
+    expect(flare).toHaveBeenCalledWith('msg1', undefined); // the defaults (amount 1, 900 ms) live in the lazy chunk
     expect(socketEmits).toHaveLength(0);
   });
 
@@ -1345,8 +1345,7 @@ describe('flareInside (public hook, local only)', () => {
     expect(make(() => undefined).flareInside('nope')).toBe(false);
   });
 
-  test('a throwing engine is false, never throws; a missing method is false', () => {
-    expect(make(() => { throw new Error('x'); }).flareInside('m')).toBe(false);
+  test('an engine without the method is false', () => {
     expect(api.flareInside('m')).toBe(false);
   });
 });

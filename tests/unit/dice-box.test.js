@@ -2000,16 +2000,31 @@ describe('effect runtime (Task 8)', () => {
     const roll = box._rolls.values().next().value;
     roll.messageId = 'msgA';
     expect(box.flareInside(roll.id, { amount: 1, duration: 900 })).toBe(true);
-    expect(flare).toHaveBeenLastCalledWith(roll.dice, { amount: 1, duration: 900 });
-    expect(box.flareInside('msgA', { die: 1, amount: 0.5, duration: 300 })).toBe(true);
-    expect(flare).toHaveBeenLastCalledWith([roll.dice[1]], { die: 1, amount: 0.5, duration: 300 });
-    flare.mockReturnValue(false); // no match, setting off or no inside: the layer says false
+    expect(flare).toHaveBeenLastCalledWith([roll], { amount: 1, duration: 900 });
+    expect(box.flareInside('msgA', { die: 1 })).toBe(true);
+    expect(flare).toHaveBeenLastCalledWith([roll], { die: 1 });
+    flare.mockReturnValue(false); // setting off or no inside: the layer says false
     expect(box.flareInside('other', {})).toBe(false);
     expect(flare).toHaveBeenLastCalledWith([], {});
     expect(box.flareInside(undefined, {})).toBe(false);
     expect(flare).toHaveBeenLastCalledWith([], {});
-    expect(box.flareInside('msgA', { die: 9 })).toBe(false);
-    expect(flare).toHaveBeenLastCalledWith([], { die: 9 });
+  });
+
+  test('flareInside restarts the render loop for a lingering roll at rest', async () => {
+    const { renderer, physics, box, effects } = await withEffects();
+    box.roll([{ type: 'd20', value: 20 }]);
+    const roll = box._rolls.values().next().value;
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000); // landed, at rest, nothing running: the loop holds
+    expect(renderer.tick(2100)).toBe('hold');
+    renderer.startLoop.mockClear?.();
+    const spy = vi.spyOn(effects, 'flare').mockReturnValue(false);
+    expect(box.flareInside(roll.id)).toBe(false);
+    expect(renderer.startLoop).not.toHaveBeenCalled(); // nothing flared: no wake
+    spy.mockReturnValue(true);
+    expect(box.flareInside(roll.id)).toBe(true);
+    expect(renderer.startLoop).toHaveBeenCalledTimes(1);
   });
 
   test('replaceInFlight moves an isolated die onto a rebuilt isolated material, keeping its fx uniforms', async () => {

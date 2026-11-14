@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { EFFECTS, createParticlePool, flareDie } from '../../src/effects/library/index.js';
+import { EFFECTS, createParticlePool, flareRolls } from '../../src/effects/library/index.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { KIND } from '../../src/effects/library/particles.js';
 import { TIERS } from '../../src/render/quality.js';
@@ -1064,14 +1064,16 @@ describe('inside flare (living insides round 3)', () => {
         canvas: { style: {} },
         getTier: () => TIERS.ultra,
         getSetting: (k) => (k === 'insideFlare' ? on : undefined),
-        loadLibrary: async () => ({ EFFECTS, createParticlePool, flareDie }),
+        loadLibrary: async () => ({ EFFECTS, createParticlePool, flareRolls }),
         isolate: (d) => d.uniforms,
         matchMedia: () => ({ matches: false }),
       });
-      expect(layer.flare([die], { amount: 1, duration: 900 })).toBe(false); // library not in yet
+      expect(layer.flare([{ dice: [die] }], { amount: 1, duration: 900 })).toBe(false); // library not in yet
       await layer.prefetch();
-      expect(layer.flare([plain], { amount: 1, duration: 900 })).toBe(false);
-      expect(layer.flare([plain, die], { amount: 1, duration: 900 })).toBe(on);
+      expect(layer.flare([{ dice: [plain] }], { amount: 1, duration: 900 })).toBe(false);
+      expect(layer.flare([{ dice: [plain, die] }], { die: 0 })).toBe(false); // the index picks the plain one
+      expect(layer.flare([{ dice: [plain, die] }], { die: 7 })).toBe(false);
+      expect(layer.flare([{ dice: [plain, die] }])).toBe(on);
       layer.update(0);
       layer.update(100);
       expect(die.uniforms.uInteriorFlare.value).toBeGreaterThan(on ? 0.5 : -1);

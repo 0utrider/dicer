@@ -628,13 +628,10 @@ export class DiceBox {
    * True when at least one die flared.
    */
   flareInside(target, opts) {
-    const dice = [];
-    for (const roll of this._rolls) {
-      if (target == null || (roll.id !== target && roll.messageId !== target)) continue;
-      const d = opts.die;
-      dice.push(...(Number.isInteger(d) ? [roll.dice[d]] : roll.dice));
-    }
-    return this.#effectsCall((e) => e.flare(dice.filter(Boolean), opts)) === true;
+    const rolls = [...this._rolls].filter((r) => target != null && (r.id === target || r.messageId === target));
+    const flared = this.#effectsCall((e) => e.flare(rolls, opts)) === true;
+    if (flared) this._renderer.startLoop(this._tick); // a lingering roll at rest has no loop running
+    return flared;
   }
 
   #rollOf(die) {

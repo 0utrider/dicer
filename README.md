@@ -222,7 +222,7 @@ game.dice3d.flareInside(message.id); // every die of the roll shown for that cha
 game.dice3d.flareInside(message.id, { die: 0, amount: 0.6, duration: 500 }); // only the first die
 ```
 
-`target` is a roll id or the id of the ChatMessage whose roll is on screen. `die` is an index into that roll (default: every die), `amount` is 0 to 1 and `duration` is in milliseconds. It returns `true` when at least one die flared. It returns `false`, and does nothing, when the **Effects flare insides** client setting is off, nothing on screen matches `target`, no matched die has a moving inside, or the effects are not loaded yet (they load shortly after the world is ready). It is local only: nothing is sent to other clients, so call it on each client that should see it.
+`target` is a roll id or the id of the ChatMessage whose roll is on screen. `die` is an index into that roll (default: every die), `amount` is 0 to 1 and `duration` is in milliseconds. It returns `true` when at least one die flared. It returns `false`, and does nothing, when the **Effects flare insides** client setting is off, nothing on screen matches `target`, no matched die has a moving inside, or the effects are not loaded yet (they load shortly after the world is ready). Dice you threw yourself from the tray (hand throws) are found by roll id only, not by message id. It is local only: nothing is sent to other clients, so call it on each client that should see it.
 
 ## Chat commands
 
