@@ -162,10 +162,12 @@ const inBurst = () => waiting > 1 || Date.now() - lastEnd < BURST_MS;
  */
 export const FOLLOW_MS = 3000;
 let lastLanded = -Infinity; // when the last overlay throw's values arrived; follow-ups never set it
-const isFollowUp = (getSetting) =>
+/** `startedAt`: when the roll started, before any queue wait (a roll queued behind a throw is not its follow-up). */
+const isFollowUp = (getSetting, startedAt) =>
   getSetting('handFollowUps') === true &&
   getSetting('handRollsRequired') !== true &&
-  Date.now() - lastLanded < FOLLOW_MS;
+  startedAt >= lastLanded &&
+  startedAt - lastLanded < FOLLOW_MS;
 
 let warned = false;
 /**
@@ -423,9 +425,10 @@ async function throwByHand(resolver, terms) {
   if (!specs.length) return notePartial(resolver, dropped);
   // Queued behind any throw in progress (another roll's prompt or overlay, a tray throw); its
   // timeout starts when shown.
+  const startedAt = Date.now();
   return queued(ms, async () => {
     if (resolver._closed) return fallback('cancel');
-    if (isFollowUp(d.getSetting)) {
+    if (isFollowUp(d.getSetting, startedAt)) {
       // Bounded: dice that never settle must not hold the queue.
       const entry = await within(castFree(resolver, specs, true), HAND_GRACE_MS);
       if (!entry?.values || resolver._closed) return fallback(entry ? 'cancel' : 'timeout');

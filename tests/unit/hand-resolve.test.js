@@ -1007,6 +1007,19 @@ describe('follow-up rolls', () => {
     expect(deps.diceBox.roll.mock.calls.length).toBe(calls);
   });
 
+  test('rolls queued behind a throw screen are not its follow-ups', async () => {
+    // three rolls start at once (a GM's group save); the first is held for 5 s on the throw screen
+    overlay.open = vi.fn(
+      ({ specs }) => new Promise((res) => setTimeout(() => res({ values: specs.map(() => 8), handle: {}, recording: {} }), 5000)),
+    );
+    const rolls = [0, 1, 2].map(() => rollOf(new Die({ faces: 20 })));
+    const done = Promise.all(rolls.map((r) => fulfill(new Resolver(r, deps))));
+    await vi.advanceTimersByTimeAsync(3 * 5000 + 10);
+    await done;
+    expect(overlay.open).toHaveBeenCalledTimes(3);
+    for (const r of rolls) expect(r.options.dicerHand.follow).toBeUndefined();
+  });
+
   test('a blind follow-up throws ghost dice for the roller', async () => {
     overlay.values = [12];
     await rollD20();
