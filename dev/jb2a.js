@@ -6,7 +6,7 @@ import { TIERS, TIER_ORDER, flagsFor } from '../src/render/quality.js';
 import { DiceBox } from '../src/throw/dice-box.js';
 import { LOOKS } from '../src/look/looks.js';
 import { createEffectLayer } from '../src/effects/effect-layer.js';
-import { EFFECTS } from '../src/effects/library/index.js';
+import * as library from '../src/effects/library/index.js';
 import { JB2A_EFFECTS } from '../src/jb2a/chunk/catalogue.js';
 
 // JB2A review page: a d20 on the studio scene with the real DiceBox and effect layer, wired to
@@ -15,6 +15,18 @@ import { JB2A_EFFECTS } from '../src/jb2a/chunk/catalogue.js';
 // are copied. window.__jb2a drives it from Playwright.
 
 const params = new URLSearchParams(location.search);
+// Review params: jb2a=off plays the built-in effects only; bg=dark|light picks the backdrop behind
+// the transparent canvas; color=#rrggbb recolours the built-in effect (fx entry colour).
+const jb2aOff = params.get('jb2a') === 'off';
+const state = { color: params.get('color') || undefined };
+const BACKDROPS = {
+  dark: '#2b2f36',
+  light: 'radial-gradient(ellipse at 30% 25%, #f3e6c4 0%, #e6d2a2 55%, #cdb584 100%), #e6d2a2',
+};
+function setBg(name) {
+  document.body.style.background = BACKDROPS[name] ?? BACKDROPS.dark;
+}
+setBg(params.get('bg'));
 const $ = (id) => document.getElementById(id);
 const errors = [];
 const report = (m) => {
@@ -48,8 +60,8 @@ const layer = createEffectLayer({
   camera: renderer.camera,
   canvas: renderer.canvas,
   getTier: () => TIERS[tier],
-  getSetting: () => undefined, // every feature on, jb2aEffects included
-  loadLibrary: async () => ({ EFFECTS }),
+  getSetting: (key) => (jb2aOff && key === 'jb2aEffects' ? false : undefined), // every feature on
+  loadLibrary: async () => library, // the whole module, as in Foundry: EFFECTS plus the particle pool
   isolate: (die) => box?.isolate(die) ?? null,
   jb2a: {
     source: () => ({ moduleId: 'jb2a_patreon', location: '/jb2a-local' }),
@@ -80,7 +92,8 @@ async function roll({ fx = [], value = 20 } = {}, options) {
 }
 
 const fxOf = (effect) => [{ ruleId: 'dev', effect, sound: null, macro: null, slowMotion: false }];
-const playEffect = (id, options) => roll({ fx: fxOf({ id }) }, options);
+const playEffect = (id, options) =>
+  roll({ fx: fxOf(state.color ? { id, color: state.color } : { id }) }, options);
 const ids = Object.keys(JB2A_EFFECTS);
 
 for (const id of ids) {
@@ -103,5 +116,11 @@ $('tier').addEventListener('change', (e) => {
 $('plain').addEventListener('click', () => roll());
 window.addEventListener('resize', () => box.onResize());
 
-window.__jb2a = { roll, playEffect, ids, errors, layer, box };
+const { EFFECTS } = library;
+const durations = Object.fromEntries(
+  ids.map((id) => [id, EFFECTS[id]?.defaults?.duration ?? 1000]),
+);
+const setColor = (c) => (state.color = c || undefined);
+
+window.__jb2a = { roll, playEffect, ids, durations, setColor, setBg, errors, layer, box };
 $('status').textContent = `ready (${ids.length} JB2A effects)`;
