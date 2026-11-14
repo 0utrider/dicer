@@ -39,21 +39,29 @@ const BODY = /* glsl */ `
 #define DC_LA_W ${f((2 * Math.PI) / LAVA.period)}
 vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float y = dot( p, dcIUp );
-	// the churn: large slow blobs rising through the body (also the surface's heave)
-	float n1 = dcNoise3( p * 2.6 - dcIUp * ( DC_LA_T * 0.05 ) + 4.3 );
-	float surf = mix( ${f(LAVA.fill[0])}, ${f(LAVA.fill[1])}, uInteriorDensity ) + 0.08 * ( n1 - 0.5 );
-	// depth into the lava: under the surface and inside the flanks
 	float r = length( p );
-	float top = surf - y;
+	// geometric reject before any noise: above the highest heave or outside the flanks
+	float surf0 = mix( ${f(LAVA.fill[0])}, ${f(LAVA.fill[1])}, uInteriorDensity );
 	float side = DC_LA_WALL - r;
-	float depth = min( top, side );
+	if ( min( surf0 + 0.04 - y, side ) <= 0.0 ) return vec4( 0.0 );
+	// where this ray entered the pool's bounding volume: back along rd to the plane of the highest
+	// heave or the flank sphere, whichever is nearer. Every sample of a ray gets the same point, and
+	// every crack and phase value is read there, so the march jitter does not move them (no hatching)
+	float top0 = surf0 - y;
+	float ru = dot( rd, dcIUp );
+	float sTop = ru < - 0.05 ? ( top0 + 0.04 ) / - ru : 1e3;
+	float b = dot( p, rd );
+	float sSide = b + sqrt( max( b * b - r * r + DC_LA_WALL * DC_LA_WALL, 0.0 ) );
+	vec3 ps = p - rd * min( sTop, sSide );
+	// the churn: large slow blobs (the surface's heave, the crack phase, the body's heat)
+	float n1 = dcNoise3( ps * 2.6 - dcIUp * ( DC_LA_T * 0.05 ) + 4.3 );
+	// depth into the lava: under the heaving surface and inside the flanks
+	float depth = min( top0 + 0.08 * ( n1 - 0.5 ), side );
 	if ( depth <= 0.0 ) return vec4( 0.0 );
 	// the crust shell: at least one sample deep at 16 steps
 	float th = max( 0.06, dt * 1.5 );
 	float shell = 1.0 - smoothstep( th, 1.6 * th, depth );
-	// cracks: ridged noise lines, each opening and resealing over the cycle, out of phase; read on
-	// the nearest boundary point, so the jittered sample depth does not hatch them
-	vec3 ps = top < side ? p + dcIUp * top : p * ( DC_LA_WALL / max( r, 1e-4 ) );
+	// cracks: ridged noise lines, each opening and resealing over the cycle, out of phase
 	float n2 = dcNoise3( ps * 7.0 + 1.9 );
 	float n3 = dcNoise3( ps * 15.0 - 5.2 );
 	float ridge = 1.0 - abs( 2.0 * mix( n2, n3, 0.3 ) - 1.0 );
@@ -67,7 +75,7 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	// the crust: the lava's colour darkened, lit a little by the key, warm at the crack lips
 	float lip = smoothstep( 1.0 - 3.0 * wid, 1.0 - wid, ridge );
 	float lit = 0.3 + 0.7 * max( dot( dcIUp, dcIKey ), 0.0 );
-	vec3 rock = uInteriorColors[ 1 ] * ( 0.035 * ( dcILight * lit + 0.25 ) + 0.4 * lip * lip );
+	vec3 rock = uInteriorColors[ 1 ] * ( 0.025 *( dcILight * lit + 0.25 ) + 0.4 * lip * lip );
 	vec3 col = mix( molten, rock, crust );
 	float a = dcIAlpha( 70.0, dt );
 	return vec4( min( col, vec3( 1.0 ) ) * a, a );
