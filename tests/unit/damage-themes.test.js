@@ -174,7 +174,7 @@ const pf2e = (...instances) => ({
 });
 
 function setup({ settings = {}, extra = {}, me = 'alice' } = {}) {
-  const s = { damagePresets: true, effects: true, showOthersEffects: true, ...settings };
+  const s = { damagePresets: true, effects: true, showOthersEffects: true, elementalDamageInsides: false, ...settings };
   const registry = createRegistry({ warn: () => {} });
   const warn = vi.fn();
   const themer = createDamageThemer({ registry, getSetting: (k) => s[k], warn });
@@ -393,5 +393,45 @@ describe('viewer-first theme lookup and one die type helper (P5-R8)', () => {
     expect(dsnTypeOf({ faces: 20 })).toBe('d20');
     expect(dsnTypeOf({ faces: 6, constructor: { DENOMINATION: 'f' } })).toBe('df');
     expect(dsnTypeOf({ faces: 0 })).toBeNull();
+  });
+});
+
+describe('elementalDamageInsides (living insides, round 2)', () => {
+  const rows = [['fire', 'fire'], ['cold', 'frost'], ['electricity', 'storm']];
+
+  test.each(rows)('%s default row uses the %s inside with the setting on, same colours and density', (id, inside) => {
+    const today = DAMAGE_THEMES[id].appearance.interior;
+    const t = resolveDamageTheme(id, ctx({ elemental: true }));
+    expect(t.appearance.interior).toEqual({ ...today, type: inside });
+    expect(t.appearance.interior.colors).toEqual(today.colors);
+    expect(t.appearance.interior.density).toBe(today.density);
+    expect(t.appearance.body).toEqual(DAMAGE_THEMES[id].appearance.body);
+    expect(t.soundMaterial).toBe(DAMAGE_THEMES[id].soundMaterial);
+    expect(t.landing).toBe(DAMAGE_THEMES[id].landing);
+  });
+
+  test("setting off: today's interiors", () => {
+    expect(resolveDamageTheme('fire', ctx({ elemental: false }))).toBe(DAMAGE_THEMES.fire);
+    expect(DAMAGE_THEMES.fire.appearance.interior.type).toBe('liquid');
+    expect(DAMAGE_THEMES.cold.appearance.interior.type).toBe('glitter');
+    expect(DAMAGE_THEMES.electricity.appearance.interior.type).toBe('nebula');
+  });
+
+  test('a world map entry pointing fire at another theme is unchanged', () => {
+    const t = resolveDamageTheme('fire', ctx({ elemental: true, worldMap: { fire: 'acid' } }));
+    expect(t).toBe(DAMAGE_THEMES.acid);
+    const hoard = resolveDamageTheme('fire', ctx({ elemental: true, userOverrides: { fire: 'dragon-hoard' } }));
+    expect(hoard.appearance).toBe(findTheme('dragon-hoard').appearance);
+  });
+
+  test('the themer reads the setting per roll, so a toggle needs no reload', () => {
+    const registry = createRegistry({ warn: () => {} });
+    const s = { damagePresets: true };
+    const themer = createDamageThemer({ registry, getSetting: (k) => s[k], warn: () => {} });
+    const term = die(6, [{ result: 3 }]);
+    const r = pf2e(new DamageInstance('fire', [term]));
+    expect(themer.forRoll(r)(term, 0).appearance.interior.type).toBe('fire');
+    s.elementalDamageInsides = false;
+    expect(themer.forRoll(r)(term, 0).appearance.interior.type).toBe('liquid');
   });
 });

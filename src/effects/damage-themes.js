@@ -100,6 +100,20 @@ export const DEFAULT_DAMAGE_MAP = Object.freeze({
 
 const own = (obj, key) => isPlainObject(obj) && Object.hasOwn(obj, key) && typeof obj[key] === 'string';
 
+// elementalDamageInsides: the fire/cold/electricity rows swap their resin inside for the elemental one
+// (same colours and density); built once per theme.
+const ELEMENTAL = { fire: 'fire', cold: 'frost', electricity: 'storm' };
+const elementals = new Map();
+const withElemental = (theme) => {
+  const type = ELEMENTAL[theme.id];
+  if (!type) return theme;
+  if (!elementals.has(theme.id)) {
+    const { interior } = theme.appearance;
+    elementals.set(theme.id, Object.freeze({ ...theme, appearance: normalizeAppearance({ ...theme.appearance, interior: { ...interior, type } }) }));
+  }
+  return elementals.get(theme.id);
+};
+
 /**
  * @param {string} [opts.dieType] the die type, for a theme's per-type look
  * @param {{worldThemes?: object[], userThemes?: object[]}} [opts.themes] non-built-in themes
@@ -109,7 +123,7 @@ const own = (obj, key) => isPlainObject(obj) && Object.hasOwn(obj, key) && typeo
  */
 export function resolveDamageTheme(
   type,
-  { userOverrides, worldMap, moduleDefaults, registry, index = 0, warn = console.warn, warned, dieType, themes } = {},
+  { userOverrides, worldMap, moduleDefaults, registry, index = 0, warn = console.warn, warned, dieType, themes, elemental = false } = {},
 ) {
   if (typeof type !== 'string' || !type) return null;
   const levels = [userOverrides, worldMap, moduleDefaults ?? registry?.damageTypeDefaults, DEFAULT_DAMAGE_MAP];
@@ -118,7 +132,7 @@ export function resolveDamageTheme(
   const fromViewer = isPlainObject(userOverrides) && level === userOverrides;
   const value = level[type];
   if (value === 'none') return null;
-  if (Object.hasOwn(DAMAGE_THEMES, value)) return DAMAGE_THEMES[value];
+  if (Object.hasOwn(DAMAGE_THEMES, value)) return elemental ? withElemental(DAMAGE_THEMES[value]) : DAMAGE_THEMES[value];
   // The viewer's own themes first (their override may name one), then the roller's, then world/built-in.
   const own1 = (list) => (Array.isArray(list) ? list.find((t) => t && t.id === value) : undefined);
   const theme =
@@ -188,6 +202,7 @@ export function createDamageThemer({
       const types = safe(() => damageTypesByTerm(roll, knownTypes()), new WeakMap());
       const worldMap = get('damageTypeMap');
       const userOverrides = get('damageThemeOverrides');
+      const elemental = get('elementalDamageInsides') !== false;
       const viewerId = safe(getViewerId, undefined);
       const themes = {
         worldThemes: safe(() => readThemeList(get('worldThemes'), 'world', warn), []),
@@ -200,7 +215,7 @@ export function createDamageThemer({
         if (typeof type !== 'string') return null;
         const dieType = dsnTypeOf(term) ?? undefined;
         return safe(
-          () => resolveDamageTheme(type, { userOverrides, worldMap, registry, index, warn, warned, dieType, themes }),
+          () => resolveDamageTheme(type, { userOverrides, worldMap, registry, index, warn, warned, dieType, themes, elemental }),
           null,
         );
       };

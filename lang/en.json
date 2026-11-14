@@ -139,6 +139,10 @@
         "Name": "Share hand throws live",
         "Hint": "Other players see a hand throw almost as it is thrown, instead of after the thrower's dice land. The thrower's own chat card still waits for their dice. Off sends the throw once it has landed."
       },
+      "elementalDamageInsides": {
+        "Name": "Elemental damage dice",
+        "Hint": "Fire, cold and electricity damage dice get flame, frost and storm insides instead of resin ones. Off keeps the resin look. A damage type you remapped yourself is not affected."
+      },
       "diceTray": {
         "Name": "Dice tray",
         "Hint": "A dice tray button for free rolls by hand."

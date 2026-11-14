@@ -616,3 +616,13 @@ test('jb2aEffects has its exact English name and hint', () => {
     "Play JB2A's animated effects (Jules & Ben's Animated Assets) at the dice instead of the built-in ones, when the JB2A module is installed and active. Does nothing without JB2A.",
   );
 });
+
+test('elementalDamageInsides is registered (world, true) and has strings', () => {
+  const cfg = capture().elementalDamageInsides;
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: Boolean, default: true });
+  expect(cfg.name).toBe('DICER.Settings.elementalDamageInsides.Name');
+  expect(cfg.hint).toBe('DICER.Settings.elementalDamageInsides.Hint');
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+  expect(en.DICER.Settings.elementalDamageInsides.Name).toEqual(expect.any(String));
+  expect(en.DICER.Settings.elementalDamageInsides.Hint).toEqual(expect.any(String));
+});
