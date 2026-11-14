@@ -14,7 +14,7 @@ export const SHAKE_PX = 6;
  * Effect module contract: { id, cost, defaults: {color, intensity, duration}, bindsDie?,
  *   start(ctx) -> { update(nowMs) -> boolean, stop() } }
  * ctx = { scene, camera, die, position, color, intensity, duration, options, particles,
- *   isolate(die) -> uniforms | null, shake(amount, ms), tier }.
+ *   isolate(die) -> uniforms | null, shake(amount, ms), tier, reducedMotion }.
  * An effect with bindsDie (or one that isolated its die) is stopped by releaseDie(die).
  *
  * Budget: the summed cost of the effects running at once never exceeds tier.effectBudget.
@@ -284,6 +284,7 @@ export function createEffectLayer({
         return isolate(target);
       },
       shake: startShake,
+      reducedMotion: reducedMotion(),
     };
     let handle;
     try {

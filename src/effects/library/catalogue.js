@@ -4,6 +4,7 @@ import { KIND } from './particles.js';
 import { SHAPE } from './shapes.js';
 import { composite } from './timeline.js';
 import { createRibbon } from './ribbon.js';
+import { palette } from './palette.js';
 
 /**
  * The particle and mesh effects. World units: one die edge is 1 (so a size of 0.2 is a fifth
@@ -553,99 +554,183 @@ export const frost = Object.freeze({
 });
 
 /**
- * One lightning arc from (x, y, z) out to `len` at `ang`: a jagged 3D polyline of `segs`
- * segments that drops to the table, plus one fork leaving from a middle point.
+ * A jagged line from a to b by midpoint displacement: `levels` halvings, each midpoint pushed
+ * sideways (along the horizontal perpendicular of a->b) and a little up or down, by `rough` x the
+ * segment length, the roughness shrinking per level so the bolt has big kinks and fine crackle.
  */
-function arcLines(x, y, z, ang, len, segs) {
-  const ex = Math.cos(ang) * len;
-  const ez = Math.sin(ang) * len;
-  const px = -Math.sin(ang);
-  const pz = Math.cos(ang);
-  const arc = [{ x, y, z }];
-  for (let s = 1; s <= segs; s++) {
-    const f = s / segs;
-    const jit = s === segs ? 0 : (Math.random() - 0.5) * 0.22 * len;
-    arc.push({
-      x: x + ex * f + px * jit,
-      y: Math.max(FLOOR_Y, y + (Math.random() - 0.5) * 0.25 - f * (y - FLOOR_Y)),
-      z: z + ez * f + pz * jit,
-    });
+function jagged(a, b, levels, rough) {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const dl = Math.hypot(dx, dz) || 1;
+  const px = -dz / dl;
+  const pz = dx / dl;
+  let pts = [a, b];
+  for (let l = 0; l < levels; l++) {
+    const out = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1];
+      const q = pts[i];
+      const len = Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z);
+      const off = (Math.random() - 0.5) * 2 * rough * len;
+      const up = (Math.random() - 0.5) * 0.5 * rough * len;
+      out.push({
+        x: (p.x + q.x) / 2 + px * off,
+        y: Math.max(FLOOR_Y, (p.y + q.y) / 2 + up),
+        z: (p.z + q.z) / 2 + pz * off,
+      });
+      out.push(q);
+    }
+    pts = out;
+    rough *= 0.7;
   }
-  const root = arc[2 + Math.floor(Math.random() * (segs - 4))];
-  const fa = ang + (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.4);
-  const flen = len * (0.3 + Math.random() * 0.2);
-  const fork = [root];
-  for (let s = 1; s <= 4; s++) {
-    const f = s / 4;
-    const jit = (Math.random() - 0.5) * 0.25 * flen;
-    fork.push({
-      x: root.x + Math.cos(fa) * flen * f - Math.sin(fa) * jit,
-      y: Math.max(FLOOR_Y, root.y - f * (root.y - FLOOR_Y) * 0.8),
-      z: root.z + Math.sin(fa) * flen * f + Math.cos(fa) * jit,
-    });
-  }
-  return [arc, fork];
+  return pts;
 }
 
-const ARC_MS = 60;
+const BOLT_LEVELS = 6; // 65 points
+const BRANCH_LEVELS = 4; // 17 points
+const MAX_BRANCHES = 4;
+const STRIKES = [0, 0.22, 0.48]; // fractions of the duration
+const STRIKE_PEAK = [1.35, 1.2, 1.1]; // each re-strike flashes above the fading previous one
+// Width factor along a line: full at t = 0 (the impact end of the bolt, the root of a branch),
+// 30% at the tip. Held near full for the first stretch so the strike reads thick where it lands.
+// Black "over" (premultiplied): colour = dst x (1 - a), a = the ribbon's glow profile.
+const SHADOW_BLEND = Object.freeze({
+  blendSrc: THREE.ZeroFactor,
+  blendDst: THREE.OneMinusSrcAlphaFactor,
+  blendSrcAlpha: THREE.OneFactor,
+  blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+});
+const boltTaper = (t) => 1 - 0.7 * t ** 2.2;
+
+/**
+ * One strike: the main bolt from the impact (beside the die, on the table) up to a point high
+ * above and out to one side (the camera looks straight down, so a vertical bolt would be a dot),
+ * listed impact-first so the taper thins it toward the sky; plus 2-4 branches that leave its
+ * upper half and fork down and outward.
+ */
+function strikePath(ctx, ang, reach) {
+  const { x: cx, z: cz } = ctx.position;
+  const ux = Math.cos(ang);
+  const uz = Math.sin(ang);
+  const impact = { x: cx + ux * 0.45, y: FLOOR_Y, z: cz + uz * 0.45 };
+  const sky = { x: cx + ux * reach, y: 5, z: cz + uz * reach };
+  const bolt = jagged(impact, sky, BOLT_LEVELS, 0.3);
+  const branches = [];
+  const n = 2 + Math.floor(Math.random() * (MAX_BRANCHES - 1));
+  for (let i = 0; i < n; i++) {
+    const root = bolt[Math.floor(bolt.length * (0.3 + Math.random() * 0.45))];
+    const side = i % 2 === 0 ? 1 : -1;
+    const fa = ang + side * (0.45 + Math.random() * 0.7);
+    const len = reach * (0.3 + Math.random() * 0.3);
+    const tip = {
+      x: root.x - Math.cos(fa) * len * 0.2 + Math.cos(fa + side * 1.2) * len * 0.5,
+      y: Math.max(FLOOR_Y, root.y * (0.15 + Math.random() * 0.35)),
+      z: root.z - Math.sin(fa) * len * 0.2 + Math.sin(fa + side * 1.2) * len * 0.5,
+    };
+    branches.push(jagged(root, tip, BRANCH_LEVELS, 0.3));
+  }
+  return { bolt, branches, impact };
+}
 
 export const lightning = Object.freeze({
   id: 'lightning',
   cost: 2,
   defaults: Object.freeze({ color: '#b9d4ff', intensity: 1, duration: 700 }),
   start(ctx) {
-    const arcs = ctx.intensity >= 1 ? 3 : 2;
-    const SEGS = 9;
-    const ribbon = createRibbon({ maxPoints: arcs * (SEGS + 1 + 5), widthPx: 3, color: ctx.color });
-    ribbon.alpha = 0;
-    ctx.scene.add(ribbon.mesh); // ribbon.dispose() removes it
-    const reach = 2.4 * Math.max(0.4, Math.sqrt(ctx.intensity));
-    const { x: cx, z: cz } = ctx.position;
-    const sparkColor = ctx.color.clone().lerp(new THREE.Color(WHITE), 0.6);
-    let flash = 1; // 1 right after a strike, decaying until the next one: floor glow and arc share it
-    const regenerate = (now) => {
-      const lines = [];
-      for (let a = 0; a < arcs; a++) {
-        const ang = Math.random() * Math.PI * 2;
-        const [arc, fork] = arcLines(cx, DIE_Y, cz, ang, reach * (0.6 + Math.random() * 0.4), SEGS);
-        lines.push(arc, fork);
-        ctx.particles?.emit({
-          count: countFor(3, ctx),
-          origin: arc[arc.length - 1],
-          dir: { x: 0, y: 1, z: 0 },
-          speed: 2.4,
-          spread: 1.3,
-          gravity: -6,
-          life: 0.3,
-          color: sparkColor,
-          colorEnd: ctx.color,
-          size: 0.06 * sizeK(ctx),
-          kind: KIND.STREAK,
-          shape: SHAPE.STREAK,
-          now,
-        });
-      }
-      ribbon.setPolylines(lines);
+    const pal = palette(ctx.color);
+    const glowColor = pal.rim ?? pal.mid; // a near-black die glows in its rim colour
+    const sparkColor = pal.rim ? pal.rim.clone().lerp(new THREE.Color(WHITE), 0.5) : pal.core;
+    const k = sizeK(ctx);
+    const D = Math.max(1, ctx.duration);
+    const ribbon = (widthPx, maxPoints, core = 0.3, glow = 0.55) => {
+      const r = createRibbon({ maxPoints, widthPx, color: glowColor, taper: boltTaper, core, glow });
+      r.alpha = 0;
+      ctx.scene.add(r.mesh); // r.dispose() removes it
+      return r;
     };
-    let last = null;
-    const fade = (e) => 1 - (e / ctx.duration) ** 2;
-    const glow = floorGlow(ctx, { radius: 2, peak: 0.8, ms: ctx.duration, curve: (e) => flash * fade(e) });
-    const arcsHandle = timed(
-      ctx.duration,
+    const pts = 2 ** BOLT_LEVELS + 1;
+    // A soft dark band under the bolt (drawn first, normal "over" in black): invisible on a dark
+    // table, it gives a pale bolt contrast on a light map.
+    const shadow = ribbon(40 * k, pts, 0.02, 0.4);
+    Object.assign(shadow.mesh.material, SHADOW_BLEND);
+    shadow.mesh.renderOrder = 2;
+    const halo = ribbon(64 * k, pts, 0.02, 0.4); // a wide soft bloom around the bolt
+    const bolt = ribbon(14, pts, 0.65, 0.5);
+    const branches = ribbon(7, MAX_BRANCHES * (2 ** BRANCH_LEVELS + 1), 0.5, 0.5);
+    const ribbons = [shadow, halo, bolt, branches];
+    const times = ctx.reducedMotion ? [0] : STRIKES.map((f) => f * D);
+    const base = Math.random() * Math.PI * 2;
+    const reach = 4.6 * Math.max(0.5, k);
+    let struck = 0;
+    let level = 0; // the current flash, shared by the ribbons and the floor glow
+    const strike = (now) => {
+      const p = strikePath(ctx, base + (Math.random() - 0.5) * 0.7, reach);
+      shadow.setPolylines([p.bolt]);
+      halo.setPolylines([p.bolt]);
+      bolt.setPolylines([p.bolt]);
+      branches.setPolylines(p.branches);
+      // Born above the die top: the impact itself is beside the die, partly under it from above.
+      const origin = { x: p.impact.x, y: DIE_TOP, z: p.impact.z };
+      ctx.particles?.emit({
+        count: countFor(18, ctx),
+        origin,
+        dir: { x: 0, y: 1, z: 0 },
+        speed: 3.2,
+        spread: 1.4,
+        gravity: -9,
+        life: 0.35,
+        color: sparkColor,
+        colorEnd: glowColor,
+        size: 0.14 * k,
+        kind: KIND.SPARK,
+        shape: SHAPE.GLINT,
+        halo: 0.8,
+        now,
+      });
+      ctx.particles?.emit({
+        count: 1,
+        origin,
+        speed: 0,
+        life: 0.2,
+        color: sparkColor,
+        colorEnd: glowColor,
+        size: 1.5 * k,
+        sizeEnd: 1.8,
+        shape: SHAPE.DOT,
+        halo: 1,
+        now,
+      });
+    };
+    const flashAt = (e) => {
+      const i = struck - 1;
+      const dt = e - times[i];
+      const last = i === times.length - 1;
+      // A sharp spike that settles to an afterglow; the last strike fades out by the duration.
+      const tail = last ? (1 - clamp01(dt / Math.max(1, D - times[i]))) ** 1.5 : 1;
+      const decay = ctx.reducedMotion ? 1 : 0.5 + 0.5 * Math.exp(-dt / (0.12 * D));
+      return STRIKE_PEAK[i] * decay * tail;
+    };
+    const glow = floorGlow({ ...ctx, color: glowColor }, { radius: 1.8 * k, peak: 0.9, ms: D, curve: () => level });
+    const strikes = timed(
+      D,
       (e, now) => {
-        if (last === null || e - last >= ARC_MS) {
-          last = e;
-          regenerate(now);
+        while (struck < times.length && e >= times[struck]) {
+          struck++;
+          strike(now);
         }
-        const since = (e - last) / ARC_MS;
-        flash = (0.45 + 0.55 * (1 - since) ** 2) * (0.75 + 0.25 * Math.random());
-        ribbon.alpha = 1.6 * Math.max(0, ctx.intensity) * flash * fade(e); // a 3 px arc needs the push
+        const flicker = ctx.reducedMotion ? 1 : 0.85 + 0.15 * Math.random();
+        level = flashAt(e) * flicker;
+        const a = Math.max(0, ctx.intensity) * level;
+        bolt.alpha = 1.3 * a;
+        branches.alpha = 1.1 * a;
+        halo.alpha = 1.8 * a;
+        shadow.alpha = 0.4 * a;
       },
       () => {
-        ribbon.dispose();
+        for (const r of ribbons) r.dispose();
       },
     );
-    return together(arcsHandle, glow);
+    return together(strikes, glow);
   },
 });
 

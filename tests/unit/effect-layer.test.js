@@ -48,6 +48,17 @@ function setup({ tier = 'low', modules, settings = {}, reduced = false, ...rest 
   return { layer, log, canvas, warn };
 }
 
+test('the effect layer passes ctx.reducedMotion from prefers-reduced-motion', async () => {
+  for (const reduced of [false, true]) {
+    const seen = [];
+    const spy = { ...timed('spy'), start: (ctx) => (seen.push(ctx.reducedMotion), timed('spy').start(ctx)) };
+    const { layer } = setup({ modules: { spy }, reduced });
+    await layer.prefetch();
+    layer.play(makeDie(), fxOf('spy'));
+    expect(seen).toEqual([reduced]);
+  }
+});
+
 test('budget: 30 dice with a cost-1 effect on low start at most 2 (effectBudget)', async () => {
   const { layer, log } = setup();
   await layer.prefetch();

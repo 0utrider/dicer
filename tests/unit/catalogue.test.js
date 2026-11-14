@@ -355,19 +355,51 @@ describe('rebuilt looks', () => {
   });
 });
 
-test('lightning regenerates its arcs every 60 ms', () => {
-  const scene = new THREE.Scene();
-  const pool = createParticlePool(scene, 16);
-  const base = scene.children.length;
-  const h = EFFECTS.lightning.start(ctxFor(EFFECTS.lightning, { scene, pool }));
-  const pos = scene.children[base].geometry.getAttribute('position');
-  h.update(0);
-  const a = Array.from(pos.array);
-  h.update(30);
-  expect(Array.from(pos.array)).toEqual(a);
-  h.update(70);
-  expect(Array.from(pos.array)).not.toEqual(a);
-  h.stop();
+describe('lightning', () => {
+  const ribbonOf = (scene, widthPx) =>
+    scene.children.find((c) => c.material?.uniforms?.uWidthPx?.value === widthPx);
+  /** Steps update 1 ms at a time; returns the times at which the main bolt's positions were rewritten. */
+  const strikes = (over = {}) => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 256);
+    const ctx = ctxFor(EFFECTS.lightning, { scene, pool, duration: 1000, ...over });
+    const h = EFFECTS.lightning.start(ctx);
+    const pos = ribbonOf(scene, 14).geometry.getAttribute('position');
+    const at = [];
+    let v = pos.version;
+    for (let t = 0; t < 1000; t++) {
+      h.update(t);
+      if (pos.version !== v) at.push(t);
+      v = pos.version;
+    }
+    h.stop();
+    pool.dispose();
+    return at;
+  };
+
+  test('lightning strikes three times: the ribbon geometry is rebuilt at 0, 22% and 48% of duration', () => {
+    expect(strikes()).toEqual([0, 220, 480]);
+  });
+
+  test('lightning with ctx.reducedMotion strikes once', () => {
+    expect(strikes({ reducedMotion: true })).toEqual([0]);
+  });
+
+  test('lightning bolt tapers', () => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 256);
+    const h = EFFECTS.lightning.start(ctxFor(EFFECTS.lightning, { scene, pool }));
+    h.update(0);
+    const geo = ribbonOf(scene, 14).geometry;
+    const side = geo.getAttribute('aSide').array;
+    const idx = geo.index.array.subarray(0, geo.drawRange.count);
+    const last = Math.max(...idx); // the main bolt is one line: its last vertex is its tip
+    expect(Math.abs(side[0])).toBeCloseTo(1, 5);
+    expect(Math.abs(side[last])).toBeCloseTo(0.3, 5);
+    expect(ribbonOf(scene, 7), 'branches are a 7 px ribbon').toBeTruthy();
+    h.stop();
+    pool.dispose();
+  });
 });
 
 test('shake asks the layer for a shake and is done at once', () => {
