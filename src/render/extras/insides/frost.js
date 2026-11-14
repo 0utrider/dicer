@@ -24,8 +24,8 @@
  * Motion: DC_FR_T is uInteriorTime with insideMotion, the constant 0 without (a still frame, no
  * uniform read): the glint crawls and the haze drifts with time; the spikes hold still.
  *
- * Cost: once per pixel, FROST.spikes ray / segment tests (three hashes each); per sample one
- * noise lookup and an exit test.
+ * Cost: once per pixel, FROST.spikes ray / segment tests (three hashes each); per sample an exit
+ * test, then an early out past the haze's edge (only the spike hits), else one noise lookup.
  */
 export const USES_NOISE = true; // dcNoise3, dcHash13
 
@@ -113,6 +113,17 @@ void dcFrRay( vec3 o, vec3 rd ) {
 		}
 	}
 }
+// the hits the march segment from p (sp along the ray, lim long) holds, each dimmed by the haze
+// (extinction haze) between the segment's start and the hit, so it does not depend on where the
+// jitter put the segment's start
+vec4 dcFrHits( float sp, float lim, float haze ) {
+	vec4 acc = vec4( 0.0 );
+	float s1 = dcFrS1 - sp;
+	if ( s1 >= 0.0 && s1 < lim ) acc = dcFrC1 * exp( - haze * s1 );
+	float s2 = dcFrS2 - sp;
+	if ( s2 >= 0.0 && s2 < lim ) acc += ( 1.0 - acc.a ) * dcFrC2 * exp( - haze * s2 );
+	return acc;
+}
 vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	if ( ! dcFrInit ) {
 		dcFrInit = true;
@@ -123,18 +134,15 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 	float sp = dot( p - dcFrO, rd );
 	float ex = dcIVolume( p, rd ).y;
 	float lim = ex - dt < dt ? ex : dt;
+	// the early out: past the haze's edge only the spike hits (roots sit at the wall), no noise
+	float env = dcIEdge( p );
+	if ( env <= 0.0 ) return dcFrHits( sp, lim, 0.0 );
 	// the cold haze: thicker towards the wall where the frost grows, drifting slowly
 	float r = length( p );
 	float n = dcNoise3( p * 3.4 + vec3( DC_FR_T * 0.05, DC_FR_T * 0.02, 0.0 ) + 1.3 );
-	float haze = ( 0.25 + 1.6 * smoothstep( DC_FR_IN - 0.1, DC_FR_WALL, r ) ) * ( 0.4 + n ) * mix( 0.6, 1.4, uInteriorDensity ) * dcIEdge( p );
+	float haze = ( 0.25 + 1.6 * smoothstep( DC_FR_IN - 0.1, DC_FR_WALL, r ) ) * ( 0.4 + n ) * mix( 0.6, 1.4, uInteriorDensity ) * env;
 	float a = dcIAlpha( haze, dt );
-	// a hit is dimmed by the haze between the segment's start and the hit, so it does not depend
-	// on where the jitter put the segment's start
-	vec4 acc = vec4( 0.0 );
-	float s1 = dcFrS1 - sp;
-	if ( s1 >= 0.0 && s1 < lim ) acc = dcFrC1 * exp( - haze * s1 );
-	float s2 = dcFrS2 - sp;
-	if ( s2 >= 0.0 && s2 < lim ) acc += ( 1.0 - acc.a ) * dcFrC2 * exp( - haze * s2 );
+	vec4 acc = dcFrHits( sp, lim, haze );
 	vec3 hc = uInteriorColors[ 1 ] * ( dcILight * 0.55 + 0.2 );
 	return acc + ( 1.0 - acc.a ) * vec4( min( hc, vec3( 1.0 ) ) * a, a );
 }

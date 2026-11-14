@@ -45,7 +45,8 @@ export const INSIDES = {
   dragon: () => withBody(CLEAR, { type: 'shape', shape: 'dragon', colors: ['#8a1c1c', '#d9603a'], density: 0.5 }),
   fire: () => withBody({ ...CLEAR, color: '#3a3438', color2: '#1a1618' }, { type: 'fire', colors: ['#ffd36a', '#d8401a'], density: 0.6 }),
   lava: () => withBody({ ...CLEAR, color: '#3a3438', color2: '#1a1618' }, { type: 'lava', colors: ['#ffb030', '#c0300c'], density: 0.55 }),
-  storm: () => withBody({ ...CLEAR, color: '#7a8292', color2: '#424a58' }, { type: 'storm', colors: ['#cfe0ff', '#262a36'], density: 0.6 }),
+  // the electricity damage theme's resin and colours (damage-themes.js), where Task 8 puts storm
+  storm: () => withBody({ ...CLEAR, color: '#14125a', color2: '#05052a', roughness: 0.04 }, { type: 'storm', colors: ['#4d6bff', '#b066ff'], density: 0.7 }),
   frost: () => withBody({ ...CLEAR, color: '#e4f0f6', color2: '#b0c8d8' }, { type: 'frost', colors: ['#e6f6ff', '#7fa6c4'], density: 0.55 }),
 };
 

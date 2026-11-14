@@ -1347,6 +1347,17 @@ describe('insides', () => {
       expect(body).toContain(`#define DC_FR_N ${FROST.spikes}`);
     });
 
+    test('frost has an early out after the spike claims: no haze noise outside the volume', () => {
+      const body = frostInside(resin({ type: 'frost' })).body;
+      const main = body.slice(body.indexOf('vec4 dcInterior( vec3 p, vec3 rd, float dt )'));
+      const init = main.indexOf('dcFrRay( p, rd );');
+      const out = main.indexOf('if ( env <= 0.0 ) return dcFrHits( sp, lim, 0.0 );');
+      expect(init).toBeGreaterThan(0);
+      // after the per-ray spike test (so root hits at the wall still count), before any noise
+      expect(out).toBeGreaterThan(init);
+      expect(main.indexOf('dcNoise3')).toBeGreaterThan(out);
+    });
+
     test('reduced motion define makes storm sparks steady', () => {
       const a = resin({ type: 'storm', density: 0.5 });
       // no reduced motion: no define
@@ -1365,9 +1376,15 @@ describe('insides', () => {
       expect(mat(a, LIVE).defines).not.toHaveProperty('DICER_CALM');
       // under DICER_CALM: fixed sparks (the first slots) held at half brightness, never reading time
       const body = stormInside(a, true).body;
-      const calm = body.split('#ifdef DICER_CALM')[1].split('#else')[0];
+      const calm = body
+        .split('#ifdef DICER_CALM')
+        .slice(1)
+        .map((x) => x.split('#else')[0])
+        .join('\n');
       expect(calm).toMatch(/float e = 0\.5;/);
-      expect(calm).toMatch(/dcStBolt\( p, rd, float\( i \), lim, sig \)/);
+      // the held bolts themselves stay clearly visible (only the flash's light on the cloud is halved)
+      expect(calm).toMatch(/float eb = 0\.75;/);
+      for (const i of ['0.0', '1.0', '2.0']) expect(calm).toContain(`dcStBolt( p, rd, ${i}, c${i[0]}, lim, sig )`);
       expect(calm).not.toMatch(/DC_ST_T|uInteriorTime/);
       const fs = activeGlsl(patched(withReducedMotion(() => mat(a, LIVE))).fragmentShader, { DICER_CALM: '' });
       expect(fs).toContain('float e = 0.5;');
