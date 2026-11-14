@@ -590,7 +590,8 @@ const BOLT_LEVELS = 6; // 65 points
 const BRANCH_LEVELS = 4; // 17 points
 const MAX_BRANCHES = 4;
 const STRIKES = [0, 0.22, 0.48]; // fractions of the duration
-const STRIKE_PEAK = [1.35, 1.2, 1.1]; // each re-strike flashes above the fading previous one
+const STRIKE_PEAK = [1.35, 1.2, 1.1];
+const ALPHA_CAP = 1.5; // per additive layer: brighter saturates to white and loses the colour // each re-strike flashes above the fading previous one
 // Width factor along a line: full at t = 0 (the impact end of the bolt, the root of a branch),
 // 30% at the tip. Held near full for the first stretch so the strike reads thick where it lands.
 // Black "over" (premultiplied): colour = dst x (1 - a), a = the ribbon's glow profile.
@@ -641,9 +642,18 @@ export const lightning = Object.freeze({
     const glowColor = pal.rim ?? pal.mid; // a near-black die glows in its rim colour
     const sparkColor = pal.rim ? pal.rim.clone().lerp(new THREE.Color(WHITE), 0.5) : pal.core;
     const k = sizeK(ctx);
+    // Above intensity 1 the bolt grows (k) but not brighter: additive layers past ~1.5 saturate to
+    // white and lose the die colour. Halo and shadow widths stop growing at k 1.2.
+    const kw = Math.min(k, 1.2);
+    const bright = Math.min(1, Math.max(0, ctx.intensity));
+    // Pale glows (near-white, the near-black rim) get a stronger dark band so they read on a light
+    // map; the near-black rim gets a wider, stronger halo so the die's glow is unmistakable.
+    const lum = glowColor.getHSL({}, THREE.SRGBColorSpace).l;
+    const shadowGain = 0.2 + 0.9 * lum;
+    const haloGain = pal.rim ? 1.5 : 1.2;
     const D = Math.max(1, ctx.duration);
-    const ribbon = (widthPx, maxPoints, core = 0.3, glow = 0.55) => {
-      const r = createRibbon({ maxPoints, widthPx, color: glowColor, taper: boltTaper, core, glow });
+    const ribbon = (widthPx, maxPoints, core = 0.3, glow = 0.55, color = glowColor) => {
+      const r = createRibbon({ maxPoints, widthPx, color, taper: boltTaper, core, glow });
       r.alpha = 0;
       ctx.scene.add(r.mesh); // r.dispose() removes it
       return r;
@@ -651,10 +661,11 @@ export const lightning = Object.freeze({
     const pts = 2 ** BOLT_LEVELS + 1;
     // A soft dark band under the bolt (drawn first, normal "over" in black): invisible on a dark
     // table, it gives a pale bolt contrast on a light map.
-    const shadow = ribbon(40 * k, pts, 0.02, 0.4);
+    // White, so its alpha (the brightest channel) is the full glow profile whatever the die colour.
+    const shadow = ribbon(52 * kw, pts, 0.02, 0.8, new THREE.Color(WHITE));
     Object.assign(shadow.mesh.material, SHADOW_BLEND);
     shadow.mesh.renderOrder = 2;
-    const halo = ribbon(64 * k, pts, 0.02, 0.4); // a wide soft bloom around the bolt
+    const halo = ribbon((pal.rim ? 80 : 64) * kw, pts, 0.02, pal.rim ? 0.5 : 0.4); // a wide soft bloom around the bolt
     const bolt = ribbon(14, pts, 0.65, 0.5);
     const branches = ribbon(7, MAX_BRANCHES * (2 ** BRANCH_LEVELS + 1), 0.5, 0.5);
     const ribbons = [shadow, halo, bolt, branches];
@@ -706,11 +717,14 @@ export const lightning = Object.freeze({
       const dt = e - times[i];
       const last = i === times.length - 1;
       // A sharp spike that settles to an afterglow; the last strike fades out by the duration.
+      if (ctx.reducedMotion) {
+        // One steady strike: held at its peak, then a single smooth fade over the last 40%.
+        return STRIKE_PEAK[0] * (1 - clamp01((e - 0.6 * D) / (0.4 * D))) ** 1.5;
+      }
       const tail = last ? (1 - clamp01(dt / Math.max(1, D - times[i]))) ** 1.5 : 1;
-      const decay = ctx.reducedMotion ? 1 : 0.5 + 0.5 * Math.exp(-dt / (0.12 * D));
-      return STRIKE_PEAK[i] * decay * tail;
+      return STRIKE_PEAK[i] * (0.5 + 0.5 * Math.exp(-dt / (0.12 * D))) * tail;
     };
-    const glow = floorGlow({ ...ctx, color: glowColor }, { radius: 1.8 * k, peak: 0.9, ms: D, curve: () => level });
+    const glow = floorGlow({ ...ctx, color: glowColor, intensity: bright }, { radius: 1.8 * k, peak: 0.9, ms: D, curve: () => level });
     const strikes = timed(
       D,
       (e, now) => {
@@ -720,11 +734,11 @@ export const lightning = Object.freeze({
         }
         const flicker = ctx.reducedMotion ? 1 : 0.85 + 0.15 * Math.random();
         level = flashAt(e) * flicker;
-        const a = Math.max(0, ctx.intensity) * level;
-        bolt.alpha = 1.3 * a;
-        branches.alpha = 1.1 * a;
-        halo.alpha = 1.8 * a;
-        shadow.alpha = 0.4 * a;
+        const a = bright * level;
+        bolt.alpha = Math.min(ALPHA_CAP, 1.1 * a);
+        branches.alpha = Math.min(ALPHA_CAP, a);
+        halo.alpha = Math.min(ALPHA_CAP, haloGain * a);
+        shadow.alpha = Math.min(ALPHA_CAP, shadowGain * a);
       },
       () => {
         for (const r of ribbons) r.dispose();

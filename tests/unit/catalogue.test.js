@@ -385,6 +385,38 @@ describe('lightning', () => {
     expect(strikes({ reducedMotion: true })).toEqual([0]);
   });
 
+  /** Steps a 1000 ms strike every 10 ms; returns each ribbon's uAlpha per frame. */
+  const alphas = (over = {}) => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 256);
+    const ctx = ctxFor(EFFECTS.lightning, { scene, pool, duration: 1000, ...over });
+    const h = EFFECTS.lightning.start(ctx);
+    const ribbons = scene.children.filter((c) => c.material?.uniforms?.uWidthPx);
+    const frames = [];
+    for (let t = 0; t < 1000; t += 10) {
+      h.update(t);
+      frames.push(ribbons.map((r) => r.material.uniforms.uAlpha.value));
+    }
+    h.stop();
+    pool.dispose();
+    return frames;
+  };
+
+  test('lightning brightness is capped: at intensity 2 no layer alpha exceeds 1.5; intensity 0.3 still draws', () => {
+    for (const color of ['#b9d4ff', '#141418', '#e02020']) {
+      const hot = alphas({ intensity: 2, color: new THREE.Color(color) }).flat();
+      expect(Math.max(...hot), color).toBeLessThanOrEqual(1.5);
+    }
+    const dim = alphas({ intensity: 0.3 }).flat();
+    expect(Math.max(...dim)).toBeGreaterThan(0.1);
+  });
+
+  test('lightning with ctx.reducedMotion holds a constant, flicker-free alpha through its strike', () => {
+    const frames = alphas({ reducedMotion: true }).slice(1, 50); // 10..490 ms
+    for (const f of frames) expect(f).toEqual(frames[0]);
+    expect(Math.max(...frames[0])).toBeGreaterThan(0);
+  });
+
   test('lightning bolt tapers', () => {
     const scene = new THREE.Scene();
     const pool = createParticlePool(scene, 256);
