@@ -636,6 +636,31 @@ describe('fumble parts', () => {
     }
   });
 
+  test('fumble smoke keeps the die face clear: born outside its footprint, flying outward', () => {
+    for (const reducedMotion of [false, true]) {
+      const { h, specs, pool, ctx } = play('smoke', { reducedMotion });
+      for (let t = 0; t <= 1500; t += 20) h.update(t);
+      const puffs = specs().filter((p) => p.kind === KIND.SMOKE);
+      expect(puffs.length).toBeGreaterThan(4);
+      for (const p of puffs) {
+        const ox = p.origin.x - ctx.position.x;
+        const oz = p.origin.z - ctx.position.z;
+        const r = Math.hypot(ox, oz);
+        expect(r, 'born outside the die footprint').toBeGreaterThanOrEqual(0.6);
+        // Heading away from the die: the horizontal part of dir points outward, and dominates the
+        // cone (spread) so no puff drifts back over the die.
+        const out = (p.dir.x * ox + p.dir.z * oz) / r;
+        expect(out, 'outward').toBeGreaterThan(0);
+        const tilt = Math.atan2(out, p.dir.y); // from vertical, toward outward
+        expect(p.spread, 'cone stays outward').toBeLessThan(tilt);
+        // Small at birth, so its soft edge does not reach back over the die (half an edge).
+        expect(r - p.size / 2, 'edge clear of the die').toBeGreaterThanOrEqual(0.5);
+      }
+      h.stop();
+      pool.dispose();
+    }
+  });
+
   test('fumble fizzle: a few sparks that fall and go dark', () => {
     const { pool, h, specs } = play('fizzle');
     h.update(0);

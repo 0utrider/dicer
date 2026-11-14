@@ -475,8 +475,32 @@ const fumbleSmoke = Object.freeze({
     const D = Math.max(1, ctx.duration);
     const body = FUMBLE_SMOKE_GREY.clone().lerp(pal.rim ?? ctx.color, 0.18);
     const calm = ctx.reducedMotion;
-    // The plume leans one way (a random draught per play): seen from straight above, smoke that
-    // only rises would sit on the die; leaning, it trails out past the die as it climbs.
+    const { x: cx, z: cz } = ctx.position;
+    /**
+     * Like trickle(), but each batch is born on a ring around the die's foot, just clear of its
+     * footprint (the puff's soft edge too), heading outward and up: a fumble's die shows its 1,
+     * so no smoke may cover its face. `angle()` picks each batch's bearing.
+     */
+    const ring = (total, window, angle, { y, up, ...spec }) => {
+      let emitted = 0;
+      const r = 0.55 + spec.size / 2;
+      return (e, now) => {
+        const want = Math.round(total * clamp01(e / Math.max(1, D * window)));
+        if (want <= emitted) return;
+        const a = angle();
+        const ux = Math.cos(a);
+        const uz = Math.sin(a);
+        ctx.particles.emit({
+          ...spec,
+          origin: { x: cx + ux * r, y, z: cz + uz * r },
+          dir: { x: ux, y: up, z: uz },
+          count: want - emitted,
+          now,
+        });
+        emitted = want;
+      };
+    };
+    // The plume billows out to one side (a random draught per play), the soot all around.
     const lean = Math.random() * Math.PI * 2;
     const puff = {
       spin: calm ? 0.25 : 0.9,
@@ -484,33 +508,31 @@ const fumbleSmoke = Object.freeze({
       shape: SHAPE.SMOKE,
       blend: 'normal',
     };
-    const plume = trickle(ctx, countFor(24, ctx), 0.55, {
+    const plume = ring(countFor(24, ctx), 0.55, () => lean + (Math.random() - 0.5) * 2.6, {
       ...puff,
-      origin: originOf(ctx, DIE_TOP),
-      jitter: 0.6 * k,
-      dir: { x: Math.cos(lean) * 0.7, y: 1, z: Math.sin(lean) * 0.7 },
-      speed: calm ? 0.5 : 2.4, // up and out past the die...
-      spread: 0.75,
+      y: DIE_TOP,
+      up: 0.7,
+      speed: calm ? 0.5 : 2.4, // up and out, away from the die...
+      spread: 0.45,
       gravity: -0.55, // ...then it sags back as it slows
       life: 1.7,
       color: body,
       colorEnd: body.clone().multiplyScalar(0.55),
-      size: 1.5 * k,
-      sizeEnd: 2.7,
+      size: 1.0 * k,
+      sizeEnd: 3.2,
     });
-    const soot = trickle(ctx, countFor(8, ctx), 0.4, {
+    const soot = ring(countFor(8, ctx), 0.4, () => Math.random() * Math.PI * 2, {
       ...puff,
-      origin: originOf(ctx, DIE_Y),
-      jitter: 1.0 * k,
-      dir: { x: 0, y: 1, z: 0 },
-      speed: calm ? 0.4 : 1.2,
-      spread: 1.5, // rolling out low around the plume
+      y: DIE_Y,
+      up: 0.35, // rolling out low around the plume
+      speed: calm ? 0.4 : 1.4,
+      spread: 0.45,
       gravity: -0.6,
       life: 1.6,
       color: FUMBLE_SOOT.clone().lerp(body, 0.15),
       colorEnd: FUMBLE_SOOT,
-      size: 1.6 * k,
-      sizeEnd: 2.4,
+      size: 1.0 * k,
+      sizeEnd: 3.2,
       alpha: 0.8,
     });
     const sootAt = 0.25 * D;
