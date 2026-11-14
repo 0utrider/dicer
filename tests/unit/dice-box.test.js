@@ -1993,6 +1993,25 @@ describe('effect runtime (Task 8)', () => {
     expect(box.isolate(die)).toBe(u); // once per die
   });
 
+  test('flareInside finds a roll by its id or message id, one die by index, and hands the dice to the layer', async () => {
+    const { box, effects } = await withEffects();
+    const flare = vi.spyOn(effects, 'flare').mockReturnValue(true);
+    box.roll([{ type: 'd20', value: 20 }, { type: 'd6', value: 2 }]);
+    const roll = box._rolls.values().next().value;
+    roll.messageId = 'msgA';
+    expect(box.flareInside(roll.id, { amount: 1, duration: 900 })).toBe(true);
+    expect(flare).toHaveBeenLastCalledWith(roll.dice, { amount: 1, duration: 900 });
+    expect(box.flareInside('msgA', { die: 1, amount: 0.5, duration: 300 })).toBe(true);
+    expect(flare).toHaveBeenLastCalledWith([roll.dice[1]], { die: 1, amount: 0.5, duration: 300 });
+    flare.mockReturnValue(false); // no match, setting off or no inside: the layer says false
+    expect(box.flareInside('other', {})).toBe(false);
+    expect(flare).toHaveBeenLastCalledWith([], {});
+    expect(box.flareInside(undefined, {})).toBe(false);
+    expect(flare).toHaveBeenLastCalledWith([], {});
+    expect(box.flareInside('msgA', { die: 9 })).toBe(false);
+    expect(flare).toHaveBeenLastCalledWith([], { die: 9 });
+  });
+
   test('replaceInFlight moves an isolated die onto a rebuilt isolated material, keeping its fx uniforms', async () => {
     const { renderer, physics, box } = await withEffects();
     box.roll([{ type: 'd20', value: 20, fx: fx('color-shift', { duration: 10000 }) }]);

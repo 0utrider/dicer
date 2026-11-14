@@ -507,7 +507,9 @@ export function createMessageGate({
               const t0 = entry.t0;
               diceBox.armFirstFrame?.(() => recordFirstFrame(id, now() - t0));
             }
-            return (o ? diceBox.roll(s, o) : diceBox.roll(s)).landed;
+            const res = o ? diceBox.roll(s, o) : diceBox.roll(s);
+            if (res?.handle) res.handle.messageId = id; // api flareInside finds a roll by its message
+            return res.landed;
           };
           const k = groups[i].idx[j];
           const roll = message.rolls[k];

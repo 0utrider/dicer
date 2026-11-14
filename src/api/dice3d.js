@@ -831,6 +831,20 @@ export function createDice3dApi({
       }
     },
 
+    /**
+     * Local only, never broadcast: flares the living inside of the dice of a roll on this screen
+     * (a roll id, or the id of its ChatMessage), or of one die by index. `amount` 0..1, `duration`
+     * ms. True when at least one die flared; false for the insideFlare setting off, an unknown
+     * target, or no die with a moving inside.
+     */
+    flareInside(target, { die, amount = 1, duration = 900 } = {}) {
+      try {
+        return diceBox.flareInside?.(target, { die, amount, duration }) === true;
+      } catch {
+        return false;
+      }
+    },
+
     /** The legacy `{throws: [{dice: [{type, result, resultLabel?, options?}]}]}` payload. */
     show(data, user = undefined, synchronize = false, users = null, blind = false) {
       const roll = legacyRoll(data);

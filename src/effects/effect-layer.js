@@ -60,6 +60,7 @@ export function createEffectLayer({
 }) {
   let library = null; // id -> module, once loaded
   let createPool = null; // the library's createParticlePool, once loaded
+  let flareDie = null; // the library's flareDie (inside-flare.js), once loaded
   let impactFx = null; // the library's impact emitter (createImpactFx in library/particles.js), once loaded
   let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
@@ -125,6 +126,7 @@ export function createEffectLayer({
         if (!disposed) {
           library = effects;
           createPool = typeof mod.createParticlePool === 'function' ? mod.createParticlePool : null;
+          flareDie = typeof mod.flareDie === 'function' ? mod.flareDie : null;
           impactFx = typeof mod.createImpactFx === 'function' ? mod.createImpactFx({ getPool, getTier, now }) : null;
           prewarmPool();
         }
@@ -373,6 +375,25 @@ export function createEffectLayer({
     },
 
     /**
+     * Flares the living inside of each of `dice` through the library's flareInside (the same
+     * envelope, max and cap as the crit/fumble effects). True when at least one die flared;
+     * false while the library is not loaded (it is asked for), when insideFlare is off or no
+     * die has a moving inside. Free of budget; releaseDie stops it with its die.
+     */
+    flare(dice, opts) {
+      if (!flareDie) {
+        prefetch();
+        return false;
+      }
+      let any = false;
+      for (const die of dice) {
+        const handle = flareDie({ die, setting, isolate, reducedMotion: reducedMotion() }, die, opts);
+        if (handle) running.push({ handle, die, cost: 0, bound: true, id: 'inside-flare' }), (any = true);
+      }
+      return any;
+    },
+
+    /**
      * Dust and sparks where a die hits the table (the emitter is in the library chunk). Free of
      * budget: the pool's own life keeps the loop running. Never throws.
      * Skipped in safe mode like every library effect (the pool's shaders are library shaders).
@@ -434,7 +455,7 @@ export function createEffectLayer({
       this.clear();
       disposePool();
       disposed = true;
-      library = null;
+      library = flareDie = null;
       try {
         player?.dispose();
       } catch {

@@ -2,6 +2,7 @@ import { DIE_EFFECTS } from './die-effects.js';
 import { CATALOGUE } from './catalogue.js';
 
 export { createParticlePool, createImpactFx } from './particles.js';
+export { flareDie } from './inside-flare.js';
 
 /**
  * The effects library: effect id -> effect module (contract in ../effect-layer.js). Loaded

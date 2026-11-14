@@ -93,6 +93,12 @@ export function flareInside(ctx, die, { amount = 1, duration = ctx?.duration } =
   };
 }
 
+/** flareInside's handle, or null when it is a no-op (the layer's flare hook keeps only real ones). */
+export function flareDie(ctx, die, opts) {
+  const h = flareInside(ctx, die, opts);
+  return h === NOOP ? null : h;
+}
+
 /**
  * `handle` with an inside flare on ctx.die alongside it (amount ctx.intensity, ctx.duration):
  * alive while either is, stop() stops both. Just `handle` when the flare is a no-op.

@@ -137,6 +137,15 @@ test('hides the message (dsn-hide on render and on an already-rendered element),
   expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 17 }]);
 });
 
+test('the thrown roll handle is tagged with its message id (api flareInside finds it)', () => {
+  const handle = {};
+  const real = diceBox.roll.getMockImplementation();
+  diceBox.roll.mockImplementation((...a) => ({ ...real(...a), handle }));
+  li('m1');
+  gate.onCreate(message());
+  expect(handle.messageId).toBe('m1');
+});
+
 test('on landed: removes dsn-hide and fires diceSoNiceRollComplete(id, []) exactly once', async () => {
   const el = li('m1');
   gate.onCreate(message());

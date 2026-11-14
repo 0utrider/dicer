@@ -1317,6 +1317,40 @@ describe('previewEffect', () => {
   });
 });
 
+describe('flareInside (public hook, local only)', () => {
+  const socketEmits = [];
+  const make = (flare) => {
+    const box = { ...fakeDiceBox(), flareInside: flare };
+    const socket = { emit: (...a) => socketEmits.push(a), on() {} };
+    return createDice3dApi({ diceBox: box, gate, planThrow, getSetting: (k) => settings[k], socket });
+  };
+
+  test('flares every inside die of a roll on screen (defaults amount 1, duration 900)', () => {
+    const flare = vi.fn(() => true);
+    const a = make(flare);
+    expect(a.flareInside('msg1')).toBe(true);
+    expect(flare).toHaveBeenCalledWith('msg1', { die: undefined, amount: 1, duration: 900 });
+    expect(socketEmits).toHaveLength(0);
+  });
+
+  test('die index picks one; amount and duration pass through', () => {
+    const flare = vi.fn(() => true);
+    const a = make(flare);
+    expect(a.flareInside(7, { die: 2, amount: 0.5, duration: 400 })).toBe(true);
+    expect(flare).toHaveBeenCalledWith(7, { die: 2, amount: 0.5, duration: 400 });
+  });
+
+  test('unknown id, setting off or no inside die: false', () => {
+    expect(make(() => false).flareInside('nope')).toBe(false);
+    expect(make(() => undefined).flareInside('nope')).toBe(false);
+  });
+
+  test('a throwing engine is false, never throws; a missing method is false', () => {
+    expect(make(() => { throw new Error('x'); }).flareInside('m')).toBe(false);
+    expect(api.flareInside('m')).toBe(false);
+  });
+});
+
 describe('Task 8: hand rolls (H-18) and the recipients rule', () => {
   const handRoll = (o = {}) => ({
     options: { dicerHand: { id: 'h1', by: 'p1', n: 1, ...o } },

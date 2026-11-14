@@ -622,6 +622,21 @@ export class DiceBox {
     }
   }
 
+  /**
+   * Public hook (api flareInside): flares the inside of the dice of the roll(s) on screen whose
+   * id (roll.id) or ChatMessage id (set by the message gate) is `target`, or of dice[die] alone.
+   * True when at least one die flared.
+   */
+  flareInside(target, opts) {
+    const dice = [];
+    for (const roll of this._rolls) {
+      if (target == null || (roll.id !== target && roll.messageId !== target)) continue;
+      const d = opts.die;
+      dice.push(...(Number.isInteger(d) ? [roll.dice[d]] : roll.dice));
+    }
+    return this.#effectsCall((e) => e.flare(dice.filter(Boolean), opts)) === true;
+  }
+
   #rollOf(die) {
     for (const roll of this._rolls) if (roll.dice.includes(die)) return roll;
     return null;

@@ -213,6 +213,17 @@ Hooks.on('dicerRollAreasChanged', (areas) => {
 
 To see the presets and two throws into different areas at once, run `npm run dev` and open `/dev/areas.html`.
 
+### Flare a die's inside
+
+`game.dice3d.flareInside(target, { die, amount = 1, duration = 900 } = {})` makes the living inside of dice on this screen flare (liquid boils, fire roars, glitter scatters, and so on), like a crit or fumble does. It is for modules that show their own effects for a roll, such as Animater.
+
+```js
+game.dice3d.flareInside(message.id); // every die of the roll shown for that chat message
+game.dice3d.flareInside(message.id, { die: 0, amount: 0.6, duration: 500 }); // only the first die
+```
+
+`target` is a roll id or the id of the ChatMessage whose roll is on screen. `die` is an index into that roll (default: every die), `amount` is 0 to 1 and `duration` is in milliseconds. It returns `true` when at least one die flared. It returns `false`, and does nothing, when the **Inside flare** client setting is off, nothing on screen matches `target`, no matched die has a moving inside, or the effects are not loaded yet (they load shortly after the world is ready). It is local only: nothing is sent to other clients, so call it on each client that should see it.
+
 ## Chat commands
 
 With the chat-commands module installed, `/dice3d`, `/d3d` and `/dsn` open the Foundry settings on the Dicer tab. Dicer's own settings dialog comes in a later plan, so for now this is the generic settings window. Without the chat-commands module the commands are not registered.

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { EFFECTS, createParticlePool } from '../../src/effects/library/index.js';
+import { EFFECTS, createParticlePool, flareDie } from '../../src/effects/library/index.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { KIND } from '../../src/effects/library/particles.js';
 import { TIERS } from '../../src/render/quality.js';
@@ -1051,6 +1051,34 @@ describe('inside flare (living insides round 3)', () => {
       expect(isolate, id).not.toHaveBeenCalled();
       expect(die.uniforms.uInteriorFlare).toBeUndefined();
       h.stop();
+    }
+  });
+
+  test('layer.flare (the public hook): shared envelope, true only for dice with an inside, off setting false', async () => {
+    for (const on of [true, false]) {
+      const die = insideDie();
+      const plain = makeDie();
+      const layer = createEffectLayer({
+        scene: new THREE.Scene(),
+        camera: new THREE.PerspectiveCamera(),
+        canvas: { style: {} },
+        getTier: () => TIERS.ultra,
+        getSetting: (k) => (k === 'insideFlare' ? on : undefined),
+        loadLibrary: async () => ({ EFFECTS, createParticlePool, flareDie }),
+        isolate: (d) => d.uniforms,
+        matchMedia: () => ({ matches: false }),
+      });
+      expect(layer.flare([die], { amount: 1, duration: 900 })).toBe(false); // library not in yet
+      await layer.prefetch();
+      expect(layer.flare([plain], { amount: 1, duration: 900 })).toBe(false);
+      expect(layer.flare([plain, die], { amount: 1, duration: 900 })).toBe(on);
+      layer.update(0);
+      layer.update(100);
+      expect(die.uniforms.uInteriorFlare.value).toBeGreaterThan(on ? 0.5 : -1);
+      if (!on) expect(die.uniforms.uInteriorFlare.value).toBe(0);
+      layer.releaseDie(die);
+      expect(die.uniforms.uInteriorFlare.value).toBe(0);
+      layer.dispose();
     }
   });
 
