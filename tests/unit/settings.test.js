@@ -226,6 +226,12 @@ describe('effects settings', () => {
     expect(r.impactEffects.name).toBe('DICER.Settings.impactEffects.Name');
     expect(r.impactEffects.hint).toBe('DICER.Settings.impactEffects.Hint');
   });
+  test('jb2aEffects is a client Boolean, default on', () => {
+    const r = capture();
+    expect(r.jb2aEffects).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r.jb2aEffects.name).toBe('DICER.Settings.jb2aEffects.Name');
+    expect(r.jb2aEffects.hint).toBe('DICER.Settings.jb2aEffects.Hint');
+  });
   test('turning effects on or off refreshes materials through onLookChange (the fx program key)', () => {
     const onLookChange = vi.fn();
     capture({ onLookChange }).effects.onChange(false);
@@ -291,7 +297,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
 
 test('every effects setting has its English name and hint', () => {
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings;
-  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake', 'impactEffects']) {
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake', 'impactEffects', 'jb2aEffects']) {
     expect(typeof en[key]?.Name).toBe('string');
     expect(typeof en[key]?.Hint).toBe('string');
   }
@@ -587,4 +593,12 @@ test('petsAllowed and showPets call onPetChange; petSounds does not', () => {
   r.showPets.onChange(false);
   r.petSounds.onChange?.(false);
   expect(onPetChange).toHaveBeenCalledTimes(2);
+});
+
+test('jb2aEffects has its exact English name and hint', () => {
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings.jb2aEffects;
+  expect(en.Name).toBe('Use JB2A animations');
+  expect(en.Hint).toBe(
+    "Play JB2A's animated effects (Jules & Ben's Animated Assets) at the dice instead of the built-in ones, when the JB2A module is installed and active. Does nothing without JB2A.",
+  );
 });

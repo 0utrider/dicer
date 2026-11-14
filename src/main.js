@@ -51,6 +51,7 @@ import {
 import { createDamageThemer } from './effects/damage-themes.js';
 import { createEffectLayer } from './effects/effect-layer.js';
 import { createDsnSfx } from './effects/dsn-sfx.js';
+import { jb2aSource } from './jb2a/source.js';
 import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay, resetControls } from './settings.js';
 
 let dormant = false;
@@ -590,6 +591,8 @@ Hooks.once('ready', async () => {
         isolate: (die) => box?.isolate(die) ?? null,
         // The particle pool's programs compile at prefetch (idle), not on the first impact.
         warm: (objects) => renderer.warmObjects(objects),
+        // JB2A animations for mapped effects: its player is the lazy `jb2a` chunk.
+        jb2a: { source: () => jb2aSource({ modules: game.modules, settings: game.settings }), load: () => import('./jb2a/jb2a.js') },
         // Dice So Nice special effects: `registry` is made later (activate), so read it lazily.
         dsnSfx: createDsnSfx({
           registry: {

@@ -69,6 +69,8 @@ Open **Configure Settings, Dicer, Trigger rules** (the trigger editor) to edit t
 
 A macro runs on the roller's own client, once per rule, when the matching die's animation lands. So it does not run when the roller has 3D dice turned off, when their browser tab is hidden, or for dice beyond the maximum dice limit (those are not drawn).
 
+When JB2A (Jules & Ben's Animated Assets, the free `JB2A_DnD5e` or the Patreon `jb2a_patreon` module) is installed and active, Dicer plays JB2A's animations at the dice for celebrate, fumble, sparkles, embers, frost, lightning, smoke, shatter, shockwave and light burst. It uses only the JB2A files already installed (Dicer ships none), and an animation that cannot be loaded falls back to the built-in effect. Glow pulse, color shift, number flare, shake and Dice So Nice effects stay built-in. Turn it off with **Use JB2A animations**.
+
 Other settings: **Special effects**, **Screen shake**, **Slow motion** (changes only your own animation speed) and **Trigger macros** (a macro runs once, on the roller's client).
 
 Effects and their sounds never play for someone who cannot see the roll's result: a blind or whispered roll gives other players nothing, not even a celebration. The render loop runs only while an effect plays, and lower quality tiers run lighter effects. Screen shake is off when your operating system asks for reduced motion.

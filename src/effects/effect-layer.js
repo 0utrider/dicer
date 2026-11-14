@@ -47,6 +47,7 @@ export function createEffectLayer({
   loadLibrary = () => import('./library/effects.js'),
   isolate = () => null,
   dsnSfx = null,
+  jb2a = null,
   isSafe = () => false,
   particles = null,
   warm = () => {},
@@ -61,6 +62,8 @@ export function createEffectLayer({
   let impactFx = null; // the library's impact emitter (createImpactFx in library/particles.js), once loaded
   let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
+  let player = null; // the JB2A player (src/jb2a/jb2a.js, the lazy `jb2a` chunk), once loaded
+  let jb2aLoading = null;
   let loadFailed = false;
   let disposed = false;
   let debugged = false;
@@ -83,7 +86,29 @@ export function createEffectLayer({
     }
   };
 
+  /** Loads the JB2A chunk once, when JB2A is active and jb2aEffects is not off; never rejects. */
+  function loadJb2a() {
+    try {
+      if (!jb2aLoading && !disposed && setting('jb2aEffects') !== false && jb2a?.source()) {
+        jb2aLoading = Promise.resolve(jb2a.load())
+          .then((mod) => {
+            if (disposed) return;
+            player = mod.createJb2aPlayer({ source: jb2a.source });
+            player.preload();
+          })
+          .catch((err) => warnOnce('jb2a', 'cannot load the JB2A player; built-in effects play', err));
+      }
+    } catch {
+      // no JB2A: built-in effects
+    }
+    return jb2aLoading;
+  }
+
   function prefetch() {
+    return Promise.all([loadJb2a(), loadEffects()]).then(() => {});
+  }
+
+  function loadEffects() {
     if (library || loadFailed || disposed) return Promise.resolve();
     if (loading) return loading;
     let load;
@@ -204,7 +229,8 @@ export function createEffectLayer({
     return pool;
   }
 
-  function moduleFor(f) {
+  /** In safe mode only `dsn:` and JB2A modules resolve; JB2A is tried before the library. */
+  function moduleFor(f, safe) {
     const id = f?.effect?.id;
     if (typeof id !== 'string') return null;
     if (id.startsWith('dsn:')) {
@@ -217,8 +243,15 @@ export function createEffectLayer({
       return m && typeof m.start === 'function' ? m : null;
     }
     if (!library) return null;
-    const mod = Object.hasOwn(library, id) ? library[id] : null;
-    return mod && typeof mod.start === 'function' ? mod : null;
+    let mod = Object.hasOwn(library, id) ? library[id] : null;
+    if (typeof mod?.start !== 'function') mod = null;
+    let j = null;
+    try {
+      if (setting('jb2aEffects') !== false) j = player?.moduleFor(id, mod, { safe });
+    } catch {
+      // the built-in plays
+    }
+    return j ?? (safe ? null : mod);
   }
   const costOf = (mod) => (Number.isFinite(mod.cost) && mod.cost > 0 ? mod.cost : 0);
 
@@ -302,14 +335,11 @@ export function createEffectLayer({
     prefetch,
 
     /** Starts a landed die's effects (fx: Task 7 Fx[]); never throws. */
-    play(die, fxIn) {
-      if (disposed || !Array.isArray(fxIn) || !fxIn.length) return;
+    play(die, fx) {
+      if (disposed || !Array.isArray(fx) || !fx.length) return;
       const g = gate();
       if (g === 'off') return;
-      const fx = g === 'safe'
-        ? fxIn.filter((f) => String(f?.effect?.id ?? '').startsWith('dsn:'))
-        : fxIn;
-      if (!fx.length) return;
+      if (!player) loadJb2a();
       if (!library) {
         // DSN special effects do not need the library; everything else waits for it.
         if (fx.some((f) => f?.effect && !String(f.effect.id).startsWith('dsn:'))) {
@@ -323,7 +353,7 @@ export function createEffectLayer({
       const budget = Number(getTier()?.effectBudget) || 0;
       const picks = [];
       fx.forEach((f, i) => {
-        const mod = moduleFor(f);
+        const mod = moduleFor(f, g === 'safe');
         if (mod) picks.push({ f, mod, i, c: costOf(mod) });
       });
       if (!picks.length) return;
@@ -402,6 +432,12 @@ export function createEffectLayer({
       disposePool();
       disposed = true;
       library = null;
+      try {
+        player?.dispose();
+      } catch {
+        // its videos go with the page
+      }
+      player = null;
     },
   };
 }

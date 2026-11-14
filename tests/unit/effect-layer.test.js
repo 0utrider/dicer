@@ -569,3 +569,106 @@ describe('particle pool warm-up (prefetch)', () => {
     expect(layer.running).toBe(1);
   });
 });
+
+describe('JB2A animations', () => {
+  /** A fake JB2A chunk whose player maps `frost` only; its module logs 'jb2a:frost'. */
+  function fakeJb2a({ source = { moduleId: 'JB2A_DnD5e', location: 'modules' } } = {}) {
+    const calls = { moduleFor: [], preload: 0, made: 0, disposed: 0 };
+    const jb2a = {
+      source: vi.fn(() => source),
+      load: vi.fn(async () => ({
+        createJb2aPlayer: (opts) => {
+          calls.made++;
+          calls.opts = opts;
+          return {
+            moduleFor(id, builtin, { safe } = {}) {
+              calls.moduleFor.push({ id, builtin, safe });
+              return id === 'frost' ? { ...timed('jb2a:frost', 1, calls.log), cost: builtin?.cost ?? 0 } : null;
+            },
+            preload() {
+              calls.preload++;
+            },
+            dispose() {
+              calls.disposed++;
+            },
+          };
+        },
+      })),
+    };
+    return { jb2a, calls };
+  }
+  const started = (log) => log.filter((e) => e[0] === 'start').map((e) => e[1]);
+  function jb2aSetup({ settings = {}, source, isSafe } = {}) {
+    const log = [];
+    const { jb2a, calls } = fakeJb2a(source === undefined ? {} : { source });
+    calls.log = log;
+    const modules = { frost: timed('frost', 1, log), smoke: timed('smoke', 1, log), a: timed('a', 1, log) };
+    const made = setup({ modules, settings, jb2a, ...(isSafe ? { isSafe } : {}) });
+    return { ...made, log, jb2a, calls, settings };
+  }
+
+  test('with the setting on, a mapped effect plays the JB2A module, not the built-in', async () => {
+    const { layer, log, calls } = jb2aSetup();
+    await layer.prefetch();
+    layer.play(makeDie(), fxOf('frost', 'a'));
+    expect(started(log)).toEqual(['jb2a:frost', 'a']);
+    expect(calls.moduleFor[0]).toMatchObject({ id: 'frost', safe: false });
+    expect(calls.moduleFor[0].builtin.id).toBe('frost');
+  });
+
+  test('jb2aEffects false plays the built-in, flipped between two plays with no reload', async () => {
+    const { layer, log, settings } = jb2aSetup({ settings: { jb2aEffects: true } });
+    await layer.prefetch();
+    layer.play(makeDie(), fxOf('frost'));
+    settings.jb2aEffects = false;
+    layer.play(makeDie(), fxOf('frost'));
+    expect(started(log)).toEqual(['jb2a:frost', 'frost']);
+  });
+
+  test('with source() null the built-in plays and load is never called', async () => {
+    const { layer, log, jb2a } = jb2aSetup({ source: null });
+    await layer.prefetch();
+    layer.play(makeDie(), fxOf('frost'));
+    expect(started(log)).toEqual(['frost']);
+    expect(jb2a.load).not.toHaveBeenCalled();
+  });
+
+  test('safe mode: a mapped id plays JB2A (safe passed), a non-mapped library id is still filtered out', async () => {
+    const { layer, log, calls } = jb2aSetup({ isSafe: () => true });
+    await layer.prefetch();
+    layer.play(makeDie(), fxOf('frost', 'smoke'));
+    expect(started(log)).toEqual(['jb2a:frost']);
+    expect(calls.moduleFor.find((c) => c.id === 'frost').safe).toBe(true);
+  });
+
+  test('prefetch loads the chunk once, builds the player on jb2a.source and preloads', async () => {
+    const { layer, jb2a, calls } = jb2aSetup();
+    await layer.prefetch();
+    await layer.prefetch();
+    expect(jb2a.load).toHaveBeenCalledTimes(1);
+    expect(calls.made).toBe(1);
+    expect(calls.opts.source).toBe(jb2a.source);
+    expect(calls.preload).toBe(1);
+  });
+
+  test('prefetch does not load the chunk while jb2aEffects is false', async () => {
+    const { layer, jb2a } = jb2aSetup({ settings: { jb2aEffects: false } });
+    await layer.prefetch();
+    expect(jb2a.load).not.toHaveBeenCalled();
+  });
+
+  test('a failing chunk load leaves the built-in effects playing', async () => {
+    const { layer, log, jb2a } = jb2aSetup();
+    jb2a.load.mockImplementation(() => Promise.reject(new Error('404')));
+    await expect(layer.prefetch()).resolves.toBeUndefined();
+    layer.play(makeDie(), fxOf('frost'));
+    expect(started(log)).toEqual(['frost']);
+  });
+
+  test('dispose() disposes the player', async () => {
+    const { layer, calls } = jb2aSetup();
+    await layer.prefetch();
+    layer.dispose();
+    expect(calls.disposed).toBe(1);
+  });
+});

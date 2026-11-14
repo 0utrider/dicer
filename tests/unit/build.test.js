@@ -45,6 +45,10 @@ describe('build', () => {
     const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
     const hand = lazy.find((p) => /^dist\/hand-[A-Za-z0-9_-]{8}\.js$/.test(p)); // rolling by hand (src/hand/hand.js)
+    const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
+    expect(jb2a).toBeTruthy();
+    expect(readFileSync(jb2a, 'utf8')).toContain('Library/Generic');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Library/Generic');
     expect(pets).toBeTruthy();
     // The hand chunk is lazy: only src/hand/hand-loader.js names it (import()); dicer.js never holds its code.
     expect(hand).toBeTruthy();
@@ -134,6 +138,7 @@ describe('build', () => {
         pets,
         threePoints,
         hand,
+        jb2a,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),
