@@ -162,29 +162,110 @@ void main() {
 `;
 const BURST_UNIFORMS = Object.freeze({ uRays: 0, uSpin: 0, uRayAlpha: 0 });
 
+/** Value noise for shader quads: a sin-free hash (Hoskins), cheap and stable on mediump GPUs. */
+const NOISE_GLSL = /* glsl */ `
+float hash( vec2 p ) {
+	vec3 p3 = fract( vec3( p.xyx ) * 0.1031 );
+	p3 += dot( p3, p3.yzx + 33.33 );
+	return fract( ( p3.x + p3.y ) * p3.z );
+}
+float noise( vec2 p ) {
+	vec2 i = floor( p );
+	vec2 f = fract( p );
+	f = f * f * ( 3.0 - 2.0 * f );
+	return mix( mix( hash( i ), hash( i + vec2( 1.0, 0.0 ) ), f.x ),
+		mix( hash( i + vec2( 0.0, 1.0 ) ), hash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+}
+// Two octaves, the second turned ~37 degrees so no lattice shows.
+float fbm2( vec2 p ) {
+	return ( 2.0 * noise( p ) + noise( mat2( 0.8, 0.6, -0.6, 0.8 ) * p * 2.03 + 17.0 ) ) / 3.0;
+}
+`;
+
 /**
- * Two expanding rings (radius uR / uR2 in quad units 0..1, brightness uAlpha / uAlpha2): each
- * soft on its inner edge (a quadratic fade-in that widens as the ring grows) and sharp outside,
- * with a hint of white where the band is brightest.
+ * Two expanding rings on one quad (radius uR / uR2 in quad units 0..1, brightness uAlpha /
+ * uAlpha2), each a gradient band: a thin hot leading edge (uHot, width uEdge) sharp on the
+ * outside, the body colour (uColor) easing into a deeper tint (uDeep) behind it with a soft inner
+ * glow, and a faint trail (uDeep) fading back toward the centre over uTrail (a fraction of the
+ * radius). uNoise (0..1) breaks the edges: the radius wobbles with the angle, the leading edge
+ * frays into pieces and the band and trail are mottled, so it is never a perfect circle. uSeed
+ * picks the pattern. Cost: the corners and the area past the outer ring are discarded before any
+ * noise; a pixel on a ring takes 4 value-noise calls (an fbm2 and a noise of the angle, shared
+ * by both rings, plus a mottle).
  */
 const RING_FRAGMENT = /* glsl */ `
 uniform vec3 uColor;
+uniform vec3 uHot;
+uniform vec3 uDeep;
 uniform float uAlpha;
 uniform float uR;
 uniform float uAlpha2;
 uniform float uR2;
+uniform float uEdge;
+uniform float uNoise;
+uniform float uTrail;
+uniform float uSeed;
 varying vec2 vUv;
-float ring( float r, float R ) {
-	float inner = smoothstep( R - ( 0.08 + 0.25 * R ), R, r );
-	return inner * inner * ( 1.0 - smoothstep( R, R + 0.012, r ) );
+${NOISE_GLSL}
+// One ring at radius R: its colour (not yet scaled by the ring's alpha). wobble and fray are the
+// angle's noise (0..1); mottle is the position's.
+vec3 ring( float r, float R, float wobble, float fray, float mottle ) {
+	if ( R <= 0.0 ) return vec3( 0.0 );
+	float Rn = R * ( 1.0 + uNoise * 0.12 * ( wobble - 0.5 ) );
+	float d = Rn - r; // > 0 behind the leading edge, < 0 ahead of it
+	float ahead = 1.0 - smoothstep( 0.0, 0.35 * uEdge, -d ); // sharp on the outside
+	float edge = exp( - ( d * d ) / ( uEdge * uEdge ) ) * ahead;
+	edge *= mix( 1.0, 0.1 + 0.9 * smoothstep( 0.3, 0.65, fray ), uNoise );
+	float w = 0.05 + 0.12 * R; // the band widens as the ring grows
+	float behind = max( d, 0.0 );
+	float band = ( 1.0 - smoothstep( 0.0, w, behind ) ) * ahead;
+	float glow = exp( - behind / ( 1.6 * w ) ) * ahead; // the soft inner glow
+	float trail = exp( - behind / max( 0.001, uTrail * R ) ) * ahead * smoothstep( 0.0, 0.3, r / R );
+	float m = mix( 1.0, 0.45 + 1.1 * mottle, uNoise );
+	vec3 body = mix( uColor, uDeep, smoothstep( 0.0, w, behind ) );
+	return uHot * edge * 1.3 + body * ( 0.8 * band * band + 0.35 * glow ) * m + uDeep * trail * 0.3 * m;
 }
 void main() {
-	float r = length( vUv * 2.0 - 1.0 );
-	float band = ring( r, uR ) * uAlpha + ring( r, uR2 ) * uAlpha2;
-	vec3 c = uColor * band + vec3( 0.3 * band * band );
+	vec2 p = vUv * 2.0 - 1.0;
+	float r = length( p );
+	float reach = max( uR * step( 0.001, uAlpha ), uR2 * step( 0.001, uAlpha2 ) ) * ( 1.0 + 0.06 * uNoise ) + uEdge;
+	if ( r >= 1.0 || r > reach ) discard; // the corners and the floor beyond the outer ring
+	vec2 dir = p / max( r, 0.0001 );
+	float wobble = fbm2( dir * 2.5 + uSeed );
+	float fray = noise( dir * 15.0 - uSeed );
+	float mottle = noise( p * 7.0 + uSeed );
+	vec3 c = ring( r, uR, wobble, fray, mottle ) * uAlpha + ring( r, uR2, wobble, 1.0 - fray, mottle ) * uAlpha2;
 	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 }
 `;
+
+/** A ring's body colour (RING_FRAGMENT's uColor): the die colour, or a near-black die's rim. */
+const ringBody = (color) => {
+  const pal = palette(color);
+  return pal.rim ?? pal.mid;
+};
+
+/**
+ * RING_FRAGMENT's extra uniforms for a die colour (pass ringBody(color) as quadMaterial's colour):
+ * the hot edge is the palette core halfway to white, the deep tint its edge (a near-black die's
+ * rim, darkened). `edge`, `noise` and `trail` set uEdge, uNoise and uTrail; both rings start
+ * hidden (radius and alpha 0) and uSeed is random.
+ */
+function ringUniforms(color, { edge = 0.018, noise = 0.6, trail = 0.5 } = {}) {
+  const pal = palette(color);
+  const white = new THREE.Color(WHITE);
+  return {
+    uHot: (pal.rim ?? pal.core).clone().lerp(white, 0.5),
+    uDeep: pal.rim ? pal.rim.clone().multiplyScalar(0.55) : pal.edge.clone(),
+    uR: 0,
+    uAlpha2: 0,
+    uR2: 0,
+    uEdge: edge,
+    uNoise: noise,
+    uTrail: trail,
+    uSeed: Math.random() * 50,
+  };
+}
 
 /**
  * An additive radial glow decal on the table: colour ctx.color, brightness peak x intensity,
@@ -251,16 +332,17 @@ export const shockwave = Object.freeze({
   defaults: Object.freeze({ color: '#ffe9a8', intensity: 1, duration: 800 }),
   start(ctx) {
     const scope = scoped(ctx.scene);
-    const material = quadMaterial(RING_FRAGMENT, ctx.color, { uR: 0, uAlpha2: 0, uR2: 0 });
+    const material = quadMaterial(RING_FRAGMENT, ringBody(ctx.color), ringUniforms(ctx.color));
     const u = material.uniforms;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     mesh.rotation.x = -Math.PI / 2; // on the floor plane
     mesh.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
-    const size = 7 * Math.max(0.2, ctx.intensity);
+    // Grows gently with intensity (sqrt), and at most 1.6 x its intensity-1 size on a big table.
+    const size = 7 * Math.min(1.6, sizeK(ctx));
     mesh.scale.setScalar(size);
     mesh.renderOrder = 1;
     scope.add(mesh);
-    const level = Math.max(0, ctx.intensity) * 1.3;
+    const level = Math.min(ALPHA_CAP, Math.max(0, ctx.intensity) * 1.3);
     const LAG = Math.min(90, ctx.duration / 4); // the second ring follows 90 ms behind
     const ringAt = (e, span) => {
       const k = clamp01(e / span);
@@ -290,7 +372,7 @@ export const shockwave = Object.freeze({
           size: 0.45 * sizeK(ctx),
           sizeEnd: 2.6,
           kind: KIND.SMOKE,
-          shape: SHAPE.RING,
+          shape: SHAPE.SMOKE, // the PUFF sprite
           blend: 'normal',
           color: tint,
           alpha: 0.35,
@@ -577,23 +659,7 @@ uniform vec3 uColor;
 uniform float uAlpha;
 uniform float uSeed;
 varying vec2 vUv;
-// A sin-free hash (Hoskins): cheap, and stable at large inputs on mediump GPUs.
-float hash( vec2 p ) {
-	vec3 p3 = fract( vec3( p.xyx ) * 0.1031 );
-	p3 += dot( p3, p3.yzx + 33.33 );
-	return fract( ( p3.x + p3.y ) * p3.z );
-}
-float noise( vec2 p ) {
-	vec2 i = floor( p );
-	vec2 f = fract( p );
-	f = f * f * ( 3.0 - 2.0 * f );
-	return mix( mix( hash( i ), hash( i + vec2( 1.0, 0.0 ) ), f.x ),
-		mix( hash( i + vec2( 0.0, 1.0 ) ), hash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
-}
-// Two octaves, the second turned ~37 degrees so no lattice shows.
-float fbm2( vec2 p ) {
-	return ( 2.0 * noise( p ) + noise( mat2( 0.8, 0.6, -0.6, 0.8 ) * p * 2.03 + 17.0 ) ) / 3.0;
-}
+${NOISE_GLSL}
 void main() {
 	if ( uAlpha <= 0.0 ) discard;
 	vec2 p = vUv * 2.0 - 1.0;

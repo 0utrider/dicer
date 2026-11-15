@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EFFECTS, createParticlePool, flareRolls } from '../../src/effects/library/index.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
 import { KIND } from '../../src/effects/library/particles.js';
+import { SHAPE } from '../../src/effects/library/shapes.js';
 import { TIERS } from '../../src/render/quality.js';
 import { EFFECT_IDS } from '../../src/effects/effect-ids.js';
 import { FUMBLE_PARTS } from '../../src/effects/library/catalogue.js';
@@ -267,8 +268,37 @@ describe('rebuilt looks', () => {
     expect(u.uR2.value).toBeLessThan(u.uR.value);
     const dust = emit.mock.calls.map(([s]) => s).filter((s) => s.kind === KIND.SMOKE);
     expect(dust.length).toBeGreaterThan(0);
-    expect(dust.every((s) => s.shape === 7 && s.blend === 'normal')).toBe(true);
+    expect(dust.every((s) => s.shape === SHAPE.SMOKE && s.blend === 'normal')).toBe(true); // PUFF sprites
     h.stop();
+  });
+
+  test('ring material has uEdge, uNoise, uTrail', () => {
+    const ctx = ctxFor(EFFECTS.shockwave);
+    const h = EFFECTS.shockwave.start(ctx);
+    const quad = ctx.scene.children.find((c) => c.material?.uniforms?.uR2);
+    const u = quad.material.uniforms;
+    for (const name of ['uEdge', 'uNoise', 'uTrail']) {
+      expect(u[name], name).toBeTruthy();
+      expect(u[name].value, name).toBeGreaterThan(0);
+      expect(quad.material.fragmentShader, name).toContain(`uniform float ${name};`);
+    }
+    expect(u.uNoise.value).toBeLessThanOrEqual(1);
+    h.stop();
+  });
+
+  test('shockwave size at intensity 2 ≤ 1.6 × size at intensity 1', () => {
+    const sizeAt = (intensity) => {
+      const ctx = ctxFor(EFFECTS.shockwave, { intensity });
+      const h = EFFECTS.shockwave.start(ctx);
+      const quad = ctx.scene.children.find((c) => c.material?.uniforms?.uR2);
+      const s = quad.scale.x;
+      h.stop();
+      return s;
+    };
+    const one = sizeAt(1);
+    expect(sizeAt(2)).toBeGreaterThan(one);
+    expect(sizeAt(2)).toBeLessThanOrEqual(1.6 * one);
+    expect(sizeAt(4)).toBeLessThanOrEqual(1.6 * one);
   });
 
   test('sparkles: spinning GLINT stars and spiral DOTs fading to white', () => {
