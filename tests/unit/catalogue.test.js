@@ -5,7 +5,7 @@ import { KIND } from '../../src/effects/library/particles.js';
 import { SHAPE } from '../../src/effects/library/shapes.js';
 import { TIERS } from '../../src/render/quality.js';
 import { EFFECT_IDS } from '../../src/effects/effect-ids.js';
-import { FUMBLE_PARTS } from '../../src/effects/library/catalogue.js';
+import { CELEBRATE_PARTS, FUMBLE_PARTS } from '../../src/effects/library/catalogue.js';
 
 const IDS = [
   'glow-pulse',
@@ -914,6 +914,94 @@ test('standalone smoke fades to its own (custom) colour, not a fixed grey', () =
   h.stop();
 });
 
+describe('celebrate parts', () => {
+  const COLORS = [null, '#f4f4f4', '#141418', '#e02020', '#2050ff'];
+  const play = (part, over = {}) => {
+    const mod = CELEBRATE_PARTS[part];
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 2048);
+    const ctx = ctxFor(mod, { scene, pool, ...over });
+    const emit = vi.spyOn(pool, 'emit');
+    const h = mod.start(ctx);
+    return { scene, pool, ctx, emit, h, specs: () => emit.mock.calls.map(([s]) => s) };
+  };
+  const lum = (c) => new THREE.Color(c).getHSL({}, THREE.SRGBColorSpace).l;
+
+  test('celebrate spark burst emits STREAK with halo > 0', () => {
+    for (const color of COLORS) {
+      const over = color ? { color: new THREE.Color(color), options: { color } } : {};
+      const { pool, h, specs, ctx } = play('sparks', over);
+      for (let t = 0; t <= 600; t += 20) h.update(t);
+      const glow = specs().filter((s) => s.blend !== 'normal');
+      const streaks = glow.filter((s) => s.kind === KIND.STREAK);
+      expect(streaks.length, color).toBeGreaterThan(0);
+      for (const s of streaks) {
+        expect(s.halo, color).toBeGreaterThan(0);
+        expect(s.gravity, `${color} arcs under gravity`).toBeLessThan(0);
+        expect(s.origin.y, `${color} born above the die top`).toBeGreaterThanOrEqual(1);
+      }
+      // Glowing SPARK points with halos ride along with the streaks.
+      const sparks = glow.filter((s) => s.kind === KIND.SPARK);
+      expect(sparks.length, color).toBeGreaterThan(0);
+      expect(sparks.every((s) => s.halo > 0 && s.gravity < 0), color).toBe(true);
+      // Never invisible: a near-black die's sparks are lit (its rim), not black.
+      for (const s of glow) expect(lum(s.color), `${color} spark colour`).toBeGreaterThan(0.35);
+      // Within the pool: one burst, not a flood.
+      const n = specs().reduce((k, s) => k + s.count, 0);
+      expect(n, color).toBeLessThanOrEqual(Math.round(2048 * ctx.tier.particleScale) / 8);
+      h.stop();
+      pool.dispose();
+    }
+  });
+
+  test('celebrate spark burst is born on the render clock: emitted on its first update with that now', () => {
+    const { pool, h, emit } = play('sparks');
+    expect(emit).not.toHaveBeenCalled(); // nothing at start(), which has no render-loop time
+    h.update(5000);
+    expect(emit).toHaveBeenCalled();
+    expect(emit.mock.calls.every(([s]) => s.now === 5000)).toBe(true);
+    const calls = emit.mock.calls.length;
+    h.update(5100);
+    expect(emit.mock.calls.length).toBe(calls); // a one-off burst
+    expect(pool.update(5050)).toBe(true); // alive on that clock
+    h.stop();
+    pool.dispose();
+  });
+
+  test('glitter emits GLINT/SPARK that twinkle (alpha varies across life)', () => {
+    for (const color of COLORS) {
+      const over = color ? { color: new THREE.Color(color), options: { color } } : {};
+      const { pool, h, specs, ctx } = play('glitter', over);
+      for (let t = 0; t <= ctx.duration; t += 20) h.update(t);
+      const glints = specs();
+      expect(glints.length, color).toBeGreaterThan(0);
+      for (const s of glints) {
+        // KIND.GLINT is the kind whose alpha the pool flickers over life (the twinkle); the SPARK
+        // sprite (SHAPE.GLINT) is its four-point star.
+        expect(s.kind, color).toBe(KIND.GLINT);
+        expect(s.shape, color).toBe(SHAPE.GLINT);
+        expect(s.life, `${color} fades out slowly`).toBeGreaterThanOrEqual(1.4);
+        expect(typeof s.now, color).toBe('number');
+      }
+      // The glowing glints: haloed and lit; deep-shade ones (normal blend) only add contrast on a light map.
+      const lit = glints.filter((s) => s.blend !== 'normal');
+      expect(lit.reduce((n, s) => n + s.count, 0), color).toBeGreaterThan(
+        glints.filter((s) => s.blend === 'normal').reduce((n, s) => n + s.count, 0),
+      );
+      for (const s of lit) {
+        expect(s.halo, color).toBeGreaterThan(0);
+        expect(lum(s.color), `${color} glint colour`).toBeGreaterThan(0.35);
+      }
+      h.stop();
+      pool.dispose();
+    }
+    // The twinkle itself: the pool's vertex shader varies a GLINT's alpha with a sine of its age.
+    const pool = createParticlePool(new THREE.Scene(), 8);
+    expect(pool.layers[0].material.vertexShader).toMatch(/kind == 5 \) alpha \*= [^;]*sin\( t \*/);
+    pool.dispose();
+  });
+});
+
 describe('staged celebrate and fumble', () => {
   const kinds = (emit) => emit.mock.calls.map(([s]) => s.kind);
   const meshes = (scene, base) => scene.children.slice(base).filter((c) => c.isMesh);
@@ -934,15 +1022,15 @@ describe('staged celebrate and fumble', () => {
     expect(shakes).toHaveLength(0);
     h.update(130);
     expect(meshes(scene, base)).toHaveLength(6); // + light-burst (halo + floor ring + floor glow), floor glow, shockwave
-    expect(kinds(emit)[0]).toBe(KIND.STREAK); // the spark burst, then the shockwave's dust ring
-    expect(kinds(emit).every((k) => k === KIND.STREAK || k === KIND.SMOKE)).toBe(true);
-    expect(emit.mock.calls[0][0].colorEnd).toBe('#ff9a3c');
+    expect(kinds(emit)).toContain(KIND.STREAK); // the spark burst (after the shockwave's dust ring: both emit on their first update)
+    expect(kinds(emit).every((k) => k === KIND.STREAK || k === KIND.SPARK || k === KIND.SMOKE)).toBe(true);
+    expect(emit.mock.calls.every(([s]) => s.now === 130)).toBe(true); // born on the render clock
     expect(shakes).toEqual([[0.3, 280]]);
     h.update(190);
-    expect(kinds(emit)).not.toContain(KIND.FLAKE);
+    expect(kinds(emit)).not.toContain(KIND.GLINT);
     h.update(260);
     h.update(360);
-    expect(kinds(emit)).toContain(KIND.FLAKE);
+    expect(kinds(emit)).toContain(KIND.GLINT); // the glitter
     h.stop();
     expect(scene.children.length).toBe(base);
   });

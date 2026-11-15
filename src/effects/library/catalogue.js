@@ -1319,49 +1319,142 @@ const floorGlowPart = Object.freeze({
   start: (ctx) => floorGlow(ctx, { radius: 3, peak: 1.2, ms: ctx.duration }),
 });
 
-/** A one-off burst of streak sparks flying out of the die. */
+/**
+ * A celebration colour set from the die colour (palette): `body` is the colour (a near-black
+ * die's lit rim), `hot` it most of the way to white, `cinder` a deep shade of it for normal-blend
+ * flecks that still read on a light map, where additive light can only brighten.
+ */
+function cheerColors(color) {
+  const pal = palette(color);
+  const body = pal.rim ?? pal.mid;
+  return {
+    body,
+    hot: body.clone().lerp(new THREE.Color(WHITE), 0.6),
+    cinder: pal.rim ? pal.core.clone() : body.clone().multiplyScalar(0.4),
+  };
+}
+
+/**
+ * A one-off burst out of the die top: glowing streak sparks and hot spark points, both haloed,
+ * flung up and out and arcing back down under gravity, plus a few deep-shade flecks (normal
+ * blend) so the burst also reads on a light table.
+ */
 const sparkBurstPart = Object.freeze({
   id: 'spark-burst',
   cost: 1,
   defaults: Object.freeze({ color: '#ffe27a', intensity: 1, duration: 600 }),
   start(ctx) {
-    ctx.particles?.emit({
-      count: countFor(24, ctx),
-      origin: originOf(ctx, DIE_Y),
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 5,
-      spread: 1.2,
-      life: 0.6,
-      color: ctx.color,
-      colorEnd: '#ff9a3c',
-      size: 0.1 * Math.sqrt(Math.max(0.2, ctx.intensity)),
-      kind: KIND.STREAK,
-    });
-    return NOOP;
+    if (!ctx.particles) return NOOP;
+    const k = sizeK(ctx);
+    const { body, hot, cinder } = cheerColors(ctx.color);
+    const life = Math.max(0.3, ctx.duration / 1000) * 1.2;
+    const fling = (now, count, spec) =>
+      ctx.particles.emit({
+        count,
+        origin: originOf(ctx, DIE_TOP),
+        dir: { x: 0, y: 1, z: 0 },
+        spread: 1.35,
+        now,
+        ...spec,
+      });
+    // Emitted on the first update, with its `now`: the pool's clock is the render loop's, so a
+    // particle born at start() on performance.now() could be off that clock (and never show).
+    const burst = (now) => {
+      fling(now, countFor(22, ctx), {
+        speed: 7,
+        gravity: -9,
+        life,
+        color: hot,
+        colorEnd: body,
+        size: 0.3 * k,
+        stretch: 0.22,
+        kind: KIND.STREAK,
+        halo: 0.7,
+      });
+      fling(now, countFor(12, ctx), {
+        speed: 4.2,
+        gravity: -7,
+        life: life * 1.15,
+        color: hot,
+        colorEnd: body,
+        size: 0.34 * k,
+        sizeEnd: 0.35,
+        kind: KIND.SPARK,
+        halo: 0.8,
+      });
+      fling(now, countFor(6, ctx), {
+        speed: 4.6,
+        gravity: -8,
+        life,
+        color: cinder,
+        size: 0.22 * k,
+        sizeEnd: 0.5,
+        kind: KIND.SPARK,
+        blend: 'normal',
+        alpha: 0.8,
+      });
+    };
+    let fired = false;
+    return timed(
+      ctx.duration,
+      (e, now) => {
+        if (fired) return;
+        fired = true;
+        burst(now);
+      },
+      () => {},
+    );
   },
 });
 
-/** Glitter flakes drifting down from above the die. */
+/**
+ * Glitter: four-point glints (the SPARK sprite) showering down over the die, white-hot to the
+ * die colour; KIND.GLINT's alpha flicker makes them twinkle as they slowly fade out.
+ */
 const glitterPart = Object.freeze({
   id: 'glitter',
   cost: 1,
   defaults: Object.freeze({ color: '#ffe27a', intensity: 1, duration: 1200 }),
   start(ctx) {
     if (!ctx.particles) return NOOP;
-    const emit = trickle(ctx, countFor(30, ctx), 0.5, {
+    const { body, hot, cinder } = cheerColors(ctx.color);
+    const fall = {
       origin: originOf(ctx, DIE_Y + 2.5),
+      jitter: 1.5,
       dir: { x: 0, y: -1, z: 0 },
-      speed: 0.4,
-      spread: 1.3,
-      gravity: -2.5,
-      life: 1.4,
-      color: '#ffffff',
-      colorEnd: ctx.color,
-      size: 0.12 * Math.sqrt(Math.max(0.2, ctx.intensity)),
-      kind: KIND.FLAKE,
-      spin: 4,
+      speed: 1,
+      spread: 1.4,
+      gravity: -1.4,
+      life: 1.7,
+      kind: KIND.GLINT,
+      shape: SHAPE.GLINT,
+      spin: 2,
+    };
+    const glints = trickle(ctx, countFor(30, ctx), 0.55, {
+      ...fall,
+      color: hot,
+      colorEnd: body,
+      size: 0.75 * sizeK(ctx),
+      sizeEnd: 0.5,
+      halo: 0.6,
     });
-    return timed(ctx.duration, emit, () => {});
+    // A few deep-shade glints (normal blend) among them, so the glitter also reads on a light map.
+    const flecks = trickle(ctx, countFor(10, ctx), 0.55, {
+      ...fall,
+      color: cinder,
+      size: 0.55 * sizeK(ctx),
+      sizeEnd: 0.5,
+      blend: 'normal',
+      alpha: 0.8,
+    });
+    return timed(
+      ctx.duration,
+      (e, now) => {
+        glints(e, now);
+        flecks(e, now);
+      },
+      () => {},
+    );
   },
 });
 
@@ -1635,6 +1728,9 @@ const fizzlePart = Object.freeze({
     );
   },
 });
+
+/** Celebrate's private parts, exported for tests only (not effect ids). */
+export const CELEBRATE_PARTS = Object.freeze({ sparks: sparkBurstPart, glitter: glitterPart });
 
 // Parts are in budget priority order after the essential one (index 0).
 export const celebrate = composite({
