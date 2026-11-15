@@ -20,7 +20,9 @@ const COINS = ['numbers', 'heads-tails', 'sun-moon']; // d2 faces; the motifs: l
 /** Crit/fumble icons a die can show instead of the number. */
 export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame']);
 /** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
-export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
+export const STRIP_STYLES = Object.freeze(['body', 'paint', 'metal', 'glow']);
+export const stripActive = (a) => a.edges.strip.style !== 'body' && a.edges.strip.strength > 0 && a.edges.radius > 0;
+export const EDGE_STEPS =Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 /** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
 export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco']);
 
@@ -33,7 +35,7 @@ export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null, luminous: 0 },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false },
   numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif', pips: false, coin: 'numbers' },
-  edges: { radius: 0.5, style: 'rounded' },
+  edges: { radius: 0.5, style: 'rounded', strip: { style: 'body', color: '#e2b04a', strength: 1 } },
   glow: { color: '#ffffff', intensity: 0 },
   shapes: { d4: 'classic' },
 });
@@ -95,6 +97,7 @@ export function normalizeAppearance(input) {
     const b = isObj(i.body) ? i.body : {};
     const n = isObj(i.numbers) ? i.numbers : {};
     const e = isObj(i.edges) ? i.edges : {};
+    const es = isObj(e.strip) ? e.strip : {};
     const g = isObj(i.glow) ? i.glow : {};
     const it = isObj(i.interior) ? i.interior : {};
     const cols = Array.isArray(it.colors) ? it.colors : [];
@@ -135,7 +138,11 @@ export function normalizeAppearance(input) {
         pips: n.pips === true,
         coin: pick(n.coin, COINS, 'numbers'),
       },
-      edges: { radius, style: radius === 0 ? 'sharp' : 'rounded' },
+      edges: {
+        radius,
+        style: radius === 0 ? 'sharp' : 'rounded',
+        strip: { style: pick(es.style, STRIP_STYLES, 'body'), color: color(es.color, D.edges.strip.color), strength: num(es.strength, 0, 1, 1) },
+      },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
       shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
     };
@@ -182,6 +189,7 @@ export function programKey(a, flags) {
   if (active && flags.insideMotion && (type !== 'shape' || SHAPES.indexOf(shape) > 3)) parts.push('mo'); // living insides (the look-extras chunk's)
   const { fill, relief } = a.numbers;
   if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
+  if (stripActive(a)) parts.push(`e:${a.edges.strip.style}`);
   return parts.join('|');
 }
 
@@ -197,6 +205,7 @@ export const needsLookExtras = (a) =>
   !!BODY_PRESETS[a.body.type] ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
   a.body.luminous > 0 ||
+  stripActive(a) ||
   (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || LIQUID_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
 
 /** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */
@@ -218,6 +227,7 @@ export const fallbackLook = (a) =>
           bubble: false,
           sand: false,
         },
+        edges: { ...a.edges, strip: { ...a.edges.strip, style: 'body' } },
         numbers: {
           ...a.numbers,
           fill: { outline: 'paint', holo: 'gold', glow: 'paint' }[a.numbers.fill] || a.numbers.fill,

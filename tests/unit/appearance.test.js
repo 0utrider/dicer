@@ -9,6 +9,7 @@ import {
   needsLookExtras,
   normalizeAppearance,
   programKey,
+  stripActive,
 } from '../../src/look/appearance.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { DAMAGE_THEMES } from '../../src/effects/damage-themes.js';
@@ -131,11 +132,11 @@ describe('programKey', () => {
 
 describe('Plan 7: edge sharpness and font', () => {
   test('defaults: radius 0.5, style rounded, font serif', () => {
-    expect(DEFAULT_APPEARANCE.edges).toEqual({ radius: 0.5, style: 'rounded' });
+    expect(DEFAULT_APPEARANCE.edges).toMatchObject({ radius: 0.5, style: 'rounded' });
     expect(DEFAULT_APPEARANCE.numbers.font).toBe('serif');
     expect(Object.isFrozen(DEFAULT_APPEARANCE.edges)).toBe(true);
     expect(Object.isFrozen(DEFAULT_APPEARANCE.numbers)).toBe(true);
-    expect(normalizeAppearance({}).edges).toEqual({ radius: 0.5, style: 'rounded' });
+    expect(normalizeAppearance({}).edges).toMatchObject({ radius: 0.5, style: 'rounded' });
     expect(normalizeAppearance({}).numbers.font).toBe('serif');
     expect(EDGE_STEPS).toEqual([0, 0.25, 0.5, 0.75, 1]);
   });
@@ -162,10 +163,10 @@ describe('Plan 7: edge sharpness and font', () => {
     expect(normalizeAppearance({ edges: { radius: 1 } }).edges.style).toBe('rounded');
   });
   test('legacy edges.style maps to a radius; radius wins when both are given', () => {
-    expect(normalizeAppearance({ edges: { style: 'sharp' } }).edges).toEqual({ radius: 0, style: 'sharp' });
-    expect(normalizeAppearance({ edges: { style: 'rounded' } }).edges).toEqual({ radius: 0.5, style: 'rounded' });
-    expect(normalizeAppearance({ edges: { style: 'bogus' } }).edges).toEqual({ radius: 0.5, style: 'rounded' });
-    expect(normalizeAppearance({ edges: { style: 'sharp', radius: 0.75 } }).edges).toEqual({ radius: 0.75, style: 'rounded' });
+    expect(normalizeAppearance({ edges: { style: 'sharp' } }).edges).toMatchObject({ radius: 0, style: 'sharp' });
+    expect(normalizeAppearance({ edges: { style: 'rounded' } }).edges).toMatchObject({ radius: 0.5, style: 'rounded' });
+    expect(normalizeAppearance({ edges: { style: 'bogus' } }).edges).toMatchObject({ radius: 0.5, style: 'rounded' });
+    expect(normalizeAppearance({ edges: { style: 'sharp', radius: 0.75 } }).edges).toMatchObject({ radius: 0.75, style: 'rounded' });
   });
   test('a normalized appearance normalizes to itself', () => {
     const a = normalizeAppearance({ edges: { radius: 0.25 }, numbers: { font: 'sans' } });
@@ -561,5 +562,40 @@ describe('numbers.pips and numbers.coin (pipped d6, coin motifs)', () => {
     }
     for (const [k, t] of Object.entries(DAMAGE_THEMES)) keys[`dmg:${k}`] = programKey(t.appearance, F);
     expect(keys).toEqual(BASE_KEYS);
+  });
+});
+
+describe('edges.strip (styled bevel strips)', () => {
+  test('default and missing strip normalise to body/#e2b04a/1', () => {
+    expect(DEFAULT_APPEARANCE.edges.strip).toEqual({ style: 'body', color: '#e2b04a', strength: 1 });
+    expect(normalizeAppearance({ edges: { radius: 0.5 } }).edges.strip).toEqual({ style: 'body', color: '#e2b04a', strength: 1 });
+    expect(normalizeAppearance({ edges: { style: 'sharp' } }).edges).toEqual({ radius: 0, style: 'sharp', strip: { style: 'body', color: '#e2b04a', strength: 1 } });
+  });
+  test('invalid fields fall back per field', () => {
+    const s = normalizeAppearance({ edges: { strip: { style: 'neon', color: 'red', strength: 3 } } }).edges.strip;
+    expect(s).toEqual({ style: 'body', color: '#e2b04a', strength: 1 });
+    expect(normalizeAppearance({ edges: { strip: { style: 'metal', color: '#ABC', strength: 0.4 } } }).edges.strip).toEqual({ style: 'metal', color: '#aabbcc', strength: 0.4 });
+  });
+  test('stripActive needs a style, strength > 0 and a rounded edge', () => {
+    const a = (strip, radius = 0.5) => normalizeAppearance({ edges: { radius, strip } });
+    expect(stripActive(a({ style: 'paint' }))).toBe(true);
+    expect(stripActive(a({ style: 'body' }))).toBe(false);
+    expect(stripActive(a({ style: 'paint', strength: 0 }))).toBe(false);
+    expect(stripActive(a({ style: 'paint' }, 0))).toBe(false);
+  });
+  test('programKey: e:<style> only when active; inactive keys equal today', () => {
+    const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
+    const plain = normalizeAppearance({});
+    expect(programKey(normalizeAppearance({ edges: { strip: { style: 'glow' } } }), flags)).toBe(`${programKey(plain, flags)}|e:glow`);
+    expect(programKey(normalizeAppearance({ edges: { radius: 0, strip: { style: 'glow' } } }), flags)).toBe(programKey(normalizeAppearance({ edges: { radius: 0 } }), flags));
+  });
+  test('needsLookExtras when active; fallbackLook resets the style to body', () => {
+    const a = normalizeAppearance({ edges: { strip: { style: 'metal', color: '#c0c0c0' } } });
+    expect(needsLookExtras(a)).toBe(true);
+    expect(fallbackLook(a).edges.strip).toEqual({ style: 'body', color: '#c0c0c0', strength: 1 });
+    expect(needsLookExtras(normalizeAppearance({ edges: { radius: 0, strip: { style: 'metal' } } }))).toBe(false);
+  });
+  test('every built-in look keeps strip body', () => {
+    for (const { appearance } of Object.values(LOOKS)) expect(normalizeAppearance(appearance).edges.strip.style).toBe('body');
   });
 });
