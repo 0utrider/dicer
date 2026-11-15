@@ -773,8 +773,8 @@ describe('the appearance editor', () => {
     try {
       const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
       const clicked = click(app, '[data-action="pickJb2a"][data-key="nat1"]');
-      await vi.waitFor(() => expect(document.querySelector('.dicer-jp li[data-path]')).not.toBeNull());
-      document.querySelector('.dicer-jp li[data-path="jb2a.explosion.01.blue"]').click();
+      await vi.waitFor(() => expect(document.querySelector('.dicer-jp-tile')).not.toBeNull());
+      document.querySelector('.dicer-jp-tile[data-key="jb2a.explosion.01"]').click();
       document.querySelector('.dicer-jp-choose').click();
       await clicked;
       await vi.waitFor(() => expect(app.theme().rules.find((r) => r.id === 'dicer.nat1')?.effect).toEqual({ id: 'light-burst', jb2a: file }));

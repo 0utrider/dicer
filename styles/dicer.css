@@ -1500,112 +1500,181 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 
 /* JB2A animation picker (appearance editor film button, over Sequencer's database). */
 .dicer-jp {
+  --jp-line: color-mix(in srgb, currentColor 14%, transparent);
+  --jp-hover: color-mix(in srgb, currentColor 9%, transparent);
+  --jp-accent: var(--color-warm-1, #ee9b3a);
   position: fixed;
   inset: 0;
   z-index: 10000;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--color-text-primary, #eee);
 }
 .dicer-jp-box {
   display: flex;
   flex-direction: column;
-  width: min(820px, 94vw);
-  height: min(560px, 88vh);
+  width: min(1080px, 95vw);
+  height: min(720px, 90vh);
   border: 1px solid var(--color-border, #444);
   border-radius: 8px;
   background: var(--color-cool-5, #1d1b22);
-  color: var(--color-text-primary, #eee);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
 }
 .dicer-jp-head,
 .dicer-jp-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 10px 12px;
 }
 .dicer-jp-head h2 {
-  flex: 1;
   margin: 0;
   border: none;
   font-size: 1.1em;
+  white-space: nowrap;
+}
+.dicer-jp-search {
+  flex: 1;
+  min-width: 0;
 }
 .dicer-jp-head button,
 .dicer-jp-foot button {
   width: auto;
   flex: none;
 }
-.dicer-jp-foot {
-  justify-content: flex-end;
+.dicer-jp-status {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9em;
+  opacity: 0.8;
 }
 .dicer-jp-body {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
-  gap: 12px;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 10px;
   min-height: 0;
   padding: 0 12px;
 }
-.dicer-jp-left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 0;
-}
-.dicer-jp-list {
-  flex: 1;
+.dicer-jp-cats {
   overflow: auto;
   margin: 0;
-  padding: 0;
+  padding: 4px;
   list-style: none;
-  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border: 1px solid var(--jp-line);
   border-radius: 6px;
 }
-.dicer-jp-list li {
-  padding: 3px 8px;
+.dicer-jp-cats li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  white-space: nowrap;
+  text-transform: capitalize;
+}
+.dicer-jp-cats li span {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-mono, monospace);
-  font-size: 0.85em;
+  white-space: nowrap;
 }
-.dicer-jp-list li:hover {
-  background: color-mix(in srgb, currentColor 9%, transparent);
+.dicer-jp-cats li em {
+  flex: none;
+  font-style: normal;
+  opacity: 0.6;
 }
-.dicer-jp-list li[aria-selected='true'] {
-  background: color-mix(in srgb, var(--color-warm-1, #ee9b3a) 24%, transparent);
+.dicer-jp-cats li:hover {
+  background: var(--jp-hover);
 }
-.dicer-jp-list li.dicer-jp-none {
-  cursor: default;
-  font-family: inherit;
-  opacity: 0.7;
+.dicer-jp-cats li[aria-selected='true'] {
+  background: color-mix(in srgb, var(--jp-accent) 24%, transparent);
 }
-.dicer-jp-count,
-.dicer-jp-name {
-  margin: 0;
-  font-size: 0.85em;
-  opacity: 0.75;
-  word-break: break-all;
+.dicer-jp-main {
+  overflow: auto;
+  min-height: 0;
 }
-.dicer-jp-right {
+.dicer-jp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+.dicer-jp-tile {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-.dicer-jp-video {
-  width: 100%;
-  aspect-ratio: 1;
+  padding: 6px;
+  border: 1px solid var(--jp-line);
   border-radius: 6px;
-  background: repeating-conic-gradient(#2a2730 0 25%, #222027 0 50%) 0 0 / 20px 20px;
+  cursor: pointer;
+}
+.dicer-jp-tile:hover,
+.dicer-jp-tile:focus-visible {
+  background: var(--jp-hover);
+}
+.dicer-jp-tile[aria-selected='true'] {
+  border-color: var(--jp-accent);
+  background: color-mix(in srgb, var(--jp-accent) 14%, transparent);
+}
+.dicer-jp-thumb {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+  background: repeating-conic-gradient(#2a2730 0 25%, #222027 0 50%) 0 0 / 16px 16px;
+}
+.dicer-jp-thumb video {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
-@media (max-width: 600px) {
+.dicer-jp-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85em;
+  text-transform: capitalize;
+}
+.dicer-jp-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dicer-jp-swatch {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+}
+.dicer-jp-swatch[aria-pressed='true'] {
+  outline: 2px solid var(--jp-accent);
+  outline-offset: 1px;
+}
+.dicer-jp-more {
+  display: block;
+  width: auto;
+  margin: 10px auto;
+}
+.dicer-jp-none {
+  grid-column: 1 / -1;
+  opacity: 0.7;
+}
+@media (max-width: 640px) {
   .dicer-jp-body {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
-  .dicer-jp-right {
+  .dicer-jp-cats {
+    max-height: 120px;
+  }
+  .dicer-jp-head h2 {
     display: none;
   }
 }

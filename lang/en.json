@@ -538,7 +538,10 @@
       "Choose": "Use this animation",
       "Cancel": "Cancel",
       "None": "No JB2A animation matches.",
-      "More": "Showing {shown} of {total}. Type more to narrow it down."
+      "More": "Show more ({count} left)",
+      "Categories": "JB2A categories",
+      "All": "All",
+      "Current": "Now using"
     },
     "Appearance": {
       "Title": "Dicer appearance editor",
