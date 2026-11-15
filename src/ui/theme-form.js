@@ -216,6 +216,35 @@ const NATS = [
   ['nat1', 'dicer.nat1', 1],
 ];
 
+/**
+ * What a Sound and celebrations preview button throws: one local d20 in the theme's d20 look with
+ * its impact sound; 'nat20' / 'nat1' land that face with the theme's rule (effect + sound).
+ * @param {object} theme a raw theme (the editor's working theme)
+ * @param {'impact'|'nat20'|'nat1'} key
+ * @returns {{fx: object|null, options: object}} the arguments of `game.dice3d._preview`
+ */
+export function celebrationPreview(theme, key) {
+  const nat = NATS.find(([k]) => k === key);
+  const value = nat?.[2];
+  const rule = nat ? (theme?.rules ?? []).find((r) => r?.id === nat[1]) : null;
+  const effect = rule?.effect ?? null;
+  const sound = rule?.sound ?? null;
+  const fx =
+    effect || sound
+      ? { ruleId: rule.id, effect, sound, macro: null, slowMotion: false, value, type: 'd20' }
+      : null;
+  const appearance = theme?.perType?.d20 ?? theme?.appearance;
+  return {
+    fx,
+    options: {
+      type: 'd20',
+      ...(value ? { value } : {}),
+      ...(appearance ? { appearance } : {}),
+      ...(theme?.soundMaterial ? { soundMaterial: theme.soundMaterial } : {}),
+    },
+  };
+}
+
 /** A theme as the form's string values. */
 export function formFromTheme(theme) {
   const perType = {};

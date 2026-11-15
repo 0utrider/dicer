@@ -263,12 +263,15 @@
       <details class="dicer-ae-section" data-section="extras" {{#if open.extras}}open{{/if}}>
         <summary><i class="fa-solid fa-music"></i> <span>{{localize "DICER.Appearance.Section.extras"}}</span><em>{{summary.extras}}</em></summary>
         <div class="dicer-ae-fields">
-          <label class="dicer-field">
-            <span>{{localize "DICER.Appearance.Extras.SoundMaterial"}}</span>
-            <select name="extras.soundMaterial">{{selectOptions materialChoices selected=extras.soundMaterial}}</select>
-          </label>
+          <div class="dicer-ae-extra">
+            <label class="dicer-field">
+              <span>{{localize "DICER.Appearance.Extras.SoundMaterial"}}</span>
+              <select name="extras.soundMaterial">{{selectOptions materialChoices selected=extras.soundMaterial}}</select>
+            </label>
+            <button type="button" class="dicer-icon" data-action="previewExtra" data-key="impact" data-tooltip="DICER.Appearance.Extras.PreviewImpact" aria-label="{{localize "DICER.Appearance.Extras.PreviewImpact"}}"><i class="fa-solid fa-play"></i></button>
+          </div>
           {{#each celebrations}}
-            <div class="dicer-ae-row">
+            <div class="dicer-ae-row dicer-ae-extra">
               <label class="dicer-field">
                 <span>{{label}} · {{localize "DICER.Appearance.Extras.Effect"}}</span>
                 <select name="extras.{{key}}.effect">{{selectOptions ../effectChoices selected=effect}}</select>
@@ -277,6 +280,7 @@
                 <span>{{label}} · {{localize "DICER.Appearance.Extras.Sound"}}</span>
                 <select name="extras.{{key}}.sound">{{selectOptions ../soundChoices selected=sound}}</select>
               </label>
+              <button type="button" class="dicer-icon" data-action="previewExtra" data-key="{{key}}" data-tooltip="{{preview}}" aria-label="{{preview}}"><i class="fa-solid fa-play"></i></button>
             </div>
           {{/each}}
         </div>

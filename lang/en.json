@@ -756,7 +756,10 @@
         "NatHigh": "Natural 20",
         "NatLow": "Natural 1",
         "None": "None",
-        "Keep": "Keep current (custom)"
+        "Keep": "Keep current (custom)",
+        "PreviewImpact": "Throw a test die to hear the impact sound (only you see it)",
+        "PreviewNatHigh": "Throw a test natural 20 with this effect and sound (only you see it)",
+        "PreviewNatLow": "Throw a test natural 1 with this effect and sound (only you see it)"
       },
       "Name": "Theme name",
       "NamePlaceholder": "My dice",

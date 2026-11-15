@@ -15,7 +15,7 @@ import { LOOKS } from '../look/looks.js';
 import { stripActive } from '../look/appearance.js';
 import { PET_KINDS, readPet } from '../pet/pet-for.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
-import { KEEP, formFromTheme, themeFromForm } from './theme-form.js';
+import { KEEP, celebrationPreview, formFromTheme, themeFromForm } from './theme-form.js';
 import {
   BODY_TYPES,
   FINISHES,
@@ -133,6 +133,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       setPet: AppearanceEditor.#onSetPet,
       previewDie: AppearanceEditor.#onPreviewDie,
       throwLook: AppearanceEditor.#onThrowLook,
+      previewExtra: AppearanceEditor.#onPreviewExtra,
       editType: AppearanceEditor.#onEditType,
       sameAsDefault: AppearanceEditor.#onSameAsDefault,
       pickFont: AppearanceEditor.#onPickFont,
@@ -318,8 +319,8 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       effectChoices: choiceMap(KNOWN_EFFECTS, humanize, loc('DICER.Appearance.Extras.None'), keep),
       soundChoices: choiceMap(USER_SOUNDS, humanize, loc('DICER.Appearance.Extras.None'), keep),
       celebrations: [
-        { key: 'nat20', label: loc('DICER.Appearance.Extras.NatHigh'), ...extras.nat20 },
-        { key: 'nat1', label: loc('DICER.Appearance.Extras.NatLow'), ...extras.nat1 },
+        { key: 'nat20', label: loc('DICER.Appearance.Extras.NatHigh'), preview: loc('DICER.Appearance.Extras.PreviewNatHigh'), ...extras.nat20 },
+        { key: 'nat1', label: loc('DICER.Appearance.Extras.NatLow'), preview: loc('DICER.Appearance.Extras.PreviewNatLow'), ...extras.nat1 },
       ],
       isGM: this.#isGM,
       canUpdate: Boolean(this.#originalId),
@@ -544,6 +545,17 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       return;
     }
     await api._throwLook(this.#previewTheme());
+  }
+
+  /** Throws one local d20 with the working impact sound, or landing a nat 20 / nat 1 with its celebration. */
+  static async #onPreviewExtra(event, target) {
+    const api = globalThis.game?.dice3d;
+    if (typeof api?._preview !== 'function') {
+      globalThis.ui?.notifications?.warn(loc('DICER.Appearance.PreviewUnavailable'));
+      return;
+    }
+    const { fx, options } = celebrationPreview(this.theme(), target.dataset.key);
+    await api._preview(fx, options);
   }
 
   static async #onPreviewDie(event, target) {

@@ -1095,6 +1095,15 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   grid-template-columns: 1fr 1fr;
   gap: 8px 12px;
 }
+.dicer-appearance-editor .dicer-ae-extra {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px 12px;
+}
+.dicer-appearance-editor .dicer-ae-row.dicer-ae-extra {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
 .dicer-appearance-editor .dicer-ae-toggle {
   display: flex;
   align-items: center;

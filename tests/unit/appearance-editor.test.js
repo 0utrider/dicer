@@ -683,6 +683,33 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('the Sound and celebrations play buttons throw a local test d20 with the unsaved choices', async () => {
+    const _preview = vi.fn(async () => {});
+    globalThis.game.dice3d._preview = _preview;
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    const pick = (name, value) => {
+      const el = q(app, `select[name="${name}"]`);
+      el.value = value;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    pick('extras.soundMaterial', 'wood');
+    pick('extras.nat20.effect', 'shockwave');
+    pick('extras.nat20.sound', 'fanfare');
+    await click(app, '[data-action="previewExtra"][data-key="impact"]');
+    expect(_preview).toHaveBeenLastCalledWith(null, expect.objectContaining({ type: 'd20', soundMaterial: 'wood' }));
+    await click(app, '[data-action="previewExtra"][data-key="nat20"]');
+    const [fx, options] = _preview.mock.calls.at(-1);
+    expect(fx).toMatchObject({ effect: { id: 'shockwave' }, sound: { builtin: 'fanfare' }, value: 20 });
+    expect(options).toMatchObject({ type: 'd20', value: 20, soundMaterial: 'wood' });
+    expect(options.appearance.body.type).toBe(metal.body.type);
+    await click(app, '[data-action="previewExtra"][data-key="nat1"]');
+    expect(_preview).toHaveBeenLastCalledWith(null, expect.objectContaining({ value: 1 }));
+    delete globalThis.game.dice3d._preview;
+    await click(app, '[data-action="previewExtra"][data-key="nat20"]');
+    expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith('The live preview needs the 3D dice to be running.');
+    await app.close();
+  });
+
   it('renders one root with the layer sections; the inside is a note for a non-resin body', async () => {
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
     const root = q(app, '.window-content');
