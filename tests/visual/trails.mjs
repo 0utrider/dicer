@@ -1,6 +1,6 @@
 // Visual check: elemental trails. Throws a resin d20 with a fire, a frost, a storm and a lava inside
 // and plain ones with damageType 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental',
-// 'spirit', 'bleed', 'slashing', 'piercing' and 'bludgeoning' (trail 2, no landing effects) on the
+// 'spirit', 'bleed', 'slashing', 'piercing' and 'bludgeoning' (trail 2, landing on 19: no crit burst) on the
 // dark and the light backdrop, with jb2a=off, and writes
 // docs/signoff/elemental-trails/<round>/trails.png: rows are element x backdrop, columns are three
 // in-flight shots and one 600 ms after landing. An in-flight shot is taken no earlier than 150, 400
@@ -115,7 +115,7 @@ const ALL = [
 ];
 const SHEET = process.env.DICER_TRAILS_SHEET === 'bursts' ? 'bursts' : 'trails';
 /** The bursts built so far (round 3 adds the rest task by task). */
-const BUILT_BURSTS = ['fire', 'frost', 'storm', 'lava'];
+const BUILT_BURSTS = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison'];
 const BURST_TIMES = process.env.DICER_BURST_TIMES?.split(',')
   .map(Number)
   .filter((t) => t > 0) ?? [120, 350, 700, 1100, 1700];
@@ -158,7 +158,7 @@ async function capture(page, appearance, damageType) {
         [
           {
             type: 'd20',
-            value: 20,
+            value: 19, // not a natural 20: the landed column shows the trail's landing, no crit burst
             trail: 2,
             appearance: look,
             ...(dmg ? { damageType: dmg } : {}),

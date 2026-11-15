@@ -811,13 +811,51 @@ describe('elemental crit bursts (the automatic natural-20 burst)', () => {
     const m = await library();
     const { layer, warn } = setup({ tier: 'ultra', loadLibrary: async () => m });
     await layer.prefetch();
-    const acid = { ...nat20(), appearance: null, damageType: 'acid' };
-    expect(m.EFFECTS['burst-acid']).toBeUndefined();
-    expect(() => layer.play(acid, null)).not.toThrow();
+    const sonic = { ...nat20(), appearance: null, damageType: 'sonic' };
+    expect(m.EFFECTS['burst-sonic']).toBeUndefined();
+    expect(() => layer.play(sonic, null)).not.toThrow();
     expect(layer.running).toBe(0);
-    expect(() => layer.play(makeDie(), fxOf('burst-acid'))).not.toThrow();
+    expect(() => layer.play(makeDie(), fxOf('burst-sonic'))).not.toThrow();
     expect(layer.running).toBe(0);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  test('a rule-picked burst respects the cap: skipped while 3 bursts run, other fx still play', async () => {
+    const log = [];
+    const m = await lib(log);
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    for (let i = 0; i < 3; i++) layer.play(nat20(), null);
+    expect(bursts(log)).toHaveLength(3);
+    layer.play(makeDie(), fxOf('burst-fire', 'a'));
+    expect(bursts(log)).toHaveLength(3);
+    expect(log.filter((e) => e[0] === 'start' && e[1] === 'a')).toHaveLength(1);
+  });
+
+  test('no duplicate: a natural 20 whose fx already holds a burst gets no automatic one', async () => {
+    const log = [];
+    const m = await lib(log);
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    layer.play(nat20(), fxOf('burst-fire'));
+    expect(bursts(log)).toHaveLength(1);
+  });
+
+  test('a natural 20 landing before the library is in asks for it, so later bursts play', async () => {
+    const log = [];
+    const m = await lib(log);
+    const loadLibrary = vi.fn(async () => m);
+    const { layer } = setup({ tier: 'ultra', loadLibrary });
+    layer.play(nat20(), null);
+    expect(loadLibrary).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(layer.loaded).toBe(true));
+    layer.play(nat20(), null);
+    expect(bursts(log)).toHaveLength(1);
+    // effects off: nothing is fetched
+    const offLoad = vi.fn(async () => m);
+    const off = setup({ tier: 'ultra', loadLibrary: offLoad, settings: { effects: false } });
+    off.layer.play(nat20(), null);
+    expect(offLoad).not.toHaveBeenCalled();
   });
 
   test('low tier (effectBudget 2): the burst still plays beside a cost-1 celebration', async () => {

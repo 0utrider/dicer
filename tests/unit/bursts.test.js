@@ -1,13 +1,15 @@
 import * as THREE from 'three';
-import { BURSTS, burstFor } from '../../src/effects/library/bursts.js';
+import { BURSTS, BURST_CAP, burstFor, withBursts } from '../../src/effects/library/bursts.js';
 import { EFFECTS, createParticlePool } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
 import { EFFECT_IDS } from '../../src/effects/effect-ids.js';
 import { KNOWN_EFFECTS } from '../../src/themes/themes.js';
 import { ELEMENTS } from '../../src/effects/elements.js';
 import { ELEMENTS as TRAIL_ELEMENTS } from '../../src/effects/library/trails.js';
+import { KIND } from '../../src/effects/library/particles.js';
+import { SHAPE } from '../../src/effects/library/shapes.js';
 
-const BUILT = ['burst-fire', 'burst-frost', 'burst-storm', 'burst-lava'];
+const BUILT = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison'].map((e) => `burst-${e}`);
 const fireInside = { interior: { type: 'fire' } };
 const nat20 = (over = {}) => ({ type: 'd20', value: 20, trail: 2, appearance: fireInside, ...over });
 
@@ -41,6 +43,34 @@ describe('burstFor', () => {
     expect(burstFor(nat20(), two, () => undefined)?.effect.id).toBe('burst-fire');
     const three = [...two, { id: 'burst-storm' }];
     expect(burstFor(nat20(), three, () => undefined)).toBeNull();
+  });
+});
+
+describe('withBursts (the layer\u2019s one burst entry: the cap for every burst, no duplicate)', () => {
+  const rule = (id) => ({ ruleId: 'r', effect: { id }, sound: null });
+  const runningOf = (n) => Array.from({ length: n }, () => ({ id: 'burst-lava' }));
+  test('appends the automatic burst to the die\u2019s fx (null or [] too)', () => {
+    expect(withBursts(nat20(), [rule('a')], [], () => undefined).map((f) => f.effect.id)).toEqual(['a', 'burst-fire']);
+    expect(withBursts(nat20(), null, [], () => undefined).map((f) => f.effect.id)).toEqual(['burst-fire']);
+    expect(withBursts(nat20({ value: 19 }), null, [], () => undefined)).toEqual([]);
+  });
+  test('no duplicate: fx that already holds a burst-* gets no automatic one', () => {
+    const fx = [rule('burst-acid'), rule('a')];
+    expect(withBursts(nat20(), fx, [], () => undefined).map((f) => f.effect.id)).toEqual(['burst-acid', 'a']);
+  });
+  test('a rule-picked burst is skipped while BURST_CAP bursts run; other fx stay', () => {
+    expect(BURST_CAP).toBe(3);
+    const fx = [rule('burst-acid'), rule('a')];
+    expect(withBursts({}, fx, runningOf(2), () => undefined).map((f) => f.effect.id)).toEqual(['burst-acid', 'a']);
+    expect(withBursts({}, fx, runningOf(3), () => undefined).map((f) => f.effect.id)).toEqual(['a']);
+    // the bursts of one fx list count too
+    const many = [rule('burst-acid'), rule('burst-void'), rule('burst-fire')];
+    expect(withBursts({}, many, runningOf(1), () => undefined).map((f) => f.effect.id)).toEqual(['burst-acid', 'burst-void']);
+  });
+  test('never throws: bad input gives the fx back', () => {
+    expect(withBursts(null, undefined, null, null)).toEqual([]);
+    const odd = [null, { effect: null }, rule('a')];
+    expect(withBursts(nat20(), odd, undefined, () => undefined).map((f) => f?.effect?.id)).toEqual([undefined, undefined, 'a', 'burst-fire']);
   });
 });
 
@@ -168,5 +198,55 @@ describe.each(BUILT)('%s', (id) => {
       const d = Math.hypot(s.origin.x - ctx.position.x, s.origin.z - ctx.position.z);
       expect(d, JSON.stringify(s.origin)).toBeGreaterThanOrEqual(0.9);
     }
+  });
+});
+
+test('catalogue.js shares with bursts.js exactly what bursts.js imports (no unused exports)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const names = (block) => block.split(',').map((s) => s.trim()).filter(Boolean).sort();
+  const src = readFileSync('src/effects/library/bursts.js', 'utf8');
+  const imported = names(src.match(/import \{([^}]*)\} from '\.\/catalogue\.js'/)[1]);
+  const cat = readFileSync('src/effects/library/catalogue.js', 'utf8');
+  const shared = names(cat.match(/\nexport \{([^}]*)\};/)[1]);
+  const directly = [...cat.matchAll(/^export (?:const|function) (\w+)/gm)].map((m) => m[1]);
+  const offered = [...shared, ...directly];
+  for (const n of imported) expect(offered, n).toContain(n);
+  expect(shared.filter((n) => !imported.includes(n))).toEqual([]);
+});
+
+test('the visual trails sheet lands its dice on 19 (no burst); the bursts sheet keeps 20', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('tests/visual/trails.mjs', 'utf8');
+  const body = (fn) => src.slice(src.indexOf(`async function ${fn}(`), src.indexOf('\n}\n', src.indexOf(`async function ${fn}(`)));
+  expect(body('capture')).toMatch(/value: 19/);
+  expect(body('capture')).not.toMatch(/value: 20/);
+  expect(body('captureBurst')).toMatch(/value: 20/);
+});
+
+describe('each new burst reads as its element', () => {
+  const at = { x: 1, z: -2 }; // makeDie's position
+  const inward = (s) => s.dir && (at.x - s.origin.x) * s.dir.x + (at.z - s.origin.z) * s.dir.z > 0;
+  test('acid: green droplets that land on the table, then hissing smoke', () => {
+    const specs = emitsOf('burst-acid');
+    expect(specs.some((s) => s.floor !== undefined && s.kind === KIND.SPARK)).toBe(true);
+    expect(specs.some((s) => s.kind === KIND.SMOKE && s.blend === 'normal')).toBe(true);
+  });
+  test('void: smoke pulled in toward the die first, then thrown out', () => {
+    const specs = emitsOf('burst-void');
+    const smoke = specs.filter((s) => s.shape === SHAPE.SMOKE);
+    expect(smoke.some(inward)).toBe(true);
+    expect(smoke.some((s) => !inward(s))).toBe(true);
+    expect(smoke.findIndex(inward)).toBeLessThan(smoke.findIndex((s) => !inward(s)));
+  });
+  test('vitality: golden light shafts and rising motes', () => {
+    const specs = emitsOf('burst-vitality');
+    expect(specs.some((s) => s.kind === KIND.STREAK)).toBe(true);
+    expect(specs.some((s) => s.kind === KIND.EMBER && s.gravity > 0)).toBe(true);
+  });
+  test('poison: a cloud (mostly smoke puffs), no droplets', () => {
+    const specs = emitsOf('burst-poison');
+    const n = (f) => specs.filter(f).reduce((m, s) => m + s.count, 0);
+    expect(n((s) => s.kind === KIND.SMOKE)).toBeGreaterThan(50);
+    expect(specs.some((s) => s.floor !== undefined)).toBe(false);
   });
 });

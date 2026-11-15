@@ -2097,10 +2097,8 @@ export {
   dieRadius,
   frostPatchMaterial,
   jagged,
-  oneByOne,
   quadMaterial,
   scoped,
-  shown,
   sizeK,
   together,
 };

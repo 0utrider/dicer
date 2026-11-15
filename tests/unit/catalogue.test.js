@@ -1448,7 +1448,7 @@ test('shader quads add colour and alpha with alpha = brightness, so no black box
 
 // Crit bursts listed (editors offer them) whose module a later round-3 task builds; until then the
 // layer skips them like any unknown id. Shrinks to [] as the bursts land.
-const PENDING_BURSTS = ['acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit', 'bleed', 'slashing', 'piercing', 'bludgeoning'].map((e) => `burst-${e}`);
+const PENDING_BURSTS = ['sonic', 'force', 'mental', 'spirit', 'bleed', 'slashing', 'piercing', 'bludgeoning'].map((e) => `burst-${e}`);
 
 test('EFFECT_IDS lists exactly the library catalogue ids (plus the pending bursts)', () => {
   expect([...EFFECT_IDS].sort()).toEqual([...Object.keys(EFFECTS), ...PENDING_BURSTS].sort());
