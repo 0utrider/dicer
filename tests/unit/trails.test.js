@@ -103,6 +103,65 @@ describe('createTrailFx', () => {
     expect(pool.emits.some((e) => e.kind === KIND.GLINT)).toBe(true);
   });
 
+  test('storm, lava and acid recipes exist', () => {
+    for (const element of ['storm', 'lava', 'acid'])
+      expect(typeof TRAIL_RECIPES[element]).toBe('function');
+  });
+
+  test('a moving storm, lava or acid die emits; at rest it stops', () => {
+    for (const [interior, damageType] of [['storm'], ['lava'], ['none', 'acid']]) {
+      const { fx, pool } = setup();
+      const d = die(interior, { damageType });
+      fx.flight([d], 0);
+      const t = fly(fx, [d], { frames: 20 });
+      expect(pool.emits.length).toBeGreaterThan(0);
+      for (const e of pool.emits) expect(Number.isFinite(e.now)).toBe(true);
+      const moving = pool.emits.length;
+      for (let i = 1; i <= 8; i++) fx.flight([d], t + 16 * i);
+      expect(pool.emits.length).toBe(moving);
+    }
+  });
+
+  test('a storm die crackles: flickering sparks and a stretched streak', () => {
+    const { fx, pool } = setup();
+    const d = die('storm');
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 30 });
+    expect(pool.emits.some((e) => e.kind === KIND.EMBER || e.kind === KIND.GLINT)).toBe(true);
+    expect(pool.emits.some((e) => e.kind === KIND.STREAK)).toBe(true);
+  });
+
+  test('storm under reduced motion: constant alpha, no flicker kinds', () => {
+    const { fx, pool } = setup({ reduced: true });
+    const d = die('storm');
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 60 });
+    expect(pool.emits.length).toBeGreaterThan(0);
+    for (const e of pool.emits) expect([KIND.SPARK, KIND.STREAK, KIND.SMOKE]).toContain(e.kind);
+  });
+
+  test('lava drips fall (pulled down) to the pool floor; dark smoke rises', () => {
+    const { fx, pool } = setup();
+    const d = die('lava');
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 30 });
+    // The pool's gravity is +y: a falling drip has a negative one (frost chips use -7).
+    const drips = pool.emits.filter((e) => e.gravity < 0 && Number.isFinite(e.floor));
+    expect(drips.length).toBeGreaterThan(0);
+    for (const e of drips) expect(e.floor).toBeGreaterThanOrEqual(0);
+    expect(pool.emits.some((e) => e.kind === KIND.SMOKE && e.blend === 'normal')).toBe(true);
+  });
+
+  test('acid drips are green and fall to the floor', () => {
+    const { fx, pool } = setup();
+    const d = die('none', { damageType: 'acid' });
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 30 });
+    const drips = pool.emits.filter((e) => e.gravity < 0 && Number.isFinite(e.floor));
+    expect(drips.length).toBeGreaterThan(0);
+    for (const e of drips) expect(e.color.g).toBeGreaterThan(Math.max(e.color.r, e.color.b));
+  });
+
   test('trail 0, a missing trail, or no element emits nothing', () => {
     const { fx, pool } = setup();
     const dice = [die('fire', { trail: 0 }), die('fire', { trail: undefined }), die('fire', { trail: true }), die('glitter')];
@@ -159,10 +218,10 @@ describe('createTrailFx', () => {
   });
 
   test('reduced motion reaches the recipe: no flickering kinds, thinner trails', () => {
-    for (const element of ['fire', 'frost']) {
+    for (const element of ['fire', 'frost', 'storm', 'lava', 'acid']) {
       const run = (reduced) => {
         const { fx, pool } = setup({ reduced });
-        const d = die(element);
+        const d = element === 'acid' ? die('none', { damageType: 'acid' }) : die(element);
         fx.flight([d], 0);
         fly(fx, [d], { frames: 120, step: 0.3 });
         return pool.emits;
@@ -229,6 +288,31 @@ describe('createTrailFx', () => {
       fx.flight([null, {}, { trail: 2 }], 2);
       fx.clear();
     }).not.toThrow();
+  });
+
+  test('frames without a pool do not bank emission: no burst when the pool appears', () => {
+    // Summed over many dice so the random dithering averages out.
+    const firstFrame = (noPoolFrames) => {
+      let total = 0;
+      for (let n = 0; n < 60; n++) {
+        const pool = fakePool();
+        let live = false;
+        const fx = createTrailFx({
+          getPool: () => (live ? pool : null),
+          getTier: () => ({ effectBudget: 8, particleScale: 1 }),
+          now: () => 0,
+          reducedMotion: () => false,
+        });
+        const d = die('fire');
+        fx.flight([d], 0);
+        const t = fly(fx, [d], { frames: noPoolFrames });
+        live = true;
+        fly(fx, [d], { frames: 1, t0: t });
+        total += pool.emits.reduce((s, e) => s + e.count, 0);
+      }
+      return total;
+    };
+    expect(firstFrame(6)).toBeLessThan(1.6 * firstFrame(0));
   });
 
   test('clear() forgets last positions: the next frame is a first sight', () => {

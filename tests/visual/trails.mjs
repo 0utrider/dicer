@@ -1,5 +1,6 @@
-// Visual check: elemental trails. Throws a resin d20 with a fire inside and one with a frost inside
-// (trail 2, no landing effects) on the dark and the light backdrop, with jb2a=off, and writes
+// Visual check: elemental trails. Throws a resin d20 with a fire, a frost, a storm and a lava inside
+// and a plain one with damageType 'acid' (trail 2, no landing effects) on the dark and the light
+// backdrop, with jb2a=off, and writes
 // docs/signoff/elemental-trails/<round>/trails.png: rows are element x backdrop, columns are 150,
 // 400 and 700 ms into the flight (from the frame the die is first placed) and 600 ms after landing.
 // Each frame is a crop centred on the die. Fails on any page error.
@@ -34,6 +35,32 @@ const ELEMENTS = [
       numbers: { fill: 'silver', color: '#2a4a60', depth: 0.5 },
     },
   },
+  {
+    name: 'storm',
+    appearance: {
+      body: { type: 'resin', color: '#1a1f3a', color2: '#0a0c1c', roughness: 0.05 },
+      interior: { type: 'storm', colors: ['#8fb4ff', '#ffffff'], density: 0.6 },
+      numbers: { fill: 'silver', color: '#e6eeff', depth: 0.5 },
+    },
+  },
+  {
+    name: 'lava',
+    appearance: {
+      body: { type: 'resin', color: '#2a0a04', color2: '#100302', roughness: 0.05 },
+      interior: { type: 'lava', colors: ['#ff4a0a', '#ffb43a'], density: 0.7 },
+      numbers: { fill: 'gold', color: '#ffd9a0', depth: 0.5 },
+    },
+  },
+  {
+    // Acid has no inside: a plain resin die whose damage type gives the element.
+    name: 'acid',
+    damageType: 'acid',
+    appearance: {
+      body: { type: 'resin', color: '#2f5a1a', color2: '#12240a', roughness: 0.05 },
+      interior: { type: 'none' },
+      numbers: { fill: 'silver', color: '#e8ffd0', depth: 0.5 },
+    },
+  },
 ];
 
 /** A crop of the viewport centred on the last roll's die, as base64 jpeg. */
@@ -58,12 +85,12 @@ async function shot(page) {
  * Throws one die straight through DiceBox.roll (the dev page's roll() would drop trail and
  * appearance) and returns the frames, the flight's length and the shot times actually hit.
  */
-async function capture(page, appearance) {
+async function capture(page, appearance, damageType) {
   await page.evaluate(
-    ([look, opts]) => {
+    ([look, opts, dmg]) => {
       window.__trail = { placedAt: null, landedAt: null, speeds: [] };
       const box = window.__jb2a.box;
-      const r = box.roll([{ type: 'd20', value: 20, trail: 2, appearance: look }], opts);
+      const r = box.roll([{ type: 'd20', value: 20, trail: 2, appearance: look, ...(dmg ? { damageType: dmg } : {}) }], opts);
       const watch = () => {
         const die = [...box._rolls].at(-1)?.dice?.[0];
         const now = performance.now();
@@ -79,7 +106,7 @@ async function capture(page, appearance) {
       requestAnimationFrame(watch);
       r.landed.then(() => (window.__trail.landedAt = performance.now()));
     },
-    [appearance, ROLL],
+    [appearance, ROLL, damageType ?? null],
   );
   await page.waitForFunction(() => window.__trail.placedAt !== null, null, { timeout: 20000, polling: 'raf' });
   const t0 = Date.now();
@@ -149,7 +176,7 @@ async function main() {
     for (const el of ELEMENTS) {
       for (const bg of BACKDROPS) {
         await page.evaluate((b) => window.__jb2a.setBg(b), bg);
-        const { shots, flightMs, hit, speedAt } = await capture(page, el.appearance);
+        const { shots, flightMs, hit, speedAt } = await capture(page, el.appearance, el.damageType);
         console.log(
           `trails: ${el.name} ${bg}: flight ${flightMs} ms, shots at ${hit.join(', ')} ms, speed ${speedAt.join(', ')} u/s`,
         );

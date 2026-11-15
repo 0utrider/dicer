@@ -277,6 +277,275 @@ function frostTrail(pool, emit) {
   }
 }
 
+/** Drips land a hair above the table (catalogue.js's FLOOR_Y): no z-fight with a floor plane. */
+const DRIP_FLOOR = 0.02;
+
+const STORM = {
+  // Crackling sparks: short jagged dashes flung out from the die, flickering (EMBER, gravity 0: no sway).
+  spark: spec({
+    dir: UP,
+    speed: 2.4,
+    spread: Math.PI,
+    gravity: 0,
+    life: 0.34,
+    color: C('#ffffff'),
+    colorEnd: C('#7fa8ff'),
+    size: 0.26,
+    sizeEnd: 0.5,
+    shape: SHAPE.STREAK,
+    stretch: 0.8,
+    drag: 3,
+    halo: 0.7,
+  }),
+  // The thin glow streak: dashes launched along the die's path, which slow (drag) and shorten as they fade.
+  streak: spec({
+    dir: { x: 1, y: 0, z: 0 },
+    speed: 0,
+    spread: 0.05,
+    gravity: 0,
+    life: 0.32,
+    color: C('#e6f0ff'),
+    colorEnd: C('#5a7cff'),
+    size: 0.2,
+    sizeEnd: 0.6,
+    kind: KIND.STREAK,
+    shape: SHAPE.STREAK,
+    stretch: 2.5,
+    drag: 2.5,
+    halo: 0.5,
+  }),
+  // The same crackle in deep electric blue, normal blend: additive light washes out on a light map.
+  arc: spec({
+    dir: UP,
+    speed: 2.2,
+    spread: Math.PI,
+    gravity: 0,
+    life: 0.3,
+    color: C('#3c5cff'),
+    colorEnd: C('#241c9a'),
+    size: 0.2,
+    sizeEnd: 0.5,
+    shape: SHAPE.STREAK,
+    stretch: 0.8,
+    drag: 3,
+    blend: 'normal',
+    alpha: 0.9,
+  }),
+};
+
+/** Storm: crackling sparks around the die and a thin glow streak along its path. */
+function stormTrail(pool, emit) {
+  const { k, reduced, now, radius, speed, vel } = emit;
+  const r = radius / DEFAULT_DIE_R;
+  const s = speedShare(speed);
+  const thin = reduced ? 0.5 : 1;
+  const w = k * (0.35 + 0.65 * s) * thin;
+
+  const spark = STORM.spark;
+  spark.count = dither(3.4 * w);
+  if (spark.count) {
+    behind(spark.origin, emit, 0.4, 1.4);
+    spark.kind = reduced ? KIND.SPARK : KIND.EMBER; // EMBER flickers: the crackle
+    spark.size = (reduced ? 0.2 : 0.26) * r;
+    spark.now = now;
+    pool.emit(spark);
+  }
+  const streak = STORM.streak;
+  streak.count = dither(2.2 * w);
+  if (streak.count) {
+    behind(streak.origin, emit, 0.5, 0.3);
+    streak.dir.x = vel.x; // the pool normalizes dir
+    streak.dir.y = vel.y;
+    streak.dir.z = vel.z;
+    streak.speed = 0.2 * speed;
+    streak.size = (reduced ? 0.16 : 0.2) * r;
+    streak.now = now;
+    pool.emit(streak);
+  }
+  const arc = STORM.arc;
+  arc.count = dither(1.6 * w);
+  if (arc.count) {
+    behind(arc.origin, emit, 0.4, 1.4);
+    arc.kind = reduced ? KIND.SPARK : KIND.EMBER;
+    arc.size = (reduced ? 0.15 : 0.2) * r;
+    arc.now = now;
+    pool.emit(arc);
+  }
+}
+
+const LAVA = {
+  // Molten drips: glowing beads that fall to the table, bounce once and cool from yellow to dark red.
+  drip: spec({
+    dir: { x: 0, y: -1, z: 0 },
+    speed: 0.8,
+    spread: 0.9,
+    gravity: -9,
+    floor: DRIP_FLOOR,
+    life: 0.8,
+    color: C('#ffd25a'),
+    colorEnd: C('#a01c04'),
+    size: 0.15,
+    sizeEnd: 0.6,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    halo: 0.6,
+  }),
+  // The molten bead's body, normal blend (it keeps its colour on a light map), cooling to a dark crust.
+  bead: spec({
+    dir: { x: 0, y: -1, z: 0 },
+    speed: 0.7,
+    spread: 0.9,
+    gravity: -9,
+    floor: DRIP_FLOOR,
+    life: 0.7,
+    color: C('#ff6a12'),
+    colorEnd: C('#3a0c04'),
+    size: 0.11,
+    sizeEnd: 0.7,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    blend: 'normal',
+    alpha: 0.95,
+  }),
+  smoke: spec({
+    dir: UP,
+    speed: 0.45,
+    spread: 0.6,
+    gravity: 0.35,
+    life: 0.8,
+    color: C('#2a1a14'),
+    colorEnd: C('#100c0a'),
+    size: 0.4,
+    sizeEnd: 2.4,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    blend: 'normal',
+    alpha: 0.5,
+    spin: 0.5,
+  }),
+};
+
+/** Lava: molten drips that fall to the table and dark smoke rising off the die. */
+function lavaTrail(pool, emit) {
+  const { k, reduced, now, radius, speed } = emit;
+  const r = radius / DEFAULT_DIE_R;
+  const s = speedShare(speed);
+  const thin = reduced ? 0.5 : 1;
+  const w = k * (0.35 + 0.65 * s) * thin;
+
+  const drip = LAVA.drip;
+  drip.count = dither(2.0 * w);
+  if (drip.count) {
+    behind(drip.origin, emit, 0.25, 0.8);
+    drip.size = (reduced ? 0.2 : 0.26) * r;
+    drip.now = now;
+    pool.emit(drip);
+  }
+  const bead = LAVA.bead;
+  bead.count = dither(1.4 * w);
+  if (bead.count) {
+    behind(bead.origin, emit, 0.25, 0.8);
+    bead.size = (reduced ? 0.15 : 0.19) * r;
+    bead.now = now;
+    pool.emit(bead);
+  }
+  const smoke = LAVA.smoke;
+  smoke.count = dither(0.9 * w);
+  if (smoke.count) {
+    behind(smoke.origin, emit, 0.6, 0.4);
+    smoke.size = (reduced ? 0.4 : 0.5) * r;
+    smoke.now = now;
+    pool.emit(smoke);
+  }
+}
+
+const ACID = {
+  // Green drips, normal blend (the colour that reads on a light map), falling to the table.
+  drip: spec({
+    dir: { x: 0, y: -1, z: 0 },
+    speed: 0.8,
+    spread: 0.9,
+    gravity: -8,
+    floor: DRIP_FLOOR,
+    life: 0.7,
+    color: C('#7ee82a'),
+    colorEnd: C('#2f7a0c'),
+    size: 0.12,
+    sizeEnd: 0.8,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    blend: 'normal',
+    alpha: 0.95,
+  }),
+  // A sickly glow on some drips (additive): it reads on the dark map.
+  glow: spec({
+    dir: { x: 0, y: -1, z: 0 },
+    speed: 0.7,
+    spread: 0.9,
+    gravity: -8,
+    floor: DRIP_FLOOR,
+    life: 0.6,
+    color: C('#c4ff5a'),
+    colorEnd: C('#2ea80e'),
+    size: 0.12,
+    sizeEnd: 0.6,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    halo: 0.5,
+  }),
+  // A faint caustic fume off the die.
+  fume: spec({
+    dir: UP,
+    speed: 0.35,
+    spread: 0.8,
+    gravity: 0.25,
+    life: 0.7,
+    color: C('#a6e070'),
+    colorEnd: C('#4f7a34'),
+    size: 0.35,
+    sizeEnd: 2.2,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    blend: 'normal',
+    alpha: 0.38,
+    spin: 0.5,
+  }),
+};
+
+/** Acid: green drips falling from the die, a faint green fume. */
+function acidTrail(pool, emit) {
+  const { k, reduced, now, radius, speed } = emit;
+  const r = radius / DEFAULT_DIE_R;
+  const s = speedShare(speed);
+  const thin = reduced ? 0.5 : 1;
+  const w = k * (0.35 + 0.65 * s) * thin;
+
+  const drip = ACID.drip;
+  drip.count = dither(2.2 * w);
+  if (drip.count) {
+    behind(drip.origin, emit, 0.25, 0.8);
+    drip.size = (reduced ? 0.16 : 0.21) * r;
+    drip.now = now;
+    pool.emit(drip);
+  }
+  const glow = ACID.glow;
+  glow.count = dither(1.2 * w);
+  if (glow.count) {
+    behind(glow.origin, emit, 0.25, 0.8);
+    glow.size = (reduced ? 0.16 : 0.2) * r;
+    glow.now = now;
+    pool.emit(glow);
+  }
+  const fume = ACID.fume;
+  fume.count = dither(0.5 * w);
+  if (fume.count) {
+    behind(fume.origin, emit, 0.5, 0.4);
+    fume.size = (reduced ? 0.34 : 0.45) * r;
+    fume.now = now;
+    pool.emit(fume);
+  }
+}
+
 /** Speed -> 0..1: 0 at rest, 1 at FULL_SPEED and above. */
 function speedShare(speed) {
   return Math.min(1, Math.max(0, (speed - REST_SPEED) / (FULL_SPEED - REST_SPEED)));
@@ -290,7 +559,10 @@ function speedShare(speed) {
  */
 export const TRAIL_RECIPES = Object.freeze({
   fire: fireTrail,
+  lava: lavaTrail,
   frost: frostTrail,
+  storm: stormTrail,
+  acid: acidTrail,
 });
 
 // --- the emitter ------------------------------------------------------------------------------
@@ -399,7 +671,14 @@ export function createTrailFx({ getPool, getTier, now, reducedMotion, setting, w
         for (let i = 0; i < dice.length; i++) if (track(dice[i], t)) movers++;
         if (!movers) return;
         const pool = getPool();
-        if (!pool) return;
+        if (!pool) {
+          // Nothing to emit into: bank nothing either, or the first frame with a pool bursts at the cap.
+          for (let i = 0; i < dice.length; i++) {
+            const st = dice[i] && states.get(dice[i]);
+            if (st) st.acc = 0;
+          }
+          return;
+        }
         const scale = Number(tier?.particleScale);
         const crowd = movers > CROWD ? Math.sqrt(CROWD / movers) : 1;
         const base = (scale > 0 ? scale : 1) * crowd;
