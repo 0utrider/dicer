@@ -12,6 +12,10 @@
 // Env: DICER_TRAILS_ROUND (folder label, default "round-1"), DICER_TRAILS_TIMES (flight shot times
 // in ms, comma-separated, default 150,400,700), DICER_TRAILS_ONLY (element names, comma-separated,
 // default all rows), plus the DICER_VISUAL_* variables of fx-common.mjs.
+// DICER_TRAILS_SHEET=bursts makes the crit bursts sheet instead (round 3): the same d20s land as a
+// natural 20 (trail 2, so each plays its element's burst) and are shot 120, 350, 700, 1100 and
+// 1700 ms after landing (DICER_BURST_TIMES), on both backdrops, into <round>/bursts.png. Its rows
+// default to the elements whose burst is built (DICER_TRAILS_ONLY overrides).
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import {
@@ -109,10 +113,22 @@ const ALL = [
   plain('piercing', '#d6dbe2', '#9ca4ae', '#1a1e24'),
   plain('bludgeoning', '#6e5c48', '#3a2e22', '#f4ead8'),
 ];
-const ELEMENTS = ONLY?.length ? ALL.filter((el) => ONLY.includes(el.name)) : ALL;
+const SHEET = process.env.DICER_TRAILS_SHEET === 'bursts' ? 'bursts' : 'trails';
+/** The bursts built so far (round 3 adds the rest task by task). */
+const BUILT_BURSTS = ['fire', 'frost', 'storm', 'lava'];
+const BURST_TIMES = process.env.DICER_BURST_TIMES?.split(',')
+  .map(Number)
+  .filter((t) => t > 0) ?? [120, 350, 700, 1100, 1700];
+/** A burst is big: its crop is wider than a trail's. */
+const BURST_CROP = { width: 720, height: 560 };
+const ELEMENTS = ONLY?.length
+  ? ALL.filter((el) => ONLY.includes(el.name))
+  : SHEET === 'bursts'
+    ? ALL.filter((el) => BUILT_BURSTS.includes(el.name))
+    : ALL;
 
 /** A crop of the viewport centred on the last roll's die, as base64 jpeg. */
-async function shot(page) {
+async function shot(page, crop = CROP) {
   const at = await page.evaluate(() => {
     const box = window.__jb2a.box;
     const o = [...box._rolls].at(-1)?.dice?.[0]?.outer;
@@ -123,9 +139,9 @@ async function shot(page) {
   });
   const cx = at?.x ?? (PANEL + VIEW.width) / 2;
   const cy = at?.y ?? VIEW.height / 2;
-  const x = Math.round(Math.max(PANEL, Math.min(VIEW.width - CROP.width, cx - CROP.width / 2)));
-  const y = Math.round(Math.max(0, Math.min(VIEW.height - CROP.height, cy - CROP.height / 2)));
-  const buf = await page.screenshot({ type: 'jpeg', quality: 88, clip: { x, y, ...CROP } });
+  const x = Math.round(Math.max(PANEL, Math.min(VIEW.width - crop.width, cx - crop.width / 2)));
+  const y = Math.round(Math.max(0, Math.min(VIEW.height - crop.height, cy - crop.height / 2)));
+  const buf = await page.screenshot({ type: 'jpeg', quality: 88, clip: { x, y, ...crop } });
   return buf.toString('base64');
 }
 
@@ -224,12 +240,51 @@ async function capture(page, appearance, damageType) {
   return { shots, flightMs, hit, speedAt, moving };
 }
 
-const tw = Math.round(CROP.width * SCALE);
-const th = Math.round(CROP.height * SCALE);
+/**
+ * Throws one d20 landing as a natural 20 (trail 2: it plays its element's crit burst) and shoots
+ * it BURST_TIMES ms after it lands (timed on the page's clock from the landing). Returns the
+ * frames and the times actually hit.
+ */
+async function captureBurst(page, appearance, damageType) {
+  await page.evaluate(
+    ([look, opts, dmg]) => {
+      window.__burst = { landedAt: null };
+      const box = window.__jb2a.box;
+      const r = box.roll(
+        [{ type: 'd20', value: 20, trail: 2, appearance: look, ...(dmg ? { damageType: dmg } : {}) }],
+        opts,
+      );
+      r.landed.then(() => (window.__burst.landedAt = performance.now()));
+    },
+    [appearance, ROLL, damageType ?? null],
+  );
+  await page.waitForFunction(() => window.__burst.landedAt !== null, null, {
+    timeout: 20000,
+    polling: 'raf',
+  });
+  const shots = [];
+  const hit = [];
+  for (const t of BURST_TIMES) {
+    await page.waitForFunction((at) => performance.now() - window.__burst.landedAt >= at, t, {
+      timeout: 10000,
+      polling: 'raf',
+    });
+    hit.push(await page.evaluate(() => Math.round(performance.now() - window.__burst.landedAt)));
+    shots.push(await shot(page, BURST_CROP));
+  }
+  await page
+    .waitForFunction(() => window.__jb2a.box._rolls.size === 0, null, { timeout: 10000 })
+    .catch(() => {});
+  await page.waitForTimeout(400);
+  return { shots, hit };
+}
+
 const LABEL_W = 170;
 
-async function writeSheet(browser, file, title, rows) {
-  const cols = [
+async function writeSheet(browser, file, title, rows, cols = null, crop = CROP) {
+  const tw = Math.round(crop.width * SCALE);
+  const th = Math.round(crop.height * SCALE);
+  cols ??= [
     ...FLIGHT.map((t) => `in flight, >= ${t} ms, moving, on screen`),
     `landed +${AFTER} ms`,
   ];
@@ -270,7 +325,26 @@ async function main() {
     const problems = watchProblems(page);
     await gotoReady(page, `${PAGE}?jb2a=off`);
     const rows = [];
-    for (const el of ELEMENTS) {
+    if (SHEET === 'bursts') {
+      for (const el of ELEMENTS) {
+        await captureBurst(page, el.appearance, el.damageType); // warm-up (compiles its look and burst), not recorded
+        for (const bg of BACKDROPS) {
+          await page.evaluate((b) => window.__jb2a.setBg(b), bg);
+          const { shots, hit } = await captureBurst(page, el.appearance, el.damageType);
+          console.log(`bursts: ${el.name} ${bg}: shots at ${hit.join(', ')} ms after landing`);
+          rows.push({ label: `burst-${el.name} / ${bg}<br><small>${hit.join(' / ')} ms</small>`, shots });
+        }
+      }
+      await writeSheet(
+        browser,
+        `${OUT}/bursts.png`,
+        `Elemental crit bursts (${ROUND}, d20 natural 20, jb2a=off)`,
+        rows,
+        BURST_TIMES.map((t) => `landed +${t} ms`),
+        BURST_CROP,
+      );
+    }
+    for (const el of SHEET === 'trails' ? ELEMENTS : []) {
       await capture(page, el.appearance, el.damageType); // warm-up (compiles its look), not recorded
       for (const bg of BACKDROPS) {
         await page.evaluate((b) => window.__jb2a.setBg(b), bg);
@@ -293,7 +367,7 @@ async function main() {
         });
       }
     }
-    await writeSheet(browser, `${OUT}/trails.png`, `Elemental trails (${ROUND}, jb2a=off)`, rows);
+    if (SHEET === 'trails') await writeSheet(browser, `${OUT}/trails.png`, `Elemental trails (${ROUND}, jb2a=off)`, rows);
     problems.push(...(await page.evaluate(() => window.__jb2a.errors.slice())));
     if (problems.length) {
       console.error(`trails: FAILED\n${problems.join('\n')}`);

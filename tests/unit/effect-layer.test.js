@@ -735,3 +735,107 @@ describe('JB2A animations', () => {
     expect(calls.disposed).toBe(1);
   });
 });
+
+describe('elemental crit bursts (the automatic natural-20 burst)', () => {
+  const nat20 = () => ({ ...makeDie(), type: 'd20', value: 20, trail: 2, appearance: { interior: { type: 'fire' } } });
+  const library = async () => import('../../src/effects/library/index.js');
+  const bursts = (log) => log.filter((e) => e[0] === 'start' && String(e[1]).startsWith('burst-'));
+  /** The real library with burst-fire swapped for a logging stand-in (cost 2, 100 ms). */
+  async function lib(log) {
+    const mod = await library();
+    return { ...mod, EFFECTS: { ...mod.EFFECTS, 'burst-fire': timed('burst-fire', 2, log), a: timed('a', 1, log) } };
+  }
+
+  test('ten such dice played in one frame start 3 bursts', async () => {
+    const log = [];
+    const m = await lib(log);
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    for (let i = 0; i < 10; i++) layer.play(nat20(), fxOf('a'));
+    expect(bursts(log)).toHaveLength(3);
+    // the other fx still play (the cap skips only bursts)
+    expect(log.filter((e) => e[0] === 'start' && e[1] === 'a').length).toBeGreaterThan(3);
+  });
+
+  test('the cap frees up when bursts end', async () => {
+    const log = [];
+    const m = await lib(log);
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    for (let i = 0; i < 4; i++) layer.play(nat20(), null);
+    expect(bursts(log)).toHaveLength(3);
+    layer.update(0);
+    layer.update(200);
+    layer.play(nat20(), null);
+    expect(bursts(log)).toHaveLength(4);
+  });
+
+  test('elementalCritBursts false: no burst', async () => {
+    const log = [];
+    const m = await lib(log);
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m, settings: { elementalCritBursts: false } });
+    await layer.prefetch();
+    layer.play(nat20(), fxOf('a'));
+    layer.play(nat20(), null);
+    expect(bursts(log)).toHaveLength(0);
+    expect(log.filter((e) => e[0] === 'start').map((e) => e[1])).toEqual(['a']);
+  });
+
+  test('a die with no other fx (null or []) still gets its burst; effects off: none', async () => {
+    const log = [];
+    const m = await lib(log);
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    layer.play(nat20(), null);
+    layer.play(nat20(), []);
+    expect(bursts(log)).toHaveLength(2);
+    const off = setup({ tier: 'ultra', loadLibrary: async () => m, settings: { effects: false } });
+    await off.layer.prefetch();
+    off.layer.play(nat20(), null);
+    expect(bursts(log)).toHaveLength(2);
+  });
+
+  test('no burst for a die that is not a natural 20 with an element', async () => {
+    const log = [];
+    const m = await lib(log);
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    layer.play({ ...nat20(), value: 19 }, null);
+    layer.play({ ...nat20(), trail: 1 }, null);
+    layer.play({ ...nat20(), type: 'd12', value: 12 }, null);
+    layer.play({ ...nat20(), appearance: null }, null);
+    expect(log).toEqual([]);
+  });
+
+  test('an element whose burst is listed but not built yet starts nothing and never throws', async () => {
+    const m = await library();
+    const { layer, warn } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    const acid = { ...nat20(), appearance: null, damageType: 'acid' };
+    expect(m.EFFECTS['burst-acid']).toBeUndefined();
+    expect(() => layer.play(acid, null)).not.toThrow();
+    expect(layer.running).toBe(0);
+    expect(() => layer.play(makeDie(), fxOf('burst-acid'))).not.toThrow();
+    expect(layer.running).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  test('low tier (effectBudget 2): the burst still plays beside a cost-1 celebration', async () => {
+    const m = await library();
+    const { layer } = setup({ tier: 'low', loadLibrary: async () => m });
+    await layer.prefetch();
+    layer.play(nat20(), fxOf('celebrate'));
+    expect(layer.running).toBe(2);
+  });
+
+  test('the real burst-fire plays on an ultra table and ends', async () => {
+    const m = await library();
+    const { layer } = setup({ tier: 'ultra', loadLibrary: async () => m });
+    await layer.prefetch();
+    layer.play(nat20(), null);
+    expect(layer.running).toBe(1);
+    let t = 0;
+    while (layer.update(t) && t < 10000) t += 50;
+    expect(layer.running).toBe(0);
+  });
+});

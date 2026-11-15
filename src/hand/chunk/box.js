@@ -119,6 +119,7 @@ function boxHand(box) {
         // As DiceBox #makeDie: a d100 plays its fx once, on its ones die.
         if (s.variant !== 'd100tens' && s.fx?.length) die.fx = s.fx;
         die.damageType = s.damageType ?? die.damageType;
+        if (s.trail != null) die.trail = s.trail | 0; // trail 2 lets a natural 20 burst
         die.dsnType = s.dsnType ?? die.dsnType;
         if (s.value != null) die.value = resultOf(s.value, s.variant);
         if (!die.system && typeof s.system === 'string') {

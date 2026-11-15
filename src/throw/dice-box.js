@@ -1459,22 +1459,25 @@ export class DiceBox {
   }
 
   /**
-   * onLandedFx (sound, macro) and the effect layer per landed die with fx; a throwing listener
-   * or layer warns once and never blocks landing.
+   * onLandedFx (sound, macro) per landed die with fx, and the effect layer per landed die with fx
+   * or trail 2 (its crit burst may play alone); a throwing listener or layer warns once and never
+   * blocks landing.
    */
   _fireFx(roll) {
     for (const die of roll.dice) {
-      if (!die.fx || die.ghost) continue;
-      roll.fxKey ??= { id: roll.id };
-      try {
-        this._onLandedFx(die, die.fx, roll.fxKey);
-      } catch (err) {
-        if (!this._fxWarned) {
-          this._fxWarned = true;
-          console.warn('dicer: a landed-effect listener threw', err);
+      if (die.ghost) continue;
+      if (die.fx) {
+        roll.fxKey ??= { id: roll.id };
+        try {
+          this._onLandedFx(die, die.fx, roll.fxKey);
+        } catch (err) {
+          if (!this._fxWarned) {
+            this._fxWarned = true;
+            console.warn('dicer: a landed-effect listener threw', err);
+          }
         }
       }
-      this.#effectsCall((e) => e.play(die, die.fx));
+      if (die.fx || die.trail > 1) this.#effectsCall((e) => e.play(die, die.fx));
     }
   }
 

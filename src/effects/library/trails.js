@@ -15,25 +15,8 @@ import { SHAPE } from './shapes.js';
  * the pool copies and never keeps).
  */
 
-/** The element ids, in the order of the design. */
-export const ELEMENTS = Object.freeze([
-  'fire',
-  'lava',
-  'frost',
-  'storm',
-  'acid',
-  'void',
-  'vitality',
-  'poison',
-  'sonic',
-  'force',
-  'mental',
-  'spirit',
-  'bleed',
-  'slashing',
-  'piercing',
-  'bludgeoning',
-]);
+/** The element ids, in the order of the design (one list, shared with world start). */
+export { ELEMENTS } from '../elements.js';
 
 /** Interior types that are elements themselves (they win over the damage type). */
 const INSIDE_ELEMENTS = new Set(['fire', 'lava', 'frost', 'storm']);

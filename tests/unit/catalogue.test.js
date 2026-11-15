@@ -22,6 +22,10 @@ const IDS = [
   'shake',
   'celebrate',
   'fumble',
+  'burst-fire',
+  'burst-frost',
+  'burst-storm',
+  'burst-lava',
 ];
 const COSTS = {
   'glow-pulse': 1,
@@ -36,6 +40,10 @@ const COSTS = {
   shatter: 3,
   shockwave: 1,
   shake: 0,
+  'burst-fire': 1,
+  'burst-frost': 1,
+  'burst-storm': 1,
+  'burst-lava': 1,
 };
 
 function makeDie() {
@@ -1438,8 +1446,13 @@ test('shader quads add colour and alpha with alpha = brightness, so no black box
   }
 });
 
-test('EFFECT_IDS lists exactly the library catalogue ids', () => {
-  expect([...EFFECT_IDS].sort()).toEqual(Object.keys(EFFECTS).sort());
+// Crit bursts listed (editors offer them) whose module a later round-3 task builds; until then the
+// layer skips them like any unknown id. Shrinks to [] as the bursts land.
+const PENDING_BURSTS = ['acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit', 'bleed', 'slashing', 'piercing', 'bludgeoning'].map((e) => `burst-${e}`);
+
+test('EFFECT_IDS lists exactly the library catalogue ids (plus the pending bursts)', () => {
+  expect([...EFFECT_IDS].sort()).toEqual([...Object.keys(EFFECTS), ...PENDING_BURSTS].sort());
+  for (const id of PENDING_BURSTS) expect(EFFECTS[id], id).toBeUndefined();
 });
 
 test('floorGlow adds one floor mesh coloured and scaled by ctx and removes it at ms', async () => {
@@ -1471,7 +1484,7 @@ describe('inside flare (living insides round 3)', () => {
     die.inner.material.userData.uniforms = die.uniforms;
     return die;
   };
-  const FLARING = ['lightning', 'frost', 'fumble', 'celebrate', 'light-burst', 'shockwave', 'number-flare'];
+  const FLARING = ['lightning', 'frost', 'fumble', 'celebrate', 'light-burst', 'shockwave', 'number-flare', 'burst-fire', 'burst-frost', 'burst-storm', 'burst-lava'];
 
   test.each(FLARING)('%s on a die with an inside raises uInteriorFlare, then lets it fall to 0', (id) => {
     const mod = EFFECTS[id];

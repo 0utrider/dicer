@@ -63,6 +63,7 @@ export function createEffectLayer({
   let flareRolls = null; // the library's flareRolls (inside-flare.js), once loaded
   let impactFx = null; // the library's impact emitter (createImpactFx in library/particles.js), once loaded
   let trailFx = null; // the library's trail emitter (createTrailFx), once loaded
+  let burstFor = null; // the library's crit burst picker (bursts.js: the gates and the cap), once loaded
   let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
   let player = null; // the JB2A player (src/jb2a/jb2a.js, the lazy `jb2a` chunk), once loaded
@@ -131,6 +132,7 @@ export function createEffectLayer({
           const deps = { getPool, getTier, now, reducedMotion, setting, warnOnce };
           impactFx = typeof mod.createImpactFx === 'function' ? mod.createImpactFx(deps) : null;
           trailFx = mod.createTrailFx && mod.createTrailFx(deps);
+          burstFor = mod.burstFor;
           prewarmPool();
         }
       })
@@ -342,8 +344,10 @@ export function createEffectLayer({
     },
     prefetch,
 
-    /** Starts a landed die's effects (fx: Task 7 Fx[]); never throws. */
+    /** Starts a landed die's effects (fx: Task 7 Fx[]) plus its crit burst, if any; never throws. */
     play(die, fx) {
+      const b = burstFor?.(die, running, setting);
+      if (b) fx = [...(fx || []), b];
       if (disposed || !Array.isArray(fx) || !fx.length) return;
       const g = gate();
       if (g === 'off') return;

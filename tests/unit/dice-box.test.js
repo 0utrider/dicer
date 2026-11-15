@@ -2089,6 +2089,29 @@ describe('effect runtime (Task 8)', () => {
     warn.mockRestore();
   });
 
+  test('a landed trail-2 die with no fx still reaches the effect layer (its crit burst); others without fx do not', async () => {
+    const onLandedFx = vi.fn();
+    const effects = { play: vi.fn(), update: () => false, releaseDie() {}, clear() {} };
+    const { renderer, physics, box } = setup({ effects, onLandedFx });
+    const a = settled(
+      box.roll([
+        { type: 'd20', value: 20, trail: 2 },
+        { type: 'd20', value: 20, trail: 1 },
+        { type: 'd6', value: 3 },
+      ]).landed,
+    );
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+    await flushMicrotasks();
+    expect(a()).toBe(true);
+    expect(effects.play).toHaveBeenCalledTimes(1);
+    const [die, fx] = effects.play.mock.calls[0];
+    expect(die.trail).toBe(2);
+    expect(fx).toBeNull();
+    expect(onLandedFx).not.toHaveBeenCalled(); // no fx: no sound or macro to run
+  });
+
   describe('slow motion', () => {
     const slow = [{ ruleId: 'r', effect: null, sound: null, macro: null, slowMotion: true }];
     test('a slow-motion roll ramps its playback when the final chunk arrives; others do not', () => {
@@ -3496,7 +3519,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     // matched by key: the message's plan may order (or number) its dice differently
     const specs = [
       { type: 'd6', value: 4, key: '1:0:0', system: 'sys', dsnType: 'd6' },
-      { type: 'd20', value: 20, key: '0:0:0', fx, damageType: 'fire' },
+      { type: 'd20', value: 20, key: '0:0:0', fx, damageType: 'fire', trail: 2 },
     ];
     expect(box.decorateLanded(r.handle, specs)).toBe(true);
     expect(onLandedFx).toHaveBeenCalledTimes(1);
@@ -3505,6 +3528,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     expect(gotFx).toBe(fx);
     expect(die.damageType).toBe('fire');
     expect(die.value).toBe(20);
+    expect(die.trail).toBe(2); // a natural 20 of the thrower's own hand roll can burst
     expect(effects.play).toHaveBeenCalledTimes(1);
     expect(fire.mock.calls.map((c) => c[0])).toEqual([0, 2]); // SPAWN, then RESULT
     expect(fire.mock.calls[1][1]).toEqual({ dice: [{ type: 'd6', value: 4 }], system: 'sys' });

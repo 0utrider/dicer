@@ -2082,3 +2082,25 @@ export const CATALOGUE = Object.freeze({
   [celebrate.id]: celebrate,
   [fumble.id]: fumble,
 });
+
+/** Building blocks the crit bursts (bursts.js) share with the catalogue (not effect ids). */
+export {
+  ALPHA_CAP,
+  BURST_FRAGMENT,
+  BURST_UNIFORMS,
+  DIE_TOP,
+  DIE_Y,
+  FLOOR_Y,
+  RING_FRAGMENT,
+  SHADOW_BLEND,
+  countFor,
+  dieRadius,
+  frostPatchMaterial,
+  jagged,
+  oneByOne,
+  quadMaterial,
+  scoped,
+  shown,
+  sizeK,
+  together,
+};
