@@ -120,9 +120,15 @@ const COAT = /* glsl */ `
 #ifdef DICER_WOOD
 	if ( vFaceId < - 0.5 ) {
 		vec3 dcWt = material.diffuseColor / max( max( material.diffuseColor.r, material.diffuseColor.g ), max( material.diffuseColor.b, 1e-3 ) );
+#ifdef DICER_EDGE
+		// a styled strip (edges.js) keeps its own reflection: no wood tint, no dimming over it
+		dcWt = mix( dcWt, vec3( 1.0 ), dcEdge );
+		material.specularF90 *= mix( 0.6, 1.0, dcEdge );
+#else
+		material.specularF90 *= 0.6;
+#endif
 		material.specularColor *= dcWt;
 		material.specularColorBlended *= dcWt;
-		material.specularF90 *= 0.6;
 #ifdef USE_CLEARCOAT
 		material.clearcoat *= 0.5;
 		material.clearcoatRoughness = max( material.clearcoatRoughness, 0.35 );

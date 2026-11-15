@@ -143,9 +143,15 @@ const COAT = /* glsl */ `
 #ifdef DICER_GEM
 	if ( vFaceId < - 0.5 ) {
 		vec3 dcGt = material.diffuseColor / max( max( material.diffuseColor.r, material.diffuseColor.g ), max( material.diffuseColor.b, 1e-3 ) );
+#ifdef DICER_EDGE
+		// a styled strip (edges.js) keeps its own reflection: no stone tint, no dimming over it
+		dcGt = mix( dcGt, vec3( 1.0 ), dcEdge );
+		material.specularF90 *= mix( 0.45, 1.0, dcEdge );
+#else
+		material.specularF90 *= 0.45;
+#endif
 		material.specularColor *= dcGt;
 		material.specularColorBlended *= dcGt;
-		material.specularF90 *= 0.45;
 #ifdef USE_CLEARCOAT
 		material.clearcoat *= 0.3;
 		material.clearcoatRoughness = max( material.clearcoatRoughness, 0.2 );
