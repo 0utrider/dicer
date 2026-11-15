@@ -20,9 +20,10 @@ const COINS = ['numbers', 'heads-tails', 'sun-moon']; // d2 faces; the motifs: l
 /** Crit/fumble icons a die can show instead of the number. */
 export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame']);
 /** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
+export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
+/** Styled bevel strips (edges.strip.style); a strip draws only with strength > 0 and a rounded edge. */
 export const STRIP_STYLES = Object.freeze(['body', 'paint', 'metal', 'glow']);
 export const stripActive = (a) => a.edges.strip.style !== 'body' && a.edges.strip.strength > 0 && a.edges.radius > 0;
-export const EDGE_STEPS =Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 /** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
 export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco']);
 

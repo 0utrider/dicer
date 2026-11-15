@@ -132,11 +132,12 @@ describe('programKey', () => {
 
 describe('Plan 7: edge sharpness and font', () => {
   test('defaults: radius 0.5, style rounded, font serif', () => {
-    expect(DEFAULT_APPEARANCE.edges).toMatchObject({ radius: 0.5, style: 'rounded' });
+    const strip = { style: 'body', color: '#e2b04a', strength: 1 };
+    expect(DEFAULT_APPEARANCE.edges).toEqual({ radius: 0.5, style: 'rounded', strip });
     expect(DEFAULT_APPEARANCE.numbers.font).toBe('serif');
     expect(Object.isFrozen(DEFAULT_APPEARANCE.edges)).toBe(true);
     expect(Object.isFrozen(DEFAULT_APPEARANCE.numbers)).toBe(true);
-    expect(normalizeAppearance({}).edges).toMatchObject({ radius: 0.5, style: 'rounded' });
+    expect(normalizeAppearance({}).edges).toEqual({ radius: 0.5, style: 'rounded', strip });
     expect(normalizeAppearance({}).numbers.font).toBe('serif');
     expect(EDGE_STEPS).toEqual([0, 0.25, 0.5, 0.75, 1]);
   });
@@ -163,10 +164,11 @@ describe('Plan 7: edge sharpness and font', () => {
     expect(normalizeAppearance({ edges: { radius: 1 } }).edges.style).toBe('rounded');
   });
   test('legacy edges.style maps to a radius; radius wins when both are given', () => {
-    expect(normalizeAppearance({ edges: { style: 'sharp' } }).edges).toMatchObject({ radius: 0, style: 'sharp' });
-    expect(normalizeAppearance({ edges: { style: 'rounded' } }).edges).toMatchObject({ radius: 0.5, style: 'rounded' });
-    expect(normalizeAppearance({ edges: { style: 'bogus' } }).edges).toMatchObject({ radius: 0.5, style: 'rounded' });
-    expect(normalizeAppearance({ edges: { style: 'sharp', radius: 0.75 } }).edges).toMatchObject({ radius: 0.75, style: 'rounded' });
+    const strip = { style: 'body', color: '#e2b04a', strength: 1 };
+    expect(normalizeAppearance({ edges: { style: 'sharp' } }).edges).toEqual({ radius: 0, style: 'sharp', strip });
+    expect(normalizeAppearance({ edges: { style: 'rounded' } }).edges).toEqual({ radius: 0.5, style: 'rounded', strip });
+    expect(normalizeAppearance({ edges: { style: 'bogus' } }).edges).toEqual({ radius: 0.5, style: 'rounded', strip });
+    expect(normalizeAppearance({ edges: { style: 'sharp', radius: 0.75 } }).edges).toEqual({ radius: 0.75, style: 'rounded', strip });
   });
   test('a normalized appearance normalizes to itself', () => {
     const a = normalizeAppearance({ edges: { radius: 0.25 }, numbers: { font: 'sans' } });
@@ -596,6 +598,8 @@ describe('edges.strip (styled bevel strips)', () => {
     expect(needsLookExtras(normalizeAppearance({ edges: { radius: 0, strip: { style: 'metal' } } }))).toBe(false);
   });
   test('every built-in look keeps strip body', () => {
-    for (const { appearance } of Object.values(LOOKS)) expect(normalizeAppearance(appearance).edges.strip.style).toBe('body');
+    const looks = Object.values(LOOKS);
+    expect(looks.length).toBeGreaterThan(0);
+    for (const l of looks) expect(normalizeAppearance(l.appearance ?? l).edges.strip.style).toBe('body');
   });
 });
