@@ -5,3 +5,6 @@ coverage/
 .superpowers/
 .vitest/
 jb2a-local/
+
+# Design notes, plans and sign-off sheets stay local
+docs/

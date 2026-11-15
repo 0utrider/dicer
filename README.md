@@ -163,12 +163,12 @@ Instead of letting the computer roll, you can grab your dice, shake them and thr
 - **The dice tray**: a **Dice tray** button under the token controls (the **Dice tray** setting, per player, on by default) opens a small window. Pick your dice and a modifier, choose a roll mode (public, GM only, blind or self) and press **Throw**. It posts a normal roll card whose dice are the ones you threw. A free roll never needs a sheet.
 - **What other players see**: everyone who can see your roll sees the same throw, replayed from what you did (same path, same bounces, same final faces), in your roll area scaled to fit their window (no smaller than 60% of your size). **Replay hand throws** (per player, on by default) off shows a normal throw of the same result instead. Dice are replayed only for rolls that exist as chat cards: a roll shown again with `showForRoll`, or an automatic roll, is thrown as usual.
 - **Privacy**: a hand throw goes only to the players who may see the roll: a whisper only to its recipients and the GMs, a blind roll or a secret check only to the GMs. A roll players may not see is thrown by you as ghost dice (no numbers), and everyone else gets the usual ghost throw or nothing, and their pets never move for it. Blind rolls made from a sheet are never thrown by hand.
-- **Fairness**: every die type was thrown 10,000 times through the real physics and the face counts tested against a fair die (a chi-square test): all shapes pass. See [docs/research/fairness.md](docs/research/fairness.md). `npm run test:fairness` repeats the run. A shape that ever failed would be left to Foundry's random roll, and the card would say so.
+- **Fairness**: every die type was thrown 10,000 times through the real physics and the face counts tested against a fair die (a chi-square test): all shapes pass. `npm run test:fairness` repeats the run. A shape that ever failed would be left to Foundry's random roll, and the card would say so.
 - **Trust**: a hand roll is as trustworthy as Foundry's own manual entry: the throw happens on the player's computer, which tells the server the result. A modified client could report any number, exactly as it could type one in a manual roll. The GM can switch rolling by hand off entirely (**Who may roll by hand**: **Nobody**).
 - **When it falls back**: if the time runs out, the player cancels, a die cannot be read (a custom die whose shape does not match its faces) or more dice are rolled than **Maximum dice per message** allows, Foundry rolls those dice itself and the roll still completes (nothing hangs). Extra dice that appear in the middle of a roll (exploding or rerolled dice) are thrown automatically after yours. The chat card shows a small hand mark: its tooltip says "Rolled by hand", how many dice rolled automatically, or that it rolled automatically.
 - **Pets and splats**: your pet watches a hand throw from where it rests, and it is in the way of your own dice, so a hard throw at it splats it. Other screens move their pets to your layout while they replay your throw, so a splat happens on every screen, at the same place. While you hold the dice your pet keeps still. A screen with **Dice can splat pets** off sees the pet wobble but never burst.
 - **Not supported**: using Dicer's method together with another module's interactive dice method (for example a Bluetooth dice module): Foundry then picks its generic dialog, and Dicer's hand rolls stay off (one console warning).
-- **Review pages and tests**: `npm run dev`, then `/dev/hand.html` is the review page: the throw overlay, **Throw for me**, a cocked die, a d16 read with its glow, a throw at a resting pet, and the last throw replayed from its encoded form at half the area size. `node tests/visual/hand.mjs` drives it with a real mouse and saves screenshots. The owner's live test is `npm run test:live:hand` (a GM and a player; optionally a second player); the manual list is in `docs/live-checks.md` (checks 33 to 44). The benchmark has two hand scenarios, `handReplay10` (a recorded 10-dice throw replayed) and `handSoak100`, which only Dicer runs.
+- **Review pages and tests**: `npm run dev`, then `/dev/hand.html` is the review page: the throw overlay, **Throw for me**, a cocked die, a d16 read with its glow, a throw at a resting pet, and the last throw replayed from its encoded form at half the area size. `node tests/visual/hand.mjs` drives it with a real mouse and saves screenshots. The owner's live test is `npm run test:live:hand` (a GM and a player; optionally a second player). The benchmark has two hand scenarios, `handReplay10` (a recorded 10-dice throw replayed) and `handSoak100`, which only Dicer runs.
 
 ## GM controls
 
@@ -234,7 +234,7 @@ Dicer replaces Dice So Nice (DSN). It gives other packages a `game.dice3d` with 
 
 ### Compatibility table
 
-Status is Works, Works with gaps or Not supported. One row per package surveyed in `docs/research/dsn-integration-survey.md` (section 3).
+Status is Works, Works with gaps or Not supported. One row per package surveyed.
 
 | Package                                                                                                      | Status          | Note                                                                                                    |
 | ------------------------------------------------------------------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------- |
@@ -261,7 +261,7 @@ Status is Works, Works with gaps or Not supported. One row per package surveyed 
 | pf2e-ap200, pf2e-ap222, pf2e-ap223, sf2e-murder-in-metal-city, phils-pf2e-realdark                           | Works with gaps | Dice content. Presets, colorsets and textures register. GLB models show for d2 and d6 only.             |
 | trs-black-marble-dice-set, trs-gold-red-armored-dice-set, trs-norse-dd-boneyard                              | Works with gaps | Dice sets. Faces and colours work. GLB models show for d2 and d6 only.                                  |
 
-"Works" means the surveyed calls and hooks are supported. Some behaviour needs a real world to confirm. See `docs/live-checks.md`.
+"Works" means the surveyed calls and hooks are supported. Some behaviour needs a real world to confirm.
 
 ### Known gaps
 
@@ -269,7 +269,7 @@ Status is Works, Works with gaps or Not supported. One row per package surveyed 
 - `game.modules.get('dice-so-nice')` checks fail by design, because Dicer has no stub package with that id. Version gates, such as CoC7's, fail too.
 - DSN-scoped user flags and settings that other packages read directly return nothing. Dicer keeps its own under the `dicer` scope.
 - `box`, `pipeline`, `persistent` and `pendingThrows` internals are not supported. Pending and interactive throws come in Plan 6.
-- GLB model presets: only the d2 and d6 orientations are verified. Other die types show Dicer's own die with the preset's faces and colours. The reasons are in `docs/research/dsn-model-orientation.md`.
+- GLB model presets: only the d2 and d6 orientations are verified. Other die types show Dicer's own die with the preset's faces and colours.
 - Ghost payloads for synced rolls send dice shapes only. Custom die classes, such as coins and Fate dice, arrive as plain dice with the same face count. Dice whose count comes from another roll show as zero ghost dice. Dice whose face count comes from another roll, such as `1d(1d20)`, are not sent at all.
 - The `diceSoNiceOnMaterialReady` hook is not fired for a GLB model's own material.
 
@@ -331,9 +331,9 @@ It prints `effects: N/N passed`, writes `artifacts/live/effects.json`, and resto
 2. a hand roll whispered to the GM never reaches the second player's socket handler (a counter on that client), when there is a second player;
 3. a thrower who does not throw falls back after **Hand roll time limit** (set to 10 seconds while it runs) and the card is marked.
 
-A throw at the player's resting pet, which should splat it on the GM's screen too, cannot be driven by a script: do it by hand (`docs/live-checks.md`, check 44). It prints `hand: N/N passed`, writes `artifacts/live/hand.json`, restores the settings it changed and deletes the messages it made. A hand scenario can also be added to the benchmark: `handReplay10` and `handSoak100` replay a recorded throw (`tests/fixtures/trajectory-mixed10.json`, recorded with `node scripts/hand-fixture.mjs`) and are judged on the same targets, but never compared with Dice So Nice.
+A throw at the player's resting pet, which should splat it on the GM's screen too, cannot be driven by a script: do it by hand. It prints `hand: N/N passed`, writes `artifacts/live/hand.json`, restores the settings it changed and deletes the messages it made. A hand scenario can also be added to the benchmark: `handReplay10` and `handSoak100` replay a recorded throw (`tests/fixtures/trajectory-mixed10.json`, recorded with `node scripts/hand-fixture.mjs`) and are judged on the same targets, but never compared with Dice So Nice.
 
-Unit tests cannot check some things. The manual list is in `docs/live-checks.md`.
+Unit tests cannot check some things, so a few checks are done by hand in a real world.
 
 ## Performance and benchmark
 
@@ -346,7 +346,7 @@ Dicer stays cheap: no render loop while no dice are on screen, and the heavy cod
 - **Limits:** it refuses while dice are rolling or another run is going, and shows a notice when Dicer is disabled. Firefox and Safari are best effort.
 - **Testers wanted:** if you have an Intel Iris Xe laptop or an iPad, please run the benchmark and paste the summary into an issue.
 
-The head-to-head against Dice So Nice is `npm run test:live:bench`; see `docs/bench/README.md`.
+The head-to-head against Dice So Nice is `npm run test:live:bench`.
 
 ## Development
 
