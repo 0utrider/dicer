@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { DiceBox, ASSET_WAIT_MS, IDLE_GEOMETRY_CAP } from '../../src/throw/dice-box.js';
+import {
+  DiceBox,
+  ASSET_WAIT_MS,
+  IDLE_GEOMETRY_CAP,
+} from '../../src/throw/dice-box.js';
 import { MODEL_ROTATIONS } from '../../src/compat/dsn-orientation.js';
 import {
   rotationToShow,
@@ -402,17 +406,7 @@ test('a d7 and a d14 in one roll get different label sets', () => {
 
 test('a Foundry coin (results 0 / 1) throws the d2 on face 2 / 1 and reports the Foundry result', () => {
   const { box } = setup();
-  const { dice: specs } = planThrow(
-    foundryRoll(
-      new Coin({
-        faces: 2,
-        results: [
-          { result: 0, active: true },
-          { result: 1, active: true },
-        ],
-      }),
-    ),
-  );
+  const { dice: specs } = planThrow(foundryRoll(new Coin({ faces: 2, results: [{ result: 0, active: true }, { result: 1, active: true }] })));
   expect(specs).toEqual([
     { type: 'd2', value: 2, variant: 'dc', key: '0:0:0' },
     { type: 'd2', value: 1, variant: 'dc', key: '0:1:0' },
@@ -721,9 +715,7 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     const gate = new Promise((r) => (release = r));
     const load = vi.fn(() => gate.then(() => import('../../src/render/extras/look-extras.js')));
     _setLookExtrasImport(load);
-    const irid = {
-      body: { type: 'iridescent', preset: 'opal', color: '#e8eef0', color2: '#7fd6e8' },
-    };
+    const irid = { body: { type: 'iridescent', preset: 'opal', color: '#e8eef0', color2: '#7fd6e8' } };
     const { renderer, box } = setup({ appearance: undefined, getAppearance: () => irid });
     expect(() => box.roll([{ type: 'd8', value: 3 }])).not.toThrow();
     const first = meshOf(renderer).material;
@@ -751,11 +743,7 @@ describe('per-roll appearance, flags and refcounted materials', () => {
       interior: { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 },
     };
     const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
-    const { renderer, box } = setup({
-      appearance: undefined,
-      getAppearance: () => foil,
-      getFlags: () => flags,
-    });
+    const { renderer, box } = setup({ appearance: undefined, getAppearance: () => foil, getFlags: () => flags });
     expect(() => box.roll([{ type: 'd20', value: 7 }])).not.toThrow();
     const first = meshOf(renderer).material.userData.programKey;
     expect(first).toContain('|glitter:32|');
@@ -776,7 +764,10 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     box.roll([{ type: 'd6', value: 1 }]);
     look = { ...ruby, edges: { radius: 0 } };
     box.roll([{ type: 'd6', value: 1 }]);
-    expect(buildDieGeometry.mock.calls.map((c) => c[1])).toEqual([{ radius: 0.5 }, { radius: 0 }]);
+    expect(buildDieGeometry.mock.calls.map((c) => c[1])).toEqual([
+      { radius: 0.5 },
+      { radius: 0 },
+    ]);
     box.clear();
   });
 
@@ -1734,13 +1725,7 @@ describe('impact sounds', () => {
     renderer.tick(950); // playhead ~57, still playing
     expect(onImpact).toHaveBeenCalledTimes(2);
     const [a, b] = onImpact.mock.calls.map((c) => c[0]);
-    expect(a).toMatchObject({
-      material: 'plastic',
-      surface: 'wood',
-      speed: 12,
-      other: 0,
-      dieType: 'd6',
-    });
+    expect(a).toMatchObject({ material: 'plastic', surface: 'wood', speed: 12, other: 0, dieType: 'd6' });
     expect(b).toMatchObject({ material: 'metal', surface: 'wood', speed: 20, other: -2 });
     expect(a.dieKey).not.toBe(b.dieKey);
   });
@@ -2011,10 +1996,7 @@ describe('effect runtime (Task 8)', () => {
   test('flareInside finds a roll by its id or message id, one die by index, and hands the dice to the layer', async () => {
     const { box, effects } = await withEffects();
     const flare = vi.spyOn(effects, 'flare').mockReturnValue(true);
-    box.roll([
-      { type: 'd20', value: 20 },
-      { type: 'd6', value: 2 },
-    ]);
+    box.roll([{ type: 'd20', value: 20 }, { type: 'd6', value: 2 }]);
     const roll = box._rolls.values().next().value;
     roll.messageId = 'msgA';
     expect(box.flareInside(roll.id, { amount: 1, duration: 900 })).toBe(true);
@@ -2206,10 +2188,7 @@ describe('per-throw areas', () => {
     expect(small.halfWidth * small.halfDepth).toBeCloseTo(12.5); // 1 die: no growth
     expect(big.halfWidth * big.halfDepth).toBeGreaterThanOrEqual(40);
     // never smaller than the roll's own dice need
-    box.roll(
-      Array.from({ length: 30 }, () => ({ type: 'd6', value: 2 })),
-      { area: left, capacityDice: 2 },
-    );
+    box.roll(Array.from({ length: 30 }, () => ({ type: 'd6', value: 2 })), { area: left, capacityDice: 2 });
     const own = physics.streams[2].req.area;
     expect(own.halfWidth * own.halfDepth).toBeGreaterThanOrEqual(30);
   });
@@ -2472,14 +2451,7 @@ describe('per-look fonts (font layer)', () => {
   });
 
   test('a throwing font layer falls back to the serif', () => {
-    const fonts = {
-      get: () => {
-        throw new Error('x');
-      },
-      request: () => {
-        throw new Error('y');
-      },
-    };
+    const fonts = { get: () => { throw new Error('x'); }, request: () => { throw new Error('y'); } };
     const { box } = setup({ appearance: sansLook, fonts });
     const warm = box.acquireWarmup(['d6']);
     expect(createDiceMaterial.mock.calls[0][1]).toBe(atlas);
@@ -2593,10 +2565,7 @@ describe('impact effects', () => {
   test('each playback impact event reaches effects.impact with the die position', () => {
     const effects = { update: vi.fn(() => false), play: vi.fn(), clear: vi.fn(), impact: vi.fn() };
     const { renderer, physics, box } = setup({ effects, getSurface: () => 'wood' });
-    physics.events = [
-      new Float32Array([5, 0, -1, 9]),
-      new Float32Array([45, 1, 0, 12, 55, 0, -2, 20]),
-    ];
+    physics.events = [new Float32Array([5, 0, -1, 9]), new Float32Array([45, 1, 0, 12, 55, 0, -2, 20])];
     box.roll([
       { type: 'd6', value: 3 },
       { type: 'd6', value: 4, ghost: true },
@@ -2671,20 +2640,14 @@ describe('the crystal d4 look', () => {
     expect([...box._geometries.keys()][0].startsWith('d4crystal|')).toBe(true);
     const shape = getShape('d4crystal');
     expect(createDiceMaterial.mock.calls[0][2]).toBe(shape);
-    expect(createDiceMaterial.mock.calls[0][3]).toEqual(
-      shape.values.map((v) => labelFor('d4crystal', v)),
-    );
+    expect(createDiceMaterial.mock.calls[0][3]).toEqual(shape.values.map((v) => labelFor('d4crystal', v)));
     const die = box._rolls.values().next().value.dice[0];
     // Foundry's type and result stay d4's; the face reader is the crystal's
     expect(die.type).toBe('d4');
     expect(die.value).toBe(3);
     expect(die.shape).toBe(shape);
     expect(die.targetValue).toBe(3);
-    const r = rotationToShow(
-      shape,
-      readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 }),
-      faceForValue(shape, 3),
-    );
+    const r = rotationToShow(shape, readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 }), faceForValue(shape, 3));
     const q = die.inner.quaternion;
     expect(Math.abs(q.x * r.x + q.y * r.y + q.z * r.z + q.w * r.w)).toBeCloseTo(1, 5);
     box.clear();
@@ -2750,10 +2713,7 @@ describe('a DSN preset faces keep the d4 classic; a never-drawn d4 model does no
 
   test('a d4 with preset faces and a crystal look keeps its faces and the classic shape', () => {
     const { physics, box } = setup();
-    const faces = {
-      key: 'k',
-      labels: getShape('d4').values.map((v) => ({ kind: 'glyph', text: 'g' + v })),
-    };
+    const faces = { key: 'k', labels: getShape('d4').values.map((v) => ({ kind: 'glyph', text: 'g' + v })) };
     box.roll([{ type: 'd4', value: 2, faces, appearance: crystal }]);
     expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
     const die = box._rolls.values().next().value.dice[0];
@@ -2839,6 +2799,17 @@ describe('pet hook', () => {
     }
   });
 
+  test('a non-ghost die reaches landed with its damageType and its appearance object', async () => {
+    const pet = fakePet();
+    const { renderer, physics, box } = setup({ pet });
+    box.roll([{ type: 'd6', value: 3, damageType: 'fire' }], { pet: PET });
+    await playOut(renderer, physics);
+    const [die] = pet.calls.find((c) => c[0] === 'landed')[2];
+    expect(die.damageType).toBe('fire');
+    expect(die.appearance).toBeTypeOf('object');
+    expect(die.appearance).not.toBeNull();
+  });
+
   test('the area is the stage rectangle when the throw had none; the hook may be a function', () => {
     const pet = fakePet();
     const { renderer, physics, box } = setup({ pet: () => pet });
@@ -2906,8 +2877,7 @@ describe('pet hook', () => {
   });
 
   describe('obstacles, hits and a held rest', () => {
-    const OBS = (n) =>
-      Array.from({ length: n }, (_, i) => ({ x: i, z: 1, r: 1, h: 2, id: `p${i}` }));
+    const OBS = (n) => Array.from({ length: n }, (_, i) => ({ x: i, z: 1, r: 1, h: 2, id: `p${i}` }));
     const pump = (renderer, physics) => {
       physics.flush();
       renderer.tick(0);
@@ -3012,12 +2982,7 @@ describe('pet hook', () => {
     test('a pet contact plays no die click and raises no dust; the floor and wall contacts still do', () => {
       const hit = vi.fn();
       const onImpact = vi.fn();
-      const effects = {
-        update: vi.fn(() => false),
-        play: vi.fn(),
-        clear: vi.fn(),
-        impact: vi.fn(),
-      };
+      const effects = { update: vi.fn(() => false), play: vi.fn(), clear: vi.fn(), impact: vi.fn() };
       const pet = fakePet({ obstaclesFor: () => OBS(2), hit });
       const { renderer, physics, box } = setup({ pet, onImpact, effects });
       physics.events = [
@@ -3557,11 +3522,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
       releaseDie: vi.fn(),
     };
     const fire = vi.fn();
-    const { renderer, physics, box } = handSetup({
-      onLandedFx,
-      effects,
-      systemFor: () => ({ fire }),
-    });
+    const { renderer, physics, box } = handSetup({ onLandedFx, effects, systemFor: () => ({ fire }) });
     const r = box.roll(
       [
         { type: 'd20', value: 1, key: '0:0:0' },
@@ -3633,9 +3594,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
         readFree(dice, data, o);
         for (const d of dice) d.value = 20;
       };
-      const r = box.roll([{ type: 'd20', value: 1, key: '0:0:0', damageType: 'fire', ...spec }], {
-        free: true,
-      });
+      const r = box.roll([{ type: 'd20', value: 1, key: '0:0:0', damageType: 'fire', ...spec }], { free: true });
       physics.flush();
       renderer.tick(0);
       renderer.tick(5000);
@@ -3647,22 +3606,14 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     test('an active natural 20 bursts exactly once, even when its landing die already could', async () => {
       for (const trail of [1, 2]) {
         const { effects, box, r } = await landHand({ trail });
-        expect(
-          box.decorateLanded(r.handle, [
-            { type: 'd20', value: 20, key: '0:0:0', damageType: 'fire', trail: 2 },
-          ]),
-        ).toBe(true);
+        expect(box.decorateLanded(r.handle, [{ type: 'd20', value: 20, key: '0:0:0', damageType: 'fire', trail: 2 }])).toBe(true);
         expect(effects.running.map((e) => e.id)).toEqual(['burst-fire']);
       }
     });
 
     test('a dropped 20 (decorated inactive: trail 1) never bursts', async () => {
       const { effects, box, r } = await landHand({ trail: 1 });
-      expect(
-        box.decorateLanded(r.handle, [
-          { type: 'd20', value: 20, key: '0:0:0', damageType: 'fire', trail: 1 },
-        ]),
-      ).toBe(true);
+      expect(box.decorateLanded(r.handle, [{ type: 'd20', value: 20, key: '0:0:0', damageType: 'fire', trail: 1 }])).toBe(true);
       expect(effects.running).toEqual([]);
     });
   });
@@ -3697,9 +3648,7 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     const list = [{ id: 'u', x: 1, z: 1, r: 1, h: 2 }];
     const paths = () => 9;
     alignFor.mockReturnValueOnce(new Set(['u'])); // the ids it aligned come back
-    expect(box.alignFor(list, { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 }, paths)).toEqual(
-      new Set(['u']),
-    );
+    expect(box.alignFor(list, { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 }, paths)).toEqual(new Set(['u']));
     expect(alignFor).toHaveBeenCalledWith(
       list,
       { cx: 0, cz: 0, halfWidth: 4, halfDepth: 3 },
@@ -3812,26 +3761,13 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
 });
 
 describe('living insides: per-die motion (insideMotion)', () => {
-  const MOTION = [
-    'uInteriorTime',
-    'uInteriorSpin',
-    'uInteriorLag',
-    'uInteriorFlare',
-    'uInteriorSwirl',
-  ];
+  const MOTION = ['uInteriorTime', 'uInteriorSpin', 'uInteriorLag', 'uInteriorFlare', 'uInteriorSwirl'];
   const resinLiquid = {
     body: { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 },
     interior: { type: 'liquid', colors: ['#3fa7ff', '#1b3a8a'], density: 0.5 },
   };
   const opaque = { body: { type: 'opaque', color: '#b3202a' } };
-  const ON = {
-    interiors: true,
-    engraving: true,
-    glow: true,
-    effects: true,
-    interiorSteps: 32,
-    insideMotion: true,
-  };
+  const ON = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32, insideMotion: true };
 
   beforeEach(async () => {
     vi.useRealTimers(); // the chunk import settles through real promise hops
@@ -3842,12 +3778,7 @@ describe('living insides: per-die motion (insideMotion)', () => {
 
   function rollWith(flags, specs, opts = {}) {
     let f = flags;
-    const made = setup({
-      appearance: undefined,
-      getAppearance: () => resinLiquid,
-      getFlags: () => f,
-      ...opts,
-    });
+    const made = setup({ appearance: undefined, getAppearance: () => resinLiquid, getFlags: () => f, ...opts });
     made.box.roll(specs);
     made.dice = made.box._rolls.values().next().value.dice;
     made.setFlags = (next) => (f = next);
@@ -3876,10 +3807,7 @@ describe('living insides: per-die motion (insideMotion)', () => {
   });
 
   test('a die with a built-in shape inside (star) is not isolated for motion, a fantasy shape (sword) is', () => {
-    const shaped = (shape) => ({
-      ...resinLiquid,
-      interior: { type: 'shape', shape, colors: ['#ffd24a', '#c28a00'], density: 0.5 },
-    });
+    const shaped = (shape) => ({ ...resinLiquid, interior: { type: 'shape', shape, colors: ['#ffd24a', '#c28a00'], density: 0.5 } });
     const { renderer, physics, box, dice } = rollWith(ON, [
       { type: 'd6', value: 1, appearance: shaped('star') },
       { type: 'd6', value: 2, appearance: shaped('sword') },
@@ -3906,9 +3834,7 @@ describe('living insides: per-die motion (insideMotion)', () => {
   });
 
   test("a lingering roll with a moving inside returns true until 10 s after landing, then 'hold'", async () => {
-    const { renderer, physics, box } = rollWith(ON, [{ type: 'd6', value: 1 }], {
-      timeBeforeHide: () => 60000,
-    });
+    const { renderer, physics, box } = rollWith(ON, [{ type: 'd6', value: 1 }], { timeBeforeHide: () => 60000 });
     physics.flush();
     renderer.tick(0);
     expect(renderer.tick(2000)).toBe(true); // lands this frame: the inside still moves
@@ -3936,13 +3862,9 @@ describe('living insides: per-die motion (insideMotion)', () => {
   });
 
   test('insideMotion off: nothing isolated for motion, frame result as today', () => {
-    const { renderer, physics, box, dice } = rollWith(
-      { ...ON, insideMotion: false },
-      [{ type: 'd6', value: 1 }],
-      {
-        timeBeforeHide: () => 60000,
-      },
-    );
+    const { renderer, physics, box, dice } = rollWith({ ...ON, insideMotion: false }, [{ type: 'd6', value: 1 }], {
+      timeBeforeHide: () => 60000,
+    });
     physics.flush();
     renderer.tick(0);
     expect(dice[0].isolated).toBeFalsy();

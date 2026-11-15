@@ -68,10 +68,7 @@ function registerEditorMenu(t, key, icon, open) {
  * source). Read live, so a theme chosen in the theme browser stays a valid choice in Foundry's
  * settings form (which would otherwise replace it with the first built-in on save).
  */
-export function themeChoices(
-  get = (key) => game.settings.get(MODULE_ID, key),
-  user = () => game.user,
-) {
+export function themeChoices(get = (key) => game.settings.get(MODULE_ID, key), user = () => game.user) {
   const quiet = () => {};
   const label = (t, src) => (src ? `${t.name} (${src})` : t.name);
   const out = Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name]));
@@ -91,23 +88,17 @@ export function themeChoices(
  * The `worldDefaultTheme` choices: none (''), built-ins and the world's themes. Read live, for the
  * same reason as themeChoices. Not the user's own themes: the GM's default must exist for everyone.
  */
-export function worldDefaultChoices(
-  none,
-  get = (key) => game.settings.get(MODULE_ID, key),
-  missing = '(missing)',
-) {
+export function worldDefaultChoices(none, get = (key) => game.settings.get(MODULE_ID, key), missing = '(missing)') {
   const out = { '': none, ...Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name])) };
   try {
-    for (const t of readThemeList(get('worldThemes'), 'world', () => {}))
-      if (!(t.id in out)) out[t.id] = `${t.name} (world)`;
+    for (const t of readThemeList(get('worldThemes'), 'world', () => {})) if (!(t.id in out)) out[t.id] = `${t.name} (world)`;
   } catch {
     /* settings not ready: built-ins only */
   }
   // A stored id that no longer exists stays a choice, so the settings form does not clear it.
   try {
     const current = get('worldDefaultTheme');
-    if (typeof current === 'string' && current && !(current in out))
-      out[current] = `${current} ${missing}`;
+    if (typeof current === 'string' && current && !(current in out)) out[current] = `${current} ${missing}`;
   } catch {
     /* none */
   }
@@ -310,15 +301,7 @@ export function registerSettings({
     ['petMoods'],
     ['petCheer'],
   ]) {
-    register(k, {
-      name: t(`${k}.Name`),
-      hint: t(`${k}.Hint`),
-      scope: 'client',
-      config: true,
-      type,
-      default: def,
-      ...more,
-    });
+    register(k, { name: t(`${k}.Name`), hint: t(`${k}.Hint`), scope: 'client', config: true, type, default: def, ...more });
   }
   register('immediatelyDisplayChatMessages', {
     name: t('immediatelyDisplayChatMessages.Name'),
@@ -364,12 +347,7 @@ export function registerSettings({
   // P5-R10: the choices follow the stored themes (read each time the settings form renders).
   try {
     const entry = game.settings.settings?.get?.(`${MODULE_ID}.theme`);
-    if (entry)
-      Object.defineProperty(entry, 'choices', {
-        get: () => themeChoices(),
-        configurable: true,
-        enumerable: true,
-      });
+    if (entry) Object.defineProperty(entry, 'choices', { get: () => themeChoices(), configurable: true, enumerable: true });
   } catch {
     /* the fixed built-in choices stay */
   }
@@ -443,15 +421,7 @@ export function registerSettings({
     default: 'ultra',
     onChange: (value) => onQualityChange?.('qualityCap', value),
   });
-  for (const key of [
-    'interiors',
-    'insideMotion',
-    'engraving',
-    'shadows',
-    'glow',
-    'presetFaces',
-    'presetModels',
-  ]) {
+  for (const key of ['interiors', 'insideMotion', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels']) {
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
@@ -519,17 +489,7 @@ export function registerSettings({
     default: true,
   });
   // Trigger effects (P4-D2): the roller's rules decide; each viewer filters what they see.
-  for (const key of [
-    'effects',
-    'showOthersEffects',
-    'slowMotion',
-    'screenShake',
-    'impactEffects',
-    'jb2aEffects',
-    'insideFlare',
-    'elementalTrails',
-    'elementalCritBursts',
-  ]) {
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'screenShake', 'impactEffects', 'jb2aEffects', 'insideFlare', 'elementalTrails', 'elementalCritBursts']) {
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
@@ -662,21 +622,9 @@ export function registerSettings({
   // core dice configuration re-sync it on change (handRollsAllowed and -Required fire on every client).
   const choices = (key, keys) => Object.fromEntries(keys.map((k) => [k, t(`${key}.Choices.${k}`)]));
   const hand = [
-    [
-      'handRolls',
-      'client',
-      String,
-      'off',
-      { choices: choices('handRolls', ['off', 'ask', 'always']) },
-    ],
+    ['handRolls', 'client', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always']) }],
     ['handRollTypes', 'client', Array, [], { config: false }], // Foundry denominations; empty: all
-    [
-      'handRollsAllowed',
-      'world',
-      String,
-      'all',
-      { choices: choices('handRollsAllowed', ['all', 'trusted', 'gm', 'none']) },
-    ],
+    ['handRollsAllowed', 'world', String, 'all', { choices: choices('handRollsAllowed', ['all', 'trusted', 'gm', 'none']) }],
     ['handRollsRequired', 'world', Boolean, false],
     ['handRollTimeout', 'world', Number, 60, { range: { min: 10, max: 300, step: 5 } }],
     ['handReplay', 'client', Boolean, true],
@@ -707,10 +655,7 @@ export function registerSettings({
 export function getSetting(key) {
   if (cache.has(key)) return cache.get(key);
   const value = game.settings.get(MODULE_ID, key);
-  if (
-    cachable.has(key) &&
-    (value == null || (typeof value !== 'object' && typeof value !== 'function'))
-  ) {
+  if (cachable.has(key) && (value == null || (typeof value !== 'object' && typeof value !== 'function'))) {
     cache.set(key, value);
   }
   return value;
