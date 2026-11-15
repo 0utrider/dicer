@@ -293,7 +293,8 @@ export class DiceBox {
     const stage = this._stageRect;
     if (!rect || typeof rect !== 'object' || !stage) return null;
     const { left, top, width, height } = rect;
-    if (![left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+    if (![left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0)
+      return null;
     if (!(this._diePx > 0) || !(stage.width > 0) || !(stage.height > 0)) return null;
     const w = Math.min(width, stage.width);
     const h = Math.min(height, stage.height);
@@ -462,7 +463,8 @@ export class DiceBox {
       roll.free = free === true || roll.dice.some((d) => d.free);
       for (const die of roll.dice) die.free = roll.free;
       // Free dice are read by the hand chunk: without it they land unread (values null).
-      if (roll.free && !this.hand) this._freeWarned ||= !console.warn('dicer: free dice need the hand chunk');
+      if (roll.free && !this.hand)
+        this._freeWarned ||= !console.warn('dicer: free dice need the hand chunk');
       roll.keep = !!(record || source); // chunks the recording or the source still owns
       const n = roll.dice.length;
       const thrown = this.#throwArea(
@@ -628,7 +630,9 @@ export class DiceBox {
    * True when at least one die flared.
    */
   flareInside(target, opts) {
-    const rolls = [...this._rolls].filter((r) => target != null && (r.id === target || r.messageId === target));
+    const rolls = [...this._rolls].filter(
+      (r) => target != null && (r.id === target || r.messageId === target),
+    );
     const flared = this.#effectsCall((e) => e.flare(rolls, opts)) === true;
     if (flared) this._renderer.startLoop(this._tick); // a lingering roll at rest has no loop running
     return flared;
@@ -703,7 +707,8 @@ export class DiceBox {
     for (const [key, m] of [...this._materials]) {
       const entry = this._refs.get(m);
       if (!entry) continue;
-      const hit = (fontId && entry.standIn === fontId) || (entry.fontId !== 'serif' && evicted(entry.fontId));
+      const hit =
+        (fontId && entry.standIn === fontId) || (entry.fontId !== 'serif' && evicted(entry.fontId));
       if (!hit) continue;
       entry.stale = true;
       this._materials.delete(key);
@@ -829,7 +834,8 @@ export class DiceBox {
     const was = prev.userData.uniforms;
     const now = iso.userData.uniforms;
     // its effects' fx uniforms and its living inside's motion (uInteriorTime/Spin/Lag/Flare)
-    for (const k in was) if (/^u(Fx(Tint|Flare)|Interior(Time|Spin|Lag|Flare|Swirl))$/.test(k)) now[k] = was[k];
+    for (const k in was)
+      if (/^u(Fx(Tint|Flare)|Interior(Time|Spin|Lag|Flare|Swirl))$/.test(k)) now[k] = was[k];
     prev.dispose();
     die.isolated = iso;
     return iso;
@@ -1083,7 +1089,11 @@ export class DiceBox {
     // A spec's own shapeType wins: a replay draws the recorded shape whatever this viewer's look.
     const shapeType =
       spec.shapeType ||
-      (spec.type === 'd4' && !spec.variant && !modelRotationFor(spec) && !spec.faces && look.shapes.d4 === 'crystal'
+      (spec.type === 'd4' &&
+      !spec.variant &&
+      !modelRotationFor(spec) &&
+      !spec.faces &&
+      look.shapes.d4 === 'crystal'
         ? 'd4crystal'
         : spec.type);
     const shape = getShape(shapeType);
@@ -1235,7 +1245,16 @@ export class DiceBox {
       if (die.ghost || die.model || die.faces?.key !== faces.key) continue;
       die.faceTex = tex;
       const { appearance, shapeType, variant } = die;
-      const mat = this.#material(appearance, roll.flags, shapeType, variant, die.faces, false, tex, die);
+      const mat = this.#material(
+        appearance,
+        roll.flags,
+        shapeType,
+        variant,
+        die.faces,
+        false,
+        tex,
+        die,
+      );
       this.#swapMaterial(roll, die, mat);
     }
   }
@@ -1413,6 +1432,9 @@ export class DiceBox {
         type: d.dsnType ?? d.type,
         value: d.value,
         ghost: d.ghost === true,
+        x: d.outer.position.x,
+        z: d.outer.position.z,
+        ...(!d.ghost && { appearance: d.appearance, damageType: d.damageType }),
       }));
       this.#petCall((h) => h.landed(roll.pet.key, dice), roll);
     }
@@ -1530,7 +1552,12 @@ export class DiceBox {
       if (roll.assetsPending) continue;
       shown = true;
       // Living insides (the look-extras chunk): stepped every frame, moving until they rest.
-      if (getLookExtras()?.insideMotion.frame(this, roll, now) || roll.phase !== 'lingering' || roll.glows) moving = true;
+      if (
+        getLookExtras()?.insideMotion.frame(this, roll, now) ||
+        roll.phase !== 'lingering' ||
+        roll.glows
+      )
+        moving = true;
     }
     // Held dice follow the pointer: the loop runs while they are shown.
     if (this._hold?.revealed) return true;
@@ -1561,7 +1588,8 @@ export class DiceBox {
           // A pet obstacle (-3 - i): the pet layer decides at playback time whether it splats or
           // wobbles; its own sound covers the contact, so no die click and no dust.
           const id = roll.ids?.[-3 - other];
-          if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey }), roll.hook);
+          if (id !== undefined)
+            this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey }), roll.hook);
           continue;
         }
         this.#effectsCall((e) => e.impact?.({ position, speed, surface, dieKey }));

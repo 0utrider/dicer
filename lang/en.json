@@ -96,6 +96,34 @@
         "Name": "Dice can splat pets",
         "Hint": "A die that hits a pet hard enough splats it until its owner rolls again."
       },
+      "petRestSpot": {
+        "Name": "Where pets rest",
+        "Hint": "Where your pets wait after a roll.",
+        "Choices": {
+          "dice": "Near the dice",
+          "bottomLeft": "Bottom left",
+          "bottomRight": "Bottom right",
+          "topLeft": "Top left",
+          "topRight": "Top right",
+          "bottomCentre": "Bottom centre"
+        }
+      },
+      "petClick": {
+        "Name": "Click to pet",
+        "Hint": "Click a pet to pet it."
+      },
+      "petElemental": {
+        "Name": "Pet reactions to elemental dice",
+        "Hint": "Pets react to dice of an elemental damage type."
+      },
+      "petMoods": {
+        "Name": "Pet moods",
+        "Hint": "Pets show a mood after high and low rolls."
+      },
+      "petCheer": {
+        "Name": "Pets cheer for others",
+        "Hint": "Your pets cheer when other players roll well."
+      },
       "handRolls": {
         "Name": "Roll by hand",
         "Hint": "Grab, shake and throw your own dice: the face that lands up is the result. Ask lets you choose for each roll. To throw only some dice, set them to \"Dicer: roll by hand\" in Foundry's Dice settings (Core). Off removes only the dice Dicer set for you.",

@@ -80,7 +80,9 @@ describe('build', () => {
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('nodigits');
     expect(WORLD_START_ASSETS.some((p) => p.includes('digits-sans'))).toBe(false);
     expect(
-      WORLD_START_ASSETS.some((p) => /digits-(blackletter|norse|uncial|scifi|handwritten|deco)/.test(p)),
+      WORLD_START_ASSETS.some((p) =>
+        /digits-(blackletter|norse|uncial|scifi|handwritten|deco)/.test(p),
+      ),
     ).toBe(false);
     expect(synth).toBeTruthy();
     expect(editor).toBeTruthy();
@@ -212,9 +214,10 @@ describe('build', () => {
     // edge strips plan (2026-11-15-dicer-edge-strips): +300 B on the same base for the strip look
     // field (owner approval, 2026-11-15).
     // elemental trails: owner raised the allowance by 500 B (1,836 -> 2,336) for trails and bursts.
+    // pet interactions: owner raised the allowance by 300 B (2,336 -> 2,636) for the five pet settings.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(2_336);
+    expect(growth).toBeLessThanOrEqual(2_636);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
