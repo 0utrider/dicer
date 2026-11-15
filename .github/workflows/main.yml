@@ -1,0 +1,119 @@
+# GitHub Actions workflow for Dicer releases (modelled on Animater's).
+#
+# On every push/PR to main it validates the manifest, lints, runs the unit tests and builds. On a
+# published release it injects the release URLs into module.json, builds dist/, zips ONLY the files
+# Foundry loads (module.json, dist/, styles/, lang/, templates/, assets/, api.js, README, LICENSE)
+# and attaches module.json + module.zip to the release.
+#
+# Foundry's update link is releases/latest/download/module.json, and GitHub's "latest" skips
+# prereleases, so a full release tagged "manifest" always carries the newest module.json: installed
+# copies find every update, prerelease or not.
+#
+# Dicer is not on Foundry's package list yet, so nothing is sent to Foundry's release API.
+name: Dicer Release Pipeline
+
+env:
+  project_url: 'https://github.com/${{github.repository}}'
+  latest_manifest_url: 'https://github.com/${{github.repository}}/releases/latest/download/module.json'
+  release_module_url: 'https://github.com/${{github.repository}}/releases/download/${{github.event.release.tag_name}}/module.zip'
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The "manifest" release only holds the update link; it is never built.
+    if: github.event_name != 'release' || github.event.release.tag_name != 'manifest'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Validate Module Manifest
+        run: |
+          jq empty module.json
+          jq -e '.id == "dicer" and (.esmodules | length > 0)' module.json > /dev/null
+          echo "Manifest is valid JSON with entry points"
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # A few unit tests time things (e.g. the physics worker's first chunk); shared runners are
+      # slower and noisier than a desktop, so a failure gets two more tries before it counts.
+      - name: Unit Tests
+        run: npx vitest run --retry=2
+
+      - name: Build
+        run: npm run build
+
+      - name: Extract Version From Tag
+        id: get_version
+        if: github.event_name == 'release'
+        uses: battila7/get-version-action@v2
+
+      - name: Check Tag Matches Manifest Version
+        if: github.event_name == 'release'
+        run: |
+          manifest=$(jq -r .version module.json)
+          tag='${{ steps.get_version.outputs.version-without-v }}'
+          if [ "$manifest" != "$tag" ]; then echo "module.json version $manifest does not match tag $tag"; exit 1; fi
+
+      - name: Modify Module Manifest With Release-Specific Values
+        if: github.event_name == 'release'
+        uses: cschleiden/replace-tokens@v1
+        with:
+          files: 'module.json'
+        env:
+          URL: ${{ env.project_url }}
+          MANIFEST: ${{ env.latest_manifest_url }}
+          DOWNLOAD: ${{ env.release_module_url }}
+
+      - name: Create Module Archive
+        if: github.event_name == 'release'
+        run: |
+          zip -r ./module.zip module.json dist styles lang templates assets api.js README.md LICENSE
+          unzip -l module.zip | tail -1
+
+      - name: Update Release With Files
+        if: github.event_name == 'release'
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          name: ${{ github.event.release.name }}
+          draft: ${{ github.event.release.unpublished }}
+          prerelease: ${{ github.event.release.prerelease }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: './module.json, ./module.zip'
+          tag: ${{ github.event.release.tag_name }}
+          body: ${{ github.event.release.body }}
+
+      - name: Point The Update Link At This Version
+        if: github.event_name == 'release' && github.event.release.draft != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES: "Not a version: this release only carries the newest module.json so Foundry's update link (releases/latest/download/module.json) always works. Pick a real version below."
+        run: |
+          if gh release view manifest >/dev/null 2>&1; then
+            gh release upload manifest module.json --clobber
+            gh release edit manifest --latest --prerelease=false
+          else
+            gh release create manifest module.json --title "Update link (latest manifest)" --notes "$NOTES" --latest --target "${{ github.sha }}"
+          fi
+          echo "Update link now serves $(jq -r .version module.json)"
