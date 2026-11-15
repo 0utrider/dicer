@@ -43,8 +43,25 @@ function fly(fx, dice, { frames = 10, step = 0.4, t0 = 0 } = {}) {
 }
 
 describe('elementOf', () => {
-  test('the eight elements, in order', () => {
-    expect(ELEMENTS).toEqual(['fire', 'lava', 'frost', 'storm', 'acid', 'void', 'vitality', 'poison']);
+  test('the sixteen elements, in order', () => {
+    expect(ELEMENTS).toEqual([
+      'fire',
+      'lava',
+      'frost',
+      'storm',
+      'acid',
+      'void',
+      'vitality',
+      'poison',
+      'sonic',
+      'force',
+      'mental',
+      'spirit',
+      'bleed',
+      'slashing',
+      'piercing',
+      'bludgeoning',
+    ]);
   });
 
   test('an elemental inside first, then the damage type', () => {
@@ -62,8 +79,25 @@ describe('elementOf', () => {
     expect(elementOf({}, 'poison')).toBe('poison');
   });
 
-  test('no element: sonic, an unknown or inherited key, nothing at all', () => {
-    expect(elementOf({}, 'sonic')).toBeNull();
+  test('every damage type resolves to an element', () => {
+    expect(elementOf({}, 'sonic')).toBe('sonic');
+    expect(elementOf({}, 'thunder')).toBe('sonic');
+    expect(elementOf({}, 'force')).toBe('force');
+    expect(elementOf({}, 'mental')).toBe('mental');
+    expect(elementOf({}, 'psychic')).toBe('mental');
+    expect(elementOf({}, 'Psychic')).toBe('mental');
+    expect(elementOf({}, 'spirit')).toBe('spirit');
+    expect(elementOf({}, 'bleed')).toBe('bleed');
+    expect(elementOf({}, 'slashing')).toBe('slashing');
+    expect(elementOf({}, 'piercing')).toBe('piercing');
+    expect(elementOf({}, 'bludgeoning')).toBe('bludgeoning');
+    const types = ['fire', 'cold', 'electricity', 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental'];
+    for (const type of [...types, 'spirit', 'bleed', 'slashing', 'piercing', 'bludgeoning'])
+      expect(ELEMENTS).toContain(elementOf({}, type));
+  });
+
+  test('no element: untyped, an unknown or inherited key, nothing at all', () => {
+    expect(elementOf({}, 'untyped')).toBeNull();
     expect(elementOf({}, 'constructor')).toBeNull();
     expect(elementOf({ interior: { type: 'none' } }, undefined)).toBeNull();
     expect(elementOf(undefined, undefined)).toBeNull();
@@ -145,10 +179,13 @@ describe('createTrailFx', () => {
     const d = die('lava');
     fx.flight([d], 0);
     fly(fx, [d], { frames: 30 });
-    // The pool's gravity is +y: a falling drip has a negative one (frost chips use -7).
-    const drips = pool.emits.filter((e) => e.gravity < 0 && Number.isFinite(e.floor));
+    // The pool's gravity is +y: lava's drips fall hard (-9) and rest a hair above the table.
+    const drips = pool.emits.filter((e) => Number.isFinite(e.floor));
     expect(drips.length).toBeGreaterThan(0);
-    for (const e of drips) expect(e.floor).toBeGreaterThanOrEqual(0);
+    for (const e of drips) {
+      expect(e.gravity).toBe(-9);
+      expect(e.floor).toBe(0.02);
+    }
     expect(pool.emits.some((e) => e.kind === KIND.SMOKE && e.blend === 'normal')).toBe(true);
   });
 
@@ -160,6 +197,72 @@ describe('createTrailFx', () => {
     const drips = pool.emits.filter((e) => e.gravity < 0 && Number.isFinite(e.floor));
     expect(drips.length).toBeGreaterThan(0);
     for (const e of drips) expect(e.color.g).toBeGreaterThan(Math.max(e.color.r, e.color.b));
+  });
+
+  test('void, vitality and poison recipes exist', () => {
+    for (const element of ['void', 'vitality', 'poison'])
+      expect(typeof TRAIL_RECIPES[element]).toBe('function');
+  });
+
+  test('a moving void, vitality or poison damage die emits; at rest it stops', () => {
+    for (const damageType of ['necrotic', 'radiant', 'poison']) {
+      const { fx, pool } = setup();
+      const d = die('none', { damageType });
+      fx.flight([d], 0);
+      const t = fly(fx, [d], { frames: 20 });
+      expect(pool.emits.length).toBeGreaterThan(0);
+      for (const e of pool.emits) expect(Number.isFinite(e.now)).toBe(true);
+      const moving = pool.emits.length;
+      for (let i = 1; i <= 8; i++) fx.flight([d], t + 16 * i);
+      expect(pool.emits.length).toBe(moving);
+    }
+  });
+
+  test('void: dark normal-blend smoke, and an additive violet rim for the dark table', () => {
+    const { fx, pool } = setup();
+    const d = die('none', { damageType: 'void' });
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 30 });
+    const smoke = pool.emits.filter((e) => e.kind === KIND.SMOKE && e.blend === 'normal');
+    expect(smoke.length).toBeGreaterThan(0);
+    for (const e of smoke) expect(e.color.r + e.color.g + e.color.b).toBeLessThan(0.6);
+    const rim = pool.emits.filter((e) => e.blend !== 'normal');
+    expect(rim.length).toBeGreaterThan(0);
+    for (const e of rim) expect(e.color.b).toBeGreaterThan(e.color.g);
+  });
+
+  test('vitality: golden motes, additive and a normal-blend layer for the light table', () => {
+    const { fx, pool } = setup();
+    const d = die('none', { damageType: 'healing' });
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 30 });
+    expect(pool.emits.some((e) => e.blend === 'normal')).toBe(true);
+    expect(pool.emits.some((e) => e.blend !== 'normal')).toBe(true);
+    for (const e of pool.emits) {
+      expect(e.color.r).toBeGreaterThan(e.color.b);
+      expect(e.color.g).toBeGreaterThan(e.color.b);
+      expect(e.kind).not.toBe(KIND.SMOKE);
+    }
+  });
+
+  test('poison: a green haze that drifts, never drips (unlike acid)', () => {
+    const { fx, pool } = setup();
+    const d = die('none', { damageType: 'poison' });
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 30 });
+    const haze = pool.emits.filter((e) => e.kind === KIND.SMOKE);
+    expect(haze.length).toBeGreaterThan(0);
+    for (const e of haze) expect(e.color.g).toBeGreaterThan(Math.max(e.color.r, e.color.b));
+    for (const e of pool.emits) expect(Number.isFinite(e.floor)).toBe(false);
+  });
+
+  test('an element without a recipe yet (sonic, force, bludgeoning) emits nothing and warns nothing', () => {
+    const { fx, pool, warnOnce } = setup();
+    const dice = ['sonic', 'force', 'bludgeoning'].map((damageType) => die('none', { damageType }));
+    fx.flight(dice, 0);
+    fly(fx, dice);
+    expect(pool.emits).toHaveLength(0);
+    expect(warnOnce).not.toHaveBeenCalled();
   });
 
   test('trail 0, a missing trail, or no element emits nothing', () => {
@@ -218,10 +321,11 @@ describe('createTrailFx', () => {
   });
 
   test('reduced motion reaches the recipe: no flickering kinds, thinner trails', () => {
-    for (const element of ['fire', 'frost', 'storm', 'lava', 'acid']) {
+    const inside = ['fire', 'frost', 'storm', 'lava'];
+    for (const element of [...inside, 'acid', 'void', 'vitality', 'poison']) {
       const run = (reduced) => {
         const { fx, pool } = setup({ reduced });
-        const d = element === 'acid' ? die('none', { damageType: 'acid' }) : die(element);
+        const d = inside.includes(element) ? die(element) : die('none', { damageType: element });
         fx.flight([d], 0);
         fly(fx, [d], { frames: 120, step: 0.3 });
         return pool.emits;

@@ -16,7 +16,24 @@ import { SHAPE } from './shapes.js';
  */
 
 /** The element ids, in the order of the design. */
-export const ELEMENTS = Object.freeze(['fire', 'lava', 'frost', 'storm', 'acid', 'void', 'vitality', 'poison']);
+export const ELEMENTS = Object.freeze([
+  'fire',
+  'lava',
+  'frost',
+  'storm',
+  'acid',
+  'void',
+  'vitality',
+  'poison',
+  'sonic',
+  'force',
+  'mental',
+  'spirit',
+  'bleed',
+  'slashing',
+  'piercing',
+  'bludgeoning',
+]);
 
 /** Interior types that are elements themselves (they win over the damage type). */
 const INSIDE_ELEMENTS = new Set(['fire', 'lava', 'frost', 'storm']);
@@ -33,11 +50,22 @@ const DAMAGE_ELEMENTS = Object.freeze({
   radiant: 'vitality',
   healing: 'vitality',
   poison: 'poison',
+  sonic: 'sonic',
+  thunder: 'sonic',
+  force: 'force',
+  mental: 'mental',
+  psychic: 'mental',
+  spirit: 'spirit',
+  bleed: 'bleed',
+  slashing: 'slashing',
+  piercing: 'piercing',
+  bludgeoning: 'bludgeoning',
 });
 
 /**
  * The element a die shows: its elemental inside (fire, lava, frost, storm), else the element of
- * its damage type, else null (no trail).
+ * its damage type, else null (no trail: untyped, unknown). An element with no recipe yet resolves
+ * here but trails nothing (the emitter skips it).
  * @param {object} [appearance] a (normalized) appearance
  * @param {string} [damageType]
  * @returns {string|null}
@@ -79,6 +107,26 @@ function behind(o, emit, back, jitter) {
 const spec = (fields) => ({ count: 0, origin: { x: 0, y: 0, z: 0 }, now: 0, ...fields });
 
 const C = (hex) => new THREE.Color(hex);
+
+/** A recipe's emission weight this step: k, more when the die is faster, halved under reduced motion. */
+function rateOf(emit) {
+  return emit.k * (0.35 + 0.65 * speedShare(emit.speed)) * (emit.reduced ? 0.5 : 1);
+}
+
+/**
+ * Emits one layer of a recipe: dither(n) particles of the reusable spec `s`, from `back` die radii
+ * behind the die (jittered by `jitter` radii), sized `size` (tuned for the default die, scaled by
+ * this die's radius), at emit.now. Per-frame fields (kind, dir, speed) go on `s` before the call.
+ * Allocates nothing.
+ */
+function emitLayer(pool, s, n, emit, back, jitter, size) {
+  s.count = dither(n);
+  if (!s.count) return;
+  behind(s.origin, emit, back, jitter);
+  s.size = (size * emit.radius) / DEFAULT_DIE_R;
+  s.now = emit.now;
+  pool.emit(s);
+}
 
 const FIRE = {
   flame: spec({
@@ -142,54 +190,27 @@ const FIRE = {
 
 /** Fire: flickering flame tongues and rising embers, a wisp of dark smoke for light maps. */
 function fireTrail(pool, emit) {
-  const { k, reduced, now, radius, speed, vel } = emit;
-  const r = radius / DEFAULT_DIE_R;
-  const s = speedShare(speed);
-  const thin = reduced ? 0.5 : 1;
-  const w = k * (0.35 + 0.65 * s) * thin;
+  const { reduced, speed, vel } = emit;
+  const w = rateOf(emit);
+  const kind = reduced ? KIND.SPARK : KIND.EMBER; // EMBER flickers and sways
   // The flames lean back along the path a little (against the motion).
   const inv = speed > 0 ? 0.35 / speed : 0;
 
   const flame = FIRE.flame;
-  flame.count = dither(3.2 * w);
-  if (flame.count) {
-    flame.dir.x = -vel.x * inv;
-    flame.dir.z = -vel.z * inv;
-    behind(flame.origin, emit, 0.35, 0.5);
-    flame.kind = reduced ? KIND.SPARK : KIND.EMBER; // EMBER flickers and sways
-    flame.size = (reduced ? 0.5 : 0.7) * r;
-    flame.now = now;
-    pool.emit(flame);
-  }
+  flame.dir.x = -vel.x * inv;
+  flame.dir.z = -vel.z * inv;
+  flame.kind = kind;
+  emitLayer(pool, flame, 3.2 * w, emit, 0.35, 0.5, reduced ? 0.5 : 0.7);
   const tongue = FIRE.tongue;
-  tongue.count = dither(1.2 * w);
-  if (tongue.count) {
-    tongue.dir.x = -vel.x * inv;
-    tongue.dir.z = -vel.z * inv;
-    behind(tongue.origin, emit, 0.45, 0.5);
-    tongue.kind = reduced ? KIND.SPARK : KIND.EMBER;
-    tongue.size = (reduced ? 0.4 : 0.5) * r;
-    tongue.now = now;
-    pool.emit(tongue);
-  }
+  tongue.dir.x = -vel.x * inv;
+  tongue.dir.z = -vel.z * inv;
+  tongue.kind = kind;
+  emitLayer(pool, tongue, 1.2 * w, emit, 0.45, 0.5, reduced ? 0.4 : 0.5);
   const ember = FIRE.ember;
-  ember.count = dither(1.6 * w * s);
-  if (ember.count) {
-    behind(ember.origin, emit, 0.3, 0.8);
-    ember.kind = reduced ? KIND.SPARK : KIND.EMBER;
-    ember.speed = reduced ? 0.6 : 1.3;
-    ember.size = 0.13 * r;
-    ember.now = now;
-    pool.emit(ember);
-  }
-  const smoke = FIRE.smoke;
-  smoke.count = dither(0.5 * w);
-  if (smoke.count) {
-    behind(smoke.origin, emit, 0.6, 0.4);
-    smoke.size = (reduced ? 0.28 : 0.35) * r;
-    smoke.now = now;
-    pool.emit(smoke);
-  }
+  ember.kind = kind;
+  ember.speed = reduced ? 0.6 : 1.3;
+  emitLayer(pool, ember, 1.6 * w * speedShare(speed), emit, 0.3, 0.8, 0.13);
+  emitLayer(pool, FIRE.smoke, 0.5 * w, emit, 0.6, 0.4, reduced ? 0.28 : 0.35);
 }
 
 const FROST = {
@@ -243,38 +264,16 @@ const FROST = {
 
 /** Frost: a cold mist rolling off the die, twinkling ice glints, a few falling ice chips. */
 function frostTrail(pool, emit) {
-  const { k, reduced, now, radius, speed } = emit;
-  const r = radius / DEFAULT_DIE_R;
-  const s = speedShare(speed);
-  const thin = reduced ? 0.5 : 1;
-  const w = k * (0.35 + 0.65 * s) * thin;
+  const { reduced, speed } = emit;
+  const w = rateOf(emit);
 
-  const mist = FROST.mist;
-  mist.count = dither(2.4 * w);
-  if (mist.count) {
-    behind(mist.origin, emit, 0.4, 0.6);
-    mist.size = (reduced ? 0.55 : 0.75) * r;
-    mist.now = now;
-    pool.emit(mist);
-  }
+  emitLayer(pool, FROST.mist, 2.4 * w, emit, 0.4, 0.6, reduced ? 0.55 : 0.75);
   const glint = FROST.glint;
-  glint.count = dither(2.4 * w);
-  if (glint.count) {
-    behind(glint.origin, emit, 0.2, 1.4);
-    glint.kind = reduced ? KIND.SPARK : KIND.GLINT; // GLINT twinkles
-    glint.size = (reduced ? 0.45 : 0.6) * r;
-    glint.now = now;
-    pool.emit(glint);
-  }
+  glint.kind = reduced ? KIND.SPARK : KIND.GLINT; // GLINT twinkles
+  emitLayer(pool, glint, 2.4 * w, emit, 0.2, 1.4, reduced ? 0.45 : 0.6);
   const chip = FROST.chip;
-  chip.count = dither(1.0 * w * s);
-  if (chip.count) {
-    behind(chip.origin, emit, 0.2, 0.9);
-    chip.speed = reduced ? 0.5 : 1.1;
-    chip.size = 0.14 * r;
-    chip.now = now;
-    pool.emit(chip);
-  }
+  chip.speed = reduced ? 0.5 : 1.1;
+  emitLayer(pool, chip, 1.0 * w * speedShare(speed), emit, 0.2, 0.9, 0.14);
 }
 
 /** Drips land a hair above the table (catalogue.js's FLOOR_Y): no z-fight with a floor plane. */
@@ -335,42 +334,22 @@ const STORM = {
 
 /** Storm: crackling sparks around the die and a thin glow streak along its path. */
 function stormTrail(pool, emit) {
-  const { k, reduced, now, radius, speed, vel } = emit;
-  const r = radius / DEFAULT_DIE_R;
-  const s = speedShare(speed);
-  const thin = reduced ? 0.5 : 1;
-  const w = k * (0.35 + 0.65 * s) * thin;
+  const { reduced, speed, vel } = emit;
+  const w = rateOf(emit);
+  const kind = reduced ? KIND.SPARK : KIND.EMBER; // EMBER flickers: the crackle
 
   const spark = STORM.spark;
-  spark.count = dither(3.4 * w);
-  if (spark.count) {
-    behind(spark.origin, emit, 0.4, 1.4);
-    spark.kind = reduced ? KIND.SPARK : KIND.EMBER; // EMBER flickers: the crackle
-    spark.size = (reduced ? 0.2 : 0.26) * r;
-    spark.now = now;
-    pool.emit(spark);
-  }
+  spark.kind = kind;
+  emitLayer(pool, spark, 3.4 * w, emit, 0.4, 1.4, reduced ? 0.2 : 0.26);
   const streak = STORM.streak;
-  streak.count = dither(2.2 * w);
-  if (streak.count) {
-    behind(streak.origin, emit, 0.5, 0.3);
-    streak.dir.x = vel.x; // the pool normalizes dir
-    streak.dir.y = vel.y;
-    streak.dir.z = vel.z;
-    streak.speed = 0.2 * speed;
-    streak.size = (reduced ? 0.16 : 0.2) * r;
-    streak.now = now;
-    pool.emit(streak);
-  }
+  streak.dir.x = vel.x; // the pool normalizes dir
+  streak.dir.y = vel.y;
+  streak.dir.z = vel.z;
+  streak.speed = 0.2 * speed;
+  emitLayer(pool, streak, 2.2 * w, emit, 0.5, 0.3, reduced ? 0.16 : 0.2);
   const arc = STORM.arc;
-  arc.count = dither(1.6 * w);
-  if (arc.count) {
-    behind(arc.origin, emit, 0.4, 1.4);
-    arc.kind = reduced ? KIND.SPARK : KIND.EMBER;
-    arc.size = (reduced ? 0.15 : 0.2) * r;
-    arc.now = now;
-    pool.emit(arc);
-  }
+  arc.kind = kind;
+  emitLayer(pool, arc, 1.6 * w, emit, 0.4, 1.4, reduced ? 0.15 : 0.2);
 }
 
 const LAVA = {
@@ -427,36 +406,12 @@ const LAVA = {
 
 /** Lava: molten drips that fall to the table and dark smoke rising off the die. */
 function lavaTrail(pool, emit) {
-  const { k, reduced, now, radius, speed } = emit;
-  const r = radius / DEFAULT_DIE_R;
-  const s = speedShare(speed);
-  const thin = reduced ? 0.5 : 1;
-  const w = k * (0.35 + 0.65 * s) * thin;
+  const { reduced } = emit;
+  const w = rateOf(emit);
 
-  const drip = LAVA.drip;
-  drip.count = dither(2.0 * w);
-  if (drip.count) {
-    behind(drip.origin, emit, 0.25, 0.8);
-    drip.size = (reduced ? 0.2 : 0.26) * r;
-    drip.now = now;
-    pool.emit(drip);
-  }
-  const bead = LAVA.bead;
-  bead.count = dither(1.4 * w);
-  if (bead.count) {
-    behind(bead.origin, emit, 0.25, 0.8);
-    bead.size = (reduced ? 0.15 : 0.19) * r;
-    bead.now = now;
-    pool.emit(bead);
-  }
-  const smoke = LAVA.smoke;
-  smoke.count = dither(0.9 * w);
-  if (smoke.count) {
-    behind(smoke.origin, emit, 0.6, 0.4);
-    smoke.size = (reduced ? 0.4 : 0.5) * r;
-    smoke.now = now;
-    pool.emit(smoke);
-  }
+  emitLayer(pool, LAVA.drip, 2.0 * w, emit, 0.25, 0.8, reduced ? 0.2 : 0.26);
+  emitLayer(pool, LAVA.bead, 1.4 * w, emit, 0.25, 0.8, reduced ? 0.15 : 0.19);
+  emitLayer(pool, LAVA.smoke, 0.9 * w, emit, 0.6, 0.4, reduced ? 0.4 : 0.5);
 }
 
 const ACID = {
@@ -514,36 +469,201 @@ const ACID = {
 
 /** Acid: green drips falling from the die, a faint green fume. */
 function acidTrail(pool, emit) {
-  const { k, reduced, now, radius, speed } = emit;
-  const r = radius / DEFAULT_DIE_R;
-  const s = speedShare(speed);
-  const thin = reduced ? 0.5 : 1;
-  const w = k * (0.35 + 0.65 * s) * thin;
+  const { reduced } = emit;
+  const w = rateOf(emit);
 
-  const drip = ACID.drip;
-  drip.count = dither(2.2 * w);
-  if (drip.count) {
-    behind(drip.origin, emit, 0.25, 0.8);
-    drip.size = (reduced ? 0.16 : 0.21) * r;
-    drip.now = now;
-    pool.emit(drip);
-  }
-  const glow = ACID.glow;
-  glow.count = dither(1.2 * w);
-  if (glow.count) {
-    behind(glow.origin, emit, 0.25, 0.8);
-    glow.size = (reduced ? 0.16 : 0.2) * r;
-    glow.now = now;
-    pool.emit(glow);
-  }
-  const fume = ACID.fume;
-  fume.count = dither(0.5 * w);
-  if (fume.count) {
-    behind(fume.origin, emit, 0.5, 0.4);
-    fume.size = (reduced ? 0.34 : 0.45) * r;
-    fume.now = now;
-    pool.emit(fume);
-  }
+  emitLayer(pool, ACID.drip, 2.2 * w, emit, 0.25, 0.8, reduced ? 0.16 : 0.21);
+  emitLayer(pool, ACID.glow, 1.2 * w, emit, 0.25, 0.8, reduced ? 0.16 : 0.2);
+  emitLayer(pool, ACID.fume, 0.5 * w, emit, 0.5, 0.4, reduced ? 0.34 : 0.45);
+}
+
+const VOID = {
+  // Dark smoke, normal blend: near-black violet that swallows the light map behind the die.
+  smoke: spec({
+    dir: UP,
+    speed: 0.3,
+    spread: 1.1,
+    gravity: 0.1,
+    life: 0.8,
+    color: C('#1c1028'),
+    colorEnd: C('#050308'),
+    size: 0.45,
+    sizeEnd: 2.4,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    blend: 'normal',
+    alpha: 0.6,
+    spin: 0.8,
+  }),
+  // A faint violet rim around the smoke (additive): dark smoke alone is lost on the dark map.
+  rim: spec({
+    dir: UP,
+    speed: 0.3,
+    spread: 1.1,
+    gravity: 0.1,
+    life: 0.6,
+    color: C('#9060ff'),
+    colorEnd: C('#2a1060'),
+    size: 0.4,
+    sizeEnd: 2.0,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    alpha: 0.5,
+    halo: 0.45,
+    spin: 0.8,
+  }),
+  // Pale violet motes flung off the die and quickly dragged to a halt.
+  mote: spec({
+    dir: UP,
+    speed: 0.9,
+    spread: Math.PI,
+    gravity: 0,
+    life: 0.5,
+    color: C('#c0a0ff'),
+    colorEnd: C('#3c1a90'),
+    size: 0.1,
+    sizeEnd: 0.3,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    drag: 3,
+    halo: 0.8,
+  }),
+};
+
+/** Void: dark smoke curling off the die, rimmed in faint violet, a few violet motes. */
+function voidTrail(pool, emit) {
+  const { reduced } = emit;
+  const w = rateOf(emit);
+
+  emitLayer(pool, VOID.smoke, 1.6 * w, emit, 0.45, 0.6, reduced ? 0.45 : 0.6);
+  emitLayer(pool, VOID.rim, 1.1 * w, emit, 0.45, 0.6, reduced ? 0.4 : 0.5);
+  emitLayer(pool, VOID.mote, 1.2 * w, emit, 0.3, 1.0, reduced ? 0.1 : 0.13);
+}
+
+const VITALITY = {
+  // Golden motes drifting upward, twinkling (GLINT kind, DOT shape).
+  mote: spec({
+    dir: UP,
+    speed: 0.5,
+    spread: 1.6,
+    gravity: 0.8,
+    life: 0.9,
+    color: C('#fff0a8'),
+    colorEnd: C('#ffb020'),
+    size: 0.14,
+    sizeEnd: 0.4,
+    shape: SHAPE.DOT,
+    halo: 0.9,
+  }),
+  // A few four-point sparkles among them.
+  sparkle: spec({
+    dir: UP,
+    speed: 0.3,
+    spread: 1.5,
+    gravity: 0.4,
+    life: 0.6,
+    color: C('#fffbe0'),
+    colorEnd: C('#ffc840'),
+    size: 0.35,
+    sizeEnd: 0.4,
+    shape: SHAPE.GLINT,
+    spin: 1.5,
+    halo: 0.8,
+  }),
+  // The same motes in deep gold, normal blend: additive light washes out on a light map.
+  gold: spec({
+    dir: UP,
+    speed: 0.45,
+    spread: 1.6,
+    gravity: 0.6,
+    life: 0.8,
+    color: C('#e8a018'),
+    colorEnd: C('#a86808'),
+    size: 0.12,
+    sizeEnd: 0.5,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    blend: 'normal',
+    alpha: 0.95,
+  }),
+};
+
+/** Vitality: golden motes rising and twinkling behind the die. */
+function vitalityTrail(pool, emit) {
+  const { reduced } = emit;
+  const w = rateOf(emit);
+  const kind = reduced ? KIND.SPARK : KIND.GLINT; // GLINT twinkles
+
+  const mote = VITALITY.mote;
+  mote.kind = kind;
+  emitLayer(pool, mote, 2.6 * w, emit, 0.3, 1.2, reduced ? 0.13 : 0.17);
+  const sparkle = VITALITY.sparkle;
+  sparkle.kind = kind;
+  emitLayer(pool, sparkle, 0.8 * w, emit, 0.25, 1.2, reduced ? 0.35 : 0.45);
+  emitLayer(pool, VITALITY.gold, 1.6 * w, emit, 0.3, 1.2, reduced ? 0.11 : 0.14);
+}
+
+const POISON = {
+  // A sickly yellow-green haze, normal blend, hanging in the air (it neither rises nor drips).
+  haze: spec({
+    dir: UP,
+    speed: 0.25,
+    spread: 1.4,
+    gravity: -0.05,
+    life: 0.9,
+    color: C('#8fb83a'),
+    colorEnd: C('#4f6a22'),
+    size: 0.6,
+    sizeEnd: 3.0,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    blend: 'normal',
+    alpha: 0.45,
+    spin: 0.4,
+  }),
+  // A faint green glow in the haze (additive): it reads on the dark map.
+  glow: spec({
+    dir: UP,
+    speed: 0.25,
+    spread: 1.4,
+    gravity: -0.05,
+    life: 0.7,
+    color: C('#7aff3a'),
+    colorEnd: C('#1e6a10'),
+    size: 0.5,
+    sizeEnd: 2.4,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    alpha: 0.25,
+    halo: 0.2,
+    spin: 0.4,
+  }),
+  // Small bubbles rising out of the haze.
+  bubble: spec({
+    dir: UP,
+    speed: 0.4,
+    spread: 1.2,
+    gravity: 0.5,
+    life: 0.6,
+    color: C('#b4e050'),
+    colorEnd: C('#5a8a20'),
+    size: 0.12,
+    sizeEnd: 1.2,
+    kind: KIND.SPARK,
+    shape: SHAPE.RING,
+    blend: 'normal',
+    alpha: 0.85,
+  }),
+};
+
+/** Poison: a sickly green haze trailing the die, with a few rising bubbles. */
+function poisonTrail(pool, emit) {
+  const { reduced } = emit;
+  const w = rateOf(emit);
+
+  emitLayer(pool, POISON.haze, 1.6 * w, emit, 0.45, 0.7, reduced ? 0.55 : 0.75);
+  emitLayer(pool, POISON.glow, 0.8 * w, emit, 0.45, 0.7, reduced ? 0.5 : 0.65);
+  emitLayer(pool, POISON.bubble, 1.0 * w, emit, 0.3, 1.0, reduced ? 0.13 : 0.17);
 }
 
 /** Speed -> 0..1: 0 at rest, 1 at FULL_SPEED and above. */
@@ -552,7 +672,7 @@ function speedShare(speed) {
 }
 
 /**
- * element -> (pool, emit) => void. `emit` = { at, vel, speed, radius, k, reduced, now }: the die's
+ * element -> (pool, emit) => void. An element with no entry yet trails nothing. `emit` = { at, vel, speed, radius, k, reduced, now }: the die's
  * world position and velocity (units/s), its speed, its bounding radius, the emission scale (tier
  * particleScale x crowd x frame time), reduced motion, and the ms clock every pool emit passes.
  * The recipe owns nothing in `emit` (it is reused for every die).
@@ -563,6 +683,9 @@ export const TRAIL_RECIPES = Object.freeze({
   frost: frostTrail,
   storm: stormTrail,
   acid: acidTrail,
+  void: voidTrail,
+  vitality: vitalityTrail,
+  poison: poisonTrail,
 });
 
 // --- the emitter ------------------------------------------------------------------------------

@@ -1,12 +1,12 @@
 // Visual check: elemental trails. Throws a resin d20 with a fire, a frost, a storm and a lava inside
-// and a plain one with damageType 'acid' (trail 2, no landing effects) on the dark and the light
-// backdrop, with jb2a=off, and writes
+// and plain ones with damageType 'acid', 'void', 'vitality' and 'poison' (trail 2, no landing
+// effects) on the dark and the light backdrop, with jb2a=off, and writes
 // docs/signoff/elemental-trails/<round>/trails.png: rows are element x backdrop, columns are 150,
 // 400 and 700 ms into the flight (from the frame the die is first placed) and 600 ms after landing.
 // Each frame is a crop centred on the die. Fails on any page error.
 // Env: DICER_TRAILS_ROUND (folder label, default "round-1"), DICER_TRAILS_TIMES (flight shot times
-// in ms, comma-separated, default 150,400,700), plus the DICER_VISUAL_* variables of
-// fx-common.mjs.
+// in ms, comma-separated, default 150,400,700), DICER_TRAILS_ONLY (element names, comma-separated,
+// default all rows), plus the DICER_VISUAL_* variables of fx-common.mjs.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { PAGE, PANEL, VIEW, ROLL, ARGS, startServer, stopServer, gotoReady, watchProblems } from './fx-common.mjs';
@@ -18,7 +18,18 @@ const SCALE = 0.6;
 const FLIGHT = process.env.DICER_TRAILS_TIMES?.split(',').map(Number).filter((t) => t > 0) ?? [150, 400, 700];
 const AFTER = 600;
 const BACKDROPS = ['dark', 'light'];
-const ELEMENTS = [
+const ONLY = process.env.DICER_TRAILS_ONLY?.split(',').map((s) => s.trim()).filter(Boolean);
+/** A plain resin die with no inside: its damage type gives the element. */
+const plain = (name, color, color2, ink) => ({
+  name,
+  damageType: name,
+  appearance: {
+    body: { type: 'resin', color, color2, roughness: 0.05 },
+    interior: { type: 'none' },
+    numbers: { fill: 'silver', color: ink, depth: 0.5 },
+  },
+});
+const ALL = [
   {
     name: 'fire',
     appearance: {
@@ -61,7 +72,11 @@ const ELEMENTS = [
       numbers: { fill: 'silver', color: '#e8ffd0', depth: 0.5 },
     },
   },
+  plain('void', '#2a1a3a', '#0c0612', '#e6d8ff'),
+  plain('vitality', '#f2e2b0', '#c8a050', '#5a3a08'),
+  plain('poison', '#4a5a1e', '#1c240a', '#eaffc0'),
 ];
+const ELEMENTS = ONLY?.length ? ALL.filter((el) => ONLY.includes(el.name)) : ALL;
 
 /** A crop of the viewport centred on the last roll's die, as base64 jpeg. */
 async function shot(page) {
