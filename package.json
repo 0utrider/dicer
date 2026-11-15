@@ -23,6 +23,7 @@
     "test:visual:insides": "node tests/visual/insides.mjs",
     "test:visual:insides-perf": "node tests/visual/insides-perf.mjs",
     "test:visual:edges": "node tests/visual/edges.mjs",
+    "test:visual:trails": "node tests/visual/trails.mjs",
     "test:watch": "vitest",
     "test:fairness": "node scripts/fairness.mjs",
     "lint": "eslint .",
