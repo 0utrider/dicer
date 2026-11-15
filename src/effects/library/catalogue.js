@@ -169,7 +169,7 @@ float raySet( float a, float r, float n, float lenMax, float seed ) {
 	float d = r * abs( sin( a - idx * sector ) );
 	float h = rayHash( mod( idx, n ) * 7.31 + seed );
 	float len = lenMax * ( 0.3 + 0.7 * h );
-	float w = 0.012 + 0.05 * r;
+	float w = 0.01 + 0.04 * r;
 	float soft = exp( - ( d * d ) / ( w * w ) );
 	return soft * ( 1.0 - smoothstep( 0.15 * len, len, r ) ) * smoothstep( 0.04, 0.16, r ) * ( 0.55 + 0.45 * h );
 }
@@ -184,16 +184,15 @@ void main() {
 		float core = exp( - r * r * 60.0 );
 		c = ( uColor * glow + vec3( core ) ) * uAlpha;
 	} else {
-		float fade = 1.0 - smoothstep( 0.55, 1.0, r );
-		float hot = exp( - r * r * 70.0 );
-		float mid = exp( - r * r * 7.0 );
-		float haze = exp( - r * r * 1.8 ) * fade;
+				float hot = exp( - r * r * 110.0 );
+		float mid = exp( - r * r * 11.0 );
+		float haze = exp( - r * r * 3.5 ) * ( 1.0 - smoothstep( 0.4, 1.0, r ) ); // a soft tail, no rim
 		vec3 grad = mix( mix( uCore, uColor, smoothstep( 0.0, 0.3, r ) ), uDeep, smoothstep( 0.3, 0.85, r ) );
 		c = grad * ( 0.9 * mid + 0.7 * haze ) + uCore * ( 0.6 * mid * mid ) + vec3( 0.9 * hot );
 		float rays = 0.0;
 		if ( uRays > 0.5 && uRayAlpha > 0.0 ) {
 			float a = atan( p.y, p.x + 0.00001 );
-			rays = ( raySet( a + uSpin, r, uRays, 0.97, 0.0 )
+			rays = ( raySet( a + uSpin, r, uRays, 0.95, 0.0 )
 				+ 0.6 * raySet( a - 0.6 * uSpin + 3.14159265 / uRays, r, uRays, 0.75, 7.0 ) )
 				* uRayAlpha * ( 1.0 - smoothstep( 0.8, 1.0, r ) );
 			vec3 rayCol = mix( uCore, uColor, smoothstep( 0.05, 0.5, r ) );
@@ -242,7 +241,8 @@ float fbm2( vec2 p ) {
  * outside, the body colour (uColor) easing into a deeper tint (uDeep) behind it with a soft inner
  * glow, and a faint trail (uDeep) fading back toward the centre over uTrail (a fraction of the
  * radius). uNoise (0..1) breaks the edges: the radius wobbles with the angle, the leading edge
- * frays into pieces and the band and trail are mottled, so it is never a perfect circle. uSeed
+ * frays into pieces and the band and trail are mottled, so it is never a perfect circle. uBand
+ * scales the body band (and its inner glow) behind the edge: 1 is the full band, less a thin ring. uSeed
  * picks the pattern. Cost: the corners and the area past the outer ring are discarded before any
  * noise; a pixel on a ring takes 4 value-noise calls (an fbm2 and a noise of the angle, shared
  * by both rings, plus a mottle).
@@ -258,6 +258,7 @@ uniform float uR2;
 uniform float uEdge;
 uniform float uNoise;
 uniform float uTrail;
+uniform float uBand;
 uniform float uSeed;
 varying vec2 vUv;
 ${NOISE_GLSL}
@@ -270,7 +271,7 @@ vec3 ring( float r, float R, float wobble, float fray, float mottle ) {
 	float ahead = 1.0 - smoothstep( 0.0, 0.35 * uEdge, -d ); // sharp on the outside
 	float edge = exp( - ( d * d ) / ( uEdge * uEdge ) ) * ahead;
 	edge *= mix( 1.0, 0.1 + 0.9 * smoothstep( 0.3, 0.65, fray ), uNoise );
-	float w = 0.05 + 0.12 * R; // the band widens as the ring grows
+	float w = ( 0.05 + 0.12 * R ) * uBand; // the band widens as the ring grows
 	float behind = max( d, 0.0 );
 	float band = ( 1.0 - smoothstep( 0.0, w, behind ) ) * ahead;
 	float glow = exp( - behind / ( 1.6 * w ) ) * ahead; // the soft inner glow
@@ -303,9 +304,9 @@ const ringBody = (color) => {
  * RING_FRAGMENT's extra uniforms for a die colour (pass ringBody(color) as quadMaterial's colour):
  * the hot edge is the palette core halfway to white, the deep tint its edge (a near-black die's
  * rim, darkened). `edge`, `noise` and `trail` set uEdge, uNoise and uTrail; both rings start
- * hidden (radius and alpha 0) and uSeed is random.
+ * hidden (radius and alpha 0) and uSeed is random. `band` sets uBand (1: the full body band).
  */
-function ringUniforms(color, { edge = 0.018, noise = 0.6, trail = 0.5 } = {}) {
+function ringUniforms(color, { edge = 0.018, noise = 0.6, trail = 0.5, band = 1 } = {}) {
   const pal = palette(color);
   const white = new THREE.Color(WHITE);
   return {
@@ -317,6 +318,7 @@ function ringUniforms(color, { edge = 0.018, noise = 0.6, trail = 0.5 } = {}) {
     uEdge: edge,
     uNoise: noise,
     uTrail: trail,
+    uBand: band,
     uSeed: Math.random() * 50,
   };
 }
@@ -348,6 +350,18 @@ export function floorGlow(ctx, { radius, peak, ms, curve = (e) => (1 - e / ms) *
   );
 }
 
+/**
+ * light-burst's uShade for a body colour: bright, low-chroma bodies (near-white, pale gold, a
+ * near-black die's grey rim) get a readable dark band on a light map; saturated colours already
+ * read and get little or none. sqrt(relative luminance) x (1 - sRGB chroma).
+ */
+function burstShade(body) {
+  const lum = 0.2126 * body.r + 0.7152 * body.g + 0.0722 * body.b; // linear working space
+  const c = body.clone().convertLinearToSRGB();
+  const chroma = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+  return 0.75 * Math.sqrt(lum) * (1 - chroma);
+}
+
 export const lightBurst = Object.freeze({
   id: 'light-burst',
   cost: 1,
@@ -368,8 +382,7 @@ export const lightBurst = Object.freeze({
       uRays: 8,
       uCore: (pal.rim ?? pal.core).clone().lerp(new THREE.Color(WHITE), pal.rim ? 0.45 : 0.25),
       uDeep: pal.rim ? pal.rim.clone().multiplyScalar(0.6) : pal.edge.clone(),
-      // Pale bodies (near-white, gold, a near-black die's grey rim) need the stronger dark band.
-      uShade: 0.15 + 0.7 * body.getHSL({}, THREE.SRGBColorSpace).l,
+      uShade: burstShade(body),
     });
     const u = material.uniforms;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
@@ -380,18 +393,19 @@ export const lightBurst = Object.freeze({
     // Grows gently with intensity (sqrt), and at most 1.6 x its intensity-1 size on a big table.
     const grow = Math.min(1.6, sizeK(ctx));
     const level = Math.min(ALPHA_CAP, Math.max(0, ctx.intensity));
-    const reach = 5.6 * grow;
+    // Scales at intensity 1 (x grow when set, so the 1.6 cap is an exact product).
+    const reach = 7; // the haze tail fades out well inside the quad
     const PRE = Math.min(60, D * 0.1); // the anticipation
-    const from = 1.3 * grow; // the gathering glow shrinks from here...
-    const gathered = 0.55 * grow; // ...to here, then bursts out
-    mesh.scale.setScalar(from);
+    const from = 1.3; // the gathering glow shrinks from here...
+    const gathered = 0.55; // ...to here, then bursts out
+    mesh.scale.setScalar(grow * from);
     u.uAlpha.value = 0.3 * level;
     const spin0 = Math.random() * Math.PI * 2;
 
     // The thin floor ring is skipped on cheap tiers (effectBudget <= 2): 4 noise calls a pixel.
     let ru = null;
     if ((ctx.tier?.effectBudget ?? Infinity) > 2) {
-      const ringMat = quadMaterial(RING_FRAGMENT, body, ringUniforms(ctx.color, { edge: 0.009, noise: 0.35, trail: 0.3 }));
+      const ringMat = quadMaterial(RING_FRAGMENT, body, ringUniforms(ctx.color, { edge: 0.009, noise: 0.35, trail: 0.12, band: 0.3 }));
       ru = ringMat.uniforms;
       const ring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ringMat);
       ring.rotation.x = -Math.PI / 2; // on the floor plane
@@ -400,20 +414,20 @@ export const lightBurst = Object.freeze({
       ring.renderOrder = 1;
       scope.add(ring);
     }
-    const ringLevel = Math.min(ALPHA_CAP, 0.9 * Math.max(0, ctx.intensity));
+    const ringLevel = Math.min(ALPHA_CAP, 0.8 * Math.max(0, ctx.intensity));
 
     const halo = timed(
       D,
       (e) => {
         if (e < PRE) {
           const g = e / PRE;
-          mesh.scale.setScalar(from + (gathered - from) * g * g * (3 - 2 * g));
+          mesh.scale.setScalar(grow * (from + (gathered - from) * g * g * (3 - 2 * g)));
           u.uAlpha.value = level * (0.3 + 0.3 * g);
           u.uRayAlpha.value = 0;
           return;
         }
         const k = (e - PRE) / Math.max(1, D - PRE);
-        mesh.scale.setScalar(gathered + (reach - gathered) * (1 - Math.exp(-8 * k))); // a fast bloom
+        mesh.scale.setScalar(grow * (gathered + (reach - gathered) * (1 - Math.exp(-8 * k)))); // a fast bloom
         // The flash holds through the first third or so, then eases out.
         const hold = clamp01((k - 0.25) / 0.75);
         u.uAlpha.value = 1.2 * level * (1 - hold * hold * (3 - 2 * hold));

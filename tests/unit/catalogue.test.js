@@ -291,7 +291,7 @@ describe('rebuilt looks', () => {
     expect(hasRing('ultra')).toBe(true);
   });
 
-  test('light-burst shades pale colours more (a dark band so it reads on a light table)', () => {
+  test('light-burst shades pale colours (a dark band for a light table), saturated ones barely', () => {
     const shadeOf = (hex) => {
       const ctx = ctxFor(EFFECTS['light-burst'], { color: new THREE.Color(hex) });
       const h = EFFECTS['light-burst'].start(ctx);
@@ -300,8 +300,8 @@ describe('rebuilt looks', () => {
       h.stop();
       return s;
     };
-    for (const hex of ['#f4f4f4', '#141418', '#e02020', '#2050ff']) expect(shadeOf(hex), hex).toBeGreaterThan(0);
-    expect(shadeOf('#f4f4f4')).toBeGreaterThan(shadeOf('#e02020'));
+    for (const hex of ['#f4f4f4', '#fff0b0', '#141418']) expect(shadeOf(hex), hex).toBeGreaterThan(0.2);
+    for (const hex of ['#e02020', '#2050ff']) expect(shadeOf(hex), hex).toBeLessThan(0.1);
   });
 
   test('light-burst anticipates: halo scale at 40 ms < scale at 0 ms', () => {
@@ -328,6 +328,7 @@ describe('rebuilt looks', () => {
     expect(Math.abs(ring.rotation.x + Math.PI / 2)).toBeLessThan(1e-6);
     const u = ring.material.uniforms;
     expect(u.uEdge.value).toBeLessThan(0.018); // thinner than the shockwave's
+    expect(u.uBand.value).toBeLessThan(0.5); // a narrow body band: a line, not a filled disc
     h.update(0);
     h.update(200);
     const r1 = u.uR.value;
@@ -373,6 +374,7 @@ describe('rebuilt looks', () => {
       expect(quad.material.fragmentShader, name).toContain(`uniform float ${name};`);
     }
     expect(u.uNoise.value).toBeLessThanOrEqual(1);
+    expect(u.uBand.value).toBe(1); // the shockwave keeps its full body band
     h.stop();
   });
 
