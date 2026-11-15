@@ -64,8 +64,7 @@ const DAMAGE_ELEMENTS = Object.freeze({
 
 /**
  * The element a die shows: its elemental inside (fire, lava, frost, storm), else the element of
- * its damage type, else null (no trail: untyped, unknown). An element with no recipe yet resolves
- * here but trails nothing (the emitter skips it).
+ * its damage type, else null (no trail: untyped, unknown).
  * @param {object} [appearance] a (normalized) appearance
  * @param {string} [damageType]
  * @returns {string|null}
@@ -916,13 +915,260 @@ function spiritTrail(pool, emit) {
   emitLayer(pool, SPIRIT.strand, 1.6 * w, emit, 0.3, 1.0, reduced ? 0.12 : 0.16);
 }
 
+const BLEED = {
+  // Blood drops, normal blend (dark red reads on a light map): they fall to the table, bounce once
+  // and keep widening as they rest there, the splat.
+  drop: spec({
+    dir: { x: 0, y: -1, z: 0 },
+    speed: 0.6,
+    spread: 0.8,
+    gravity: -10,
+    floor: DRIP_FLOOR,
+    life: 0.9,
+    color: C('#b0101c'),
+    colorEnd: C('#5a0408'),
+    size: 0.12,
+    sizeEnd: 2.4,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    blend: 'normal',
+    alpha: 0.95,
+  }),
+  // A deep red glow on some drops (additive): dark red alone is lost on the dark map.
+  glow: spec({
+    dir: { x: 0, y: -1, z: 0 },
+    speed: 0.6,
+    spread: 0.8,
+    gravity: -10,
+    floor: DRIP_FLOOR,
+    life: 0.6,
+    color: C('#ff2a2a'),
+    colorEnd: C('#600008'),
+    size: 0.11,
+    sizeEnd: 1.4,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    halo: 0.4,
+  }),
+  // Fine spatter flung sideways off the die, falling to the table.
+  spatter: spec({
+    dir: UP,
+    speed: 1.2,
+    spread: 1.4,
+    gravity: -10,
+    floor: DRIP_FLOOR,
+    life: 0.6,
+    color: C('#c41420'),
+    colorEnd: C('#4a0206'),
+    size: 0.06,
+    sizeEnd: 1.6,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    blend: 'normal',
+    alpha: 0.9,
+  }),
+};
+
+/** Bleed: blood drops that fall from the die and splat on the table, a little fine spatter. */
+function bleedTrail(pool, emit) {
+  const { reduced, speed } = emit;
+  const w = rateOf(emit);
+
+  emitLayer(pool, BLEED.drop, 1.6 * w, emit, 0.25, 0.7, reduced ? 0.13 : 0.17);
+  emitLayer(pool, BLEED.glow, 0.9 * w, emit, 0.25, 0.7, reduced ? 0.11 : 0.14);
+  const spatter = BLEED.spatter;
+  spatter.speed = reduced ? 0.6 : 1.2;
+  emitLayer(pool, spatter, 1.0 * w * speedShare(speed), emit, 0.2, 0.8, 0.08);
+}
+
+/** Writes the die's direction of motion, tilted down by `drop` (the pool normalizes dir), into d. */
+function along(d, vel, speed, drop) {
+  d.x = vel.x;
+  d.y = vel.y - drop * speed;
+  d.z = vel.z;
+}
+
+const SLASHING = {
+  // Thin silver slash streaks fanned out along the path; gravity curves their path and the streak
+  // follows it, so each is a short arc. Not flickering: a clean blade glint.
+  slash: spec({
+    dir: { x: 1, y: 0, z: 0 },
+    speed: 0,
+    spread: 0.45,
+    gravity: -4,
+    life: 0.3,
+    color: C('#f4f7ff'),
+    colorEnd: C('#8a94a6'),
+    size: 0.09,
+    sizeEnd: 0.5,
+    kind: KIND.STREAK,
+    shape: SHAPE.STREAK,
+    stretch: 1.8,
+    drag: 2.5,
+    halo: 0.35,
+  }),
+  // The same arcs in dark steel, normal blend: additive silver washes out on a light map.
+  steel: spec({
+    dir: { x: 1, y: 0, z: 0 },
+    speed: 0,
+    spread: 0.45,
+    gravity: -4,
+    life: 0.28,
+    color: C('#5e6878'),
+    colorEnd: C('#3a404c'),
+    size: 0.07,
+    sizeEnd: 0.5,
+    kind: KIND.STREAK,
+    shape: SHAPE.STREAK,
+    stretch: 1.8,
+    drag: 2.5,
+    blend: 'normal',
+    alpha: 0.85,
+  }),
+};
+
+/** Slashing: thin silver slash arcs fanned out behind the die. */
+function slashingTrail(pool, emit) {
+  const { reduced, speed, vel } = emit;
+  const w = rateOf(emit);
+
+  const slash = SLASHING.slash;
+  along(slash.dir, vel, speed, 0.15);
+  slash.speed = 0.22 * speed;
+  emitLayer(pool, slash, 1.4 * w, emit, 0.4, 0.6, reduced ? 0.07 : 0.09);
+  const steel = SLASHING.steel;
+  along(steel.dir, vel, speed, 0.15);
+  steel.speed = 0.2 * speed;
+  emitLayer(pool, steel, 1.0 * w, emit, 0.4, 0.6, reduced ? 0.055 : 0.07);
+}
+
+const PIERCING = {
+  // Sharp white needles shot straight back along the path: no spread, no gravity, long and thin.
+  needle: spec({
+    dir: { x: 1, y: 0, z: 0 },
+    speed: 0,
+    spread: 0.02,
+    gravity: 0,
+    life: 0.24,
+    color: C('#ffffff'),
+    colorEnd: C('#dce6ff'),
+    size: 0.06,
+    sizeEnd: 0.4,
+    kind: KIND.STREAK,
+    shape: SHAPE.STREAK,
+    stretch: 4,
+    drag: 1.5,
+    halo: 0.3,
+  }),
+  // The same needles in dark steel, normal blend: white additive light washes out on a light map.
+  shaft: spec({
+    dir: { x: 1, y: 0, z: 0 },
+    speed: 0,
+    spread: 0.02,
+    gravity: 0,
+    life: 0.22,
+    color: C('#383e48'),
+    colorEnd: C('#1e2228'),
+    size: 0.05,
+    sizeEnd: 0.4,
+    kind: KIND.STREAK,
+    shape: SHAPE.STREAK,
+    stretch: 4,
+    drag: 1.5,
+    blend: 'normal',
+    alpha: 1,
+  }),
+};
+
+/** Piercing: sharp, straight white needle streaks along the die's path (straighter than slashing). */
+function piercingTrail(pool, emit) {
+  const { reduced, speed, vel } = emit;
+  const w = rateOf(emit);
+
+  const needle = PIERCING.needle;
+  along(needle.dir, vel, speed, 0);
+  needle.speed = 0.32 * speed;
+  emitLayer(pool, needle, 1.2 * w, emit, 0.3, 0.35, reduced ? 0.045 : 0.06);
+  const shaft = PIERCING.shaft;
+  along(shaft.dir, vel, speed, 0);
+  shaft.speed = 0.3 * speed;
+  emitLayer(pool, shaft, 0.9 * w, emit, 0.3, 0.35, reduced ? 0.04 : 0.05);
+}
+
+const BLUDGEONING = {
+  // Brownish-grey dust puffs, normal blend, kicked up and settling (void's smoke is near-black and
+  // rises; the impact dust is a pale ring on the table).
+  puff: spec({
+    dir: UP,
+    speed: 0.4,
+    spread: 1.3,
+    gravity: -0.15,
+    life: 0.7,
+    color: C('#9a8a78'),
+    colorEnd: C('#766c60'),
+    size: 0.35,
+    sizeEnd: 2.0,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    blend: 'normal',
+    alpha: 0.6,
+    spin: 0.7,
+  }),
+  // Pale dust motes catching the light (additive): grey dust alone is dull on the dark map.
+  mote: spec({
+    dir: UP,
+    speed: 0.6,
+    spread: 1.4,
+    gravity: -1,
+    life: 0.5,
+    color: C('#e0d2bc'),
+    colorEnd: C('#6a5c4a'),
+    size: 0.08,
+    sizeEnd: 0.5,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    drag: 2,
+    alpha: 0.85,
+    halo: 0.3,
+  }),
+  // Grit: small dark chips shed by the die, falling to the table.
+  grit: spec({
+    dir: UP,
+    speed: 1.0,
+    spread: 1.1,
+    gravity: -8,
+    floor: DRIP_FLOOR,
+    life: 0.55,
+    color: C('#6e5e4c'),
+    colorEnd: C('#3a3028'),
+    size: 0.07,
+    sizeEnd: 0.8,
+    kind: KIND.SHARD,
+    shape: SHAPE.SHARD,
+    blend: 'normal',
+    spin: 6,
+  }),
+};
+
+/** Bludgeoning: brownish-grey dust puffs kicked up behind the die, a few pale motes and grit. */
+function bludgeoningTrail(pool, emit) {
+  const { reduced, speed } = emit;
+  const w = rateOf(emit);
+
+  emitLayer(pool, BLUDGEONING.puff, 1.2 * w, emit, 0.45, 0.6, reduced ? 0.4 : 0.5);
+  emitLayer(pool, BLUDGEONING.mote, 1.4 * w, emit, 0.3, 1.0, reduced ? 0.08 : 0.1);
+  const grit = BLUDGEONING.grit;
+  grit.speed = reduced ? 0.5 : 1.0;
+  emitLayer(pool, grit, 1.0 * w * speedShare(speed), emit, 0.2, 0.9, 0.12);
+}
+
 /** Speed -> 0..1: 0 at rest, 1 at FULL_SPEED and above. */
 function speedShare(speed) {
   return Math.min(1, Math.max(0, (speed - REST_SPEED) / (FULL_SPEED - REST_SPEED)));
 }
 
 /**
- * element -> (pool, emit) => void. An element with no entry yet trails nothing. `emit` = { at, vel, speed, radius, k, reduced, now }: the die's
+ * element -> (pool, emit) => void, one per element in ELEMENTS. `emit` = { at, vel, speed, radius, k, reduced, now }: the die's
  * world position and velocity (units/s), its speed, its bounding radius, the emission scale (tier
  * particleScale x crowd x frame time), reduced motion, and the ms clock every pool emit passes.
  * The recipe owns nothing in `emit` (it is reused for every die).
@@ -940,6 +1186,10 @@ export const TRAIL_RECIPES = Object.freeze({
   force: forceTrail,
   mental: mentalTrail,
   spirit: spiritTrail,
+  bleed: bleedTrail,
+  slashing: slashingTrail,
+  piercing: piercingTrail,
+  bludgeoning: bludgeoningTrail,
 });
 
 // --- the emitter ------------------------------------------------------------------------------
@@ -953,6 +1203,8 @@ const MAX_STEP_SCALE = 3;
 const MAX_GAP_S = 0.1;
 /** Above this many moving element dice, each emits less (total grows as sqrt): big pools stay cheap. */
 const CROWD = 6;
+/** Reduced motion is re-read this often (ms): the effect layer's reducedMotion() calls matchMedia, which allocates. */
+const REDUCED_MS = 1000;
 
 const dieScale = new THREE.Vector3(); // reused: radiusOf allocates nothing
 
@@ -995,6 +1247,8 @@ export function createTrailFx({ getPool, getTier, now, reducedMotion, setting, w
     reduced: false,
     now: 0,
   };
+  let reduced = false;
+  let reducedAt = -Infinity; // the clock at the last reducedMotion() read
 
   /** Updates a die's state for this frame; true when it moves fast enough to trail. */
   function track(die, t) {
@@ -1022,7 +1276,7 @@ export function createTrailFx({ getPool, getTier, now, reducedMotion, setting, w
       st.vx = (p.x - st.x) / dt;
       st.vy = (p.y - st.y) / dt;
       st.vz = (p.z - st.z) / dt;
-      st.speed = Math.hypot(st.vx, st.vy, st.vz);
+      st.speed = Math.sqrt(st.vx * st.vx + st.vy * st.vy + st.vz * st.vz); // hypot is slower, per die per frame
     }
     st.x = p.x;
     st.y = p.y;
@@ -1059,7 +1313,10 @@ export function createTrailFx({ getPool, getTier, now, reducedMotion, setting, w
         const scale = Number(tier?.particleScale);
         const crowd = movers > CROWD ? Math.sqrt(CROWD / movers) : 1;
         const base = (scale > 0 ? scale : 1) * crowd;
-        const reduced = reducedMotion?.() === true;
+        if (!(t - reducedAt < REDUCED_MS && t >= reducedAt)) {
+          reduced = reducedMotion?.() === true;
+          reducedAt = t;
+        }
         for (let i = 0; i < dice.length; i++) {
           const die = dice[i];
           const st = die && states.get(die);
@@ -1086,6 +1343,7 @@ export function createTrailFx({ getPool, getTier, now, reducedMotion, setting, w
     /** Forgets every die (the layer's clear()): what was emitted is the pool's to clear. */
     clear() {
       states = new WeakMap();
+      reducedAt = -Infinity;
     },
   };
 }

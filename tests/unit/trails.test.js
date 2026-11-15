@@ -1,5 +1,10 @@
 import { describe, test, expect, vi } from 'vitest';
-import { ELEMENTS, elementOf, createTrailFx, TRAIL_RECIPES } from '../../src/effects/library/trails.js';
+import {
+  ELEMENTS,
+  elementOf,
+  createTrailFx,
+  TRAIL_RECIPES,
+} from '../../src/effects/library/trails.js';
 import { KIND } from '../../src/effects/library/particles.js';
 import { SHAPE } from '../../src/effects/library/shapes.js';
 
@@ -12,7 +17,12 @@ function fakePool() {
   };
 }
 
-function setup({ tier = { effectBudget: 8, particleScale: 1 }, reduced = false, settings = {}, pool = fakePool() } = {}) {
+function setup({
+  tier = { effectBudget: 8, particleScale: 1 },
+  reduced = false,
+  settings = {},
+  pool = fakePool(),
+} = {}) {
   const warnOnce = vi.fn();
   const fx = createTrailFx({
     getPool: () => pool,
@@ -92,7 +102,18 @@ describe('elementOf', () => {
     expect(elementOf({}, 'slashing')).toBe('slashing');
     expect(elementOf({}, 'piercing')).toBe('piercing');
     expect(elementOf({}, 'bludgeoning')).toBe('bludgeoning');
-    const types = ['fire', 'cold', 'electricity', 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental'];
+    const types = [
+      'fire',
+      'cold',
+      'electricity',
+      'acid',
+      'void',
+      'vitality',
+      'poison',
+      'sonic',
+      'force',
+      'mental',
+    ];
     for (const type of [...types, 'spirit', 'bleed', 'slashing', 'piercing', 'bludgeoning'])
       expect(ELEMENTS).toContain(elementOf({}, type));
   });
@@ -339,18 +360,125 @@ describe('createTrailFx', () => {
     }
   });
 
-  test('an element without a recipe yet (bleed, slashing, bludgeoning) emits nothing and warns nothing', () => {
-    const { fx, pool, warnOnce } = setup();
-    const dice = ['bleed', 'slashing', 'bludgeoning'].map((damageType) => die('none', { damageType }));
-    fx.flight(dice, 0);
-    fly(fx, dice);
-    expect(pool.emits).toHaveLength(0);
-    expect(warnOnce).not.toHaveBeenCalled();
+  test('bleed, slashing, piercing and bludgeoning recipes exist', () => {
+    for (const element of ['bleed', 'slashing', 'piercing', 'bludgeoning'])
+      expect(typeof TRAIL_RECIPES[element]).toBe('function');
+  });
+
+  test('every element in ELEMENTS has a recipe', () => {
+    for (const element of ELEMENTS) expect(typeof TRAIL_RECIPES[element]).toBe('function');
+    expect(Object.keys(TRAIL_RECIPES).sort()).toEqual([...ELEMENTS].sort());
+  });
+
+  test('a moving bleed, slashing, piercing or bludgeoning damage die emits; at rest it stops', () => {
+    for (const damageType of ['bleed', 'slashing', 'piercing', 'bludgeoning']) {
+      const { fx, pool, warnOnce } = setup();
+      const d = die('none', { damageType });
+      fx.flight([d], 0);
+      const t = fly(fx, [d], { frames: 20 });
+      expect(pool.emits.length).toBeGreaterThan(0);
+      for (const e of pool.emits) expect(Number.isFinite(e.now)).toBe(true);
+      const moving = pool.emits.length;
+      for (let i = 1; i <= 8; i++) fx.flight([d], t + 16 * i);
+      expect(pool.emits.length).toBe(moving);
+      expect(warnOnce).not.toHaveBeenCalled();
+    }
+  });
+
+  test('bleed: blood-red drops fall (pulled down) to the pool floor and spread into a splat', () => {
+    const emits = flown('bleed');
+    expect(emits.length).toBeGreaterThan(0);
+    // Every bleed emit is blood red: red far over green and blue.
+    for (const e of emits) {
+      expect(e.color.r).toBeGreaterThan(3 * e.color.g);
+      expect(e.color.r).toBeGreaterThan(3 * e.color.b);
+    }
+    // The drops: the pool's gravity is +y, so falling is gravity < 0; they rest a hair above the table.
+    const drops = emits.filter(
+      (e) => e.shape === SHAPE.DOT && e.blend === 'normal' && e.sizeEnd >= 2,
+    );
+    expect(drops.length).toBeGreaterThan(0);
+    for (const e of drops) {
+      expect(e.gravity).toBe(-10);
+      expect(e.floor).toBe(0.02);
+    }
+    // Everything bleed emits falls to the floor: nothing rises or hangs (unlike poison or void).
+    for (const e of emits) {
+      expect(e.gravity).toBeLessThan(0);
+      expect(e.floor).toBe(0.02);
+    }
+    expect(emits.some((e) => e.blend !== 'normal')).toBe(true); // a red glow for the dark table
+  });
+
+  /** Max channel minus min channel: near 0 for silver, white and grey. */
+  const chroma = (c) => Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+
+  test('slashing: thin silver streaks that arc (gravity bends them), fanned out', () => {
+    const emits = flown('slashing');
+    expect(emits.length).toBeGreaterThan(0);
+    expect(emits.some((e) => e.blend === 'normal')).toBe(true);
+    expect(emits.some((e) => e.blend !== 'normal')).toBe(true);
+    for (const e of emits) {
+      expect(e.shape).toBe(SHAPE.STREAK);
+      expect(chroma(e.color)).toBeLessThan(0.2); // silver / steel, not storm blue or force violet
+      expect(e.gravity).toBeLessThan(0); // the streak follows a curving path: an arc
+      expect(e.spread).toBeGreaterThanOrEqual(0.3);
+      expect(e.size).toBeLessThan(0.15); // thin
+      expect(Number.isFinite(e.floor)).toBe(false);
+    }
+  });
+
+  test('piercing: straight white needles, longer and sharper than the slashing streaks', () => {
+    const emits = flown('piercing');
+    const slash = flown('slashing');
+    expect(emits.length).toBeGreaterThan(0);
+    expect(emits.some((e) => e.blend === 'normal')).toBe(true);
+    const bright = emits.filter((e) => e.blend !== 'normal');
+    expect(bright.length).toBeGreaterThan(0);
+    for (const e of bright) expect(Math.min(e.color.r, e.color.g, e.color.b)).toBeGreaterThan(0.85); // white
+    const maxSlashStretch = Math.max(...slash.map((e) => e.stretch));
+    for (const e of emits) {
+      expect(e.shape).toBe(SHAPE.STREAK);
+      expect(e.kind).toBe(KIND.STREAK);
+      expect(e.gravity).toBe(0); // straight
+      expect(e.spread).toBeLessThanOrEqual(0.05);
+      expect(e.stretch).toBeGreaterThan(maxSlashStretch);
+      expect(chroma(e.color)).toBeLessThan(0.2);
+    }
+  });
+
+  test('bludgeoning: brownish-grey dust puffs (not void smoke, not the impact ring) and falling grit', () => {
+    const emits = flown('bludgeoning');
+    const puffs = emits.filter((e) => e.kind === KIND.SMOKE);
+    expect(puffs.length).toBeGreaterThan(0);
+    for (const e of puffs) {
+      expect(e.shape).toBe(SHAPE.SMOKE); // the impact dust is a RING
+      expect(e.blend).toBe('normal');
+      const hex = e.color.getHex(); // sRGB: THREE.Color keeps linear channels
+      const sum = ((hex >> 16) + ((hex >> 8) & 255) + (hex & 255)) / 255;
+      expect(sum).toBeGreaterThan(0.9); // not void's near-black smoke (#1c1028)
+      expect(sum).toBeLessThan(2.1); // darker than the pale impact dust (#d8cfc0, 2.38)
+      expect(e.color.r).toBeGreaterThanOrEqual(e.color.g); // warm: brown-grey
+      expect(e.color.g).toBeGreaterThanOrEqual(e.color.b);
+      expect(chroma(e.color)).toBeLessThan(0.2);
+    }
+    const grit = emits.filter((e) => e.shape === SHAPE.SHARD);
+    expect(grit.length).toBeGreaterThan(0);
+    for (const e of grit) {
+      expect(e.gravity).toBeLessThan(-5);
+      expect(e.floor).toBe(0.02);
+    }
+    expect(emits.some((e) => e.blend !== 'normal')).toBe(true); // pale motes for the dark table
   });
 
   test('trail 0, a missing trail, or no element emits nothing', () => {
     const { fx, pool } = setup();
-    const dice = [die('fire', { trail: 0 }), die('fire', { trail: undefined }), die('fire', { trail: true }), die('glitter')];
+    const dice = [
+      die('fire', { trail: 0 }),
+      die('fire', { trail: undefined }),
+      die('fire', { trail: true }),
+      die('glitter'),
+    ];
     fx.flight(dice, 0);
     fly(fx, dice);
     expect(pool.emits).toHaveLength(0);
@@ -405,7 +533,21 @@ describe('createTrailFx', () => {
 
   test('reduced motion reaches the recipe: no flickering kinds, thinner trails', () => {
     const inside = ['fire', 'frost', 'storm', 'lava'];
-    for (const element of [...inside, 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit']) {
+    for (const element of [
+      ...inside,
+      'acid',
+      'void',
+      'vitality',
+      'poison',
+      'sonic',
+      'force',
+      'mental',
+      'spirit',
+      'bleed',
+      'slashing',
+      'piercing',
+      'bludgeoning',
+    ]) {
       const run = (reduced) => {
         const { fx, pool } = setup({ reduced });
         const d = inside.includes(element) ? die(element) : die('none', { damageType: element });
@@ -421,6 +563,41 @@ describe('createTrailFx', () => {
       const count = (list) => list.reduce((s, e) => s + e.count, 0);
       expect(count(reduced)).toBeLessThan(count(full));
     }
+  });
+
+  test('reduced motion is read about once a second, not every frame (matchMedia allocates)', () => {
+    const reducedMotion = vi.fn(() => false);
+    const fx = createTrailFx({
+      getPool: () => fakePool(),
+      getTier: () => ({ effectBudget: 8, particleScale: 1 }),
+      now: () => 0,
+      reducedMotion,
+    });
+    const d = die('fire');
+    fx.flight([d], 0);
+    fly(fx, [d], { frames: 125 }); // 2 s
+    expect(reducedMotion.mock.calls.length).toBeGreaterThan(0);
+    expect(reducedMotion.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  test('a change of reduced motion reaches the recipe within a second', () => {
+    let reduced = false;
+    const pool = fakePool();
+    const fx = createTrailFx({
+      getPool: () => pool,
+      getTier: () => ({ effectBudget: 8, particleScale: 1 }),
+      now: () => 0,
+      reducedMotion: () => reduced,
+    });
+    const d = die('fire');
+    fx.flight([d], 0);
+    const t = fly(fx, [d], { frames: 10 });
+    reduced = true;
+    fly(fx, [d], { frames: 70, t0: t }); // past a second
+    pool.emits.length = 0;
+    fly(fx, [d], { frames: 10, t0: t + 70 * 16 });
+    expect(pool.emits.length).toBeGreaterThan(0);
+    expect(pool.emits.some((e) => e.kind === KIND.EMBER)).toBe(false);
   });
 
   test('every emit carries a numeric now', () => {

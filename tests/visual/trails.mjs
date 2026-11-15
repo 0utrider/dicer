@@ -1,25 +1,49 @@
 // Visual check: elemental trails. Throws a resin d20 with a fire, a frost, a storm and a lava inside
-// and plain ones with damageType 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental'
-// and 'spirit' (trail 2, no landing
-// effects) on the dark and the light backdrop, with jb2a=off, and writes
-// docs/signoff/elemental-trails/<round>/trails.png: rows are element x backdrop, columns are 150,
-// 400 and 700 ms into the flight (from the frame the die is first placed) and 600 ms after landing.
-// Each frame is a crop centred on the die. Fails on any page error.
+// and plain ones with damageType 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental',
+// 'spirit', 'bleed', 'slashing', 'piercing' and 'bludgeoning' (trail 2, no landing effects) on the
+// dark and the light backdrop, with jb2a=off, and writes
+// docs/signoff/elemental-trails/<round>/trails.png: rows are element x backdrop, columns are three
+// in-flight shots and one 600 ms after landing. An in-flight shot is taken no earlier than 150, 400
+// and 700 ms into the flight (from the frame the die is first placed) and 150 ms after the last one,
+// and only once the die is actually moving (its speed over MOVING u/s for two frames running, so a
+// die paused mid-throw is not caught trail-less) and on screen (it enters from above the view),
+// else after MOVE_WAIT ms (the label says so). One unrecorded warm-up throw per element first (the
+// first flight of a look stalls on its shader compile). Each frame is a crop centred on the die. Fails on any page error.
 // Env: DICER_TRAILS_ROUND (folder label, default "round-1"), DICER_TRAILS_TIMES (flight shot times
 // in ms, comma-separated, default 150,400,700), DICER_TRAILS_ONLY (element names, comma-separated,
 // default all rows), plus the DICER_VISUAL_* variables of fx-common.mjs.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { PAGE, PANEL, VIEW, ROLL, ARGS, startServer, stopServer, gotoReady, watchProblems } from './fx-common.mjs';
+import {
+  PAGE,
+  PANEL,
+  VIEW,
+  ROLL,
+  ARGS,
+  startServer,
+  stopServer,
+  gotoReady,
+  watchProblems,
+} from './fx-common.mjs';
 
 const ROUND = process.env.DICER_TRAILS_ROUND || 'round-1';
 const OUT = `docs/signoff/elemental-trails/${ROUND}`;
 const CROP = { width: 520, height: 420 };
 const SCALE = 0.6;
-const FLIGHT = process.env.DICER_TRAILS_TIMES?.split(',').map(Number).filter((t) => t > 0) ?? [150, 400, 700];
+const FLIGHT = process.env.DICER_TRAILS_TIMES?.split(',')
+  .map(Number)
+  .filter((t) => t > 0) ?? [150, 400, 700];
 const AFTER = 600;
+/** A shot in flight waits for the die to move faster than this (world units/s; trails emit from 1.5). */
+const MOVING = 5;
+/** ... but no longer than this (ms) per shot. */
+const MOVE_WAIT = 2500;
+/** In-flight shots are at least this far apart (ms). */
+const SHOT_GAP = 150;
 const BACKDROPS = ['dark', 'light'];
-const ONLY = process.env.DICER_TRAILS_ONLY?.split(',').map((s) => s.trim()).filter(Boolean);
+const ONLY = process.env.DICER_TRAILS_ONLY?.split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 /** A plain resin die with no inside: its damage type gives the element. */
 const plain = (name, color, color2, ink) => ({
   name,
@@ -80,6 +104,10 @@ const ALL = [
   plain('force', '#2a0f5e', '#0d0524', '#efe6ff'),
   plain('mental', '#4a0f3e', '#1d0518', '#ffe6f4'),
   plain('spirit', '#0c3a4a', '#04141c', '#e6fbff'),
+  plain('bleed', '#5a0c12', '#200406', '#ffe0e0'),
+  plain('slashing', '#9aa3ae', '#5a626c', '#14181e'),
+  plain('piercing', '#d6dbe2', '#9ca4ae', '#1a1e24'),
+  plain('bludgeoning', '#6e5c48', '#3a2e22', '#f4ead8'),
 ];
 const ELEMENTS = ONLY?.length ? ALL.filter((el) => ONLY.includes(el.name)) : ALL;
 
@@ -108,17 +136,36 @@ async function shot(page) {
 async function capture(page, appearance, damageType) {
   await page.evaluate(
     ([look, opts, dmg]) => {
-      window.__trail = { placedAt: null, landedAt: null, speeds: [] };
+      window.__trail = { placedAt: null, landedAt: null, speeds: [], speed: 0, last: 0 };
       const box = window.__jb2a.box;
-      const r = box.roll([{ type: 'd20', value: 20, trail: 2, appearance: look, ...(dmg ? { damageType: dmg } : {}) }], opts);
+      const r = box.roll(
+        [
+          {
+            type: 'd20',
+            value: 20,
+            trail: 2,
+            appearance: look,
+            ...(dmg ? { damageType: dmg } : {}),
+          },
+        ],
+        opts,
+      );
       const watch = () => {
         const die = [...box._rolls].at(-1)?.dice?.[0];
         const now = performance.now();
         if (die?.outer?.visible) {
           const p = die.outer.position;
           const tr = window.__trail;
+          // on screen: the die's centre projects inside the middle 80% of the view
+          const v = die.outer.getWorldPosition(p.clone()).project(box._renderer.camera);
+          tr.onScreen = Math.abs(v.x) < 0.8 && Math.abs(v.y) < 0.8;
           if (tr.placedAt === null) tr.placedAt = now;
-          else tr.speeds.push([Math.round(now - tr.placedAt), Math.hypot(p.x - tr.x, p.y - tr.y, p.z - tr.z) / ((now - tr.t) / 1000)]);
+          else if (now > tr.t) {
+            const v = Math.hypot(p.x - tr.x, p.y - tr.y, p.z - tr.z) / ((now - tr.t) / 1000);
+            tr.speeds.push([Math.round(now - tr.placedAt), v]);
+            tr.speed = Math.min(v, tr.last); // two frames running: one jittery frame is not motion
+            tr.last = v;
+          }
           Object.assign(tr, { x: p.x, y: p.y, z: p.z, t: now });
         }
         if (window.__trail.landedAt === null) requestAnimationFrame(watch);
@@ -128,23 +175,44 @@ async function capture(page, appearance, damageType) {
     },
     [appearance, ROLL, damageType ?? null],
   );
-  await page.waitForFunction(() => window.__trail.placedAt !== null, null, { timeout: 20000, polling: 'raf' });
+  await page.waitForFunction(() => window.__trail.placedAt !== null, null, {
+    timeout: 20000,
+    polling: 'raf',
+  });
   const t0 = Date.now();
   const shots = [];
   const hit = [];
+  const moving = [];
+  let prev = -Infinity;
   for (const t of FLIGHT) {
-    const wait = t0 + t - Date.now();
+    const wait = t0 + Math.max(t, prev + SHOT_GAP) - Date.now();
     if (wait > 0) await page.waitForTimeout(wait);
-    hit.push(Date.now() - t0);
+    // Shoot within the flight only while the die moves: a die paused mid-throw shows no trail.
+    const ok = await page
+      .waitForFunction((v) => window.__trail.speed > v && window.__trail.onScreen, MOVING, {
+        timeout: MOVE_WAIT,
+        polling: 'raf',
+      })
+      .then(() => true)
+      .catch(() => false);
+    prev = Date.now() - t0;
+    hit.push(prev);
+    moving.push(ok);
     shots.push(await shot(page));
   }
-  await page.waitForFunction(() => window.__trail.landedAt !== null, null, { timeout: 20000, polling: 'raf' });
+  await page.waitForFunction(() => window.__trail.landedAt !== null, null, {
+    timeout: 20000,
+    polling: 'raf',
+  });
   const { flightMs, speedAt } = await page.evaluate((times) => {
     const tr = window.__trail;
     // the die's speed (world units/s) near each flight shot, for tuning the recipes' speed scale
     const near = (t) => tr.speeds.find(([at]) => at >= t)?.[1] ?? 0;
-    return { flightMs: Math.round(tr.landedAt - tr.placedAt), speedAt: times.map((t) => Math.round(near(t))) };
-  }, FLIGHT);
+    return {
+      flightMs: Math.round(tr.landedAt - tr.placedAt),
+      speedAt: times.map((t) => Math.round(near(t))),
+    };
+  }, hit);
   const landed = Date.now();
   await page.waitForTimeout(AFTER);
   hit.push(Date.now() - landed);
@@ -153,7 +221,7 @@ async function capture(page, appearance, damageType) {
     .waitForFunction(() => window.__jb2a.box._rolls.size === 0, null, { timeout: 10000 })
     .catch(() => {});
   await page.waitForTimeout(400);
-  return { shots, flightMs, hit, speedAt };
+  return { shots, flightMs, hit, speedAt, moving };
 }
 
 const tw = Math.round(CROP.width * SCALE);
@@ -161,7 +229,10 @@ const th = Math.round(CROP.height * SCALE);
 const LABEL_W = 170;
 
 async function writeSheet(browser, file, title, rows) {
-  const cols = [...FLIGHT.map((t) => `flight +${t} ms`), `landed +${AFTER} ms`];
+  const cols = [
+    ...FLIGHT.map((t) => `in flight, >= ${t} ms, moving, on screen`),
+    `landed +${AFTER} ms`,
+  ];
   const head = `<div style="display:flex;margin-left:${LABEL_W}px">${cols
     .map((c) => `<div style="width:${tw + 4}px;text-align:center">${c}</div>`)
     .join('')}</div>`;
@@ -169,7 +240,10 @@ async function writeSheet(browser, file, title, rows) {
     .map(
       (r) =>
         `<div style="display:flex;align-items:center"><div style="width:${LABEL_W}px;padding:6px;box-sizing:border-box;font-size:13px">${r.label}</div>${r.shots
-          .map((b) => `<img src="data:image/jpeg;base64,${b}" style="width:${tw}px;height:${th}px;margin:2px">`)
+          .map(
+            (b) =>
+              `<img src="data:image/jpeg;base64,${b}" style="width:${tw}px;height:${th}px;margin:2px">`,
+          )
           .join('')}</div>`,
     )
     .join('');
@@ -187,20 +261,36 @@ async function writeSheet(browser, file, title, rows) {
 async function main() {
   await mkdir(OUT, { recursive: true });
   await startServer();
-  const browser = await chromium.launch({ headless: process.env.DICER_VISUAL_HEADED !== '1', args: ARGS });
+  const browser = await chromium.launch({
+    headless: process.env.DICER_VISUAL_HEADED !== '1',
+    args: ARGS,
+  });
   try {
     const page = await browser.newPage({ viewport: VIEW });
     const problems = watchProblems(page);
     await gotoReady(page, `${PAGE}?jb2a=off`);
     const rows = [];
     for (const el of ELEMENTS) {
+      await capture(page, el.appearance, el.damageType); // warm-up (compiles its look), not recorded
       for (const bg of BACKDROPS) {
         await page.evaluate((b) => window.__jb2a.setBg(b), bg);
-        const { shots, flightMs, hit, speedAt } = await capture(page, el.appearance, el.damageType);
-        console.log(
-          `trails: ${el.name} ${bg}: flight ${flightMs} ms, shots at ${hit.join(', ')} ms, speed ${speedAt.join(', ')} u/s`,
+        const { shots, flightMs, hit, speedAt, moving } = await capture(
+          page,
+          el.appearance,
+          el.damageType,
         );
-        rows.push({ label: `${el.name} / ${bg}<br><small>flight ${flightMs} ms</small>`, shots });
+        const still = moving.filter((m) => !m).length;
+        console.log(
+          `trails: ${el.name} ${bg}: flight ${flightMs} ms, shots at ${hit.join(', ')} ms, speed ${speedAt.join(', ')} u/s${still ? `, ${still} shot(s) never saw it move` : ''}`,
+        );
+        const at = hit.slice(0, -1).join(' / ');
+        const warn = still
+          ? `<br><small style="color:#ff8080">${still} shot(s) not moving</small>`
+          : '';
+        rows.push({
+          label: `${el.name} / ${bg}<br><small>flight ${flightMs} ms<br>shots ${at} ms</small>${warn}`,
+          shots,
+        });
       }
     }
     await writeSheet(browser, `${OUT}/trails.png`, `Elemental trails (${ROUND}, jb2a=off)`, rows);
