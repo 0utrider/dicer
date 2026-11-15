@@ -778,14 +778,18 @@ const shown = (c) => c.clone().convertLinearToSRGB();
 const SMOKE_LIGHT = new THREE.Color().setRGB(0.74, 0.74, 0.75);
 
 /**
- * A dense, billowing column of PUFF smoke rising off the die: puffs are born on a ring around it
- * (0.5..0.85 die radii, dieRadius), each heading up and out on a bearing that winds round the die
- * over the emission (the column curls), all leaning with one draught per play (it drifts). Each puff
- * spins, grows about 3x as it slows (the smoke kind's drag) and darkens from the body, the die colour
- * as displayed leaning 30% to a light smoke grey (a near-black die's rim), to the edge colour
- * (palette().edge as displayed, x 0.75), so the old, wide puffs at its rim are darker than its fresh
- * core; a few low soot puffs of the edge colour roll out around its foot. Buoyant (gravity > 0):
- * unlike fumble's darker plume, which sags. `endColor` overrides the edge colour.
+ * A dense, billowing column of PUFF smoke rising round the die: puffs are born on a ring just clear of
+ * its footprint (from one die radius, dieRadius, plus half the puff, so even the puff's soft rim
+ * starts outside), each heading out and up on a bearing that winds round the die over the emission
+ * (the column curls), all leaning a little with one draught per play (it drifts). Each one spins,
+ * grows 3x as it slows (the smoke kind's drag) and darkens from the body, the die colour as displayed
+ * leaning 30% to a light smoke grey (a near-black die's rim), to the edge colour (palette().edge as
+ * displayed, x 0.75), so the old, wide puffs at its rim are darker than its fresh core; a few low soot
+ * puffs of the edge colour roll out around its foot. The camera looks straight down and the puffs are
+ * opaque (normal blend), so the outward speed grows with the puff size: a puff always moves out
+ * faster than it swells inward, and only a faded one (its last third) reaches back over the die face,
+ * whose number stays readable. Buoyant (gravity > 0): unlike fumble's darker plume, which sags.
+ * `endColor` overrides the edge colour.
  */
 const smokeStart = (endColor) => (ctx) => {
   if (!ctx.particles) return NOOP;
@@ -795,15 +799,18 @@ const smokeStart = (endColor) => (ctx) => {
   const body = shown(pal.rim ?? pal.mid).lerp(SMOKE_LIGHT, 0.3);
   const edge = endColor ? new THREE.Color(endColor) : shown(pal.edge).multiplyScalar(0.75);
   const calm = ctx.reducedMotion;
+  const slow = calm ? 0.85 : 1;
   const { x: cx, z: cz } = ctx.position;
   const y0 = (ctx.position.y || DIE_Y) + 0.35 * R; // round the die's upper half
   const draught = Math.random() * Math.PI * 2; // the way the column drifts
   const turn = Math.random() * Math.PI * 2;
   const curl = Math.random() < 0.5 ? -1 : 1;
-  const dx = Math.cos(draught) * 0.9;
-  const dz = Math.sin(draught) * 0.9;
-  const column = (total, window, lead, { rMin, rMax, up, out, y, ...spec }) => {
+  // Weaker than every puff's outward push: even a puff born upwind never drifts back over the die.
+  const dx = Math.cos(draught) * 0.25;
+  const dz = Math.sin(draught) * 0.25;
+  const column = (total, window, lead, { rMin, rMax, up, y, ...spec }) => {
     let i = 0;
+    const clear = 0.5 * spec.size; // half the puff: its soft rim starts outside the footprint too
     return oneByOne(
       ctx,
       total,
@@ -813,12 +820,12 @@ const smokeStart = (endColor) => (ctx) => {
         const a = turn + curl * ((i++ / Math.max(1, total)) * Math.PI * 3 + (Math.random() - 0.5) * 0.9);
         const ux = Math.cos(a);
         const uz = Math.sin(a);
-        const r = rMin + (rMax - rMin) * Math.random();
+        const r = (rMin + (rMax - rMin) * Math.random()) * R + clear;
         ctx.particles.emit({
           count: 1,
-          origin: { x: cx + ux * r * R, y, z: cz + uz * r * R },
-          dir: { x: ux * out + dx, y: up, z: uz * out + dz },
-          spread: 0.3,
+          origin: { x: cx + ux * r, y, z: cz + uz * r },
+          dir: { x: ux + dx, y: up, z: uz + dz },
+          spread: 0.15,
           kind: KIND.SMOKE,
           shape: SHAPE.SMOKE,
           blend: 'normal',
@@ -830,32 +837,32 @@ const smokeStart = (endColor) => (ctx) => {
       lead,
     );
   };
-  const puffs = column(countFor(28, ctx), 0.6, 0.2, {
-    rMin: 0.5,
-    rMax: 0.85,
+  const puffSize = 1.0 * R * k;
+  const puffs = column(countFor(34, ctx), 0.6, 0.2, {
+    rMin: 0.95,
+    rMax: 1.15,
     y: y0,
-    up: 1,
-    out: 0.35,
-    speed: (calm ? 0.9 : 2.6) * R,
-    gravity: 0.45, // buoyant: it keeps rising as it slows
+    up: 0.5,
+    speed: slow * (1.0 * R + 1.0 * puffSize), // out faster than the puff swells
+    gravity: 0.3, // buoyant: it keeps rising as it slows
     life: 1.55,
     color: body,
     colorEnd: edge,
-    size: 1.0 * R * k,
+    size: puffSize,
     sizeEnd: 3,
   });
+  const sootSize = 0.8 * R * k;
   const soot = column(countFor(8, ctx), 0.5, 0.25, {
-    rMin: 0.8,
-    rMax: 1.05,
+    rMin: 1,
+    rMax: 1.2,
     y: 0.25 * R,
     up: 0.35,
-    out: 1,
-    speed: (calm ? 0.5 : 1.3) * R,
+    speed: slow * (0.8 * R + 0.8 * sootSize),
     gravity: 0.2,
     life: 1.3,
     color: edge,
     colorEnd: edge.clone().multiplyScalar(0.8),
-    size: 0.8 * R * k,
+    size: sootSize,
     sizeEnd: 2.9,
     alpha: 0.7,
   });

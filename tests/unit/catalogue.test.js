@@ -573,6 +573,40 @@ describe('rebuilt looks', () => {
     h.stop();
   });
 
+  test('smoke keeps the die face readable: no fairly opaque puff over the footprint', () => {
+    // The camera looks straight down, so a normal-blend puff whose body reaches inside the die's
+    // radius veils the number. Worst case per puff (the pool's per-particle randomness): size x 1.2,
+    // speed x 0.7, the spread cone tilting it back toward the die, the draught against it. A PUFF's
+    // body is about 0.7 of its quad half-size (the rest is a soft falloff); KIND.SMOKE's opacity is
+    // 0.55 x (1 - age) x alpha. Allowed: the body inside 0.8 R only once the opacity is <= 0.2.
+    const R = (Math.sqrt(3) / 2); // makeDie's unit box
+    for (const reducedMotion of [false, true]) {
+      for (const intensity of [1, 2]) {
+        const { ctx, specs, h } = run('smoke', { reducedMotion, intensity }, 1500);
+        h.stop();
+        expect(specs.length).toBeGreaterThan(0);
+        for (const s of specs) {
+          const ox = s.origin.x - ctx.position.x;
+          const oz = s.origin.z - ctx.position.z;
+          const r0 = Math.hypot(ox, oz);
+          const dl = Math.hypot(s.dir.x, s.dir.y, s.dir.z);
+          const radial = (s.dir.x * ox + s.dir.z * oz) / (r0 * dl) - Math.sin(s.spread);
+          const vr = 0.7 * s.speed * radial; // may be < 0: drifting back over the die
+          const d = 1.6; // KIND.SMOKE drag
+          for (let k = 0; k <= 1; k += 0.02) {
+            const t = k * s.life;
+            const r = r0 + (vr * (1 - Math.exp(-d * t))) / d;
+            const body = 0.7 * 0.5 * s.size * 1.2 * (1 + (s.sizeEnd - 1) * k);
+            const opacity = 0.55 * (1 - k) * (s.alpha ?? 1);
+            if (r - body < 0.8 * R) {
+              expect(opacity, `rm ${reducedMotion} i ${intensity} age ${k.toFixed(2)} r0 ${r0.toFixed(2)}`).toBeLessThanOrEqual(0.2);
+            }
+          }
+        }
+      }
+    }
+  });
+
   test('shatter shards use SHARD with spin and gravity, cost 3', () => {
     expect(EFFECTS.shatter.cost).toBe(3);
     for (const color of LOOK_COLORS) {

@@ -390,7 +390,8 @@ describe('textured soft sprites with halos', () => {
   });
 
   test('floor bounce (JS mirror of the shader): one damped bounce, then resting on the floor', () => {
-    // The shader's analytic path: find the touchdown by bisection, reflect vy x 0.35, clamp.
+    // A specification of the shader maths, not a check on the GLSL itself (the test above pins the
+    // shader text): find the touchdown by bisection, reflect vy x 0.35, clamp. Keep the two in step.
     const o = 0.5;
     const vy0 = 2.5;
     const d = 0.25;
