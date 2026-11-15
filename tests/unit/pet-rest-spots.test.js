@@ -1,4 +1,7 @@
-import { spotFor, REST_SPOTS, atEdge } from '../../src/pet/chunk/rest-spots.js';
+import * as THREE from 'three';
+import { buildScene, FOV_DEG } from '../../src/render/scene.js';
+import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
+import { spotFor, REST_SPOTS, atEdge, TAN_HALF_FOV } from '../../src/pet/chunk/rest-spots.js';
 import { SPACING, EDGE_GAP, BODY, PET_HEIGHT } from '../../src/pet/chunk/resting.js';
 
 const H = PET_HEIGHT;
@@ -110,4 +113,57 @@ test('a stage too small for the row still gives finite spots inside it, never a 
       expect(Math.abs(s.x)).toBeLessThanOrEqual(2);
       expect(Math.abs(s.z)).toBeLessThanOrEqual(2);
     }
+});
+
+// ---- fix round 1: the drawn pet, turned any way and seen through Dicer's camera, clears the UI ----
+const UI_PX = [
+  [0, 0, 60, 800],
+  [70, 10, 520, 40],
+  [10, 640, 230, 150],
+  [380, 720, 520, 70],
+];
+test('every creature at every slot, turned any way, draws clear of the UI rects (real meshes, real camera)', () => {
+  const { camera, fitArea } = buildScene();
+  fitArea(STAGE);
+  const v = new THREE.Vector3();
+  const MARGIN = 2; // px
+  let worst = Infinity;
+  for (const make of Object.values(CREATURES)) {
+    const c = make('#ffffff');
+    try {
+      c.pose('exit', 1, 'plain', { yaw: 0 }); // the resting pose
+    } catch {
+      /* a creature without poses keeps its build pose */
+    }
+    const group = new THREE.Group();
+    group.add(c.root);
+    for (const choice of CORNERS)
+      for (const k of [0, 1, 2]) {
+        const s = spotFor(choice, k, STAGE, H, UI);
+        for (let a = 0; a < 8; a++) {
+          group.position.set(s.x, 0, s.z);
+          group.rotation.y = (a / 8) * Math.PI * 2;
+          group.updateMatrixWorld(true);
+          group.traverse((o) => {
+            if (!o.isMesh || !o.visible) return;
+            const p = o.geometry.attributes.position;
+            for (let i = 0; i < p.count; i++) {
+              v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld).project(camera);
+              const px = ((v.x + 1) / 2) * 1280;
+              const py = ((1 - v.y) / 2) * 800;
+              for (const [l, t, w, h] of UI_PX) {
+                const out = Math.max(l - px, px - (l + w), t - py, py - (t + h));
+                worst = Math.min(worst, out);
+              }
+            }
+          });
+        }
+      }
+    c.dispose();
+  }
+  expect(worst).toBeGreaterThanOrEqual(MARGIN);
+});
+
+test("TAN_HALF_FOV is in step with Dicer's camera", () => {
+  expect(TAN_HALF_FOV).toBeCloseTo(Math.tan(((FOV_DEG / 2) * Math.PI) / 180), 12);
 });

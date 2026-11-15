@@ -1377,18 +1377,23 @@ const near = (p, q) => {
   expect(p.z).toBeCloseTo(q.z, 6);
 };
 
-test('dodging is gone: no pointer listeners, and a resting pet never moves however long it sits', () => {
+test('dodging is gone: no pointer listeners on the window, and a resting pet never moves however long it sits', () => {
+  // the global window (the layer's old default) is watched: the layer must not listen to it
   const win = fakeWin();
-  const m = make({ petStay: -1 }, { win, activeRolls: () => 0, random: mulberry(5) });
-  m.layer.areaChanged(STAGE_BIG);
-  rollToRest(m, 'u1');
-  const was = posOf(m);
-  expect(win.addEventListener).not.toHaveBeenCalledWith('pointermove', expect.anything(), expect.anything());
-  expect(win.addEventListener).not.toHaveBeenCalledWith('pointerout', expect.anything(), expect.anything());
-  m.deps.wake.mockClear();
-  for (let i = 0; i < 200; i++) expect(m.layer.update((clockNow += 16))).toBe('rest');
-  expect(posOf(m)).toEqual(was);
-  expect(m.deps.wake).not.toHaveBeenCalled();
+  vi.stubGlobal('window', win);
+  try {
+    const m = make({ petStay: -1 }, { activeRolls: () => 0, random: mulberry(5) });
+    m.layer.areaChanged(STAGE_BIG);
+    rollToRest(m, 'u1');
+    const was = posOf(m);
+    expect(win.addEventListener).not.toHaveBeenCalled();
+    m.deps.wake.mockClear();
+    for (let i = 0; i < 200; i++) expect(m.layer.update((clockNow += 16))).toBe('rest');
+    expect(posOf(m)).toEqual(was);
+    expect(m.deps.wake).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 test("petRestSpot 'dice' (or unset) rests in the roll-area ring as before", () => {
@@ -1524,17 +1529,71 @@ test('after an alignFor replay the pet returns to this viewer\'s spot', () => {
   near(posOf(m), home);
 });
 
+test('fix 3: a pet that comes to rest after a change already sits by the new choice: no second hop', () => {
+  const { m, rolls } = spotMake('dice');
+  m.layer.begin('k', bigInfo(spec('u1')));
+  rolls.n = 1; // another player's dice fly all along: the change waits
+  m.layer.update(clockNow);
+  m.settings.petRestSpot = 'bottomLeft'; // changed mid-roll
+  runTo(m, clockNow + 400);
+  m.layer.landed('k', [d20(5)]);
+  m.layer.leave('k', 0);
+  m.layer.end('k');
+  expect(runTo(m, clockNow + 3000)).toBe('rest');
+  near(posOf(m), slotAt('bottomLeft', 0)); // it came to rest by the new choice
+  rolls.n = 0; // the other roll is over: nothing is left to move
+  for (let i = 0; i < 40; i++) expect(m.layer.update((clockNow += 16))).toBe('rest');
+  // a second pet coming to rest while the first sits at the old choice still moves the first
+  const n = spotMake('dice');
+  rollToRest(n.m, 'u1');
+  n.m.layer.begin('k2', bigInfo(spec('u2')));
+  n.m.layer.update(clockNow);
+  n.rolls.n = 1; // u2's roll flies: the change waits
+  n.m.settings.petRestSpot = 'topRight';
+  runTo(n.m, clockNow + 400);
+  n.m.layer.landed('k2', [d20(5)]);
+  n.m.layer.leave('k2', 0);
+  n.rolls.n = 0;
+  n.m.layer.end('k2');
+  expect(runTo(n.m, clockNow + 3000)).toBe('rest');
+  near(posOf(n.m, 0), slotAt('topRight', 1)); // u1 moved after u2 came to rest (by when it rested)
+  near(posOf(n.m, 1), slotAt('topRight', 0));
+});
+
+test("fix 2: under 'dice' a replayed pet off its own ring hops back to a ring spot when the replay ends", () => {
+  const { m, rolls } = spotMake('dice');
+  rollToRest(m, 'u1');
+  const to = { x: 1, z: 0.5 }; // the thrower's layout: near the middle, off this pet's ring
+  m.layer.alignFor([{ id: 'u1', x: to.x, z: to.z, r: 0.95, h: 1.5 }], BIG, () => 100);
+  rolls.n = 1;
+  expect(runTo(m, clockNow + 2000)).toBe('rest');
+  near(posOf(m), to);
+  rolls.n = 0;
+  expect(m.layer.update((clockNow += 16))).toBe(true);
+  expect(runTo(m, clockNow + REST_HOP_MS + 50)).toBe('rest');
+  inRing(posOf(m));
+  for (let i = 0; i < 10; i++) expect(m.layer.update((clockNow += 16))).toBe('rest');
+  // one already on a valid ring spot stays there (no hop for nothing)
+  const ring = posOf(m);
+  const mirror = { x: -ring.x, z: -ring.z };
+  m.layer.alignFor([{ id: 'u1', x: mirror.x, z: mirror.z, r: 0.95, h: 1.5 }], BIG, () => 100);
+  rolls.n = 1;
+  runTo(m, clockNow + 1000);
+  rolls.n = 0;
+  expect(runTo(m, clockNow + 1000)).toBe('rest');
+  near(posOf(m), mirror);
+});
+
 // ---- final review fixes ----
 const busyMake = () => {
   const timers = fakeTimers();
-  const win = fakeWin();
   const rolls = { n: 0 };
   const m = make(
     { petStay: 60 },
-    { setTimer: timers.setTimer, clearTimer: timers.clearTimer, activeRolls: () => rolls.n, win, random: mulberry(5) },
+    { setTimer: timers.setTimer, clearTimer: timers.clearTimer, activeRolls: () => rolls.n, random: mulberry(5) },
   );
   m.layer.areaChanged(STAGE_BIG);
-  return { m, timers, rolls, win };
+  return { m, timers, rolls };
 };
 
 test('an overdue idle leave waits while any roll is in flight, with no timer aimed at it', () => {
@@ -1570,7 +1629,6 @@ test("the owner's roll between obstaclesFor and begin keeps the pet's spot past 
 // ---- rolling by hand: pets hold still while dice are held (H-8) ----
 const heldMake = () => {
   const timers = fakeTimers();
-  const win = fakeWin();
   const held = { on: false };
   const m = make(
     { petStay: 60 },
@@ -1579,12 +1637,11 @@ const heldMake = () => {
       clearTimer: timers.clearTimer,
       activeRolls: () => 0,
       holding: () => held.on,
-      win,
       random: mulberry(5),
     },
   );
   m.layer.areaChanged(STAGE_BIG);
-  return { m, timers, win, held };
+  return { m, timers, held };
 };
 
 test('no idle leave while holding(); the timer re-arms after release', () => {
@@ -1660,7 +1717,8 @@ describe('Task 9: hand throws and alignFor', () => {
   });
 
   test('alignFor places an absent listed pet at rest within the cap', () => {
-    const m = make({ petStay: 60 }, { userOf, random: mulberry(3) });
+    // the replay flies throughout (its roll follows alignFor at once): placed pets stay placed
+    const m = make({ petStay: 60 }, { userOf, random: mulberry(3), activeRolls: () => 1 });
     rollToRest(m, 'u1');
     clockNow += 500;
     rollToRest(m, 'u2');
@@ -1755,7 +1813,7 @@ describe('Task 9: hand throws and alignFor', () => {
   test("Review Focus 5: a replayed -3 impact over SPLAT_SPEED splats the listed pet on the receiver; the owner's next roll reforms it", () => {
     // The receiver had no pet of u1: the thrower's layout places it, the replay's impact
     // (-3 - i mapped to u1 by DiceBox) hits it at the recorded speed, and it splats here too.
-    const m = make({ petStay: 60 }, { userOf });
+    const m = make({ petStay: 60 }, { userOf, activeRolls: () => 1 }); // the replay flies
     m.layer.alignFor([listed('u1', 4, 3)], BIG, far);
     runTo(m, clockNow + REST_HOP_MS + 50);
     m.layer.hit('u1', { speed: SPLAT_SPEED + 1, position: { x: 4.5, y: 1, z: 3 }, dieKey: '0:0:0' });

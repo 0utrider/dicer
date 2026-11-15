@@ -374,7 +374,9 @@ export function createPetLayer(deps) {
       return 'dice';
     }
   };
-  let shownChoice = choice(); // the choice the resting pets sit by (update moves them on a change)
+  /** Whether a resting pet or puddle sits by another choice than `c` (cornerSpot notes its own). */
+  const stale = (pet, c) =>
+    pet.restChoice !== undefined && pet.restChoice !== c && ['hop', 'rest', 'move', 'splat', 'puddle'].includes(pet.state);
   /**
    * The pet's spot at this screen's corner or edge choice, or null for 'dice' (the ring of its
    * owner's area) or with no stage yet. It keeps its slot while no other pet holds it (so it goes
@@ -383,6 +385,7 @@ export function createPetLayer(deps) {
    */
   function cornerSpot(pet) {
     const c = choice();
+    pet.restChoice = c; // the choice it now rests by
     const h = pet.creature.height;
     if (!stage || !atEdge(c)) {
       pet.slot = null;
@@ -647,7 +650,7 @@ export function createPetLayer(deps) {
   function end(key) {
     // DiceBox ends a roll after taking it off its list: the last one over, a move held back while
     // it flew (a petRestSpot change, a replay's pets going home) wakes the loop now.
-    if (!disposed && activeRolls() === 0 && (choice() !== shownChoice || [...pets.values()].some((p) => p.aligned)))
+    if (!disposed && activeRolls() === 0 && [...pets.values()].some((p) => p.aligned || stale(p, choice())))
       wake();
     const pet = petOf(key);
     keyOwner.delete(key);
@@ -1142,23 +1145,24 @@ export function createPetLayer(deps) {
    * Where pets rest may have changed (petRestSpot's onChange wakes the loop, and update asks here
    * each frame with no roll in flight; also the layer's restSpotChanged()). On a new choice the
    * resting pets hop, and puddles snap, to it, taking corner slots in the order they came to rest
-   * (corner to corner keeps each pet's slot). At a corner or edge choice a pet a hand replay moved
-   * (alignFor) goes back to its slot once it stands there and the replay is over. Nothing while a
+   * (corner to corner keeps each pet's slot). A pet a hand replay moved (alignFor) goes back to this
+   * viewer's spot once it stands there and the replay is over: its corner slot, or under 'dice' a
+   * ring spot in its own area (one already in that ring stays). Nothing while a
    * roll is in flight, dice are held or resting is off. Afterwards the layer goes idle again.
    */
   function restSpotChanged(now = clock()) {
     if (disposed || activeRolls() > 0 || holding() || !stays()) return;
     const c = choice();
-    if (c !== shownChoice) {
-      shownChoice = c;
-      const order = [...pets.values()].sort((a, b) => (a.idleAt ?? 0) - (b.idleAt ?? 0));
-      for (const pet of order) replace(pet, now);
-    }
+    // only those resting by another choice: one that came to rest since already sits by this one
+    const order = [...pets.values()].filter((p) => stale(p, c)).sort((a, b) => (a.idleAt ?? 0) - (b.idleAt ?? 0));
+    for (const pet of order) replace(pet, now);
     const corner = !!stage && atEdge(c);
     for (const pet of pets.values()) {
-      if (!pet.aligned || pet.state === 'routine') continue;
-      if (!corner) pet.aligned = false; // 'dice': it stays where the replay put it, as before
-      else if (pet.state === 'rest' && !pet.gone) restOf(pet, now);
+      if (!pet.aligned || pet.state === 'routine' || pet.state === 'hop' || pet.state === 'move') continue; // not there yet
+      if (pet.state !== 'rest' || pet.gone) pet.aligned = false; // a puddle stays; one leaving goes
+      // 'dice': a spot of the replay's that is already in its own ring is a rest spot of this viewer's
+      else if (!corner && inRestRing(fitted(pet.area), pet.creature.height, spotOf(pet))) pet.aligned = false;
+      else restOf(pet, now);
     }
   }
 
