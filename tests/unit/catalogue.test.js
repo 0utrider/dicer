@@ -745,6 +745,55 @@ describe('lightning', () => {
     expect(Math.max(...frames[0])).toBeGreaterThan(0);
   });
 
+  test('lightning reduced motion is softened: lower peak than normal and no full-alpha flash dot', () => {
+    const peak = (over) => {
+      const scene = new THREE.Scene();
+      const pool = createParticlePool(scene, 256);
+      const ctx = ctxFor(EFFECTS.lightning, { scene, pool, duration: 1000, ...over });
+      const emit = vi.spyOn(pool, 'emit');
+      const h = EFFECTS.lightning.start(ctx);
+      let max = 0;
+      for (let t = 0; t < 1000; t += 10) {
+        h.update(t);
+        for (const c of scene.children) {
+          if (c.material?.uniforms?.uAlpha && !c.material.uniforms.uWidthPx) {
+            max = Math.max(max, c.material.uniforms.uAlpha.value); // the floor glow
+          }
+        }
+      }
+      const flash = emit.mock.calls.map(([s]) => s).filter((s) => s.count === 1 && s.sizeEnd);
+      h.stop();
+      pool.dispose();
+      return { max, flash };
+    };
+    const calm = peak({ reducedMotion: true });
+    const normal = peak({});
+    expect(calm.max).toBeGreaterThan(0);
+    expect(calm.max).toBeLessThan(normal.max);
+    expect(normal.flash.length).toBeGreaterThan(0);
+    expect(calm.flash.length).toBe(0);
+  });
+
+  test('lightning started with a prototype-held ctx (composite part) runs and adds its floor glow', () => {
+    const scene = new THREE.Scene();
+    const pool = createParticlePool(scene, 256);
+    const base = ctxFor(EFFECTS.lightning, { scene, pool, duration: 1000 });
+    const part = Object.create(base, { duration: { value: 1000 } });
+    let h;
+    expect(() => {
+      h = EFFECTS.lightning.start(part);
+      h.update(0);
+      h.update(100);
+    }).not.toThrow();
+    const glow = scene.children.find(
+      (o) => o.isMesh && Math.abs(o.position.y - 0.02) < 1e-6 && o.material?.uniforms?.uAlpha && !o.material.uniforms.uWidthPx,
+    );
+    expect(glow).toBeTruthy();
+    expect(glow.material.uniforms.uAlpha.value).toBeGreaterThan(0);
+    h.stop();
+    pool.dispose();
+  });
+
   test('lightning bolt tapers', () => {
     const scene = new THREE.Scene();
     const pool = createParticlePool(scene, 256);

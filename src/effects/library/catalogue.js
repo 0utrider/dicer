@@ -182,7 +182,7 @@ void main() {
 		float core = exp( - r * r * 60.0 );
 		c = ( uColor * glow + vec3( core ) ) * uAlpha;
 	} else {
-				float hot = exp( - r * r * 110.0 );
+		float hot = exp( - r * r * 110.0 );
 		float mid = exp( - r * r * 11.0 );
 		float haze = exp( - r * r * 3.5 ) * ( 1.0 - smoothstep( 0.4, 1.0, r ) ); // a soft tail, no rim
 		vec3 grad = mix( mix( uCore, uColor, smoothstep( 0.0, 0.3, r ) ), uDeep, smoothstep( 0.3, 0.85, r ) );
@@ -1322,6 +1322,7 @@ const BRANCH_LEVELS = 4; // 17 points
 const MAX_BRANCHES = 4;
 const STRIKES = [0, 0.22, 0.48]; // fractions of the duration
 const STRIKE_PEAK = [1.35, 1.2, 1.1]; // each re-strike flashes above the fading previous one
+const CALM_PEAK = 1.0; // reduced motion: the single strike's held level, below STRIKE_PEAK[0]
 // Width factor along a line: full at t = 0 (the impact end of the bolt, the root of a branch),
 // 30% at the tip. Held near full for the first stretch so the strike reads thick where it lands.
 const boltTaper = (t) => 1 - 0.7 * t ** 2.2;
@@ -1421,7 +1422,8 @@ export const lightning = Object.freeze({
         halo: 0.8,
         now,
       });
-      ctx.particles?.emit({
+      // The 1.5k-size flash pops in at full alpha: dropped under reduced motion.
+      if (!ctx.reducedMotion) ctx.particles?.emit({
         count: 1,
         origin,
         speed: 0,
@@ -1441,13 +1443,15 @@ export const lightning = Object.freeze({
       const last = i === times.length - 1;
       // A sharp spike that settles to an afterglow; the last strike fades out by the duration.
       if (ctx.reducedMotion) {
-        // One steady strike: held at its peak, then a single smooth fade over the last 40%.
-        return STRIKE_PEAK[0] * (1 - clamp01((e - 0.6 * D) / (0.4 * D))) ** 1.5;
+        // One steady, softened strike: held at a calm peak below the normal first strike, then a
+        // single smooth fade over the last 40%.
+        return CALM_PEAK * (1 - clamp01((e - 0.6 * D) / (0.4 * D))) ** 1.5;
       }
       const tail = last ? (1 - clamp01(dt / Math.max(1, D - times[i]))) ** 1.5 : 1;
       return STRIKE_PEAK[i] * (0.5 + 0.5 * Math.exp(-dt / (0.12 * D))) * tail;
     };
-    const glow = floorGlow({ ...ctx, color: glowColor, intensity: bright }, { radius: 1.8 * k, peak: 0.9, ms: D, curve: () => level });
+    // Object.create, not a spread: a composite part's ctx keeps its fields on the prototype.
+    const glow = floorGlow(Object.create(ctx, { color: { value: glowColor }, intensity: { value: bright } }), { radius: 1.8 * k, peak: 0.9, ms: D, curve: () => level });
     const strikes = timed(
       D,
       (e, now) => {
