@@ -592,8 +592,8 @@ describe('JB2A animations', () => {
           calls.made++;
           calls.opts = opts;
           return {
-            moduleFor(id, builtin, { safe } = {}) {
-              calls.moduleFor.push({ id, builtin, safe });
+            moduleFor(id, builtin, { safe, file } = {}) {
+              calls.moduleFor.push({ id, builtin, safe, file });
               return id === 'frost' ? { ...timed('jb2a:frost', 1, calls.log), cost: builtin?.cost ?? 0 } : null;
             },
             preload() {
@@ -625,6 +625,13 @@ describe('JB2A animations', () => {
     expect(started(log)).toEqual(['jb2a:frost', 'a']);
     expect(calls.moduleFor[0]).toMatchObject({ id: 'frost', safe: false });
     expect(calls.moduleFor[0].builtin.id).toBe('frost');
+  });
+
+  test("a rule's chosen JB2A file is handed to the player", async () => {
+    const { layer, calls } = jb2aSetup();
+    await layer.prefetch();
+    layer.play(makeDie(), [{ ruleId: 'r', effect: { id: 'frost', jb2a: 'modules/j/x.webm' }, sound: null }]);
+    expect(calls.moduleFor[0]).toMatchObject({ id: 'frost', file: 'modules/j/x.webm' });
   });
 
   test('jb2aEffects false plays the built-in, flipped between two plays with no reload', async () => {

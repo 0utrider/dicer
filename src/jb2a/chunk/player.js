@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { JB2A_EFFECTS, urlFor } from './catalogue.js';
+import { JB2A_EFFECTS, customLayer, urlFor } from './catalogue.js';
 
 /** A layer that has not fired `canplay` within this many ms counts as failed. */
 export const CANPLAY_MS = 1500;
@@ -60,12 +60,14 @@ export function createJb2aPlayer({
         return entry;
     }
 
-    function layersOf(id) {
-        return JB2A_EFFECTS[id] ?? null;
+    /** A valid user-chosen file plays alone; otherwise the effect's catalogue layers. */
+    function layersOf(id, file) {
+        const custom = file ? customLayer(file, source()) : null;
+        return custom ? [custom] : (JB2A_EFFECTS[id] ?? null);
     }
 
-    function start(id, builtin, safe, ctx) {
-        const layers = layersOf(id);
+    function start(id, builtin, safe, ctx, file) {
+        const layers = layersOf(id, file);
         const src = source();
         let fallback = null;
         let finished = false;
@@ -201,8 +203,8 @@ export function createJb2aPlayer({
         get playing() {
             return playing;
         },
-        moduleFor(id, builtin, { safe = false } = {}) {
-            const layers = layersOf(id);
+        moduleFor(id, builtin, { safe = false, file = null } = {}) {
+            const layers = layersOf(id, file);
             const src = source();
             if (!layers || !src || disposed) return null;
             if (playing + layers.length > MAX_PLAYING) return null;
@@ -212,7 +214,7 @@ export function createJb2aPlayer({
                 cost: costOf(builtin),
                 defaults: builtin?.defaults,
                 bindsDie: true,
-                start: (ctx) => start(id, builtin ?? null, safe, ctx)
+                start: (ctx) => start(id, builtin ?? null, safe, ctx, file)
             };
         },
         preload(ids = Object.keys(JB2A_EFFECTS)) {

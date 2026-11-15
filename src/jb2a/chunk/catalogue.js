@@ -107,8 +107,29 @@ export function pickFile(layer, color) {
     return best;
 }
 
+/** JB2A folders whose animations lie flat on the table (impacts, markers, templates). */
+const TABLE_DIRS = /\/(Impact|Marker|Template|Ground|Circle|Wind|Liquid)[^/]*\//i;
+
+/**
+ * A user-chosen JB2A file (a theme rule's `effect.jb2a`): a relative Foundry path to a .webm, or a
+ * url under the JB2A source's own absolute location (a bucket); never any other url, so a shared
+ * theme cannot send other clients off-site. Null when it is not one.
+ */
+export function customLayer(file, source = null) {
+    if (typeof file !== 'string' || file.length > 400) return null;
+    const path = file.trim();
+    if (!/\.webm$/i.test(path) || path.includes('..') || path.startsWith('\\')) return null;
+    if (/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(path)) {
+        const base = String(source?.location ?? '').replace(/\/+$/, '');
+        if (!/^https:\/\//i.test(base) || !path.startsWith(`${base}/`)) return null;
+    }
+    const table = TABLE_DIRS.test(`/${path}`);
+    return Object.freeze({ url: path, file: path, place: table ? 'table' : 'over', size: table ? 7 : 6 });
+}
+
 /** The url of a layer's file under a JB2A source `{ moduleId, location }`. */
 export function urlFor(source, layer, color) {
+    if (layer.url) return layer.url;
     const base = String(source.location).replace(/\/+$/, '');
     return `${base}/${source.moduleId}/Library/Generic/${layer.dir}/${pickFile(layer, color)}`;
 }

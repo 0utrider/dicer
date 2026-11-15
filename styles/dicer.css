@@ -1104,6 +1104,46 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-appearance-editor .dicer-ae-row.dicer-ae-extra {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
 }
+.dicer-appearance-editor .dicer-ae-extra > .dicer-icon {
+  align-self: start;
+  margin-top: 1.5em;
+}
+.dicer-appearance-editor .dicer-ae-with-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dicer-appearance-editor .dicer-ae-with-action select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dicer-appearance-editor .dicer-ae-picked {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  background: var(--dicer-chip, rgba(255, 255, 255, 0.08));
+  font-size: 0.85em;
+}
+.dicer-appearance-editor .dicer-ae-picked > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.dicer-appearance-editor .dicer-ae-picked button {
+  flex: none;
+  width: auto;
+  min-height: 0;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  line-height: 1;
+}
 .dicer-appearance-editor .dicer-ae-toggle {
   display: flex;
   align-items: center;

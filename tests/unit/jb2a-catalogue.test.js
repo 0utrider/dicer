@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { JB2A_EFFECTS, pickFile, urlFor, hueDistance } from '../../src/jb2a/chunk/catalogue.js';
+import { JB2A_EFFECTS, customLayer, pickFile, urlFor, hueDistance } from '../../src/jb2a/chunk/catalogue.js';
 
 const hex = (h) => new THREE.Color(h);
 
@@ -57,5 +57,19 @@ describe('JB2A catalogue', () => {
         expect(urlFor({ moduleId: 'jb2a_patreon', location: 'https://bucket.example/' }, layer, null)).toBe(
             'https://bucket.example/jb2a_patreon/Library/Generic/Impact/FrostImpact_01_Regular_Blue_600x600.webm'
         );
+    });
+
+    it('customLayer: a chosen .webm path; flat for impact-like folders; urls only under the JB2A bucket', () => {
+        const local = { moduleId: 'jb2a_patreon', location: 'modules' };
+        const bucket = { moduleId: 'jb2a_patreon', location: 'https://bucket.example/' };
+        const impact = customLayer('modules/jb2a_patreon/Library/Generic/Impact/Impact_01_Blue_400x400.webm', local);
+        expect(impact).toMatchObject({ place: 'table', size: 7 });
+        expect(urlFor(local, impact, new THREE.Color('#f00'))).toBe(impact.url);
+        expect(customLayer('modules/jb2a_patreon/Library/1st_Level/Bless/Bless_01_Regular_Yellow_400x400.webm', local)).toMatchObject({ place: 'over', size: 6 });
+        for (const bad of ['a.png', '../x.webm', 'a/../b.webm', '\\\\host\\x.webm', 'https://evil.example/x.webm', '//evil.example/x.webm', 5, null]) {
+            expect(customLayer(bad, local)).toBeNull();
+        }
+        expect(customLayer('https://bucket.example/jb2a_patreon/x.webm', bucket)).not.toBeNull();
+        expect(customLayer('https://evil.example/x.webm', bucket)).toBeNull();
     });
 });

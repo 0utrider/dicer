@@ -114,8 +114,8 @@ describe('the simple edit form', () => {
     expect(f.perType.d20).toBe(BUILTIN_THEMES[3].id);
     expect(f.perType.d6).toBe('');
     expect(f.soundMaterial).toBe('metal');
-    expect(f.nat20).toEqual({ effect: 'sparkles', sound: 'chime' });
-    expect(f.nat1).toEqual({ effect: '', sound: '' });
+    expect(f.nat20).toEqual({ effect: 'sparkles', sound: 'chime', soundSrc: '', jb2a: '' });
+    expect(f.nat1).toEqual({ effect: '', sound: '', soundSrc: '', jb2a: '' });
   });
   it('per-type looks of dice the form has no field for pass through unchanged', () => {
     const d7 = { body: { type: 'metal' }, extra: 1 };
@@ -151,7 +151,7 @@ describe('the simple edit form', () => {
     const n1 = t.rules.find((r) => r.id === 'dicer.nat1');
     expect([n1.effect.id, n1.sound.builtin, n1.die, n1.result.value]).toEqual(['shatter', 'thud', 'd20', 1]);
   });
-  it('keep leaves a custom look or a file sound as it was', () => {
+  it('keep leaves a custom look as it was; a file sound reads as the file', () => {
     const custom = normalizeTheme(
       raw('user.u1.c', 'C', {
         appearance: { body: { type: 'opaque', color: '#123456' } },
@@ -160,7 +160,7 @@ describe('the simple edit form', () => {
       'user',
     );
     const f = formFromTheme(custom);
-    expect([f.base, f.nat20.sound]).toEqual([KEEP, KEEP]);
+    expect([f.base, f.nat20.sound, f.nat20.soundSrc]).toEqual([KEEP, 'file', 'a.ogg']);
     const t = normalizeTheme(themeFromForm(f, custom), 'user');
     expect(t.appearance.body.color).toBe('#123456');
     expect(t.rules[0].sound.src).toBe('a.ogg');

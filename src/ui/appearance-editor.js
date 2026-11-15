@@ -15,7 +15,8 @@ import { LOOKS } from '../look/looks.js';
 import { stripActive } from '../look/appearance.js';
 import { PET_KINDS, readPet } from '../pet/pet-for.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
-import { KEEP, celebrationPreview, formFromTheme, themeFromForm } from './theme-form.js';
+import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm } from './theme-form.js';
+import { jb2aSource } from '../jb2a/source.js';
 import {
   BODY_TYPES,
   FINISHES,
@@ -113,6 +114,8 @@ function baseTheme(base) {
   return BUILTIN_THEMES.find((t) => t.id === 'default') ?? BUILTIN_THEMES[0];
 }
 
+const basename = (path) => decodeURIComponent(String(path ?? '').split(/[\\/]/).pop() || '');
+
 const choiceMap = (ids, nameOf, none, keep) => ({
   ...(none === undefined ? {} : { '': none }),
   ...(keep ? { [KEEP]: keep } : {}),
@@ -134,6 +137,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       previewDie: AppearanceEditor.#onPreviewDie,
       throwLook: AppearanceEditor.#onThrowLook,
       previewExtra: AppearanceEditor.#onPreviewExtra,
+      pickSoundFile: AppearanceEditor.#onPickSoundFile,
+      pickJb2a: AppearanceEditor.#onPickJb2a,
+      clearJb2a: AppearanceEditor.#onClearJb2a,
       editType: AppearanceEditor.#onEditType,
       sameAsDefault: AppearanceEditor.#onSameAsDefault,
       pickFont: AppearanceEditor.#onPickFont,
@@ -317,11 +323,22 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       extras,
       materialChoices: withKeep(choiceMap(SOUND_MATERIALS, humanize, loc('DICER.Appearance.Extras.None')), extras.soundMaterial),
       effectChoices: choiceMap(KNOWN_EFFECTS, humanize, loc('DICER.Appearance.Extras.None'), keep),
-      soundChoices: choiceMap(USER_SOUNDS, humanize, loc('DICER.Appearance.Extras.None'), keep),
       celebrations: [
-        { key: 'nat20', label: loc('DICER.Appearance.Extras.NatHigh'), preview: loc('DICER.Appearance.Extras.PreviewNatHigh'), ...extras.nat20 },
-        { key: 'nat1', label: loc('DICER.Appearance.Extras.NatLow'), preview: loc('DICER.Appearance.Extras.PreviewNatLow'), ...extras.nat1 },
-      ],
+        ['nat20', 'DICER.Appearance.Extras.NatHigh', 'DICER.Appearance.Extras.PreviewNatHigh'],
+        ['nat1', 'DICER.Appearance.Extras.NatLow', 'DICER.Appearance.Extras.PreviewNatLow'],
+      ].map(([key, label, preview]) => {
+        const row = extras[key] ?? {};
+        const file = row.sound === SOUND_FILE && row.soundSrc ? { [SOUND_FILE]: basename(row.soundSrc) } : {};
+        return {
+          key,
+          label: loc(label),
+          preview: loc(preview),
+          ...row,
+          soundChoices: { ...choiceMap(USER_SOUNDS, humanize, loc('DICER.Appearance.Extras.None'), keep), ...file },
+          jb2aName: row.jb2a ? basename(row.jb2a) : '',
+        };
+      }),
+      jb2aActive: Boolean(jb2aSource({ modules: globalThis.game?.modules, settings: settings() })),
       isGM: this.#isGM,
       canUpdate: Boolean(this.#originalId),
     };
@@ -556,6 +573,49 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     }
     const { fx, options } = celebrationPreview(this.theme(), target.dataset.key);
     await api._preview(fx, options);
+  }
+
+  /** Sets fields of one celebration row (nat20 / nat1) and redraws the form. */
+  async #setCelebration(key, patch) {
+    if (key !== 'nat20' && key !== 'nat1') return;
+    this.#extras = { ...this.#extras, [key]: { ...this.#extras[key], ...patch } };
+    await this.render();
+  }
+
+  /** Opens Foundry's file picker; resolves the chosen path, or null when closed. */
+  #pickFile(type, current) {
+    const FilePicker = globalThis.foundry?.applications?.apps?.FilePicker?.implementation;
+    if (!FilePicker) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const picker = new FilePicker({ type, current, callback: (path) => resolve(path) });
+      picker.render(true);
+    });
+  }
+
+  /** A row's sound becomes an audio file picked from the server. */
+  static async #onPickSoundFile(event, target) {
+    const key = target.dataset.key;
+    const path = await this.#pickFile('audio', this.#extras[key]?.soundSrc ?? '');
+    if (typeof path === 'string' && path) await this.#setCelebration(key, { sound: SOUND_FILE, soundSrc: path });
+  }
+
+  /** A row's effect plays a JB2A animation file picked from the JB2A folders. */
+  static async #onPickJb2a(event, target) {
+    const key = target.dataset.key;
+    const src = jb2aSource({ modules: globalThis.game?.modules, settings: settings() });
+    const start = this.#extras[key]?.jb2a || (src ? `${src.location}/${src.moduleId}/Library/` : '');
+    const path = await this.#pickFile('imagevideo', start);
+    if (typeof path !== 'string' || !path) return;
+    if (!/\.webm$/i.test(path)) {
+      globalThis.ui?.notifications?.warn(loc('DICER.Appearance.Extras.NeedWebm'));
+      return;
+    }
+    // With no effect chosen, light burst becomes the stand-in that plays when JB2A cannot.
+    await this.#setCelebration(key, { jb2a: path, ...(this.#extras[key]?.effect ? {} : { effect: 'light-burst' }) });
+  }
+
+  static async #onClearJb2a(event, target) {
+    await this.#setCelebration(target.dataset.key, { jb2a: '' });
   }
 
   static async #onPreviewDie(event, target) {

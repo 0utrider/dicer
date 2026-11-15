@@ -211,6 +211,8 @@ const lookIdOf = (appearance) => {
   const key = appearanceKey(appearance);
   return Object.keys(LOOKS).find((id) => appearanceKey(LOOKS[id].appearance) === key) ?? null;
 };
+/** The sound value meaning "the file in soundSrc". */
+export const SOUND_FILE = 'file';
 const NATS = [
   ['nat20', 'dicer.nat20', 20],
   ['nat1', 'dicer.nat1', 1],
@@ -257,9 +259,12 @@ export function formFromTheme(theme) {
   };
   for (const [key, id] of NATS) {
     const rule = (theme.rules ?? []).find((r) => r?.id === id);
+    const src = typeof rule?.sound?.src === 'string' ? rule.sound.src : '';
     form[key] = {
       effect: rule?.effect ? (KNOWN_EFFECTS.includes(rule.effect.id) ? rule.effect.id : KEEP) : '',
-      sound: rule?.sound ? (USER_SOUNDS.includes(rule.sound.builtin) ? rule.sound.builtin : KEEP) : '',
+      sound: src ? SOUND_FILE : rule?.sound ? (USER_SOUNDS.includes(rule.sound.builtin) ? rule.sound.builtin : KEEP) : '',
+      soundSrc: src,
+      jb2a: typeof rule?.effect?.jb2a === 'string' ? rule.effect.jb2a : '',
     };
   }
   return form;
@@ -292,18 +297,32 @@ export function themeFromForm(form, base) {
   for (const [key, id, value] of NATS) {
     const old = (src.rules ?? []).find((r) => r?.id === id);
     const want = f[key] ?? {};
-    const effect = KNOWN_EFFECTS.includes(want.effect)
+    let effect = KNOWN_EFFECTS.includes(want.effect)
       ? old?.effect?.id === want.effect
         ? old.effect
         : { id: want.effect }
       : want.effect === KEEP
         ? (old?.effect ?? null)
         : null;
+    // A chosen JB2A animation plays in place of the effect; with no effect, light burst is its stand-in.
+    if (typeof want.jb2a === 'string') {
+      const file = want.jb2a.trim();
+      if (file) effect = { ...(effect ?? { id: 'light-burst' }), jb2a: file };
+      else if (effect && 'jb2a' in effect) {
+        effect = { ...effect };
+        delete effect.jb2a;
+      }
+    }
+    const file = typeof want.soundSrc === 'string' ? want.soundSrc.trim() : '';
     const sound = USER_SOUNDS.includes(want.sound)
       ? { builtin: want.sound }
-      : want.sound === KEEP
-        ? (old?.sound ?? null)
-        : null;
+      : want.sound === SOUND_FILE && file
+        ? old?.sound?.src === file
+          ? old.sound
+          : { src: file }
+        : want.sound === KEEP
+          ? (old?.sound ?? null)
+          : null;
     if (!effect && !sound) continue; // nothing to celebrate: no rule
     rules.push({
       ...(old ?? { name: value === 20 ? 'Natural 20' : 'Natural 1', die: 'd20', result: { kind: 'value', value } }),

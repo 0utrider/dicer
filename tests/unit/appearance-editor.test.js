@@ -710,6 +710,65 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('picks a sound file and a JB2A animation for a celebration; the theme and preview carry them', async () => {
+    const opened = [];
+    class FakePicker {
+      constructor(opts) {
+        this.opts = opts;
+        opened.push(this);
+      }
+      render() {}
+    }
+    const apps = (globalThis.foundry.applications.apps ??= {});
+    const oldPicker = apps.FilePicker;
+    apps.FilePicker = { implementation: FakePicker };
+    const oldModules = globalThis.game.modules;
+    globalThis.game.modules = new Map([['JB2A_DnD5e', { active: true }]]);
+    const _preview = vi.fn(async () => {});
+    globalThis.game.dice3d._preview = _preview;
+    try {
+      const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+      const choose = async (selector, path) => {
+        const clicked = click(app, selector);
+        await vi.waitFor(() => expect(opened.length).toBeGreaterThan(0));
+        const picker = opened.shift();
+        picker.opts.callback(path);
+        await clicked;
+        await vi.waitFor(() => expect(q(app, '.window-content')).not.toBeNull());
+        return picker;
+      };
+      const snd = await choose('[data-action="pickSoundFile"][data-key="nat20"]', 'sounds/My%20Yay.ogg');
+      expect(snd.opts.type).toBe('audio');
+      await vi.waitFor(() => expect(q(app, 'select[name="extras.nat20.sound"]').value).toBe('file'));
+      expect(q(app, 'select[name="extras.nat20.sound"] option[value="file"]').textContent).toBe('My Yay.ogg');
+      const film = await choose('[data-action="pickJb2a"][data-key="nat20"]', 'modules/JB2A_DnD5e/Library/Generic/Impact/A.webm');
+      expect(film.opts.type).toBe('imagevideo');
+      expect(film.opts.current).toBe('modules/JB2A_DnD5e/Library/');
+      await vi.waitFor(() => expect(q(app, '.dicer-ae-picked')?.textContent).toContain('A.webm'));
+      const rule = app.theme().rules.find((r) => r.id === 'dicer.nat20');
+      expect(rule).toMatchObject({ effect: { id: 'light-burst', jb2a: 'modules/JB2A_DnD5e/Library/Generic/Impact/A.webm' }, sound: { src: 'sounds/My%20Yay.ogg' } });
+      await click(app, '[data-action="previewExtra"][data-key="nat20"]');
+      expect(_preview.mock.calls.at(-1)[0]).toMatchObject({ effect: { jb2a: 'modules/JB2A_DnD5e/Library/Generic/Impact/A.webm' }, sound: { src: 'sounds/My%20Yay.ogg' } });
+      await choose('[data-action="pickJb2a"][data-key="nat20"]', 'x/not-a-video.png');
+      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith('Pick a JB2A animation file (.webm).');
+      await click(app, '[data-action="clearJb2a"][data-key="nat20"]');
+      await vi.waitFor(() => expect(q(app, '.dicer-ae-picked')).toBeNull());
+      expect(app.theme().rules.find((r) => r.id === 'dicer.nat20').effect).toEqual({ id: 'light-burst' });
+      await app.close();
+    } finally {
+      apps.FilePicker = oldPicker;
+      globalThis.game.modules = oldModules;
+      delete globalThis.game.dice3d._preview;
+    }
+  });
+
+  it('hides the JB2A button without an active JB2A module', async () => {
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    expect(q(app, '[data-action="pickJb2a"]')).toBeNull();
+    expect(q(app, '[data-action="pickSoundFile"][data-key="nat1"]')).not.toBeNull();
+    await app.close();
+  });
+
   it('renders one root with the layer sections; the inside is a note for a non-resin body', async () => {
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
     const root = q(app, '.window-content');

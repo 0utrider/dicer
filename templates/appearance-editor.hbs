@@ -272,14 +272,25 @@
           </div>
           {{#each celebrations}}
             <div class="dicer-ae-row dicer-ae-extra">
-              <label class="dicer-field">
-                <span>{{label}} · {{localize "DICER.Appearance.Extras.Effect"}}</span>
-                <select name="extras.{{key}}.effect">{{selectOptions ../effectChoices selected=effect}}</select>
-              </label>
-              <label class="dicer-field">
-                <span>{{label}} · {{localize "DICER.Appearance.Extras.Sound"}}</span>
-                <select name="extras.{{key}}.sound">{{selectOptions ../soundChoices selected=sound}}</select>
-              </label>
+              <div class="dicer-field">
+                <span id="dicer-ae-{{key}}-effect-l">{{label}} · {{localize "DICER.Appearance.Extras.Effect"}}</span>
+                <span class="dicer-ae-with-action">
+                  <select aria-labelledby="dicer-ae-{{key}}-effect-l" name="extras.{{key}}.effect">{{selectOptions ../effectChoices selected=effect}}</select>
+                  {{#if ../jb2aActive}}<button type="button" class="dicer-icon" data-action="pickJb2a" data-key="{{key}}" data-tooltip="DICER.Appearance.Extras.PickAnimation" aria-label="{{localize "DICER.Appearance.Extras.PickAnimation"}}"><i class="fa-solid fa-film"></i></button>{{/if}}
+                </span>
+                {{#if jb2aName}}
+                  <span class="dicer-ae-picked" data-tooltip="{{jb2a}}"><i class="fa-solid fa-film"></i> <span>{{jb2aName}}</span>
+                    <button type="button" data-action="clearJb2a" data-key="{{key}}" aria-label="{{localize "DICER.Appearance.Extras.ClearAnimation"}}" data-tooltip="DICER.Appearance.Extras.ClearAnimation"><i class="fa-solid fa-xmark"></i></button>
+                  </span>
+                {{/if}}
+              </div>
+              <div class="dicer-field">
+                <span id="dicer-ae-{{key}}-sound-l">{{label}} · {{localize "DICER.Appearance.Extras.Sound"}}</span>
+                <span class="dicer-ae-with-action">
+                  <select aria-labelledby="dicer-ae-{{key}}-sound-l" name="extras.{{key}}.sound">{{selectOptions soundChoices selected=sound}}</select>
+                  <button type="button" class="dicer-icon" data-action="pickSoundFile" data-key="{{key}}" data-tooltip="DICER.Appearance.Extras.PickSound" aria-label="{{localize "DICER.Appearance.Extras.PickSound"}}"><i class="fa-solid fa-folder-open"></i></button>
+                </span>
+              </div>
               <button type="button" class="dicer-icon" data-action="previewExtra" data-key="{{key}}" data-tooltip="{{preview}}" aria-label="{{preview}}"><i class="fa-solid fa-play"></i></button>
             </div>
           {{/each}}

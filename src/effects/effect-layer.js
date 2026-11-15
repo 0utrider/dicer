@@ -250,7 +250,7 @@ export function createEffectLayer({
     if (typeof mod?.start !== 'function') mod = null;
     let j = null;
     try {
-      if (setting('jb2aEffects') !== false && !String(f?.ruleId).startsWith('damage:')) j = player?.moduleFor(id, mod, { safe });
+      if (setting('jb2aEffects') !== false && !String(f?.ruleId).startsWith('damage:')) j = player?.moduleFor(id, mod, { safe, file: f.effect.jb2a });
     } catch {
       // the built-in plays
     }

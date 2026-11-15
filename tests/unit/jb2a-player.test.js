@@ -73,6 +73,20 @@ describe('jb2a player', () => {
         expect(none.moduleFor('frost', b)).toBeNull();
     });
 
+    it('a chosen file plays alone, for any effect id; an invalid one falls back to the catalogue', () => {
+        const { player, videos, scene, ctx, builtin } = setup();
+        const file = 'modules/jb2a_patreon/Library/Generic/Explosion/Explosion_02_Blue_400x400.webm';
+        const m = player.moduleFor('glow-pulse', builtin(), { file });
+        expect(m).not.toBeNull();
+        m.start(ctx());
+        expect(videos.at(-1).src).toBe(file);
+        expect(scene.children).toHaveLength(1);
+        expect(scene.children[0].position.y).toBe(3); // over the die
+        player.moduleFor('frost', builtin(), { file: 'https://evil.example/x.webm' }).start(ctx());
+        expect(videos.at(-1).src).toContain('/Library/Generic/Impact/FrostImpact_01');
+        expect(player.moduleFor('glow-pulse', builtin(), { file: 'a/../b.webm' })).toBeNull();
+    });
+
     it('places table and over layers', () => {
         const { player, scene, ctx, builtin } = setup();
         player.moduleFor('frost', builtin()).start(ctx());

@@ -759,7 +759,11 @@
         "Keep": "Keep current (custom)",
         "PreviewImpact": "Throw a test die to hear the impact sound (only you see it)",
         "PreviewNatHigh": "Throw a test natural 20 with this effect and sound (only you see it)",
-        "PreviewNatLow": "Throw a test natural 1 with this effect and sound (only you see it)"
+        "PreviewNatLow": "Throw a test natural 1 with this effect and sound (only you see it)",
+        "PickSound": "Use a sound file",
+        "PickAnimation": "Play a JB2A animation of your choice instead (needs Use JB2A animations on)",
+        "ClearAnimation": "Stop using this JB2A animation",
+        "NeedWebm": "Pick a JB2A animation file (.webm)."
       },
       "Name": "Theme name",
       "NamePlaceholder": "My dice",
