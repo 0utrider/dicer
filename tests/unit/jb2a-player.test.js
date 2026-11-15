@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { createJb2aPlayer, CANPLAY_MS, MAX_PLAYING } from '../../src/jb2a/jb2a.js';
+import { createJb2aPlayer, placeText, CANPLAY_MS, MAX_PLAYING } from '../../src/jb2a/jb2a.js';
 
 class FakeVideo extends EventTarget {
     constructor() {
@@ -259,5 +259,43 @@ describe('jb2a player', () => {
         expect(videos).toHaveLength(1);
         expect(videos[0].preload).toBe('auto');
         expect(videos[0].src).toContain('FrostImpact_01_Regular_Blue_600x600.webm');
+    });
+});
+
+describe('placeText (crit / fumble text layers)', () => {
+    const cam = (halfWidth, halfDepth) => {
+        const c = new THREE.PerspectiveCamera(20, halfWidth / halfDepth);
+        c.position.set(0, halfDepth / Math.tan((10 * Math.PI) / 180), 0);
+        return c;
+    };
+
+    it('keeps the same screen size whatever diceScale is', () => {
+        const at1 = placeText({ size: 4.5, x: 0, z: 0, y: 3, camera: cam(20, 11), diceScale: 1 });
+        const at2 = placeText({ size: 4.5, x: 0, z: 0, y: 3, camera: cam(10, 5.5), diceScale: 2 });
+        // screen fraction = size / visible depth at the plane
+        const frac = (r, c) => r.size / (2 * (c.position.y - 3) * Math.tan((10 * Math.PI) / 180));
+        expect(frac(at2, cam(10, 5.5))).toBeCloseTo(frac(at1, cam(20, 11)), 6);
+        expect(at2.size).toBeLessThan(at1.size);
+    });
+
+    it('moves a text plane near an edge back inside the view', () => {
+        const c = cam(20, 11);
+        const r = placeText({ size: 4.5, x: 19.5, z: -10.8, y: 3, camera: c, diceScale: 1 });
+        const halfD = (c.position.y - 3) * Math.tan((10 * Math.PI) / 180);
+        const halfW = halfD * c.aspect;
+        expect(r.x + r.size / 2).toBeLessThanOrEqual(halfW + 1e-9);
+        expect(r.z - r.size / 2).toBeGreaterThanOrEqual(-halfD - 1e-9);
+        const mid = placeText({ size: 4.5, x: 1, z: 2, y: 3, camera: c, diceScale: 1 });
+        expect([mid.x, mid.z]).toEqual([1, 2]); // already inside: untouched
+    });
+
+    it('centres text larger than the view, and falls back without a camera height', () => {
+        const c = cam(2, 1);
+        expect(placeText({ size: 40, x: 1.5, z: 0.8, y: 3, camera: c, diceScale: 1 })).toMatchObject({ x: 0, z: 0 });
+        expect(placeText({ size: 4, x: 5, z: 6, y: 3, camera: new THREE.PerspectiveCamera(), diceScale: 2 })).toEqual({
+            size: 2,
+            x: 5,
+            z: 6
+        });
     });
 });

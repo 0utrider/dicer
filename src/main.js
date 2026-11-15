@@ -82,7 +82,7 @@ const debugCounters = createDebugCounters();
 
 /** Result sounds (never awaited) and trigger macros, once per landed die carrying fx. */
 const landedFx = createLandedFx({
-  playSound: (sound) => soundEngine?.result(sound),
+  playSound: (sound) => (getSetting('effectSounds') === false ? undefined : soundEngine?.result(sound)),
   onSound: debugCounters.countSound,
   fromUuid: (uuid) => globalThis.fromUuid(uuid),
 });

@@ -13,6 +13,32 @@ const OVER_Y = 3;
 const TABLE_ORDER = 5;
 const OVER_ORDER = 999;
 
+/** JB2A's UI layers are text (CRITICAL!, MISS): they keep a fixed screen size and stay on screen. */
+const isText = (layer) => layer.dir === 'UI';
+
+/**
+ * A text layer's world size and position at height `y`: `layer.size` reads as that many dice at
+ * diceScale 1 whatever the dice size is (the 200 px video is not blown up past its pixels), and the
+ * plane is moved in so the camera's view holds all of it. Exported for tests.
+ */
+export function placeText({ size, x, z, y, camera, diceScale }) {
+    const ds = Number.isFinite(diceScale) && diceScale > 0 ? diceScale : 1;
+    const h = camera?.position?.y;
+    const fov = camera?.fov;
+    if (!(h > y) || !(fov > 0)) return { size: size / ds, x, z };
+    // Under a camera looking straight down, a plane nearer to it shows bigger by h / (h - y).
+    const s = (size / ds) * ((h - y) / h);
+    const halfD = (h - y) * Math.tan(((fov / 2) * Math.PI) / 180);
+    const halfW = halfD * (camera.aspect > 0 ? camera.aspect : 1);
+    const cx = camera.position.x ?? 0;
+    const cz = camera.position.z ?? 0;
+    const fit = (v, c, half) => {
+        const room = half - s / 2;
+        return room <= 0 ? c : Math.min(c + room, Math.max(c - room, v));
+    };
+    return { size: s, x: fit(x, cx, halfW), z: fit(z, cz, halfD) };
+}
+
 const costOf = (builtin) => (Number.isFinite(builtin?.cost) && builtin.cost > 0 ? builtin.cost : 0);
 const isAbsolute = (url) => /^([a-z][a-z0-9+.-]*:)?\/\//i.test(url);
 const DEAD = Object.freeze({ update: () => false, stop() {} });
@@ -152,11 +178,17 @@ export function createJb2aPlayer({
                 depthWrite: false,
                 toneMapped: false
             });
-            const size = layer.size * scale;
+            let size = layer.size * scale;
+            let x = p.x;
+            let z = p.z + (layer.offsetZ ?? 0);
+            if (over && isText(layer)) {
+                const diceScale = Number(ctx.setting?.('diceScale'));
+                ({ size, x, z } = placeText({ size, x, z, y: OVER_Y, camera: ctx.camera, diceScale }));
+            }
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material);
             mesh.renderOrder = over ? OVER_ORDER : TABLE_ORDER;
             if (over) {
-                mesh.position.set(p.x, OVER_Y, p.z + (layer.offsetZ ?? 0));
+                mesh.position.set(x, OVER_Y, z);
                 if (ctx.camera?.quaternion) mesh.quaternion.copy(ctx.camera.quaternion);
             } else {
                 mesh.position.set(p.x, TABLE_Y, p.z + (layer.offsetZ ?? 0));

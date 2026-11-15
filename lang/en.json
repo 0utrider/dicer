@@ -20,6 +20,10 @@
         "Name": "Dice size",
         "Hint": "Size of the dice on screen."
       },
+      "petScale": {
+        "Name": "Pet size",
+        "Hint": "Size of the dice pets on screen, independent of the dice size."
+      },
       "timeBeforeHide": {
         "Name": "Time before hiding (ms)",
         "Hint": "How long the dice stay on the table after landing, before they fade out."
@@ -186,6 +190,10 @@
       "sounds": {
         "Name": "Dice sounds",
         "Hint": "Play impact sounds as the dice hit the table, the walls and each other."
+      },
+      "effectSounds": {
+        "Name": "Theme and effect sounds",
+        "Hint": "Play the sounds themes and triggers add to results (the zap, chime, fanfare and so on). Dice impacts and pet sounds have their own settings."
       },
       "soundVolume": {
         "Name": "Dice sound volume",

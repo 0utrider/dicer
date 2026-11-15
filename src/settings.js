@@ -143,7 +143,7 @@ export const resetControls = () => {
 /**
  * Registers every Dicer setting.
  * @param {object} [callbacks]
- * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
+ * @param {() => void} [callbacks.onAreaChange] runs when diceScale or petScale changes
  * @param {() => void} [callbacks.onPetChange] runs when petsAllowed or showPets changes
  * @param {() => void} [callbacks.onPetStayChange] runs when petStay or petSplat changes
  * @param {() => void} [callbacks.onRollAreasChange] runs when rollAreas or gmPrivateArea changes
@@ -192,16 +192,19 @@ export function registerSettings({
     default: 1.5,
     requiresReload: true, // the renderer reads its cap once, at creation
   });
-  register('diceScale', {
-    name: t('diceScale.Name'),
-    hint: t('diceScale.Hint'),
-    scope: 'client',
-    config: true,
-    type: Number,
-    range: { min: 0.5, max: 2, step: 0.1 },
-    default: 1,
-    onChange: () => onAreaChange?.(),
-  });
+  // Pets have their own on-screen size: the pet layer sizes them by petScale / diceScale.
+  for (const key of ['diceScale', 'petScale']) {
+    register(key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope: 'client',
+      config: true,
+      type: Number,
+      range: { min: 0.5, max: 2, step: 0.1 },
+      default: 1,
+      onChange: () => onAreaChange?.(),
+    });
+  }
   register('timeBeforeHide', {
     name: t('timeBeforeHide.Name'),
     hint: t('timeBeforeHide.Hint'),
@@ -410,7 +413,8 @@ export function registerSettings({
       onChange: (value) => onLookChange?.(key, value),
     });
   }
-  for (const key of ['sounds', 'quietWhenUnfocused']) {
+  // effectSounds: theme and trigger result sounds (zap, chime...); pet chirps have their own.
+  for (const key of ['sounds', 'effectSounds', 'quietWhenUnfocused']) {
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),

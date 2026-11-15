@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Pet size.** Pets have their own **Pet size** setting, so bigger dice no longer mean bigger pets.
+- **Crit and fumble text stays sharp and on screen.** The JB2A CRITICAL / MISS text keeps one screen size whatever the dice size, and a die landing at the edge of the screen no longer pushes it out of view.
+- **Theme and effect sounds** can be turned off on their own (the zap, chime, fanfare and the rest), leaving dice impacts and pet sounds as they are.
+
 ## 0.1.1
 
 Dice now carry their element through the whole throw, and a natural 20 gets a moment of its own.
