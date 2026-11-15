@@ -2,7 +2,7 @@
 #
 # On every push/PR to main it validates the manifest, lints, runs the unit tests and builds. On a
 # published release it injects the release URLs into module.json, builds dist/, zips ONLY the files
-# Foundry loads (module.json, dist/, styles/, lang/, templates/, assets/, api.js, README, LICENSE)
+# Foundry loads (module.json, dist/, styles/, lang/, templates/, assets/, api.js, README, CHANGELOG, LICENSE)
 # and attaches module.json + module.zip to the release.
 #
 # Foundry's update link is releases/latest/download/module.json, and GitHub's "latest" skips
@@ -88,7 +88,7 @@ jobs:
       - name: Create Module Archive
         if: github.event_name == 'release'
         run: |
-          zip -r ./module.zip module.json dist styles lang templates assets api.js README.md LICENSE
+          zip -r ./module.zip module.json dist styles lang templates assets api.js README.md CHANGELOG.md LICENSE
           unzip -l module.zip | tail -1
 
       - name: Update Release With Files

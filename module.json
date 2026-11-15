@@ -24,6 +24,7 @@
       "path": "lang/en.json"
     }
   ],
+  "changelog": "https://github.com/roileaf/dicer/blob/main/CHANGELOG.md",
   "url": "#{URL}#",
   "manifest": "#{MANIFEST}#",
   "download": "#{DOWNLOAD}#"
