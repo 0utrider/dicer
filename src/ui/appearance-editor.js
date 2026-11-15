@@ -12,6 +12,7 @@
 import { DIE_TYPES, SOUND_MATERIALS, KNOWN_EFFECTS, BUILTIN_THEMES, normalizeTheme } from '../themes/themes.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
 import { LOOKS } from '../look/looks.js';
+import { stripActive } from '../look/appearance.js';
 import { PET_KINDS, readPet } from '../pet/pet-for.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, formFromTheme, themeFromForm } from './theme-form.js';
@@ -29,6 +30,7 @@ import {
   COIN_CHOICES,
   FONT_KINDS,
   EDGE_STEPS,
+  STRIP_STYLES,
   FONT_SUGGESTIONS,
   formFromAppearance,
   appearanceFromForm,
@@ -276,6 +278,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       reliefs: active(RELIEFS, form.numbers.relief, 'DICER.Appearance.Relief.'),
       critIcons: active(ICON_CHOICES, form.numbers.critIcon, 'DICER.Appearance.Icon.'),
       fumbleIcons: active(ICON_CHOICES, form.numbers.fumbleIcon, 'DICER.Appearance.Icon.'),
+      strips: active(STRIP_STYLES, form.edges.strip, 'DICER.Appearance.Strip.'),
       fontKinds: active(FONT_KINDS, form.numbers.fontKind, 'DICER.Appearance.FontKind.'),
       fontSuggestions: FONT_SUGGESTIONS,
       fontMessage,
@@ -292,12 +295,13 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         density: pct(form.interior.density),
         depth: pct(form.numbers.depth),
         intensity: pct(form.glow.intensity),
+        stripStrength: pct(form.edges.stripStrength),
       },
       summary: {
         body: loc(`DICER.Appearance.BodyType.${look.body.type}`),
         inside: show.inside ? loc(`DICER.Appearance.InsideType.${form.interior.type}`) : '—',
         numbers: `${loc(`DICER.Appearance.Fill.${look.numbers.fill}`)} · ${fontLabel}`,
-        edges: loc(`DICER.Appearance.Edge.${EDGE_NAMES[Math.max(0, edgeIndex)]}`),
+        edges: loc(`DICER.Appearance.Edge.${EDGE_NAMES[Math.max(0, edgeIndex)]}`) + (stripActive(look) ? ` · ${loc(`DICER.Appearance.Strip.${look.edges.strip.style}`)}` : ''),
         glow: look.glow.intensity > 0 ? pct(look.glow.intensity) : loc('DICER.Appearance.Glow.Off'),
         perType: overrideCount ? String(overrideCount) : '',
         extras: '',

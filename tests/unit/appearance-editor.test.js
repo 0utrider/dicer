@@ -282,6 +282,20 @@ describe('form <-> appearance', () => {
     const a = appearanceFromForm(f);
     expect([a.body.roughness, a.edges.radius]).toEqual([0.9, 0.25]);
   });
+  it('round-trips the edge strip, reading a string strength from an input', () => {
+    const strip = { style: 'metal', color: '#c0c0c0', strength: 0.6 };
+    const look = { edges: { radius: 0.5, strip } };
+    expect(appearanceFromForm(formFromAppearance(look)).edges.strip).toEqual(normalizeAppearance(look).edges.strip);
+    expect(appearanceFromForm(formFromAppearance(look)).edges.strip).toEqual(strip);
+    const f = setField(formFromAppearance(look), 'edges.stripStrength', '0.6');
+    expect(appearanceFromForm(f).edges.strip.strength).toBe(0.6);
+  });
+  it('shows the strip controls only on rounded edges, and the details only for a non-body style', () => {
+    const v = (radius, style) => visibleSections(formFromAppearance({ edges: { radius, strip: { style } } }));
+    expect([v(0, 'paint').strip, v(0, 'paint').stripDetails]).toEqual([false, false]);
+    expect([v(0.5, 'body').strip, v(0.5, 'body').stripDetails]).toEqual([true, false]);
+    expect([v(0.5, 'paint').strip, v(0.5, 'paint').stripDetails]).toEqual([true, true]);
+  });
   it('a metal fill gets its own colour (the colour picker is hidden for metals)', () => {
     let f = setField(formFromAppearance({ numbers: { fill: 'gold', color: '#e2b04a' } }), 'numbers.fill', 'silver');
     expect(appearanceFromForm(f).numbers).toMatchObject({ fill: 'silver', color: METAL_FILL_COLORS.silver });
@@ -682,6 +696,30 @@ describe('the appearance editor', () => {
     expect(app.element.querySelectorAll('.dicer-ae-edges button')).toHaveLength(5);
     expect(q(app, '.dicer-ae-edges button.active').dataset.value).toBe('0');
     await app.close();
+  });
+
+  it('the edges section offers four strip styles (body active), live colour and strength, and a summary', async () => {
+    const L = (k) => localize(`DICER.Appearance.${k}`);
+    const round = { ...metal, edges: { radius: 0.5 } };
+    const app = await open({ base: { id: 't', name: 'T', appearance: round, perType: {}, rules: [] } });
+    const labels = [...app.element.querySelectorAll('[data-field="edges.strip"]')].map((e) => e.textContent.trim());
+    expect(labels).toEqual(['body', 'paint', 'metal', 'glow'].map((s) => L(`Strip.${s}`)));
+    expect(q(app, '[data-field="edges.strip"].active').dataset.value).toBe('body');
+    expect(q(app, 'input[name="edges.stripStrength"]')).toBeNull();
+    expect(q(app, '[data-section="edges"] summary em').textContent).toBe(L('Edge.soft'));
+    await click(app, '[data-field="edges.strip"][data-value="metal"]');
+    expect(q(app, '[data-field="edges.strip"].active').dataset.value).toBe('metal');
+    expect(q(app, 'input[name="edges.stripColor"]')).toBeTruthy();
+    expect(q(app, '[data-color-for="edges.stripColor"]')).toBeTruthy();
+    const range = q(app, 'input[name="edges.stripStrength"]');
+    expect([range.getAttribute('min'), range.getAttribute('max'), range.getAttribute('step')]).toEqual(['0', '1', '0.05']);
+    expect(q(app, 'output[data-for="edges.stripStrength"]')).toBeTruthy();
+    expect(q(app, '[data-section="edges"] summary em').textContent).toBe(`${L('Edge.soft')} · ${L('Strip.metal')}`);
+    await app.close();
+    const sharp = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    expect(q(sharp, '[data-field="edges.strip"]')).toBeNull();
+    expect(sharp.element.textContent).toContain(L('Edges.StripNeedsRound'));
+    await sharp.close();
   });
 
   it('the material section renders preset chips only for types with presets, five finishes for metal, and the luminous range', async () => {
@@ -1096,6 +1134,7 @@ describe('lang/en.json', () => {
       'Coin.': ['numbers', 'heads-tails', 'sun-moon'],
       'Icon.': ['none', ...ICON_IDS],
       'Edge.': ['sharp', 'crisp', 'soft', 'round', 'veryRound'],
+      'Strip.': ['body', 'paint', 'metal', 'glow'],
       'Pet.': ['None', 'Mimic', 'Slime', 'Dragonling'],
     });
     expect(keys.length).toBeGreaterThan(30);

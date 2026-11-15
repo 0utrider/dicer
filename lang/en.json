@@ -717,7 +717,17 @@
         "crystal": "Crystal"
       },
       "Edges": {
-        "Sharpness": "Sharpness"
+        "Sharpness": "Sharpness",
+        "Strip": "Edge strips",
+        "StripColor": "Strip colour",
+        "StripStrength": "Strength",
+        "StripNeedsRound": "Edge strips need rounded edges."
+      },
+      "Strip": {
+        "body": "Match body",
+        "paint": "Paint",
+        "metal": "Metal",
+        "glow": "Glow"
       },
       "Edge": {
         "sharp": "Sharp",

@@ -203,6 +203,19 @@
             </div>
             <div class="dicer-ae-scale"><span>{{localize "DICER.Appearance.Edge.sharp"}}</span><span>{{localize "DICER.Appearance.Edge.veryRound"}}</span></div>
           </div>
+          {{#if show.strip}}
+            <div class="dicer-field">
+              <span>{{localize "DICER.Appearance.Edges.Strip"}}</span>
+              <div class="dicer-segmented dicer-ae-seg">
+                {{#each strips}}<button type="button" class="{{#if active}}active{{/if}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="edges.strip" data-value="{{id}}">{{label}}</button>{{/each}}
+              </div>
+            </div>
+            {{#if show.stripDetails}}
+              <div class="dicer-ae-row"><div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Edges.StripColor"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.edges.stripColor}}" data-color-for="edges.stripColor" aria-label="{{localize "DICER.Appearance.Edges.StripColor"}}"><input type="text" name="edges.stripColor" value="{{form.edges.stripColor}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Edges.StripColor"}}"></span></div><label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Edges.StripStrength"}}<output data-for="edges.stripStrength">{{pct.stripStrength}}</output></span><input type="range" name="edges.stripStrength" min="0" max="1" step="0.05" value="{{form.edges.stripStrength}}"></label></div>
+            {{/if}}
+          {{else}}
+            <p class="dicer-hint">{{localize "DICER.Appearance.Edges.StripNeedsRound"}}</p>
+          {{/if}}
           <div class="dicer-field">
             <span>{{localize "DICER.Appearance.Shapes.D4"}}</span>
             <div class="dicer-segmented dicer-ae-seg">

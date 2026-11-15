@@ -7,7 +7,7 @@
  * forces the inside to 'none' on a non-resin body, and switching resin -> metal -> resin must not
  * lose the nebula the user built.
  */
-import { normalizeAppearance, EDGE_STEPS } from '../look/appearance.js';
+import { normalizeAppearance, EDGE_STEPS, STRIP_STYLES } from '../look/appearance.js';
 import { DIE_TYPES } from '../themes/themes.js';
 import { PRESET_COLORS } from '../look/body-colors.js';
 import { upsertTheme, userThemeId, worldThemeId, mergeEdited } from './theme-form.js';
@@ -36,7 +36,7 @@ export const ICON_CHOICES = ['none', 'starburst', 'crown', 'skull', 'broken-shie
 // Literal, like ICON_CHOICES (the unit test pins it to FONT_IDS_BUILTIN).
 const BUILTIN_FONTS = ['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco'];
 export const FONT_KINDS = [...BUILTIN_FONTS, 'css', 'file'];
-export { EDGE_STEPS };
+export { EDGE_STEPS, STRIP_STYLES };
 /** Fonts most computers have, offered as suggestions for "a font on this computer". */
 export const FONT_SUGGESTIONS = ['Georgia', 'Impact', 'Palatino Linotype', 'Trebuchet MS', 'Verdana', 'Courier New', 'Times New Roman'];
 export const LOOK_KIND = 'dicer-look';
@@ -86,7 +86,7 @@ export function formFromAppearance(raw) {
       coin: a.numbers.coin,
       ...fontParts(a.numbers.font),
     },
-    edges: { radius: a.edges.radius },
+    edges: { radius: a.edges.radius, strip: a.edges.strip.style, stripColor: a.edges.strip.color, stripStrength: a.edges.strip.strength },
     shapes: { d4: a.shapes.d4 },
     glow: { ...a.glow },
   };
@@ -115,7 +115,7 @@ export function appearanceFromForm(form) {
       pips: num.pips === true,
       coin: num.coin,
     },
-    edges: { radius: n(e.radius) },
+    edges: { radius: n(e.radius), strip: { style: e.strip, color: e.stripColor, strength: n(e.stripStrength) } },
     shapes: { d4: isObj(f.shapes) ? f.shapes.d4 : undefined },
     glow: { color: g.color, intensity: n(g.intensity) },
   });
@@ -135,6 +135,9 @@ export function visibleSections(look) {
   const fill = look?.numbers?.fill;
   const kind = look?.numbers?.fontKind ?? fontParts(look?.numbers?.font).fontKind;
   const resin = body === 'resin';
+  const radius = Number(look?.edges?.radius) || 0;
+  // a form names the style as edges.strip, an appearance as edges.strip.style
+  const stripStyle = typeof look?.edges?.strip === 'string' ? look.edges.strip : look?.edges?.strip?.style;
   return {
     inside: resin,
     insideDetails: resin && inside !== 'none' && INTERIOR_TYPES.includes(inside),
@@ -147,6 +150,9 @@ export function visibleSections(look) {
     finish: body === 'metal',
     preset: Object.hasOwn(BODY_PRESET_LISTS, body),
     luminous: true,
+    // edge strips need rounded edges (a sharp die has no edge to paint)
+    strip: radius > 0,
+    stripDetails: radius > 0 && stripStyle !== undefined && stripStyle !== 'body',
     numberColor: fill !== 'gold' && fill !== 'silver',
     fontFamily: kind === 'css',
     fontFile: kind === 'file',
