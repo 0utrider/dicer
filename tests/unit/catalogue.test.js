@@ -254,22 +254,54 @@ describe('rebuilt looks', () => {
   });
 
   test('light-burst size at intensity 2 ≤ 1.6 × size at intensity 1', () => {
-    // The largest scale any of its meshes (halo, floor ring) reaches over its life.
-    const sizeAt = (intensity) => {
+    // The largest scale each of its meshes (the halo, the floor ring) reaches over its life,
+    // checked per mesh so one overgrowing is not masked by a bigger neighbour.
+    const sizesAt = (intensity) => {
       const ctx = ctxFor(EFFECTS['light-burst'], { intensity });
       const h = EFFECTS['light-burst'].start(ctx);
-      let max = 0;
+      const halo = ctx.scene.children.find((c) => c.material?.uniforms?.uRays);
+      const ring = ctx.scene.children.find((c) => c.material?.uniforms?.uR);
+      const max = { halo: 0, ring: 0 };
       for (let t = 0; t < ctx.duration; t += 20) {
         h.update(t);
-        for (const c of ctx.scene.children) if (c.isMesh) max = Math.max(max, c.scale.x);
+        max.halo = Math.max(max.halo, halo.scale.x);
+        max.ring = Math.max(max.ring, ring.scale.x);
       }
       h.stop();
       return max;
     };
-    const one = sizeAt(1);
-    expect(sizeAt(2)).toBeGreaterThan(one);
-    expect(sizeAt(2)).toBeLessThanOrEqual(1.6 * one);
-    expect(sizeAt(4)).toBeLessThanOrEqual(1.6 * one);
+    const one = sizesAt(1);
+    for (const part of ['halo', 'ring']) {
+      expect(sizesAt(2)[part], part).toBeGreaterThan(one[part]);
+      expect(sizesAt(2)[part], part).toBeLessThanOrEqual(1.6 * one[part]);
+      expect(sizesAt(4)[part], part).toBeLessThanOrEqual(1.6 * one[part]);
+    }
+  });
+
+  test('light-burst skips its floor ring on cheap tiers (effectBudget ≤ 2)', () => {
+    const hasRing = (tier) => {
+      const ctx = ctxFor(EFFECTS['light-burst'], { tier });
+      const h = EFFECTS['light-burst'].start(ctx);
+      const found = ctx.scene.children.some((c) => c.material?.uniforms?.uR);
+      h.stop();
+      return found;
+    };
+    expect(hasRing('low')).toBe(false);
+    expect(hasRing('medium')).toBe(true);
+    expect(hasRing('ultra')).toBe(true);
+  });
+
+  test('light-burst shades pale colours more (a dark band so it reads on a light table)', () => {
+    const shadeOf = (hex) => {
+      const ctx = ctxFor(EFFECTS['light-burst'], { color: new THREE.Color(hex) });
+      const h = EFFECTS['light-burst'].start(ctx);
+      const halo = ctx.scene.children.find((c) => c.material?.uniforms?.uRays);
+      const s = halo.material.uniforms.uShade.value;
+      h.stop();
+      return s;
+    };
+    for (const hex of ['#f4f4f4', '#141418', '#e02020', '#2050ff']) expect(shadeOf(hex), hex).toBeGreaterThan(0);
+    expect(shadeOf('#f4f4f4')).toBeGreaterThan(shadeOf('#e02020'));
   });
 
   test('light-burst anticipates: halo scale at 40 ms < scale at 0 ms', () => {
@@ -824,7 +856,7 @@ describe('composites degrade with the tier budget (P4-R10)', () => {
     const h = EFFECTS.celebrate.start(ctx);
     h.update(0);
     h.update(300);
-    expect(scene.children.length - base).toBe(4); // light-burst (halo + floor ring + its floor glow) + the free floor glow
+    expect(scene.children.length - base).toBe(3); // light-burst (halo + its floor glow; no floor ring on low) + the free floor glow
     expect(emit).not.toHaveBeenCalled(); // no sparks, no glitter
     h.stop();
     expect(scene.children.length).toBe(base);
