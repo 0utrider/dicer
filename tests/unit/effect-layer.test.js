@@ -365,6 +365,43 @@ describe('safe mode', () => {
   });
 });
 
+describe('elemental trails flight', () => {
+  async function trailSetup({ settings = {}, ...rest } = {}) {
+    const fx = { flight: vi.fn(), clear: vi.fn() };
+    const createTrailFx = vi.fn(() => fx);
+    const made = setup({ tier: 'high', settings, particles: { emit() {}, update: () => false, clear() {}, dispose() {} },
+      loadLibrary: async () => ({ EFFECTS: {}, createTrailFx }),
+      ...rest,
+    });
+    await made.layer.prefetch();
+    return { ...made, fx, createTrailFx };
+  }
+  const roll = { dice: [{ trail: 2 }] };
+
+  test('flight hands roll.dice to the library trail fx; clear clears it', async () => {
+    const { layer, fx, createTrailFx } = await trailSetup();
+    expect(Object.keys(createTrailFx.mock.calls[0][0]).sort()).toEqual(['getPool', 'getTier', 'now', 'reducedMotion', 'setting', 'warnOnce']);
+    layer.flight(roll, 5);
+    expect(fx.flight).toHaveBeenCalledWith(roll.dice, 5);
+    layer.clear();
+    expect(fx.clear).toHaveBeenCalled();
+  });
+
+  test('effects false or a gate that is not on stops flight (elementalTrails is checked by the library)', async () => {
+    for (const opts of [{ settings: { effects: false } }, { isSafe: () => true }]) {
+      const { layer, fx } = await trailSetup(opts);
+      layer.flight(roll, 5);
+      expect(fx.flight).not.toHaveBeenCalled();
+    }
+  });
+
+  test('no library trail fx is a no-op', async () => {
+    const bare = setup({ tier: 'high', loadLibrary: async () => ({ EFFECTS: {} }) });
+    await bare.layer.prefetch();
+    expect(() => bare.layer.flight(roll, 1)).not.toThrow();
+  });
+});
+
 describe('impact effects (dust and sparks)', () => {
   const KINDS = { SMOKE: 2, STREAK: 6 };
   const RING = 7;

@@ -2561,6 +2561,41 @@ describe('impact effects', () => {
   });
 });
 
+describe('elemental trail flight hook', () => {
+  test('a spec trail mark reaches the die (0 on a ghost); flight runs each playing frame, not after landing', () => {
+    const effects = { update: vi.fn(() => false), play: vi.fn(), clear: vi.fn(), flight: vi.fn() };
+    const { renderer, physics, box } = setup({ effects });
+    box.roll([
+      { type: 'd6', value: 3, trail: 2 },
+      { type: 'd6', value: 4, trail: 2, ghost: true },
+      { type: 'd6', value: 5, trail: 4 },
+      { type: 'd6', value: 1 },
+    ]);
+    const roll = box._rolls.values().next().value;
+    expect(roll.dice.map((d) => d.trail)).toEqual([2, 0, 4, 0]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(100);
+    expect(effects.flight).toHaveBeenCalled();
+    expect(effects.flight.mock.calls[0][0]).toBe(roll);
+    expect(typeof effects.flight.mock.calls[0][1]).toBe('number');
+    renderer.tick(10000);
+    renderer.tick(20000);
+    const n = effects.flight.mock.calls.length;
+    renderer.tick(30000);
+    expect(effects.flight.mock.calls.length).toBe(n);
+  });
+
+  test('an effect layer without flight does not fail the frame', () => {
+    const effects = { update: vi.fn(() => false), play: vi.fn(), clear: vi.fn() };
+    const { renderer, physics, box } = setup({ effects });
+    box.roll([{ type: 'd6', value: 3, trail: 1 }]);
+    physics.flush();
+    renderer.tick(0);
+    expect(() => renderer.tick(100)).not.toThrow();
+  });
+});
+
 describe('the crystal d4 look', () => {
   const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
   const landed = async (renderer, physics, box, specs) => {

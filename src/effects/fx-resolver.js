@@ -214,7 +214,9 @@ export function createFxResolver({
         const custom = theme ? customSoundOf(damageType) : null;
         const landing = theme?.landing ?? null;
         // A discarded or inactive result (dropped, rerolled away) never triggers anything.
-        if (result?.active === false || result?.discarded === true) return out;
+        const dead = result?.active === false || result?.discarded === true;
+        if (fxOn) out.trail = dead ? 1 : 2;
+        if (dead) return out;
         // A theme chosen by the viewer's own damage override never brings its rules (the roller's decide).
         const dieRules = rulesOf(look?.themeSource === 'viewer' ? undefined : look?.themeId);
         if (!dieRules.length && !landing && !custom) return out;

@@ -54,9 +54,21 @@ test('a nat 20 on a d20 carries the celebrate fx (sound fanfare, slow motion)', 
   });
 });
 
+test('trail mark: 2 for an active result, 1 for an inactive one, none when effects are hidden', () => {
+  const dec = (id, extra) => make().decorate({ author: { id } }, d20(20), ...(extra ? [extra] : []));
+  const term = { faces: 20, options: {} };
+  expect(dec('alice')(term, { result: 20, active: true }, 0).trail).toBe(2);
+  expect(dec('alice')(term, { result: 20, active: false }, 0).trail).toBe(1);
+  expect(dec('alice')(term, { result: 20, active: true, discarded: true }, 0).trail).toBe(1);
+  settings.showOthersEffects = false;
+  expect(dec('bob')(term, { result: 20, active: true }, 0).trail).toBeUndefined();
+  settings.effects = false;
+  expect(dec('alice')(term, { result: 20, active: true }, 0).trail).toBeUndefined();
+});
+
 test('a nat 1 carries fumble; a d20 rolling 19 carries no fx', () => {
   expect(plan(make(), d20(1), { author: { id: 'alice' } })[0].fx[0].effect.id).toBe('fumble');
-  expect(plan(make(), d20(19), { author: { id: 'alice' } })[0]).toEqual({ type: 'd20', value: 19, key: '0:0:0' });
+  expect(plan(make(), d20(19), { author: { id: 'alice' } })[0]).toEqual({ type: 'd20', value: 19, key: '0:0:0', trail: 2 });
 });
 
 test('slowMotion is false when the slowMotion setting is off, and true for an effect asking for it', () => {

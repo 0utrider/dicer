@@ -238,6 +238,14 @@
         "Name": "Impact effects",
         "Hint": "Small dust and sparks where dice hit the table."
       },
+      "elementalTrails": {
+        "Name": "Elemental trails",
+        "Hint": "Fire, frost and other damage types leave a trail behind the dice as they fly."
+      },
+      "elementalCritBursts": {
+        "Name": "Elemental critical bursts",
+        "Hint": "A critical hit with an elemental die ends in a burst of that element."
+      },
       "jb2aEffects": {
         "Name": "Use JB2A animations",
         "Hint": "Play JB2A's animated effects (Jules & Ben's Animated Assets) at the dice instead of the built-in ones, when the JB2A module is installed and active. Does nothing without JB2A."

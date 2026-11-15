@@ -62,6 +62,7 @@ export function createEffectLayer({
   let createPool = null; // the library's createParticlePool, once loaded
   let flareRolls = null; // the library's flareRolls (inside-flare.js), once loaded
   let impactFx = null; // the library's impact emitter (createImpactFx in library/particles.js), once loaded
+  let trailFx = null; // the library's trail emitter (createTrailFx), once loaded
   let pool = particles; // the shared particle pool: made on first use (or injected)
   let loading = null;
   let player = null; // the JB2A player (src/jb2a/jb2a.js, the lazy `jb2a` chunk), once loaded
@@ -127,7 +128,9 @@ export function createEffectLayer({
           library = effects;
           createPool = typeof mod.createParticlePool === 'function' ? mod.createParticlePool : null;
           flareRolls = typeof mod.flareRolls === 'function' ? mod.flareRolls : null;
-          impactFx = typeof mod.createImpactFx === 'function' ? mod.createImpactFx({ getPool, getTier, now }) : null;
+          const deps = { getPool, getTier, now, reducedMotion, setting, warnOnce };
+          impactFx = typeof mod.createImpactFx === 'function' ? mod.createImpactFx(deps) : null;
+          trailFx = mod.createTrailFx && mod.createTrailFx(deps);
           prewarmPool();
         }
       })
@@ -409,6 +412,11 @@ export function createEffectLayer({
       }
     },
 
+    /** Per playing frame; the library trail fx checks elementalTrails and catches its own errors. */
+    flight(roll, nowMs) {
+      trailFx && gate() === 'on' && trailFx.flight(roll.dice, nowMs);
+    },
+
     /** Advances every running effect; true while any runs (or the canvas shakes). */
     update(nowMs) {
       for (let i = 0; i < running.length;) {
@@ -445,6 +453,7 @@ export function createEffectLayer({
       for (let i = running.length - 1; i >= 0; i--) stopAt(i);
       cost = 0;
       impactFx?.clear();
+      trailFx?.clear();
       stopShake();
       pool?.clear?.();
     },

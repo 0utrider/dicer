@@ -239,6 +239,14 @@ describe('effects settings', () => {
     expect(r.impactEffects.name).toBe('DICER.Settings.impactEffects.Name');
     expect(r.impactEffects.hint).toBe('DICER.Settings.impactEffects.Hint');
   });
+  test('elementalTrails and elementalCritBursts are client Booleans, default on', () => {
+    const r = capture();
+    for (const key of ['elementalTrails', 'elementalCritBursts']) {
+      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+      expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
+      expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
+    }
+  });
   test('jb2aEffects is a client Boolean, default on', () => {
     const r = capture();
     expect(r.jb2aEffects).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
@@ -311,7 +319,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
 
 test('every effects setting has its English name and hint', () => {
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings;
-  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake', 'impactEffects', 'jb2aEffects']) {
+  for (const key of ['effects', 'showOthersEffects', 'slowMotion', 'triggerMacros', 'screenShake', 'impactEffects', 'jb2aEffects', 'elementalTrails', 'elementalCritBursts']) {
     expect(typeof en[key]?.Name).toBe('string');
     expect(typeof en[key]?.Hint).toBe('string');
   }

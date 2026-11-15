@@ -1154,6 +1154,7 @@ export class DiceBox {
           ? spec.fx
           : null,
       damageType: !ghost && typeof spec.damageType === 'string' ? spec.damageType : undefined,
+      trail: ghost ? 0 : spec.trail | 0,
       spawned: false,
       faceTex: null,
       // A ghost never shows a model: its numbers would show through.
@@ -1500,7 +1501,7 @@ export class DiceBox {
           const hadFrames = roll.received > 0;
           const state = roll.playback.update(now);
           if (hadFrames && !roll.revealed) this._reveal(roll);
-          if (state === 'playing') this.#impacts(roll);
+          if (state === 'playing') this.#impacts(roll, now);
           if (state === 'landed') this.#land(roll, now);
         } else if (roll.phase === 'fading') {
           roll.fadeStart ??= now;
@@ -1537,8 +1538,9 @@ export class DiceBox {
     return petRest ? 'hold' : false;
   }
 
-  /** Hands the impacts the playhead just crossed to onImpact; a sound never fails a roll. */
-  #impacts(roll) {
+  /** Runs the trail flight hook, then hands the impacts the playhead just crossed to onImpact; a sound never fails a roll. */
+  #impacts(roll, now) {
+    this.#effectsCall((e) => e.flight(roll, now));
     let events;
     try {
       events = roll.playback.takeEvents();
