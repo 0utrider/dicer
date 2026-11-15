@@ -116,7 +116,9 @@ vec3 travel( float t, int kind ) {
 	}
 	vec3 p = aOrigin + disp;
 	if ( kind == 1 && aGravity > 0.0 ) {
-		// A buoyant ember sways gently side to side as it rises, easing in over its first second.
+		// A buoyant ember (EMBER with gravity > 0: embers' rising motes and flames) sways gently side
+		// to side as it rises, easing in over its first second. Falling embers (fizzle's, gravity < 0)
+		// keep their clean arcs.
 		float sway = 0.14 * min( t, 1.0 );
 		p.x += sway * sin( t * 3.1 + aSeed * 6.2831853 );
 		p.z += sway * sin( t * 2.3 + aSeed * 12.566371 + 1.3 );

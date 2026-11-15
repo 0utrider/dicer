@@ -466,6 +466,53 @@ describe('rebuilt looks', () => {
     }
   });
 
+  test('embers and sparkles follow the die size: births clear of a small and a large die', () => {
+    const dieOf = (s) => {
+      const die = makeDie();
+      die.outer.scale.setScalar(s);
+      return die;
+    };
+    const radius = (s) => (Math.sqrt(3) / 2) * s; // the unit box's bounding sphere, scaled
+    const ringOf = (id, s) => {
+      const { ctx, specs, h } = run(id, { die: dieOf(s) }, 1600);
+      h.stop();
+      return specs.map((x) => Math.hypot(x.origin.x - ctx.position.x, x.origin.z - ctx.position.z));
+    };
+    const near = {};
+    for (const s of [0.5, 2.5]) {
+      const R = radius(s);
+      const d = ringOf('embers', s);
+      expect(d.length).toBeGreaterThan(0);
+      for (const v of d) expect(v, `embers, die radius ${R}`).toBeGreaterThanOrEqual(0.8 * R);
+      near[s] = Math.min(...d);
+      // Hugs the die: the nearest births sit within 1.2 radii of a small die too.
+      expect(near[s], `embers hugs a die of radius ${R}`).toBeLessThanOrEqual(1.2 * R);
+    }
+    expect(near[2.5]).toBeGreaterThan(near[0.5]);
+    // Sparkles' orbit (speed / drag) scales with the radius too.
+    const orbit = (s) => {
+      const { specs, h } = run('sparkles', { die: dieOf(s) }, 1400);
+      h.stop();
+      const lit = specs.filter((x) => x.blend !== 'normal');
+      return lit[0].speed / lit[0].drag;
+    };
+    expect(orbit(2.5) / orbit(0.5)).toBeCloseTo(5, 5);
+    expect(orbit(2.5)).toBeGreaterThan(radius(2.5)); // the orbit clears the die
+  });
+
+  test('sparkles lead with a burst on the first frame', () => {
+    const ctx = ctxFor(EFFECTS.sparkles);
+    const emit = vi.spyOn(ctx.particles, 'emit');
+    const h = EFFECTS.sparkles.start(ctx);
+    h.update(1000);
+    const first = emit.mock.calls.reduce((n, [s]) => n + s.count, 0);
+    for (let t = 1000; t <= 1000 + ctx.duration; t += 20) h.update(t);
+    const total = emit.mock.calls.reduce((n, [s]) => n + s.count, 0);
+    expect(first).toBeGreaterThanOrEqual(0.15 * total);
+    expect(emit.mock.calls.every(([s]) => s.now >= 1000)).toBe(true);
+    h.stop();
+  });
+
   test('embers keeps six streak sparks at intensity 1 on high', () => {
     const { specs, h } = run('embers', { tier: 'high' }, 1600);
     expect(specs.filter((s) => s.kind === KIND.STREAK).reduce((n, s) => n + s.count, 0)).toBe(6);
