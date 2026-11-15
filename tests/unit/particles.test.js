@@ -368,6 +368,66 @@ describe('textured soft sprites with halos', () => {
     expect(textures.disposeTextures).toHaveBeenCalledTimes(1);
   });
 
+  test('floor: y clamps at the floor and the velocity is reflected x 0.35 once; unset means no floor', () => {
+    const pool = createParticlePool(new THREE.Scene(), 16);
+    pool.emit(spec({ count: 1, floor: 0.02, kind: KIND.SHARD }));
+    pool.emit(spec({ count: 1 })); // an existing user: no floor field
+    pool.emit(spec({ count: 1, blend: 'normal', floor: 0.5 }));
+    pool.emit(spec({ count: 1, floor: 'x' })); // garbage: no floor
+    const add = additive(pool).attrs.aFloor;
+    expect(add.getX(0)).toBeCloseTo(0.02);
+    expect(add.getX(1)).toBeLessThan(-1e5); // far below any table: never reached
+    expect(add.getX(2)).toBeLessThan(-1e5);
+    expect(pool.layers[1].attrs.aFloor.getX(0)).toBeCloseTo(0.5);
+    expect(add.data.updateRanges.length).toBeGreaterThan(0); // packed with the halo, uploaded with it
+    const vs = additive(pool).material.vertexShader;
+    expect(vs).toContain('aFloor');
+    expect(vs).toMatch(/p\.y < aFloor/); // only below the floor...
+    expect(vs).toMatch(/0\.35 \* vy/); // ...the touchdown velocity is reflected and damped
+    expect(vs).toMatch(/max\( aFloor,/); // and y never goes under it
+    expect((vs.match(/^attribute /gm) ?? []).length).toBeLessThanOrEqual(8);
+    pool.dispose();
+  });
+
+  test('floor bounce (JS mirror of the shader): one damped bounce, then resting on the floor', () => {
+    // The shader's analytic path: find the touchdown by bisection, reflect vy x 0.35, clamp.
+    const o = 0.5;
+    const vy0 = 2.5;
+    const d = 0.25;
+    const g = -13;
+    const floor = 0.02;
+    const fall = (t) => o + vy0 * ((1 - Math.exp(-d * t)) / d) + 0.5 * g * t * t;
+    const y = (t) => {
+      let p = fall(t);
+      if (p < floor) {
+        let lo = 0;
+        let hi = t;
+        for (let i = 0; i < 12; i++) {
+          const mid = 0.5 * (lo + hi);
+          if (fall(mid) < floor) hi = mid;
+          else lo = mid;
+        }
+        const vy = vy0 * Math.exp(-d * hi) + g * hi;
+        const tau = t - hi;
+        p = Math.max(floor, floor - 0.35 * vy * tau + 0.5 * g * tau * tau);
+      }
+      return p;
+    };
+    const ys = [];
+    let touch = -1;
+    for (let t = 0, i = 0; t <= 2; t += 0.005, i++) {
+      ys.push(y(t));
+      if (touch < 0 && fall(t) < floor) touch = i; // the free fall would pass the floor here
+    }
+    expect(touch).toBeGreaterThan(0);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(floor);
+    const after = ys.slice(touch);
+    const bounce = Math.max(...after) - floor;
+    expect(bounce).toBeGreaterThan(0.02); // it does bounce...
+    expect(bounce).toBeLessThan(0.35 * (Math.max(...ys) - floor)); // ...lower than it fell
+    expect(ys.at(-1)).toBeCloseTo(floor); // then it rests
+  });
+
   test('the halo and the atlas stay within one extra vertex attribute and one draw per layer', () => {
     const scene = new THREE.Scene();
     const pool = createParticlePool(scene, 16);

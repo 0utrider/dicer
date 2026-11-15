@@ -26,8 +26,6 @@ const easeOut = (t) => 1 - (1 - t) * (1 - t);
 
 /** A size factor that follows intensity gently (sqrt), never below that of intensity 0.2. */
 const sizeK = (ctx) => Math.sqrt(Math.max(0.2, ctx.intensity));
-/** ctx.color scaled toward black: `k` 0.7 is "30% darker". */
-const darker = (ctx, k) => ctx.color.clone().multiplyScalar(k);
 const WHITE = '#ffffff';
 
 /** Runs several effect handles as one: alive while any is; stop() stops them all. */
@@ -771,27 +769,104 @@ export const embers = Object.freeze({
   },
 });
 
-/** Noise puffs that grow, turn and fade to `endColor` (default: 30% darker than ctx.color). */
+/**
+ * A colour as the normal-blend pool shows it: pool colours reach the screen as their linear values,
+ * so this returns one whose linear values are `c`'s sRGB ones (it displays as `c` was meant to).
+ */
+const shown = (c) => c.clone().convertLinearToSRGB();
+// Displayed greys the smoke body leans toward (setRGB in the linear working space: see shown()).
+const SMOKE_LIGHT = new THREE.Color().setRGB(0.74, 0.74, 0.75);
+
+/**
+ * A dense, billowing column of PUFF smoke rising off the die: puffs are born on a ring around it
+ * (0.5..0.85 die radii, dieRadius), each heading up and out on a bearing that winds round the die
+ * over the emission (the column curls), all leaning with one draught per play (it drifts). Each puff
+ * spins, grows about 3x as it slows (the smoke kind's drag) and darkens from the body, the die colour
+ * as displayed leaning 30% to a light smoke grey (a near-black die's rim), to the edge colour
+ * (palette().edge as displayed, x 0.75), so the old, wide puffs at its rim are darker than its fresh
+ * core; a few low soot puffs of the edge colour roll out around its foot. Buoyant (gravity > 0):
+ * unlike fumble's darker plume, which sags. `endColor` overrides the edge colour.
+ */
 const smokeStart = (endColor) => (ctx) => {
   if (!ctx.particles) return NOOP;
-  const emit = trickle(ctx, countFor(16, ctx), 0.5, {
-    origin: originOf(ctx, DIE_TOP),
-    jitter: 0.35,
-    dir: { x: 0, y: 1, z: 0 },
-    speed: 2.2,
-    spread: 1.4,
-    gravity: 0.15,
-    life: 1.3,
-    color: ctx.color,
-    colorEnd: endColor ?? darker(ctx, 0.7),
-    size: 0.7 * sizeK(ctx),
-    sizeEnd: 2.6,
-    spin: 0.6,
-    kind: KIND.SMOKE,
-    shape: SHAPE.SMOKE,
-    blend: 'normal',
+  const k = sizeK(ctx);
+  const R = dieRadius(ctx);
+  const pal = palette(ctx.color);
+  const body = shown(pal.rim ?? pal.mid).lerp(SMOKE_LIGHT, 0.3);
+  const edge = endColor ? new THREE.Color(endColor) : shown(pal.edge).multiplyScalar(0.75);
+  const calm = ctx.reducedMotion;
+  const { x: cx, z: cz } = ctx.position;
+  const y0 = (ctx.position.y || DIE_Y) + 0.35 * R; // round the die's upper half
+  const draught = Math.random() * Math.PI * 2; // the way the column drifts
+  const turn = Math.random() * Math.PI * 2;
+  const curl = Math.random() < 0.5 ? -1 : 1;
+  const dx = Math.cos(draught) * 0.9;
+  const dz = Math.sin(draught) * 0.9;
+  const column = (total, window, lead, { rMin, rMax, up, out, y, ...spec }) => {
+    let i = 0;
+    return oneByOne(
+      ctx,
+      total,
+      window,
+      (now) => {
+        // About one and a half turns round the die over the emission, with a little scatter.
+        const a = turn + curl * ((i++ / Math.max(1, total)) * Math.PI * 3 + (Math.random() - 0.5) * 0.9);
+        const ux = Math.cos(a);
+        const uz = Math.sin(a);
+        const r = rMin + (rMax - rMin) * Math.random();
+        ctx.particles.emit({
+          count: 1,
+          origin: { x: cx + ux * r * R, y, z: cz + uz * r * R },
+          dir: { x: ux * out + dx, y: up, z: uz * out + dz },
+          spread: 0.3,
+          kind: KIND.SMOKE,
+          shape: SHAPE.SMOKE,
+          blend: 'normal',
+          spin: calm ? 0.3 : 0.9,
+          now,
+          ...spec,
+        });
+      },
+      lead,
+    );
+  };
+  const puffs = column(countFor(28, ctx), 0.6, 0.2, {
+    rMin: 0.5,
+    rMax: 0.85,
+    y: y0,
+    up: 1,
+    out: 0.35,
+    speed: (calm ? 0.9 : 2.6) * R,
+    gravity: 0.45, // buoyant: it keeps rising as it slows
+    life: 1.55,
+    color: body,
+    colorEnd: edge,
+    size: 1.0 * R * k,
+    sizeEnd: 3,
   });
-  return timed(ctx.duration, emit, () => {});
+  const soot = column(countFor(8, ctx), 0.5, 0.25, {
+    rMin: 0.8,
+    rMax: 1.05,
+    y: 0.25 * R,
+    up: 0.35,
+    out: 1,
+    speed: (calm ? 0.5 : 1.3) * R,
+    gravity: 0.2,
+    life: 1.3,
+    color: edge,
+    colorEnd: edge.clone().multiplyScalar(0.8),
+    size: 0.8 * R * k,
+    sizeEnd: 2.9,
+    alpha: 0.7,
+  });
+  return timed(
+    ctx.duration,
+    (e, now) => {
+      puffs(e, now);
+      soot(e, now);
+    },
+    () => {},
+  );
 };
 
 export const smoke = Object.freeze({
@@ -1394,46 +1469,121 @@ export const shatter = Object.freeze({
   cost: 3,
   bindsDie: true, // it hides the die: released with it
   defaults: Object.freeze({ color: '#e8efff', intensity: 1, duration: 900 }),
+  /**
+   * The die bursts: it is hidden for the duration while, on the first frame, a bright white GLINT
+   * flash over a soft glow of the die colour (palette().core; a near-black die's rim) marks where it
+   * was, SHARD fragments tumble out (spin) and fall (gravity), bounce once on the table (the pool's
+   * floor at FLOOR_Y, damped) and fade (KIND.SHARD fades over its last 30%), and a faint PUFF dust
+   * puff rolls out low. The shards are solid ones in the die colour as displayed (normal blend: they
+   * read on a light map) mixed with lit ones (additive, haloed: the sprite's bright edge catches the
+   * light on a dark table). Speed and gravity scale with dieRadius, so the spread follows the die's
+   * size while the timing stays put.
+   */
   start(ctx) {
     const outer = ctx.die?.outer;
-    const pool = ctx.particles;
-    if (!outer || !pool) return NOOP;
+    if (!outer || !ctx.particles) return NOOP;
     const was = outer.visible;
     outer.visible = false;
-    const life = Math.max(0.2, ctx.duration / 1000);
-    pool.emit({
-      count: countFor(36, ctx),
-      origin: originOf(ctx, DIE_Y),
+    const k = sizeK(ctx);
+    const R = dieRadius(ctx);
+    const pal = palette(ctx.color);
+    const body = pal.rim ?? pal.mid;
+    const solid = shown(body).multiplyScalar(0.72); // a shade down: reads on a light map too
+    const lit = pal.rim ? pal.rim.clone().lerp(new THREE.Color(WHITE), 0.4) : pal.core.clone();
+    const dust = solid.clone().lerp(SMOKE_LIGHT, 0.6);
+    const life = Math.max(0.3, (ctx.duration / 1000) * 0.85);
+    const centre = { x: ctx.position.x, y: ctx.position.y || DIE_Y, z: ctx.position.z };
+    const shard = {
+      origin: centre,
       dir: { x: 0, y: 1, z: 0 },
-      speed: 2.6,
-      spread: 1.5,
-      gravity: -7,
-      life: life * 0.85,
-      color: ctx.color,
-      colorEnd: darker(ctx, 0.5), // they dim as they settle (and KIND.SHARD fades out at the end)
-      size: 0.4 * sizeK(ctx),
+      speed: 4.4 * R,
+      spread: 1.45, // up and out, some nearly sideways
+      gravity: -18 * R,
+      floor: FLOOR_Y,
+      life,
       spin: 8,
       kind: KIND.SHARD,
       shape: SHAPE.SHARD,
-      blend: 'normal',
-    });
-    // A brief star-flash where the die was (KIND.SPARK: a plain fade, no twinkle to dim it).
-    pool.emit({
-      count: countFor(2, ctx),
-      origin: originOf(ctx, DIE_Y),
-      speed: 0,
-      life: Math.min(0.25, life * 0.3),
-      color: WHITE,
-      colorEnd: ctx.color,
-      size: 1.1 * sizeK(ctx),
-      sizeEnd: 1.6,
-      spin: 1.5,
-      kind: KIND.SPARK,
-      shape: SHAPE.GLINT,
-    });
-    return timed(ctx.duration, () => {}, () => {
-      outer.visible = was;
-    });
+    };
+    let burst = false;
+    return timed(
+      ctx.duration,
+      (e, now) => {
+        if (burst) return;
+        burst = true;
+        const pool = ctx.particles;
+        // The flash: a white glint (KIND.SPARK: a plain fade, no twinkle to dim it) over a soft glow.
+        pool.emit({
+          count: 1,
+          origin: centre,
+          speed: 0,
+          life: Math.min(0.3, life * 0.4),
+          color: body,
+          colorEnd: body,
+          size: 2.2 * R * k,
+          sizeEnd: 1.3,
+          kind: KIND.SPARK,
+          shape: SHAPE.DOT,
+          halo: 1,
+          now,
+        });
+        pool.emit({
+          count: countFor(2, ctx),
+          origin: centre,
+          speed: 0,
+          life: Math.min(0.25, life * 0.35),
+          color: WHITE,
+          colorEnd: lit,
+          size: 1.5 * R * k,
+          sizeEnd: 1.6,
+          spin: 1.5,
+          kind: KIND.SPARK,
+          shape: SHAPE.GLINT,
+          halo: 0.6,
+          now,
+        });
+        pool.emit({
+          ...shard,
+          count: countFor(26, ctx),
+          color: solid,
+          colorEnd: solid.clone().multiplyScalar(0.6), // they dim as they settle
+          size: 0.42 * R * k,
+          blend: 'normal',
+          now,
+        });
+        pool.emit({
+          ...shard,
+          count: countFor(16, ctx),
+          color: lit,
+          colorEnd: body,
+          size: 0.36 * R * k,
+          halo: 0.3,
+          now,
+        });
+        // A faint dust puff rolling out low where the die broke.
+        pool.emit({
+          count: countFor(6, ctx),
+          origin: { x: centre.x, y: 0.2 * R, z: centre.z },
+          dir: { x: 0, y: 1, z: 0 },
+          speed: 1.4 * R,
+          spread: 1.45, // nearly flat, all round
+          gravity: 0,
+          life: life * 1.1,
+          color: dust,
+          size: 1.1 * R * k,
+          sizeEnd: 2.8,
+          spin: 0.5,
+          kind: KIND.SMOKE,
+          shape: SHAPE.SMOKE,
+          blend: 'normal',
+          alpha: 0.45,
+          now,
+        });
+      },
+      () => {
+        outer.visible = was;
+      },
+    );
   },
 });
 

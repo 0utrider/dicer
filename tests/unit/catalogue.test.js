@@ -531,18 +531,33 @@ describe('rebuilt looks', () => {
     expect(total('frost', KIND.SMOKE, { tier: 'low' })).toBe(1); // at least 1
   });
 
-  test('smoke: noise puffs growing 2.6x, spinning, normal blend, ending 30% darker than ctx.color', () => {
-    const color = new THREE.Color('#12ab34');
-    const { specs, h } = run('smoke', { color, options: { color: '#12ab34' } }, 400);
-    expect(specs.length).toBeGreaterThan(0);
-    for (const s of specs) {
-      expect(s.shape).toBe(2);
-      expect(s.sizeEnd).toBe(2.6);
-      expect(s.spin).toBe(0.6);
-      expect(s.blend).toBe('normal');
-      expect(new THREE.Color(s.colorEnd).getHex()).toBe(color.clone().multiplyScalar(0.7).getHex());
+  test('smoke puffs use PUFF and grow ≥ 2.8x', () => {
+    // Pool colours reach the screen as their linear values: compare displayed lightness.
+    const shownL = (c) => new THREE.Color(c).getHSL({}).l;
+    for (const color of LOOK_COLORS) {
+      const { ctx, specs, h } = run('smoke', overFor(color), 1500);
+      expect(specs.length, color).toBeGreaterThan(0);
+      for (const s of specs) {
+        expect(s.shape, color).toBe(SHAPE.SMOKE); // the PUFF sprite
+        expect(s.kind, color).toBe(KIND.SMOKE);
+        expect(s.blend, color).toBe('normal');
+        expect(s.sizeEnd, color).toBeGreaterThanOrEqual(2.8);
+        expect(s.spin, `${color} puffs curl`).toBeGreaterThan(0);
+        expect(typeof s.now, color).toBe('number'); // born on the render clock
+      }
+      // It billows up (unlike fumble's sagging plume), and its puffs darken toward the edge colour.
+      const body = specs.filter((s) => (s.alpha ?? 1) > 0.75);
+      expect(body.length, color).toBeGreaterThan(0);
+      for (const s of body) {
+        expect(s.gravity, `${color} rises`).toBeGreaterThan(0);
+        expect(shownL(s.colorEnd), `${color} darker edges`).toBeLessThan(shownL(s.color));
+      }
+      // A column: many puffs, within the normal layer.
+      const n = specs.reduce((m, s) => m + s.count, 0);
+      expect(n, color).toBeGreaterThanOrEqual(24);
+      expect(n, color).toBeLessThanOrEqual(Math.round(2048 * ctx.tier.particleScale) / 4);
+      h.stop();
     }
-    h.stop();
   });
 
   test('frost: spinning SHARD crystals (solid and glowing) and three faint mist puffs', () => {
@@ -558,14 +573,61 @@ describe('rebuilt looks', () => {
     h.stop();
   });
 
-  test('shatter: double-size spinning shards going dark, and a GLINT flash', () => {
-    const { specs, ctx, h } = run('shatter', {}, 100);
-    const shards = specs.find((s) => s.kind === KIND.SHARD);
-    expect(shards.size).toBeCloseTo(0.4);
-    expect(shards.spin).toBe(8);
-    expect(new THREE.Color(shards.colorEnd).getHex()).toBe(ctx.color.clone().multiplyScalar(0.5).getHex());
-    expect(specs.some((s) => s.shape === 3 && s.blend !== 'normal')).toBe(true); // the GLINT flash
-    h.stop();
+  test('shatter shards use SHARD with spin and gravity, cost 3', () => {
+    expect(EFFECTS.shatter.cost).toBe(3);
+    for (const color of LOOK_COLORS) {
+      const { ctx, specs, h } = run('shatter', overFor(color), 900);
+      const shards = specs.filter((s) => s.kind === KIND.SHARD);
+      expect(shards.length, color).toBeGreaterThan(0);
+      for (const s of shards) {
+        expect(s.shape, color).toBe(SHAPE.SHARD);
+        expect(s.spin, `${color} tumble`).toBeGreaterThan(0);
+        expect(s.gravity, `${color} fall`).toBeLessThan(0);
+        expect(s.floor, `${color} bounce on the table`).toBeCloseTo(0.02, 5); // FLOOR_Y
+        expect(typeof s.now, color).toBe('number');
+      }
+      // Solid fragments for a light map and lit (additive) ones for a dark table.
+      expect(shards.some((s) => s.blend === 'normal'), color).toBe(true);
+      expect(shards.some((s) => s.blend !== 'normal' && s.halo > 0), color).toBe(true);
+      // A faint PUFF dust puff.
+      const dust = specs.filter((s) => s.shape === SHAPE.SMOKE);
+      expect(dust.length, color).toBeGreaterThan(0);
+      for (const s of dust) expect(s.alpha, color).toBeLessThanOrEqual(0.5);
+      const n = specs.reduce((m, s) => m + s.count, 0);
+      expect(n, color).toBeLessThanOrEqual(Math.round(2048 * ctx.tier.particleScale) / 4);
+      h.stop();
+    }
+  });
+
+  test('shatter shards fly out by the die size', () => {
+    const dieOf = (s) => {
+      const die = makeDie();
+      die.outer.scale.setScalar(s);
+      return die;
+    };
+    const speed = (s) => {
+      const { specs, h } = run('shatter', { die: dieOf(s) }, 900);
+      h.stop();
+      return specs.find((x) => x.kind === KIND.SHARD).speed;
+    };
+    expect(speed(2.5) / speed(0.5)).toBeCloseTo(5, 5);
+  });
+
+  test('shatter flash is a GLINT/SPARK at the die', () => {
+    for (const color of LOOK_COLORS) {
+      const { ctx, specs, h } = run('shatter', overFor(color), 900);
+      const flash = specs.filter((s) => s.shape === SHAPE.GLINT && s.blend !== 'normal');
+      expect(flash.length, color).toBeGreaterThan(0);
+      for (const s of flash) {
+        expect(s.kind === KIND.SPARK || s.kind === KIND.GLINT, color).toBe(true);
+        expect(Math.hypot(s.origin.x - ctx.position.x, s.origin.z - ctx.position.z), color).toBeLessThan(0.05);
+        expect(s.speed ?? 0, color).toBe(0);
+        expect(s.halo, color).toBeGreaterThan(0);
+        expect(new THREE.Color(s.color).getHex(), `${color} bright`).toBe(0xffffff);
+        expect(typeof s.now, color).toBe('number');
+      }
+      h.stop();
+    }
   });
 
   test('glow-pulse adds a soft halo behind the die that pulses with the shell', () => {
@@ -1015,7 +1077,9 @@ test('standalone smoke fades to its own (custom) colour, not a fixed grey', () =
   h.update(0);
   h.update(300);
   expect(emit).toHaveBeenCalled();
-  expect(new THREE.Color(emit.mock.calls[0][0].colorEnd).getHex()).toBe(color.clone().multiplyScalar(0.7).getHex());
+  const hsl = new THREE.Color(emit.mock.calls[0][0].colorEnd).getHSL({});
+  expect(hsl.s).toBeGreaterThan(0.3); // still green, not grey
+  expect(Math.abs(hsl.h - color.getHSL({}).h)).toBeLessThan(0.05);
   h.stop();
 });
 

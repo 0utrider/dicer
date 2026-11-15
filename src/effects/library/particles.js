@@ -58,7 +58,7 @@ const ADDITIVE = {
 /**
  * Per-instance data, packed four floats per GPU attribute (iA..iG + aCorner = 8 vertex
  * attributes: one per field would be 16, and ANGLE's D3D11 backend fails to link past ~15).
- * iG holds only the halo: iA..iF are full. Each packed buffer also carries named views
+ * iG holds the halo and the floor: iA..iF are full. Each packed buffer also carries named views
  * (aOrigin, aBirth, ...) for the CPU side.
  */
 const PACKED = [
@@ -68,8 +68,12 @@ const PACKED = [
   ['iD', [['aColorEnd', 3], ['aSizeEnd', 1]]],
   ['iE', [['aKind', 1], ['aGravity', 1], ['aShape', 1], ['aStretch', 1]]],
   ['iF', [['aSpin', 1], ['aDrag', 1], ['aSeed', 1], ['aAlpha', 1]]],
-  ['iG', [['aHalo', 1]]],
+  ['iG', [['aHalo', 1], ['aFloor', 1]]],
 ];
+/** aFloor when a spec sets no floor: far below any table, so it is never reached. */
+const NO_FLOOR = -1e6;
+/** A floor bounce keeps this share of the touchdown speed (once; then the particle rests). */
+const FLOOR_BOUNCE = 0.35;
 /** The halo's quad growth and glow strength (alpha = shape + halo x glow(r) x HALO_GLOW). */
 const HALO_GROW = 1.5;
 const HALO_GLOW = 0.35;
@@ -82,8 +86,9 @@ attribute vec4 iC; // color.rgb, size
 attribute vec4 iD; // colorEnd.rgb, sizeEnd
 attribute vec4 iE; // kind, gravity, shape, stretch
 attribute vec4 iF; // spin, drag, seed, alpha
-attribute float iG; // halo
-#define aHalo iG
+attribute vec2 iG; // halo, floor
+#define aHalo iG.x
+#define aFloor iG.y
 #define aOrigin iA.xyz
 #define aBirth iA.w
 #define aVelocity iB.xyz
@@ -105,6 +110,10 @@ uniform vec2 uViewport;
 varying vec3 vColor;
 varying vec2 vQ;
 varying vec4 vInfo; // shape, seed, alpha, halo
+/** The height with no floor (sway and spiral move only x and z). */
+float fallY( float t, float d ) {
+	return aOrigin.y + aVelocity.y * ( ( 1.0 - exp( - d * t ) ) / d ) + 0.5 * aGravity * t * t;
+}
 vec3 travel( float t, int kind ) {
 	float d = max( aDrag, 0.0001 );
 	vec3 disp = aVelocity * ( ( 1.0 - exp( - d * t ) ) / d );
@@ -124,6 +133,21 @@ vec3 travel( float t, int kind ) {
 		p.z += sway * sin( t * 2.3 + aSeed * 12.566371 + 1.3 );
 	}
 	p.y += 0.5 * aGravity * t * t;
+	if ( p.y < aFloor ) {
+		// Past the floor (a spec's floor; unset is far below the table): find the touchdown time by
+		// bisection on the free-fall height, reflect the vertical speed there, damped, and arc once more
+		// from the floor; y never goes under it, so after that one bounce the particle rests on it.
+		float lo = 0.0;
+		float hi = t;
+		for ( int i = 0; i < 12; i++ ) {
+			float mid = 0.5 * ( lo + hi );
+			if ( fallY( mid, d ) < aFloor ) hi = mid;
+			else lo = mid;
+		}
+		float vy = aVelocity.y * exp( - d * hi ) + aGravity * hi;
+		float tau = t - hi;
+		p.y = max( aFloor, aFloor - ${FLOOR_BOUNCE.toFixed(2)} * vy * tau + 0.5 * aGravity * tau * tau );
+	}
 	if ( kind == 3 ) p.y = max( p.y, 0.03 );
 	return p;
 }
@@ -277,7 +301,9 @@ export function createParticlePool(scene, capacity) {
    * kind, gravity, color, blend ('normal' for the second layer), now. v2 fields (each defaults
    * from the kind, then the shape): shape, colorEnd, sizeEnd, stretch, spin (rad/s, random sign),
    * drag, alpha (0..1, default 1: scales the final alpha of both layers), halo (0..1, default
-   * 0.6 additive and 0 normal: the strength of the soft glow around each particle).
+   * 0.6 additive and 0 normal: the strength of the soft glow around each particle), floor (a
+   * world y; default none: the particle falls through the table): y clamps at it and the touchdown
+   * velocity is reflected x 0.35, one bounce, then it rests there.
    */
   function emit(spec = {}) {
     if (disposed) return;
@@ -302,6 +328,7 @@ export function createParticlePool(scene, capacity) {
     const drag = Math.max(0, num(spec.drag, DRAG[kind] ?? DRAG[0]));
     const alpha = Math.min(1, Math.max(0, num(spec.alpha, 1)));
     const halo = Math.min(1, Math.max(0, num(spec.halo, layer === layers[0] ? 0.6 : 0)));
+    const floor = num(spec.floor, NO_FLOOR);
     setColor(tint, spec.color, '#ffffff');
     setColor(tintEnd, spec.colorEnd, tint);
     const a = layer.attrs;
@@ -366,6 +393,7 @@ export function createParticlePool(scene, capacity) {
       a.aSeed.setX(idx, Math.random());
       a.aAlpha.setX(idx, alpha);
       a.aHalo.setX(idx, halo);
+      a.aFloor.setX(idx, floor);
       deathMs = Math.max(deathMs, nowMs + l * 1000);
     }
     mark(layer, first, run);
