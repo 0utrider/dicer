@@ -209,9 +209,11 @@ describe('build', () => {
     // living insides plan: re-based on the bundle as it stood after rolling-by-hand plus later plans
     // (4,115,282, i.e. 13.6 KB past the rolling-by-hand base, beyond that plan's 12,288 B cap); this
     // plan may spend 1,536 B (controller ruling during the plan; owner informed at sign-off).
+    // edge strips plan (2026-11-15-dicer-edge-strips): +300 B on the same base for the strip look
+    // field (owner approval, 2026-11-15).
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(1_536);
+    expect(growth).toBeLessThanOrEqual(1_836);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

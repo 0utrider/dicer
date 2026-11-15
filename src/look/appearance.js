@@ -23,7 +23,7 @@ export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-sh
 export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
 /** Styled bevel strips (edges.strip.style); a strip draws only with strength > 0 and a rounded edge. */
 export const STRIP_STYLES = Object.freeze(['body', 'paint', 'metal', 'glow']);
-export const stripActive = (a) => a.edges.strip.style !== 'body' && a.edges.strip.strength > 0 && a.edges.radius > 0;
+export const stripActive = (a, s = a.edges.strip) => s.style !== 'body' && s.strength > 0 && a.edges.radius > 0;
 /** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
 export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco']);
 
@@ -142,7 +142,7 @@ export function normalizeAppearance(input) {
       edges: {
         radius,
         style: radius === 0 ? 'sharp' : 'rounded',
-        strip: { style: pick(es.style, STRIP_STYLES, 'body'), color: color(es.color, D.edges.strip.color), strength: num(es.strength, 0, 1, 1) },
+        strip: { style: pick(es.style, STRIP_STYLES, 'body'), color: color(es.color, '#e2b04a'), strength: num(es.strength, 0, 1, 1) },
       },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
       shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
