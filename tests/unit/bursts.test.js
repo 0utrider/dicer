@@ -227,7 +227,8 @@ test('catalogue.js shares with bursts.js exactly what bursts.js imports (no unus
 
 test('the visual trails sheet lands its dice on 19 (no burst); the bursts sheet keeps 20', async () => {
   const { readFileSync } = await import('node:fs');
-  const src = readFileSync('tests/visual/trails.mjs', 'utf8');
+  // A Windows checkout (core.autocrlf) stores the script with CRLF: compare on LF.
+  const src = readFileSync('tests/visual/trails.mjs', 'utf8').replace(/\r\n/g, '\n');
   const body = (fn) => src.slice(src.indexOf(`async function ${fn}(`), src.indexOf('\n}\n', src.indexOf(`async function ${fn}(`)));
   expect(body('capture')).toMatch(/value: 19/);
   expect(body('capture')).not.toMatch(/value: 20/);
