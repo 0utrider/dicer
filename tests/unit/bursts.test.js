@@ -67,6 +67,12 @@ describe('withBursts (the layer\u2019s one burst entry: the cap for every burst,
     const many = [rule('burst-acid'), rule('burst-void'), rule('burst-fire')];
     expect(withBursts({}, many, runningOf(1), () => undefined).map((f) => f.effect.id)).toEqual(['burst-acid', 'burst-void']);
   });
+  test('the automatic burst comes once per die (a hand die is played at landing and again when decorated)', () => {
+    const die = nat20();
+    expect(withBursts(die, null, [], () => undefined).map((f) => f.effect.id)).toEqual(['burst-fire']);
+    expect(withBursts(die, [rule('a')], [], () => undefined).map((f) => f.effect.id)).toEqual(['a']);
+    expect(withBursts(nat20(), null, [], () => undefined).map((f) => f.effect.id)).toEqual(['burst-fire']);
+  });
   test('never throws: bad input gives the fx back', () => {
     expect(withBursts(null, undefined, null, null)).toEqual([]);
     const odd = [null, { effect: null }, rule('a')];

@@ -418,9 +418,9 @@ export function createEffectLayer({
       }
     },
 
-    /** Per playing frame; the library trail fx checks elementalTrails and catches its own errors. */
+    /** Per playing frame; the library trail fx checks elementalTrails and catches its own errors. Asks for an unloaded library. */
     flight(roll, nowMs) {
-      trailFx && gate() === 'on' && trailFx.flight(roll.dice, nowMs);
+      gate() === 'on' && (trailFx ? trailFx.flight(roll.dice, nowMs) : loading || loadEffects());
     },
 
     /** Advances every running effect; true while any runs (or the canvas shakes). */

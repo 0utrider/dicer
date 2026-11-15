@@ -240,11 +240,11 @@
       },
       "elementalTrails": {
         "Name": "Elemental trails",
-        "Hint": "Fire, frost and other damage types leave a trail behind the dice as they fly."
+        "Hint": "Dice with an elemental inside, or rolled for an elemental damage type such as fire or cold, leave a trail of that element as they fly."
       },
       "elementalCritBursts": {
         "Name": "Elemental critical bursts",
-        "Hint": "A critical hit with an elemental die ends in a burst of that element."
+        "Hint": "A natural 20 on an elemental d20 ends in a burst of that element, on any roll: attacks, saves, checks and damage."
       },
       "jb2aEffects": {
         "Name": "Use JB2A animations",

@@ -65,19 +65,23 @@ export function burstFor(die, running, setting) {
 
 const isBurst = (f) => String(f?.effect?.id).startsWith('burst-');
 
+/** The dice that already got their automatic burst: a hand die is played at landing and again when decorated. */
+const autoBurst = new WeakSet();
+
 /**
  * The layer's one burst entry (play() runs every die's fx through it): `fx` (Fx[], null or []) as
  * a new list where every `burst-*` effect, rule-picked or automatic, is dropped once BURST_CAP
  * bursts run (those in `running` plus those kept ahead of it in the list), and the automatic burst
- * (burstFor) is appended unless fx already holds a burst. Never throws: on bad input, fx back.
+ * (burstFor) is appended unless fx already holds a burst or the die had its automatic burst
+ * already (once per die). Never throws: on bad input, fx back.
  */
 export function withBursts(die, fx, running, setting) {
   try {
     const list = Array.isArray(fx) ? fx : [];
     let n = (running || []).filter((r) => String(r?.id).startsWith('burst-')).length;
     const out = list.filter((f) => !isBurst(f) || n++ < BURST_CAP);
-    const auto = !list.some(isBurst) && burstFor(die, running, setting);
-    if (auto) out.push(auto);
+    const auto = !list.some(isBurst) && !autoBurst.has(die) && burstFor(die, running, setting);
+    if (auto) out.push(auto), autoBurst.add(die);
     return out;
   } catch {
     return fx;

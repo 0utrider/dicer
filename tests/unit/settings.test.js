@@ -247,6 +247,14 @@ describe('effects settings', () => {
       expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
     }
   });
+  test('the trail and burst hints say what triggers them (insides too; any natural 20, not only a crit hit)', () => {
+    const en = JSON.parse(readFileSync(new URL('../../lang/en.json', import.meta.url), 'utf8'));
+    const s = en.DICER.Settings;
+    expect(s.elementalTrails.Hint).toMatch(/inside/i);
+    expect(s.elementalTrails.Hint).toMatch(/damage type/i);
+    expect(s.elementalCritBursts.Hint).toMatch(/natural 20/i);
+    expect(s.elementalCritBursts.Hint).not.toMatch(/critical hit/i);
+  });
   test('jb2aEffects is a client Boolean, default on', () => {
     const r = capture();
     expect(r.jb2aEffects).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });

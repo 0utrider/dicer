@@ -2178,6 +2178,7 @@ describe('Task 8: hand rolls in the gate', () => {
     const decorateFor = () => () => ({
       fx: [{ id: 'burst' }],
       damageType: 'fire',
+      trail: 2,
       appearance: { bodyColor: '#123456' },
     });
     gateH = make({ decorateFor });
@@ -2197,6 +2198,8 @@ describe('Task 8: hand rolls in the gate', () => {
     });
     expect(specs[1].fx).toBeUndefined();
     expect(specs[1].damageType).toBeUndefined();
+    expect(specs[0].trail).toBe(2);
+    expect(specs[1].trail).toBe(1); // look only: it still trails, but never bursts
   });
 
   test("H-10: the replay draws the thrower's shape (a crystal d4 stays a crystal d4 here)", async () => {

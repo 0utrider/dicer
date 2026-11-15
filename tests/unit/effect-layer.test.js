@@ -395,6 +395,23 @@ describe('elemental trails flight', () => {
     }
   });
 
+  test('flight asks for the library once when it was never prefetched (effects turned on later); not with effects off', async () => {
+    const fx = { flight: vi.fn(), clear: vi.fn() };
+    const loadLibrary = vi.fn(async () => ({ EFFECTS: {}, createTrailFx: () => fx }));
+    const settings = { effects: false };
+    const { layer } = setup({ tier: 'high', settings, loadLibrary });
+    layer.flight(roll, 1);
+    expect(loadLibrary).not.toHaveBeenCalled();
+    settings.effects = true;
+    layer.flight(roll, 2);
+    layer.flight(roll, 3);
+    expect(loadLibrary).toHaveBeenCalledTimes(1);
+    await layer.prefetch(); // the load flight started
+    expect(loadLibrary).toHaveBeenCalledTimes(1);
+    layer.flight(roll, 4);
+    expect(fx.flight).toHaveBeenCalledWith(roll.dice, 4);
+  });
+
   test('no library trail fx is a no-op', async () => {
     const bare = setup({ tier: 'high', loadLibrary: async () => ({ EFFECTS: {} }) });
     await bare.layer.prefetch();

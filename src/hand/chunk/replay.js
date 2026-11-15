@@ -185,6 +185,7 @@ export function replayFor(decoded, { n, specs, full, diceBox, rect, capacity = 0
       spec = { ...ref }; // H-10: look only
       delete spec.fx;
       delete spec.damageType;
+      spec.trail &&= 1; // it trails but never bursts
     }
     out.push({ ...spec, shapeType: shape, free: true });
   }

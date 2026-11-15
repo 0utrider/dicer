@@ -265,9 +265,37 @@ test("crystal d4 spec carries shapeType d4crystal from the author's look", async
   expect(spec.shapeType).toBe('d4crystal');
   expect(spec.appearance).toBe(look);
   expect(spec).not.toHaveProperty('fx'); // result-dependent: stripped (look only)
-  expect(spec).not.toHaveProperty('damageType');
+  expect(spec.damageType).toBe('fire'); // the term's, not the result's: its trail element
   expect(spec.value).toBe(1); // the placeholder: the minimum face
   expect(d4.results).toEqual([{ result: 2, active: true }]);
+});
+
+test('placeholder specs trail but never burst (trail 2 -> 1); no trail mark stays none', async () => {
+  const d20 = new Die({ number: 1, faces: 20 });
+  deps.decorateFor = vi.fn(() => () => ({ trail: 2 }));
+  overlay.values = [20];
+  await evaluate(new Resolver(rollOf(d20), deps));
+  expect(overlay.open.mock.calls[0][0].specs[0].trail).toBe(1);
+  overlay.open.mockClear();
+  deps.decorateFor = vi.fn(() => () => ({ appearance: {} }));
+  overlay.values = [20];
+  await evaluate(new Resolver(rollOf(new Die({ number: 1, faces: 20 })), deps));
+  expect(overlay.open.mock.calls[0][0].specs[0]).not.toHaveProperty('trail');
+});
+
+test('a hand-thrown acid damage die carries its damage type (its trail element)', async () => {
+  const { damageTypesByTerm } = await import('../../src/effects/roll-context.js');
+  const d6 = new Die({ number: 1, faces: 6 });
+  d6.options.flavor = 'acid';
+  // As the fx resolver: the damage type is looked up by the roll's own term objects.
+  deps.decorateFor = vi.fn((_m, roll) => {
+    const types = damageTypesByTerm(roll);
+    return (term) => ({ damageType: types.get(term), trail: 2 });
+  });
+  overlay.values = [4];
+  await evaluate(new Resolver(rollOf(d6), deps));
+  const [spec] = overlay.open.mock.calls[0][0].specs;
+  expect(spec).toMatchObject({ damageType: 'acid', trail: 1 });
 });
 
 test('ask + Roll automatically: no overlay, resolveResult -> undefined', async () => {

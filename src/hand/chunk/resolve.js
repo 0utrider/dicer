@@ -228,7 +228,8 @@ const readable = (s, term, part) =>
 /**
  * The specs a hand throw of `terms` uses: planThrow on a placeholder roll in which each term has
  * `count(term)` results at its minimum face (the existing results hidden, so keys continue after
- * them), with the author's look and nothing result-dependent (fx, damage type). Unreadable and
+ * them), with the author's look and its term's damage type, nothing result-dependent (no fx; trail 2
+ * drops to 1, so a die never bursts before decorate). Unreadable and
  * unfair dice are dropped, as planThrow drops those past maxDice; the rest are keyed in push order
  * ('roll.dice index:result index:part') and marked free. `owners[i]` is the term spec i's value
  * goes to (a d100's ones die; null for its tens die). `dropped` counts results not thrown.
@@ -259,13 +260,16 @@ export function planFor(resolver, terms, count) {
         return typeof v === 'function' && k !== 'constructor' ? v.bind(t) : v;
       },
     });
-  const placeholder = view(roll, { dice: dice.map((t) => view(t, { results: fake.get(t) })) });
+  const views = dice.map((t) => view(t, { results: fake.get(t) }));
+  const placeholder = view(roll, { dice: views });
   const dec = d.decorateFor?.(null, roll, me.id, me.id);
+  // The decorators get the real term (the damage type and damage theme are looked up by it) and
+  // the placeholder result. No fx; trail 2 drops to 1: a placeholder never bursts (decorate does).
   const decorate =
     dec &&
-    ((...a) => {
-      const { fx, damageType, ...look } = dec(...a) ?? {};
-      return look;
+    ((t, ...a) => {
+      const { fx, trail, ...look } = dec(dice[views.indexOf(t)] ?? t, ...a) ?? {};
+      return trail ? { ...look, trail: 1 } : look;
     });
   const { dice: planned } = d.plan(placeholder, {
     maxDice: Number(d.getSetting('maxDice')) || 20,

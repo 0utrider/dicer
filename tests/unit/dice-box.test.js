@@ -26,12 +26,12 @@ import { FATE_FACES } from '../../src/compat/faces.js';
 import { planThrow } from '../../src/throw/throw-planner.js';
 import { foundryRoll, Coin } from './foundry-roll.js';
 import { createEffectLayer } from '../../src/effects/effect-layer.js';
-import { EFFECTS, flareRolls } from '../../src/effects/library/index.js';
+import { EFFECTS, flareRolls, withBursts } from '../../src/effects/library/index.js';
 import { TIERS } from '../../src/render/quality.js';
 import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
 import { throwEdge } from '../../src/core/rng.js';
-import { handEdge, handFor, RESULT_GLOW_MS } from '../../src/hand/hand.js';
+import { handEdge, handFor, readFree, RESULT_GLOW_MS } from '../../src/hand/hand.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
@@ -3546,6 +3546,55 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     box.clear();
     expect(box.decorateLanded(late.handle, [{ type: 'd6', value: 2, fx }])).toBe(false);
     expect(onLandedFx).toHaveBeenCalledTimes(1);
+  });
+
+  describe('hand throw crit bursts (land, then decorate)', () => {
+    const isBurst = (f) => String(f?.effect?.id).startsWith('burst-');
+    /** A layer stub that runs play() through the library's real burst rules and counts bursts. */
+    const burstLayer = () => {
+      const running = [];
+      return {
+        running,
+        update: vi.fn(() => false),
+        clear: vi.fn(),
+        releaseDie: vi.fn(),
+        play: vi.fn((die, fx) => {
+          for (const f of withBursts(die, fx, running, () => undefined)) {
+            if (isBurst(f)) running.push({ id: f.effect.id });
+          }
+        }),
+      };
+    };
+    const landHand = async (spec) => {
+      const effects = burstLayer();
+      const { renderer, physics, box } = handSetup({ effects });
+      // Physics reads a 20 (readFree sets die.value before landing).
+      box.hand.read = (dice, data, o) => {
+        readFree(dice, data, o);
+        for (const d of dice) d.value = 20;
+      };
+      const r = box.roll([{ type: 'd20', value: 1, key: '0:0:0', damageType: 'fire', ...spec }], { free: true });
+      physics.flush();
+      renderer.tick(0);
+      renderer.tick(5000);
+      await flushMicrotasks();
+      expect(r.handle.dice[0].value).toBe(20);
+      return { effects, box, r };
+    };
+
+    test('an active natural 20 bursts exactly once, even when its landing die already could', async () => {
+      for (const trail of [1, 2]) {
+        const { effects, box, r } = await landHand({ trail });
+        expect(box.decorateLanded(r.handle, [{ type: 'd20', value: 20, key: '0:0:0', damageType: 'fire', trail: 2 }])).toBe(true);
+        expect(effects.running.map((e) => e.id)).toEqual(['burst-fire']);
+      }
+    });
+
+    test('a dropped 20 (decorated inactive: trail 1) never bursts', async () => {
+      const { effects, box, r } = await landHand({ trail: 1 });
+      expect(box.decorateLanded(r.handle, [{ type: 'd20', value: 20, key: '0:0:0', damageType: 'fire', trail: 1 }])).toBe(true);
+      expect(effects.running).toEqual([]);
+    });
   });
 
   test('a hand roll passes edge and hand: true to obstaclesFor and begin', () => {
