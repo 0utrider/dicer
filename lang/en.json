@@ -815,11 +815,25 @@
     },
     "Tray": {
       "Title": "Dice tray",
-      "Hint": "Pick your dice, then throw them by hand.",
+      "Hint": "Click a die to add it. Right-click (or −) removes one. Then throw them by hand.",
+      "Empty": "No dice picked yet",
+      "Add": "Add a {die}",
+      "Remove": "Remove a {die}",
       "Modifier": "Modifier",
-      "Mode": "Roll mode",
+      "ModifierUp": "Raise the modifier by 1",
+      "ModifierDown": "Lower the modifier by 1",
+      "Mode": "Who sees it",
+      "Modes": {
+        "public": "Everyone",
+        "gm": "Me and the GM",
+        "blind": "Only the GM (hidden from me)",
+        "self": "Only me"
+      },
       "Clear": "Clear",
       "Throw": "Throw",
+      "ThrowOne": "Throw 1 die",
+      "ThrowMany": "Throw {n} dice",
+      "ThrowNone": "Pick dice to throw",
       "NoDice": "Pick at least one die to throw.",
       "NoEngine": "3D dice are off on this client, so the dice tray cannot throw. Turn on Enable 3D dice (Dicer's settings) to use it.",
       "Failed": "The dice tray could not post the roll."

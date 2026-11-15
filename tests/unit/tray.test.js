@@ -252,11 +252,12 @@ test('the picker offers the nine dice, a modifier and the four message modes', (
     expect(ctx.dice.map((d) => [d.key, d.count])).toEqual(TRAY_DICE.map((k) => [k, k === 'd6' ? 2 : 0]));
     expect(ctx.modifier).toBe(1);
     expect(TRAY_MODES).toEqual(['public', 'gm', 'blind', 'self']);
+    // who sees it, in Dicer's own words (tray-ui.test checks the English)
     expect(ctx.modes).toEqual([
-      { value: 'public', label: 'CHAT.MODES.public', selected: false },
-      { value: 'gm', label: 'CHAT.MODES.gm', selected: true }, // the core chat mode
-      { value: 'blind', label: 'CHAT.MODES.blind', selected: false },
-      { value: 'self', label: 'CHAT.MODES.self', selected: false },
+      { value: 'public', label: 'DICER.Tray.Modes.public', selected: false },
+      { value: 'gm', label: 'DICER.Tray.Modes.gm', selected: true }, // the core chat mode
+      { value: 'blind', label: 'DICER.Tray.Modes.blind', selected: false },
+      { value: 'self', label: 'DICER.Tray.Modes.self', selected: false },
     ]);
     expect(ctx.formula).toBe('2d6 + 1');
     expect(trayContext({ counts: {}, mode: 'blind' }).modes.find((m) => m.selected).value).toBe('blind');

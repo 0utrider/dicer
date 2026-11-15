@@ -1,16 +1,25 @@
 <div class="dicer-tray-body">
+  <p class="dicer-tray-formula{{#unless formula}} is-empty{{/unless}}" aria-live="polite">{{#if formula}}{{formula}}{{else}}{{localize "DICER.Tray.Empty"}}{{/if}}</p>
   <p class="dicer-hint">{{localize "DICER.Tray.Hint"}}</p>
   <div class="dicer-tray-dice">
     {{#each dice}}
-      <label class="dicer-tray-die{{#if count}} has-dice{{/if}}" data-die="{{key}}">
-        <span class="dicer-tray-die-name">{{key}}</span>
-        <input type="number" name="{{key}}" value="{{count}}" min="0" max="99" step="1" aria-label="{{key}}">
-      </label>
+      <div class="dicer-tray-die{{#if count}} has-dice{{/if}}" data-die="{{key}}">
+        <button type="button" class="dicer-tray-add" data-die="{{key}}" aria-label="{{addLabel}}" data-tooltip="{{addLabel}}">
+          <svg viewBox="0 0 24 24" aria-hidden="true">{{{shape}}}</svg>
+          <span class="dicer-tray-die-name">{{key}}</span>
+        </button>
+        <span class="dicer-tray-count" aria-hidden="true">{{count}}</span>
+        <button type="button" class="dicer-tray-remove" data-die="{{key}}" aria-label="{{removeLabel}}" data-tooltip="{{removeLabel}}" tabindex="-1"><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
+      </div>
     {{/each}}
   </div>
   <div class="dicer-tray-row">
     <label for="dicer-tray-modifier">{{localize "DICER.Tray.Modifier"}}</label>
-    <input type="number" id="dicer-tray-modifier" name="modifier" value="{{modifier}}" min="-9999" max="9999" step="1">
+    <div class="dicer-tray-stepper">
+      <button type="button" data-mod-step="-1" aria-label="{{localize "DICER.Tray.ModifierDown"}}"><i class="fa-solid fa-minus" aria-hidden="true"></i></button>
+      <input type="number" id="dicer-tray-modifier" name="modifier" value="{{modifier}}" min="-9999" max="9999" step="1">
+      <button type="button" data-mod-step="1" aria-label="{{localize "DICER.Tray.ModifierUp"}}"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+    </div>
   </div>
   <div class="dicer-tray-row">
     <label for="dicer-tray-mode">{{localize "DICER.Tray.Mode"}}</label>
@@ -20,9 +29,8 @@
       {{/each}}
     </select>
   </div>
-  <p class="dicer-tray-formula" aria-live="polite">{{formula}}</p>
   <footer class="form-footer">
-    <button type="button" data-action="clear"><i class="fa-solid fa-eraser"></i> {{localize "DICER.Tray.Clear"}}</button>
-    <button type="submit" class="bright"><i class="fa-solid fa-hand"></i> {{localize "DICER.Tray.Throw"}}</button>
+    <button type="button" data-action="clear"{{#unless canClear}} disabled{{/unless}}><i class="fa-solid fa-eraser"></i> {{localize "DICER.Tray.Clear"}}</button>
+    <button type="submit" class="bright"{{#unless canThrow}} disabled{{/unless}}><i class="fa-solid fa-hand"></i> <span class="dicer-tray-throw-label">{{throwLabel}}</span></button>
   </footer>
 </div>

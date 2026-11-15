@@ -24,7 +24,29 @@ export const TRAY_MODES = ['public', 'gm', 'blind', 'self'];
 const MAX_COUNT = 99;
 const MAX_MODIFIER = 9999;
 
+/**
+ * Each die's outline for its button (inner SVG of a 24x24 viewBox; trusted constants, never user
+ * input): a coin for d2, a triangle for d4, a square for d6 and so on, as the dice look in hand.
+ */
+const poly = (points) => `<polygon points="${points}"/>`;
+const KITE = '12,1.5 22,10 12,22.5 2,10';
+export const DIE_SHAPES = {
+  d4: poly('12,2 22.5,21 1.5,21'),
+  d6: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
+  d8: poly('12,1 23,12 12,23 1,12'),
+  d10: poly(KITE),
+  d12: poly('12,1.5 22.5,9.2 18.5,21.5 5.5,21.5 1.5,9.2'),
+  d20: poly('12,1 21.5,6.5 21.5,17.5 12,23 2.5,17.5 2.5,6.5'),
+  d100: poly(KITE),
+  d2: '<circle cx="12" cy="12" r="10.5"/>',
+  dF: '<rect x="3" y="3" width="18" height="18" rx="5"/>',
+};
+
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
+const fmt = (key, data) => {
+  const f = globalThis.game?.i18n?.format;
+  return f ? f.call(globalThis.game.i18n, key, data) : key;
+};
 const int = (v) => Math.trunc(Number(v)) || 0;
 const countOf = (v) => Math.min(MAX_COUNT, Math.max(0, int(v)));
 /** The modifier, a finite integer within ±MAX_MODIFIER. */
@@ -121,20 +143,127 @@ export async function throwTray(
   }
 }
 
+/** `counts` with one more (delta 1) or one fewer (-1) of `key`, within 0..99; a new object. */
+export function stepCount(counts, key, delta) {
+  if (!TRAY_DICE.includes(key)) return { ...counts };
+  return { ...counts, [key]: countOf(countOf(counts?.[key]) + delta) };
+}
+
+/** What the window shows for a choice: the formula, and whether Throw / Clear do anything. */
+export function trayView({ counts = {}, modifier = 0 } = {}) {
+  const formula = formulaFromCounts(counts, modifier);
+  // how many dice it throws (the formula itself is shown above, too long for the button)
+  const n = TRAY_DICE.reduce((sum, k) => sum + countOf(counts?.[k]), 0);
+  let throwLabel = loc('DICER.Tray.ThrowNone');
+  if (n === 1) throwLabel = loc('DICER.Tray.ThrowOne');
+  else if (n > 1) throwLabel = fmt('DICER.Tray.ThrowMany', { n });
+  return { formula, canThrow: n > 0, canClear: !!formula, throwLabel };
+}
+
 /** The tray window's context: the dice with their counts, the modifier, the modes, the formula. */
 export function trayContext({ counts = {}, modifier = 0, mode } = {}) {
-  const modes = globalThis.CONFIG?.ChatMessage?.modes ?? {};
   mode = TRAY_MODES.includes(mode) ? mode : coreMode();
   return {
-    dice: TRAY_DICE.map((key) => ({ key, count: countOf(counts[key]) })),
+    dice: TRAY_DICE.map((key) => ({
+      key,
+      count: countOf(counts[key]),
+      shape: DIE_SHAPES[key],
+      addLabel: fmt('DICER.Tray.Add', { die: key }),
+      removeLabel: fmt('DICER.Tray.Remove', { die: key }),
+    })),
     modifier: modOf(modifier),
+    // who sees it, in plain words (Foundry's labels say how, e.g. "Public as User")
     modes: TRAY_MODES.map((value) => ({
       value,
-      label: loc(modes[value]?.label ?? value),
+      label: loc(`DICER.Tray.Modes.${value}`),
       selected: value === mode,
     })),
-    formula: formulaFromCounts(counts, modifier),
+    ...trayView({ counts, modifier }),
   };
+}
+
+/**
+ * Shows `state` in a rendered tray: the badges and highlighted dice, the formula (or its
+ * placeholder), and the Throw button's label and enabled state. The modifier field is left
+ * alone unless `syncModifier` (it may be mid-typing).
+ */
+export function paintTray(root, state, { syncModifier = false } = {}) {
+  const counts = state.counts ?? {};
+  const view = trayView(state);
+  for (const el of root.querySelectorAll('.dicer-tray-die')) {
+    const n = countOf(counts[el.dataset.die]);
+    el.classList.toggle('has-dice', n > 0);
+    const badge = el.querySelector('.dicer-tray-count');
+    if (badge) badge.textContent = String(n);
+  }
+  const out = root.querySelector('.dicer-tray-formula');
+  if (out) {
+    out.textContent = view.formula || loc('DICER.Tray.Empty');
+    out.classList.toggle('is-empty', !view.formula);
+  }
+  const go = root.querySelector('button[type="submit"]');
+  if (go) {
+    go.disabled = !view.canThrow;
+    const label = go.querySelector('.dicer-tray-throw-label');
+    if (label) label.textContent = view.throwLabel;
+  }
+  const clear = root.querySelector('[data-action="clear"]');
+  if (clear) clear.disabled = !view.canClear;
+  const mod = root.querySelector('[name="modifier"]');
+  if (mod && syncModifier) mod.value = String(modOf(state.modifier));
+}
+
+/**
+ * Wires a tray element to `state` (mutated in place): a die button adds one on click and removes
+ * one on right-click or Backspace / Delete / minus; its minus button removes one; the modifier
+ * steps by its +/- buttons or by typing; the select sets the mode. Listeners are delegated on
+ * `root`, so they survive re-renders of its content; `onChange(state)` follows every change.
+ */
+export function wireTray(root, state, onChange = () => {}) {
+  state.counts ??= {};
+  const changed = (opts) => {
+    paintTray(root, state, opts);
+    onChange(state);
+  };
+  const step = (key, delta) => {
+    state.counts = stepCount(state.counts, key, delta);
+    changed();
+  };
+  root.addEventListener('click', (event) => {
+    const t = event.target.closest?.('button');
+    if (!t || !root.contains(t)) return;
+    if (t.matches('.dicer-tray-add')) step(t.dataset.die, event.shiftKey ? -1 : 1);
+    else if (t.matches('.dicer-tray-remove')) step(t.dataset.die, -1);
+    else if (t.dataset.modStep) {
+      state.modifier = modOf(modOf(state.modifier) + Number(t.dataset.modStep));
+      changed({ syncModifier: true });
+    }
+  });
+  root.addEventListener('contextmenu', (event) => {
+    const t = event.target.closest?.('.dicer-tray-add, .dicer-tray-remove');
+    if (!t) return;
+    event.preventDefault();
+    step(t.dataset.die, -1);
+  });
+  root.addEventListener('keydown', (event) => {
+    const t = event.target.closest?.('.dicer-tray-add');
+    if (!t || !['Backspace', 'Delete', '-'].includes(event.key)) return;
+    event.preventDefault();
+    step(t.dataset.die, -1);
+  });
+  const field = (event) => {
+    const name = event.target?.name;
+    if (name === 'modifier') {
+      state.modifier = modOf(event.target.value);
+      changed();
+    } else if (name === 'mode') {
+      state.mode = event.target.value;
+      changed();
+    }
+  };
+  root.addEventListener('input', field);
+  root.addEventListener('change', field);
+  paintTray(root, state);
 }
 
 const STYLE_ID = 'dicer-tray-style';
@@ -142,26 +271,56 @@ const STYLE_ID = 'dicer-tray-style';
 const TRAY_CSS = `
 .dicer-tray .window-content { padding: 0.75rem; }
 .dicer-tray-body { display: flex; flex-direction: column; gap: 0.6rem; }
-.dicer-tray-dice { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
-.dicer-tray-die {
-  display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
-  padding: 0.35rem 0.25rem; border-radius: 6px;
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.15));
-  background: rgba(0, 0, 0, 0.12);
+.dicer-tray-body .dicer-hint { margin: 0; font-size: 0.85em; opacity: 0.75; text-align: center; }
+.dicer-tray-formula {
+  margin: 0; padding: 0.3rem 0.5rem; min-height: 2.6rem; text-align: center;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono, monospace); font-size: 1.35em; font-weight: 600;
+  border-radius: 6px; background: rgba(0, 0, 0, 0.25);
+  overflow-wrap: anywhere;
 }
-.dicer-tray-die.has-dice { border-color: var(--color-warm-2, #ff6400); background: rgba(255, 100, 0, 0.12); }
+.dicer-tray-formula.is-empty { font-family: inherit; font-size: 1em; font-weight: normal; opacity: 0.6; }
+.dicer-tray-dice { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+.dicer-tray-die { position: relative; }
+.dicer-tray-add {
+  width: 100%; height: auto; margin: 0; padding: 0.4rem 0.25rem 0.3rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  border-radius: 6px; border: 1px solid var(--color-border, rgba(255, 255, 255, 0.15));
+  background: rgba(0, 0, 0, 0.12); cursor: pointer; line-height: 1.1;
+}
+.dicer-tray-add:hover, .dicer-tray-add:focus-visible { background: rgba(255, 255, 255, 0.08); }
+.dicer-tray-add svg {
+  width: 2.1em; height: 2.1em; fill: rgba(255, 255, 255, 0.06);
+  stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; opacity: 0.8;
+}
 .dicer-tray-die-name { font-weight: 600; font-size: 1.05em; }
-.dicer-tray-die input { width: 4em; text-align: center; }
+.dicer-tray-die.has-dice .dicer-tray-add {
+  border-color: var(--color-warm-2, #ff6400); background: rgba(255, 100, 0, 0.14);
+}
+.dicer-tray-die.has-dice .dicer-tray-add svg { stroke: var(--color-warm-2, #ff6400); opacity: 1; }
+.dicer-tray-count, .dicer-tray-remove { display: none; position: absolute; top: -0.4em; }
+.dicer-tray-die.has-dice .dicer-tray-count, .dicer-tray-die.has-dice .dicer-tray-remove { display: flex; }
+.dicer-tray-count {
+  right: -0.3em; min-width: 1.6em; height: 1.6em; padding: 0 0.3em;
+  align-items: center; justify-content: center; pointer-events: none;
+  border-radius: 0.8em; background: var(--color-warm-2, #ff6400); color: #fff;
+  font-weight: 700; font-size: 0.85em;
+}
+.dicer-tray-remove {
+  left: -0.3em; width: 1.6em; height: 1.6em; min-height: 0; margin: 0; padding: 0;
+  align-items: center; justify-content: center; border-radius: 50%; font-size: 0.7em;
+}
 .dicer-tray-row { display: flex; align-items: center; gap: 0.5rem; }
 .dicer-tray-row label { flex: 0 0 6.5em; }
-.dicer-tray-row input, .dicer-tray-row select { flex: 1; }
-.dicer-tray-formula {
-  margin: 0; min-height: 1.4em; text-align: center; font-family: var(--font-mono, monospace);
-  opacity: 0.85;
-}
+.dicer-tray-row select, .dicer-tray-stepper { flex: 1; }
+.dicer-tray-stepper { display: flex; gap: 0.25rem; }
+.dicer-tray-stepper input { flex: 1; text-align: center; }
+.dicer-tray-stepper button { flex: 0 0 2em; margin: 0; padding: 0; }
 .dicer-tray-body .form-footer { display: flex; gap: 0.5rem; margin: 0; }
-.dicer-tray-body .form-footer button { flex: 1; }
+.dicer-tray-body .form-footer button { flex: 1; min-width: 0; }
 .dicer-tray-body .form-footer button[type="submit"] { flex: 2; }
+.dicer-tray-throw-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dicer-tray-body .form-footer button:disabled { opacity: 0.5; cursor: default; }
 `;
 function injectStyle() {
   if (document.getElementById(STYLE_ID)) return;
@@ -173,11 +332,11 @@ function injectStyle() {
 
 /** What the window last showed (kept for its next opening). */
 const last = { counts: {}, modifier: 0, mode: undefined };
-/** The choice in the tray's form. */
+/** The choice to throw: the dice picked (kept in `last`), the modifier and mode from the form. */
 const choiceOf = (form) => {
   const v = (name) => form.elements.namedItem(name)?.value;
   return {
-    counts: Object.fromEntries(TRAY_DICE.map((k) => [k, countOf(v(k))])),
+    counts: Object.fromEntries(TRAY_DICE.map((k) => [k, countOf(last.counts[k])])),
     modifier: modOf(v('modifier')),
     mode: v('mode'),
   };
@@ -205,25 +364,14 @@ function trayClass() {
       return trayContext(last);
     }
 
-    /** The formula line and the highlighted dice follow the inputs. */
+    /** The die buttons, badges, formula and Throw button follow `last`. */
     _onRender(...args) {
       super._onRender?.(...args);
       injectStyle();
-      const form = this.element;
-      const update = () => {
-        const c = choiceOf(form);
-        Object.assign(last, c);
-        const out = form.querySelector('.dicer-tray-formula');
-        if (out) out.textContent = formulaFromCounts(c.counts, c.modifier);
-        for (const el of form.querySelectorAll('.dicer-tray-die')) {
-          el.classList.toggle('has-dice', c.counts[el.dataset.die] > 0);
-        }
-      };
-      // The window's element outlives its renders: listen once.
-      if (!this._wired) form.addEventListener('input', () => this._update());
+      // The window's element outlives its renders: wire it once (delegated), paint every render.
+      if (!this._wired) wireTray(this.element, last);
+      else paintTray(this.element, last);
       this._wired = true;
-      this._update = update;
-      update();
     }
 
     static #onClear() {
