@@ -589,6 +589,8 @@ describe('edges.strip (styled bevel strips)', () => {
     const flags = { interiors: true, engraving: true, glow: true, interiorSteps: 32 };
     const plain = normalizeAppearance({});
     expect(programKey(normalizeAppearance({ edges: { strip: { style: 'glow' } } }), flags)).toBe(`${programKey(plain, flags)}|e:glow`);
+    // paint and metal compile the same GLSL (they differ only by uniform): one program
+    for (const style of ['paint', 'metal']) expect(programKey(normalizeAppearance({ edges: { strip: { style } } }), flags)).toBe(`${programKey(plain, flags)}|e`);
     expect(programKey(normalizeAppearance({ edges: { radius: 0, strip: { style: 'glow' } } }), flags)).toBe(programKey(normalizeAppearance({ edges: { radius: 0 } }), flags));
   });
   test('needsLookExtras when active; fallbackLook resets the style to body', () => {

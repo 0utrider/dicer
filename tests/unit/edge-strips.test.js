@@ -55,11 +55,12 @@ describe('edge strips', () => {
 
   test.each(['paint', 'metal', 'glow'])('%s: define, uniforms, key part and both anchors patched once', (style) => {
     const m = mat({ style, color: '#ff0000', strength: 0.5 });
-    expect(m.defines).toMatchObject({ DICER_EDGE: '', [`DICER_EDGE_${style.toUpperCase()}`]: '' });
+    expect(m.defines).toMatchObject({ DICER_EDGE: '' });
+    expect(Object.keys(m.defines).filter((k) => k.startsWith('DICER_EDGE'))).toEqual(['DICER_EDGE']);
     expect(m.userData.uniforms.uEdgeStrength.value).toBe(0.5);
     expect(m.userData.uniforms.uEdgeColor.value.getHexString()).toBe('ff0000');
     expect(m.userData.uniforms.uEdgePBR.value.toArray()).toEqual(STRIP_PBR[style]);
-    expect(m.userData.programKey).toMatch(new RegExp(`\\|e:${style}$`));
+    expect(m.userData.programKey).toMatch(style === 'glow' ? /\|e:glow$/ : /\|e$/);
     const fs = patched(m).fragmentShader;
     expect(count(fs, 'float dcEdge =')).toBe(1);
     expect(count(fs, 'metalnessFactor = mix( metalnessFactor, uEdgePBR.x, dcEdge );')).toBe(1);
@@ -70,6 +71,26 @@ describe('edge strips', () => {
     const decl = fs.indexOf('float dcEdge =');
     expect(decl).toBeLessThan(fs.indexOf('uEdgePBR.x, dcEdge'));
     expect(decl).toBeLessThan(fs.indexOf('vec3 dcEdgeLit'));
+  });
+
+  test('paint and metal share one program (key and fragment shader); glow does not', () => {
+    const [paint, metal, glow] = ['paint', 'metal', 'glow'].map((style) => mat({ style, color: '#ff0000' }));
+    expect(metal.userData.programKey).toBe(paint.userData.programKey);
+    expect(patched(metal).fragmentShader).toBe(patched(paint).fragmentShader);
+    expect(glow.userData.programKey).not.toBe(paint.userData.programKey);
+  });
+
+  test.each([
+    ['gem', 'dcGt'],
+    ['wood', 'dcWt'],
+  ])('%s bevel coat leaves a styled strip untinted (gated by DICER_EDGE, declared after dcEdge)', (type, tint) => {
+    const fs = patched(mat({ style: 'metal' }, { type })).fragmentShader;
+    const gate = `${tint} = mix( ${tint}, vec3( 1.0 ), dcEdge );`;
+    expect(count(fs, gate)).toBe(1);
+    expect(fs.indexOf('float dcEdge =')).toBeLessThan(fs.indexOf(gate));
+    expect(fs.lastIndexOf('#ifdef DICER_EDGE', fs.indexOf(gate))).toBeGreaterThan(fs.indexOf(`vec3 ${tint} =`));
+    // without a strip the body has no DICER_EDGE, so the gate is preprocessed away
+    expect(mat({ style: 'body' }, { type }).defines.DICER_EDGE).toBeUndefined();
   });
 
   test('resin: strip saved before refraction and restored after; refraction line untouched', () => {

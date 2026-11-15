@@ -21,9 +21,10 @@ const COINS = ['numbers', 'heads-tails', 'sun-moon']; // d2 faces; the motifs: l
 export const ICON_IDS = Object.freeze(['starburst', 'crown', 'skull', 'broken-shield', 'heart', 'flame']);
 /** Edge sharpness steps: 0 sharp .. 1 very rounded. One cached geometry per step per die type. */
 export const EDGE_STEPS = Object.freeze([0, 0.25, 0.5, 0.75, 1]);
-/** Styled bevel strips (edges.strip.style); a strip draws only with strength > 0 and a rounded edge. */
+/** Styled bevel strips (edges.strip.style; the first is the default); a strip draws only with strength > 0 and a rounded edge. */
 export const STRIP_STYLES = Object.freeze(['body', 'paint', 'metal', 'glow']);
-export const stripActive = (a, s = a.edges.strip) => s.style !== 'body' && s.strength > 0 && a.edges.radius > 0;
+// strength and radius are never negative once normalised: their product is > 0 when both are
+export const stripActive = (a, s = a.edges.strip) => s.style != 'body' && s.strength * a.edges.radius > 0;
 /** Fonts that ship with the module; others are 'css:<family>' or 'file:<path>'. */
 export const FONT_IDS_BUILTIN = Object.freeze(['serif', 'sans', 'blackletter', 'norse', 'uncial', 'scifi', 'handwritten', 'deco']);
 
@@ -98,7 +99,7 @@ export function normalizeAppearance(input) {
     const b = isObj(i.body) ? i.body : {};
     const n = isObj(i.numbers) ? i.numbers : {};
     const e = isObj(i.edges) ? i.edges : {};
-    const es = isObj(e.strip) ? e.strip : {};
+    const es = e.strip || {}; // a primitive strip reads as no fields; the catch below covers the rest
     const g = isObj(i.glow) ? i.glow : {};
     const it = isObj(i.interior) ? i.interior : {};
     const cols = Array.isArray(it.colors) ? it.colors : [];
@@ -142,7 +143,7 @@ export function normalizeAppearance(input) {
       edges: {
         radius,
         style: radius === 0 ? 'sharp' : 'rounded',
-        strip: { style: pick(es.style, STRIP_STYLES, 'body'), color: color(es.color, '#e2b04a'), strength: num(es.strength, 0, 1, 1) },
+        strip: { style: pick(es.style, STRIP_STYLES, STRIP_STYLES[0]), color: color(es.color, '#e2b04a'), strength: num(es.strength, 0, 1, 1) },
       },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
       shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
@@ -190,7 +191,7 @@ export function programKey(a, flags) {
   if (active && flags.insideMotion && (type !== 'shape' || SHAPES.indexOf(shape) > 3)) parts.push('mo'); // living insides (the look-extras chunk's)
   const { fill, relief } = a.numbers;
   if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
-  if (stripActive(a)) parts.push(`e:${a.edges.strip.style}`);
+  if (stripActive(a)) parts.push(a.edges.strip.style == 'glow' ? 'e:glow' : 'e'); // paint and metal: same GLSL
   return parts.join('|');
 }
 

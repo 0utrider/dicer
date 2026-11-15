@@ -12,6 +12,8 @@ import { stripActive } from '../../look/appearance.js';
  * - replace before normal_fragment_begin: metalness/roughness mixed to the style's PBR (after
  *   three's metalness/roughness map chunks and dice-material's fill mix).
  * - emissive (glow only): the strip colour added to the emission.
+ * - DICER_EDGE (the only define): read by the gem and wood bevel coat (bodies/gem.js, wood.js),
+ *   which fades its stone/wood tint out over the strip. Program keys: 'e' (paint, metal), 'e:glow'.
  * - replace before transmission_fragment + lighting: a resin body's refraction overwrites the
  *   non-number diffuse with the refracted body; the lit diffuse is saved just before it and mixed
  *   back by dcEdge after it. The refraction line itself (DECAL_OPAQUE's target) is untouched.
@@ -60,7 +62,9 @@ export function edgePatch(a) {
   const chunks = { pars: PARS, colorPost: COLOR, lighting: LIGHTING };
   if (style === 'glow') chunks.emissive = EMISSIVE;
   return {
-    defines: { DICER_EDGE: '', [`DICER_EDGE_${style.toUpperCase()}`]: '' },
+    // paint and metal compile the same GLSL (they differ only in uEdgePBR); glow adds the emissive
+    // chunk. DICER_EDGE gates the gem/wood bevel coat, which must leave the strip alone.
+    defines: { DICER_EDGE: '' },
     uniforms: {
       uEdgeColor: { value: new THREE.Color(color) },
       uEdgeStrength: { value: strength },
