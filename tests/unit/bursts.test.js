@@ -9,7 +9,7 @@ import { ELEMENTS as TRAIL_ELEMENTS } from '../../src/effects/library/trails.js'
 import { KIND } from '../../src/effects/library/particles.js';
 import { SHAPE } from '../../src/effects/library/shapes.js';
 
-const BUILT = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison'].map((e) => `burst-${e}`);
+const BUILT = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit'].map((e) => `burst-${e}`);
 const fireInside = { interior: { type: 'fire' } };
 const nat20 = (over = {}) => ({ type: 'd20', value: 20, trail: 2, appearance: fireInside, ...over });
 
@@ -248,5 +248,51 @@ describe('each new burst reads as its element', () => {
     const n = (f) => specs.filter(f).reduce((m, s) => m + s.count, 0);
     expect(n((s) => s.kind === KIND.SMOKE)).toBeGreaterThan(50);
     expect(specs.some((s) => s.floor !== undefined)).toBe(false);
+  });
+  test('sonic: a thunderclap of sound rings stacked at several heights, and no screen shake', () => {
+    const mod = BURSTS['burst-sonic'];
+    for (const opts of [{}, { reducedMotion: true }]) {
+      const ctx = ctxFor(mod, opts);
+      ctx.shake = vi.fn();
+      const h = mod.start(ctx);
+      for (let t = 0; h.update(t); t += 16);
+      h.stop();
+      ctx.particles.dispose();
+      expect(ctx.shake).not.toHaveBeenCalled();
+    }
+    const rings = emitsOf('burst-sonic').filter((s) => s.shape === SHAPE.RING);
+    expect(new Set(rings.map((s) => s.origin.y.toFixed(2))).size).toBeGreaterThanOrEqual(3);
+    expect(rings.reduce((n, s) => n + s.count, 0)).toBeGreaterThanOrEqual(8);
+  });
+  test('force: a sphere round the die that is gone by about 0.5 s, then shards flung out', () => {
+    const mod = BURSTS['burst-force'];
+    const ctx = ctxFor(mod);
+    const spheres = () => {
+      const out = [];
+      ctx.scene.traverse((o) => o.geometry?.type === 'SphereGeometry' && o.visible && out.push(o));
+      return out;
+    };
+    const h = mod.start(ctx);
+    h.update(0);
+    h.update(120);
+    expect(spheres().length).toBeGreaterThan(0);
+    for (let t = 136; t <= 520; t += 16) h.update(t);
+    expect(spheres()).toEqual([]);
+    for (let t = 536; h.update(t); t += 16);
+    h.stop();
+    ctx.particles.dispose();
+    const shards = emitsOf('burst-force').filter((s) => s.kind === KIND.SHARD && s.speed > 0);
+    expect(shards.reduce((n, s) => n + s.count, 0)).toBeGreaterThan(40);
+  });
+  test('mental: pink swirls spiralling out, and rings', () => {
+    const specs = emitsOf('burst-mental');
+    const swirls = specs.filter((s) => s.kind === KIND.SPIRAL && s.speed > 0 && !inward(s));
+    expect(swirls.reduce((n, s) => n + s.count, 0)).toBeGreaterThan(30);
+    expect(specs.some((s) => s.shape === SHAPE.RING)).toBe(true);
+  });
+  test('spirit: cyan wisps rising in a spiral', () => {
+    const specs = emitsOf('burst-spirit');
+    const rising = specs.filter((s) => s.kind === KIND.SPIRAL && s.shape === SHAPE.SMOKE && s.gravity > 0);
+    expect(rising.reduce((n, s) => n + s.count, 0)).toBeGreaterThan(20);
   });
 });

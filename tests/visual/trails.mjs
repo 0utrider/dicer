@@ -115,7 +115,7 @@ const ALL = [
 ];
 const SHEET = process.env.DICER_TRAILS_SHEET === 'bursts' ? 'bursts' : 'trails';
 /** The bursts built so far (round 3 adds the rest task by task). */
-const BUILT_BURSTS = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison'];
+const BUILT_BURSTS = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit'];
 const BURST_TIMES = process.env.DICER_BURST_TIMES?.split(',')
   .map(Number)
   .filter((t) => t > 0) ?? [120, 350, 700, 1100, 1700];

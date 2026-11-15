@@ -811,11 +811,11 @@ describe('elemental crit bursts (the automatic natural-20 burst)', () => {
     const m = await library();
     const { layer, warn } = setup({ tier: 'ultra', loadLibrary: async () => m });
     await layer.prefetch();
-    const sonic = { ...nat20(), appearance: null, damageType: 'sonic' };
-    expect(m.EFFECTS['burst-sonic']).toBeUndefined();
-    expect(() => layer.play(sonic, null)).not.toThrow();
+    const bleed = { ...nat20(), appearance: null, damageType: 'bleed' };
+    expect(m.EFFECTS['burst-bleed']).toBeUndefined();
+    expect(() => layer.play(bleed, null)).not.toThrow();
     expect(layer.running).toBe(0);
-    expect(() => layer.play(makeDie(), fxOf('burst-sonic'))).not.toThrow();
+    expect(() => layer.play(makeDie(), fxOf('burst-bleed'))).not.toThrow();
     expect(layer.running).toBe(0);
     expect(warn).not.toHaveBeenCalled();
   });

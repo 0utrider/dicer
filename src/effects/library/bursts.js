@@ -139,9 +139,10 @@ function bloom(h, { grow, reach, gone, level = () => 1, from = 0.8 }) {
 
 /**
  * A crisp ring running out over the table (catalogue's RING_FRAGMENT), quad `size` across: hot
- * edge `hot`, body `color`, trail `deep`; out to its rim over `ms`, fading as it goes.
+ * edge `hot`, body `color`, trail `deep`; out to its rim over `ms`, fading as it goes. `y`: its
+ * height (the table by default; sonic hangs rings in the air over the die).
  */
-function floorRing(ctx, scope, { hot, color, deep, size, ms, level = 1, edge = 0.014, noise = 0.5, band = 0.6, blend }) {
+function floorRing(ctx, scope, { hot, color, deep, size, ms, level = 1, edge = 0.014, noise = 0.5, band = 0.6, blend, y = FLOOR_Y }) {
   const material = quadMaterial(RING_FRAGMENT, C(color), {
     uHot: C(hot),
     uDeep: C(deep),
@@ -159,9 +160,9 @@ function floorRing(ctx, scope, { hot, color, deep, size, ms, level = 1, edge = 0
   const u = material.uniforms;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
+  mesh.position.set(ctx.position.x, y, ctx.position.z);
   mesh.scale.setScalar(size);
-  mesh.renderOrder = 1;
+  mesh.renderOrder = y > FLOOR_Y ? 2 : 1;
   scope.add(mesh);
   return (e) => {
     const k = clamp01(e / ms);
@@ -1318,6 +1319,436 @@ function poisonFull(ctx) {
   return together(run, glow);
 }
 
+// --- sonic -------------------------------------------------------------------------------------
+
+/** The thunderclap's waves (ms): each sends out a ripple on the table and a ring at every height. */
+const SONIC_WAVES = [0, 90, 180, 280];
+/** Ring heights over the table, a stacked column; seen from above the higher ones look wider. */
+const SONIC_HEIGHTS = [0.35, 0.9, 1.45, 2.0];
+
+/**
+ * Thunderclap: a short pale pulse over the die (no flash flicker, no screen shake) and the sound
+ * going out in waves: four crisp ripples run over the table one after another (each with its own
+ * echo), rings hang stacked in the air over the die (a column of sound rings widening as they
+ * fade, cream ones lit and amber ones in normal blend for a light map) and fast flat sound lines
+ * streak out. Unlike the plain shockwave (one ring and its echo, dust): many rings, stacked.
+ */
+function sonicFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const bright = brightOf(ctx);
+  const h = halo(ctx, scope, { core: '#fffaf0', color: '#ffe2a0', deep: '#a8782a', rays: 0, shade: 0.4 });
+  const pulse = bloom(h, { grow, reach: 6, gone: 480 });
+  const ripples = SONIC_WAVES.map((at, i) => ({
+    at,
+    run: floorRing(ctx, scope, { hot: '#fffaf0', color: '#ffe6a8', deep: '#b0803a', size: (9 + 1.6 * i) * grow, ms: 0.38 * D, level: (1.2 - 0.15 * i) * bright, edge: 0.01, noise: 0.15, band: 0.35 }),
+  }));
+  const stack = SONIC_HEIGHTS.slice(1).map((y, i) => ({
+    at: 40 + 70 * i,
+    run: floorRing(ctx, scope, { hot: '#ffffff', color: '#fff0c8', deep: '#c09040', size: (6 - 0.6 * i) * grow, ms: 0.3 * D, level: 0.9 * bright, edge: 0.012, noise: 0.1, band: 0.3, y }),
+  }));
+  const rings = [...ripples, ...stack];
+  const glow = glowOf(ctx, '#ffd890', { radius: 4 * grow, peak: 0.8, ms: D, curve: (e) => (1 - clamp01(e / (0.6 * D))) ** 2 });
+  let waved = 0;
+  const run = timed(
+    D,
+    (e, now) => {
+      pulse(e);
+      for (const r of rings) if (e >= r.at) r.run(e - r.at);
+      while (waved < SONIC_WAVES.length && e >= SONIC_WAVES[waved]) {
+        if (waved === 0) {
+          flash(ctx, now, { color: '#fffdf4', colorEnd: '#ffe2a0', size: 3.4 * R * k, life: 0.14 });
+          // Sound lines streak out flat over the table.
+          fling(ctx, now, countFor(28, ctx), {
+            R,
+            out: [1, 1],
+            up: [0, 0.08],
+            speed: [12, 16],
+            drag: 3,
+            gravity: 0,
+            life: 0.4,
+            color: '#fffaf0',
+            colorEnd: '#e0a850',
+            size: 0.2 * k,
+            stretch: 1.2,
+            kind: KIND.STREAK,
+            halo: 0.5,
+          });
+          fling(ctx, now, countFor(14, ctx), {
+            R,
+            out: [1, 1],
+            up: [0, 0.08],
+            speed: [11, 15],
+            drag: 3,
+            gravity: 0,
+            life: 0.4,
+            color: '#a8782a',
+            colorEnd: '#6a4610',
+            size: 0.16 * k,
+            stretch: 1.2,
+            kind: KIND.STREAK,
+            blend: 'normal',
+            alpha: 0.85,
+          });
+        }
+        // A ring at every height, widening as it fades: from above, a burst of concentric rings.
+        const w = 1 - 0.12 * waved;
+        for (const y of SONIC_HEIGHTS) {
+          const ring = { count: 1, origin: { x: ctx.position.x, y, z: ctx.position.z }, speed: 0, gravity: 0, kind: KIND.SPARK, shape: SHAPE.RING, spin: 0, now };
+          ctx.particles.emit({ ...ring, life: 0.55, color: '#fff6dc', colorEnd: '#e0a850', size: 1.5 * R * k * w, sizeEnd: 4.2, halo: 0.15 });
+          ctx.particles.emit({ ...ring, life: 0.5, color: '#a8782a', colorEnd: '#6a4610', size: 1.3 * R * k * w, sizeEnd: 3.6, blend: 'normal', alpha: 0.7 });
+        }
+        waved++;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, glow);
+}
+
+// --- force -------------------------------------------------------------------------------------
+
+/** When force's sphere bursts (ms). */
+const FORCE_POP = 260;
+
+const SPHERE_VERTEX = /* glsl */ `
+varying float vRim;
+void main() {
+	vec4 mv = modelViewMatrix * vec4( position, 1.0 );
+	vec3 n = normalize( normalMatrix * normal );
+	vRim = 1.0 - abs( dot( n, normalize( - mv.xyz ) ) );
+	gl_Position = projectionMatrix * mv;
+}
+`;
+/**
+ * A force bubble: a bright rim (fresnel) over a faint fill, `uFlash` 0..1 floods it white. Its
+ * premultiplied alpha (x uShade) dims what is behind it, so it reads on a light map too.
+ */
+const SPHERE_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform vec3 uCore;
+uniform float uAlpha;
+uniform float uFlash;
+uniform float uShade;
+varying float vRim;
+void main() {
+	float rim = pow( vRim, 2.5 );
+	float a = ( rim + ( 0.12 + 0.6 * uFlash ) * ( 1.0 - rim ) ) * uAlpha;
+	vec3 col = mix( uColor, uCore, clamp( uFlash + 0.5 * pow( vRim, 6.0 ), 0.0, 1.0 ) );
+	gl_FragColor = vec4( col * a, min( 1.0, a * uShade ) );
+}
+`;
+
+function forceSphere(ctx, scope) {
+  const material = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: C('#b890ff') }, uCore: { value: C('#ffffff') }, uAlpha: { value: 0 }, uFlash: { value: 0 }, uShade: { value: 0.7 } },
+    vertexShader: SPHERE_VERTEX,
+    fragmentShader: SPHERE_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), material);
+  mesh.position.set(ctx.position.x, DIE_Y, ctx.position.z);
+  mesh.renderOrder = 3;
+  scope.add(mesh);
+  return { mesh, u: material.uniforms };
+}
+
+/**
+ * Force: a violet sphere of force snaps up round the die and swells, flashes white and bursts:
+ * its shards fly out over the table and fall (pale lit ones, deep violet ones in normal blend), a
+ * violet bloom and a crisp violet ring go out with them, and a few shards hang shimmering after.
+ * Crisp and bright where void is a dark implosion.
+ */
+function forceFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const bright = brightOf(ctx);
+  const sphere = forceSphere(ctx, scope);
+  const h = halo(ctx, scope, { core: '#f6f0ff', color: '#a070ff', deep: '#3a1490', rays: 6, shade: 0.45 });
+  const out = bloom(h, { grow, reach: 7, gone: 600, from: 1.4 });
+  const ring = floorRing(ctx, scope, { hot: '#f0e8ff', color: '#9a60ff', deep: '#3a1490', size: 11 * grow, ms: 0.4 * D, level: 1.15 * bright, edge: 0.01, noise: 0.1, band: 0.4 });
+  const glow = glowOf(ctx, '#8a50ff', {
+    radius: 3.8 * grow,
+    peak: 1.0,
+    ms: D,
+    curve: (e) => (e < FORCE_POP ? 0.35 * smooth(e / FORCE_POP) : (1 - (e - FORCE_POP) / (D - FORCE_POP)) ** 2),
+  });
+  const shard = { R, ring: [1.2, 1.6], y: DIE_Y + 0.3, out: [0.8, 1], up: [0.1, 0.7], gravity: -12, floor: FLOOR_Y, spin: 9, kind: KIND.SHARD, shape: SHAPE.SHARD };
+  let popped = false;
+  let shimmered = 0;
+  const SHIMMER = countFor(16, ctx);
+  const run = timed(
+    D,
+    (e, now) => {
+      if (e < FORCE_POP) {
+        // The sphere snaps up round the die and swells, brightening to a white flash as it bursts.
+        const t = e / FORCE_POP;
+        sphere.mesh.scale.setScalar(R * grow * (0.9 + 0.8 * easeOut(t)));
+        sphere.u.uAlpha.value = Math.min(ALPHA_CAP, 1.4 * bright * smooth(clamp01(e / 70)));
+        sphere.u.uFlash.value = smooth(clamp01((e - FORCE_POP + 70) / 70));
+      } else if (sphere.mesh.visible) {
+        // It blows out and is gone in 130 ms.
+        const t = clamp01((e - FORCE_POP) / 130);
+        sphere.mesh.scale.setScalar(R * grow * (1.7 + 0.8 * easeOut(t)));
+        sphere.u.uAlpha.value = Math.min(ALPHA_CAP, 1.4 * bright * (1 - t) ** 2);
+        sphere.u.uFlash.value = 1 - t;
+        if (t >= 1) sphere.mesh.visible = false;
+      }
+      if (e >= FORCE_POP) {
+        out(e - FORCE_POP);
+        ring(e - FORCE_POP);
+      }
+      if (!popped && e >= FORCE_POP) {
+        popped = true;
+        flash(ctx, now, { color: '#ffffff', colorEnd: '#a070ff', size: 4.2 * R * k, life: 0.15 });
+        fling(ctx, now, countFor(44, ctx), {
+          ...shard,
+          speed: [8, 12],
+          life: 1.2,
+          color: '#efe4ff',
+          colorEnd: '#9a60ff',
+          size: 0.4 * R * k,
+          halo: 0.4,
+        });
+        fling(ctx, now, countFor(36, ctx), {
+          ...shard,
+          speed: [7, 11],
+          life: 1.3,
+          color: '#7a3de0',
+          colorEnd: '#3e1698',
+          size: 0.42 * R * k,
+          blend: 'normal',
+        });
+        fling(ctx, now, countFor(22, ctx), {
+          R,
+          out: [0.8, 1],
+          up: [0.1, 0.5],
+          speed: [10, 14],
+          drag: 2.8,
+          gravity: -2,
+          life: 0.5,
+          color: '#f4eeff',
+          colorEnd: '#8a50ff',
+          size: 0.13 * k,
+          kind: KIND.SPARK,
+          shape: SHAPE.DOT,
+          halo: 0.8,
+        });
+      }
+      // A few shards left hanging round the die, shimmering.
+      const wantS = Math.round(SHIMMER * clamp01((e - FORCE_POP - 150) / (0.35 * D)));
+      if (wantS > shimmered) {
+        fling(ctx, now, wantS - shimmered, {
+          R,
+          ring: [1.6, 3.4],
+          y: 0.5,
+          out: [0.1, 0.3],
+          up: [0.2, 0.5],
+          speed: [0.3, 0.8],
+          gravity: 0,
+          life: 0.6,
+          color: '#e2ccff',
+          colorEnd: '#8a50ff',
+          size: 0.32 * k,
+          spin: 4,
+          kind: KIND.GLINT,
+          shape: SHAPE.SHARD,
+          halo: 0.6,
+        });
+        shimmered = wantS;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, glow);
+}
+
+// --- mental ------------------------------------------------------------------------------------
+
+/** Mental's pulses (ms): each throws out a wave of swirls; the rings go out on the first three. */
+const MENTAL_WAVES = [0, 110, 220, 330];
+
+/**
+ * Psychic burst: a pink bloom whose rays wheel round fast, pink swirl strokes spiralling out from
+ * the die in waves (lit pink ones, deep magenta ones in normal blend for a light map), pink rings
+ * pulsing out from it over two rings running out on the table, and pink motes still curling round
+ * it after.
+ */
+function mentalFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const bright = brightOf(ctx);
+  const h = halo(ctx, scope, { core: '#fff0fa', color: '#ff7ac8', deep: '#902a9a', rays: 7, shade: 0.4 });
+  const halo1 = bloom(h, { grow, reach: 7, gone: 650 });
+  const floor = [0, 170].map((at, i) => ({
+    at,
+    run: floorRing(ctx, scope, { hot: '#ffe0f4', color: '#ff6ac0', deep: '#7a1a8a', size: (10 + 2 * i) * grow, ms: 0.42 * D, level: (1.1 - 0.2 * i) * bright, noise: 0.3, band: 0.5 }),
+  }));
+  const glow = glowOf(ctx, '#ff5ab8', { radius: 4 * grow, peak: 1.0, ms: D });
+  const swirl = { R, out: [1, 1], up: [0, 0.25], drag: 0.5, gravity: 0, kind: KIND.SPIRAL, shape: SHAPE.STREAK, stretch: 1.4 };
+  let waved = 0;
+  let curled = 0;
+  const MOTES = countFor(16, ctx);
+  const run = timed(
+    D,
+    (e, now) => {
+      halo1(e);
+      h.u.uSpin.value = 0.0018 * e; // the rays wheel round: a swirl
+      for (const r of floor) if (e >= r.at) r.run(e - r.at);
+      while (waved < MENTAL_WAVES.length && e >= MENTAL_WAVES[waved]) {
+        if (waved === 0) flash(ctx, now, { color: '#fff4fb', colorEnd: '#ff7ac8', size: 3.8 * R * k, life: 0.15 });
+        // Swirl strokes spiralling out (SPIRAL turns their path as they go; the streak follows it).
+        fling(ctx, now, countFor(14, ctx), { ...swirl, speed: [5, 8], life: 1.1, color: '#ffc0ec', colorEnd: '#b04dff', size: 0.22 * k, halo: 0.6 });
+        fling(ctx, now, countFor(8, ctx), { ...swirl, speed: [4.5, 7.5], life: 1.0, color: '#d0308f', colorEnd: '#7a1a9a', size: 0.18 * k, blend: 'normal', alpha: 0.9 });
+        if (waved < 3) {
+          const ring = { count: 1, origin: { x: ctx.position.x, y: DIE_TOP + 0.2, z: ctx.position.z }, speed: 0, gravity: 0, kind: KIND.SPARK, shape: SHAPE.RING, spin: 0, now };
+          ctx.particles.emit({ ...ring, life: 0.65, color: '#ffd0f0', colorEnd: '#e050b0', size: 1.4 * R * k, sizeEnd: 4.6, halo: 0.2 });
+          ctx.particles.emit({ ...ring, life: 0.6, color: '#b02080', colorEnd: '#6a1070', size: 1.2 * R * k, sizeEnd: 4.2, blend: 'normal', alpha: 0.7 });
+        }
+        waved++;
+      }
+      // Pink motes curling round the die after.
+      const wantM = Math.round(MOTES * clamp01((e - 400) / (0.4 * D)));
+      if (wantM > curled) {
+        fling(ctx, now, wantM - curled, {
+          R,
+          ring: [1.4, 3],
+          y: 0.6,
+          out: [0.2, 0.5],
+          up: [0.1, 0.4],
+          speed: [1, 2],
+          gravity: 0,
+          life: 0.9,
+          color: '#ffb0e0',
+          colorEnd: '#a03ac0',
+          size: 0.14 * k,
+          kind: KIND.SPIRAL,
+          shape: SHAPE.DOT,
+          halo: 0.9,
+        });
+        curled = wantM;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, glow);
+}
+
+// --- spirit ------------------------------------------------------------------------------------
+
+/** Spirit's wisps leave the die in these waves (ms), all before the die face must clear. */
+const SPIRIT_WAVES = [0, 70, 140, 210, 280, 350];
+
+/**
+ * Spirit release: a soft cyan bloom (no rays), then ghostly cyan wisps come out of the die and
+ * rise round it in a spiral (SPIRAL turns their path; drag holds them at about four die radii out
+ * while they keep turning and rising), with pale strands tracing the same helix, a faint cyan ring
+ * on the table, and more wisps drifting up off the table round it after. Rising and turning,
+ * where frost's mist sinks and vitality's motes rise straight.
+ */
+function spiritFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const h = halo(ctx, scope, { core: '#f0ffff', color: '#8ff0ff', deep: '#1e7a9a', rays: 0, shade: 0.45 });
+  const halo1 = bloom(h, { grow, reach: 6.5, gone: 650 });
+  const ring = floorRing(ctx, scope, { hot: '#e6ffff', color: '#8ff0ff', deep: '#1e6a8a', size: 9 * grow, ms: 0.45 * D, level: 0.8 * brightOf(ctx), noise: 0.6, band: 0.8 });
+  const glow = glowOf(ctx, '#6ae4ff', { radius: 4 * grow, peak: 0.9, ms: D });
+  const helix = { R, out: [1, 1], up: [0.3, 0.6], speed: [4.6, 5.6], drag: 1.4, gravity: 1.3, kind: KIND.SPIRAL };
+  let waved = 0;
+  let drifted = 0;
+  const DRIFT = countFor(14, ctx);
+  const run = timed(
+    D,
+    (e, now) => {
+      halo1(e);
+      ring(e);
+      while (waved < SPIRIT_WAVES.length && e >= SPIRIT_WAVES[waved]) {
+        if (waved === 0) flash(ctx, now, { color: '#f0ffff', colorEnd: '#8ff0ff', size: 3.6 * R * k, life: 0.16 });
+        fling(ctx, now, countFor(5, ctx), {
+          ...helix,
+          life: 1.25,
+          color: '#24a6cc',
+          colorEnd: '#a8eefc',
+          size: 0.6 * R * k,
+          sizeEnd: 1.8,
+          spin: 0.9,
+          shape: SHAPE.SMOKE,
+          blend: 'normal',
+          alpha: 0.75,
+        });
+        fling(ctx, now, countFor(4, ctx), {
+          ...helix,
+          life: 1.15,
+          color: '#8ff0ff',
+          colorEnd: '#1e7a9a',
+          size: 0.5 * R * k,
+          sizeEnd: 1.7,
+          spin: 0.9,
+          shape: SHAPE.SMOKE,
+          alpha: 0.7,
+          halo: 0.4,
+        });
+        fling(ctx, now, countFor(5, ctx), {
+          ...helix,
+          life: 1.1,
+          color: '#e6fdff',
+          colorEnd: '#4ec6e0',
+          size: 0.16 * k,
+          stretch: 2,
+          shape: SHAPE.STREAK,
+          halo: 0.5,
+        });
+        waved++;
+      }
+      // More wisps drift up off the table round the die after.
+      const wantD = Math.round(DRIFT * clamp01((e - 450) / (0.4 * D)));
+      if (wantD > drifted) {
+        fling(ctx, now, wantD - drifted, {
+          R,
+          ring: [1.3, 2.6],
+          y: 0.2,
+          out: [0, 0.2],
+          up: [1, 1],
+          speed: [0.5, 0.9],
+          gravity: 1.1,
+          life: 1.0,
+          color: '#3cc4e4',
+          colorEnd: '#a8eefc',
+          size: 0.5 * R * k,
+          sizeEnd: 2.2,
+          spin: 0.9,
+          kind: KIND.SMOKE,
+          shape: SHAPE.SMOKE,
+          blend: 'normal',
+          alpha: 0.55,
+        });
+        drifted = wantD;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, glow);
+}
+
 export const BURSTS = Object.freeze(
   Object.fromEntries(
     [
@@ -1368,6 +1799,30 @@ export const BURSTS = Object.freeze(
         duration: 2000,
         look: { core: '#eaffb0', color: '#9acd32', deep: '#3f5a10', shade: 0.4 },
         full: poisonFull,
+      }),
+      burst('sonic', {
+        color: '#ffe6a8',
+        duration: 1400,
+        look: { core: '#fffaf0', color: '#ffe2a0', deep: '#a8782a', shade: 0.4 },
+        full: sonicFull,
+      }),
+      burst('force', {
+        color: '#a070ff',
+        duration: 1500,
+        look: { core: '#f6f0ff', color: '#a070ff', deep: '#3a1490', shade: 0.45 },
+        full: forceFull,
+      }),
+      burst('mental', {
+        color: '#ff7ac8',
+        duration: 1700,
+        look: { core: '#fff0fa', color: '#ff7ac8', deep: '#902a9a', shade: 0.4 },
+        full: mentalFull,
+      }),
+      burst('spirit', {
+        color: '#8ff0ff',
+        duration: 1900,
+        look: { core: '#f0ffff', color: '#8ff0ff', deep: '#1e7a9a', shade: 0.45 },
+        full: spiritFull,
       }),
     ].map((m) => [m.id, m]),
   ),
