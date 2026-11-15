@@ -22,6 +22,7 @@
     "test:visual:pets": "node tests/visual/pets.mjs",
     "test:visual:insides": "node tests/visual/insides.mjs",
     "test:visual:insides-perf": "node tests/visual/insides-perf.mjs",
+    "test:visual:edges": "node tests/visual/edges.mjs",
     "test:watch": "vitest",
     "test:fairness": "node scripts/fairness.mjs",
     "lint": "eslint .",

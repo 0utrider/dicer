@@ -143,6 +143,42 @@ const FACE_ROWS = [
   ['faces-image-patina', 'default', 'image faces, patina', { system: 'dev', type: 'd6', labels: FACE_IMAGES }, 6, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['faces-fate-patina', 'ruby-classic', 'Fate faces, patina', { system: 'dev', type: 'df', shape: 'd6', labels: ['-', '-', '', '', '+', '+'] }, 6, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
 ];
+/**
+ * Edge strips (edges.strip): paint, metal and glow on an opaque, a resin and a metal body at
+ * radius 0.25 and 1, plus a metal strip on gem and wood (the bevel coat gate). The d6, d20 and the
+ * d2 rim only. Row element 5 is the column filter.
+ */
+const EDGE_TYPES = ['d6', 'd20', 'd2'];
+const STRIP_COLORS = { paint: '#f3ead0', metal: '#e2b04a', glow: '#3ad7ff' };
+const EDGE_BODIES = [
+  ['opaque', LOOKS['ruby-classic'].appearance.body, LOOKS['ruby-classic'].appearance.numbers],
+  ['resin', { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', roughness: 0.05 }],
+  ['metal', LOOKS['silver-brushed'].appearance.body, LOOKS['silver-brushed'].appearance.numbers],
+];
+const edgeRow = (body, numbers, style, radius, tag) => [
+  `edge~${style}-${tag}-r${radius}`,
+  {
+    ...LOOKS.default,
+    name: `${style} strip, ${tag}, r ${radius}`,
+    appearance: {
+      ...LOOKS.default.appearance,
+      body,
+      numbers: numbers ?? LOOKS.default.appearance.numbers,
+      interior: { ...LOOKS.default.appearance.interior, type: 'none' },
+      edges: { radius, strip: { style, color: STRIP_COLORS[style], strength: 1 } },
+    },
+  },
+  {},
+  undefined,
+  EDGE_TYPES,
+];
+const EDGE_ROWS = [
+  ...EDGE_BODIES.flatMap(([tag, body, numbers]) =>
+    ['paint', 'metal', 'glow'].flatMap((style) => [0.25, 1].map((r) => edgeRow(body, numbers, style, r, tag))),
+  ),
+  edgeRow({ type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }, null, 'metal', 1, 'gem'),
+  edgeRow({ type: 'wood', preset: 'oak', ...PRESET_COLORS.oak }, null, 'metal', 1, 'wood'),
+];
 const looks = [
   ...Object.entries(LOOKS).map(([id, look]) => [id, look, {}]),
   ...VARIANTS.map(([id, base, note, flags, numbers, body, interior]) => [
@@ -169,6 +205,7 @@ const looks = [
     {},
     { preset, shown },
   ]),
+  ...EDGE_ROWS,
 ];
 const ROWS = looks.length;
 const COLS = TYPES.length;
@@ -205,7 +242,8 @@ looks.forEach(([id, look, rowFlags], row) => {
   const a = look.appearance;
   const detail = [a.body.type, a.body.type === 'metal' ? a.body.finish : a.body.preset, a.numbers.fill];
   if (a.interior.type !== 'none') detail.push(a.interior.type);
-  if (a.edges.style !== 'rounded') detail.push(a.edges.style);
+  if (a.edges.strip && a.edges.strip.style !== 'body') detail.push(`${a.edges.strip.style} strip r${a.edges.radius}`);
+  else if (a.edges.style !== 'rounded') detail.push(a.edges.style);
   if (rowFlags.engraving === false) detail.push('no engraving');
   if (rowFlags.safe) detail.push('safe');
   if (looks[row][3]) detail.push(`d6 shows ${looks[row][3].shown}`);
@@ -248,11 +286,12 @@ const VIEW_DIR = new THREE.Vector3(0, Math.sin(THREE.MathUtils.degToRad(52)), 0)
 VIEW_DIR.z = Math.cos(THREE.MathUtils.degToRad(52));
 const VIEW_DISTANCE = 4.6;
 
-const geometries = new Map(); // type|style
-function geometryFor(type, style) {
-  const key = `${type}|${style}`;
+const geometries = new Map(); // type|style|radius
+// radius (the edge-strip rows, as DiceBox builds them) wins over style
+function geometryFor(type, style, radius) {
+  const key = `${type}|${style}|${radius}`;
   if (!geometries.has(key)) {
-    const geo = buildDieGeometry(getShape(type), { style });
+    const geo = buildDieGeometry(getShape(type), radius === undefined ? { style } : { radius });
     geo.computeBoundingSphere();
     geometries.set(key, geo);
   }
@@ -291,11 +330,13 @@ async function buildFaceCells() {
 }
 
 function buildCells() {
-  looks.forEach(([id, look, rowFlags, faceRow], row) => {
+  looks.forEach(([id, look, rowFlags, faceRow, onlyTypes], row) => {
     TYPES.forEach((type, col) => {
       if (faceRow && type !== 'd6') return;
+      if (onlyTypes && !onlyTypes.includes(type)) return;
       const shape = getShape(type);
-      const geometry = geometryFor(type, look.appearance.edges.style);
+      const { style, radius } = look.appearance.edges;
+      const geometry = geometryFor(type, style, onlyTypes ? radius : undefined);
       const face = shape.values.indexOf(faceRow ? faceRow.shown : SHOWN[type]);
       const mesh = new THREE.Mesh(geometry);
       mesh.quaternion.copy(restingQuaternion(shape, face));

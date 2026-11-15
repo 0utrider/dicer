@@ -277,3 +277,12 @@ Rolling by hand (checks 33 to 44). These need a real Foundry v14 world, a GM and
 2. As A, throw `3d6` by hand straight at the resting pet, hard.
 3. Pass: while you hold the dice your pet keeps still. On a hard hit the pet splats on A's screen, and also on the GM's and B's screens, at the same place relative to the dice (**Dice can splat pets** on, **Show dice pets** on). A screen with **Dice can splat pets** off still sees the pet bump but not burst. The pet's owner's next roll reforms it as before.
 4. Check ghost and blind rolls: a ghost or blind hand throw never moves a pet or splats one on a screen that cannot see the roll.
+
+## 45. Edge strips on every style and body
+
+`npm run test:visual:edges` renders the strip rows of `dev/looks.html` on real WebGL (no Foundry) and fails on a shader error; this check covers the editor and rolled dice.
+
+1. In the appearance editor, under **Edges**, set **Sharpness** to the second step and pick each **Edge strips** style in turn (**Paint**, **Metal**, **Glow**) with a colour that differs from the body. Do it on an opaque, a resin, a metal, a gem and a wood body.
+2. Pass: the preview die's rounded strips between the faces (and a d2's rim) take the colour: Paint is matte, Metal is a shiny inlay in the strip colour (on gem and wood too, not darkened or tinted by the body), Glow is lit even in shadow. The faces and numbers look as before. **Strength** fades the strip back to the body.
+3. Set **Sharpness** to **Sharp**: Pass: the strip controls are replaced by "Edge strips need rounded edges." and the die looks exactly like a look without a strip. Back to a rounded step and **Match body**: the die looks as before the feature.
+4. Save the look, roll `1d20 + 1d6 + 1d2` with it at **Graphics quality** Low and High: Pass: rolled dice match the preview at both, with no console error.
