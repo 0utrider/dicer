@@ -532,6 +532,14 @@
     "Quality": {
       "Dropped": "Dicer lowered the dice graphics quality for this session to keep rolls smooth."
     },
+    "Jb2aPicker": {
+      "Title": "Pick a JB2A animation",
+      "Search": "Search, e.g. explosion blue",
+      "Choose": "Use this animation",
+      "Cancel": "Cancel",
+      "None": "No JB2A animation matches.",
+      "More": "Showing {shown} of {total}. Type more to narrow it down."
+    },
     "Appearance": {
       "Title": "Dicer appearance editor",
       "Throw": "Throw",

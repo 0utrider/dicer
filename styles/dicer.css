@@ -1497,3 +1497,115 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   align-items: center;
   gap: 6px;
 }
+
+/* JB2A animation picker (appearance editor film button, over Sequencer's database). */
+.dicer-jp {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.dicer-jp-box {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 94vw);
+  height: min(560px, 88vh);
+  border: 1px solid var(--color-border, #444);
+  border-radius: 8px;
+  background: var(--color-cool-5, #1d1b22);
+  color: var(--color-text-primary, #eee);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.dicer-jp-head,
+.dicer-jp-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.dicer-jp-head h2 {
+  flex: 1;
+  margin: 0;
+  border: none;
+  font-size: 1.1em;
+}
+.dicer-jp-head button,
+.dicer-jp-foot button {
+  width: auto;
+  flex: none;
+}
+.dicer-jp-foot {
+  justify-content: flex-end;
+}
+.dicer-jp-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+  gap: 12px;
+  min-height: 0;
+  padding: 0 12px;
+}
+.dicer-jp-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+.dicer-jp-list {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 6px;
+}
+.dicer-jp-list li {
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+}
+.dicer-jp-list li:hover {
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+.dicer-jp-list li[aria-selected='true'] {
+  background: color-mix(in srgb, var(--color-warm-1, #ee9b3a) 24%, transparent);
+}
+.dicer-jp-list li.dicer-jp-none {
+  cursor: default;
+  font-family: inherit;
+  opacity: 0.7;
+}
+.dicer-jp-count,
+.dicer-jp-name {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.75;
+  word-break: break-all;
+}
+.dicer-jp-right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dicer-jp-video {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: repeating-conic-gradient(#2a2730 0 25%, #222027 0 50%) 0 0 / 20px 20px;
+  object-fit: contain;
+}
+@media (max-width: 600px) {
+  .dicer-jp-body {
+    grid-template-columns: 1fr;
+  }
+  .dicer-jp-right {
+    display: none;
+  }
+}

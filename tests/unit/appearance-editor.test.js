@@ -762,6 +762,30 @@ describe('the appearance editor', () => {
     }
   });
 
+  it('with Sequencer active, the film button opens the JB2A picker over its database', async () => {
+    const oldModules = globalThis.game.modules;
+    globalThis.game.modules = new Map([
+      ['jb2a_patreon', { active: true }],
+      ['sequencer', { active: true }],
+    ]);
+    const file = 'modules/jb2a_patreon/Library/Generic/Explosion/Explosion_01_Blue_400x400.webm';
+    globalThis.Sequencer = { Database: { publicFlattenedEntries: ['jb2a.explosion.01.blue'], getEntry: () => ({ file }) } };
+    try {
+      const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+      const clicked = click(app, '[data-action="pickJb2a"][data-key="nat1"]');
+      await vi.waitFor(() => expect(document.querySelector('.dicer-jp li[data-path]')).not.toBeNull());
+      document.querySelector('.dicer-jp li[data-path="jb2a.explosion.01.blue"]').click();
+      document.querySelector('.dicer-jp-choose').click();
+      await clicked;
+      await vi.waitFor(() => expect(app.theme().rules.find((r) => r.id === 'dicer.nat1')?.effect).toEqual({ id: 'light-burst', jb2a: file }));
+      await app.close();
+    } finally {
+      globalThis.game.modules = oldModules;
+      delete globalThis.Sequencer;
+      document.querySelectorAll('.dicer-jp').forEach((n) => n.remove());
+    }
+  });
+
   it('hides the JB2A button without an active JB2A module', async () => {
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
     expect(q(app, '[data-action="pickJb2a"]')).toBeNull();

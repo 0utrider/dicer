@@ -17,6 +17,7 @@ import { PET_KINDS, readPet } from '../pet/pet-for.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm } from './theme-form.js';
 import { jb2aSource } from '../jb2a/source.js';
+import { pickJb2a, sequencerDatabase } from './jb2a-picker.js';
 import {
   BODY_TYPES,
   FINISHES,
@@ -603,8 +604,12 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   static async #onPickJb2a(event, target) {
     const key = target.dataset.key;
     const src = jb2aSource({ modules: globalThis.game?.modules, settings: settings() });
-    const start = this.#extras[key]?.jb2a || (src ? `${src.location}/${src.moduleId}/Library/` : '');
-    const path = await this.#pickFile('imagevideo', start);
+    const current = this.#extras[key]?.jb2a || '';
+    // Sequencer's JB2A database when Sequencer is active; Foundry's file picker otherwise.
+    const db = sequencerDatabase();
+    const path = db
+      ? await pickJb2a(db, { current })
+      : await this.#pickFile('imagevideo', current || (src ? `${src.location}/${src.moduleId}/Library/` : ''));
     if (typeof path !== 'string' || !path) return;
     if (!/\.webm$/i.test(path)) {
       globalThis.ui?.notifications?.warn(loc('DICER.Appearance.Extras.NeedWebm'));
