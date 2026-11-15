@@ -130,37 +130,70 @@ function quadMaterial(fragment, color, extra = {}) {
 }
 
 /**
- * A soft radial halo (a gaussian that reaches zero at the quad's edge) with a small white core,
- * and optionally `uRays` thin light rays turned by `uSpin` (radians): each ray keeps a constant
- * angular-independent width (distance from its axis) and tapers out at its own length.
+ * A radial halo on a quad, in one of two looks:
+ * - uBloom 0 (floorGlow): a soft gaussian of uColor that reaches zero at the quad's edge, with a
+ *   small white core.
+ * - uBloom 1 (light-burst): a layered bloom (a tight hot core, a mid glow and a wide faint haze)
+ *   graded from uCore at the centre through uColor to uDeep at the rim, plus `uRays` soft
+ *   god-rays turned by `uSpin` (radians), with a second set of shorter, fainter rays between
+ *   them turning the other way. Each ray is a soft wedge (a gaussian off its axis that widens
+ *   outward) fading out at its own length, so no two neighbours match.
+ * No noise: the corners are discarded and the rest is a few exps; the rays only cost when
+ * uRayAlpha > 0.
  */
 const BURST_FRAGMENT = /* glsl */ `
 uniform vec3 uColor;
+uniform vec3 uCore;
+uniform vec3 uDeep;
 uniform float uAlpha;
+uniform float uBloom;
 uniform float uRays;
 uniform float uSpin;
 uniform float uRayAlpha;
 varying vec2 vUv;
+float rayHash( float n ) {
+	return fract( sin( n * 12.9898 + 1.0 ) * 43758.5453 );
+}
+// One set of n rays at angle a (already spun): a soft wedge per ray, lengths 0.4..1 of lenMax.
+float raySet( float a, float r, float n, float lenMax, float seed ) {
+	float sector = 6.2831853 / n;
+	float idx = floor( a / sector + 0.5 );
+	float d = r * abs( sin( a - idx * sector ) );
+	float h = rayHash( mod( idx, n ) + seed );
+	float len = lenMax * ( 0.4 + 0.6 * h );
+	float w = 0.012 + 0.07 * r;
+	float soft = exp( - ( d * d ) / ( w * w ) );
+	return soft * ( 1.0 - smoothstep( 0.25 * len, len, r ) ) * smoothstep( 0.04, 0.16, r ) * ( 0.6 + 0.4 * h );
+}
 void main() {
 	vec2 p = vUv * 2.0 - 1.0;
 	float r = length( p );
-	float glow = exp( - r * r * 5.0 ) * ( 1.0 - smoothstep( 0.6, 1.0, r ) );
-	float core = exp( - r * r * 60.0 );
-	float rays = 0.0;
-	if ( uRays > 0.5 ) {
-		float sector = 6.2831853 / uRays;
-		float a = atan( p.y, p.x + 0.00001 ) + uSpin;
-		float idx = floor( a / sector + 0.5 );
-		float d = r * abs( sin( a - idx * sector ) );
-		float len = 0.6 + 0.4 * fract( sin( mod( idx, uRays ) * 12.9898 + 1.0 ) * 43758.5453 );
-		float thin = 1.0 - smoothstep( 0.0, 0.01 + 0.02 * r, d );
-		rays = thin * ( 1.0 - smoothstep( 0.05, len, r ) ) * smoothstep( 0.03, 0.15, r ) * uRayAlpha;
+	if ( r >= 1.0 ) discard; // the corners: every layer is zero there
+	vec3 c;
+	if ( uBloom < 0.5 ) {
+		float glow = exp( - r * r * 5.0 ) * ( 1.0 - smoothstep( 0.6, 1.0, r ) );
+		float core = exp( - r * r * 60.0 );
+		c = ( uColor * glow + vec3( core ) ) * uAlpha;
+	} else {
+		float fade = 1.0 - smoothstep( 0.55, 1.0, r );
+		float hot = exp( - r * r * 70.0 );
+		float mid = exp( - r * r * 9.0 );
+		float haze = exp( - r * r * 2.0 ) * fade;
+		vec3 grad = mix( mix( uCore, uColor, smoothstep( 0.0, 0.3, r ) ), uDeep, smoothstep( 0.25, 0.8, r ) );
+		c = grad * ( 0.9 * mid + 0.6 * haze ) + uCore * ( 0.6 * mid * mid ) + vec3( 0.9 * hot );
+		if ( uRays > 0.5 && uRayAlpha > 0.0 ) {
+			float a = atan( p.y, p.x + 0.00001 );
+			float rays = raySet( a + uSpin, r, uRays, 1.0, 0.0 )
+				+ 0.55 * raySet( a - 0.6 * uSpin + 3.14159265 / uRays, r, uRays, 0.7, 7.0 );
+			vec3 rayCol = mix( uCore, uColor, smoothstep( 0.05, 0.6, r ) );
+			c += rayCol * rays * 1.6 * uRayAlpha * fade;
+		}
+		c *= uAlpha;
 	}
-	vec3 c = ( uColor * ( glow + rays ) + vec3( core + 0.4 * rays * ( 1.0 - r ) ) ) * uAlpha;
 	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
 }
 `;
-const BURST_UNIFORMS = Object.freeze({ uRays: 0, uSpin: 0, uRayAlpha: 0 });
+const BURST_UNIFORMS = Object.freeze({ uBloom: 0, uRays: 0, uSpin: 0, uRayAlpha: 0 });
 
 /** Value noise for shader quads: a sin-free hash (Hoskins), cheap and stable on mediump GPUs. */
 const NOISE_GLSL = /* glsl */ `
@@ -275,7 +308,8 @@ function ringUniforms(color, { edge = 0.018, noise = 0.6, trail = 0.5 } = {}) {
  */
 export function floorGlow(ctx, { radius, peak, ms, curve = (e) => (1 - e / ms) ** 2 }) {
   const scope = scoped(ctx.scene);
-  const material = quadMaterial(BURST_FRAGMENT, ctx.color, BURST_UNIFORMS);
+  // uCore / uDeep are unused by the plain (uBloom 0) look, but every declared uniform needs a value.
+  const material = quadMaterial(BURST_FRAGMENT, ctx.color, { ...BURST_UNIFORMS, uCore: ctx.color.clone(), uDeep: ctx.color.clone() });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
@@ -298,31 +332,73 @@ export const lightBurst = Object.freeze({
   id: 'light-burst',
   cost: 1,
   defaults: Object.freeze({ color: '#fff0b0', intensity: 1, duration: 700 }),
+  /**
+   * A short anticipation (the halo gathers in, shrinking over ~60 ms), then the burst: a layered
+   * bloom halo graded core -> edge with soft god-rays of varied lengths slowly turning, a thin
+   * ring-kit ring running out on the floor, and the floor glow under it all.
+   */
   start(ctx) {
     const scope = scoped(ctx.scene);
-    const material = quadMaterial(BURST_FRAGMENT, ctx.color, { ...BURST_UNIFORMS, uRays: 8 });
+    const D = ctx.duration;
+    const pal = palette(ctx.color);
+    const body = ringBody(ctx.color); // the die colour, or a near-black die's rim
+    const material = quadMaterial(BURST_FRAGMENT, body, {
+      ...BURST_UNIFORMS,
+      uBloom: 1,
+      uRays: 8,
+      uCore: (pal.rim ?? pal.core).clone().lerp(new THREE.Color(WHITE), pal.rim ? 0.45 : 0.25),
+      uDeep: pal.rim ? pal.rim.clone().multiplyScalar(0.6) : pal.edge.clone(),
+    });
     const u = material.uniforms;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     mesh.position.set(ctx.position.x, DIE_Y + 0.6, ctx.position.z);
     if (ctx.camera?.quaternion) mesh.quaternion.copy(ctx.camera.quaternion); // a billboard
-    mesh.scale.setScalar(0.01);
     mesh.renderOrder = 3;
     scope.add(mesh);
-    const reach = 4.5 * Math.max(0.1, ctx.intensity);
+    // Grows gently with intensity (sqrt), and at most 1.6 x its intensity-1 size on a big table.
+    const grow = Math.min(1.6, sizeK(ctx));
+    const level = Math.min(ALPHA_CAP, Math.max(0, ctx.intensity));
+    const reach = 5.6 * grow;
+    const PRE = Math.min(60, D * 0.1); // the anticipation
+    const from = 1.3 * grow; // the gathering glow shrinks from here...
+    const gathered = 0.55 * grow; // ...to here, then bursts out
+    mesh.scale.setScalar(from);
+    u.uAlpha.value = 0.3 * level;
     const spin0 = Math.random() * Math.PI * 2;
+
+    const ringMat = quadMaterial(RING_FRAGMENT, body, ringUniforms(ctx.color, { edge: 0.009, noise: 0.35, trail: 0.3 }));
+    const ru = ringMat.uniforms;
+    const ring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ringMat);
+    ring.rotation.x = -Math.PI / 2; // on the floor plane
+    ring.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
+    ring.scale.setScalar(6 * grow);
+    ring.renderOrder = 1;
+    scope.add(ring);
+    const ringLevel = Math.min(ALPHA_CAP, 1.1 * Math.max(0, ctx.intensity));
+
     const halo = timed(
-      ctx.duration,
+      D,
       (e) => {
-        const k = e / ctx.duration;
-        mesh.scale.setScalar(0.3 + reach * easeOut(k));
-        u.uAlpha.value = Math.max(0, ctx.intensity) * (1 - k) ** 2;
+        if (e < PRE) {
+          const g = e / PRE;
+          mesh.scale.setScalar(from + (gathered - from) * g * g * (3 - 2 * g));
+          u.uAlpha.value = level * (0.3 + 0.3 * g);
+          u.uRayAlpha.value = 0;
+          return;
+        }
+        const k = (e - PRE) / Math.max(1, D - PRE);
+        mesh.scale.setScalar(gathered + (reach - gathered) * (1 - Math.exp(-8 * k))); // a fast bloom
+        u.uAlpha.value = 1.2 * level * (1 - k) ** 1.6; // the flash, easing out
         // The rays (scaled by uAlpha too) come in over the first 80 ms and thin out at the end.
-        u.uRayAlpha.value = 1.4 * clamp01(e / 80) * (1 - k * k * k);
+        u.uRayAlpha.value = 1.3 * clamp01((e - PRE) / 80) * (1 - k * k * k);
         u.uSpin.value = spin0 + 0.5 * (e / 1000); // a slow turn: ~20 degrees in 700 ms
+        const rk = clamp01((e - PRE) / Math.max(1, 0.8 * (D - PRE)));
+        ru.uR.value = 0.06 + 0.9 * easeOut(rk);
+        ru.uAlpha.value = ringLevel * clamp01((e - PRE) / 40) * (1 - rk) ** 1.5;
       },
       () => scope.dispose(),
     );
-    return withInsideFlare(ctx, together(halo, floorGlow(ctx, { radius: 2.5, peak: 0.7, ms: ctx.duration })));
+    return withInsideFlare(ctx, together(halo, floorGlow(ctx, { radius: 2.5, peak: 0.7, ms: D })));
   },
 });
 

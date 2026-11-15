@@ -253,6 +253,64 @@ describe('rebuilt looks', () => {
     h.stop();
   });
 
+  test('light-burst size at intensity 2 ≤ 1.6 × size at intensity 1', () => {
+    // The largest scale any of its meshes (halo, floor ring) reaches over its life.
+    const sizeAt = (intensity) => {
+      const ctx = ctxFor(EFFECTS['light-burst'], { intensity });
+      const h = EFFECTS['light-burst'].start(ctx);
+      let max = 0;
+      for (let t = 0; t < ctx.duration; t += 20) {
+        h.update(t);
+        for (const c of ctx.scene.children) if (c.isMesh) max = Math.max(max, c.scale.x);
+      }
+      h.stop();
+      return max;
+    };
+    const one = sizeAt(1);
+    expect(sizeAt(2)).toBeGreaterThan(one);
+    expect(sizeAt(2)).toBeLessThanOrEqual(1.6 * one);
+    expect(sizeAt(4)).toBeLessThanOrEqual(1.6 * one);
+  });
+
+  test('light-burst anticipates: halo scale at 40 ms < scale at 0 ms', () => {
+    const ctx = ctxFor(EFFECTS['light-burst']);
+    const h = EFFECTS['light-burst'].start(ctx);
+    const halo = ctx.scene.children.find((c) => c.material?.uniforms?.uRays);
+    h.update(0);
+    const s0 = halo.scale.x;
+    h.update(40);
+    expect(halo.scale.x).toBeLessThan(s0);
+    expect(halo.material.uniforms.uAlpha.value).toBeGreaterThan(0); // visible while it gathers
+    h.update(300);
+    expect(halo.scale.x).toBeGreaterThan(s0); // then it bursts out past where it began
+    h.stop();
+  });
+
+  test('light-burst: a thin ring-kit ring runs out on the floor, the halo has a core-to-edge gradient', () => {
+    const ctx = ctxFor(EFFECTS['light-burst'], { color: new THREE.Color('#e02020') });
+    const base = ctx.scene.children.length;
+    const h = EFFECTS['light-burst'].start(ctx);
+    const ring = ctx.scene.children.find((c) => c.material?.uniforms?.uR);
+    expect(ring).toBeTruthy();
+    expect(ring.position.y).toBeLessThan(0.1);
+    expect(Math.abs(ring.rotation.x + Math.PI / 2)).toBeLessThan(1e-6);
+    const u = ring.material.uniforms;
+    expect(u.uEdge.value).toBeLessThan(0.018); // thinner than the shockwave's
+    h.update(0);
+    h.update(200);
+    const r1 = u.uR.value;
+    expect(u.uAlpha.value).toBeGreaterThan(0);
+    h.update(400);
+    expect(u.uR.value).toBeGreaterThan(r1);
+    const halo = ctx.scene.children.find((c) => c.material?.uniforms?.uRays);
+    const hu = halo.material.uniforms;
+    expect(hu.uCore.value.getHex()).not.toBe(hu.uDeep.value.getHex());
+    expect(hu.uCore.value.r + hu.uCore.value.g + hu.uCore.value.b)
+      .toBeGreaterThan(hu.uDeep.value.r + hu.uDeep.value.g + hu.uDeep.value.b);
+    h.stop();
+    expect(ctx.scene.children.length).toBe(base);
+  });
+
   test('shockwave draws two rings, the second 90 ms later and fainter, plus a dust ring', () => {
     const ctx = ctxFor(EFFECTS.shockwave);
     const emit = vi.spyOn(ctx.particles, 'emit');
@@ -766,7 +824,7 @@ describe('composites degrade with the tier budget (P4-R10)', () => {
     const h = EFFECTS.celebrate.start(ctx);
     h.update(0);
     h.update(300);
-    expect(scene.children.length - base).toBe(3); // light-burst (halo + its floor glow) + the free floor glow
+    expect(scene.children.length - base).toBe(4); // light-burst (halo + floor ring + its floor glow) + the free floor glow
     expect(emit).not.toHaveBeenCalled(); // no sparks, no glitter
     h.stop();
     expect(scene.children.length).toBe(base);
@@ -781,7 +839,7 @@ describe('composites degrade with the tier budget (P4-R10)', () => {
     const h = EFFECTS.celebrate.start(ctx);
     h.update(0);
     h.update(300);
-    expect(scene.children.length - base).toBe(5); // light-burst (halo + floor glow), floor glow, shockwave, glow-pulse halo
+    expect(scene.children.length - base).toBe(6); // light-burst (halo + floor ring + floor glow), floor glow, shockwave, glow-pulse halo
     expect(emit).toHaveBeenCalled();
     expect(shakes).toHaveLength(1);
     h.stop();
@@ -841,7 +899,7 @@ describe('staged celebrate and fumble', () => {
     expect(emit).not.toHaveBeenCalled();
     expect(shakes).toHaveLength(0);
     h.update(130);
-    expect(meshes(scene, base)).toHaveLength(5); // + light-burst (halo + floor glow), floor glow, shockwave
+    expect(meshes(scene, base)).toHaveLength(6); // + light-burst (halo + floor ring + floor glow), floor glow, shockwave
     expect(kinds(emit)[0]).toBe(KIND.STREAK); // the spark burst, then the shockwave's dust ring
     expect(kinds(emit).every((k) => k === KIND.STREAK || k === KIND.SMOKE)).toBe(true);
     expect(emit.mock.calls[0][0].colorEnd).toBe('#ff9a3c');
