@@ -807,8 +807,12 @@ describe('elemental crit bursts (the automatic natural-20 burst)', () => {
     expect(log).toEqual([]);
   });
 
-  test('an element whose burst is listed but not built yet starts nothing and never throws', async () => {
-    const m = await library();
+  test('an element whose burst id has no module in the library starts nothing and never throws', async () => {
+    // A library missing one listed burst (every element has one now; this keeps the layer safe if
+    // a library and the world-start list ever drift apart).
+    const mod = await library();
+    const { 'burst-bleed': _gone, ...rest } = mod.EFFECTS;
+    const m = { ...mod, EFFECTS: rest };
     const { layer, warn } = setup({ tier: 'ultra', loadLibrary: async () => m });
     await layer.prefetch();
     const bleed = { ...nat20(), appearance: null, damageType: 'bleed' };

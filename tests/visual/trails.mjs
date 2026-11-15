@@ -15,7 +15,7 @@
 // DICER_TRAILS_SHEET=bursts makes the crit bursts sheet instead (round 3): the same d20s land as a
 // natural 20 (trail 2, so each plays its element's burst) and are shot 120, 350, 700, 1100 and
 // 1700 ms after landing (DICER_BURST_TIMES), on both backdrops, into <round>/bursts.png. Its rows
-// default to the elements whose burst is built (DICER_TRAILS_ONLY overrides).
+// default to all sixteen elements (DICER_TRAILS_ONLY overrides).
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import {
@@ -114,18 +114,12 @@ const ALL = [
   plain('bludgeoning', '#6e5c48', '#3a2e22', '#f4ead8'),
 ];
 const SHEET = process.env.DICER_TRAILS_SHEET === 'bursts' ? 'bursts' : 'trails';
-/** The bursts built so far (round 3 adds the rest task by task). */
-const BUILT_BURSTS = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit'];
 const BURST_TIMES = process.env.DICER_BURST_TIMES?.split(',')
   .map(Number)
   .filter((t) => t > 0) ?? [120, 350, 700, 1100, 1700];
 /** A burst is big: its crop is wider than a trail's. */
 const BURST_CROP = { width: 720, height: 560 };
-const ELEMENTS = ONLY?.length
-  ? ALL.filter((el) => ONLY.includes(el.name))
-  : SHEET === 'bursts'
-    ? ALL.filter((el) => BUILT_BURSTS.includes(el.name))
-    : ALL;
+const ELEMENTS = ONLY?.length ? ALL.filter((el) => ONLY.includes(el.name)) : ALL;
 
 /** A crop of the viewport centred on the last roll's die, as base64 jpeg. */
 async function shot(page, crop = CROP) {

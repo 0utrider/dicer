@@ -173,9 +173,7 @@ describe('readThemeList', () => {
 
 describe('KNOWN_EFFECTS', () => {
   // The library chunk is lazy, so themes.js keeps its own list; this keeps it honest.
-  // ids KNOWN_EFFECTS intentionally has beyond the catalogue: the crit bursts a later task builds
-  const NON_CATALOGUE = ['bleed', 'slashing', 'piercing', 'bludgeoning'].map((e) => `burst-${e}`);
-  test('lists the effects catalogue ids (plus the documented extras), no more', () => {
-    expect([...KNOWN_EFFECTS].sort()).toEqual([...Object.keys(EFFECTS), ...NON_CATALOGUE].sort());
+  test('lists the effects catalogue ids, no more', () => {
+    expect([...KNOWN_EFFECTS].sort()).toEqual(Object.keys(EFFECTS).sort());
   });
 });

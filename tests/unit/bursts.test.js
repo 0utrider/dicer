@@ -9,7 +9,7 @@ import { ELEMENTS as TRAIL_ELEMENTS } from '../../src/effects/library/trails.js'
 import { KIND } from '../../src/effects/library/particles.js';
 import { SHAPE } from '../../src/effects/library/shapes.js';
 
-const BUILT = ['fire', 'frost', 'storm', 'lava', 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit'].map((e) => `burst-${e}`);
+const BUILT = ELEMENTS.map((e) => `burst-${e}`);
 const fireInside = { interior: { type: 'fire' } };
 const nat20 = (over = {}) => ({ type: 'd20', value: 20, trail: 2, appearance: fireInside, ...over });
 
@@ -84,6 +84,11 @@ test('EFFECT_IDS and KNOWN_EFFECTS contain all sixteen burst ids', () => {
     expect(EFFECT_IDS).toContain(`burst-${el}`);
     expect(KNOWN_EFFECTS).toContain(`burst-${el}`);
   }
+});
+
+test('every element has its burst: BURSTS holds exactly one burst-<element> per id in ELEMENTS', () => {
+  for (const el of ELEMENTS) expect(BURSTS[`burst-${el}`], el).toBeDefined();
+  expect(Object.keys(BURSTS)).toHaveLength(ELEMENTS.length);
 });
 
 test('BURSTS holds the built bursts in the library contract, merged into EFFECTS', () => {
@@ -294,5 +299,68 @@ describe('each new burst reads as its element', () => {
     const specs = emitsOf('burst-spirit');
     const rising = specs.filter((s) => s.kind === KIND.SPIRAL && s.shape === SHAPE.SMOKE && s.gravity > 0);
     expect(rising.reduce((n, s) => n + s.count, 0)).toBeGreaterThan(20);
+  });
+  const n = (specs, f) => specs.filter(f).reduce((m, s) => m + s.count, 0);
+  const red = (hex) => {
+    const c = new THREE.Color(hex);
+    return c.r > 2 * c.g && c.r > 2 * c.b;
+  };
+  test('bleed: red droplets arcing out that land, splats lying still on the table, no smoke', () => {
+    const specs = emitsOf('burst-bleed');
+    const drops = specs.filter((s) => s.floor !== undefined && s.speed > 0 && s.gravity < 0 && s.dir?.y > 0 && red(s.color));
+    expect(n(drops, () => true)).toBeGreaterThan(40);
+    // A splat: born on the table, still, red, outliving the spray.
+    const splats = specs.filter((s) => !(s.speed > 0) && s.origin.y < 0.15 && red(s.color) && s.life >= 0.6);
+    expect(n(splats, () => true)).toBeGreaterThan(10);
+    expect(specs.some((s) => s.kind === KIND.SMOKE)).toBe(false);
+  });
+  test('slashing: two crossed silver arcs over the die (ribbons), gone by about 0.6 s', () => {
+    const mod = BURSTS['burst-slashing'];
+    const ctx = ctxFor(mod);
+    const ribbons = () => {
+      const out = [];
+      ctx.scene.traverse((o) => o.geometry?.getAttribute?.('aSide') && o.visible && o.geometry.drawRange.count > 0 && o.material.uniforms.uAlpha.value > 0.01 && out.push(o));
+      return out;
+    };
+    const h = mod.start(ctx);
+    h.update(0);
+    for (let t = 16; t <= 160; t += 16) h.update(t);
+    const lit = ribbons();
+    expect(lit.length).toBeGreaterThanOrEqual(2);
+    // The arcs cross: their lines run in clearly different directions over the table.
+    const dirs = new Set();
+    ctx.scene.traverse((o) => {
+      const p = o.geometry?.getAttribute?.('aSide') && o.geometry.getAttribute('position');
+      if (!p || o.geometry.drawRange.count === 0) return;
+      const n0 = 0;
+      const n1 = o.geometry.drawRange.count > 6 ? 4 : 2;
+      dirs.add(Math.round((Math.atan2(p.getZ(n1) - p.getZ(n0), p.getX(n1) - p.getX(n0)) * 4) / Math.PI));
+    });
+    expect(dirs.size).toBeGreaterThanOrEqual(2);
+    for (let t = 176; t <= 620; t += 16) h.update(t);
+    expect(ribbons()).toEqual([]);
+    for (let t = 636; h.update(t); t += 16);
+    h.stop();
+    ctx.particles.dispose();
+    const specs = emitsOf('burst-slashing');
+    expect(specs.some((s) => s.shape === SHAPE.RING)).toBe(false);
+  });
+  test('piercing: a ring of needle streaks thrust out evenly, flat and straight', () => {
+    const specs = emitsOf('burst-piercing');
+    const needles = specs.filter((s) => s.kind === KIND.STREAK && s.stretch >= 3 && s.speed > 0 && !(s.gravity < 0) && Math.abs(s.dir.y) < 0.15);
+    expect(n(needles, () => true)).toBeGreaterThanOrEqual(24);
+    // Evenly round the die: every 45-degree sector holds needles.
+    const sectors = new Set(needles.map((s) => Math.floor(((Math.atan2(s.dir.z, s.dir.x) + Math.PI) / (2 * Math.PI)) * 8) % 8));
+    expect(sectors.size).toBe(8);
+    expect(specs.some((s) => s.kind === KIND.SPIRAL)).toBe(false);
+  });
+  test('bludgeoning: a ring of dust rolling out low, grit thrown out that falls, no gold sound ring', () => {
+    const specs = emitsOf('burst-bludgeoning');
+    const dust = specs.filter((s) => s.kind === KIND.SMOKE && s.blend === 'normal' && s.origin.y < 0.5 && Math.abs(s.dir.y) < 0.3);
+    expect(n(dust, () => true)).toBeGreaterThan(20);
+    const grit = specs.filter((s) => s.kind === KIND.SHARD && s.floor !== undefined && s.gravity < 0);
+    expect(n(grit, () => true)).toBeGreaterThan(30);
+    // A distinct impact: heavier than the shockwave's twelve faint puffs.
+    expect(Math.max(...dust.map((s) => s.alpha ?? 1))).toBeGreaterThan(0.35);
   });
 });

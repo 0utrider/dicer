@@ -1459,6 +1459,7 @@ function forceSphere(ctx, scope) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), material);
   mesh.position.set(ctx.position.x, DIE_Y, ctx.position.z);
   mesh.renderOrder = 3;
+  mesh.visible = false; // shown by forceFull's first frame (nothing drawn before it is sized)
   scope.add(mesh);
   return { mesh, u: material.uniforms };
 }
@@ -1496,6 +1497,7 @@ function forceFull(ctx) {
       if (e < FORCE_POP) {
         // The sphere snaps up round the die and swells, brightening to a white flash as it bursts.
         const t = e / FORCE_POP;
+        sphere.mesh.visible = true;
         sphere.mesh.scale.setScalar(R * grow * (0.9 + 0.8 * easeOut(t)));
         sphere.u.uAlpha.value = Math.min(ALPHA_CAP, 1.4 * bright * smooth(clamp01(e / 70)));
         sphere.u.uFlash.value = smooth(clamp01((e - FORCE_POP + 70) / 70));
@@ -1624,7 +1626,7 @@ function mentalFull(ctx) {
         waved++;
       }
       // Pink motes curling round the die after.
-      const wantM = Math.round(MOTES * clamp01((e - 400) / (0.4 * D)));
+      const wantM = Math.round(MOTES * clamp01((e - 400) / Math.max(1, D - 900 - 400)));
       if (wantM > curled) {
         fling(ctx, now, wantM - curled, {
           R,
@@ -1720,7 +1722,7 @@ function spiritFull(ctx) {
         waved++;
       }
       // More wisps drift up off the table round the die after.
-      const wantD = Math.round(DRIFT * clamp01((e - 450) / (0.4 * D)));
+      const wantD = Math.round(DRIFT * clamp01((e - 450) / Math.max(1, D - 1000 - 450)));
       if (wantD > drifted) {
         fling(ctx, now, wantD - drifted, {
           R,
@@ -1747,6 +1749,428 @@ function spiritFull(ctx) {
     () => scope.dispose(),
   );
   return together(run, glow);
+}
+
+// --- bleed -------------------------------------------------------------------------------------
+
+/** Bleed's splats land on the table between these times (ms), as the drops come down. */
+const BLEED_SPLATS = [260, 620];
+
+/**
+ * Blood spray: a short crimson flash, red droplets thrown up and out of the die that arc down and
+ * lie on the table (deep red beads in normal blend, so they read on a light map, with fewer lit
+ * ones haloed for a dark one), a fast fine spray of thin red streaks, and splats: dark red spots
+ * that spread flat on the table round the die where the drops come down, and stay a while. Blood
+ * does not glow: no smoke (lava), no flame (fire); a faint dark-red floor glow only.
+ */
+function bleedFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const h = halo(ctx, scope, { core: '#ffd8d8', color: '#e01a2a', deep: '#5a0008', rays: 0, shade: 0.55 });
+  const halo1 = bloom(h, { grow, reach: 6.5, gone: 600 });
+  const glow = glowOf(ctx, '#c00818', { radius: 3.2 * grow, peak: 0.7, ms: D });
+  const drop = { R, out: [0.7, 1.2], up: [0.5, 1.1], gravity: -13, floor: FLOOR_Y, kind: KIND.SPARK, shape: SHAPE.DOT };
+  let fired = false;
+  let splatted = 0;
+  const SPLATS = countFor(26, ctx);
+  const run = timed(
+    D,
+    (e, now) => {
+      halo1(e);
+      if (!fired) {
+        fired = true;
+        flash(ctx, now, { color: '#ffe8e8', colorEnd: '#e01a2a', size: 3.4 * R * k, life: 0.14 });
+        fling(ctx, now, countFor(48, ctx), {
+          ...drop,
+          speed: [5.5, 10],
+          life: 1.6,
+          color: '#c00a1c',
+          colorEnd: '#70040c',
+          size: 0.3 * R * k,
+          sizeEnd: 1.1,
+          blend: 'normal',
+          alpha: 0.95,
+        });
+        fling(ctx, now, countFor(34, ctx), {
+          ...drop,
+          speed: [6, 10.5],
+          life: 1.3,
+          color: '#ff4050',
+          colorEnd: '#c00818',
+          size: 0.24 * R * k,
+          sizeEnd: 0.8,
+          halo: 0.5,
+        });
+        // A fast fine spray: thin red streaks that arc down.
+        fling(ctx, now, countFor(26, ctx), {
+          R,
+          out: [0.8, 1],
+          up: [0.2, 0.7],
+          speed: [10, 14],
+          drag: 1.8,
+          gravity: -9,
+          life: 0.45,
+          color: '#e0202e',
+          colorEnd: '#5a0008',
+          size: 0.14 * k,
+          stretch: 0.6,
+          kind: KIND.STREAK,
+          blend: 'normal',
+          alpha: 0.9,
+        });
+      }
+      // Splats spread flat on the table where the drops come down (outside the die).
+      const [s0, s1] = BLEED_SPLATS;
+      const want = Math.round(SPLATS * clamp01((e - s0) / (s1 - s0)));
+      if (want > splatted) {
+        fling(ctx, now, want - splatted, {
+          R,
+          ring: [1.5, 4.2],
+          y: FLOOR_Y + 0.03,
+          speed: [0, 0],
+          gravity: 0,
+          life: 0.9,
+          color: '#c0101e',
+          colorEnd: '#80060f',
+          size: 0.2 * R * k,
+          sizeEnd: 2.4,
+          kind: KIND.SPARK,
+          shape: SHAPE.DOT,
+          blend: 'normal',
+          alpha: 0.95,
+        });
+        splatted = want;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, glow);
+}
+
+// --- slashing ----------------------------------------------------------------------------------
+
+/** Each slash: its sweep starts at `at` ms; its bearing (rad) across the table; it is gone by SLASH_GONE. */
+const SLASHES = [
+  { at: 0, turn: Math.PI / 4 },
+  { at: 90, turn: -Math.PI / 4 },
+];
+const SLASH_SWEEP = 120; // the blade's head runs the arc in this long
+const SLASH_TAIL = 300; // the tail follows it, so the arc is wiped away from its start
+const SLASH_GONE = 520;
+const SLASH_POINTS = 24;
+const slashTaper = (t) => Math.sin(Math.PI * clamp01(t)) ** 0.6;
+
+/**
+ * Slash: two crossed silver arcs flash over the die, one after the other (an X): each is a bowed
+ * blade stroke swept across from end to end (a bright white core over a cool silver glow, with a
+ * dark steel shadow under it so it reads on a light map) that is wiped away behind its head and
+ * gone by about 0.5 s. Silver sparks fly off each stroke and a few steel glints hang after. No
+ * ring: it cuts, where piercing thrusts out round the die.
+ */
+function slashingFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const kw = Math.min(k, 1.2);
+  const { x: cx, z: cz } = ctx.position;
+  const y = DIE_TOP + 0.35;
+  const half = 2.6 * R * grow; // half the arc's chord
+  const bow = 0.55 * R * grow;
+  const arcs = SLASHES.map(({ at, turn }) => {
+    const ux = Math.cos(turn);
+    const uz = Math.sin(turn);
+    const pts = [];
+    for (let i = 0; i < SLASH_POINTS; i++) {
+      const t = i / (SLASH_POINTS - 1);
+      const s = 2 * t - 1;
+      const b = bow * (1 - s * s); // bowed out to one side
+      pts.push({ x: cx + ux * half * s - uz * b, y: y + 0.25 * (1 - s * s), z: cz + uz * half * s + ux * b });
+    }
+    const ribbon = (widthPx, core, glowK, color) => {
+      const r = createRibbon({ maxPoints: SLASH_POINTS, widthPx, color: C(color), taper: slashTaper, core, glow: glowK });
+      r.alpha = 0;
+      scope.add(r.mesh);
+      return r;
+    };
+    const shadow = ribbon(30 * kw, 0.05, 0.7, '#ffffff');
+    Object.assign(shadow.mesh.material, SHADOW_BLEND);
+    shadow.mesh.renderOrder = 2;
+    return { at, pts, ux, uz, sparked: false, parts: [shadow, ribbon(34 * kw, 0.05, 0.45, '#9ab4d8'), ribbon(9 * kw, 0.7, 0.5, '#f4f8ff')], levels: [0.55, 1.1, 1.3] };
+  });
+  const h = halo(ctx, scope, { core: '#ffffff', color: '#c8d4e8', deep: '#4a5668', rays: 4, shade: 0.5 });
+  const halo1 = bloom(h, { grow, reach: 5.5, gone: 480 });
+  const glow = glowOf(ctx, '#b8c8e0', { radius: 3 * grow, peak: 0.6, ms: 0.6 * D });
+  let fired = false;
+  let glinted = 0;
+  const GLINTS = countFor(14, ctx);
+  const run = timed(
+    D,
+    (e, now) => {
+      halo1(e);
+      if (!fired) {
+        fired = true;
+        flash(ctx, now, { color: '#ffffff', colorEnd: '#c8d4e8', size: 3.2 * R * k, life: 0.12 });
+      }
+      for (const a of arcs) {
+        const t = e - a.at;
+        if (t < 0) continue;
+        if (t >= SLASH_GONE) {
+          for (const r of a.parts) r.mesh.visible = false;
+          continue;
+        }
+        const head = Math.ceil(SLASH_POINTS * easeOut(clamp01(t / SLASH_SWEEP)));
+        const tail = Math.floor((SLASH_POINTS - 2) * smooth(clamp01((t - 60) / SLASH_TAIL)));
+        const line = a.pts.slice(tail, Math.max(tail + 2, head));
+        const level = brightOf(ctx) * clamp01(t / 30) * (1 - smooth(clamp01((t - 160) / (SLASH_GONE - 160))));
+        a.parts.forEach((r, i) => {
+          r.setPolylines([line]);
+          r.alpha = Math.min(ALPHA_CAP, a.levels[i] * level);
+        });
+        if (!a.sparked) {
+          a.sparked = true;
+          // Sparks fly off the stroke, out and along it (its sweep runs from its first point on).
+          for (let i = 0; i < 2; i++) {
+            const silver = i === 0;
+            const n = countFor(silver ? 30 : 16, ctx);
+            for (let j = 0; j < n; j++) {
+              const p = a.pts[Math.floor(Math.random() * SLASH_POINTS)];
+              const ox = p.x - cx;
+              const oz = p.z - cz;
+              const d = Math.hypot(ox, oz) || 1;
+              ctx.particles.emit({
+                count: 1,
+                origin: p,
+                dir: { x: (ox / d) * 0.8 + a.ux * 0.6, y: rand(0.1, 0.5), z: (oz / d) * 0.8 + a.uz * 0.6 },
+                speed: rand(5, 10) * R,
+                spread: 0.3,
+                drag: 2.4,
+                gravity: -6,
+                life: silver ? 0.45 : 0.4,
+                color: silver ? '#ffffff' : '#4a5462',
+                colorEnd: silver ? '#8aa0c0' : '#2a3038',
+                size: (silver ? 0.16 : 0.13) * k,
+                stretch: 0.5,
+                kind: KIND.STREAK,
+                ...(silver ? { halo: 0.6 } : { blend: 'normal', alpha: 0.9 }),
+                now,
+              });
+            }
+          }
+        }
+      }
+      // A few steel glints hang round the die after the cuts.
+      const want = Math.round(GLINTS * clamp01((e - 200) / 400));
+      if (want > glinted) {
+        fling(ctx, now, want - glinted, {
+          R,
+          ring: [1.4, 3],
+          y: 0.5,
+          out: [0.1, 0.3],
+          up: [0.1, 0.3],
+          speed: [0.2, 0.6],
+          gravity: 0,
+          life: 0.5,
+          color: '#ffffff',
+          colorEnd: '#9ab4d8',
+          size: 0.45 * k,
+          spin: 2,
+          kind: KIND.SPARK,
+          shape: SHAPE.GLINT,
+          halo: 0.7,
+        });
+        glinted = want;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, glow);
+}
+
+// --- piercing ----------------------------------------------------------------------------------
+
+/** Piercing's thrusts (ms): each sends out a ring of needles, turned half a step from the last. */
+const PIERCE_WAVES = [0, 110];
+const PIERCE_NEEDLES = 16; // per ring (at full count)
+
+/**
+ * Pierce: a sharp white flash and needles thrust out from the die in an even ring, flat and
+ * straight (long thin white streaks, dark steel ones in normal blend beside them for a light map),
+ * a second ring turned half a step thrusting out after it, a thin crisp white ring running out on
+ * the table and small glints where the needles stop. Straight and even, where slashing's arcs are
+ * curved and sonic's sound lines are warm and scattered.
+ */
+function piercingFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const bright = brightOf(ctx);
+  const h = halo(ctx, scope, { core: '#ffffff', color: '#dce6ff', deep: '#56627a', rays: 16, shade: 0.5 });
+  const halo1 = bloom(h, { grow, reach: 5.5, gone: 460 });
+  const ring = floorRing(ctx, scope, { hot: '#ffffff', color: '#e4ecff', deep: '#6a7690', size: 10 * grow, ms: 0.32 * D, level: 1.1 * bright, edge: 0.006, noise: 0.05, band: 0.2 });
+  const glow = glowOf(ctx, '#d0dcff', { radius: 3 * grow, peak: 0.6, ms: 0.6 * D });
+  const N = Math.max(8, countFor(PIERCE_NEEDLES, ctx));
+  let waved = 0;
+  let glinted = 0;
+  const GLINTS = countFor(16, ctx);
+  const thrust = (now, wave) => {
+    const turn = (wave * Math.PI) / N + Math.random() * 0.1;
+    const y = DIE_Y + (wave === 0 ? 0.1 : 0.45);
+    for (let i = 0; i < N; i++) {
+      const a = turn + (i / N) * TAU;
+      const ux = Math.cos(a);
+      const uz = Math.sin(a);
+      const base = { count: 1, origin: { x: ctx.position.x + ux * 0.4 * R, y, z: ctx.position.z + uz * 0.4 * R }, dir: { x: ux, y: 0, z: uz }, spread: 0.01, gravity: 0, kind: KIND.STREAK, now };
+      ctx.particles.emit({ ...base, speed: rand(15, 19) * R, drag: 3.6, life: 0.42, color: '#ffffff', colorEnd: '#b8c8ff', size: 0.16 * k, stretch: 4.5, halo: 0.6 });
+      ctx.particles.emit({ ...base, speed: rand(14, 17) * R, drag: 3.6, life: 0.4, color: '#3a4250', colorEnd: '#1e2430', size: 0.12 * k, stretch: 4.5, blend: 'normal', alpha: 0.95 });
+    }
+  };
+  const run = timed(
+    D,
+    (e, now) => {
+      halo1(e);
+      ring(e);
+      while (waved < PIERCE_WAVES.length && e >= PIERCE_WAVES[waved]) {
+        if (waved === 0) flash(ctx, now, { color: '#ffffff', colorEnd: '#dce6ff', size: 3.2 * R * k, life: 0.1 });
+        thrust(now, waved);
+        waved++;
+      }
+      // Small glints where the needles stop, out round the die.
+      const want = Math.round(GLINTS * clamp01((e - 180) / 320));
+      if (want > glinted) {
+        fling(ctx, now, want - glinted, {
+          R,
+          ring: [3.2, 4.4],
+          y: 0.35,
+          speed: [0, 0],
+          gravity: 0,
+          life: 0.4,
+          color: '#ffffff',
+          colorEnd: '#b8c8ff',
+          size: 0.4 * k,
+          spin: 2,
+          kind: KIND.SPARK,
+          shape: SHAPE.GLINT,
+          halo: 0.8,
+        });
+        glinted = want;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, glow);
+}
+
+// --- bludgeoning -------------------------------------------------------------------------------
+
+/**
+ * Impact: a warm dusty flash and a short thump (a small screen shake), a dark crater pressed into
+ * the table round the die with a small hot glow in it, a thick ring of brown dust rolling out low
+ * over the table (heavy brown puffs, pale ones over them for a dark map), grit and stone chips
+ * thrown up and out that fall and skitter, and dust hanging round the crater after. Brown, heavy
+ * and dark where the plain shockwave is a pale gold ring with a few faint puffs.
+ */
+function bludgeoningFull(ctx) {
+  const scope = scoped(ctx.scene);
+  const D = ctx.duration;
+  const R = dieRadius(ctx);
+  const k = sizeK(ctx);
+  const grow = growOf(ctx);
+  const bright = brightOf(ctx);
+  const h = halo(ctx, scope, { core: '#fff2dc', color: '#d8a868', deep: '#6a4a28', rays: 0, shade: 0.55 });
+  const halo1 = bloom(h, { grow, reach: 5.5, gone: 460 });
+  // The crater: a soft dark disc pressed into the table round the die (white "over" in
+  // SHADOW_BLEND darkens what is under it), held, then fading out; it does not run out like a ring.
+  const pit = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), quadMaterial(BURST_FRAGMENT, C('#ffffff'), BURST_UNIFORMS));
+  Object.assign(pit.material, SHADOW_BLEND);
+  pit.rotation.x = -Math.PI / 2;
+  pit.position.set(ctx.position.x, FLOOR_Y, ctx.position.z);
+  pit.renderOrder = 1;
+  scope.add(pit);
+  const crater = (e) => {
+    pit.scale.setScalar(2 * grow * R * (1.4 + 0.9 * easeOut(clamp01(e / 90))));
+    pit.material.uniforms.uAlpha.value = 0.7 * bright * smooth(clamp01(e / 60)) * (1 - smooth(clamp01((e - 0.35 * D) / (0.5 * D))));
+  };
+  const heat = glowOf(ctx, '#ff8a2a', { radius: 1.7 * grow, peak: 1.1, ms: 0.7 * D, curve: (e) => (1 - clamp01(e / (0.7 * D))) ** 1.5 });
+  const dustGlow = glowOf(ctx, '#c89a60', { radius: 3.6 * grow, peak: 0.45, ms: 0.6 * D });
+  const grit = { R, out: [0.7, 1], up: [0.4, 1.1], gravity: -15, floor: FLOOR_Y, spin: 10, kind: KIND.SHARD, shape: SHAPE.SHARD };
+  let fired = false;
+  let hung = 0;
+  const HANG = countFor(10, ctx);
+  const run = timed(
+    D,
+    (e, now) => {
+      halo1(e);
+      crater(e);
+      if (!fired) {
+        fired = true;
+        ctx.shake?.(0.5 * bright, 220);
+        flash(ctx, now, { color: '#fff6e8', colorEnd: '#d8a868', size: 3.2 * R * k, life: 0.12 });
+        // The dust ring: puffs out from the die's foot evenly round it, low and fast, slowed by drag.
+        const n = countFor(26, ctx);
+        const turn = Math.random() * TAU;
+        for (let i = 0; i < n; i++) {
+          const a = turn + (i / n) * TAU + rand(-0.08, 0.08);
+          const ux = Math.cos(a);
+          const uz = Math.sin(a);
+          const base = { count: 1, origin: { x: ctx.position.x + ux * 0.9 * R, y: 0.15, z: ctx.position.z + uz * 0.9 * R }, dir: { x: ux, y: 0.06, z: uz }, spread: 0.15, gravity: 0.1, kind: KIND.SMOKE, shape: SHAPE.SMOKE, blend: 'normal', now };
+          ctx.particles.emit({ ...base, speed: rand(7, 9) * R, drag: 2.6, life: 1.3, color: '#8a7058', colorEnd: '#5a4838', size: 0.8 * R * k, sizeEnd: 3, spin: 0.7, alpha: 0.75 });
+          ctx.particles.emit({ ...base, speed: rand(5.5, 7) * R, drag: 2.4, life: 1.1, color: '#e8d8bc', colorEnd: '#a8927a', size: 0.6 * R * k, sizeEnd: 2.6, spin: 0.6, alpha: 0.55 });
+        }
+        // Grit and chips thrown up and out, falling to the table: dark stone, pale lit chips.
+        fling(ctx, now, countFor(40, ctx), { ...grit, speed: [6, 10], life: 1.2, color: '#5a4a38', colorEnd: '#2e2418', size: 0.24 * R * k, blend: 'normal' });
+        fling(ctx, now, countFor(20, ctx), { ...grit, speed: [6.5, 10.5], life: 1.0, color: '#f0dcc0', colorEnd: '#8a7050', size: 0.18 * R * k, halo: 0.3 });
+        // Fine dust motes kicked up, catching the light.
+        fling(ctx, now, countFor(24, ctx), {
+          R,
+          out: [0.6, 1],
+          up: [0.3, 0.9],
+          speed: [5, 9],
+          drag: 2.4,
+          gravity: -3,
+          life: 0.7,
+          color: '#f4e6cc',
+          colorEnd: '#8a6a48',
+          size: 0.12 * k,
+          kind: KIND.SPARK,
+          shape: SHAPE.DOT,
+          halo: 0.5,
+        });
+      }
+      // Dust hanging round the crater after, settling.
+      const want = Math.round(HANG * clamp01((e - 250) / 400));
+      if (want > hung) {
+        fling(ctx, now, want - hung, {
+          R,
+          ring: [1.6, 3.2],
+          y: 0.3,
+          out: [0.3, 0.6],
+          up: [0.1, 0.3],
+          speed: [0.3, 0.7],
+          gravity: -0.1,
+          life: 1.0,
+          color: '#a08a70',
+          colorEnd: '#6a5a48',
+          size: 0.7 * R * k,
+          sizeEnd: 2.4,
+          spin: 0.5,
+          kind: KIND.SMOKE,
+          shape: SHAPE.SMOKE,
+          blend: 'normal',
+          alpha: 0.45,
+        });
+        hung = want;
+      }
+    },
+    () => scope.dispose(),
+  );
+  return together(run, heat, dustGlow);
 }
 
 export const BURSTS = Object.freeze(
@@ -1823,6 +2247,30 @@ export const BURSTS = Object.freeze(
         duration: 1900,
         look: { core: '#f0ffff', color: '#8ff0ff', deep: '#1e7a9a', shade: 0.45 },
         full: spiritFull,
+      }),
+      burst('bleed', {
+        color: '#d0101e',
+        duration: 1600,
+        look: { core: '#ffd8d8', color: '#d0101e', deep: '#4a0006', shade: 0.55 },
+        full: bleedFull,
+      }),
+      burst('slashing', {
+        color: '#c8d4e8',
+        duration: 1200,
+        look: { core: '#ffffff', color: '#c8d4e8', deep: '#4a5668', shade: 0.5 },
+        full: slashingFull,
+      }),
+      burst('piercing', {
+        color: '#dce6ff',
+        duration: 1200,
+        look: { core: '#ffffff', color: '#dce6ff', deep: '#56627a', shade: 0.5 },
+        full: piercingFull,
+      }),
+      burst('bludgeoning', {
+        color: '#c89a60',
+        duration: 1700,
+        look: { core: '#fff2dc', color: '#c89a60', deep: '#5a3e22', shade: 0.55 },
+        full: bludgeoningFull,
       }),
     ].map((m) => [m.id, m]),
   ),

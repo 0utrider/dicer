@@ -1446,13 +1446,8 @@ test('shader quads add colour and alpha with alpha = brightness, so no black box
   }
 });
 
-// Crit bursts listed (editors offer them) whose module a later round-3 task builds; until then the
-// layer skips them like any unknown id. Shrinks to [] as the bursts land.
-const PENDING_BURSTS = ['bleed', 'slashing', 'piercing', 'bludgeoning'].map((e) => `burst-${e}`);
-
-test('EFFECT_IDS lists exactly the library catalogue ids (plus the pending bursts)', () => {
-  expect([...EFFECT_IDS].sort()).toEqual([...Object.keys(EFFECTS), ...PENDING_BURSTS].sort());
-  for (const id of PENDING_BURSTS) expect(EFFECTS[id], id).toBeUndefined();
+test('EFFECT_IDS lists exactly the library catalogue ids', () => {
+  expect([...EFFECT_IDS].sort()).toEqual(Object.keys(EFFECTS).sort());
 });
 
 test('floorGlow adds one floor mesh coloured and scaled by ctx and removes it at ms', async () => {
