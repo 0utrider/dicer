@@ -1,0 +1,113 @@
+import { spotFor, REST_SPOTS, atEdge } from '../../src/pet/chunk/rest-spots.js';
+import { SPACING, EDGE_GAP, BODY, PET_HEIGHT } from '../../src/pet/chunk/resting.js';
+
+const H = PET_HEIGHT;
+const PX = 48; // px per die unit
+// A 1280 x 800 table area (the window less the sidebar), in die units from its centre.
+const STAGE = { cx: 0, cz: 0, halfWidth: 640 / PX, halfDepth: 400 / PX };
+/** A page px rectangle on that stage, in die units from its centre (as the layer's uiRects()). */
+const rect = (left, top, width, height) => ({
+  x0: (left - 640) / PX,
+  x1: (left + width - 640) / PX,
+  z0: (top - 400) / PX,
+  z1: (top + height - 400) / PX,
+});
+// Foundry v14's UI over the board: scene controls, navigation, players list, macro bar.
+const UI = [rect(0, 0, 60, 800), rect(70, 10, 520, 40), rect(10, 640, 230, 150), rect(380, 720, 520, 70)];
+const CORNERS = ['bottomLeft', 'bottomRight', 'topLeft', 'topRight', 'bottomCentre'];
+
+/** Signed distance from (x, z) to the rectangle: negative inside. */
+const away = (p, r) => {
+  const ox = Math.max(r.x0 - p.x, p.x - r.x1);
+  const oz = Math.max(r.z0 - p.z, p.z - r.z1);
+  return ox > 0 || oz > 0 ? Math.hypot(Math.max(ox, 0), Math.max(oz, 0)) : Math.max(ox, oz);
+};
+
+test("the choices are the setting's, 'dice' first", () => {
+  expect(REST_SPOTS).toEqual(['dice', ...CORNERS]);
+  expect(REST_SPOTS.filter(atEdge)).toEqual(CORNERS);
+  expect(atEdge(undefined) || atEdge('toString')).toBe(false);
+});
+
+test("'dice' (and anything unknown) gives null: the layer uses the roll-area ring", () => {
+  for (const slot of [0, 1, 2]) {
+    expect(spotFor('dice', slot, STAGE, H, UI)).toBeNull();
+    expect(spotFor('nowhere', slot, STAGE, H, UI)).toBeNull();
+    expect(spotFor(undefined, slot, STAGE, H, UI)).toBeNull();
+  }
+  expect(spotFor('bottomLeft', 0, null, H, UI)).toBeNull(); // no stage yet
+});
+
+describe.each([[[]], [UI]])('with UI rects %#', (ui) => {
+  test.each(CORNERS)('%s: three distinct slots inside the table, spaced, off the UI', (choice) => {
+    const slots = [0, 1, 2].map((k) => spotFor(choice, k, STAGE, H, ui));
+    const m = EDGE_GAP * H;
+    for (const s of slots) {
+      expect(Number.isFinite(s.x) && Number.isFinite(s.z)).toBe(true);
+      expect(Math.abs(s.x - STAGE.cx)).toBeLessThanOrEqual(STAGE.halfWidth - m + 1e-9);
+      expect(Math.abs(s.z - STAGE.cz)).toBeLessThanOrEqual(STAGE.halfDepth - m + 1e-9);
+      for (const r of ui) expect(away(s, r)).toBeGreaterThanOrEqual(BODY * H - 1e-9);
+    }
+    for (let i = 0; i < 3; i++)
+      for (let j = i + 1; j < 3; j++)
+        expect(Math.hypot(slots[i].x - slots[j].x, slots[i].z - slots[j].z)).toBeGreaterThanOrEqual(SPACING * H - 1e-9);
+    // side by side along the edge: one row
+    expect(slots[1].z).toBeCloseTo(slots[0].z, 9);
+    expect(slots[2].z).toBeCloseTo(slots[0].z, 9);
+  });
+});
+
+test('each spot is in its own part of the table; the first slot nearest the corner', () => {
+  const s = (c, k = 0) => spotFor(c, k, STAGE, H, []);
+  expect(s('bottomLeft').x).toBeLessThan(0);
+  expect(s('bottomLeft').z).toBeGreaterThan(0);
+  expect(s('bottomRight').x).toBeGreaterThan(0);
+  expect(s('bottomRight').z).toBeGreaterThan(0);
+  expect(s('topLeft').x).toBeLessThan(0);
+  expect(s('topLeft').z).toBeLessThan(0);
+  expect(s('topRight').x).toBeGreaterThan(0);
+  expect(s('topRight').z).toBeLessThan(0);
+  expect(s('bottomCentre').z).toBeGreaterThan(0);
+  // the row goes in from the corner
+  expect(s('bottomLeft', 1).x).toBeGreaterThan(s('bottomLeft', 0).x);
+  expect(s('bottomRight', 1).x).toBeLessThan(s('bottomRight', 0).x);
+  // with nothing in the way the corner slot sits EDGE_GAP x height in from both edges
+  expect(s('topRight').x).toBeCloseTo(STAGE.halfWidth - EDGE_GAP * H, 9);
+  expect(s('topRight').z).toBeCloseTo(-STAGE.halfDepth + EDGE_GAP * H, 9);
+});
+
+test('bottomCentre slots are centred on x: the first in the middle, the others either side', () => {
+  for (const ui of [[], UI]) {
+    const [a, b, c] = [0, 1, 2].map((k) => spotFor('bottomCentre', k, STAGE, H, ui));
+    expect(a.x).toBeCloseTo(STAGE.cx, 9);
+    expect(b.x + c.x).toBeCloseTo(2 * STAGE.cx, 9);
+    expect(Math.abs(b.x - a.x)).toBeCloseTo(SPACING * H, 9);
+  }
+  // an off-centre stage: centred on its middle
+  const off = { ...STAGE, cx: 3 };
+  expect(spotFor('bottomCentre', 0, off, H, []).x).toBeCloseTo(3, 9);
+});
+
+test('the macro bar and players list push the bottom rows up or in, never under them', () => {
+  const free = spotFor('bottomCentre', 0, STAGE, H, []);
+  const ui = spotFor('bottomCentre', 0, STAGE, H, UI);
+  expect(ui.z).toBeLessThan(free.z); // above the macro bar
+  const bl = spotFor('bottomLeft', 0, STAGE, H, UI);
+  const blFree = spotFor('bottomLeft', 0, STAGE, H, []);
+  expect(bl.x !== blFree.x || bl.z !== blFree.z).toBe(true);
+});
+
+test('the same inputs give the same spot (no randomness)', () => {
+  for (const c of CORNERS) expect(spotFor(c, 1, STAGE, H, UI)).toEqual(spotFor(c, 1, STAGE, H, UI));
+});
+
+test('a stage too small for the row still gives finite spots inside it, never a throw', () => {
+  const tiny = { cx: 0, cz: 0, halfWidth: 2, halfDepth: 2 };
+  for (const c of CORNERS)
+    for (const k of [0, 1, 2]) {
+      const s = spotFor(c, k, tiny, H, [{ x0: -5, x1: 5, z0: -5, z1: 5 }]);
+      expect(Number.isFinite(s.x) && Number.isFinite(s.z)).toBe(true);
+      expect(Math.abs(s.x)).toBeLessThanOrEqual(2);
+      expect(Math.abs(s.z)).toBeLessThanOrEqual(2);
+    }
+});

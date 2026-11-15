@@ -5,6 +5,8 @@ import { getShape } from '../src/core/dice-shapes.js';
 import { buildDieGeometry } from '../src/core/chamfer.js';
 import { readTopFace, rotationToShow, faceForValue } from '../src/core/face-reader.js';
 import { createPetLayer } from '../src/pet/chunk/pets.js';
+import { REST_HOP_MS } from '../src/pet/chunk/timeline.js';
+import { REST_SPOTS } from '../src/pet/chunk/rest-spots.js';
 import { DIE_SIZE_PX } from '../src/throw/dice-box.js';
 
 // Owner review page for the dice pets (Task 4). Every cell is the REAL pet layer (placement,
@@ -194,11 +196,11 @@ const COLUMNS = [
 ];
 const KIND_COLOR = { mimic: '#c0392b', slime: '#2e9e5b', dragonling: '#7b4bc4' };
 
-// --- the dodge (pet dodge Task 2) -------------------------------------------------------------
-// The real layer: the pet rests after a roll (petStay Always), the cursor comes up beside it on
-// the table side (a pointermove through the layer's own listener), and the clock runs into the
-// move. Seeded, so every frame of a strip takes the same path.
-const MOVE_MS = { mimic: 450, slime: 450, dragonling: 600 };
+// --- the move (a hand replay's alignFor; the cursor dodge is gone) ----------------------------
+// The real layer: the pet rests after a roll (petStay Always), a hand replay puts it 4.5 die
+// units along (alignFor), and the clock runs into the move. Seeded, so every frame of a strip
+// takes the same path.
+const MOVE_MS = REST_HOP_MS;
 function seeded(seed) {
   let a = seed >>> 0;
   return () => {
@@ -211,16 +213,13 @@ function seeded(seed) {
 }
 function stageMove({ kind, color, t = 0.5 }) {
   clock = 0;
-  let onMove = null;
-  const win = { addEventListener: (type, fn) => type === 'pointermove' && (onMove = fn), removeEventListener() {} };
   const layer = createPetLayer({
     scene,
     getSetting: (k) => (k === 'petStay' ? -1 : undefined),
     playSound: () => {},
     now: () => clock,
     random: seeded(7),
-    win,
-    activeRolls: () => 0,
+    activeRolls: () => 1, // the replay flies: the pet stays where it put it
   });
   const px = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
   layer.areaChanged({ cx: 0, cz: 0, ...STAGE, rect: { left: 0, top: 0, width: px.w, height: px.h } });
@@ -239,20 +238,17 @@ function stageMove({ kind, color, t = 0.5 }) {
   for (let ms = 1000; ms <= 4000; ms += 16) at(ms);
   const pet = scene.children.find((c) => c.userData.dicerPet);
   const from = { x: pet.position.x, z: pet.position.z };
-  // the cursor comes up on the pet's table side
-  const len = Math.hypot(from.x, from.z) || 1;
-  const cx = from.x - (from.x / len) * 0.8;
-  const cz = from.z - (from.z / len) * 0.8;
-  onMove({ clientX: px.w / 2 + cx * DIE_SIZE_PX, clientY: px.h / 2 + cz * DIE_SIZE_PX, target: null });
+  // the thrower's layout has it 4.5 units along, toward the middle
+  const to = { x: from.x - Math.sign(from.x || 1) * 4.5, z: from.z };
   const t0 = 4016;
+  clock = t0;
+  layer.alignFor([{ id: 'u', x: to.x, z: to.z, r: 0.9, h: 1.5 }], AREA, () => 100);
   at(t0);
-  const ob = layer.obstaclesFor({ spec: null, edge: 0, area: AREA }).find((o) => o.id === 'u');
-  const to = { x: ob.x, z: ob.z };
-  if (t > 0) at(t0 + t * MOVE_MS[kind]);
+  if (t > 0) at(t0 + t * MOVE_MS);
   return { layer, pet, from, to };
 }
 
-/** A fixed 3/4 view across the dodge's path, from its side, aimed at the pet's spot on the floor. */
+/** A fixed 3/4 view across the move's path, from its side, aimed at the pet's spot on the floor. */
 function moveClose(pet, w, h, bg, from, to, dist = 7.5) {
   scene.background = new THREE.Color(bg);
   d20.visible = false;
@@ -359,7 +355,7 @@ const STRIP_ROWS = [
   // the game camera at the true 48 px/die, centred on the pet
   { phase: 'react', reaction: 'crit', view: 'game' },
   { phase: 'react', reaction: 'fumble', view: 'game' },
-  // the dodge out of the cursor's way: a side view across its path, then the game camera on the pet
+  // a replay's move (alignFor): a side view across its path, then the game camera on the pet
   { phase: 'move' },
   { phase: 'move', view: 'game' },
 ];
@@ -560,8 +556,114 @@ function splat(kinds = KINDS) {
   return c.toDataURL('image/png');
 }
 
+// --- where pets rest (petRestSpot, pet interactions Task 2) ----------------------------------
+// The real layer on a 1280 x 800 table (the window less the sidebar, which sits beside it) with
+// Foundry-like UI drawn over the board: the scene controls, the scene navigation, the players
+// list and the macro bar, fed to the layer through its document seam (uiRects). Three pets roll
+// one after another in a roll area in the middle and come to rest at each choice.
+const REST_PX = { w: 1280, h: 800 };
+const REST_STAGE = {
+  cx: 0,
+  cz: 0,
+  halfWidth: REST_PX.w / 2 / DIE_SIZE_PX,
+  halfDepth: REST_PX.h / 2 / DIE_SIZE_PX,
+  rect: { left: 0, top: 0, width: REST_PX.w, height: REST_PX.h },
+};
+const REST_UI = {
+  'ui-left': { left: 0, top: 0, width: 60, height: 800, label: 'controls' },
+  navigation: { left: 70, top: 10, width: 520, height: 40, label: 'navigation' },
+  players: { left: 10, top: 640, width: 230, height: 150, label: 'players' },
+  hotbar: { left: 380, top: 720, width: 520, height: 70, label: 'macro bar' },
+};
+const restDoc = {
+  getElementById: (id) => (REST_UI[id] ? { getBoundingClientRect: () => REST_UI[id] } : null),
+};
+const REST_AREA = { cx: 0, cz: 0, halfWidth: 7, halfDepth: 4.5 };
+function stageRest(choice) {
+  clock = 0;
+  const layer = createPetLayer({
+    scene,
+    getSetting: (k) => (k === 'petStay' ? -1 : k === 'petRestSpot' ? choice : undefined),
+    playSound: () => {},
+    now: () => clock,
+    random: seeded(3),
+    doc: restDoc,
+    activeRolls: () => 0,
+  });
+  layer.areaChanged(REST_STAGE);
+  const at = (ms) => layer.update((clock = ms));
+  KINDS.forEach((kind, i) => {
+    const key = `k${i}`;
+    const t0 = clock;
+    layer.begin(key, {
+      spec: { userId: `u${i}`, kind, color: KIND_COLOR[kind], ghost: false },
+      edge: 3,
+      area: REST_AREA,
+      centre: () => ({ x: REST_AREA.cx, z: REST_AREA.cz }),
+    });
+    for (let ms = t0; ms <= t0 + 900; ms += 16) at(ms);
+    clock = t0 + 1000;
+    layer.landed(key, [{ type: 'd20', value: 7 }]);
+    layer.leave(key, 0);
+    layer.end(key);
+    for (let ms = t0 + 1000; ms <= t0 + 3000; ms += 16) at(ms);
+  });
+  return layer;
+}
+/** Six panels (each choice), the 1280 x 800 game view at half size with the UI outlined. */
+function restSpots() {
+  const SCALE = 0.5;
+  const PW = REST_PX.w * SCALE;
+  const PH = REST_PX.h * SCALE;
+  const GAP = 16;
+  const HEAD = 26;
+  const COLS = 3;
+  const rows = Math.ceil(REST_SPOTS.length / COLS);
+  const { c, g } = newSheet(GAP + COLS * (PW + GAP), rows * (HEAD + PH + GAP) + GAP);
+  api.fitArea(REST_STAGE);
+  d20.visible = false;
+  try {
+    REST_SPOTS.forEach((choice, i) => {
+      const x = GAP + (i % COLS) * (PW + GAP);
+      const y = GAP + Math.floor(i / COLS) * (HEAD + PH + GAP);
+      label(g, `${choice}${choice === 'dice' ? ' (default: the ring around the roll area)' : ''}`, x, y + 16, { size: 14 });
+      const layer = stageRest(choice);
+      try {
+        scene.background = new THREE.Color(BG.dark);
+        camera.clearViewOffset();
+        renderer.setSize(REST_PX.w, REST_PX.h, false);
+        renderer.render(scene, camera);
+        g.drawImage(renderer.domElement, x, y + HEAD, PW, PH);
+      } finally {
+        layer.dispose();
+      }
+      // Foundry's UI over the board, and the roll area the pets threw in
+      g.save();
+      g.lineWidth = 1.5;
+      for (const r of Object.values(REST_UI)) {
+        g.fillStyle = 'rgba(40, 44, 60, 0.55)';
+        g.strokeStyle = '#8fa3ff';
+        g.fillRect(x + r.left * SCALE, y + HEAD + r.top * SCALE, r.width * SCALE, r.height * SCALE);
+        g.strokeRect(x + r.left * SCALE, y + HEAD + r.top * SCALE, r.width * SCALE, r.height * SCALE);
+        label(g, r.label, x + (r.left + 4) * SCALE + 2, y + HEAD + (r.top + 4) * SCALE + 12, { size: 10, color: '#c9d2ff' });
+      }
+      const ax = x + (REST_PX.w / 2 + (REST_AREA.cx - REST_AREA.halfWidth) * DIE_SIZE_PX) * SCALE;
+      const ay = y + HEAD + (REST_PX.h / 2 + (REST_AREA.cz - REST_AREA.halfDepth) * DIE_SIZE_PX) * SCALE;
+      g.setLineDash([5, 4]);
+      g.strokeStyle = 'rgba(255, 220, 120, 0.6)';
+      g.strokeRect(ax, ay, REST_AREA.halfWidth * 2 * DIE_SIZE_PX * SCALE, REST_AREA.halfDepth * 2 * DIE_SIZE_PX * SCALE);
+      g.restore();
+      g.strokeStyle = '#555b66';
+      g.strokeRect(x - 0.5, y + HEAD - 0.5, PW + 1, PH + 1);
+    });
+  } finally {
+    api.fitArea(STAGE);
+  }
+  return c.toDataURL('image/png');
+}
+
 const show = (url) => (document.getElementById('sheet').src = url);
-const SHEETS = { grid, colours, strips, splat };
+const SHEETS = { grid, colours, strips, splat, restSpots };
 for (const b of document.querySelectorAll('[data-sheet]'))
   b.addEventListener('click', () => {
     try {
@@ -572,4 +674,4 @@ for (const b of document.querySelectorAll('[data-sheet]'))
   });
 show(grid());
 document.getElementById('status').textContent = 'ready';
-window.__pets = { grid, colours, strips, splat, moves: () => strips(KINDS, 'move'), errors, ready: true };
+window.__pets = { grid, colours, strips, splat, restSpots, moves: () => strips(KINDS, 'move'), errors, ready: true };

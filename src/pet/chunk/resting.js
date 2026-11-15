@@ -69,41 +69,28 @@ function slack(area, height, taken, x, z, avoid) {
  * 1.2 x height from every edge, in the 35-60% ring (RING_IN <= max(|x - cx| / halfWidth,
  * |z - cz| / halfDepth) <= RING_OUT), and at least 2 x height from each of `taken` ({x, z}: the other
  * pets and puddles), with the pet's body (BODY x height) off each of `avoid` ({x0, x1, z0, z1}:
- * Foundry's UI in die units), and, given `away` ({x, z, min}: the cursor a pet dodges), at least
- * `min` from (x, z), and, given `clear` ((p: {x, z}) => boolean: off a hand replay's die paths, R7),
- * where it is true. Seeded rejection sampling with `rand`: the first of 24 valid tries; if none
- * is, the valid one farthest from `away`, else (a crowded or tiny area) the candidate farthest
- * from breaking a rule (one `clear` refuses counts as worse than any other), never a throw.
+ * Foundry's UI in die units), and, given `clear` ((p: {x, z}) => boolean: off a hand replay's die
+ * paths, R7), where it is true. Seeded rejection sampling with `rand`: the first of 24 valid tries;
+ * if none is, (a crowded or tiny area) the candidate farthest from breaking a rule (one `clear`
+ * refuses counts as worse than any other), never a throw.
  */
-export function restSpot(area, height, taken, rand, avoid = [], away = null, clear = null) {
+export function restSpot(area, height, taken, rand, avoid = [], clear = null) {
   const ex = Math.max(0, Math.min(area.halfWidth - EDGE_GAP * height, RING_OUT * area.halfWidth));
   const ez = Math.max(0, Math.min(area.halfDepth - EDGE_GAP * height, RING_OUT * area.halfDepth));
   let best = null;
   let bestSlack = -Infinity;
-  let far = null;
-  let farD = -Infinity;
   for (let i = 0; i < TRIES; i++) {
     const x = area.cx + (rand() * 2 - 1) * ex;
     const z = area.cz + (rand() * 2 - 1) * ez;
     let s = slack(area, height, taken, x, z, avoid);
     if (clear && !clear({ x, z })) s = Math.min(s, 0) - 1e6;
-    if (s >= 0 && away) {
-      const d = Math.hypot(x - away.x, z - away.z);
-      if (d < away.min) {
-        if (d > farD) {
-          farD = d;
-          far = { x, z };
-        }
-        s = d - away.min;
-      }
-    }
     if (s >= 0) return { x, z };
     if (s > bestSlack) {
       bestSlack = s;
       best = { x, z };
     }
   }
-  return far ?? best ?? { x: area.cx, z: area.cz }; // a NaN rand never yields null
+  return best ?? { x: area.cx, z: area.cz }; // a NaN rand never yields null
 }
 
 /** Where a pet at `from` hops to leave: straight out through the area's edge, then SLIDE beyond. */

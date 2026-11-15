@@ -4,7 +4,9 @@
 // in a very dark, a mid and a very light colour, on a dark and a light map) and pets-strips.png
 // (every phase and reaction as 8 frames) and pets-splat.png (per kind: the wobble, the burst, the
 // puddle settling and the reform as frames, game view over a close-up, and the resting puddle in a
-// dark, a mid and a light colour on a dark and a light map). Fails on any console error, page error or shader error.
+// dark, a mid and a light colour on a dark and a light map) and rest-spots.png (three pets resting at
+// each petRestSpot choice on a 1280 x 800 table with Foundry-like UI drawn over it). Fails on any
+// console error, page error or shader error.
 // Env: DICER_VISUAL_PORT (default 5183), DICER_VISUAL_HEADED=1, DICER_VISUAL_ONLY (a substring of
 // the file names to take, e.g. grid), DICER_PETS_OUT (default docs/signoff/pets).
 import { spawn, spawnSync } from 'node:child_process';
@@ -73,6 +75,7 @@ async function main() {
       ['colours', 'pets-colours.png'],
       ['strips', 'pets-strips.png'],
       ['splat', 'pets-splat.png'],
+      ['restSpots', 'rest-spots.png'],
     ]) {
       if (process.env.DICER_VISUAL_ONLY && !file.includes(process.env.DICER_VISUAL_ONLY)) continue;
       const url = await page.evaluate((n) => window.__pets[n](), name);

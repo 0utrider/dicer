@@ -117,62 +117,18 @@ test('an area covered by UI still gives a finite best candidate, in bounded trie
   expect(draws).toBe(2 * 24);
 });
 
-// ---- away from the cursor (pet dodge Task 2) ----
-test('restSpot honours away.min over 200 seeds, with the farthest fallback', () => {
-  const taken = [{ x: AREA.cx + 6, z: AREA.cz }];
-  for (let seed = 1; seed <= 200; seed++) {
-    // the cursor at a resting spot of the ring
-    const away = { x: AREA.cx - 6, z: AREA.cz + 3, min: 4 };
-    const spot = restSpot(AREA, H, taken, mulberry32(seed), [], away);
-    expect(Math.hypot(spot.x - away.x, spot.z - away.z), `seed ${seed}`).toBeGreaterThanOrEqual(4 - 1e-9);
-    const r = ringOf(AREA, spot);
-    expect(r, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
-    expect(r, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
-    for (const o of taken) expect(Math.hypot(spot.x - o.x, spot.z - o.z)).toBeGreaterThanOrEqual(2 * H - 1e-9);
-  }
-  // no spot is far enough: the farthest valid candidate of the 24 drawn
-  const ex = Math.min(AREA.halfWidth - 1.2 * H, 0.6 * AREA.halfWidth);
-  const ez = Math.min(AREA.halfDepth - 1.2 * H, 0.6 * AREA.halfDepth);
-  for (let seed = 1; seed <= 200; seed++) {
-    const away = { x: AREA.cx + 1, z: AREA.cz - 1, min: 1000 };
-    const spot = restSpot(AREA, H, [], mulberry32(seed), [], away);
-    const r = ringOf(AREA, spot);
-    expect(r, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
-    expect(r, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
-    const rand = mulberry32(seed);
-    let far = -Infinity;
-    for (let i = 0; i < 24; i++) {
-      const c = { x: AREA.cx + (rand() * 2 - 1) * ex, z: AREA.cz + (rand() * 2 - 1) * ez };
-      const cr = ringOf(AREA, c);
-      if (cr >= RING_IN && cr <= RING_OUT) far = Math.max(far, Math.hypot(c.x - away.x, c.z - away.z));
-    }
-    expect(Math.hypot(spot.x - away.x, spot.z - away.z), `seed ${seed}`).toBeCloseTo(far, 9);
-  }
-});
-
-test('without away restSpot draws as before', () => {
-  for (const seed of [1, 2, 3])
-    expect(restSpot(AREA, H, [], mulberry32(seed), [], undefined)).toEqual(restSpot(AREA, H, [], mulberry32(seed)));
-});
-
 // ---- R7: clear (the thrower-layout case of Task 9: off the replay's die paths) ----
-test('restSpot honours away over 200 seeded tries (R7: the `clear` predicate, 7th parameter)', () => {
+test('restSpot honours clear over 200 seeded tries (R7: the `clear` predicate, 6th parameter)', () => {
   const clear = (p) => p.x < AREA.cx; // the paths cover the right half
   for (let seed = 1; seed <= 200; seed++) {
-    const spot = restSpot(AREA, H, [], mulberry32(seed), [], null, clear);
+    const spot = restSpot(AREA, H, [], mulberry32(seed), [], clear);
     expect(clear(spot), `seed ${seed}`).toBe(true);
     const r = ringOf(AREA, spot);
     expect(r, `seed ${seed}`).toBeGreaterThanOrEqual(RING_IN - 1e-9);
     expect(r, `seed ${seed}`).toBeLessThanOrEqual(RING_OUT + 1e-9);
   }
-  // with the cursor dodge too: both hold
-  const away = { x: AREA.cx - 6, z: AREA.cz + 3, min: 4 };
-  for (let seed = 1; seed <= 200; seed++) {
-    const spot = restSpot(AREA, H, [], mulberry32(seed), [], away, clear);
-    expect(clear(spot), `seed ${seed}`).toBe(true);
-  }
   // a predicate always true draws exactly as without it; one never true still gives a spot
-  expect(restSpot(AREA, H, [], mulberry32(5), [], null, () => true)).toEqual(restSpot(AREA, H, [], mulberry32(5)));
-  const none = restSpot(AREA, H, [], mulberry32(5), [], null, () => false);
+  expect(restSpot(AREA, H, [], mulberry32(5), [], () => true)).toEqual(restSpot(AREA, H, [], mulberry32(5)));
+  const none = restSpot(AREA, H, [], mulberry32(5), [], () => false);
   expect(Number.isFinite(none.x) && Number.isFinite(none.z)).toBe(true);
 });
