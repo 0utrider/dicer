@@ -115,6 +115,12 @@ vec3 travel( float t, int kind ) {
 		disp.xz = vec2( disp.x * c - disp.z * s, disp.x * s + disp.z * c );
 	}
 	vec3 p = aOrigin + disp;
+	if ( kind == 1 && aGravity > 0.0 ) {
+		// A buoyant ember sways gently side to side as it rises, easing in over its first second.
+		float sway = 0.14 * min( t, 1.0 );
+		p.x += sway * sin( t * 3.1 + aSeed * 6.2831853 );
+		p.z += sway * sin( t * 2.3 + aSeed * 12.566371 + 1.3 );
+	}
 	p.y += 0.5 * aGravity * t * t;
 	if ( kind == 3 ) p.y = max( p.y, 0.03 );
 	return p;
@@ -154,6 +160,7 @@ void main() {
 	if ( kind == 1 ) alpha *= 0.65 + 0.35 * sin( t * 38.0 + aBirth * 17.0 );
 	else if ( kind == 2 ) alpha *= 0.55;
 	else if ( kind == 3 ) alpha = 1.0 - smoothstep( 0.7, 1.0, k );
+	else if ( kind == 4 ) alpha *= 0.65 + 0.35 * sin( t * 26.0 + aSeed * 40.0 ); // a spiral glint twinkles out of phase
 	else if ( kind == 5 ) alpha *= 0.5 + 0.5 * sin( t * 30.0 + aBirth * 11.0 );
 	vColor = mix( aColor, aColorEnd, k );
 	vQ = aCorner;

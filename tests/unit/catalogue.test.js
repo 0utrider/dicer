@@ -393,30 +393,88 @@ describe('rebuilt looks', () => {
     expect(sizeAt(4)).toBeLessThanOrEqual(1.6 * one);
   });
 
-  test('sparkles: spinning GLINT stars and spiral DOTs fading to white', () => {
-    const { specs, h } = run('sparkles', {}, 800);
-    const glints = specs.filter((s) => s.kind === KIND.GLINT);
-    const dots = specs.filter((s) => s.kind === KIND.SPIRAL);
-    expect(glints.length).toBeGreaterThan(0);
-    expect(glints.every((s) => s.shape === 3 && s.spin > 0)).toBe(true);
-    expect(dots.length).toBeGreaterThan(0);
-    expect(dots.every((s) => s.shape === 0 && new THREE.Color(s.colorEnd).getHex() === 0xffffff)).toBe(true);
-    h.stop();
+  const LOOK_COLORS = [null, '#f4f4f4', '#141418', '#e02020', '#2050ff'];
+  const overFor = (color) => (color ? { color: new THREE.Color(color), options: { color } } : {});
+  const lightness = (c) => new THREE.Color(c).getHSL({}, THREE.SRGBColorSpace).l;
+
+  test('sparkles particles are at least 0.12 die edges at intensity 1', () => {
+    for (const color of LOOK_COLORS) {
+      const { ctx, specs, h } = run('sparkles', overFor(color), 1400);
+      expect(specs.length, color).toBeGreaterThan(0);
+      for (const s of specs) {
+        expect(s.size, `${color} size`).toBeGreaterThanOrEqual(0.12);
+        expect(typeof s.now, color).toBe('number'); // born on the render clock
+      }
+      // Spiralling SPARK-sprite glints with halos, burning out through palette().core to white.
+      const glints = specs.filter((s) => s.blend !== 'normal');
+      expect(glints.length, color).toBeGreaterThan(0);
+      for (const s of glints) {
+        expect(s.kind, color).toBe(KIND.SPIRAL);
+        expect(s.shape, color).toBe(SHAPE.GLINT);
+        expect(s.halo, color).toBeGreaterThan(0);
+        expect(new THREE.Color(s.colorEnd).getHex(), color).toBe(0xffffff);
+        expect(lightness(s.color), `${color} glint colour is lit`).toBeGreaterThan(0.35);
+      }
+      // Within the pool.
+      expect(specs.reduce((n, s) => n + s.count, 0)).toBeLessThanOrEqual(Math.round(2048 * ctx.tier.particleScale) / 4);
+      h.stop();
+    }
+    // The twinkle: the pool flickers a SPIRAL's alpha with a sine of its age.
+    const pool = createParticlePool(new THREE.Scene(), 8);
+    expect(pool.layers[0].material.vertexShader).toMatch(/kind == 4 \) alpha \*= [^;]*sin\( t \*/);
+    pool.dispose();
   });
 
-  test('embers: rising FLAME embers to #ff2a00 and streaks', () => {
-    const { specs, h } = run('embers', { tier: 'high' }, 1500);
-    const flames = specs.filter((s) => s.kind === KIND.EMBER);
-    expect(flames.length).toBeGreaterThan(0);
-    expect(flames.every((s) => s.shape === 5 && s.sizeEnd === 0.3 && s.colorEnd === '#ff2a00')).toBe(true);
-    const streaks = specs.filter((s) => s.kind === KIND.STREAK).reduce((n, s) => n + s.count, 0);
-    expect(streaks).toBe(6);
+  test('embers emits FLAME tongues and EMBER particles with halo', () => {
+    for (const color of LOOK_COLORS) {
+      const { ctx, specs, h } = run('embers', overFor(color), 1600);
+      const lit = specs.filter((s) => s.blend !== 'normal');
+      const flames = lit.filter((s) => s.shape === SHAPE.FLAME);
+      expect(flames.length, color).toBeGreaterThan(0);
+      for (const s of flames) {
+        expect(s.kind, color).toBe(KIND.EMBER);
+        expect(s.halo, color).toBeGreaterThan(0);
+        expect(s.origin.y, `${color} flames lick up from the die base`).toBeLessThan(0.3);
+        expect(s.gravity, color).toBeGreaterThan(0);
+      }
+      const motes = lit.filter((s) => s.kind === KIND.EMBER && s.shape !== SHAPE.FLAME);
+      expect(motes.length, color).toBeGreaterThan(0);
+      for (const s of motes) {
+        expect(s.halo, color).toBeGreaterThan(0);
+        expect(s.gravity, `${color} embers drift up`).toBeGreaterThan(0);
+      }
+      for (const s of lit) expect(lightness(s.color), `${color} lit colour`).toBeGreaterThan(0.35);
+      expect(specs.reduce((n, s) => n + s.count, 0)).toBeLessThanOrEqual(Math.round(2048 * ctx.tier.particleScale) / 4);
+      h.stop();
+    }
+    // The sway: buoyant EMBERs (gravity > 0) drift side to side as they rise.
+    const pool = createParticlePool(new THREE.Scene(), 8);
+    expect(pool.layers[0].material.vertexShader).toMatch(/kind == 1 && aGravity > 0\.0/);
+    pool.dispose();
+  });
+
+  test('embers never covers the die: no normal-blend emit with origin within 0.5 of die centre', () => {
+    for (const color of LOOK_COLORS) {
+      const { ctx, specs, h } = run('embers', overFor(color), 1600);
+      const off = (s) => Math.hypot(s.origin.x - ctx.position.x, s.origin.z - ctx.position.z);
+      const dark = specs.filter((s) => s.blend === 'normal');
+      expect(dark.length, `${color} deep-shade cinders for a light table`).toBeGreaterThan(0);
+      for (const s of dark) expect(off(s), color).toBeGreaterThanOrEqual(0.5);
+      // Nothing at all is born over the die's top face: seen from above it stays clear.
+      for (const s of specs) expect(off(s), `${color} kind ${s.kind}`).toBeGreaterThanOrEqual(0.5);
+      h.stop();
+    }
+  });
+
+  test('embers keeps six streak sparks at intensity 1 on high', () => {
+    const { specs, h } = run('embers', { tier: 'high' }, 1600);
+    expect(specs.filter((s) => s.kind === KIND.STREAK).reduce((n, s) => n + s.count, 0)).toBe(6);
     h.stop();
   });
 
   test('embers streaks and frost mist follow intensity and the tier particleScale', () => {
     const total = (id, kind, over) => {
-      const { specs, h } = run(id, over, 1500);
+      const { specs, h } = run(id, over, 1600);
       h.stop();
       return specs.filter((s) => s.kind === kind).reduce((n, s) => n + s.count, 0);
     };

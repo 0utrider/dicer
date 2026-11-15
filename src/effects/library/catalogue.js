@@ -21,6 +21,9 @@ const DIE_Y = 0.5; // a landed die's centre
 // Just above a landed die's top face. The camera looks straight down, so particles born lower
 // stay hidden under the (opaque) die until they have flown out past its footprint.
 const DIE_TOP = 1.05;
+// A landed d20 (the crit die; edge 1, so about 1.9 across): seen from above, anything within
+// D20_R of its centre is under it.
+const D20_R = 0.95;
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
 
@@ -525,92 +528,189 @@ export const sparkles = Object.freeze({
   id: 'sparkles',
   cost: 2,
   defaults: Object.freeze({ color: '#ffe27a', intensity: 1, duration: 1400 }),
+  /**
+   * Haloed four-point glints (the SPARK sprite) bursting out of the die's sides and spiralling up around
+   * it (KIND.SPIRAL turns each one about the die's axis; a strong drag holds them in an orbit just
+   * outside the die while buoyancy lifts them), twinkling as they burn out from the die colour
+   * through palette().core to white (core is the colour 60% of the way to white, so a straight
+   * colour -> white fade passes through it). A few deep-shade glints (normal blend) ride along so
+   * the effect reads on a light map. All are born inside the die, so its face stays clear.
+   */
   start(ctx) {
     if (!ctx.particles) return NOOP;
-    // Spiralling motes in the effect's colour, burning out to white.
-    const emit = trickle(ctx, countFor(40, ctx), 0.6, {
-      origin: originOf(ctx, DIE_TOP),
-      jitter: 0.35,
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 1.8,
-      spread: 1.1,
-      gravity: 0.2,
+    const k = sizeK(ctx);
+    const pal = palette(ctx.color);
+    const body = pal.rim ?? pal.mid; // the die colour, or a near-black die's lit rim
+    // A deep shade for a light map (x 0.1 in linear light: about a third of the colour in sRGB).
+    const cinder = pal.rim ? pal.core.clone() : body.clone().multiplyScalar(0.1);
+    const { x: cx, z: cz } = ctx.position;
+    // Born inside the die: each one shows as it bursts out past the die's side, never over its face.
+    const BORN = DIE_Y + 0.4;
+    const spiral = (total, window, { y, ...spec }) => {
+      let emitted = 0;
+      return (e, now) => {
+        const want = Math.round(total * clamp01(e / Math.max(1, ctx.duration * window)));
+        for (; emitted < want; emitted++) {
+          const a = Math.random() * Math.PI * 2;
+          ctx.particles.emit({
+            count: 1,
+            origin: { x: cx, y, z: cz },
+            dir: { x: Math.cos(a), y: 0.35, z: Math.sin(a) },
+            spread: 0.3,
+            speed: 11,
+            drag: 8, // the orbit settles ~1.4 out (1..1.8), past a d20's footprint within ~150 ms
+            gravity: 1.3, // and keeps rising
+            kind: KIND.SPIRAL,
+            shape: SHAPE.GLINT,
+            colorEnd: WHITE,
+            spin: 1.5,
+            now,
+            ...spec,
+          });
+        }
+      };
+    };
+    const glints = spiral(countFor(48, ctx), 0.6, { y: BORN, life: 1.1, color: body, size: 0.32 * k, halo: 0.45 });
+    const big = spiral(countFor(12, ctx), 0.5, { y: BORN, life: 1.2, color: body, size: 0.5 * k, halo: 0.55 });
+    const flecks = spiral(countFor(18, ctx), 0.6, {
+      y: BORN,
       life: 1.0,
-      color: ctx.color,
-      colorEnd: WHITE,
-      size: 0.2 * sizeK(ctx),
-      kind: KIND.SPIRAL,
-      shape: SHAPE.DOT,
-    });
-    // Four-point stars that spin and twinkle (KIND.GLINT's alpha flicker), white-hot to colour.
-    const glints = trickle(ctx, countFor(14, ctx), 0.7, {
-      origin: originOf(ctx, DIE_TOP),
-      jitter: 0.45,
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 1.5,
-      spread: 1.5,
-      gravity: -0.6,
-      life: 0.8,
-      color: ctx.color.clone().lerp(new THREE.Color(WHITE), 0.7),
-      colorEnd: ctx.color,
-      size: 0.4 * sizeK(ctx),
-      kind: KIND.GLINT,
-      shape: SHAPE.GLINT,
-      spin: 2.5,
+      color: cinder,
+      colorEnd: cinder,
+      size: 0.3 * k,
+      blend: 'normal',
+      alpha: 0.9,
     });
     return timed(
       ctx.duration,
       (e, now) => {
-        emit(e, now);
         glints(e, now);
+        big(e, now);
+        flecks(e, now);
       },
       () => {},
     );
   },
 });
 
-const EMBER_END = '#ff2a00';
+/**
+ * Emits `total` particles evenly over the first `window` (0..1) of the duration, each its own
+ * emit born at a random point of the annulus rMin..rMax around the die at height y, its direction
+ * up and tilted outward by `out` (0: straight up). Nothing is born over the die's top face.
+ */
+function ringTrickle(ctx, total, window, { rMin, rMax, y, out = 0, ...spec }) {
+  let emitted = 0;
+  return (e, now) => {
+    const pool = ctx.particles;
+    if (!pool) return;
+    const want = Math.round(total * clamp01(e / Math.max(1, ctx.duration * window)));
+    for (; emitted < want; emitted++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = rMin + (rMax - rMin) * Math.random();
+      const ux = Math.cos(a);
+      const uz = Math.sin(a);
+      pool.emit({
+        ...spec,
+        count: 1,
+        origin: { x: ctx.position.x + ux * r, y, z: ctx.position.z + uz * r },
+        dir: { x: ux * out, y: 1, z: uz * out },
+        now,
+      });
+    }
+  };
+}
 
 export const embers = Object.freeze({
   id: 'embers',
   cost: 2,
   defaults: Object.freeze({ color: '#ff7a1a', intensity: 1, duration: 1600 }),
+  /**
+   * A fire around the die's foot: flickering FLAME tongues lick up from the base, glowing embers
+   * (haloed, buoyant: the pool sways them side to side) drift up and out, a few quick sparks shoot
+   * up, and dark cinders (normal blend) rise with them so it reads on a light map. Over a held,
+   * flickering floor glow. Every particle is born on a ring around the die (radius >= 0.8, about
+   * a d20's footprint): seen from above, nothing sits over its top face, so the die stays readable.
+   */
   start(ctx) {
     if (!ctx.particles) return NOOP;
-    // Flame tongues rising off the die, cooling to deep red as they shrink.
-    const flames = trickle(ctx, countFor(34, ctx), 0.7, {
-      origin: originOf(ctx, DIE_TOP - 0.1),
-      jitter: 0.55,
-      dir: { x: 0, y: 1, z: 0 },
-      speed: 1.8,
-      spread: 1.3,
-      gravity: 0.5, // buoyancy: they accelerate upward
-      life: 1.1,
-      color: ctx.color,
-      colorEnd: EMBER_END,
-      size: 0.32 * sizeK(ctx),
-      sizeEnd: 0.3,
+    const k = sizeK(ctx);
+    const pal = palette(ctx.color);
+    const body = pal.rim ?? pal.mid; // the die colour, or a near-black die's lit rim
+    const hot = body.clone().lerp(new THREE.Color(WHITE), 0.5);
+    const deep = pal.rim ? pal.rim.clone().multiplyScalar(0.5) : pal.edge.clone();
+    const cinder = pal.rim ? pal.core.clone() : body.clone().multiplyScalar(0.1); // reads on a light map
+    const flames = ringTrickle(ctx, countFor(30, ctx), 0.75, {
+      rMin: D20_R - 0.15, // the tongues peek out around the die
+      rMax: D20_R + 0.15,
+      y: 0.12,
+      out: 0.35,
+      speed: 0.9,
+      spread: 0.25,
+      gravity: 1.8, // buoyancy: they lick upward faster and faster
+      life: 0.65,
+      color: hot,
+      colorEnd: deep,
+      size: 0.55 * k,
+      sizeEnd: 0.35,
       kind: KIND.EMBER,
       shape: SHAPE.FLAME,
+      halo: 0.25, // a big sprite: a slim halo keeps its fill cost down
     });
-    // Six quick sparks shooting up through them (at intensity 1, full particle scale).
-    const streaks = trickle(ctx, countFor(6, ctx), 0.6, {
-      origin: originOf(ctx, DIE_TOP),
-      dir: { x: 0, y: 1, z: 0 },
+    const motes = ringTrickle(ctx, countFor(22, ctx), 0.85, {
+      rMin: D20_R - 0.05,
+      rMax: D20_R + 0.3,
+      y: 0.5,
+      out: 0.6,
+      speed: 0.9,
+      spread: 0.4,
+      gravity: 0.8,
+      life: 1.3,
+      color: hot,
+      colorEnd: body,
+      size: 0.18 * k,
+      sizeEnd: 0.6,
+      kind: KIND.EMBER,
+      shape: SHAPE.DOT,
+      halo: 0.8,
+    });
+    // Six quick sparks shooting up (at intensity 1, full particle scale).
+    const streaks = ringTrickle(ctx, countFor(6, ctx), 0.6, {
+      rMin: D20_R - 0.05,
+      rMax: D20_R + 0.1,
+      y: 0.4,
+      out: 0.5,
       speed: 3.2,
-      spread: 0.8,
+      spread: 0.3,
       gravity: 1,
       life: 0.5,
-      color: ctx.color.clone().lerp(new THREE.Color('#fff0c0'), 0.5),
-      colorEnd: EMBER_END,
-      size: 0.08 * sizeK(ctx),
+      color: hot,
+      colorEnd: body,
+      size: 0.1 * k,
       kind: KIND.STREAK,
       shape: SHAPE.STREAK,
     });
+    const cinders = ringTrickle(ctx, countFor(8, ctx), 0.8, {
+      rMin: D20_R + 0.05,
+      rMax: D20_R + 0.35,
+      y: 0.3,
+      out: 0.6,
+      speed: 0.9,
+      spread: 0.4,
+      gravity: 0.8,
+      life: 1.2,
+      color: cinder,
+      size: 0.13 * k,
+      sizeEnd: 0.6,
+      kind: KIND.EMBER,
+      shape: SHAPE.DOT,
+      blend: 'normal',
+      alpha: 0.8,
+    });
     const ms = ctx.duration;
-    const glow = floorGlow(ctx, {
-      radius: 1.6,
-      peak: 0.5,
+    // (Object.create: a near-black die's glow is its lit rim; a composite ctx keeps fields on its prototype.)
+    const glow = floorGlow(Object.create(ctx, { color: { value: body } }), {
+      radius: 2.4,
+      peak: 0.9,
       ms,
       // Held for the duration (eased in and out), flickering like a fire.
       curve: (e) => envelope(e, ms) * (0.8 + 0.2 * Math.sin(e * 0.023) * Math.sin(e * 0.037 + 1)),
@@ -619,7 +719,9 @@ export const embers = Object.freeze({
       ms,
       (e, now) => {
         flames(e, now);
+        motes(e, now);
         streaks(e, now);
+        cinders(e, now);
       },
       () => {},
     );
