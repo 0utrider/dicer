@@ -140,12 +140,12 @@ describe('crystal d4, pips and coin faces in the form', () => {
   });
 });
 
-describe('bodies, presets, finishes and luminous in the form', () => {
-  it('form round-trips every new body type, preset, finish and luminous', () => {
+describe('bodies, presets and finishes in the form', () => {
+  it('form round-trips every new body type, preset and finish', () => {
     for (const [type, presets] of Object.entries(BODY_PRESETS))
       for (const preset of presets) {
-        const a = normalizeAppearance({ body: { type, preset, luminous: 0.5 } });
-        expect(a.body).toMatchObject({ type, preset, luminous: 0.5 });
+        const a = normalizeAppearance({ body: { type, preset } });
+        expect(a.body).toMatchObject({ type, preset });
         expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
       }
     for (const finish of ['patina', 'worn']) {
@@ -154,7 +154,6 @@ describe('bodies, presets, finishes and luminous in the form', () => {
       expect(appearanceFromForm(formFromAppearance(a))).toEqual(a);
     }
     // string slider values read as numbers
-    expect(appearanceFromForm(setField(formFromAppearance({}), 'body.luminous', '0.65')).body.luminous).toBe(0.65);
     expect(setField(formFromAppearance({}), 'edges.stripStrength', '0.4').edges.stripStrength).toBe(0.4);
   });
   it('picking a preset applies its PRESET_COLORS; picking a new type picks its first preset', () => {
@@ -192,11 +191,10 @@ describe('bodies, presets, finishes and luminous in the form', () => {
     for (const finish of FINISHES) expect(normalizeAppearance({ body: { type: 'metal', finish } }).body.finish).toBe(finish);
     for (const id of [...Object.values(BODY_PRESETS).flat(), 'patina', 'worn']) expect(PRESET_COLORS[id]).toBeTruthy();
   });
-  it('visibleSections: presets for the new bodies, a second colour for them, luminous always', () => {
+  it('visibleSections: presets for the new bodies, a second colour for them', () => {
     for (const type of BODY_TYPES) {
       const v = visibleSections({ body: { type } });
       expect(v.preset).toBe(Object.hasOwn(BODY_PRESETS, type));
-      expect(v.luminous).toBe(true);
       expect(v.color2).toBe(['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'].includes(type));
     }
     // a metal's second colour: only for the aged finishes
@@ -723,16 +721,14 @@ describe('the appearance editor', () => {
     await sharp.close();
   });
 
-  it('the material section renders preset chips only for types with presets, five finishes for metal, and the luminous range', async () => {
+  it('the material section renders preset chips only for types with presets, and five finishes for metal', async () => {
     const L = (k) => localize(`DICER.Appearance.${k}`);
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
     const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
     expect(labels('[data-field="body.type"]')).toHaveLength(8);
     expect(labels('[data-field="body.finish"]')).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn'].map((f) => L(`Finish.${f}`)));
     expect(q(app, '[data-field="body.preset"]')).toBeNull();
-    expect(q(app, 'input[name="body.luminous"]')).toBeTruthy();
-    expect(q(app, 'input[name="body.luminous"]').getAttribute('max')).toBe('1');
-    expect(app.element.textContent).toContain(L('Body.Luminous'));
+    expect(q(app, 'input[name="body.luminous"]')).toBeNull();
     await click(app, '[data-field="body.type"][data-value="wood"]');
     expect(labels('[data-field="body.preset"]')).toEqual(BODY_PRESETS.wood.map((p) => L(`Preset.${p}`)));
     expect(q(app, '[data-field="body.preset"][data-value="oak"]').getAttribute('aria-checked')).toBe('true');
@@ -741,8 +737,6 @@ describe('the appearance editor', () => {
     await click(app, '[data-field="body.preset"][data-value="cherry"]');
     expect(app.theme().appearance.body).toMatchObject({ type: 'wood', preset: 'cherry', ...PRESET_COLORS.cherry });
     expect(q(app, 'input[name="body.color"]').value).toBe(PRESET_COLORS.cherry.color);
-    type(app, 'body.luminous', '0.4');
-    expect(app.theme().appearance.body.luminous).toBe(0.4);
     await click(app, '[data-field="body.type"][data-value="opaque"]');
     expect(q(app, '[data-field="body.preset"]')).toBeNull();
     await app.close();
@@ -1140,7 +1134,7 @@ describe('lang/en.json', () => {
     });
     expect(keys.length).toBeGreaterThan(30);
     expect([BODY_TYPES.length, Object.values(BODY_PRESETS).flat().length, FINISHES.length]).toEqual([8, 11, 5]);
-    expect(keys).toEqual(expect.arrayContaining(['Body.Preset', 'Body.Luminous']));
+    expect(keys).toEqual(expect.arrayContaining(['Body.Preset']));
     for (const k of keys) expect(typeof resolve(lang, k), `DICER.Appearance.${k}`).toBe('string');
     // dynamic keys built from lists
     for (const [group, ids] of Object.entries({

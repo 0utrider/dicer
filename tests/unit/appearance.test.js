@@ -343,17 +343,20 @@ describe('dice designs plan 2: bodies', () => {
     const w = normalizeAppearance({ body: { type: 'wood', preset: 'cherry' } });
     expect(normalizeAppearance(w)).toEqual(w);
   });
-  test('luminous is 0..1, default 0', () => {
-    expect(DEFAULT_APPEARANCE.body.luminous).toBe(0);
+  test('an old saved look with body.luminous normalises without error and drops the field', () => {
     expect(DEFAULT_APPEARANCE.body.preset).toBeNull();
-    expect(body({ luminous: 0.5 }).body.luminous).toBe(0.5);
-    expect(body({ luminous: 1 }).body.luminous).toBe(1);
-    for (const v of [-0.1, 1.1, 'x', null, NaN]) expect(body({ luminous: v }).body.luminous).toBe(0);
+    expect('luminous' in DEFAULT_APPEARANCE.body).toBe(false);
+    for (const luminous of [0.8, 0, 'x', null]) {
+      const a = normalizeAppearance({ body: { type: 'wood', luminous } });
+      expect('luminous' in a.body).toBe(false);
+      expect(a.body.type).toBe('wood');
+      expect(a).toEqual(normalizeAppearance({ body: { type: 'wood' } }));
+    }
+    expect(normalizeAppearance({ body: { luminous: 0.8 } })).toEqual(normalizeAppearance({}));
   });
-  test('programKey gains lum only for luminous > 0 and never under safe flags', () => {
-    const lit = body({ type: 'wood', luminous: 0.4 });
-    expect(programKey(lit, F)).toBe('wood|-|none|eng1|glow0|fx1|safe0|lum');
-    expect(programKey(body({ type: 'wood', luminous: 0 }), F)).not.toContain('lum');
+  test('programKey ignores preset and never changes under safe flags', () => {
+    const lit = body({ type: 'wood' });
+    expect(programKey(lit, F)).toBe('wood|-|none|eng1|glow0|fx1|safe0');
     expect(programKey(body({ type: 'gem', preset: 'quartz' }), F)).toBe(programKey(body({ type: 'gem', preset: 'amethyst' }), F));
     expect(programKey(lit, { ...F, safe: true })).toBe(programKey(normalizeAppearance({}), { ...F, safe: true }));
   });
@@ -381,18 +384,16 @@ describe('dice designs plan 2: bodies', () => {
     expect(needsLookExtras(body({ type: 'metal', finish: 'patina' }))).toBe(true);
     expect(needsLookExtras(body({ type: 'metal', finish: 'brushed' }))).toBe(false);
     expect(needsLookExtras(body({ type: 'gem' }))).toBe(true);
-    expect(needsLookExtras(body({ type: 'opaque', luminous: 0.2 }))).toBe(true);
   });
-  test('fallbackLook maps iridescent→pearl, gem→marble, wood→opaque, patina/worn→antique, luminous→0, preset→null', () => {
+  test('fallbackLook maps iridescent→pearl, gem→marble, wood→opaque, patina/worn→antique, preset→null', () => {
     const fb = (b) => fallbackLook(body(b)).body;
     expect(fb({ type: 'iridescent', preset: 'opal' })).toMatchObject({ type: 'pearl', preset: null });
     expect(fb({ type: 'gem' })).toMatchObject({ type: 'marble', preset: null });
     expect(fb({ type: 'wood', color: '#aa5500' })).toMatchObject({ type: 'opaque', preset: null, color: '#aa5500' });
     expect(fb({ type: 'metal', finish: 'patina' }).finish).toBe('antique');
     expect(fb({ type: 'metal', finish: 'worn' }).finish).toBe('antique');
-    expect(fb({ type: 'metal', finish: 'brushed', luminous: 0.5 })).toMatchObject({ finish: 'brushed', luminous: 0 });
-    expect(fb({ type: 'resin', luminous: 0.5 }).luminous).toBe(0);
-    expect(needsLookExtras(fallbackLook(body({ type: 'gem', luminous: 1 })))).toBe(false);
+    expect(fb({ type: 'metal', finish: 'brushed' })).toMatchObject({ finish: 'brushed' });
+    expect(needsLookExtras(fallbackLook(body({ type: 'gem' })))).toBe(false);
   });
 });
 
@@ -499,7 +500,7 @@ describe('dice designs plan 3b: fantasy shapes', () => {
       expect(needsLookExtras(a)).toBe(false);
       expect(fallbackLook(a)).toBe(a);
     }
-    expect(fallbackLook(sh('sword', { luminous: 0.5 })).interior.shape).toBe('star');
+    expect(fallbackLook(sh('sword')).interior.shape).toBe('star');
     expect(fallbackLook(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'eye', shape: 'sword' } })).interior.shape).toBe('sphere');
   });
 });

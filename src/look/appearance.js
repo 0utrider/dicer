@@ -34,7 +34,7 @@ function deepFreeze(o) {
 }
 
 export const DEFAULT_APPEARANCE = deepFreeze({
-  body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null, luminous: 0 },
+  body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false },
   numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif', pips: false, coin: 'numbers' },
   edges: { radius: 0.5, style: 'rounded', strip: { style: 'body', color: '#e2b04a', strength: 1 } },
@@ -114,7 +114,6 @@ export function normalizeAppearance(input) {
       finish: pick(b.finish, FINISHES, D.body.finish),
       roughness: num(b.roughness, 0, 1, D.body.roughness),
       preset: presets ? pick(b.preset, presets, presets[0]) : null,
-      luminous: num(b.luminous, 0, 1, 0),
     };
     const interior = {
       type: pick(it.type, INTERIOR_TYPES, D.interior.type),
@@ -187,7 +186,6 @@ export function programKey(a, flags) {
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
   const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
   const parts = [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'];
-  if (a.body.luminous > 0) parts.push('lum');
   if (active && flags.insideMotion && (type !== 'shape' || SHAPES.indexOf(shape) > 3)) parts.push('mo'); // living insides (the look-extras chunk's)
   const { fill, relief } = a.numbers;
   if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
@@ -198,7 +196,7 @@ export function programKey(a, flags) {
 // liquid's bubble / sand programs: '+b', '+s', '+bs'; nothing for other insides
 const LIQUID_EXTRA = ({ interior: i }) => (i.type === 'liquid' && (i.bubble || i.sand) ? `+${i.bubble ? 'b' : ''}${i.sand ? 's' : ''}` : '');
 
-/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, pips, coin motifs, bodies, finishes, luminous). */
+/** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, pips, coin motifs, bodies, finishes, edge strips). */
 export const needsLookExtras = (a) =>
   FILLS.indexOf(a.numbers.fill) > 3 ||
   a.numbers.relief === 'raised' ||
@@ -206,7 +204,6 @@ export const needsLookExtras = (a) =>
   a.numbers.coin !== 'numbers' ||
   !!BODY_PRESETS[a.body.type] ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
-  a.body.luminous > 0 ||
   stripActive(a) ||
   (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || LIQUID_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
 
@@ -219,7 +216,6 @@ export const fallbackLook = (a) =>
           ...a.body,
           type: { iridescent: 'pearl', gem: 'marble', wood: 'opaque' }[a.body.type] ?? a.body.type,
           finish: AGED.includes(a.body.finish) ? 'antique' : a.body.finish,
-          luminous: 0,
           preset: null,
         },
         interior: {

@@ -103,7 +103,7 @@ export function appearanceFromForm(form) {
   const e = isObj(f.edges) ? f.edges : {};
   const g = isObj(f.glow) ? f.glow : {};
   return normalizeAppearance({
-    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset, luminous: n(b.luminous) },
+    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset },
     interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand },
     numbers: {
       fill: num.fill,
@@ -149,7 +149,6 @@ export function visibleSections(look) {
     color2: TWO_TONE.includes(body) || (body === 'metal' && (look?.body?.finish === 'patina' || look?.body?.finish === 'worn')),
     finish: body === 'metal',
     preset: Object.hasOwn(BODY_PRESET_LISTS, body),
-    luminous: true,
     // edge strips need rounded edges (a sharp die has no edge to paint)
     strip: radius > 0,
     stripDetails: radius > 0 && stripStyle !== undefined && stripStyle !== 'body',
@@ -187,7 +186,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'luminous', 'stripStrength'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

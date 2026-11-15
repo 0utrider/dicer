@@ -291,7 +291,6 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       })),
       pct: {
         roughness: pct(form.body.roughness),
-        luminous: pct(form.body.luminous),
         density: pct(form.interior.density),
         depth: pct(form.numbers.depth),
         intensity: pct(form.glow.intensity),

@@ -577,8 +577,7 @@
         "SecondColor": "Second colour",
         "Finish": "Finish",
         "Roughness": "Roughness",
-        "Preset": "Style",
-        "Luminous": "Glow in the dark"
+        "Preset": "Style"
       },
       "BodyType": {
         "opaque": "Opaque",

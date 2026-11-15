@@ -73,9 +73,6 @@ const VARIANTS = [
   // aged metal finishes
   ['metal~patina', 'default', 'copper patina', {}, {}, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['metal~worn', 'default', 'battle-worn', {}, {}, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
-  // luminous (glow in the dark)
-  ['opaque~luminous', 'default', 'glow in the dark', {}, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
-  ['wood~ebony~luminous', 'default', 'ebony + luminous', {}, {}, { type: 'wood', preset: 'ebony', ...PRESET_COLORS.ebony, luminous: 1 }],
   // foil insides (dice designs plan 3)
   ['resin~foil-gold', 'default', 'gold and copper foil', {}, {}, { type: 'resin', color: '#d9e6f0', color2: '#9fb3c8', roughness: 0.05 }, { type: 'foil', colors: ['#ffcf5a', '#d9814a'], density: 0.5 }],
   ['resin~foil-silver', 'default', 'silver foil', {}, {}, { type: 'resin', color: '#2b4a66', color2: '#0f2236', roughness: 0.05 }, { type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.5 }],
@@ -102,18 +99,17 @@ const VARIANTS = [
   // combinations (the compile check for body x numbers x interior x flags interactions)
   ['combo~patina-outline-raised', 'default', 'patina, outline raised', {}, { fill: 'outline', relief: 'raised' }, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
   ['combo~worn-holo', 'default', 'worn, holo numbers', {}, { fill: 'holo' }, { type: 'metal', finish: 'worn', ...PRESET_COLORS.worn }],
-  ['combo~resin-nebula-luminous', 'default', 'resin nebula + luminous', {}, {}, { type: 'resin', color: '#6fa8dc', color2: '#a0c8f0', luminous: 1 }, { type: 'nebula', colors: ['#c04dff', '#2fd0f0'], density: 0.65 }],
   ['combo~amethyst-holo', 'default', 'amethyst, holo numbers', {}, { fill: 'holo' }, { type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }],
   ['combo~chameleon-glow', 'default', 'chameleon, glow-ink', {}, { fill: 'glow' }, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
   ['combo~oak-flat', 'default', 'oak, engraving off', { engraving: false }, {}, { type: 'wood', preset: 'oak', ...PRESET_COLORS.oak }],
-  // plan 3 insides with plan 1 numbers and plan 2 luminous
+  // plan 3 insides with plan 1 numbers
   [
-    'resin~eye+outline-raised-luminous',
+    'resin~eye+outline-raised',
     'default',
-    'eye, outline raised, luminous',
+    'eye, outline raised',
     {},
     { fill: 'outline', relief: 'raised' },
-    { type: 'resin', color: '#e6eef2', color2: '#b8c8d4', roughness: 0.05, luminous: 0.6 },
+    { type: 'resin', color: '#e6eef2', color2: '#b8c8d4', roughness: 0.05 },
     { type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4 },
   ],
   [
@@ -125,7 +121,6 @@ const VARIANTS = [
     { type: 'resin', color: '#2b4a66', color2: '#0f2236', roughness: 0.05 },
     { type: 'foil', colors: ['#e8edf2', '#f3dc9a'], density: 0.5 },
   ],
-  ['combo~luminous-safe', 'default', 'luminous, safe fallback', { safe: true }, {}, { type: 'opaque', color: '#b8f5c8', color2: '#6fd18f', roughness: 0.4, luminous: 1 }],
   ['combo~patina-effects-off', 'default', 'patina, safe', { safe: true }, {}, { type: 'metal', finish: 'patina', ...PRESET_COLORS.patina }],
 ];
 /**
