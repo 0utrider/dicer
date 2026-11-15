@@ -39,6 +39,7 @@ const mat = (strip, body = { type: 'opaque' }, radius = 0.5) =>
 describe('edge strips', () => {
   test('inactive strip: no patch, no DICER_EDGE, shader identical to a plain look', () => {
     expect(edgePatch(normalizeAppearance({}))).toEqual({});
+    expect(edgePatch({ numbers: {} })).toEqual({}); // partial look (extras-loader contract test)
     expect(edgePatch(normalizeAppearance({ edges: { radius: 0, strip: { style: 'paint' } } }))).toEqual({});
     const plain = patched(createDiceMaterial(normalizeAppearance({ body: { type: 'opaque' } }), atlas, s, labels, FLAGS)).fragmentShader;
     expect(patched(mat({ style: 'body' })).fragmentShader).toBe(plain);

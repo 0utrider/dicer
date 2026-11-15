@@ -54,7 +54,8 @@ const REPLACE = [
 
 /** ExtrasPatch for the look's edge strip; {} when the strip is inactive. */
 export function edgePatch(a) {
-  if (!stripActive(a)) return {};
+  // a partial (un-normalised) look has no strip (extras-loader contract test): inactive
+  if (!a.edges?.strip || !stripActive(a)) return {};
   const { style, color, strength } = a.edges.strip;
   const chunks = { pars: PARS, colorPost: COLOR, lighting: LIGHTING };
   if (style === 'glow') chunks.emissive = EMISSIVE;
