@@ -77,6 +77,25 @@ describe('edge strips', () => {
     expect(fs.indexOf('totalDiffuse = mix( totalDiffuse, dcEdgeLit, dcEdge );')).toBeGreaterThan(fs.indexOf('totalDiffuse = mix( totalDiffuse, dcRefracted'));
   });
 
+  test('resin with face layers: DECAL_OPAQUE refraction rewrite once, then the strip restore once', () => {
+    const d6 = getShape('d6');
+    const faceTex = {
+      texture: new THREE.DataArrayTexture(new Uint8Array(4 * 4 * 4 * 2), 4, 4, 2),
+      layers: Int16Array.from([-1, 0, -1, 1, -1, -1]),
+      tint: Uint8Array.from([0, 0, 0, 1, 0, 0]),
+    };
+    const a = normalizeAppearance({ body: { type: 'resin' }, edges: { radius: 0.5, strip: { style: 'paint' } } });
+    const m = createDiceMaterial(a, atlas, d6, d6.values.map((v) => labelFor('d6', v)), FLAGS, faceTex);
+    expect(m.defines).toHaveProperty('DICER_FACE_LAYERS');
+    expect(m.defines).toHaveProperty('DICER_EDGE');
+    const fs = patched(m).fragmentShader;
+    const decal = '1.0 - max( dcMask, dcDecal )';
+    const restore = 'totalDiffuse = mix( totalDiffuse, dcEdgeLit, dcEdge );';
+    expect(count(fs, decal)).toBe(1);
+    expect(count(fs, restore)).toBe(1);
+    expect(fs.indexOf(decal)).toBeLessThan(fs.indexOf(restore));
+  });
+
   test('safe flags: fallback, no strip', () => {
     const m = createDiceMaterial(normalizeAppearance({ edges: { strip: { style: 'glow' } } }), atlas, s, labels, { ...FLAGS, safe: true });
     expect(m.defines.DICER_EDGE).toBeUndefined();
