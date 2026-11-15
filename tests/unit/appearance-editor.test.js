@@ -155,6 +155,7 @@ describe('bodies, presets, finishes and luminous in the form', () => {
     }
     // string slider values read as numbers
     expect(appearanceFromForm(setField(formFromAppearance({}), 'body.luminous', '0.65')).body.luminous).toBe(0.65);
+    expect(setField(formFromAppearance({}), 'edges.stripStrength', '0.4').edges.stripStrength).toBe(0.4);
   });
   it('picking a preset applies its PRESET_COLORS; picking a new type picks its first preset', () => {
     let f = setField(formFromAppearance({}), 'body.type', 'wood');
