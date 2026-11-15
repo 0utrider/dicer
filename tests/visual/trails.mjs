@@ -1,5 +1,6 @@
 // Visual check: elemental trails. Throws a resin d20 with a fire, a frost, a storm and a lava inside
-// and plain ones with damageType 'acid', 'void', 'vitality' and 'poison' (trail 2, no landing
+// and plain ones with damageType 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental'
+// and 'spirit' (trail 2, no landing
 // effects) on the dark and the light backdrop, with jb2a=off, and writes
 // docs/signoff/elemental-trails/<round>/trails.png: rows are element x backdrop, columns are 150,
 // 400 and 700 ms into the flight (from the frame the die is first placed) and 600 ms after landing.
@@ -75,6 +76,10 @@ const ALL = [
   plain('void', '#2a1a3a', '#0c0612', '#e6d8ff'),
   plain('vitality', '#f2e2b0', '#c8a050', '#5a3a08'),
   plain('poison', '#4a5a1e', '#1c240a', '#eaffc0'),
+  plain('sonic', '#f3e6b8', '#d9c27a', '#3a2d0a'),
+  plain('force', '#2a0f5e', '#0d0524', '#efe6ff'),
+  plain('mental', '#4a0f3e', '#1d0518', '#ffe6f4'),
+  plain('spirit', '#0c3a4a', '#04141c', '#e6fbff'),
 ];
 const ELEMENTS = ONLY?.length ? ALL.filter((el) => ONLY.includes(el.name)) : ALL;
 

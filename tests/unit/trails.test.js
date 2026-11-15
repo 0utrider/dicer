@@ -1,6 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { ELEMENTS, elementOf, createTrailFx, TRAIL_RECIPES } from '../../src/effects/library/trails.js';
 import { KIND } from '../../src/effects/library/particles.js';
+import { SHAPE } from '../../src/effects/library/shapes.js';
 
 /** A pool that records a copy of every emit (the trail fx reuses its spec objects). */
 function fakePool() {
@@ -256,9 +257,91 @@ describe('createTrailFx', () => {
     for (const e of pool.emits) expect(Number.isFinite(e.floor)).toBe(false);
   });
 
-  test('an element without a recipe yet (sonic, force, bludgeoning) emits nothing and warns nothing', () => {
+  test('sonic, force, mental and spirit recipes exist', () => {
+    for (const element of ['sonic', 'force', 'mental', 'spirit'])
+      expect(typeof TRAIL_RECIPES[element]).toBe('function');
+  });
+
+  test('a moving sonic, force, mental or spirit damage die emits; at rest it stops', () => {
+    for (const damageType of ['thunder', 'force', 'psychic', 'spirit']) {
+      const { fx, pool } = setup();
+      const d = die('none', { damageType });
+      fx.flight([d], 0);
+      const t = fly(fx, [d], { frames: 20 });
+      expect(pool.emits.length).toBeGreaterThan(0);
+      for (const e of pool.emits) expect(Number.isFinite(e.now)).toBe(true);
+      const moving = pool.emits.length;
+      for (let i = 1; i <= 8; i++) fx.flight([d], t + 16 * i);
+      expect(pool.emits.length).toBe(moving);
+    }
+  });
+
+  /** Every emit of a damage die flown for `frames` frames. */
+  const flown = (damageType, { reduced = false, frames = 40 } = {}) => {
+    const { fx, pool } = setup({ reduced });
+    const d = die('none', { damageType });
+    fx.flight([d], 0);
+    fly(fx, [d], { frames });
+    return pool.emits;
+  };
+
+  test('sonic: expanding rings left behind on the path, additive and normal blend', () => {
+    const emits = flown('sonic');
+    const rings = emits.filter((e) => e.shape === SHAPE.RING);
+    expect(rings.length).toBeGreaterThan(0);
+    for (const e of rings) {
+      expect(e.sizeEnd).toBeGreaterThan(2); // they expand
+      expect(e.speed).toBeLessThan(0.5); // they stay where the die left them
+    }
+    expect(rings.some((e) => e.blend === 'normal')).toBe(true);
+    expect(rings.some((e) => e.blend !== 'normal')).toBe(true);
+  });
+
+  test('sonic under reduced motion: no flicker kinds', () => {
+    const emits = flown('sonic', { reduced: true, frames: 60 });
+    expect(emits.length).toBeGreaterThan(0);
+    for (const e of emits) expect([KIND.EMBER, KIND.GLINT, KIND.SPIRAL]).not.toContain(e.kind);
+  });
+
+  test('force: violet shimmering shards and a faint streak along the path', () => {
+    const emits = flown('force');
+    const shards = emits.filter((e) => e.shape === SHAPE.SHARD);
+    expect(shards.length).toBeGreaterThan(0);
+    expect(shards.some((e) => e.kind === KIND.GLINT)).toBe(true); // shimmer
+    expect(emits.some((e) => e.kind === KIND.STREAK)).toBe(true);
+    for (const e of emits) {
+      expect(e.color.b).toBeGreaterThan(e.color.g);
+      expect(e.color.r).toBeGreaterThan(e.color.g);
+      expect(e.kind).not.toBe(KIND.SMOKE); // not void's smoke
+    }
+  });
+
+  test('mental: pink swirls that curl (spiral), additive and normal blend', () => {
+    const emits = flown('psychic');
+    expect(emits.some((e) => e.kind === KIND.SPIRAL)).toBe(true);
+    expect(emits.some((e) => e.blend === 'normal')).toBe(true);
+    expect(emits.some((e) => e.blend !== 'normal')).toBe(true);
+    for (const e of emits) {
+      expect(e.color.r).toBeGreaterThan(e.color.g); // pink: red and blue over green
+      expect(e.color.b).toBeGreaterThan(e.color.g);
+    }
+  });
+
+  test('spirit: cyan wisps that drift up (unlike frost, which sinks)', () => {
+    const emits = flown('spirit');
+    expect(emits.length).toBeGreaterThan(0);
+    expect(emits.some((e) => e.blend === 'normal')).toBe(true);
+    expect(emits.some((e) => e.blend !== 'normal')).toBe(true);
+    for (const e of emits) {
+      expect(e.gravity).toBeGreaterThan(0);
+      expect(e.color.g).toBeGreaterThan(e.color.r);
+      expect(e.color.b).toBeGreaterThan(e.color.r);
+    }
+  });
+
+  test('an element without a recipe yet (bleed, slashing, bludgeoning) emits nothing and warns nothing', () => {
     const { fx, pool, warnOnce } = setup();
-    const dice = ['sonic', 'force', 'bludgeoning'].map((damageType) => die('none', { damageType }));
+    const dice = ['bleed', 'slashing', 'bludgeoning'].map((damageType) => die('none', { damageType }));
     fx.flight(dice, 0);
     fly(fx, dice);
     expect(pool.emits).toHaveLength(0);
@@ -322,7 +405,7 @@ describe('createTrailFx', () => {
 
   test('reduced motion reaches the recipe: no flickering kinds, thinner trails', () => {
     const inside = ['fire', 'frost', 'storm', 'lava'];
-    for (const element of [...inside, 'acid', 'void', 'vitality', 'poison']) {
+    for (const element of [...inside, 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit']) {
       const run = (reduced) => {
         const { fx, pool } = setup({ reduced });
         const d = inside.includes(element) ? die(element) : die('none', { damageType: element });

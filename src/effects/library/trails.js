@@ -666,6 +666,256 @@ function poisonTrail(pool, emit) {
   emitLayer(pool, POISON.bubble, 1.0 * w, emit, 0.3, 1.0, reduced ? 0.13 : 0.17);
 }
 
+const SONIC = {
+  // Sound rings left hanging where the die passed (speed 0: they stay put), widening as they fade.
+  wave: spec({
+    dir: UP,
+    speed: 0,
+    spread: 0,
+    gravity: 0,
+    life: 0.5,
+    color: C('#fff2cc'),
+    colorEnd: C('#e0a850'),
+    size: 0.7,
+    sizeEnd: 4.2,
+    kind: KIND.SPARK,
+    shape: SHAPE.RING,
+    spin: 0,
+    halo: 0.15,
+  }),
+  // An inner ripple from the same point, normal blend (it reads on a light map), widening slower.
+  ripple: spec({
+    dir: UP,
+    speed: 0,
+    spread: 0,
+    gravity: 0,
+    life: 0.45,
+    color: C('#a8782a'),
+    colorEnd: C('#6a4610'),
+    size: 0.5,
+    sizeEnd: 3.0,
+    kind: KIND.SPARK,
+    shape: SHAPE.RING,
+    spin: 0,
+    blend: 'normal',
+    alpha: 0.75,
+  }),
+};
+
+/** Sonic: rippling sound rings left behind along the path, widening as they fade (no flicker). */
+function sonicTrail(pool, emit) {
+  const { reduced } = emit;
+  const w = rateOf(emit);
+
+  emitLayer(pool, SONIC.wave, 0.4 * w, emit, 0.2, 0, reduced ? 0.55 : 0.7);
+  emitLayer(pool, SONIC.ripple, 0.4 * w, emit, 0.2, 0, reduced ? 0.4 : 0.5);
+}
+
+const FORCE = {
+  // Pale violet shards flung off the die, dragged to a hover, shimmering (GLINT: alpha twinkles).
+  shard: spec({
+    dir: UP,
+    speed: 1.4,
+    spread: Math.PI,
+    gravity: 0,
+    life: 0.55,
+    color: C('#e2ccff'),
+    colorEnd: C('#8a50ff'),
+    size: 0.3,
+    sizeEnd: 0.5,
+    shape: SHAPE.SHARD,
+    drag: 2.5,
+    spin: 5,
+    halo: 0.6,
+  }),
+  // The same shards in deep violet, normal blend: additive light washes out on a light map.
+  facet: spec({
+    dir: UP,
+    speed: 1.2,
+    spread: Math.PI,
+    gravity: 0,
+    life: 0.5,
+    color: C('#7a3de0'),
+    colorEnd: C('#3e1698'),
+    size: 0.24,
+    sizeEnd: 0.5,
+    shape: SHAPE.SHARD,
+    drag: 2.5,
+    spin: 5,
+    blend: 'normal',
+    alpha: 0.9,
+  }),
+  // A faint violet streak along the path (fainter and shorter-lived than storm's blue-white one).
+  streak: spec({
+    dir: { x: 1, y: 0, z: 0 },
+    speed: 0,
+    spread: 0.05,
+    gravity: 0,
+    life: 0.3,
+    color: C('#c8a8ff'),
+    colorEnd: C('#5a2ad8'),
+    size: 0.2,
+    sizeEnd: 0.6,
+    kind: KIND.STREAK,
+    shape: SHAPE.STREAK,
+    stretch: 2.5,
+    drag: 2.5,
+    alpha: 0.45,
+    halo: 0.4,
+  }),
+};
+
+/** Force: violet shimmering shards around the die and a faint violet streak along its path. */
+function forceTrail(pool, emit) {
+  const { reduced, speed, vel } = emit;
+  const w = rateOf(emit);
+  const kind = reduced ? KIND.SHARD : KIND.GLINT; // GLINT shimmers
+
+  const shard = FORCE.shard;
+  shard.kind = kind;
+  emitLayer(pool, shard, 1.8 * w, emit, 0.3, 1.2, reduced ? 0.24 : 0.3);
+  const facet = FORCE.facet;
+  facet.kind = kind;
+  emitLayer(pool, facet, 1.3 * w, emit, 0.3, 1.2, reduced ? 0.19 : 0.24);
+  const streak = FORCE.streak;
+  streak.dir.x = vel.x; // the pool normalizes dir
+  streak.dir.y = vel.y;
+  streak.dir.z = vel.z;
+  streak.speed = 0.2 * speed;
+  emitLayer(pool, streak, 1.4 * w, emit, 0.5, 0.25, reduced ? 0.15 : 0.19);
+}
+
+const MENTAL = {
+  // Pink swirl strokes flung out that curl as they go (SPIRAL turns their path; the streak follows it).
+  swirl: spec({
+    dir: UP,
+    speed: 2.6,
+    spread: Math.PI,
+    gravity: 0.3,
+    life: 0.8,
+    color: C('#ff9ad8'),
+    colorEnd: C('#b04dff'),
+    size: 0.16,
+    sizeEnd: 0.5,
+    shape: SHAPE.STREAK,
+    stretch: 2.4,
+    drag: 1.5,
+    halo: 0.6,
+  }),
+  // The same curls in deep magenta, normal blend: they keep their colour on a light map.
+  curl: spec({
+    dir: UP,
+    speed: 2.4,
+    spread: Math.PI,
+    gravity: 0.3,
+    life: 0.75,
+    color: C('#d0308f'),
+    colorEnd: C('#7a1a9a'),
+    size: 0.13,
+    sizeEnd: 0.5,
+    shape: SHAPE.STREAK,
+    stretch: 2.4,
+    drag: 1.5,
+    blend: 'normal',
+    alpha: 0.9,
+  }),
+  // A soft pink glow over the die's wake.
+  glow: spec({
+    dir: UP,
+    speed: 0.2,
+    spread: 1.2,
+    gravity: 0.2,
+    life: 0.45,
+    color: C('#ff7ac8'),
+    colorEnd: C('#902a9a'),
+    size: 0.5,
+    sizeEnd: 1.6,
+    kind: KIND.SPARK,
+    shape: SHAPE.DOT,
+    alpha: 0.5,
+    halo: 0.3,
+  }),
+};
+
+/** Mental: pink psychic swirls curling away from the die over a soft pink glow. */
+function mentalTrail(pool, emit) {
+  const { reduced } = emit;
+  const w = rateOf(emit);
+  const kind = reduced ? KIND.SPARK : KIND.SPIRAL; // SPIRAL curls and twinkles
+
+  const swirl = MENTAL.swirl;
+  swirl.kind = kind;
+  emitLayer(pool, swirl, 2.4 * w, emit, 0.3, 1.0, reduced ? 0.12 : 0.16);
+  const curl = MENTAL.curl;
+  curl.kind = kind;
+  emitLayer(pool, curl, 1.6 * w, emit, 0.3, 1.0, reduced ? 0.1 : 0.13);
+  emitLayer(pool, MENTAL.glow, 0.8 * w, emit, 0.3, 0.6, reduced ? 0.4 : 0.5);
+}
+
+const SPIRIT = {
+  // Ghostly cyan wisps, normal blend, drifting up off the die (frost's mist sinks; these rise).
+  wisp: spec({
+    dir: UP,
+    speed: 0.4,
+    spread: 0.9,
+    gravity: 1.1,
+    life: 0.9,
+    color: C('#3cc4e4'),
+    colorEnd: C('#a8eefc'),
+    size: 0.3,
+    sizeEnd: 2.2,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    blend: 'normal',
+    alpha: 0.65,
+    spin: 0.9,
+  }),
+  // A cold cyan glow in the wisps (additive): it reads on the dark map.
+  glow: spec({
+    dir: UP,
+    speed: 0.4,
+    spread: 0.9,
+    gravity: 1.1,
+    life: 0.75,
+    color: C('#8ff0ff'),
+    colorEnd: C('#1e7a9a'),
+    size: 0.3,
+    sizeEnd: 1.8,
+    kind: KIND.SMOKE,
+    shape: SHAPE.SMOKE,
+    alpha: 0.7,
+    halo: 0.4,
+    spin: 0.9,
+  }),
+  // Thin pale strands rising out of the wisps.
+  strand: spec({
+    dir: UP,
+    speed: 0.9,
+    spread: 0.5,
+    gravity: 1.2,
+    life: 0.6,
+    color: C('#d4fbff'),
+    colorEnd: C('#4ec6e0'),
+    size: 0.12,
+    sizeEnd: 0.4,
+    kind: KIND.SPARK,
+    shape: SHAPE.STREAK,
+    stretch: 1.4,
+    drag: 0.8,
+    halo: 0.5,
+  }),
+};
+
+/** Spirit: ghostly cyan wisps and pale strands drifting up from the die's path. */
+function spiritTrail(pool, emit) {
+  const { reduced } = emit;
+  const w = rateOf(emit);
+
+  emitLayer(pool, SPIRIT.wisp, 2.0 * w, emit, 0.4, 0.6, reduced ? 0.3 : 0.4);
+  emitLayer(pool, SPIRIT.glow, 1.4 * w, emit, 0.4, 0.6, reduced ? 0.36 : 0.48);
+  emitLayer(pool, SPIRIT.strand, 1.6 * w, emit, 0.3, 1.0, reduced ? 0.12 : 0.16);
+}
+
 /** Speed -> 0..1: 0 at rest, 1 at FULL_SPEED and above. */
 function speedShare(speed) {
   return Math.min(1, Math.max(0, (speed - REST_SPEED) / (FULL_SPEED - REST_SPEED)));
@@ -686,6 +936,10 @@ export const TRAIL_RECIPES = Object.freeze({
   void: voidTrail,
   vitality: vitalityTrail,
   poison: poisonTrail,
+  sonic: sonicTrail,
+  force: forceTrail,
+  mental: mentalTrail,
+  spirit: spiritTrail,
 });
 
 // --- the emitter ------------------------------------------------------------------------------
