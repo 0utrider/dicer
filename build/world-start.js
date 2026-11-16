@@ -14,14 +14,14 @@ export const WORLD_START_ASSETS = ['assets/fonts/digits.png', 'assets/fonts/digi
  * Fetched on demand, never at world start: a die model (dynamic import / DRACOLoader), the DSN
  * migration at ready, the editors and theme browser, the benchmark, runtime fonts, and the like.
  * Paths are relative to the build's output folder (`dist/` by default). The dice pet chunk, the
- * rolling-by-hand chunk (hand-*, src/hand/hand.js), the JB2A player chunk (jb2a-*, src/jb2a/jb2a.js),
+ * rolling-by-hand chunk (hand-*, src/hand/hand.js), grab and toss (grab-*, src/grab/grab.js), the JB2A player chunk (jb2a-*, src/jb2a/jb2a.js),
  * the chat dice tray (chat-tray-*, src/ui/chat-tray.js) with the tray core it shares with the hand
  * chunk (tray-dice-*, src/hand/chunk/tray-dice.js) and
  * three's Points (split out because the pet chunk and the model loader share it) match only the
  * hashed chunk form, so a world-start module that happens to be named pet-* is never counted lazy.
  */
 const LAZY =
-  /^(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|appearance-editor-[^/]+\.js|theme-form-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|(?:LineSegments|InterleavedBufferAttribute)-[^/]+\.js|font-builder-[^/]+\.js|sdf-builder-[^/]+\.js|dicer-adapter-[^/]+\.js|benchmark-app-[^/]+\.js|report-[^/]+\.js|look-extras-[^/]+\.js|pet-[A-Za-z0-9_-]{8}\.js$|hand-[A-Za-z0-9_-]{8}\.js$|jb2a-[A-Za-z0-9_-]{8}\.js$|chat-tray-[A-Za-z0-9_-]{8}\.js$|tray-dice-[A-Za-z0-9_-]{8}\.js$|Points-[A-Za-z0-9_-]{8}\.js$|assets\/font-worker-[^/]+\.js|draco\/)/;
+  /^(model-loader-[^/]+\.js|migration-[^/]+\.js|synth-[^/]+\.js|effects-[^/]+\.js|trigger-editor-[^/]+\.js|damage-map-editor-[^/]+\.js|area-editor-[^/]+\.js|theme-browser-[^/]+\.js|appearance-editor-[^/]+\.js|theme-form-[^/]+\.js|damage-map-form-[^/]+\.js|sound-names-[^/]+\.js|(?:LineSegments|InterleavedBufferAttribute)-[^/]+\.js|font-builder-[^/]+\.js|sdf-builder-[^/]+\.js|dicer-adapter-[^/]+\.js|benchmark-app-[^/]+\.js|report-[^/]+\.js|look-extras-[^/]+\.js|pet-[A-Za-z0-9_-]{8}\.js$|hand-[A-Za-z0-9_-]{8}\.js$|grab-[A-Za-z0-9_-]{8}\.js$|jb2a-[A-Za-z0-9_-]{8}\.js$|chat-tray-[A-Za-z0-9_-]{8}\.js$|tray-dice-[A-Za-z0-9_-]{8}\.js$|Points-[A-Za-z0-9_-]{8}\.js$|assets\/font-worker-[^/]+\.js|draco\/)/;
 
 /** `p` is `dist/...` (or `<outDir>/...` with `outDir` given). */
 export const isLazy = (p, outDir = 'dist') =>

@@ -45,6 +45,10 @@ describe('build', () => {
     const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
     const hand = lazy.find((p) => /^dist\/hand-[A-Za-z0-9_-]{8}\.js$/.test(p)); // rolling by hand (src/hand/hand.js)
+    const grab = lazy.find((p) => /^dist\/grab-[A-Za-z0-9_-]{8}\.js$/.test(p)); // grab and toss (src/grab/grab.js)
+    expect(grab).toBeTruthy();
+    expect(readFileSync(grab, 'utf8')).toContain('dicer-grab-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-grab-chunk');
     const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
     const chatTray = lazy.find((p) => /^dist\/chat-tray-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the chat dice tray (src/ui/chat-tray.js)
     const trayDice = lazy.find((p) => /^dist\/tray-dice-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the tray core, shared by the hand and chat-tray chunks
@@ -147,6 +151,7 @@ describe('build', () => {
         pets,
         threePoints,
         hand,
+        grab,
         jb2a,
         chatTray,
         trayDice,
@@ -224,10 +229,11 @@ describe('build', () => {
     // field (owner approval, 2026-11-15).
     // elemental trails: owner raised the allowance by 500 B (1,836 -> 2,336) for trails and bursts.
     // tester requests (2026-11-16): owner approved raising it for the batch; dice above windows
-    // +968 B (2,336 -> 3,304).
+    // +968 B (2,336 -> 3,304); number size/weight, module dice sets, chat tray and grab and toss
+    // +854 B together (3,304 -> 4,158).
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(3_304);
+    expect(growth).toBeLessThanOrEqual(4_158);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

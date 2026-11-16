@@ -134,8 +134,8 @@ export function clearanceOf({ normals: N, read, mode }, q, coin) {
 }
 
 /** v clamped to centre c ± (half - LAUNCH_MARGIN), or to c when the area is narrower. */
-const within = (v, c, half) => {
-  const m = Math.max(0, half - LAUNCH_MARGIN);
+const within = (v, c, half, margin = LAUNCH_MARGIN) => {
+  const m = Math.max(0, half - margin);
   return Math.min(c + m, Math.max(c - m, v));
 };
 /** [x, y, z] as {x, y, z}, scaled down to length max at most. */
@@ -146,7 +146,8 @@ const capped = ([x, y, z], max) => {
 
 /**
  * A launch entry as a body start {p, q, v, w}, clamped into area a (margin 1, y in [1, 6]) with
- * speed and spin capped; null when malformed (that die is then a seeded spawn).
+ * speed and spin capped; null when malformed (that die is then a seeded spawn). `rest: true` (a
+ * landed die a toss knocks about) keeps its pose: no margin, y >= 0, never lifted over a pet.
  */
 function launchState(s, a) {
   const parts = [s?.pos, s?.quat, s?.linvel, s?.angvel];
@@ -154,11 +155,14 @@ function launchState(s, a) {
     return null;
   const len = Math.hypot(...s.quat);
   const [x, y, z, w] = len > 1e-9 ? [...s.quat].map((c) => c / len) : [0, 0, 0, 1];
+  const rest = s.rest === true;
+  const m = rest ? 0 : LAUNCH_MARGIN;
   return {
+    rest,
     p: {
-      x: within(s.pos[0], a.cx, a.halfWidth),
-      y: Math.min(6, Math.max(1, s.pos[1])),
-      z: within(s.pos[2], a.cz, a.halfDepth),
+      x: within(s.pos[0], a.cx, a.halfWidth, m),
+      y: Math.min(6, Math.max(rest ? 0 : 1, s.pos[1])),
+      z: within(s.pos[2], a.cz, a.halfDepth, m),
     },
     q: { x, y, z, w },
     v: capped(s.linvel, MAX_RELEASE_SPEED),
@@ -410,8 +414,9 @@ export function createSim(initialArea, hulls, readers) {
           if (l) {
             // The seeded draws above are still taken, so unlaunched dice keep their spawn.
             ({ x: px, y, z: pz } = l.p);
-            for (const o of placed)
-              if (Math.hypot(px - o.x, pz - o.z) < o.r + 1) y = Math.max(y, o.h + LIFT_CLEARANCE);
+            if (!l.rest)
+              for (const o of placed)
+                if (Math.hypot(px - o.x, pz - o.z) < o.r + 1) y = Math.max(y, o.h + LIFT_CLEARANCE);
             [q, vel, spin] = [l.q, l.v, l.w];
           }
           const coin = isCoin(req.dice[i].type);

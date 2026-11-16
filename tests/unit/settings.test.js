@@ -581,6 +581,16 @@ test('petsAllowed (world), showPets and petSounds (client) are Booleans, default
   }
 });
 
+test('grabDice (client) is a Boolean, default on, and tells grab and toss on change', () => {
+  const onGrabChange = vi.fn();
+  const r = capture({ onGrabChange });
+  expect(r.grabDice).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(r.grabDice.name).toBe('DICER.Settings.grabDice.Name');
+  expect(r.grabDice.hint).toBe('DICER.Settings.grabDice.Hint');
+  r.grabDice.onChange(false);
+  expect(onGrabChange).toHaveBeenCalledWith(false);
+});
+
 test('petSplat (client) is a Boolean, default on, and wakes the layer on change', () => {
   const onPetStayChange = vi.fn();
   const r = capture({ onPetStayChange });

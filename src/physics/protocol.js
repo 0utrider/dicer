@@ -28,7 +28,8 @@ export const STEP_SECONDS = 1 / 60;
  * margin of 1, y to [1, 6], speeds and spins capped; lifted to h + 1.2 within r + 1 of an
  * obstacle); a missing entry is a seeded spawn. Frame 0 of a launched throw is the release
  * state, so its impacts' frames are one later. All four walls stand from step 0 unless a die
- * has no launch (then the seeded spawn's wall opens as usual).
+ * has no launch (then the seeded spawn's wall opens as usual). An entry with `rest: true` (grab and
+ * toss: a landed die lying where it is) is clamped with no margin and y >= 0, and never lifted.
  * DONE: {id, settledStep, nudges: number[]} (nudges per die, all 0 unless free).
  * READERS: {readers} (computeReaders(), sent by the lazy hand chunk before its first free throw;
  * messages are handled in order, so it lands before that throw).
