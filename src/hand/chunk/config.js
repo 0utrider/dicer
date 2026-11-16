@@ -11,6 +11,29 @@ const differ = (a, b) => {
 let warnedOther = false;
 
 /**
+ * Foundry picks one resolver from the whole dice configuration and uses its generic one as soon as
+ * two interactive methods are configured (Roll.resolverImplementation). Dicer's resolver already
+ * hands every die that is not its own to that generic form, so with `dicer` next to methods that
+ * have no resolver of their own (Pixels: they fill the open form), Dicer's is the one to use.
+ * Installed by syncConfig: the chunk is loaded whenever a `dicer` entry exists, the only case it
+ * matters.
+ */
+export function patchResolverChoice(Roll = globalThis.foundry?.dice?.Roll) {
+  const base = Roll?.resolverImplementation;
+  if (typeof base !== 'function' || base.dicer) return;
+  const patched = function (roll) {
+    const methods = CONFIG.Dice.fulfillment.methods;
+    const config = game.settings.get('core', Roll.DICE_CONFIGURATION_SETTING) ?? {};
+    const used = new Set(Object.values(config).filter((m) => m && m !== 'manual' && methods[m]?.interactive));
+    if (used.size > 1 && used.has('dicer') && [...used].every((m) => m === 'dicer' || !methods[m].resolver))
+      return methods.dicer.resolver;
+    return base.call(this, roll);
+  };
+  patched.dicer = true;
+  Roll.resolverImplementation = patched;
+}
+
+/**
  * Brings the core diceConfiguration in line with the hand settings. Foundry's own Configure Dice
  * window is the per-die choice (I2): Dicer records the entries it writes itself in the
  * `handRollMapped` client setting and only ever removes those; a `dicer` entry the user picked
@@ -22,12 +45,17 @@ let warnedOther = false;
  *   dice already on `dicer`, the user's and Dicer's own, are the choice and nothing is added).
  *   Only where no other method holds the die, except required: it takes a die from another
  *   method too (never default), stashing it, and maps every die (or `handRollTypes`).
- * - A user who may not roll by hand, or another interactive method than manual (Foundry would
- *   then use its generic resolver, H-17, one warning): every `dicer` entry goes, the user's too.
+ * - Another interactive method than manual holds its dice: Dicer never maps those (required
+ *   included), nor anything automatically when it holds `default`. One that has no resolver of
+ *   its own (Pixels) lives next to Dicer's (shell.js patchResolverChoice hands the roll to the
+ *   DicerResolver, which gives its dice Foundry's form). One with its own resolver cannot (Foundry
+ *   would use its generic one, H-17, one warning): then, and for a user who may not roll by hand,
+ *   every `dicer` entry goes, the user's too.
  * Writes only on a change; the stash and the record are written (and awaited) before the
  * configuration, so a failed write never loses the entries they hold.
  */
 export async function syncConfig({ getSetting, user, getCore, setCore, setSetting }) {
+  patchResolverChoice();
   const was = getCore() ?? {};
   const stash = { ...getSetting('handRollStash') };
   const kept = { ...stash };
@@ -35,9 +63,11 @@ export async function syncConfig({ getSetting, user, getCore, setCore, setSettin
   // A stashed die is one Dicer took (and wrote) under required.
   const ours = new Set([...record, ...Object.keys(stash)]);
   const req = getSetting('handRollsRequired') === true;
-  const other = Object.values(was).some(
-    (m) => m && m !== 'manual' && globalThis.CONFIG?.Dice?.fulfillment?.methods?.[m]?.interactive,
-  );
+  const methods = globalThis.CONFIG?.Dice?.fulfillment?.methods ?? {};
+  const interactive = (m) => m && m !== 'manual' && m !== 'dicer' && methods[m]?.interactive;
+  // Dice another interactive method holds (Pixels on d20, say): never Dicer's.
+  const held = new Set(Object.keys(was).filter((k) => interactive(was[k])));
+  const other = Object.values(was).some((m) => interactive(m) && methods[m].resolver);
   if (other && !warnedOther) {
     warnedOther = !console.warn(
       'dicer: another interactive dice method is configured; rolling by hand stays off',
@@ -57,8 +87,8 @@ export async function syncConfig({ getSetting, user, getCore, setCore, setSettin
       : req || !onDicer.length
         ? [...HAND_DICE, 'default']
         : onDicer.filter((k) => ours.has(k));
-    for (const k of types) {
-      if (out[k] === 'dicer') continue; // the user's own pick
+    for (const k of held.has('default') && !chosen?.length ? [] : types) {
+      if (out[k] === 'dicer' || held.has(k)) continue; // the user's own pick, or another method's die
       if (out[k] && req && k !== 'default') stash[k] = out[k];
       if (!out[k] || stash[k]) {
         out[k] = 'dicer';

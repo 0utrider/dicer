@@ -44,20 +44,39 @@ export const markFor = (roll) => {
     : null;
 };
 
-/** renderChatMessageHTML: one hand mark in the card's header, its notes joined (every viewer). */
+/** A die filled by an interactive method other than Dicer's: physical dice (Pixels, manual entry). */
+const isPhysical = (d) => d.method !== 'dicer' && !!CONFIG.Dice.fulfillment.methods[d.method]?.interactive;
+/** The physical methods that filled `roll`'s dice, once each (Foundry keeps each die's method). */
+export const physicalOf = (roll) => [...new Set((roll?.dice ?? []).filter(isPhysical).map((d) => d.method))];
+/** Every die of `roll` was rolled on physical dice (physicalDice 'skip' does not throw it again). */
+export const allPhysical = (roll) => !!roll?.dice?.length && roll.dice.every(isPhysical);
+
+/** Prepends a `kind` mark (once) with note `tip` to a card header. */
+function addMark(at, kind, icon, tip) {
+  if (!tip || at.querySelector(`.dicer-card-${kind}`)) return;
+  const m = document.createElement('i');
+  m.className = `dicer-card-mark dicer-card-${kind} fa-solid ${icon}`;
+  m.dataset.tooltip = tip;
+  m.setAttribute('aria-label', tip);
+  at.prepend(m);
+}
+
+/**
+ * renderChatMessageHTML (every viewer): one hand mark in the card's header, its notes joined; and
+ * one physical dice mark naming the methods, unless this viewer's physicalDice is 'animate'.
+ */
 export function markCard(message, html) {
   try {
     const at = html.querySelector('.message-metadata');
     const tips = message.rolls.map(markFor).filter(Boolean);
-    const tip = [...new Set(tips.map((m) => m.tip))].join('; ');
-    if (!tip || at.querySelector('.dicer-card-mark')) return;
-    const m = document.createElement('i');
-    m.className = 'dicer-card-mark fa-solid fa-hand';
-    m.dataset.tooltip = tip;
-    m.setAttribute('aria-label', tip);
-    at.prepend(m);
+    addMark(at, 'hand', 'fa-hand', [...new Set(tips.map((m) => m.tip))].join('; '));
+    const names = [...new Set(message.rolls.flatMap(physicalOf))];
+    if (!names.length || game.settings.get('dicer', 'physicalDice') === 'animate') return;
+    const i = game.i18n;
+    const labels = names.map((n) => i.localize(CONFIG.Dice.fulfillment.methods[n].label ?? n));
+    addMark(at, 'physical', 'fa-dice', i.format('DICER.Physical.Mark', { methods: labels.join(', ') }));
   } catch {
-    /* no header or rolls: no mark */
+    /* no header or rolls, or the setting not registered: no mark */
   }
 }
 

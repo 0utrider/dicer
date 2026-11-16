@@ -12,7 +12,7 @@ import { PRESETS, normalizeAreaDef } from '../areas/area-model.js';
 import { areaDefFor, withArea } from '../areas/area-store.js';
 import { isGmOnly } from '../areas/gm-only.js';
 import { petFor } from '../pet/pet-for.js';
-import { isHandRoll } from '../hand/gate-hand.js';
+import { isHandRoll, allPhysical } from '../hand/gate-hand.js';
 import { loadHand, handNow } from '../hand/hand-loader.js';
 
 const STANDARD_SYSTEM = 'standard';
@@ -383,6 +383,8 @@ export function createDice3dApi({
       if (s.synchronize) broadcast(toThrow, s);
       // H-18: this user threw it by hand and saw it land; it is not animated again here.
       if (isHandRoll(toThrow) && toThrow.options.dicerHand.by === me()?.id) return false;
+      // Every die rolled on physical dice (Pixels, manual entry) and this player skips those.
+      if (getSetting('physicalDice') === 'skip' && allPhysical(toThrow)) return false;
       // Client-scope (P3-R11): turning 3D dice off here never suppresses the other clients' dice
       // nor the hooks an integration may wait on.
       if (!getSetting('enabled')) {
