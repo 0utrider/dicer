@@ -84,6 +84,8 @@ export function formFromAppearance(raw) {
       depth: a.numbers.depth,
       pips: a.numbers.pips,
       coin: a.numbers.coin,
+      size: a.numbers.size,
+      weight: a.numbers.weight,
       ...fontParts(a.numbers.font),
     },
     edges: { radius: a.edges.radius, strip: a.edges.strip.style, stripColor: a.edges.strip.color, stripStrength: a.edges.strip.strength },
@@ -114,6 +116,8 @@ export function appearanceFromForm(form) {
       font: fontIdOf(num),
       pips: num.pips === true,
       coin: num.coin,
+      size: n(num.size),
+      weight: n(num.weight),
     },
     edges: { radius: n(e.radius), strip: { style: e.strip, color: e.stripColor, strength: n(e.stripStrength) } },
     shapes: { d4: isObj(f.shapes) ? f.shapes.d4 : undefined },
@@ -186,7 +190,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

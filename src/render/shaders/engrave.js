@@ -17,6 +17,11 @@ export const RIM_WIDTH = 0.03;
 export const RIM_DARK = 0.6;
 /** Corner radius of the 6/9 mark's box, in face units. */
 export const BOX_ROUND = 0.012;
+/**
+ * Glyph distance shift per unit of numbers.weight, in face units at size 1 (about one atlas px):
+ * well inside the 4 px field pad, so bold never clips at the glyph rect and thin keeps hairlines.
+ */
+export const WEIGHT_SHIFT = 0.016;
 
 /** Vertex shader: after `#include <common>`. */
 export const ENGRAVE_VERTEX_PARS = /* glsl */ `
@@ -41,6 +46,7 @@ uniform vec3 uFillColor;
 uniform vec2 uFillPBR;   // fill metalness, fill roughness
 uniform float uFillGloss; // 0..1 clearcoat-like gloss on the fill (enamel)
 uniform float uEngrave;
+uniform vec2 uNum; // numbers.size, numbers.weight * WEIGHT_SHIFT
 varying float vFaceId;
 varying vec2 vFaceUV;
 
@@ -89,9 +95,12 @@ export const ENGRAVE_COLOR = /* glsl */ `
 	int dcFace = int( floor( vFaceId + 0.5 ) );
 	if ( dcFace >= 0 ) {
 		vec2 dcG0, dcG1;
-		float dcD0 = dcGlyph( dcFace, 0, vFaceUV, dcG0 );
-		float dcD1 = dcGlyph( dcFace, 1, vFaceUV, dcG1 );
-		dcD = max( dcD0, dcD1 );
+		// Size: sample at p / size, scale the distance back to face units (AA, walls, rim and the
+		// outline keep their widths). Weight: shift the glyph-space distance. Every SDF glyph
+		// (numbers, icons, pips, coin motifs) follows; size 1, weight 0 is exactly the old path.
+		float dcD0 = dcGlyph( dcFace, 0, vFaceUV / uNum.x, dcG0 );
+		float dcD1 = dcGlyph( dcFace, 1, vFaceUV / uNum.x, dcG1 );
+		dcD = ( max( dcD0, dcD1 ) + uNum.y ) * uNum.x;
 		dcGrad = dcD0 >= dcD1 ? dcG0 : dcG1;
 	}
 	float dcMask = smoothstep( - dcAA, dcAA, dcD );
@@ -156,7 +165,8 @@ export const FILL_GLOSS = /* glsl */ `
  * Rasterized faces (DICER_FACE_LAYERS): image and text faces from a FaceSet, one layer of
  * uFaceTex per face (render/face-textures.js). uFaceLayer[face]: x = layer (-1: none, the MSDF
  * label draws), y = 1 for a text mask tinted by the fill, 0 for an image at its own colours.
- * A layered face has an empty MSDF label, so it gets no recess: engraving needs the SDF.
+ * A layered face has an empty MSDF label, so it gets no recess: engraving needs the SDF. For the
+ * same reason it ignores numbers.size and numbers.weight (uNum).
  */
 
 /** Most faces of any die (the d20). */
