@@ -527,7 +527,8 @@ export function createSim(initialArea, hulls, readers) {
           }
           impacts.push([frame, die, other, speed]);
           // Float32, like the copy the pet layer reads: both sides agree at the threshold.
-          if (other <= -3 && Math.fround(speed) >= splatAt) splatted.push(pets[-3 - other]);
+          if (other <= -3 && req.dice[die]?.splat !== false && Math.fround(speed) >= splatAt)
+            splatted.push(pets[-3 - other]);
         };
 
         for (let step = 1; step <= maxSteps; step++) {

@@ -85,6 +85,24 @@ test('splatSpeed absent, null or with no obstacles changes nothing', () => {
   expect(JSON.stringify(run(MIX, 7, { splatSpeed: SPLAT_SPEED }))).toBe(bare);
 });
 
+test('dice sent with splat: false never splat: the throw is as with petSplat off', () => {
+  const obstacles = petsFor(2);
+  const solid = JSON.stringify(run(MIX, 2, { obstacles }));
+  const noSplat = (dice, seed, extra) => {
+    const sim = createSim(area, hulls);
+    const impacts = [];
+    sim.throw({ dice: dice.map((type) => ({ type, splat: false })), seed, ...extra }, (c) => {
+      for (let i = 0; i < c.events.length; i += IMPACT_FLOATS)
+        impacts.push({ frame: c.events[i], die: c.events[i + 1], other: c.events[i + 2], speed: c.events[i + 3] });
+    });
+    sim.dispose();
+    return impacts;
+  };
+  expect(JSON.stringify(noSplat(MIX, 2, { obstacles, splatSpeed: SPLAT_SPEED }))).toBe(
+    JSON.stringify(JSON.parse(solid).impacts),
+  );
+});
+
 test('a splatSpeed above every contact leaves the throw as it was', () => {
   const obstacles = petsFor(2);
   expect(JSON.stringify(run(MIX, 2, { obstacles, splatSpeed: 1e9 }))).toBe(

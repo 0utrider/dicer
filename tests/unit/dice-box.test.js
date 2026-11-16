@@ -1,3 +1,4 @@
+import { maySplat } from '../../src/physics/protocol.js';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import {
@@ -372,7 +373,7 @@ test('tens dice use their own label set and map onto d10 faces 1..10', () => {
   const [tens, ones] = dieGroups(renderer).map((g) => g.children[0]);
   expect(tens.material).not.toBe(ones.material);
   expect(tens.geometry).toBe(ones.geometry);
-  expect(physics.streams[0].req.dice).toEqual([{ type: 'd10' }, { type: 'd10' }]);
+  expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d10', 'd10']);
   expect(Number.isInteger(physics.streams[0].req.seed)).toBe(true);
   box.clear();
 });
@@ -2702,7 +2703,7 @@ describe('the crystal d4 look', () => {
     createDiceMaterial.mockClear();
     const { renderer, physics, box } = setup();
     await landed(renderer, physics, box, [{ type: 'd4', value: 3, appearance: crystal }]);
-    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
+    expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d4crystal']);
     expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4crystal']);
     expect([...box._geometries.keys()][0].startsWith('d4crystal|')).toBe(true);
     const shape = getShape('d4crystal');
@@ -2738,7 +2739,7 @@ describe('the crystal d4 look', () => {
       { type: 'd4', value: 4 },
       { type: 'd4', value: 4, ghost: true },
     ]);
-    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }, { type: 'd4crystal' }]);
+    expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d4crystal', 'd4crystal']);
     box.invalidateMaterials({ replaceInFlight: true });
     const dice = box._rolls.values().next().value.dice;
     expect(dice.every((d) => d.shape.type === 'd4crystal' && d.type === 'd4')).toBe(true);
@@ -2750,13 +2751,15 @@ describe('the crystal d4 look', () => {
     const { physics, box } = setup();
     box.roll(['d6', 'd8', 'd20', 'd2'].map((type) => ({ type, value: 1, appearance: crystal })));
     expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d6', 'd8', 'd20', 'd2']);
+    // only the d20 may splat a pet (protocol.js maySplat)
+    expect(physics.streams[0].req.dice.map((d) => d.splat)).toEqual([false, false, undefined, false]);
     box.clear();
   });
 
   test('a classic look keeps the d4', () => {
     const { physics, box } = setup();
     box.roll([{ type: 'd4', value: 1, appearance: DEFAULT_APPEARANCE }]);
-    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d4']);
     box.clear();
   });
 });
@@ -2768,7 +2771,7 @@ describe('a DSN preset faces keep the d4 classic; a never-drawn d4 model does no
     buildDieGeometry.mockClear();
     const { physics, box } = setup();
     box.roll([{ type: 'd4', value: 2, dsnType: 'd4', model: 'm/dice_4.glb', appearance: crystal }]);
-    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d4']);
     const die = box._rolls.values().next().value.dice[0];
     expect(die.shapeType).toBe('d4');
     expect(die.modelRotation).toBe(MODEL_ROTATIONS.d4);
@@ -2779,7 +2782,7 @@ describe('a DSN preset faces keep the d4 classic; a never-drawn d4 model does no
     const { physics, box } = setup();
     const faces = { key: 'k', labels: getShape('d4').values.map((v) => ({ kind: 'glyph', text: 'g' + v })) };
     box.roll([{ type: 'd4', value: 2, faces, appearance: crystal }]);
-    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
+    expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d4']);
     const die = box._rolls.values().next().value.dice[0];
     expect(die.faces).toBe(faces);
     expect(die.shape).toBe(getShape('d4'));
@@ -3517,10 +3520,10 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
       { type: 'd4', value: 2, shapeType: 'd4' },
       { type: 'd4', value: 2 },
     ]);
-    expect(a.physics.streams[0].req.dice).toEqual([{ type: 'd4' }, { type: 'd4crystal' }]);
+    expect(a.physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d4', 'd4crystal']);
     const b = handSetup();
     b.box.roll([{ type: 'd4', value: 2, shapeType: 'd4crystal' }]);
-    expect(b.physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
+    expect(b.physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d4crystal']);
     const die = b.box._rolls.values().next().value.dice[0];
     expect(die.type).toBe('d4');
     expect(die.shape).toBe(getShape('d4crystal'));
@@ -4141,4 +4144,11 @@ describe('body images', () => {
       release.mockRestore();
     }
   });
+});
+
+test("only a check's d20 may splat a pet: every other die, and a damage d20, is sent with splat: false", () => {
+  expect(maySplat('d20')).toBe(true);
+  expect(maySplat('d20', 'fire')).toBe(false);
+  expect(maySplat('d6')).toBe(false);
+  expect(maySplat('d100')).toBe(false);
 });

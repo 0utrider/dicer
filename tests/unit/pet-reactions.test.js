@@ -434,6 +434,41 @@ describe('reactions in the layer', () => {
     expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
   });
 
+  test("only a check's d20 splats: a damage die (a weapon d8, a damage d20) or a plain d6 wobbles it however hard", () => {
+    for (const die of [{ type: 'd8', damageType: 'slashing' }, { type: 'd20', damageType: 'piercing' }, { type: 'd6' }]) {
+      const m = make();
+      rollToRest(m);
+      const g = group(m);
+      m.layer.hit('u1', { speed: 50, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die });
+      expect(m.deps.playSound).not.toHaveBeenCalledWith({ builtin: 'petSplat' });
+      expect(m.layer.update((clockNow += 16))).toBe(true); // the wobble
+    }
+    const m = make();
+    rollToRest(m);
+    const g = group(m);
+    m.layer.hit('u1', { speed: 50, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die: { type: 'd20' } });
+    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+  });
+
+  test("a die with an element hitting a pet that watches its owner's dice fly sets it off there and then", () => {
+    const m = make();
+    rollToRest(m);
+    const key = `watch-${clockNow}`;
+    const area = { cx: 0, cz: 0, halfWidth: STAGE.halfWidth, halfDepth: STAGE.halfDepth };
+    m.layer.begin(key, { spec: { userId: 'u1', kind: 'mimic', color: '#ff0000' }, edge: 0, area, centre: () => ({ x: 0, z: 0 }) });
+    runTo(m, clockNow + 900); // into its watch
+    m.deps.playSound.mockClear();
+    const g = group(m);
+    m.layer.hit('u1', { speed: 3, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die: { type: 'd6', damageType: 'fire' } });
+    m.layer.update((clockNow += 16));
+    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petCough' });
+    expect(g.userData.dicerPet.phase).toBe('scorch');
+    // the dice land: its own reaction takes over
+    m.layer.landed(key, [{ type: 'd20', value: 20 }]);
+    m.layer.update((clockNow += 16));
+    expect(g.userData.dicerPet.phase).toBe('react');
+  });
+
   test('a resting pet is idle again once its reaction is over', () => {
     const m = make();
     rollToRest(m);

@@ -120,7 +120,7 @@
       },
       "petSplat": {
         "Name": "Dice can splat pets",
-        "Hint": "A die that hits a pet hard enough splats it until its owner rolls again."
+        "Hint": "A d20 (a check or attack, never a damage die) that hits a pet hard enough splats it until its owner rolls again; other dice only knock it about."
       },
       "petRestSpot": {
         "Name": "Where pets rest",

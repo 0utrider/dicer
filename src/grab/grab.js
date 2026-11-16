@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { Playback } from '../throw/playback.js';
 import { readTopFace, rotationToShow } from '../core/face-reader.js';
 import { cameraHeightFor } from '../render/scene.js';
-import { FLOATS_PER_DIE, MAX_OBSTACLES } from '../physics/protocol.js';
+import { FLOATS_PER_DIE, MAX_OBSTACLES, maySplat } from '../physics/protocol.js';
 import { loadHand } from '../hand/hand-loader.js';
 
 export const CHUNK = 'dicer-grab-chunk';
@@ -260,7 +260,7 @@ function createGrab(
       if (e.die.modelQuat) e.L0.multiply(e.die.modelQuat.clone().invert());
     }
     const req = {
-      dice: entries.map(({ die }) => ({ type: die.shapeType })),
+      dice: entries.map(({ die }) => ({ type: die.shapeType, ...(!maySplat(die.shapeType, die.damageType) && { splat: false }) })),
       seed: Math.floor(random() * 2 ** 32) >>> 0,
       launch,
     };
@@ -366,7 +366,7 @@ function createGrab(
       try {
         if (other <= -3) {
           const id = t.ids[-3 - other];
-          const die = { appearance: e.die.appearance, damageType: e.die.damageType, ghost: e.die.ghost };
+          const die = { appearance: e.die.appearance, damageType: e.die.damageType, ghost: e.die.ghost, type: e.die.shapeType };
           if (id !== undefined) t.hook?.hit?.(id, { speed, position, dieKey, die });
           continue;
         }

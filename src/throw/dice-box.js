@@ -19,7 +19,7 @@ import { modelRotationFor } from '../compat/dsn-orientation.js';
 import { lookFacesFor } from '../compat/faces.js';
 import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
-import { MAX_FREE_STEPS, MAX_OBSTACLES, MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
+import { MAX_FREE_STEPS, MAX_OBSTACLES, MAX_STEPS, STEP_SECONDS, maySplat } from '../physics/protocol.js';
 import { throwEdge } from '../core/rng.js';
 import { fitDieCapacity, toDieArea } from '../areas/area-model.js';
 
@@ -501,7 +501,8 @@ export class DiceBox {
         : globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
       roll.seed = seed;
       roll.edge = [0, 1, 2, 3].includes(edge) ? edge : throwEdge(seed);
-      const req = { dice: roll.dice.map((d) => ({ type: d.shapeType })), seed };
+      // only a check's d20 may splat a pet (pets.js maySplat): the sim lets the rest bounce off
+      const req = { dice: roll.dice.map((d) => ({ type: d.shapeType, ...(!maySplat(d.shapeType, d.damageType) && { splat: false }) })), seed };
       if (throwArea) req.area = throwArea;
       if (roll.free) req.free = true;
       if (Array.isArray(launch)) req.launch = launch;
@@ -1663,7 +1664,7 @@ export class DiceBox {
           // wobbles; its own sound covers the contact, so no die click and no dust.
           const id = roll.ids?.[-3 - other];
           // its look and damage type: an elemental die sets the pet off instead (pets.js hit)
-          const die = { appearance: d.appearance, damageType: d.damageType, ghost: d.ghost };
+          const die = { appearance: d.appearance, damageType: d.damageType, ghost: d.ghost, type: d.shapeType };
           if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey, die }), roll.hook);
           continue;
         }

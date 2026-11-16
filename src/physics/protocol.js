@@ -19,7 +19,8 @@ export const STEP_SECONDS = 1 / 60;
  * standing height h; r > 3 or h > 6 is ignored); the caller keeps them inside the stage, off the
  * spawn side. Impacts with obstacle i report other = -3 - i. At most MAX_OBSTACLES.
  * `splatSpeed?`: a die contact with an obstacle at this speed or more splats that pet, and its
- * collider is gone from the next step (absent or null: obstacles stay solid; petSplat off).
+ * collider is gone from the next step (absent or null: obstacles stay solid; petSplat off). A die
+ * entry with `splat: false` never splats a pet (only a check's d20 does: pets.js maySplat).
  * `free?: true` (rolling by hand): once the dice settle, a die that is cocked (INIT's readers) or
  * whose centre is outside the area gets a nudge from mulberry32(seed ^ 0x9e3779b9), and the same
  * world runs on: at most MAX_NUDGES per die, within MAX_FREE_STEPS. Then the reading stands.
@@ -57,3 +58,9 @@ export const MSG = Object.freeze({
 
 /** Worker -> client handshake once Rapier is initialised. */
 export const READY = 'ready';
+
+/**
+ * Whether a die may splat a pet: only a check's d20, never a damage die (one with a damage type)
+ * or any other die, which bounce off it (a wobble at most). The sim and the pet layer agree on it.
+ */
+export const maySplat = (type, damageType) => type === 'd20' && !damageType;

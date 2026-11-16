@@ -29,6 +29,7 @@ import {
 } from './resting.js';
 import { spotFor as chosenSpot, atEdge, placedSpot, toPlaced, validAt, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, petClickable, HUFF_IGNORE_MS } from './petting.js';
+import { maySplat } from '../../physics/protocol.js';
 import { elementReactions, reactionOf, resting } from './reactions.js';
 import { elementOf } from '../../effects/element-of.js';
 import { ELEMENT_FX, PHYSICAL, writeMotes, writePuffs } from './element-fx.js';
@@ -1176,6 +1177,13 @@ export function createPetLayer(deps) {
     if (any) wake();
   }
 
+  /**
+   * Whether `pet` watches its owner's dice fly (its routine's watch phase, standing still): a die
+   * with an element that hits it then sets it off too (hit), between its throw and its reaction.
+   */
+  function watching(pet) {
+    return pet.state === 'routine' && !pet.gone && !pet.wobble && phaseAt(pet.track, clock()).phase === 'watch';
+  }
   /** `pet` reacts to `element` (reactions.js reactionOf): the anim replaces whatever it was doing. */
   function react(pet, element, now) {
     dropAnim(pet); // a shiver's tint or a scorch's smoke cut short by the next reaction
@@ -1194,7 +1202,8 @@ export function createPetLayer(deps) {
    */
   function hitElement(pet, die) {
     try {
-      if (!die || die.ghost || !resting(pet) || disposed || !shown() || getSetting('petElemental') === false) return null;
+      if (!die || die.ghost || !(resting(pet) || watching(pet)) || disposed || !shown() || getSetting('petElemental') === false)
+        return null;
       const element = elementOf(die.appearance, die.damageType) ?? null;
       return PHYSICAL.includes(element) ? null : element;
     } catch {
@@ -1657,6 +1666,12 @@ export function createPetLayer(deps) {
       return stepHop(pet, now, shadows);
     }
     if (phase === 'gone') return false;
+    if (pet.anim?.element) {
+      // a die with an element hit it while it watched: it reacts in place, then watches on
+      if (phase === 'watch') return stepAnim(pet, now, shadows);
+      dropAnim(pet); // the dice landed: its own reaction takes over
+      pet.sparkle.visible = false;
+    }
     const h = pet.creature.height;
     const { base, out } = pet;
     let px = base.x;
@@ -1741,7 +1756,8 @@ export function createPetLayer(deps) {
           } else if (!held) nextLeave = Math.min(nextLeave, pet.leaveAt);
         }
         // Petting belongs to a resting pet: one that rolled, left, splatted or moved drops it.
-        if (pet.anim && pet.state !== 'rest') dropAnim(pet);
+        // (an elemental reaction a watching pet got from a die hitting it plays out over its watch)
+        if (pet.anim && pet.state !== 'rest' && !(pet.state === 'routine' && pet.anim.element)) dropAnim(pet);
         if (pet.held && pet.state !== 'rest') pet.held = null; // its owner rolled mid-drag: let go
         if (pet.huff && (pet.gone || (pet.state !== 'rest' && pet.state !== 'hop'))) pet.huff = null;
         if (pet.huff && now >= pet.huff.backAt) {
@@ -1917,7 +1933,7 @@ export function createPetLayer(deps) {
    * pet of user `id`. A die with an element (`die`: its appearance, damageType, ghost) sets a resting
    * pet off in that element (petElemental), however hard it hits: fire scorches, frost chills,
    * storm shocks; it never splats or wobbles it. Otherwise, at SPLAT_SPEED or more (and petSplat on)
-   * it splats; from WOBBLE_SPEED it wobbles, pushed away from `position` (a new hit restarts it);
+   * a check's d20 splats it (maySplat: never a damage die or another die); from WOBBLE_SPEED it wobbles, pushed away from `position` (a new hit restarts it);
    * less does nothing. A splat, puddle or pet already down is not hit again, so several hits in one
    * frame give one splat and one sound.
    */
@@ -1937,7 +1953,9 @@ export function createPetLayer(deps) {
       return;
     }
     if (!(speed >= WOBBLE_SPEED)) return; // also NaN
-    if (speed >= SPLAT_SPEED && splatOn()) return splat(pet, now);
+    // only a check's d20 splats (maySplat; a die with no type, from an old caller, still may)
+    const d = info?.die;
+    if (speed >= SPLAT_SPEED && splatOn() && (!d?.type || maySplat(d.type, d.damageType))) return splat(pet, now);
     let dx = (pet.px ?? pet.base.x) - (info.position?.x ?? 0);
     let dz = (pet.pz ?? pet.base.z) - (info.position?.z ?? 0);
     const len = Math.hypot(dx, dz);
