@@ -13,6 +13,7 @@ import {
   tintOf,
   tintsFor,
   dock as dockTray,
+  trayProfile,
   _resetChatTray,
   HOLD_MS,
 } from '../../src/ui/chat-tray.js';
@@ -40,6 +41,7 @@ beforeEach(() => {
   made = [];
   hooks = [];
   globalThis.game = {
+    system: { id: 'dnd5e' },
     user,
     modules,
     i18n: {
@@ -188,7 +190,7 @@ describe('dock', () => {
     dockTray({ '#chat-message': textarea() }, vi.fn());
     expect(dock()).toBeTruthy();
     expect(document.querySelector('.chat-form').nextElementSibling).toBe(dock());
-    expect(dock().querySelectorAll('.dicer-chat-tray-die')).toHaveLength(TRAY_DICE.length);
+    expect(dock().querySelectorAll('.dicer-chat-tray-die')).toHaveLength(trayProfile().dice.length);
     dockTray({ '#chat-message': textarea() }, vi.fn());
     expect(document.querySelectorAll('.dicer-chat-tray')).toHaveLength(1);
     // Foundry moves the textarea (popout): the dock follows it
@@ -443,5 +445,49 @@ describe('lang and styles', () => {
     const css = readFileSync('styles/dicer.css', 'utf8');
     expect(css).toContain('.dicer-chat-tray-die');
     expect(css).toContain('--dicer-ct-body');
+  });
+});
+
+describe('trayProfile: the tray follows the world system', () => {
+  test('D&D-likes keep advantage; PF2e names it fortune; others get none', () => {
+    expect(trayProfile('dnd5e').keep).toEqual({ up: 'Adv', down: 'Dis' });
+    expect(trayProfile('pf2e').keep).toEqual({ up: 'Fortune', down: 'Misfortune' });
+    for (const id of ['swade', 'CoC7', 'cyberpunk-red-core', 'some-unknown-system'])
+      expect(trayProfile(id).keep).toBeNull();
+  });
+
+  test('dice per system, standard ones for an unknown system, every key a tray die', () => {
+    expect(trayProfile('cyberpunk-red-core').dice).toEqual(['d6', 'd10']);
+    expect(trayProfile('fate-core-official').dice).toEqual(['dF']);
+    expect(trayProfile('unknown').dice).toEqual(['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100']);
+    for (const id of ['dnd5e', 'pf2e', 'swade', 'CoC7', 'ModularFate', 'x'])
+      for (const k of trayProfile(id).dice) expect(TRAY_DICE).toContain(k);
+    expect(trayProfile('toString').dice).toHaveLength(7); // no prototype keys
+  });
+
+  test('a system without a keep pair docks no Adv/Dis buttons and no d20 menu entries', () => {
+    vi.useFakeTimers();
+    globalThis.game.system.id = 'swade';
+    dockTray(undefined, vi.fn());
+    expect(dock().querySelectorAll('[data-adv]')).toHaveLength(0);
+    expect([...dock().querySelectorAll('.dicer-chat-tray-die')].map((b) => b.dataset.die)).toEqual(
+      ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'],
+    );
+    die('d20').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    vi.advanceTimersByTime(HOLD_MS + 10);
+    const menu = dock().querySelector('.dicer-chat-tray-menu');
+    expect(menu).not.toBeNull();
+    expect(menu.querySelectorAll('[data-adv]')).toHaveLength(0);
+  });
+
+  test('PF2e labels the pair Fortune / Misfortune and it still keeps the higher / lower d20', () => {
+    globalThis.game.system.id = 'pf2e';
+    dockTray(undefined, vi.fn());
+    const up = dock().querySelector('[data-adv="1"]');
+    expect(up.textContent).toBe('DICER.ChatTray.Fortune');
+    expect(up.dataset.tooltip).toBe('DICER.ChatTray.FortuneHint');
+    click(die('d20'));
+    click(up);
+    expect(rollButton().textContent).toContain('2d20kh');
   });
 });

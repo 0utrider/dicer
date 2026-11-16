@@ -2,7 +2,9 @@
  * The chat dice tray (lazy chat-tray chunk; its world-start half is main.js's dockChat on
  * renderChatInput / renderChatLog and the client setting chatTray). A Dice Tray replacement: one
  * button per die docked under the chat input. Click adds a die, right-click removes one, holding
- * offers quick counts (and advantage on the d20); a modifier, Clear and Roll (who sees it: the chat's own mode buttons).
+ * offers quick counts (and the system's keep-highest / keep-lowest pair on the d20, if it has one);
+ * a modifier, Clear and Roll (who sees it: the chat's own mode buttons). The dice and that pair
+ * follow the world's system (trayProfile).
  *
  * Roll posts the formula as a normal Foundry roll, so Dicer animates it like any other. Where the
  * user may roll by hand (shell.handAllowed, engine up), a die or the Roll button dragged out of
@@ -34,6 +36,40 @@ const fmt = (key, data) => {
   const f = globalThis.game?.i18n?.format;
   return f ? f.call(globalThis.game.i18n, key, data) : key;
 };
+
+const STANDARD = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+/** Two d20, keep one: each system's own name for it (lang keys DICER.ChatTray.<name>[Hint]). */
+const KEEP = {
+  adv: { up: 'Adv', down: 'Dis' }, // advantage / disadvantage
+  fortune: { up: 'Fortune', down: 'Misfortune' }, // PF2e: roll twice, use the higher / lower
+};
+/**
+ * Per world system (game.system.id): the dice the tray shows (default STANDARD) and its keep pair
+ * (default none). A system not listed gets the standard dice and no pair: a helper the rules do
+ * not have is worse than none.
+ */
+const PROFILES = {
+  dnd5e: { keep: 'adv' },
+  sw5e: { keep: 'adv' },
+  a5e: { keep: 'adv' },
+  'black-flag': { keep: 'adv' },
+  pf2e: { keep: 'fortune' },
+  sf2e: { keep: 'fortune' },
+  swade: { dice: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'] },
+  'cyberpunk-red-core': { dice: ['d6', 'd10'] },
+  CoC7: { dice: ['d4', 'd6', 'd8', 'd10', 'd20', 'd100'] },
+  'fate-core-official': { dice: ['dF'] },
+  ModularFate: { dice: ['dF'] },
+};
+
+/** The tray for system `id`: {dice: tray die keys, keep: {up, down} label names | null}. */
+export function trayProfile(id = globalThis.game?.system?.id) {
+  const p = Object.hasOwn(PROFILES, id) ? PROFILES[id] : {};
+  return {
+    dice: (p.dice ?? STANDARD).filter((k) => TRAY_DICE.includes(k)),
+    keep: KEEP[p.keep] ?? null,
+  };
+}
 
 /** The dock's formula: the tray's, with the d20 term keeping its highest (adv 1) or lowest (-1). */
 export function chatFormula({ counts = {}, modifier = 0, adv = 0 } = {}) {
@@ -165,7 +201,8 @@ function h(tag, attrs = {}, kids = []) {
 const tip = (attrs, text) => ({ ...attrs, 'aria-label': text, 'data-tooltip': text });
 
 function build() {
-  const dice = TRAY_DICE.map((key) =>
+  const { dice: keys, keep } = trayProfile();
+  const dice = keys.map((key) =>
     h(
       'button',
       tip(
@@ -194,16 +231,20 @@ function build() {
       ),
       btn({ 'data-mod': '1' }, loc('DICER.Tray.ModifierUp'), [icon('fa-plus')]),
     ]),
-    btn(
-      { 'data-adv': '1', 'aria-pressed': 'false', class: 'dicer-chat-tray-adv' },
-      loc('DICER.ChatTray.AdvHint'),
-      [loc('DICER.ChatTray.Adv')],
-    ),
-    btn(
-      { 'data-adv': '-1', 'aria-pressed': 'false', class: 'dicer-chat-tray-adv' },
-      loc('DICER.ChatTray.DisHint'),
-      [loc('DICER.ChatTray.Dis')],
-    ),
+    ...(keep
+      ? [
+          btn(
+            { 'data-adv': '1', 'aria-pressed': 'false', class: 'dicer-chat-tray-adv' },
+            loc(`DICER.ChatTray.${keep.up}Hint`),
+            [loc(`DICER.ChatTray.${keep.up}`)],
+          ),
+          btn(
+            { 'data-adv': '-1', 'aria-pressed': 'false', class: 'dicer-chat-tray-adv' },
+            loc(`DICER.ChatTray.${keep.down}Hint`),
+            [loc(`DICER.ChatTray.${keep.down}`)],
+          ),
+        ]
+      : []),
     btn({ 'data-act': 'clear' }, loc('DICER.ChatTray.Clear'), [icon('fa-eraser')]),
     btn({ 'data-act': 'roll', class: 'dicer-chat-tray-roll' }, loc('DICER.ChatTray.RollHint'), [
       icon('fa-dice-d20'),
@@ -274,7 +315,7 @@ async function roll() {
 /** The dice a drag carries: one die (its count, or 1) or, with no die, the whole selection. */
 function choiceFor(key) {
   const counts = {};
-  for (const k of key ? [key] : TRAY_DICE) {
+  for (const k of key ? [key] : trayProfile().dice) {
     const n = countOf(state.counts[k]);
     if (n || k === key) counts[k] = Math.max(1, n);
   }
@@ -306,26 +347,27 @@ function closeMenu() {
   dockEl?.querySelector('.dicer-chat-tray-menu')?.remove();
 }
 
-/** The quick-count menu of die `key` (and advantage / disadvantage on the d20). */
+/** The quick-count menu of die `key` (and the system's keep pair on the d20). */
 function openMenu(button) {
   closeMenu();
   const key = button.dataset.die;
   const items = QUICK.map((n) =>
     h('button', { type: 'button', 'data-count': String(n), 'data-die': key, text: `${n}${key}` }),
   );
-  if (key === 'd20') {
+  const keep = trayProfile().keep;
+  if (key === 'd20' && keep) {
     items.push(
       h('button', {
         type: 'button',
         'data-adv': '1',
         'data-menu': '1',
-        text: loc('DICER.ChatTray.AdvHint'),
+        text: loc(`DICER.ChatTray.${keep.up}Hint`),
       }),
       h('button', {
         type: 'button',
         'data-adv': '-1',
         'data-menu': '1',
-        text: loc('DICER.ChatTray.DisHint'),
+        text: loc(`DICER.ChatTray.${keep.down}Hint`),
       }),
     );
   }
