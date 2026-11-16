@@ -1409,6 +1409,24 @@ test("petRestSpot 'dice' (or unset) rests in the roll-area ring as before", () =
   }
 });
 
+test("v14's mostly empty #ui-left / #ui-top boxes are not UI: a top-left pet rests at the top, clear of the widgets", () => {
+  const W = STAGE_BIG.rect.width;
+  const H = STAGE_BIG.rect.height;
+  const rects = {
+    // v14: the boxes span the left third and the top half; the widgets inside are small
+    'ui-left': { left: 0, top: 0, width: W / 3, height: H },
+    'ui-top': { left: W / 3, top: 0, width: W / 2, height: H / 2 },
+    'scene-controls': { left: 0, top: 0, width: 2 * PX, height: H * 0.75 },
+    players: { left: 0, top: H * 0.85, width: 2 * PX, height: H * 0.15 },
+  };
+  const { m } = spotMake('topLeft', { doc: fakeDoc(rects) });
+  rollToRest(m, 'u1');
+  const p = posOf(m);
+  expect(p.z).toBeLessThan(0); // the top half
+  expect(p.x).toBeLessThan(0); // the left half
+  expect(p.x).toBeGreaterThan(-BIG.halfWidth + 2); // right of the controls column
+});
+
 test("petRestSpot 'bottomRight': pets rest at its slots in the order they arrive", () => {
   const { m } = spotMake('bottomRight');
   rollToRest(m, 'u1');

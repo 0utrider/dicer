@@ -65,17 +65,49 @@ function colorsetEntry(name, cs, registry) {
   return { id: COLORSET_PREFIX + name, kind: 'colorset', key: name, name: str(cs.description) || name, category: str(cs.category), appearance, perType: {}, dropped };
 }
 
+const FATE = [['-', '−', '–'], ['', ' '], ['+']];
+/** Face i's label is what Dicer draws there anyway: its number, a d100's tens (00 or 100 last), a Fate - blank +. */
+function plainLabel(type, label, i, min) {
+  const t = String(label ?? '').trim();
+  if (t === String(min + i)) return true;
+  if (type === 'd100') return t === String((i + 1) * 10) || (i === 9 && (t === '00' || t === '0'));
+  if (type === 'df') return FATE[i]?.includes(t) ?? false;
+  return false;
+}
+
 /** A preset whose labels are not the plain numbers Dicer draws anyway (images, symbols, words). */
-function hasCustomFaces(preset) {
+function hasCustomFaces(type, preset) {
   if (preset.bumpMaps || preset.emissiveMaps) return true;
   const labels = Array.isArray(preset.labels) ? preset.labels : [];
   const min = Number.isFinite(preset.values?.min) ? preset.values.min : 1;
-  return labels.some((l, i) => String(l ?? '') !== String(min + i));
+  return labels.some((l, i) => !plainLabel(type, l, i, min));
+}
+
+// Die types whose face images a theme holds (appearance.js faceImages), and what counts as one.
+const IMAGE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+const IMAGE = /^(?:https?:\/\/[^<>"]+|[^:<>"]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"]*)?$/i;
+/**
+ * A preset's faces as a theme's face images ({face value: path}), when every custom face is an
+ * image and the others are plain numbers (kept as numbers); else null (words, symbols, a Fate die,
+ * a coin: a theme cannot hold them).
+ */
+function faceImagesOf(type, preset) {
+  if (!IMAGE_TYPES.includes(type) || preset.bumpMaps || preset.emissiveMaps) return null;
+  const labels = Array.isArray(preset.labels) ? preset.labels : [];
+  const min = Number.isFinite(preset.values?.min) ? preset.values.min : 1;
+  const map = {};
+  for (const [i, l] of labels.entries()) {
+    if (plainLabel(type, l, i, min)) continue;
+    if (typeof l !== 'string' || l.length >= 400 || !IMAGE.test(l) || !(min + i >= 0 && min + i < 1000)) return null;
+    map[min + i] = l;
+  }
+  return Object.keys(map).length ? map : null;
 }
 
 function systemEntry(id, sys, registry) {
   const looks = new Map();
-  const faces = [];
+  const faces = []; // custom faces a theme cannot hold
+  const faceImages = {}; // image faces it can (die type -> {value: path})
   const models = [];
   const modelFiles = {}; // die type -> model url: the thumbnails draw the models
   const fonts = [];
@@ -84,7 +116,11 @@ function systemEntry(id, sys, registry) {
     const cs = Array.isArray(preset.colorset) ? preset.colorset[0] : preset.colorset;
     const look = colorsetNameToAppearance(cs, registry);
     if (look) looks.set(type, look);
-    if (hasCustomFaces(preset)) faces.push(type);
+    if (hasCustomFaces(type, preset)) {
+      const images = faceImagesOf(type, preset);
+      if (images) faceImages[type] = images;
+      else faces.push(type);
+    }
     if (isStr(preset.modelFile)) {
       models.push(type);
       modelFiles[type] = isStr(preset.modelUrl) ? preset.modelUrl : preset.modelFile;
@@ -102,7 +138,18 @@ function systemEntry(id, sys, registry) {
   ]
     .filter(([, types]) => types.length)
     .map(([kind, types]) => ({ kind, types }));
-  return { id: SYSTEM_PREFIX + id, kind: 'system', key: id, name: str(sys.name) || id, category: str(sys.group), appearance, perType, dropped, ...(models.length ? { models: modelFiles } : {}) };
+  return {
+    id: SYSTEM_PREFIX + id,
+    kind: 'system',
+    key: id,
+    name: str(sys.name) || id,
+    category: str(sys.group),
+    appearance,
+    perType,
+    dropped,
+    ...(models.length ? { models: modelFiles } : {}),
+    ...(Object.keys(faceImages).length ? { faceImages } : {}),
+  };
 }
 
 /**
@@ -170,7 +217,10 @@ export function currentModuleIds(global, entries) {
  * system has them).
  */
 export function moduleThemeRaw(entry, id) {
-  const raw = { id, name: entry.name, appearance: plain(entry.appearance) };
-  if (Object.keys(entry.perType ?? {}).length) raw.perType = plain(entry.perType);
+  // The set's image faces ride along: on the look and on every per-type look (each is whole).
+  const withFaces = (look) => (entry.faceImages ? { ...plain(look), faces: plain(entry.faceImages) } : plain(look));
+  const raw = { id, name: entry.name, appearance: withFaces(entry.appearance) };
+  if (Object.keys(entry.perType ?? {}).length)
+    raw.perType = Object.fromEntries(Object.entries(entry.perType).map(([t, look]) => [t, withFaces(look)]));
   return { raw, dropped: entry.dropped ?? [] };
 }

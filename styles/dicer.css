@@ -1684,16 +1684,33 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   }
 }
 
-/* Chat dice tray (src/ui/chat-tray.js): a compact strip under the chat input. Each die wears the
+/* Chat dice tray (src/ui/chat-tray.js): a compact panel under the chat input. Each die wears the
    player's dice look as --dicer-ct-body / --dicer-ct-num (unset: the plain style). */
 .dicer-chat-tray {
+  --dicer-ct-accent: var(--color-warm-2, #ff6400);
+  --dicer-ct-accent-2: var(--color-warm-1, #ff9d4d);
+  --dicer-ct-tile: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
+  --dicer-ct-edge: rgba(255, 255, 255, 0.12);
   position: relative;
   /* Foundry's #ui-right / #sidebar / #chat are pointer-events: none; only its own controls opt back in. */
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin: 3px 0 0;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 4px 0 0;
+  padding: 5px;
+  border: 1px solid var(--dicer-ct-edge);
+  border-radius: 8px;
+  /* solid: the chat log never shows through */
+  background:
+    radial-gradient(120% 140% at 50% 0%, rgba(255, 255, 255, 0.06), transparent 60%),
+    linear-gradient(180deg, #23222b, #17161d);
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   font-size: var(--font-size-12, 12px);
 }
 .dicer-chat-tray-dice {
@@ -1701,22 +1718,47 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   /* one column per die shown (the system's or the player's choice), filling the width */
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
-  gap: 2px;
+  gap: 3px;
 }
 .dicer-chat-tray button {
   margin: 0;
   min-height: 0;
   line-height: 1;
+  border: 1px solid var(--dicer-ct-edge);
+  border-radius: 5px;
+  background: var(--dicer-ct-tile);
+  color: var(--color-text-light-1, #eee);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 80ms ease,
+    color 120ms ease;
+}
+.dicer-chat-tray button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dicer-ct-accent) 70%, transparent);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--dicer-ct-accent) 35%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.dicer-chat-tray button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
+}
+.dicer-chat-tray button:focus-visible {
+  outline: 2px solid var(--dicer-ct-accent);
+  outline-offset: 1px;
 }
 .dicer-chat-tray-die {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   height: auto;
-  padding: 2px 0 1px;
-  border-radius: 4px;
+  padding: 4px 0 3px;
+  border-radius: 6px;
   cursor: pointer;
   touch-action: none;
 }
@@ -1732,33 +1774,62 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   cursor: grabbing;
 }
 .dicer-chat-tray-die svg {
-  width: 20px;
-  height: 20px;
-  fill: var(--dicer-ct-body, rgba(255, 255, 255, 0.06));
+  width: 22px;
+  height: 22px;
+  fill: var(--dicer-ct-body, rgba(255, 255, 255, 0.08));
   stroke: var(--dicer-ct-num, currentColor);
   stroke-width: 1.4;
   stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+  transition: transform 140ms ease;
+}
+.dicer-chat-tray-die:hover svg {
+  transform: translateY(-1px) rotate(-8deg) scale(1.08);
 }
 .dicer-chat-tray-name {
   font-size: 0.85em;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
 }
 .dicer-chat-tray-die.has-dice {
-  border-color: var(--color-warm-2, #ff6400);
-  box-shadow: 0 0 0 1px var(--color-warm-2, #ff6400) inset;
+  border-color: var(--dicer-ct-accent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dicer-ct-accent) 38%, transparent),
+    color-mix(in srgb, var(--dicer-ct-accent) 12%, transparent)
+  );
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--dicer-ct-accent) 45%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.dicer-chat-tray-die.has-dice .dicer-chat-tray-name {
+  opacity: 1;
 }
 .dicer-chat-tray-count {
   position: absolute;
-  top: -4px;
-  right: -2px;
-  min-width: 14px;
-  padding: 1px 3px;
-  border-radius: 7px;
-  background: var(--color-warm-2, #ff6400);
+  top: -6px;
+  right: -4px;
+  min-width: 16px;
+  padding: 2px 4px;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--dicer-ct-accent-2), var(--dicer-ct-accent));
   color: #fff;
   font-size: 0.8em;
-  font-weight: 700;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   pointer-events: none;
+  animation: dicer-ct-pop 160ms ease-out;
+}
+@keyframes dicer-ct-pop {
+  from {
+    transform: scale(0.5);
+  }
+  to {
+    transform: scale(1);
+  }
 }
 .dicer-chat-tray-count:empty {
   display: none;
@@ -1766,107 +1837,191 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-chat-tray-bar {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
 }
 .dicer-chat-tray-bar > * {
-  height: 24px;
+  height: 26px;
 }
+/* the modifier: one joined pill, − value + */
 .dicer-chat-tray-mod {
   display: flex;
   flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--dicer-ct-edge);
+  border-radius: 13px;
+  background: rgba(0, 0, 0, 0.35);
 }
 .dicer-chat-tray-mod button {
   width: 18px;
+  height: 100%;
   padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.85em;
 }
 .dicer-chat-tray-mod input {
-  width: 34px;
-  height: 24px;
+  width: 30px;
+  height: 100%;
   padding: 0;
+  border: 0;
+  border-inline: 1px solid var(--dicer-ct-edge);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
   text-align: center;
   font-size: inherit;
+  font-weight: 700;
+  -moz-appearance: textfield;
 }
+.dicer-chat-tray-mod input::-webkit-inner-spin-button,
+.dicer-chat-tray-mod input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* the d20 helpers: a segmented pair */
 .dicer-chat-tray-adv {
-  flex: 0 0 auto;
-  padding: 0 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 5px;
   font-size: 0.9em;
+  font-weight: 600;
+}
+.dicer-chat-tray-adv + .dicer-chat-tray-adv {
+  margin-left: -5px;
+}
+.dicer-chat-tray-adv:has(+ .dicer-chat-tray-adv) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.dicer-chat-tray-adv + .dicer-chat-tray-adv {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 .dicer-chat-tray-adv[aria-pressed='true'] {
-  background: var(--color-warm-2, #ff6400);
+  border-color: var(--dicer-ct-accent);
+  background: linear-gradient(180deg, var(--dicer-ct-accent-2), var(--dicer-ct-accent));
   color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
 }
-.dicer-chat-tray-bar [data-act='clear'] {
-  flex: 0 0 22px;
+.dicer-chat-tray-bar [data-act='clear'],
+.dicer-chat-tray-bar [data-act='customize'] {
+  flex: 0 0 24px;
   padding: 0;
+  opacity: 0.8;
 }
-.dicer-chat-tray-roll {
+.dicer-chat-tray-bar [data-act='clear']:hover,
+.dicer-chat-tray-bar [data-act='customize']:hover {
+  opacity: 1;
+}
+.dicer-chat-tray-bar [data-act='customize'][aria-expanded='true'] {
+  border-color: var(--dicer-ct-accent);
+  opacity: 1;
+}
+.dicer-chat-tray-bar .dicer-chat-tray-roll {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 4px;
+  padding: 0 6px;
+  border-color: color-mix(in srgb, var(--dicer-ct-accent) 80%, #000);
+  border-radius: 13px;
+  background: linear-gradient(180deg, var(--dicer-ct-accent-2), var(--dicer-ct-accent) 60%, color-mix(in srgb, var(--dicer-ct-accent) 80%, #000));
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    0 2px 6px color-mix(in srgb, var(--dicer-ct-accent) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
   touch-action: none;
+}
+.dicer-chat-tray-bar .dicer-chat-tray-roll:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffc08a, var(--dicer-ct-accent-2) 50%, var(--dicer-ct-accent));
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--dicer-ct-accent) 70%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.dicer-chat-tray-roll i {
+  transition: transform 300ms ease;
+}
+.dicer-chat-tray-roll:hover:not(:disabled) i {
+  transform: rotate(180deg);
 }
 .dicer-chat-tray-formula {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dicer-chat-tray-roll:disabled {
-  opacity: 0.5;
+.dicer-chat-tray-bar .dicer-chat-tray-roll:disabled {
+  border-color: var(--dicer-ct-edge);
+  background: var(--dicer-ct-tile);
+  color: var(--color-text-light-1, #eee);
+  text-shadow: none;
+  box-shadow: none;
+  opacity: 0.45;
+}
+.dicer-chat-tray-menu,
+.dicer-chat-tray-prefs {
+  border: 1px solid var(--dicer-ct-edge);
+  background: linear-gradient(180deg, #2a2933, #1b1a21);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
 }
 .dicer-chat-tray-menu {
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% + 4px);
   z-index: 10;
   display: grid;
   grid-template-columns: repeat(3, auto);
-  gap: 2px;
-  padding: 3px;
-  border-radius: 5px;
-  background: var(--color-cool-5, #1c1c24);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  gap: 3px;
+  padding: 4px;
+  border-radius: 7px;
 }
 .dicer-chat-tray-menu [data-adv] {
   grid-column: 1 / -1;
 }
 .dicer-chat-tray-menu button {
-  padding: 3px 6px;
+  padding: 4px 8px;
   white-space: nowrap;
 }
 /* The customize panel: opens above the dock, like the quick-count menu. */
 .dicer-chat-tray-prefs {
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% + 4px);
   right: 0;
   left: 0;
   z-index: 11;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 6px;
-  border-radius: 5px;
-  background: var(--color-cool-5, #1c1c24);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
 }
 .dicer-chat-tray-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
+  gap: 4px;
 }
-.dicer-chat-tray-chip {
+.dicer-chat-tray .dicer-chat-tray-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   width: auto;
-  padding: 2px 6px;
-  opacity: 0.45;
+  padding: 3px 8px;
+  border-radius: 12px;
+  opacity: 0.5;
 }
-.dicer-chat-tray-chip[aria-pressed='true'] {
+.dicer-chat-tray .dicer-chat-tray-chip[aria-pressed='true'] {
+  border-color: var(--dicer-ct-accent);
+  background: color-mix(in srgb, var(--dicer-ct-accent) 22%, transparent);
   opacity: 1;
-  outline: 1px solid var(--color-warm-2, #ff6400);
 }
 .dicer-chat-tray-chip svg {
   width: 14px;

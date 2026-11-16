@@ -58,10 +58,9 @@ describe('module dice entries', () => {
     expect(marble).toMatchObject({ kind: 'system', key: 'trs-marble', name: 'TRS Black Marble', category: 'TRS dice' });
     expect(marble.appearance).toEqual(colorsetNameToAppearance('trs-black', registry)); // the d20 preset's colours
     expect(Object.keys(marble.perType)).toEqual(['d6']);
-    expect(marble.dropped).toEqual([
-      { kind: 'faces', types: ['d20'] },
-      { kind: 'models', types: ['d6'] },
-    ]);    expect(marble.models).toEqual({ d6: 'd6.glb' }); // the thumbnails draw them
+    // the d20's image faces are kept by an import (faceImages), so only the model is left out
+    expect(marble.dropped).toEqual([{ kind: 'models', types: ['d6'] }]);
+    expect(marble.faceImages).toEqual({ d20: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [i + 1, IMG(i + 1)])) });    expect(marble.models).toEqual({ d6: 'd6.glb' }); // the thumbnails draw them
     expect('models' in fire).toBe(false);
   });
 
@@ -131,9 +130,27 @@ describe('module dice entries', () => {
     const { raw, dropped } = moduleThemeRaw(marble, 'user.u1.trs-black-marble-2');
     expect(raw.id).toBe('user.u1.trs-black-marble-2');
     expect(raw.name).toBe('TRS Black Marble');
-    expect(raw.appearance).toEqual(marble.appearance);
+    expect(raw.appearance).toEqual({ ...marble.appearance, faces: marble.faceImages });
     expect(Object.keys(raw.perType)).toEqual(['d6']);
-    expect(dropped.map((d) => d.kind)).toEqual(['faces', 'models']);
+    expect(dropped.map((d) => d.kind)).toEqual(['models']);
+    // the image faces ride on every look of the theme
+    expect(raw.appearance.faces).toEqual(marble.faceImages);
+    expect(raw.perType.d6.faces).toEqual(marble.faceImages);
+  });
+
+  it('plain labels are not custom faces; words, coins and a Fate die with images cannot be kept', () => {
+    const n = (k, from = 1) => Array.from({ length: k }, (_, i) => String(from + i));
+    const dice = new Map([
+      ['d20', { labels: n(20) }],
+      ['d100', { labels: [...n(9).map((x) => String(x * 10)), '00'] }],
+      ['df', { labels: ['-', '', '+'] }],
+      ['dc', { labels: ['tail.webp', 'heads.webp'] }],
+      ['d2', { labels: ['tail.webp', 'heads.webp'] }],
+      ['d6', { labels: ['1', '2', '3', '4', '5', 'SKULL'] }],
+    ]);
+    const [entry] = moduleDiceEntries({ colorsets: new Map(), systems: new Map([['s', { name: 'S', dice }]]) });
+    expect(entry.dropped).toEqual([{ kind: 'faces', types: ['dc', 'd6'] }]);
+    expect(entry.faceImages).toEqual({ d2: { 1: 'tail.webp', 2: 'heads.webp' } });
   });
 });
 
@@ -244,7 +261,7 @@ describe('the theme browser with module dice', () => {
     await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: 'dsn-system:trs-marble' } }) });
     ctx = await app._prepareContext();
     expect(ctx.detail).toMatchObject({ isDefault: true, canStop: true });
-    expect(ctx.detail.dropNote).toContain('d20');
+    expect(ctx.detail.dropNote).toContain('d6');
     await actions.filter.call(app, {}, { dataset: { filter: 'all' } });
     expect((await app._prepareContext()).cards.filter((c) => c.isDefault).map((c) => c.id)).toEqual(['verdant']);
     await actions.stopModule.call(app, {}, button('dsn-system:trs-marble'));
@@ -284,7 +301,7 @@ describe('the theme browser with module dice', () => {
     expect(saved).toMatchObject({ id: 'user.u1.trs-black-marble', name: 'TRS Black Marble' });
     expect(Object.keys(saved.perType)).toEqual(['d6']);
     const [message] = ui.notifications.warn.mock.calls.at(-1);
-    expect(message).toContain('DICER.Themes.Module.Drop.faces (d20)');
+    expect(message).toContain('DICER.Themes.Module.Drop.models (d6)');
     expect(message).toContain('DICER.Themes.Module.Drop.models (d6)');
     expect(message).toContain('DICER.Themes.Module.KeepHint');
     expect(openAppearanceEditor).toHaveBeenLastCalledWith(expect.objectContaining({ themeId: 'user.u1.trs-black-marble' }));

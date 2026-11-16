@@ -54,8 +54,13 @@ const DOWN = new Set(['splat', 'puddle', 'reform', 'fade']);
 const HOP = 0.45; // of the height
 const LOOK_MAX = 0.6;
 const MOVED = 1e-3; // a re-used pet farther than this from its new spot hops there
-// Foundry's UI that the dice canvas draws over (v14 puts it at z-index 30, the canvas at 60).
-const UI_IDS = ['ui-left', 'players', 'hotbar', 'navigation', 'ui-top'];
+// Foundry's UI that the dice canvas draws over (v14 puts it at z-index 30, the canvas at 60): its
+// widgets, not v14's #ui-left / #ui-top, which are mostly empty boxes (578 px wide, half the screen
+// tall): kept off them, a top corner's pet was pushed to the bottom. Those boxes count only where
+// the widgets are not found (older layouts). #scene-navigation is a full-height column: its items count.
+const UI_IDS = ['scene-controls', 'players', 'hotbar', 'navigation'];
+const UI_LISTS = ['scene-navigation'];
+const UI_BOXES = ['ui-left', 'ui-top'];
 const AREAS_HOOK = 'dicerRollAreasChanged';
 
 const FLY_PEAK = 1.2; // the dragonling's flight arc on a move (alignFor), die units
@@ -641,9 +646,12 @@ export function createPetLayer(deps) {
     const map = pageMap();
     if (!map) return out;
     const { px, ox, oz } = map;
-    for (const id of UI_IDS) {
+    const byId = (id) => doc?.getElementById?.(id);
+    const els = [...UI_IDS, ...(byId('scene-controls') ? [] : UI_BOXES)].map(byId);
+    for (const id of UI_LISTS) els.push(...(byId(id)?.children ?? []));
+    for (const el of els) {
       try {
-        const b = doc?.getElementById?.(id)?.getBoundingClientRect?.();
+        const b = el?.getBoundingClientRect?.();
         if (!(b?.width > 0 && b.height > 0)) continue;
         out.push({
           x0: (b.left - ox) / px,

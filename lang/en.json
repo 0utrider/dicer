@@ -606,10 +606,10 @@
         "System": "A dice set another module added (Dice So Nice API). Its faces and models are used on top of your look; dice it gives no colours keep yours.",
         "Stop": "Stop using",
         "Import": "Import as theme",
-        "ImportHint": "Copy its colours into a theme of your own, to edit",
+        "ImportHint": "Copy its colours and face images into a theme of your own, to edit",
         "Imported": "Imported as your theme:",
-        "Dropped": "A theme cannot keep:",
-        "KeepHint": "Use the module dice set itself to keep them.",
+        "Dropped": "Import as theme leaves out (a theme cannot hold them):",
+        "KeepHint": "Use the dice set itself (Use as my default) to keep them.",
         "Drop": {
           "faces": "custom faces",
           "models": "3D models",
