@@ -11,7 +11,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { PORT, ARGS, startServer, stopServer } from './fx-common.mjs';
 
-const ALL = ['liquid', 'liquid-bubble', 'liquid-sand', 'glitter', 'swirl', 'nebula', 'smoke', 'eye', 'runes', 'dragon', 'foil', 'botanical', 'sword', 'fire', 'lava', 'storm', 'frost'];
+const ALL = ['liquid', 'liquid-bubble', 'liquid-sand', 'glitter', 'swirl', 'nebula', 'smoke', 'eye', 'runes', 'dragon', 'foil', 'botanical', 'sword', 'fire', 'lava', 'storm', 'frost', 'blobs-foil', 'foil-glitter', 'eye-bubbles', 'smoke-sand'];
 const roundAt = process.argv.indexOf('--round');
 const ROUND = roundAt > 0 ? process.argv[roundAt + 1] : process.env.DICER_FX_ROUND || 'round-1';
 const OUT = `docs/signoff/insides/${ROUND}`;

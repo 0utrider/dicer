@@ -115,13 +115,17 @@ function worldQuat(die) {
 export const BUILT_IN_SHAPES = ['star', 'heart', 'skull', 'sphere'];
 
 export const insideMotion = {
-  /** True when this look's inside is marched with motion: resin, an inside, interiors on, steps > 0, insideMotion. */
+  /**
+   * True when this look's inside is marched with motion: resin, an inside, interiors on, steps > 0,
+   * insideMotion (the client's kill switch) and the look's own interior.motion (absent = on).
+   */
   wants(a, flags) {
     const type = a?.interior?.type;
     return (
       a?.body?.type === 'resin' &&
       !!type &&
       type !== 'none' &&
+      a.interior.motion !== false &&
       !(type === 'shape' && BUILT_IN_SHAPES.includes(a.interior.shape)) &&
       !!flags?.interiors &&
       flags.interiorSteps > 0 &&

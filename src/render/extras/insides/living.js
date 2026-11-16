@@ -87,7 +87,8 @@ vec4 dcInterior( vec3 p, vec3 rd, float dt ) {
 }
 `;
 
-const GLITTER = /* glsl */ `
+// exported for the suspension layer (extra.js), which re-prefixes it
+export const GLITTER = /* glsl */ `
 #define DC_LV_CELLS ${f(LIVING.glitterCells)}
 #define DC_LV_FALL ${f(0.6 / LIVING.radius)}
 vec3 dcLvHash33( vec3 p ) {

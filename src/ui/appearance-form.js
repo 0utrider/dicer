@@ -24,7 +24,9 @@ export const BODY_PRESET_LISTS = {
 export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke', 'fire', 'lava', 'storm', 'frost'];
 // Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
 export const INCLUSION_LIST = ['flower', 'moss', 'butterfly'];
-export const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
+// Literal copy of the suspension layer kinds (the unit test pins it to what normalisation accepts).
+export const EXTRA_LIST = ['none', 'foil', 'glitter', 'sand', 'bubbles'];
+export const SHAPES = ['star','heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
 // Literal lists (the unit test pins them to what normalisation accepts).
 export const D4_SHAPES = ['classic', 'crystal'];
 export const COIN_CHOICES = ['numbers', 'heads-tails', 'sun-moon'];
@@ -74,6 +76,10 @@ export function formFromAppearance(raw) {
       inclusion: inside.inclusion,
       bubble: inside.bubble,
       sand: inside.sand,
+      motion: inside.motion,
+      extra: inside.extra,
+      extraColor: inside.extraColor,
+      extraDensity: inside.extraDensity,
     },
     numbers: {
       fill: a.numbers.fill,
@@ -106,7 +112,8 @@ export function appearanceFromForm(form) {
   const g = isObj(f.glow) ? f.glow : {};
   return normalizeAppearance({
     body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset },
-    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand },
+    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand,
+      motion: i.motion, extra: i.extra, extraColor: i.extraColor, extraDensity: n(i.extraDensity) },
     numbers: {
       fill: num.fill,
       relief: num.relief,
@@ -139,16 +146,21 @@ export function visibleSections(look) {
   const fill = look?.numbers?.fill;
   const kind = look?.numbers?.fontKind ?? fontParts(look?.numbers?.font).fontKind;
   const resin = body === 'resin';
+  const hasInside = resin && inside !== 'none' && INTERIOR_TYPES.includes(inside);
   const radius = Number(look?.edges?.radius) || 0;
   // a form names the style as edges.strip, an appearance as edges.strip.style
   const stripStyle = typeof look?.edges?.strip === 'string' ? look.edges.strip : look?.edges?.strip?.style;
   return {
     inside: resin,
-    insideDetails: resin && inside !== 'none' && INTERIOR_TYPES.includes(inside),
+    insideDetails: hasInside,
     insideShape: resin && inside === 'shape',
     inclusion: resin && inside === 'botanical',
     liquidOptions: resin && inside === 'liquid',
     irisLabel: resin && inside === 'eye',
+    // the living-inside toggle and the suspension layer: any inside of a resin body
+    insideMotion: hasInside,
+    extraLayer: hasInside,
+    extraDetails: hasInside && EXTRA_LIST.indexOf(look?.interior?.extra) > 0,
     // the aged metal finishes' verdigris / grime colour is the second colour
     color2: TWO_TONE.includes(body) || (body === 'metal' && (look?.body?.finish === 'patina' || look?.body?.finish === 'worn')),
     finish: body === 'metal',
@@ -190,7 +202,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'extraDensity'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

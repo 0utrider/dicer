@@ -11,6 +11,7 @@ const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
 const AGED = ['patina', 'worn']; // metal finishes drawn by the look-extras chunk
 const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke', 'fire', 'lava', 'storm', 'frost'];
 const INCLUSIONS = ['flower', 'moss', 'butterfly'];
+const EXTRAS = ['none', 'foil', 'glitter', 'sand', 'bubbles']; // the suspension over the inside (look-extras chunk)
 // the new insides (drawn by the look-extras chunk) and what they draw while it is missing
 const NEW_INSIDES = { foil: { type: 'glitter' }, eye: { type: 'shape', shape: 'sphere' }, botanical: { type: 'swirl' }, smoke: { type: 'swirl' }, fire: { type: 'liquid' }, lava: { type: 'liquid' }, storm: { type: 'nebula' }, frost: { type: 'glitter' } };
 const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes']; // those after the first four: look-extras chunk
@@ -35,7 +36,7 @@ function deepFreeze(o) {
 
 export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null },
-  interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false },
+  interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false, motion: true, extra: 'none', extraColor: '#ffffff', extraDensity: 0.5 },
   numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif', pips: false, coin: 'numbers', size: 1, weight: 0 },
   edges: { radius: 0.5, style: 'rounded', strip: { style: 'body', color: '#e2b04a', strength: 1 } },
   glow: { color: '#ffffff', intensity: 0 },
@@ -123,6 +124,10 @@ export function normalizeAppearance(input) {
       inclusion: pick(it.inclusion, INCLUSIONS, D.interior.inclusion),
       bubble: it.bubble === true,
       sand: it.sand === true,
+      motion: it.motion !== false,
+      extra: pick(it.extra, EXTRAS, 'none'),
+      extraColor: color(it.extraColor, '#ffffff'),
+      extraDensity: num(it.extraDensity, 0, 1, 0.5),
     };
     if (body.type !== 'resin') interior.type = 'none';
     const radius = edgeRadius(e, D.edges.radius);
@@ -183,21 +188,24 @@ export function programKey(a, flags) {
   const steps = flags.interiorSteps;
   const active =
     a.body.type === 'resin' && !!flags.interiors && steps > 0 && a.interior.type !== 'none';
-  const { type, shape } = a.interior;
-  const interior = active ? `${type}${type === 'shape' ? ':' + shape : ''}${LIQUID_EXTRA(a)}:${steps}` : 'none';
+  const { type, shape, motion } = a.interior;
+  const interior = active ? `${type}${type === 'shape' ? ':' + shape : ''}${INSIDE_EXTRA(a)}:${steps}` : 'none';
   const finish = a.body.type === 'metal' ? a.body.finish : '-';
   const glow = !!flags.glow && a.glow.intensity > 0 ? 1 : 0;
   const fx = flags.effects ? 1 : 0; // the die fx uniform block (trigger effects)
   const parts = [a.body.type, finish, interior, `eng${flags.engraving ? 1 : 0}`, `glow${glow}`, `fx${fx}`, 'safe0'];
-  if (active && flags.insideMotion && (type !== 'shape' || SHAPES.indexOf(shape) > 3)) parts.push('mo'); // living insides (the look-extras chunk's)
+  // motion: the client setting AND the look's interior.motion (normalised looks; it is absent on raw ones)
+  if (active && flags.insideMotion && motion && (type !== 'shape' || SHAPES.indexOf(shape) > 3)) parts.push('mo'); // living insides (the look-extras chunk's)
   const { fill, relief } = a.numbers;
   if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
   if (stripActive(a)) parts.push(a.edges.strip.style == 'glow' ? 'e:glow' : 'e'); // paint and metal: same GLSL
   return parts.join('|');
 }
 
-// liquid's bubble / sand programs: '+b', '+s', '+bs'; nothing for other insides
-const LIQUID_EXTRA = ({ interior: i }) => (i.type === 'liquid' && (i.bubble || i.sand) ? `+${i.bubble ? 'b' : ''}${i.sand ? 's' : ''}` : '');
+// liquid's bubble / sand programs: '+b', '+s', '+bs' (nothing for other insides); any inside with a
+// suspension layer: '+x' (one program for every kind: kind, colour and density are uniforms)
+const INSIDE_EXTRA = ({ interior: i }) =>
+  (i.type === 'liquid' && (i.bubble || i.sand) ? `+${i.bubble ? 'b' : ''}${i.sand ? 's' : ''}` : '') + (EXTRAS.indexOf(i.extra) > 0 ? '+x' : '');
 
 /** True when the look needs the lazy look-extras chunk (new fills, raised relief, icons, pips, coin motifs, bodies, finishes, edge strips). */
 export const needsLookExtras = (a) =>
@@ -208,7 +216,7 @@ export const needsLookExtras = (a) =>
   !!BODY_PRESETS[a.body.type] ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
   stripActive(a) ||
-  (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || LIQUID_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
+  (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || INSIDE_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
 
 /** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */
 export const fallbackLook = (a) =>
@@ -227,6 +235,7 @@ export const fallbackLook = (a) =>
           ...NEW_INSIDES[a.interior.type],
           bubble: false,
           sand: false,
+          extra: 'none',
         },
         edges: { ...a.edges, strip: { ...a.edges.strip, style: 'body' } },
         numbers: {

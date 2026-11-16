@@ -55,6 +55,12 @@ export const INSIDES = {
   // the electricity damage theme's resin and colours (damage-themes.js), where Task 8 puts storm
   storm: () => withBody({ ...CLEAR, color: '#14125a', color2: '#05052a', roughness: 0.04 }, { type: 'storm', colors: ['#4d6bff', '#b066ff'], density: 0.7 }),
   frost: () => withBody({ ...CLEAR, color: '#e4f0f6', color2: '#b0c8d8' }, { type: 'frost', colors: ['#e6f6ff', '#7fa6c4'], density: 0.55 }),
+  // layered insides: a suspension layer (interior.extra) over the main inside
+  'blobs-foil': () => abyss({ extra: 'foil', extraColor: '#e8c060', extraDensity: 0.7 }),
+  'foil-glitter': () => withBody({ ...CLEAR, color: '#1c2a3a', color2: '#0c1420' }, { type: 'foil', colors: ['#d8dde6', '#9aa4b4'], density: 0.4, extra: 'glitter', extraColor: '#ff7ad0', extraDensity: 0.6 }),
+  'eye-bubbles': () =>
+    withBody({ ...CLEAR, color: '#e6eef2', color2: '#b8c8d4' }, { type: 'eye', colors: ['#3fae5a', '#fff4ea'], density: 0.4, extra: 'bubbles', extraColor: '#dff4ff', extraDensity: 0.8 }),
+  'smoke-sand': () => withBody(CLEAR, { type: 'smoke', colors: ['#2a2440', '#9a8fc8'], density: 0.5, extra: 'sand', extraColor: '#d8b878', extraDensity: 0.8 }),
 };
 
 const params = new URLSearchParams(location.search);
