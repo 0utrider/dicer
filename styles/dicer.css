@@ -1831,3 +1831,50 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   padding: 3px 6px;
   white-space: nowrap;
 }
+/* The customize panel: opens above the dock, like the quick-count menu. */
+.dicer-chat-tray-prefs {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  left: 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  border-radius: 5px;
+  background: var(--color-cool-5, #1c1c24);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.dicer-chat-tray-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.dicer-chat-tray-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 2px 6px;
+  opacity: 0.45;
+}
+.dicer-chat-tray-chip[aria-pressed='true'] {
+  opacity: 1;
+  outline: 1px solid var(--color-warm-2, #ff6400);
+}
+.dicer-chat-tray-chip svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.dicer-chat-tray-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.dicer-chat-tray-mod[hidden] {
+  display: none;
+}

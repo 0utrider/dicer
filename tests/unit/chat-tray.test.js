@@ -14,6 +14,8 @@ import {
   tintsFor,
   dock as dockTray,
   trayProfile,
+  readPrefs,
+  trayFor,
   _resetChatTray,
   HOLD_MS,
 } from '../../src/ui/chat-tray.js';
@@ -37,7 +39,21 @@ class FakeRoll {
 beforeEach(() => {
   settings = { chatTray: true, handRollsAllowed: 'all' };
   modules = new Map();
-  user = { id: 'u1', role: 1, isGM: false };
+  user = {
+    id: 'u1',
+    role: 1,
+    isGM: false,
+    flags: {},
+    getFlag(scope, key) {
+      return this.flags[scope]?.[key];
+    },
+    setFlag: vi.fn(async function (scope, key, value) {
+      this.flags[scope] = { ...this.flags[scope], [key]: value };
+    }),
+    unsetFlag: vi.fn(async function (scope, key) {
+      delete this.flags[scope]?.[key];
+    }),
+  };
   made = [];
   hooks = [];
   globalThis.game = {
@@ -525,5 +541,104 @@ describe('Daggerheart and Draw Steel helpers add a term instead of keeping a die
     die('d10').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
     vi.advanceTimersByTime(HOLD_MS + 10);
     expect(dock().querySelectorAll('.dicer-chat-tray-menu [data-adv]')).toHaveLength(2);
+  });
+});
+
+describe('each user customizes their own tray (flag dicer.chatTray)', () => {
+  const chip = (k) => dock().querySelector(`[data-pref-die="${k}"]`);
+  const openPanel = () => click(dock().querySelector('[data-act="customize"]'));
+  const shownDice = () => [...dock().querySelectorAll('.dicer-chat-tray-die')].map((b) => b.dataset.die);
+
+  test('readPrefs validates the flag: tray dice only, in tray order; only false hides a part', () => {
+    user.flags.dicer = { chatTray: { dice: ['d20', 'bogus', 'd6', 'dF'], helper: false, modifier: 'no' } };
+    expect(readPrefs(user)).toEqual({ dice: ['d6', 'd20', 'dF'], helper: false });
+    user.flags.dicer.chatTray = { dice: ['nope'] };
+    expect(readPrefs(user)).toEqual({}); // no valid die: the system's dice
+    user.flags.dicer.chatTray = 'junk';
+    expect(readPrefs(user)).toEqual({});
+  });
+
+  test('trayFor lays the user choices over the system profile', () => {
+    const profile = trayProfile('dnd5e');
+    expect(trayFor({}, profile)).toMatchObject({ dice: profile.dice, modifier: true });
+    expect(trayFor({}, profile).helper).toBe(profile.helper);
+    const mine = trayFor({ dice: ['d20', 'd2'], helper: false, modifier: false }, profile);
+    expect(mine).toMatchObject({ dice: ['d20', 'd2'], helper: null, modifier: false });
+    expect(mine.systemHelper).toBe(profile.helper);
+  });
+
+  test('the gear opens the panel; a die chip saves the choice and the dock shows it at once', async () => {
+    dockTray(undefined, vi.fn());
+    openPanel();
+    expect(dock().querySelector('.dicer-chat-tray-prefs')).not.toBeNull();
+    expect(chip('d4').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('dF').getAttribute('aria-pressed')).toBe('false');
+    click(chip('d4')); // hide d4
+    await flush();
+    expect(user.setFlag).toHaveBeenLastCalledWith('dicer', 'chatTray', {
+      dice: ['d6', 'd8', 'd10', 'd12', 'd20', 'd100'],
+    });
+    expect(shownDice()).toEqual(['d6', 'd8', 'd10', 'd12', 'd20', 'd100']);
+    expect(dock().querySelector('.dicer-chat-tray-prefs')).not.toBeNull(); // still open
+    click(chip('dF')); // a die the system does not show by default
+    await flush();
+    expect(shownDice()).toContain('dF');
+  });
+
+  test('the last die cannot be hidden', async () => {
+    user.flags.dicer = { chatTray: { dice: ['d20'] } };
+    dockTray(undefined, vi.fn());
+    openPanel();
+    click(chip('d20'));
+    await flush();
+    expect(user.setFlag).not.toHaveBeenCalled();
+    expect(shownDice()).toEqual(['d20']);
+  });
+
+  test('hiding the helper and the modifier removes them; the formula ignores a hidden helper', async () => {
+    dockTray(undefined, vi.fn());
+    click(die('d20'));
+    click(dock().querySelector('[data-adv="1"]'));
+    expect(rollButton().textContent).toContain('2d20kh');
+    openPanel();
+    const helper = dock().querySelector('[data-pref="helper"]');
+    expect(helper.parentElement.textContent).toBe('DICER.ChatTray.CustomizeHelper:DICER.ChatTray.Adv,DICER.ChatTray.Dis');
+    helper.checked = false;
+    helper.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(dock().querySelectorAll('.dicer-chat-tray-bar [data-adv]')).toHaveLength(0);
+    expect(rollButton().textContent).not.toContain('kh');
+    const mod = dock().querySelector('[data-pref="modifier"]');
+    mod.checked = false;
+    mod.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(user.flags.dicer.chatTray).toEqual({ helper: false, modifier: false });
+    expect(dock().querySelector('.dicer-chat-tray-mod').hidden).toBe(true);
+  });
+
+  test('a system without a helper offers no helper checkbox', () => {
+    globalThis.game.system.id = 'swade';
+    dockTray(undefined, vi.fn());
+    openPanel();
+    expect(dock().querySelector('[data-pref="helper"]')).toBeNull();
+    expect(dock().querySelector('[data-pref="modifier"]')).not.toBeNull();
+  });
+
+  test('Reset goes back to the system tray', async () => {
+    user.flags.dicer = { chatTray: { dice: ['d20'], modifier: false } };
+    dockTray(undefined, vi.fn());
+    expect(shownDice()).toEqual(['d20']);
+    openPanel();
+    click(dock().querySelector('[data-pref-act="reset"]'));
+    await flush();
+    expect(user.unsetFlag).toHaveBeenCalledWith('dicer', 'chatTray');
+    expect(shownDice()).toEqual(trayProfile().dice);
+  });
+
+  test('choices saved on another device rebuild the dock (updateUser)', () => {
+    dockTray(undefined, vi.fn());
+    user.flags.dicer = { chatTray: { dice: ['d6', 'd20'] } };
+    for (const [name, fn] of hooks) if (name === 'updateUser') fn(user, { flags: { dicer: { chatTray: {} } } });
+    expect(shownDice()).toEqual(['d6', 'd20']);
   });
 });

@@ -82,7 +82,45 @@ export function trayProfile(id = globalThis.game?.system?.id) {
     helper: HELPERS[p.helper] ?? null,
   };
 }
-const helperNow = () => trayProfile().helper;
+
+/** The user flag (dicer.chatTray) holding each user's own tray choices; follows them to any device. */
+export const PREFS_FLAG = 'chatTray';
+
+/**
+ * `user`'s own tray choices, validated (a flag is data any script may write): {dice?: tray die keys
+ * in tray order, at least one; helper?: false; modifier?: false}. Absent: the system's tray.
+ */
+export function readPrefs(user = globalThis.game?.user) {
+  let raw;
+  try {
+    raw = user?.getFlag?.('dicer', PREFS_FLAG) ?? user?.flags?.dicer?.[PREFS_FLAG];
+  } catch {
+    raw = null;
+  }
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  if (Array.isArray(raw.dice)) {
+    const dice = TRAY_DICE.filter((k) => raw.dice.includes(k));
+    if (dice.length) out.dice = dice;
+  }
+  if (raw.helper === false) out.helper = false;
+  if (raw.modifier === false) out.modifier = false;
+  return out;
+}
+
+/**
+ * The tray as this user sees it: the system profile with their own choices on top. {dice, helper
+ * (null: hidden or none), modifier: shown, systemHelper: the system's pair, hidden or not}.
+ */
+export function trayFor(prefs = readPrefs(), profile = trayProfile()) {
+  return {
+    dice: prefs.dice ?? profile.dice,
+    helper: prefs.helper === false ? null : profile.helper,
+    modifier: prefs.modifier !== false,
+    systemHelper: profile.helper,
+  };
+}
+const helperNow = () => trayFor().helper;
 
 /**
  * The dock's formula: the tray's, with the system helper on (adv 1) or its opposite (-1): a keep
@@ -225,7 +263,7 @@ function h(tag, attrs = {}, kids = []) {
 const tip = (attrs, text) => ({ ...attrs, 'aria-label': text, 'data-tooltip': text });
 
 function build() {
-  const { dice: keys, helper: keep } = trayProfile();
+  const { dice: keys, helper: keep, modifier } = trayFor();
   const dice = keys.map((key) =>
     h(
       'button',
@@ -244,7 +282,7 @@ function build() {
   const btn = (attrs, text, kids) => h('button', tip({ type: 'button', ...attrs }, text), kids);
   // No mode picker: the chat's own roll-mode buttons decide who sees it (coreMode at roll time).
   const bar = h('div', { class: 'dicer-chat-tray-bar' }, [
-    h('span', { class: 'dicer-chat-tray-mod' }, [
+    h('span', { class: 'dicer-chat-tray-mod', ...(modifier ? {} : { hidden: '' }) }, [
       btn({ 'data-mod': '-1' }, loc('DICER.Tray.ModifierDown'), [icon('fa-minus')]),
       h(
         'input',
@@ -270,6 +308,9 @@ function build() {
         ]
       : []),
     btn({ 'data-act': 'clear' }, loc('DICER.ChatTray.Clear'), [icon('fa-eraser')]),
+    btn({ 'data-act': 'customize', 'aria-expanded': 'false' }, loc('DICER.ChatTray.Customize'), [
+      icon('fa-gear'),
+    ]),
     btn({ 'data-act': 'roll', class: 'dicer-chat-tray-roll' }, loc('DICER.ChatTray.RollHint'), [
       icon('fa-dice-d20'),
       h('span', { class: 'dicer-chat-tray-formula' }),
@@ -297,8 +338,8 @@ function paint({ syncModifier = true } = {}) {
   roll.disabled = !formulaFromCounts(state.counts, 0);
   roll.querySelector('.dicer-chat-tray-formula').textContent =
     formula || loc('DICER.ChatTray.Roll');
-  if (syncModifier)
-    dockEl.querySelector('.dicer-chat-tray-mod input').value = String(modOf(state.modifier));
+  const mod = dockEl.querySelector('.dicer-chat-tray-mod input');
+  if (syncModifier && mod) mod.value = String(modOf(state.modifier));
   const throwing = canThrow();
   dockEl.classList.toggle('can-throw', throwing);
   roll.dataset.tooltip = loc(throwing ? 'DICER.ChatTray.RollThrowHint' : 'DICER.ChatTray.RollHint');
@@ -339,7 +380,7 @@ async function roll() {
 /** The dice a drag carries: one die (its count, or 1) or, with no die, the whole selection. */
 function choiceFor(key) {
   const counts = {};
-  for (const k of key ? [key] : trayProfile().dice) {
+  for (const k of key ? [key] : trayFor().dice) {
     const n = countOf(state.counts[k]);
     if (n || k === key) counts[k] = Math.max(1, n);
   }
@@ -401,6 +442,107 @@ function openMenu(button) {
   dockEl.append(menu);
 }
 
+function closePrefs() {
+  dockEl?.querySelector('.dicer-chat-tray-prefs')?.remove();
+  dockEl?.querySelector('[data-act="customize"]')?.setAttribute('aria-expanded', 'false');
+}
+
+/** The customize panel: which dice show, the system helper pair and the modifier (this user's own). */
+function openPrefs() {
+  closeMenu();
+  closePrefs();
+  const tray = trayFor();
+  const chip = (key) =>
+    h(
+      'button',
+      tip(
+        { type: 'button', class: 'dicer-chat-tray-chip', 'data-pref-die': key, 'aria-pressed': String(tray.dice.includes(key)) },
+        key,
+      ),
+      [h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', html: DIE_SHAPES[key] }), key],
+    );
+  const check = (pref, on, text) =>
+    h('label', { class: 'dicer-chat-tray-check' }, [
+      h('input', { type: 'checkbox', 'data-pref': pref, ...(on ? { checked: '' } : {}) }),
+      text,
+    ]);
+  const sys = tray.systemHelper;
+  const panel = h('div', { class: 'dicer-chat-tray-prefs', role: 'dialog', 'aria-label': loc('DICER.ChatTray.Customize') }, [
+    h('strong', { text: loc('DICER.ChatTray.Customize') }),
+    h('div', { class: 'dicer-chat-tray-chips' }, TRAY_DICE.map(chip)),
+    ...(sys
+      ? [
+          check(
+            'helper',
+            !!tray.helper,
+            fmt('DICER.ChatTray.CustomizeHelper', {
+              up: loc(`DICER.ChatTray.${sys.up}`),
+              down: loc(`DICER.ChatTray.${sys.down}`),
+            }),
+          ),
+        ]
+      : []),
+    check('modifier', tray.modifier, loc('DICER.ChatTray.CustomizeModifier')),
+    h('button', { type: 'button', 'data-pref-act': 'reset', text: loc('DICER.ChatTray.CustomizeReset') }),
+  ]);
+  dockEl.append(panel);
+  dockEl.querySelector('[data-act="customize"]')?.setAttribute('aria-expanded', 'true');
+}
+
+/**
+ * Rebuilds the dock for the current choices (the selection kept for dice still shown; the helper
+ * off when hidden), reopening the customize panel if it was open.
+ */
+function rebuild() {
+  if (!dockEl) return;
+  const open = !!dockEl.querySelector('.dicer-chat-tray-prefs');
+  const tray = trayFor();
+  const counts = {};
+  for (const k of tray.dice) if (state.counts[k]) counts[k] = state.counts[k];
+  state = { ...state, counts, adv: tray.helper ? state.adv : 0 };
+  if (!tray.modifier) state.modifier = 0;
+  const fresh = build();
+  wire(fresh);
+  dockEl.replaceWith(fresh);
+  dockEl = fresh;
+  tint();
+  paint();
+  if (open) openPrefs();
+}
+
+/** Saves this user's choices (null: back to the system's tray) and shows them at once. */
+async function savePrefs(next) {
+  const user = globalThis.game?.user;
+  try {
+    if (next) await user.setFlag('dicer', PREFS_FLAG, next);
+    else await user.unsetFlag('dicer', PREFS_FLAG);
+  } catch (err) {
+    console.warn('dicer: cannot save the chat tray choices', err);
+    globalThis.ui?.notifications?.warn(loc('DICER.ChatTray.CustomizeFailed'));
+  }
+  rebuild();
+}
+
+/** A click or toggle in the customize panel: the new choices, from the current ones. */
+function onPref(target) {
+  const prefs = readPrefs();
+  const tray = trayFor(prefs);
+  if (target.dataset.prefAct === 'reset') return savePrefs(null);
+  if (target.dataset.prefDie) {
+    const key = target.dataset.prefDie;
+    const on = tray.dice.includes(key);
+    const dice = TRAY_DICE.filter((k) => (k === key ? !on : tray.dice.includes(k)));
+    if (!dice.length) return; // at least one die stays
+    return savePrefs({ ...prefs, dice });
+  }
+  const pref = target.dataset.pref;
+  if (pref !== 'helper' && pref !== 'modifier') return;
+  const next = { ...prefs };
+  if (target.checked) delete next[pref];
+  else next[pref] = false;
+  return savePrefs(next);
+}
+
 /** Wires the dock (delegated: one set of listeners for its life). */
 function wire(root) {
   let press = null; // {button, x, y, timer, dragging}
@@ -412,6 +554,12 @@ function wire(root) {
     if (swallowClick) {
       swallowClick = false;
       if (t.matches('.dicer-chat-tray-die, [data-act="roll"]')) return;
+    }
+    if (t.dataset.prefDie || t.dataset.prefAct) return void onPref(t);
+    if (t.dataset.act === 'customize') {
+      if (dockEl?.querySelector('.dicer-chat-tray-prefs')) closePrefs();
+      else openPrefs();
+      return;
     }
     if (t.dataset.count) {
       state.counts = { ...state.counts, [t.dataset.die]: countOf(t.dataset.count) };
@@ -445,6 +593,9 @@ function wire(root) {
       state.counts = stepCount(state.counts, t.dataset.die, -1);
       paint();
     } else if (event.key === 'Enter' && t.matches?.('input')) event.preventDefault(); // not the chat form's submit
+  });
+  root.addEventListener('change', (event) => {
+    if (event.target.dataset?.pref) onPref(event.target);
   });
   root.addEventListener('input', (event) => {
     if (event.target.matches?.('.dicer-chat-tray-mod input')) {
@@ -521,7 +672,10 @@ export function dock(els, loadHand) {
       hooked = true;
       // This user's look changed (theme setting mirrored into the flag, a GM push): repaint.
       globalThis.Hooks?.on?.('updateUser', (user, changes) => {
-        if (user?.id === globalThis.game.user?.id && changes?.flags?.dicer) tint();
+        const f = changes?.flags?.dicer;
+        if (user?.id !== globalThis.game.user?.id || !f) return;
+        if (PREFS_FLAG in f || `-=${PREFS_FLAG}` in f) rebuild();
+        else tint();
       });
       // The chatTray setting docks or undocks at once (kept out of world start's settings.js).
       globalThis.Hooks?.on?.('clientSettingChanged', (key) => key === 'dicer.chatTray' && dock());
@@ -546,5 +700,6 @@ export function dock(els, loadHand) {
 
 function undock() {
   closeMenu();
+  closePrefs();
   dockEl?.remove();
 }
