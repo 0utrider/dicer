@@ -2,7 +2,7 @@
   "id": "dicer",
   "title": "Dicer",
   "description": "<p>Lightweight 3D dice for Foundry VTT.</p>",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "socket": true,
   "compatibility": {
     "minimum": "14",

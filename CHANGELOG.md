@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4
+
+- **Only d20s splat pets.** A check's or attack's d20 still splats a pet it hits hard; damage dice and every other die only knock it about.
+- **Dice hitting a pet mid-roll set it off.** A die with an element that hits a pet while it watches its owner's dice fly now sets it off right there (it used to react only to dice landing next to it, or while resting).
+
 ## 0.2.3
 
 - **Put your pets where you want them.** Drag a resting pet anywhere on the table and drop it: that is where pets rest on your screen from then on, the others lining up beside it, and it watches its owner's rolls from there instead of hopping over to the dice. **Where pets rest** is now **Near the dice** or **Where you put them**; the four corners and bottom centre are gone, and a corner you had picked becomes your placed spot. Dragging needs **Click to pet** on; a click without moving still pets.
