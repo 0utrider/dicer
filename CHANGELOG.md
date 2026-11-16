@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.2.6
 
+- **Eight new themes by Sherp:** Against the Grain, All-Seeing, Ebony & Ivory, Eruption, Nautilus, Sandalwood Sense, Scarborough and Wonderland, now built in. Their details in the theme browser say **Theme by Sherp**.
 - **Fixed:** a GM had no way to set the world default theme since the settings dropdown was removed in 0.2.1, so **Lock player looks** could not be set up either. Select a built-in or world theme in the theme browser and press **Use as world default**; **Stop** clears it.
+- **Fixed:** module dice sets with both a body texture and picture faces showed no numbers, for example Pathfinder 2e's own **Dicefinder Campaign** dice. The texture was drawn over the face pictures. It now stays behind them.
+- **Test throws show above windows.** Dice thrown from the dice editor, the theme browser and the effect and damage previews are always drawn above Foundry's windows, whatever **Dice above windows** is set to, so you can see them with the editors open.
+- **Fixed:** in a short dice editor or theme browser window, the preview die was squashed flat. It stays square now and the panel scrolls instead.
 - **A wiki.** Guides to every feature, a settings reference and troubleshooting at [github.com/roileaf/dicer/wiki](https://github.com/roileaf/dicer/wiki); the README is now a short overview, and building and testing Dicer moved to CONTRIBUTING.md.
 
 ## 0.2.5

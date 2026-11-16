@@ -372,6 +372,9 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 :is(.dicer-theme-browser, .dicer-appearance-editor) .dicer-stage {
   position: relative;
   aspect-ratio: 1;
+  /* in a short window the panel scrolls; a flex column would squash the stage (overflow: hidden
+     lets it shrink below its square height) and the die with it */
+  flex-shrink: 0;
   border-radius: var(--dicer-radius);
   overflow: hidden;
   display: grid;

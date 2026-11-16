@@ -77,7 +77,7 @@ const nat = (v, fx, snd, color) => ({
 });
 const A = (id) => LOOKS[id].appearance;
 const N = normalizeAppearance;
-const build = (id, name, appearance, soundMaterial, perType, rules) =>
+const build = (id, name, appearance, soundMaterial, perType, rules, author) =>
   deepFreeze({
     id,
     name,
@@ -86,7 +86,10 @@ const build = (id, name, appearance, soundMaterial, perType, rules) =>
     soundMaterial,
     rules: rules.map((r) => normalizeRule(r, 'theme')),
     source: 'builtin',
+    ...(author && { author }), // who designed it: the theme browser credits them
   });
+/** A theme Sherp designed in the dice editor and shared: [id, name, sound material, look]. */
+const S = ([id, name, mat, look]) => build(id, name, N(look), mat, null, [], 'Sherp');
 /** A theme from an existing look: [look id, sound material, celebration?]. */
 const L = ([id, mat, rule]) => build(id, LOOKS[id].name, A(id), mat, null, rule ? [rule] : []);
 
@@ -186,12 +189,22 @@ const D = [
     ),
     build('verdant', 'Verdant', A('jade-marble'), 'wood', null, []),
   ],
+  [
+    ['against-the-grain', 'Against the Grain', 'wood', { body: { type: 'wood', color: '#d59662', color2: '#6d4217', roughness: 1, preset: 'oak' }, interior: { type: 'none' }, numbers: { fill: 'outline', color: '#000000', depth: 1, size: 1.4, weight: 1 }, edges: { radius: 1, strip: { color: '#3d190a', strength: 0.4 } } }],
+    ['all-seeing', 'All-Seeing', 'glass', { body: { color: '#000000', roughness: 0 }, interior: { type: 'eye', colors: ['#de3f3f', '#5c002c'], density: 0.23, extraColor: '#52ffe2', extraDensity: 1 }, numbers: { fill: 'outline', icons: { fumble: 'skull' }, color: '#ffffff', depth: 0.72, size: 1.05, weight: 1 }, edges: { radius: 1 }, glow: { intensity: 0.9 } }],
+    ['ebony-ivory', 'Ebony & Ivory', 'wood', { body: { type: 'wood', color: '#000000', color2: '#585450', roughness: 0.12, preset: 'ebony' }, interior: { type: 'none' }, numbers: { fill: 'enamel', relief: 'raised', color: '#d8d3cb', depth: 1, weight: 1 }, edges: { strip: { style: 'paint', color: '#000000', strength: 0.05 } }, glow: { color: '#d8d3cb' } }],
+    ['eruption', 'Eruption', 'glass', { body: { color: '#000000', color2: '#2a0f45', roughness: 0 }, interior: { type: 'lava', colors: ['#da7734', '#d11010'], density: 0, extra: 'sand', extraColor: '#ad887b', extraDensity: 0 }, numbers: { fill: 'glow', icons: { crit: 'flame' }, color: '#c6c09f', depth: 0.35, font: 'uncial', weight: -0.6 }, edges: { strip: { style: 'glow', strength: 0 } }, glow: { intensity: 0.7 } }],
+    ['nautilus', 'Nautilus', 'glass', { body: { roughness: 0 }, interior: { type: 'smoke', colors: ['#3fccde', '#00175c'], density: 0.85, extra: 'bubbles', extraColor: '#52ffe2', extraDensity: 1 }, numbers: { fill: 'glow', color: '#ffffff', depth: 0.67, size: 1.05, weight: 0.3 }, edges: { radius: 0.75 }, glow: { intensity: 0.2 } }],
+    ['sandalwood-sense', 'Sandalwood Sense', 'wood', { body: { type: 'wood', color: '#4a130d', color2: '#000000', roughness: 0.86, preset: 'walnut' }, interior: { type: 'none' }, numbers: { fill: 'silver', color: '#d8dde6', depth: 0.45, font: 'blackletter', size: 1.35, weight: -1 }, edges: { radius: 0.25, strip: { style: 'paint', color: '#3d190a', strength: 0.4 } } }],
+    ['scarborough', 'Scarborough', 'glass', { body: { color: '#175e47', color2: '#2a0f45', finish: 'worn', roughness: 1 }, interior: { type: 'smoke', colors: ['#f0f0f0', '#aec2be'], density: 1, motion: false, extra: 'foil', extraColor: '#ffdf6b', extraDensity: 1 }, numbers: { depth: 1, font: 'blackletter', size: 1.35, weight: 1 }, edges: { radius: 0, style: 'sharp' }, glow: { color: '#6f5c15' } }],
+    ['wonderland', 'Wonderland', 'glass', { body: { color: '#d6f7ff', roughness: 0.16 }, interior: { type: 'frost', colors: ['#ebebeb', '#b3f0ff'], density: 0.25, extra: 'sand', extraDensity: 1 }, numbers: { fill: 'paint', icons: { fumble: 'skull' }, color: '#828282', depth: 0.59, size: 1.1, weight: 1 }, edges: { radius: 1 } }],
+  ],
   '@@dicer-themes-end',
 ];
 
-export const BUILTIN_THEMES = Object.freeze([...D[1].map(L), ...D[2]]);
+export const BUILTIN_THEMES = Object.freeze([...D[1].map(L), ...D[2], ...D[3].map(S)]);
 /** Markers around the table in the bundle; build.test.js measures the span. */
-export const THEME_TABLE_MARKS = Object.freeze([D[0], D[3]]);
+export const THEME_TABLE_MARKS = Object.freeze([D[0], D[4]]);
 
 const listCache = new WeakMap();
 const textCache = new Map(); // settings may hand out a fresh copy per read: also cache by content

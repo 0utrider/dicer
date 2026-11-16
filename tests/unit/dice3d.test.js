@@ -1001,7 +1001,7 @@ describe('trigger editor helpers (Task 12)', () => {
     expect(Object.keys(a)).not.toContain('_preview');
     const fx = { ruleId: 'r', effect: { id: 'celebrate' }, sound: null, macro: null, slowMotion: false, value: 20, type: 'd20' };
     const done = a._preview(fx, { type: 'd20', value: 20 });
-    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 20, fx: [fx] }]);
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 20, fx: [fx] }], { mine: 'always' });
     diceBox.rolls[0].resolve();
     await done;
     expect(callAll).not.toHaveBeenCalled();
@@ -1070,6 +1070,11 @@ describe('_throwLook', () => {
     expect('system' in by.d4).toBe(false); // no preset for it: just the look
   });
 
+  test("is a preview: thrown with mine 'always', above the window it came from", () => {
+    api._throwLook(theme);
+    expect(diceBox.roll.mock.calls[0][1]).toMatchObject({ mine: 'always' });
+  });
+
   test('omits appearance when the theme has none', () => {
     api._throwLook({ id: 'x' });
     for (const s of diceBox.roll.mock.calls[0][0]) expect('appearance' in s).toBe(false);
@@ -1101,13 +1106,13 @@ describe('damage map editor helpers (Task 13)', () => {
     const fx = { ruleId: 'damage:fire', effect: { id: 'embers' }, sound: null, macro: null, slowMotion: false, value: 6, type: 'd6' };
     const appearance = { body: { type: 'resin' } };
     a._preview(fx, { type: 'd6', appearance, soundMaterial: 'glass' });
-    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 6, fx: [fx], appearance, soundMaterial: 'glass' }]);
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 6, fx: [fx], appearance, soundMaterial: 'glass' }], { mine: 'always' });
   });
 
   test('_preview without fx throws a plain die with the override only', () => {
     const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k] });
     a._preview(null, { type: 'd6', soundMaterial: 'metal' });
-    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 6, soundMaterial: 'metal' }]);
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 6, soundMaterial: 'metal' }], { mine: 'always' });
   });
 
   test('_damageContext lists colorsets and DSN damage defaults and resolves a theme with the registry', () => {

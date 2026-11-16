@@ -21,7 +21,7 @@ const good = () => ({
 
 describe('built-in themes', () => {
   it('has at least 20 themes with unique ids, including every look', () => {
-    expect(BUILTIN_THEMES.length).toBe(22);
+    expect(BUILTIN_THEMES.length).toBe(30);
     const ids = BUILTIN_THEMES.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of Object.keys(LOOKS)) {
@@ -39,6 +39,18 @@ describe('built-in themes', () => {
     ]) {
       expect(findTheme(id)).toBeTruthy();
     }
+  });
+  it("Sherp's eight shared themes are built in with the credit; only built-ins Sherp designed carry it", () => {
+    const sherp = ['against-the-grain', 'all-seeing', 'ebony-ivory', 'eruption', 'nautilus', 'sandalwood-sense', 'scarborough', 'wonderland'];
+    expect(BUILTIN_THEMES.filter((t) => t.author).map((t) => t.id)).toEqual(sherp);
+    for (const id of sherp) expect(findTheme(id).author).toBe('Sherp');
+    expect(findTheme('default').author).toBeUndefined();
+    // the look kept only what differs from the defaults: it still normalizes to Sherp's export
+    const eruption = findTheme('eruption');
+    expect(eruption.name).toBe('Eruption');
+    expect(eruption.appearance.interior).toMatchObject({ type: 'lava', colors: ['#da7734', '#d11010'], extra: 'sand' });
+    expect(eruption.appearance.numbers).toMatchObject({ fill: 'glow', font: 'uncial', icons: { crit: 'flame', fumble: null }, weight: -0.6 });
+    expect(findTheme('ebony-ivory')).toMatchObject({ name: 'Ebony & Ivory', soundMaterial: 'wood' });
   });
   it('every appearance normalizes to itself and every rule is valid and themed', () => {
     for (const t of BUILTIN_THEMES) {

@@ -215,4 +215,6 @@ export const DECAL_OPAQUE = [
     `totalDiffuse = mix( totalDiffuse, dcRefracted * ( 1.0 - ${RIM_DARK.toFixed(2)} * dcRim ), 1.0 - dcMask );`,
     `totalDiffuse = mix( totalDiffuse, dcRefracted * ( 1.0 - ${RIM_DARK.toFixed(2)} * dcRim ), 1.0 - max( dcMask, dcDecal ) );`,
   ],
+  // The body image (extras/body-image.js) never covers an image face, as it never covers the numbers.
+  ['dcBodyPrint = uBodyImageMap.w * dcBi.a * ( 1.0 - dcMask );', 'dcBodyPrint = uBodyImageMap.w * dcBi.a * ( 1.0 - max( dcMask, dcDecal ) );'],
 ];

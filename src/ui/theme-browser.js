@@ -567,6 +567,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         sourceLabel: (isModule && t.category) || loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
         showBadge: t.source !== 'builtin', // cards name only world, own and module sets; the detail panel always does
         isModule,
+        credit: t.author ? loc('DICER.Themes.By').replace('{name}', t.author) : '', // who designed it
         kindLabel: isModule ? loc(t.kind === 'system' ? 'DICER.Themes.Module.System' : 'DICER.Themes.Module.Colorset') : '',
         dropNote: isModule && t.dropped.length ? `${loc('DICER.Themes.Module.Dropped')} ${droppedText(t.dropped)}` : '',
         canStop: isModule && t.kind === 'system' && targets.includes('default'),

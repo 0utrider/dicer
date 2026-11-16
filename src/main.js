@@ -151,11 +151,12 @@ function syncHand() {
 /**
  * diceAboveWindows: 'all' lifts the dice canvas over Foundry's windows; 'mine' only while one of
  * this user's rolls (or held dice) is on screen. One canvas draws everyone's dice, so another
- * player's dice that show at the same time as yours are lifted too.
+ * player's dice that show at the same time as yours are lifted too. A preview throw from the
+ * editors (`mine` 'always') is lifted whatever the setting: its window is open over the table.
  */
 function layerDice(mine = diceBox?.mineShown) {
   const mode = getSetting('diceAboveWindows');
-  diceRenderer?.canvas?.classList.toggle('dicer-above', mode === 'all' || (mode === 'mine' && !!mine));
+  diceRenderer?.canvas?.classList.toggle('dicer-above', mine === 'always' || mode === 'all' || (mode === 'mine' && !!mine));
 }
 
 function onSoundChange(key, value) {

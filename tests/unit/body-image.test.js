@@ -110,6 +110,24 @@ describe('createDiceMaterial with a body image', () => {
     expect(withTex.defines.DICER_BODY_IMAGE).toBe('');
     expect(withTex.userData.programKey).toBe(`${plain.userData.programKey}|bi1`);
   });
+
+  test('never over an image face: with face layers the print skips the decal too (PF2e Dicefinder Campaign)', async () => {
+    _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+    await requestLookExtras();
+    const a = normalizeAppearance({ body: { type: 'opaque' }, bodyImage: { src: 'a.png', mode: 'face' } });
+    const n = shape.faces.length;
+    const faceTex = { texture: new THREE.DataArrayTexture(new Uint8Array(4 * 4 * 4 * n), 4, 4, n), layers: Int16Array.from({ length: n }, (_, i) => i), tint: new Uint8Array(n) };
+    const frag = (m) => {
+      const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.physical.vertexShader, fragmentShader: THREE.ShaderLib.physical.fragmentShader };
+      m.onBeforeCompile(shader);
+      return shader.fragmentShader;
+    };
+    const layered = frag(createDiceMaterial(a, atlas, shape, labels, FLAGS, faceTex, { texture: new THREE.Texture() }));
+    expect(layered).toContain('dcBodyPrint = uBodyImageMap.w * dcBi.a * ( 1.0 - max( dcMask, dcDecal ) );');
+    expect(layered.indexOf('float dcDecal')).toBeLessThan(layered.indexOf('dcBodyPrint = uBodyImageMap.w'));
+    const plain = frag(createDiceMaterial(a, atlas, shape, labels, FLAGS, null, { texture: new THREE.Texture() }));
+    expect(plain).toContain('dcBodyPrint = uBodyImageMap.w * dcBi.a * ( 1.0 - dcMask );');
+  });
 });
 
 describe('each face: laid out as Dice So Nice lays a texture on a face', () => {

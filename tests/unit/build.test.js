@@ -276,9 +276,11 @@ describe('build', () => {
     // 2026-11-16.
     // The damageOverDiceSet setting (resolve-looks) and the Your pet menu: owner approved +364 B
     // (11,276 -> 11,640), 2026-11-16.
+    // Sherp's eight built-in themes (the theme table and its author credit): owner approved
+    // +1,722 B (11,640 -> 13,362), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(11_640);
+    expect(growth).toBeLessThanOrEqual(13_362);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

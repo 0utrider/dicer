@@ -567,6 +567,7 @@
       "MyDefault": "My default",
       "UseAsDefault": "Use as my default",
       "YourDefault": "Your default",
+      "By": "Theme by {name}",
       "UseAsWorldDefault": "Use as world default",
       "UseAsWorldDefaultHint": "Every player who has not picked dice of their own rolls this theme",
       "WorldDefault": "World default",

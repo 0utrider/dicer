@@ -4037,6 +4037,21 @@ describe('mineShown / onLayer (diceAboveWindows)', () => {
     expect(onLayer).toHaveBeenLastCalledWith(false);
   });
 
+  test("a preview roll (mine 'always') shows as 'always' over any other roll, until it finishes", async () => {
+    const onLayer = vi.fn();
+    const { renderer, physics, box } = setup({ onLayer });
+    box.roll([{ type: 'd6', value: 4 }], { mine: true });
+    const preview = box.roll([{ type: 'd20', value: 20 }], { mine: 'always' });
+    expect(box.mineShown).toBe('always');
+    physics.flush();
+    renderer.tick(16);
+    expect(onLayer).toHaveBeenLastCalledWith('always');
+    box.clear();
+    await flushMicrotasks();
+    await preview.finished;
+    expect(box.mineShown).toBe(false);
+  });
+
   test('a throwing onLayer warns and never breaks the frame', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { renderer, physics, box } = setup({

@@ -1,8 +1,8 @@
 {
   "id": "dicer",
   "title": "Dicer",
-  "description": "<p>Lightweight 3D dice for Foundry VTT.</p>",
-  "version": "0.2.5",
+  "description": "3D dice that tumble and land on your real roll, for everyone at once. Design your own dice, watch fire damage burn, and get a little pet that cheers you on. A lighter take on Dice So Nice.",
+  "version": "0.2.6",
   "socket": true,
   "compatibility": {
     "minimum": "14",

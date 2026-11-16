@@ -50,6 +50,7 @@
           <h3>{{detail.name}}</h3>
           <span class="dicer-badge dicer-badge-{{detail.source}}">{{detail.sourceLabel}}</span>
         </header>
+        {{#if detail.credit}}<p class="dicer-muted dicer-credit"><i class="fa-solid fa-palette"></i> {{detail.credit}}</p>{{/if}}
 
         {{#if detail.isModule}}
         <p class="dicer-muted">{{detail.kindLabel}}</p>

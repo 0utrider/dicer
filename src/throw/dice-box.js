@@ -372,7 +372,8 @@ export class DiceBox {
    *   stage); absent, the whole stage.
    *   `capacityDice`: the dice that share this area (a throw group's total), when more than this roll's.
    *   `pet`: the PetSpec ({ userId, kind, color, ghost }) of the pet that appears for this roll, or none.
-   *   `mine`: this user's own roll (diceAboveWindows 'mine' lifts the canvas while it shows).
+   *   `mine`: this user's own roll (diceAboveWindows 'mine' lifts the canvas while it shows);
+   *   'always': a preview throw (the editors' Throw buttons), lifted whatever the setting.
    *   Rolling by hand:
    *   `free`: physics decides every face (as does a spec's `free`): the worker nudges cocked dice,
    *   Playback never holds or forces them and reads each result. The pet hook hears `hand: true`.
@@ -462,7 +463,7 @@ export class DiceBox {
     this._armedFirstFrame = null;
     if (roll.removed) return result;
     // A released hold is always this user's own throw (rolling by hand).
-    roll.mine = mine === true || this._hold === roll;
+    roll.mine = mine === 'always' ? 'always' : mine === true || this._hold === roll;
     if (this._hold === roll) this._hold = null;
     if (this._visibility?.hidden === true) {
       this._finish(roll);
@@ -1576,11 +1577,14 @@ export class DiceBox {
     }
   }
 
-  /** True while dice are held or a roll marked `mine` is on screen. */
+  /** 'always' while a preview roll is on screen, else true while dice are held or a roll marked `mine` is. */
   get mineShown() {
-    if (this._hold) return true;
-    for (const roll of this._rolls) if (roll.mine) return true;
-    return false;
+    let mine = !!this._hold;
+    for (const roll of this._rolls) {
+      if (roll.mine === 'always') return 'always';
+      if (roll.mine) mine = true;
+    }
+    return mine;
   }
 
   /** Tells onLayer when mineShown changed (once per frame: a boolean check, nothing else). */

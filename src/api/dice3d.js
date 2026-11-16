@@ -213,7 +213,7 @@ export function createDice3dApi({
     if (fx) spec.fx = [fx];
     if (appearance) spec.appearance = appearance;
     if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
-    return diceBox.roll([spec]);
+    return diceBox.roll([spec], { mine: 'always' }); // a preview: above the window it came from
   }
 
   const me = () => {
@@ -1031,7 +1031,8 @@ export function createDice3dApi({
             return spec;
           });
           const pet = petFor({ user: me(), view: 'real', getSetting });
-          return (pet ? diceBox.roll(specs, { pet }) : diceBox.roll(specs)).landed;
+          // A preview: above the editor or browser window it came from, whatever diceAboveWindows says.
+          return diceBox.roll(specs, pet ? { pet, mine: 'always' } : { mine: 'always' }).landed;
         } catch (err) {
           warnOnce('_throwLook', err);
           return Promise.resolve();
