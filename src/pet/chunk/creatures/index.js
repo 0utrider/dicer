@@ -17,7 +17,9 @@ import { REFORM_IN, outBack, smooth, span } from './parts.js';
  *   scuttles); it starts and ends on the standing pose (exit at t 1), and the layer moves the root
  *   across (with a flight arc for the dragonling). 'pet' (clicked: a happy wiggle) and 'huff'
  *   (clicked too often: a puff and a glance away) start and end on the standing pose; look.calm
- *   (reduced motion) makes their wiggle smaller.
+ *   (reduced motion) makes their wiggle smaller. The elemental reactions (a die landing by a
+ *   resting pet) do too: 'scorch' (fire, lava: it fans itself), 'shiver' (frost; look.calm a slower,
+ *   smaller shiver), 'bristle' (storm: it stands tall, wide-eyed) and 'startle' (a jump).
  * - reaction 'crit'|'fumble'|'mixed'|'plain' (meaningful in react and exit; may be null).
  * - look.yaw is the yaw of the dice centre RELATIVE TO the body's current facing, in radians,
  *   clamped to +-0.6 and 0 outside watch/react: the head, eyes and pupils turn by it.

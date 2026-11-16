@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { KIND } from './particles.js';
 import { SHAPE } from './shapes.js';
+import { elementOf } from '../element-of.js';
 
 /**
  * Elemental trails: a die with an element leaves a trail of it while it flies. The effect layer
@@ -18,47 +19,8 @@ import { SHAPE } from './shapes.js';
 /** The element ids, in the order of the design (one list, shared with world start). */
 export { ELEMENTS } from '../elements.js';
 
-/** Interior types that are elements themselves (they win over the damage type). */
-const INSIDE_ELEMENTS = new Set(['fire', 'lava', 'frost', 'storm']);
-/** Damage type -> element. */
-const DAMAGE_ELEMENTS = Object.freeze({
-  fire: 'fire',
-  cold: 'frost',
-  electricity: 'storm',
-  lightning: 'storm',
-  acid: 'acid',
-  void: 'void',
-  necrotic: 'void',
-  vitality: 'vitality',
-  radiant: 'vitality',
-  healing: 'vitality',
-  poison: 'poison',
-  sonic: 'sonic',
-  thunder: 'sonic',
-  force: 'force',
-  mental: 'mental',
-  psychic: 'mental',
-  spirit: 'spirit',
-  bleed: 'bleed',
-  slashing: 'slashing',
-  piercing: 'piercing',
-  bludgeoning: 'bludgeoning',
-});
-
-/**
- * The element a die shows: its elemental inside (fire, lava, frost, storm), else the element of
- * its damage type, else null (no trail: untyped, unknown).
- * @param {object} [appearance] a (normalized) appearance
- * @param {string} [damageType]
- * @returns {string|null}
- */
-export function elementOf(appearance, damageType) {
-  const inside = appearance?.interior?.type;
-  if (INSIDE_ELEMENTS.has(inside)) return inside;
-  if (typeof damageType !== 'string') return null;
-  const key = damageType.toLowerCase();
-  return Object.hasOwn(DAMAGE_ELEMENTS, key) ? DAMAGE_ELEMENTS[key] : null;
-}
+/** The element a die shows (element-of.js, shared with the pet chunk's reactions). */
+export { elementOf };
 
 // --- recipes ---------------------------------------------------------------------------------
 

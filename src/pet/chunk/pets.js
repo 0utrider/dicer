@@ -27,6 +27,7 @@ import {
 } from './resting.js';
 import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, HUFF_IGNORE_MS } from './petting.js';
+import { elementReactions, reactionOf } from './reactions.js';
 import { petFor } from '../pet-for.js';
 
 /** At most this many pets on screen at once. */
@@ -86,6 +87,21 @@ const PUFFS = 6;
 const PINK = [1, 0.4, 0.6];
 const GREY = 0.55;
 
+// Reactions to an elemental die landing by a resting pet (petElemental; reactions.js picks them).
+/** The die-width unit: one world unit is one die at any diceScale (DiceBox: DIE_SIZE_PX per unit). */
+export const DIE_WIDTH = 1;
+export const SCORCH_MS = 1200; // fire, lava: a smoke puff, and it fans itself
+export const SHIVER_MS = 1300; // frost: a shiver under a frosty tint that fades
+export const BRISTLE_MS = 1000; // storm: it bristles, a few sparks
+export const STARTLE_MS = 750; // any other element: a jump
+const SMOKES = 7; // of the sparkle's SPARKS points
+const SPARKLES = 5;
+const STORM = [0.55, 0.8, 1];
+const ICE = new THREE.Color(0.72, 0.9, 1); // the frosty tint's colour
+const ICE_GLOW = new THREE.Color(0.1, 0.22, 0.35); // and a faint cold glow, so dark pets show it too
+/** How long each of a resting pet's animations (pet.anim.kind) runs. */
+const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS };
+
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (t) => t * t * (3 - 2 * t);
 const clamp01 = (x) => (x > 0 ? (x < 1 ? x : 1) : 0);
@@ -119,6 +135,8 @@ export function createPetLayer(deps) {
   let sparkMat = null;
   let heartMat = null; // petting's hearts and a huff's puff: the sparkle's points, another sprite
   let puffMat = null;
+  let smokeMat = null; // a scorch's smoke and a bristle's sparks: bigger sprites than the sparkle's
+  let zapMat = null;
   let petting = null; // the click listeners (petting.js) while a pet is shown
   let disposed = false;
   let timer = null; // the one timer, aimed at the earliest leaveAt (so a held loop wakes up)
@@ -192,9 +210,9 @@ export function createPetLayer(deps) {
   }
 
   /** A sprite material like the sparkle's (the same shader program, so nothing new to compile). */
-  const spriteMat = (map) =>
+  const spriteMat = (map, size = SPARK_SIZE) =>
     new THREE.PointsMaterial({
-      size: SPARK_SIZE,
+      size,
       map,
       vertexColors: true,
       transparent: true,
@@ -204,25 +222,59 @@ export function createPetLayer(deps) {
     });
 
   /**
-   * Petting's hearts, or (huff) a huff's puff, at e (0..1) in the pet's sparkle points. Nothing
-   * twinkles: each sprite fades in and out once. `calm` (reduced motion): fewer hearts, less sway.
+   * Petting's hearts, a huff's puff, a scorch's smoke or a bristle's sparks (`kind`, pet.anim's), at
+   * e (0..1) in the pet's sparkle points; false for a kind with none (shiver, startle). Only the
+   * sparks may twinkle, and not with `calm` (reduced motion: no flashing); everything else fades in
+   * and out once. `calm` also means fewer hearts and less sway.
    */
-  function float(pet, e, huff, calm) {
+  function float(pet, e, kind, calm) {
+    const huff = kind === 'huff';
+    const smoke = kind === 'scorch';
+    const spark = kind === 'bristle';
+    if (!huff && !smoke && !spark && kind !== 'pet') return false;
     const pts = pet.sparkle;
-    pts.material = huff ? (puffMat ??= spriteMat(puffTexture())) : (heartMat ??= spriteMat(heartTexture()));
+    pts.material = spark
+      ? (zapMat ??= spriteMat(starTexture(), SPARK_SIZE * 1.6))
+      : smoke
+        ? (smokeMat ??= spriteMat(puffTexture(), SPARK_SIZE * 2.2))
+        : huff
+          ? (puffMat ??= spriteMat(puffTexture()))
+          : (heartMat ??= spriteMat(heartTexture()));
     const h = pet.creature.height;
     const pos = pts.geometry.attributes.position;
     const col = pts.geometry.attributes.color;
     const P = pos.array;
     const C = col.array;
-    const n = huff ? PUFFS : calm ? 3 : HEARTS;
+    const n = huff ? PUFFS : smoke ? SMOKES : spark ? SPARKLES : calm ? 3 : HEARTS;
     for (let i = 0; i < SPARKS; i++) {
       const k = i * 3;
       P[k] = P[k + 1] = P[k + 2] = C[k] = C[k + 1] = C[k + 2] = 0; // unused: black adds nothing
       if (i >= n) continue;
       const sp = SPARK[i];
       let b;
-      if (huff) {
+      if (smoke) {
+        // smoke curling up off its top one puff after another, spreading and fading
+        const s = clamp01((e - i * 0.07) / 0.55);
+        const curl = 0.15 * h * Math.sin(s * Math.PI * 1.5 + sp.ph) * (calm ? 0.4 : 1);
+        P[k] = Math.sin(sp.a) * (0.15 + 0.3 * s) * h + curl;
+        P[k + 1] = h * (0.85 + 0.9 * s * (0.7 + 0.3 * sp.rise));
+        P[k + 2] = Math.cos(sp.a) * (0.15 + 0.3 * s) * h;
+        b = GREY * 0.8 * Math.sin(Math.PI * s);
+        C[k] = C[k + 1] = C[k + 2] = b;
+      } else if (spark) {
+        // a few sparks crackling about its body, each in its own beat; they flicker unless calm
+        const s = clamp01((e - i * 0.1) / 0.5);
+        const r = (0.7 + 0.25 * sp.reach * s) * h; // outside its body, where they show
+        P[k] = Math.sin(sp.a) * r;
+        P[k + 1] = h * (0.35 + 0.6 * sp.rise + 0.15 * s);
+        P[k + 2] = Math.cos(sp.a) * r;
+        b = Math.sin(Math.PI * s);
+        if (!calm) b *= Math.sin(s * 37 + sp.ph) > -0.2 ? 1 : 0.15;
+        const c = i % 2 ? WHITE : STORM;
+        C[k] = c[0] * b;
+        C[k + 1] = c[1] * b;
+        C[k + 2] = c[2] * b;
+      } else if (huff) {
         // a short puff out of each side of its face, spreading and fading
         const s = clamp01((e - 0.35) / 0.5);
         P[k] = (i % 2 ? 1 : -1) * (0.35 + 0.5 * s * sp.reach) * h;
@@ -247,6 +299,36 @@ export function createPetLayer(deps) {
     col.needsUpdate = true;
     pts.position.y = 0;
     pts.visible = true;
+    return true;
+  }
+
+  /**
+   * The frosty tint, `amount` 0..1, on every lit material of the pet's creature: the colour lerped
+   * toward ICE and a faint cold glow (uniforms only: no shader recompiles). 0 puts the colours back.
+   */
+  function frost(pet, amount) {
+    let t = pet.tint;
+    if (!t || t.creature !== pet.creature) {
+      if (!(amount > 0)) return;
+      const mats = new Set();
+      pet.creature.root.traverse((o) => {
+        for (const m of [o.material].flat()) if (m?.color && m.emissive) mats.add(m);
+      });
+      t = pet.tint = { creature: pet.creature, mats: [...mats] };
+      t.color = t.mats.map((m) => m.color.clone());
+      t.glow = t.mats.map((m) => m.emissive.clone());
+    }
+    const a = clamp01(amount);
+    t.mats.forEach((m, i) => {
+      m.color.copy(t.color[i]).lerp(ICE, 0.6 * a);
+      m.emissive.copy(t.glow[i]).lerp(ICE_GLOW, a);
+    });
+    if (a === 0) pet.tint = null;
+  }
+  /** Ends a resting pet's animation early (it rolled, left, was hit): its tint goes too. */
+  function dropAnim(pet) {
+    pet.anim = null;
+    if (pet.tint) frost(pet, 0);
   }
 
   function removePet(pet) {
@@ -712,6 +794,31 @@ export function createPetLayer(deps) {
     if (!roll || roll.summary) return;
     roll.summary = summarize(dice, roll.ghost); // a ghost roll only ever says 'plain'
     settle(pet);
+    elemental(dice);
+  }
+
+  /**
+   * A landing's elemental dice: each resting pet with one within reach reacts to the nearest
+   * (reactions.js; a ghost die never counts). petElemental, and pets allowed and shown. The loop
+   * wakes for the reaction and goes idle again when it is over.
+   */
+  function elemental(dice) {
+    let on = false;
+    try {
+      on = !disposed && shown() && getSetting('petElemental') !== false;
+    } catch {
+      on = false;
+    }
+    if (!on) return;
+    const now = clock();
+    let any = false;
+    for (const { pet, element } of elementReactions(dice, [...pets.values()], { dieWidth: DIE_WIDTH })) {
+      if (pet.tint) frost(pet, 0); // a shiver cut short by the next reaction
+      pet.anim = { kind: reactionOf(element), at: now, calm: calmNow(), element };
+      pet.idleAt = now; // a startled pet does not wander off just then
+      any = true;
+    }
+    if (any) wake();
   }
 
   function leave(key, msLeft) {
@@ -870,18 +977,22 @@ export function createPetLayer(deps) {
     const k = Math.min(1, step / d);
     return { x: at.x + (cx - at.x) * k, z: at.z + (cz - at.z) * k };
   }
-  /** A resting pet's petting wiggle or huff, for this frame; a huff ends in its hop off. */
+  /**
+   * A resting pet's petting wiggle, huff or elemental reaction, for this frame; a huff ends in its
+   * hop off.
+   */
   function stepAnim(pet, now, shadows) {
     const a = pet.anim;
     const huff = a.kind === 'huff';
-    const e = clamp01((now - a.at) / (huff ? HUFF_MS : PET_MS));
+    const e = clamp01((now - a.at) / (ANIM_MS[a.kind] ?? PET_MS));
     if (huff) pet.yaw = wrap(pet.huff.yaw + Math.PI * smooth(clamp01((e - 0.3) / 0.7))); // turns its back
     show(pet, now, a.kind, e, pet.px, pet.pz, 0, shadows);
     if (e < 1) {
-      float(pet, e, huff, a.calm);
+      if (!float(pet, e, a.kind, a.calm)) pet.sparkle.visible = false;
+      if (a.kind === 'shiver') frost(pet, smooth(clamp01(e / 0.12)) * (1 - smooth(clamp01((e - 0.35) / 0.65))));
       return true;
     }
-    pet.anim = null;
+    dropAnim(pet);
     pet.sparkle.visible = false;
     if (huff) {
       hopTo(pet, huffSpot(pet), 'hop', now);
@@ -1130,7 +1241,7 @@ export function createPetLayer(deps) {
           } else if (!held) nextLeave = Math.min(nextLeave, pet.leaveAt);
         }
         // Petting belongs to a resting pet: one that rolled, left, splatted or moved drops it.
-        if (pet.anim && pet.state !== 'rest') pet.anim = null;
+        if (pet.anim && pet.state !== 'rest') dropAnim(pet);
         if (pet.huff && (pet.gone || (pet.state !== 'rest' && pet.state !== 'hop'))) pet.huff = null;
         if (pet.huff && now >= pet.huff.backAt) {
           // over its huff: back to its spot (not while a roll flies: the physics has it where it is)
@@ -1320,7 +1431,7 @@ export function createPetLayer(deps) {
     if (len > 1e-6 && Number.isFinite(len)) ((dx /= len), (dz /= len));
     else ((dx = 1), (dz = 0));
     pet.wobble = { at: now, dx, dz };
-    pet.anim = null; // a die knocks a petting wiggle or a huff out of it
+    dropAnim(pet); // a die knocks a petting wiggle, a huff or a reaction out of it
     wake();
   }
 
@@ -1466,11 +1577,11 @@ export function createPetLayer(deps) {
     shadowGeo?.dispose();
     sparkTex?.dispose();
     sparkMat?.dispose();
-    for (const m of [heartMat, puffMat]) {
+    for (const m of [heartMat, puffMat, smokeMat, zapMat]) {
       m?.map.dispose();
       m?.dispose();
     }
-    shadowTex = shadowGeo = sparkTex = sparkMat = heartMat = puffMat = null;
+    shadowTex = shadowGeo = sparkTex = sparkMat = heartMat = puffMat = smokeMat = zapMat = null;
   }
 
   return {

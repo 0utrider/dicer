@@ -286,6 +286,56 @@ export function slime(color) {
       p.upper = lerp(0.1, 0.55, mad);
       p.smile = lerp(0.6, -0.6, mad);
       p.gazeYaw = 0.7 * mad;
+    } else if (phase === 'scorch') {
+      // Scorched (fire, lava): a hop back off the heat, then it pants with its mouth open and
+      // sways its jelly to and fro like a fan, eyes squinting, a wobbly frown (look.calm: gentler).
+      PK.reset(p);
+      const k = look?.calm ? 0.4 : 1;
+      const on = plateau(t, 0, 1, 0.12);
+      p.lift = 0.3 * k * bump(t, 0.02, 0.28);
+      p.squash = -0.15 * k * bump(t, 0.02, 0.28) + 0.06 * k * Math.sin(t * TAU * 6) * on;
+      p.shear = 0.2 * k * Math.sin(t * TAU * 4) * on;
+      p.upper = lerp(0.08, 0.6, on);
+      p.lower = lerp(0.08, 0.3, on);
+      p.smile = lerp(0.6, -0.3, on);
+      p.open = on * (0.65 + 0.3 * Math.sin(t * TAU * 6));
+    } else if (phase === 'shiver') {
+      // Frozen (frost): it hunches down low and shivers side to side, eyes squeezed, frowning
+      // (look.calm: a slower, smaller shiver).
+      PK.reset(p);
+      const k = look?.calm ? 0.3 : 1;
+      const f = look?.calm ? 5 : 14;
+      const on = plateau(t, 0, 1, 0.12);
+      p.squash = 0.14 * on;
+      p.roll = 0.09 * k * Math.sin(t * TAU * f) * on;
+      p.shear = 0.04 * k * Math.sin(t * TAU * f + 1) * on;
+      p.upper = lerp(0.08, 0.55, on);
+      p.lower = lerp(0.08, 0.3, on);
+      p.smile = lerp(0.6, -0.5, on);
+    } else if (phase === 'bristle') {
+      // Zapped (storm): it shoots up tall and trembles, eyes wide, mouth agape (look.calm: no tremble).
+      PK.reset(p);
+      const k = look?.calm ? 0 : 1;
+      const on = plateau(t, 0, 1, 0.1);
+      p.squash = -0.28 * on + 0.05 * k * Math.sin(t * TAU * 10) * on;
+      p.upper = lerp(0.08, 0, on);
+      p.lower = lerp(0.08, 0, on);
+      p.gazePitch = lerp(-0.3, 0, on);
+      p.smile = lerp(0.6, 0, on);
+      p.open = 0.55 * on;
+    } else if (phase === 'startle') {
+      // Startled (any other element): a crouch, a jump straight up, eyes wide, and a squashy landing
+      // (look.calm: a smaller jump).
+      PK.reset(p);
+      const k = look?.calm ? 0.4 : 1;
+      const wide = plateau(t, 0, 1, 0.1);
+      p.lift = 0.7 * k * Math.sin(Math.PI * span(t, 0.1, 0.5));
+      p.squash = 0.22 * bump(t, 0, 0.12) - 0.25 * k * bump(t, 0.1, 0.5) + 0.22 * k * bump(t, 0.48, 0.66);
+      p.upper = lerp(0.08, 0, wide);
+      p.lower = lerp(0.08, 0, wide);
+      p.gazePitch = lerp(-0.3, 0.1, wide);
+      p.smile = lerp(0.6, 0, wide);
+      p.open = 0.5 * wide;
     } else if (phase === 'throw') {
       PK.reset(p);
       // A fling: it rears back, then lunges its whole jelly forward and wobbles.

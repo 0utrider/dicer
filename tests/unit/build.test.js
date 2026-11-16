@@ -44,6 +44,7 @@ describe('build', () => {
     const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
     const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
+    const elementOf = lazy.find((p) => /^dist\/element-of-[A-Za-z0-9_-]{8}\.js$/.test(p)); // elementOf, shared by the effects and pet chunks
     const hand = lazy.find((p) => /^dist\/hand-[A-Za-z0-9_-]{8}\.js$/.test(p)); // rolling by hand (src/hand/hand.js)
     const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
     expect(jb2a).toBeTruthy();
@@ -61,6 +62,10 @@ describe('build', () => {
     expect(threePoints).toBeTruthy();
     // lazy for real: only the lazy chunks import it, never the world-start bundle
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain(threePoints.slice('dist/'.length));
+    expect(elementOf).toBeTruthy();
+    // lazy for real too: no world-start file names it
+    for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
+      expect(readFileSync(f, 'utf8')).not.toContain(elementOf.slice('dist/'.length));
     expect(lookExtras).toBeTruthy();
     expect(readFileSync(lookExtras, 'utf8')).toContain('dicer-look-extras');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-look-extras');
@@ -137,6 +142,7 @@ describe('build', () => {
         lookExtras,
         pets,
         threePoints,
+        elementOf,
         hand,
         jb2a,
         'dist/draco/draco_decoder.wasm',

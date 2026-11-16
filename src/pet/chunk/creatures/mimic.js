@@ -363,6 +363,59 @@ export function mimic(color) {
       p.upper = lerp(0.1, 0.55, mad);
       p.tiltUp = 0.3 * mad;
       p.gazeYaw = 0.7 * mad;
+    } else if (phase === 'scorch') {
+      // Scorched (fire, lava): a hop back off the heat, then it fans itself with its lid, flapping
+      // it fast, tongue out panting, eyes squinting (look.calm: slower, smaller flaps).
+      PK.reset(p);
+      const k = look?.calm ? 0.4 : 1;
+      const on = plateau(t, 0, 1, 0.12);
+      p.lift = 0.25 * k * bump(t, 0.02, 0.28);
+      p.pitch = -0.12 * k * bump(t, 0.02, 0.3);
+      p.lid = LID + 0.35 * k * Math.sin(t * TAU * (look?.calm ? 3 : 5)) * on;
+      p.wag = 0.6 * k * Math.sin(t * TAU * 6) * on;
+      p.upper = lerp(0.1, 0.6, on);
+      p.tiltUp = 0.25 * on;
+    } else if (phase === 'shiver') {
+      // Frozen (frost): feet tucked in, it shivers side to side, its lid chattering nearly shut,
+      // tongue in, eyes squeezed (look.calm: a slower, smaller shiver).
+      PK.reset(p);
+      const k = look?.calm ? 0.3 : 1;
+      const f = look?.calm ? 5 : 14;
+      const on = plateau(t, 0, 1, 0.12);
+      p.roll = 0.07 * k * Math.sin(t * TAU * f) * on;
+      p.lid = lerp(LID, 0.2, on) + 0.08 * k * Math.sin(t * TAU * f * 1.3) * on;
+      p.tongue = lerp(1, 0, on);
+      p.tuck = 0.5 * on;
+      p.upper = lerp(0.1, 0.55, on);
+      p.tiltUp = 0.35 * on;
+    } else if (phase === 'bristle') {
+      // Zapped (storm): its lid snaps wide, it stands tall on its toes, eyes huge, trembling
+      // (look.calm: no tremble).
+      PK.reset(p);
+      const k = look?.calm ? 0 : 1;
+      const on = plateau(t, 0, 1, 0.1);
+      p.squash = -0.12 * on;
+      p.lid = lerp(LID, LID + 0.45, on);
+      p.tongue = lerp(1, 0.3, on);
+      p.tuck = -0.4 * on;
+      p.roll = 0.04 * k * Math.sin(t * TAU * 10) * on;
+      p.eyeScale = 1 + 0.25 * on;
+      p.upper = lerp(0.1, 0, on);
+      p.lower = lerp(0.1, 0, on);
+    } else if (phase === 'startle') {
+      // Startled (any other element): a crouch, a jump with its feet tucked and its lid flung open,
+      // eyes wide, and a thud of a landing (look.calm: a smaller jump).
+      PK.reset(p);
+      const k = look?.calm ? 0.4 : 1;
+      const wide = plateau(t, 0, 1, 0.1);
+      const air = span(t, 0.1, 0.5);
+      p.lift = 0.6 * k * Math.sin(Math.PI * air);
+      p.squash = 0.15 * bump(t, 0, 0.12) - 0.12 * k * bump(t, 0.1, 0.5) + 0.15 * k * bump(t, 0.48, 0.66);
+      p.tuck = bump(t, 0.12, 0.5);
+      p.lid = LID + 0.3 * wide;
+      p.eyeScale = 1 + 0.2 * wide;
+      p.upper = lerp(0.1, 0, wide);
+      p.lower = lerp(0.1, 0, wide);
     } else if (phase === 'throw') {
       PK.reset(p);
       // It spits the dice: leans back with the lid shut, then lunges with the jaw wide open.

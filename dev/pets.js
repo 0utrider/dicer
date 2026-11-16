@@ -4,7 +4,7 @@ import { configureRenderer } from '../src/render/renderer.js';
 import { getShape } from '../src/core/dice-shapes.js';
 import { buildDieGeometry } from '../src/core/chamfer.js';
 import { readTopFace, rotationToShow, faceForValue } from '../src/core/face-reader.js';
-import { createPetLayer } from '../src/pet/chunk/pets.js';
+import { createPetLayer, SCORCH_MS, SHIVER_MS, BRISTLE_MS, STARTLE_MS } from '../src/pet/chunk/pets.js';
 import { REST_HOP_MS } from '../src/pet/chunk/timeline.js';
 import { REST_SPOTS } from '../src/pet/chunk/rest-spots.js';
 import { DIE_SIZE_PX } from '../src/throw/dice-box.js';
@@ -111,16 +111,16 @@ const OUT = [
   [0, 1],
   [0, -1],
 ];
-function gameView(pet, w, h, bg, edge = 3, onPet = false) {
+function gameView(pet, w, h, bg, edge = 3, onPet = false, dieAt = null) {
   scene.background = new THREE.Color(bg);
   d20.visible = true;
   // Where the pet is (it rests in the ring around the middle, or is hopping there) and a d20
-  // beside it, along the edge.
+  // beside it, along the edge (dieAt: there instead).
   const [ox, oz] = OUT[edge];
   const bx = pet.position.x;
   const bz = pet.position.z;
-  d20.position.x = bx - oz * 2.3;
-  d20.position.z = bz + ox * 2.3;
+  d20.position.x = dieAt ? dieAt.x : bx - oz * 2.3;
+  d20.position.z = dieAt ? dieAt.z : bz + ox * 2.3;
   const full = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
   camera.clearViewOffset();
   camera.position.set(0, H, 0);
@@ -137,9 +137,9 @@ function gameView(pet, w, h, bg, edge = 3, onPet = false) {
 }
 
 /** Renders a 3/4 close-up from the front-right, above. */
-function closeUp(pet, w, h, bg, { dist = 4.6, height = 2.6, side = 1.6, follow = true } = {}) {
+function closeUp(pet, w, h, bg, { dist = 4.6, height = 2.6, side = 1.6, follow = true, die = false } = {}) {
   scene.background = new THREE.Color(bg);
-  d20.visible = false;
+  d20.visible = die; // die: the d20 where it was put (the reactions sheet's landed die)
   // the pet's forward in the world
   const yaw = pet.rotation.y;
   const fx = Math.sin(yaw);
@@ -662,8 +662,99 @@ function restSpots() {
   return c.toDataURL('image/png');
 }
 
+// --- reactions to elemental dice (round 2, Task 4) -------------------------------------------
+// The real layer: the pet rests after its roll (petStay Always), then another player's die with
+// an element lands just inside the 2-die-width reach to its right (toward the close-up camera), drawn as the d20 in the
+// element's colour. Each reaction at 3 moments in the close-up, and its middle one in the game view.
+const REACTIONS = [
+  { name: 'scorch', damageType: 'fire', ms: SCORCH_MS, die: '#ff7a2a', moments: [0.12, 0.4, 0.7] },
+  { name: 'shiver', damageType: 'cold', ms: SHIVER_MS, die: '#9fdcff', moments: [0.15, 0.35, 0.75] },
+  { name: 'bristle', damageType: 'electricity', ms: BRISTLE_MS, die: '#ffe14a', moments: [0.2, 0.42, 0.7] },
+  { name: 'startle', damageType: 'acid', ms: STARTLE_MS, die: '#8fdc3a', moments: [0.08, 0.3, 0.6] },
+];
+function stageReaction({ kind, color, reaction, t }) {
+  clock = 0;
+  const layer = createPetLayer({
+    scene,
+    getSetting: (k) => (k === 'petStay' ? -1 : undefined),
+    playSound: () => {},
+    now: () => clock,
+    random: seeded(7),
+    activeRolls: () => 0,
+    reducedMotion: () => false,
+  });
+  const px = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
+  layer.areaChanged({ cx: 0, cz: 0, ...STAGE, rect: { left: 0, top: 0, width: px.w, height: px.h } });
+  const at = (ms) => layer.update((clock = ms));
+  const centre = () => ({ x: AREA.cx, z: AREA.cz });
+  layer.begin('k', { spec: { userId: 'u', kind, color, ghost: false }, edge: 3, area: AREA, centre });
+  for (let ms = 0; ms <= 900; ms += 16) at(ms);
+  clock = 1000;
+  layer.landed('k', [{ type: 'd20', value: 7 }]);
+  layer.leave('k', 0);
+  layer.end('k');
+  for (let ms = 1000; ms <= 4000; ms += 16) at(ms);
+  const pet = scene.children.find((c) => c.userData.dicerPet);
+  // the die lands just inside the reach (2 die widths) to the pet's right, where the close-up sees it
+  const fx = Math.sin(pet.rotation.y);
+  const fz = Math.cos(pet.rotation.y);
+  const dieAt = { x: pet.position.x + fz * 1.9, z: pet.position.z - fx * 1.9 };
+  // another player throws it, their pet at the far edge (hidden: not part of the shot)
+  layer.begin('o', {
+    spec: { userId: 'o', kind: 'slime', color: '#888888', ghost: false },
+    edge: pet.position.z > 0 ? 3 : 2,
+    area: AREA,
+    centre,
+  });
+  at(4016);
+  clock = 4100;
+  layer.landed('o', [{ type: 'd20', value: 7, ghost: false, x: dieAt.x, z: dieAt.z, damageType: reaction.damageType }]);
+  at(4116);
+  if (t > 0) at(4100 + t * reaction.ms);
+  const other = scene.children.find((c) => c.userData.dicerPet && c !== pet);
+  if (other) other.visible = false;
+  return { layer, pet, dieAt };
+}
+/** 3 kinds x scorch/shiver/bristle/startle: 3 close-up moments and the game view at the middle one. */
+function reactions() {
+  const LW = 130;
+  const CW = 230;
+  const CH = 200;
+  const HEAD = 30;
+  const rows = KINDS.flatMap((kind) => REACTIONS.map((reaction) => ({ kind, reaction })));
+  const { c, g } = newSheet(LW + CW * 4, HEAD + rows.length * (CH + 4));
+  ['moment 1', 'moment 2', 'moment 3', 'game view (48 px/die), moment 2'].forEach((n, i) =>
+    label(g, n, LW + i * CW + CW / 2, 20, { align: 'center' }),
+  );
+  const was = d20.material.color.getHex();
+  try {
+    rows.forEach(({ kind, reaction }, r) => {
+      const y = HEAD + r * (CH + 4);
+      label(g, kind, 8, y + 22, { size: 14 });
+      label(g, `${reaction.name} (${reaction.damageType})`, 8, y + 42, { size: 12, color: '#9aa0aa' });
+      d20.material.color.set(reaction.die);
+      const cells = [...reaction.moments.map((t) => ({ t, game: false })), { t: reaction.moments[1], game: true }];
+      cells.forEach(({ t, game }, i) => {
+        const staged = stageReaction({ kind, color: KIND_COLOR[kind], reaction, t });
+        try {
+          d20.position.set(staged.dieAt.x, d20.position.y, staged.dieAt.z);
+          if (game) gameView(staged.pet, CW - 2, CH - 2, BG.dark, 3, true, staged.dieAt);
+          else closeUp(staged.pet, CW - 2, CH - 2, '#5b616b', { dist: 6.6, height: 3.4, side: 2.8, follow: false, die: true });
+          blit(g, LW + i * CW + 1, y + 1);
+        } finally {
+          staged.layer.dispose();
+        }
+        label(g, `t ${t.toFixed(2)} (${Math.round(t * reaction.ms)} ms)`, LW + i * CW + 8, y + CH - 10, { size: 11, color: '#d0d4da' });
+      });
+    });
+  } finally {
+    d20.material.color.setHex(was);
+  }
+  return c.toDataURL('image/png');
+}
+
 const show = (url) => (document.getElementById('sheet').src = url);
-const SHEETS = { grid, colours, strips, splat, restSpots };
+const SHEETS = { grid, colours, strips, splat, restSpots, reactions };
 for (const b of document.querySelectorAll('[data-sheet]'))
   b.addEventListener('click', () => {
     try {
@@ -674,4 +765,4 @@ for (const b of document.querySelectorAll('[data-sheet]'))
   });
 show(grid());
 document.getElementById('status').textContent = 'ready';
-window.__pets = { grid, colours, strips, splat, restSpots, moves: () => strips(KINDS, 'move'), errors, ready: true };
+window.__pets = { grid, colours, strips, splat, restSpots, reactions, moves: () => strips(KINDS, 'move'), errors, ready: true };
