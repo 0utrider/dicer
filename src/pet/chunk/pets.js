@@ -22,11 +22,12 @@ import {
   obstacle,
   SLIDE,
   SPACING,
+  EDGE_GAP,
   PET_HEIGHT,
   KIND_FOOTPRINT,
   FOOTPRINT,
 } from './resting.js';
-import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
+import { spotFor as chosenSpot, atEdge, placedSpot, toPlaced, validAt, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, petClickable, HUFF_IGNORE_MS } from './petting.js';
 import { elementReactions, reactionOf, resting } from './reactions.js';
 import { elementOf } from '../../effects/element-of.js';
@@ -54,6 +55,7 @@ const NO_LOOK = { yaw: 0 }; // shared: poses only read it
 const WOBBLE_LOOK = { yaw: 0, leanX: 0, leanZ: 0 }; // reused: the push in the pet's own space
 const DOWN = new Set(['splat', 'puddle', 'reform', 'fade']);
 const HOP = 0.45; // of the height
+const LIFT = 0.6; // of the height: how high a pet held by the mouse hangs
 const LOOK_MAX = 0.6;
 const MOVED = 1e-3; // a re-used pet farther than this from its new spot hops there
 // Foundry's UI that the dice canvas draws over (v14 puts it at z-index 30, the canvas at 60): its
@@ -156,6 +158,9 @@ export function createPetLayer(deps) {
   const hooks = deps.hooks || globalThis.Hooks; // test seam: Foundry's hooks (area edits)
   const userOf = deps.userOf || ((id) => globalThis.game?.users?.get?.(id)); // test seam: alignFor's absent pets
   const moods = deps.moods || pageMoods;
+  // test seam: saves a client setting (where a dropped pet rests); null where nothing can be saved
+  const saveSetting =
+    deps.setSetting ?? (globalThis.game?.settings?.set ? (k, v) => globalThis.game.settings.set('dicer', k, v) : null);
   // The last stage DiceBox told us ({cx, cz, halfWidth, halfDepth, rect?}: rect is its px rect): a
   // rest area is always fitted inside it.
   let stage = null;
@@ -749,9 +754,45 @@ export function createPetLayer(deps) {
       return 'dice';
     }
   };
+  // A pet just dropped: where it was put, until the saved settings say so too (saving is async).
+  let dropped = null;
+  /** petRestAt, the spot of 'placed' (a just-dropped pet's spot first), or null when unusable. */
+  const placedAt = () => {
+    let at = null;
+    try {
+      at = getSetting('petRestAt');
+    } catch {
+      /* unreadable */
+    }
+    if (dropped && validAt(at) && at.x === dropped.x && at.z === dropped.z) dropped = null; // saved
+    return dropped ?? (validAt(at) ? at : null);
+  };
+  /** The choice in force: a just-dropped pet's 'placed', else petRestSpot. */
+  const current = () => (dropped ? 'placed' : choice());
+  /** A choice that rests at fixed slots (a corner, an edge, or a placed spot), not the dice ring. */
+  const fixed = (c) => atEdge(c) || (c === 'placed' && !!placedAt());
+  /** The choice and, for 'placed', its spot: what a resting pet notes it rests by. */
+  const restKey = (c) => {
+    const at = c === 'placed' ? placedAt() : null;
+    return at ? `placed ${at.x} ${at.z}` : c;
+  };
   /** Whether a resting pet or puddle sits by another choice than `c` (cornerSpot notes its own). */
   const stale = (pet, c) =>
-    pet.restChoice !== undefined && pet.restChoice !== c && ['hop', 'rest', 'move', 'splat', 'puddle'].includes(pet.state);
+    pet.restChoice !== undefined &&
+    pet.restChoice !== restKey(c) &&
+    ['hop', 'rest', 'move', 'splat', 'puddle'].includes(pet.state);
+  /** Saves a placed spot (petRestSpot 'placed' and petRestAt `at`); the layer uses it at once. */
+  function savePlaced(at) {
+    dropped = at;
+    if (!saveSetting) return; // used on this screen until it reloads
+    try {
+      Promise.resolve(saveSetting('petRestAt', at))
+        .then(() => saveSetting('petRestSpot', 'placed'))
+        .catch((err) => console.warn('Dicer | pet', err));
+    } catch (err) {
+      console.warn('Dicer | pet', err);
+    }
+  }
   /**
    * The pet's spot at this screen's corner or edge choice, or null for 'dice' (the ring of its
    * owner's area) or with no stage yet. It keeps its slot while no other pet holds it (so it goes
@@ -759,10 +800,18 @@ export function createPetLayer(deps) {
    * go in the order pets arrive. Sets pet.slot (null for 'dice').
    */
   function cornerSpot(pet) {
-    const c = choice();
-    pet.restChoice = c; // the choice it now rests by
+    let c = current();
     const h = pet.creature.height;
-    if (!stage || !atEdge(c)) {
+    if (stage && atEdge(c) && saveSetting) {
+      // a corner or edge choice of 0.2: from now on the placed spot at its first slot
+      const at = chosenSpot(c, 0, stage, h, uiRects());
+      if (at) {
+        savePlaced(toPlaced(at, stage));
+        c = 'placed';
+      }
+    }
+    pet.restChoice = restKey(c); // the choice it now rests by
+    if (!stage || !fixed(c)) {
       pet.slot = null;
       return null;
     }
@@ -771,7 +820,7 @@ export function createPetLayer(deps) {
     let slot = pet.slot != null && !held.has(pet.slot) ? pet.slot : null;
     for (let k = 0; slot === null && k < MAX_PETS; k++) if (!held.has(k)) slot = k;
     pet.slot = slot ?? 0;
-    return chosenSpot(c, pet.slot, stage, h, uiRects());
+    return c === 'placed' ? placedSpot(placedAt(), pet.slot, stage, h) : chosenSpot(c, pet.slot, stage, h, uiRects());
   }
   /** A move of a standing pet from `at` to `to` over `ms` (stepMove), facing `yawTo` at the end. */
   function goTo(pet, at, to, ms, yawTo, now) {
@@ -1326,6 +1375,61 @@ export function createPetLayer(deps) {
     const k = Math.min(1, step / d);
     return { x: at.x + (cx - at.x) * k, z: at.z + (cz - at.z) * k };
   }
+  // ---- drag to place (petClick; petting.js tells a drag from a pat) ----
+  /** Page point (x, y) on the table in die units (where a dropped pet stands), or null with no stage. */
+  function tableAt(x, y) {
+    const map = pageMap();
+    if (!map || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x: (x - map.ox) / map.px, z: (y - map.oz) / map.px };
+  }
+  /** A drag picks up a resting pet (not one huffing, or while a roll flies: the physics has it). */
+  function dragStart(pet) {
+    if (disposed || pet.state !== 'rest' || pet.huff || pet.gone || activeRolls() > 0 || holding()) return false;
+    stopAnim(pet);
+    pet.held = { x: pet.px ?? spotOf(pet).x, z: pet.pz ?? spotOf(pet).z };
+    pet.idleAt = clock(); // a pet being carried does not wander off
+    voice('petWhoa');
+    wake();
+    return true;
+  }
+  function drag(pet, x, y) {
+    if (!pet.held) return;
+    const at = tableAt(x, y);
+    if (at) pet.held = at;
+    wake();
+  }
+  /**
+   * Released: it lands where it was dropped, which is now where pets rest on this screen (petRestSpot
+   * 'placed', petRestAt), it in the first slot and the others hopping beside it. A cancelled drag
+   * (no point) or one with nowhere to save hops it back to its spot.
+   */
+  function drop(pet, x, y) {
+    const held = pet.held;
+    if (!held) return;
+    pet.held = null;
+    const now = clock();
+    pet.idleAt = now;
+    const h = pet.creature.height;
+    pet.px = held.x;
+    pet.pz = held.z;
+    pet.hop = LIFT * h; // it drops from where it hung
+    const at = tableAt(x, y);
+    if (pet.state !== 'rest' || !at || !stage) {
+      if (pet.state === 'rest') hopTo(pet, spotOf(pet), 'hop', now);
+      return;
+    }
+    const cx = stage.cx ?? 0;
+    const cz = stage.cz ?? 0;
+    const m = EDGE_GAP * h;
+    const pin = (v, c, hw) => Math.max(c - hw, Math.min(c + hw, v));
+    savePlaced(toPlaced({ x: pin(at.x, cx, stage.halfWidth - m), z: pin(at.z, cz, stage.halfDepth - m) }, stage));
+    for (const o of pets.values()) if (o !== pet) o.slot = null; // the others line up beside it
+    pet.slot = 0;
+    pet.spot = null;
+    restOf(pet, now);
+    restSpotChanged(now); // the others (no-op while a roll flies: update moves them after)
+  }
+
   /**
    * A resting pet's petting wiggle, huff, elemental reaction, mood settle or cheer, for this frame;
    * a huff ends in its hop off.
@@ -1376,7 +1480,17 @@ export function createPetLayer(deps) {
     if (want && !petting) {
       const win = deps.win ?? globalThis.window;
       if (win?.addEventListener)
-        petting = createPetting({ win, pickPet, onPet: petPet, onHuff: huffPet, now: clock, setting: getSetting });
+        petting = createPetting({
+          win,
+          pickPet,
+          onPet: petPet,
+          onHuff: huffPet,
+          onDragStart: dragStart,
+          onDrag: drag,
+          onDrop: drop,
+          now: clock,
+          setting: getSetting,
+        });
     } else if (!want && petting) {
       petting.dispose();
       petting = null;
@@ -1500,6 +1614,12 @@ export function createPetLayer(deps) {
   function step(pet, now, shadows, stay) {
     if (DOWN.has(pet.state)) return stepDown(pet, now, shadows, stay);
     if (pet.state === 'rest') {
+      if (stay && pet.held) {
+        // held by the mouse: it hangs under the pointer, its legs dangling (the startled pose)
+        show(pet, now, 'startle', 0.5, pet.held.x, pet.held.z, LIFT * pet.creature.height, shadows);
+        return true;
+      }
+      if (pet.held) pet.held = null; // resting went off mid-drag: let go
       if (stay && pet.wobble) {
         show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows); // the wobble, or the plain pose once it is over (show clears it)
         if (pet.wobble) return true; // over: on to its mood below
@@ -1620,6 +1740,7 @@ export function createPetLayer(deps) {
         }
         // Petting belongs to a resting pet: one that rolled, left, splatted or moved drops it.
         if (pet.anim && pet.state !== 'rest') dropAnim(pet);
+        if (pet.held && pet.state !== 'rest') pet.held = null; // its owner rolled mid-drag: let go
         if (pet.huff && (pet.gone || (pet.state !== 'rest' && pet.state !== 'hop'))) pet.huff = null;
         if (pet.huff && now >= pet.huff.backAt) {
           // over its huff: back to its spot (not while a roll flies: the physics has it where it is)
@@ -1853,11 +1974,11 @@ export function createPetLayer(deps) {
    */
   function restSpotChanged(now = clock()) {
     if (disposed || activeRolls() > 0 || holding() || !stays()) return;
-    const c = choice();
+    const c = current();
     // only those resting by another choice: one that came to rest since already sits by this one
     const order = [...pets.values()].filter((p) => stale(p, c)).sort((a, b) => (a.idleAt ?? 0) - (b.idleAt ?? 0));
     for (const pet of order) replace(pet, now);
-    const corner = !!stage && atEdge(c);
+    const corner = !!stage && fixed(c);
     for (const pet of pets.values()) {
       if (!pet.aligned || pet.state === 'routine' || pet.state === 'hop' || pet.state === 'move') continue; // not there yet
       if (pet.state !== 'rest' || pet.gone) pet.aligned = false; // a puddle stays; one leaving goes

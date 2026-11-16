@@ -250,7 +250,7 @@ describe('petting a pet in the layer', () => {
     const remove = vi.spyOn(m.win, 'removeEventListener');
     m.settings.showPets = false;
     m.layer.update((clockNow += 16)); // the setting's onChange wakes the loop
-    expect(remove).toHaveBeenCalledTimes(3);
+    expect(remove).toHaveBeenCalledTimes(5);
     const got = foundry(m.win);
     const es = clickAt(m.win, screenOf(group(m)).x, screenOf(group(m)).y);
     expect(got).toEqual(['pointerdown:false', 'pointerup:false', 'click:false']);
@@ -360,7 +360,7 @@ describe('petting a pet in the layer', () => {
     rollToRest(m);
     const remove = vi.spyOn(m.win, 'removeEventListener');
     m.layer.dispose();
-    expect(remove).toHaveBeenCalledTimes(3);
+    expect(remove).toHaveBeenCalledTimes(5);
   });
 
   test('petSounds off: a silent pet', () => {
@@ -469,5 +469,139 @@ describe.each(['mimic', 'slime', 'dragonling'])('%s poses pet and huff', (kind) 
         }
       }
     c.dispose();
+  });
+});
+
+// ---- drag to place ----
+/** A press at `from`, moves through `path`, and a release at the last point (or a cancel). */
+const dragAlong = (win, from, path, { cancel = false } = {}) => {
+  win.dispatchEvent(ev('pointerdown', from.x, from.y));
+  for (const p of path) win.dispatchEvent(ev('pointermove', p.x, p.y));
+  const end = path.at(-1) ?? from;
+  if (cancel) win.dispatchEvent(ev('pointercancel', end.x, end.y));
+  else {
+    win.dispatchEvent(ev('pointerup', end.x, end.y));
+    win.dispatchEvent(ev('click', end.x, end.y));
+  }
+};
+
+describe('createPetting: a drag', () => {
+  const PET = { id: 'p' };
+  const setup = (over = {}) => {
+    const win = new EventTarget();
+    const calls = [];
+    const p = createPetting({
+      win,
+      pickPet: (x, y) => (Math.hypot(x - 100, y - 100) <= 30 ? PET : null),
+      onPet: () => calls.push('pet'),
+      onHuff: () => calls.push('huff'),
+      onDragStart: () => (calls.push('start'), true),
+      onDrag: (pet, x, y) => calls.push(`drag ${x},${y}`),
+      onDrop: (pet, x, y) => calls.push(`drop ${x},${y}`),
+      setting: () => true,
+      ...over,
+    });
+    const got = foundry(win);
+    return { win, p, calls, got };
+  };
+
+  test('a press that moves past DRAG_PX drags: start, each move, drop where released; no pat, all stopped', () => {
+    const m = setup();
+    dragAlong(m.win, { x: 100, y: 100 }, [{ x: 102, y: 101 }, { x: 140, y: 100 }, { x: 300, y: 200 }]);
+    expect(m.calls).toEqual(['start', 'drag 140,100', 'drag 300,200', 'drop 300,200']);
+    expect(m.got).toEqual([]); // Foundry never saw the press
+  });
+
+  test('a press that stays within DRAG_PX is a pat', () => {
+    const m = setup();
+    dragAlong(m.win, { x: 100, y: 100 }, [{ x: 103, y: 102 }]);
+    expect(m.calls).toEqual(['pet']);
+  });
+
+  test('a cancelled drag drops nowhere; pointer moves with no press are left alone', () => {
+    const m = setup();
+    dragAlong(m.win, { x: 100, y: 100 }, [{ x: 200, y: 100 }], { cancel: true });
+    expect(m.calls).toEqual(['start', 'drag 200,100', 'drop null,null']);
+    const e = ev('pointermove', 100, 100);
+    m.win.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  test('onDragStart false: the press is let go, no drag and no pat', () => {
+    const m = setup({ onDragStart: () => false });
+    dragAlong(m.win, { x: 100, y: 100 }, [{ x: 200, y: 100 }, { x: 250, y: 100 }]);
+    expect(m.calls).toEqual([]);
+  });
+});
+
+describe('dragging a pet in the layer', () => {
+  const pageToTable = (p) => ({ x: (p.x - 640) / PX, z: (p.y - 400) / PX });
+
+  test('dropped anywhere, it rests there: petRestSpot "placed" and petRestAt saved, and it stays after', async () => {
+    const saved = {};
+    const setSetting = vi.fn((k, v) => {
+      saved[k] = v;
+      return Promise.resolve(v);
+    });
+    const m = make({}, { setSetting });
+    rollToRest(m);
+    const from = screenOf(group(m));
+    const to = { x: 400, y: 300 };
+    dragAlong(m.win, from, [{ x: from.x + 20, y: from.y }, to]);
+    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petWhoa' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(saved.petRestSpot).toBe('placed');
+    const want = pageToTable(to);
+    expect(saved.petRestAt.x).toBeCloseTo(want.x / STAGE.halfWidth, 6);
+    expect(saved.petRestAt.z).toBeCloseTo(want.z / STAGE.halfDepth, 6);
+    Object.assign(m.settings, saved);
+    expect(runTo(m, clockNow + 1500)).toBe('rest');
+    const g = group(m);
+    expect(g.position.x).toBeCloseTo(want.x, 6);
+    expect(g.position.z).toBeCloseTo(want.z, 6);
+    // its next roll brings it back to that spot
+    rollToRest(m);
+    expect(group(m).position.x).toBeCloseTo(want.x, 6);
+  });
+
+  test('while held it hangs under the pointer, lifted; a second pet rests beside the dropped one', () => {
+    const m = make({}, { setSetting: () => Promise.resolve() });
+    rollToRest(m, 'u1');
+    rollToRest(m, 'u2');
+    const g1 = group(m, 0);
+    const from = screenOf(g1);
+    m.win.dispatchEvent(ev('pointerdown', from.x, from.y));
+    m.win.dispatchEvent(ev('pointermove', 500, 500));
+    m.layer.update((clockNow += 16));
+    expect(g1.position.x).toBeCloseTo(pageToTable({ x: 500, y: 500 }).x, 6);
+    expect(g1.position.y).toBeGreaterThan(0);
+    m.win.dispatchEvent(ev('pointerup', 500, 500));
+    expect(runTo(m, clockNow + 1500)).toBe('rest');
+    const g2 = group(m, 1);
+    expect(g2.position.z).toBeCloseTo(g1.position.z, 6);
+    expect(Math.abs(g2.position.x - g1.position.x)).toBeGreaterThan(1);
+  });
+
+  test("a 0.2 corner choice ('bottomRight') becomes a placed spot where its first slot was", async () => {
+    const saved = {};
+    const m = make({ petRestSpot: 'bottomRight' }, { setSetting: (k, v) => ((saved[k] = v), Promise.resolve()) });
+    rollToRest(m);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(saved.petRestSpot).toBe('placed');
+    const g = group(m);
+    expect(g.position.x).toBeCloseTo(saved.petRestAt.x * STAGE.halfWidth, 6);
+    expect(g.position.z).toBeCloseTo(saved.petRestAt.z * STAGE.halfDepth, 6);
+    expect(g.position.x).toBeGreaterThan(0); // still at the bottom right
+    expect(g.position.z).toBeGreaterThan(0);
+  });
+
+  test('a pet mid-hop, or any while a roll flies, is not picked up', () => {
+    const m = make({ petRestSpot: 'dice' }, { setSetting: vi.fn(), activeRolls: () => 1 });
+    rollToRest(m);
+    const from = screenOf(group(m));
+    dragAlong(m.win, from, [{ x: 600, y: 600 }]);
+    expect(m.deps.setSetting).not.toHaveBeenCalled();
   });
 });

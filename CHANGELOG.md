@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Put your pets where you want them.** Drag a resting pet anywhere on the table and drop it: that is where pets rest on your screen from then on, the others lining up beside it. **Where pets rest** is now **Near the dice** or **Where you put them**; the four corners and bottom centre are gone, and a corner you had picked becomes your placed spot. Dragging needs **Click to pet** on; a click without moving still pets.
+
 ## 0.2.2
 
 - **Fixed:** the Your pet window could grow taller than the screen with no way to scroll to its last settings. It now stays within the screen, its settings scroll, and it can be resized.

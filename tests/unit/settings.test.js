@@ -569,14 +569,9 @@ test('the pet interaction settings are client settings with their defaults and s
   expect(r.petRestSpot).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'dice' });
   expect(r.petRestSpot.name).toBe('DICER.Settings.petRestSpot.Name');
   expect(r.petRestSpot.hint).toBe('DICER.Settings.petRestSpot.Hint');
-  expect(Object.keys(r.petRestSpot.choices)).toEqual([
-    'dice',
-    'bottomLeft',
-    'bottomRight',
-    'topLeft',
-    'topRight',
-    'bottomCentre',
-  ]);
+  expect(Object.keys(r.petRestSpot.choices)).toEqual(['dice', 'placed']);
+  // where 'placed' pets rest: set by dropping a pet, never shown in a form
+  expect(r.petRestAt).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Object, default: null });
   for (const label of Object.values(r.petRestSpot.choices)) expect(label).toMatch(/^DICER.Settings.petRestSpot.Choices./);
 });
 

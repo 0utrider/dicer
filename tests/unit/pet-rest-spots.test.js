@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildScene, FOV_DEG } from '../../src/render/scene.js';
 import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
-import { spotFor, REST_SPOTS, atEdge, TAN_HALF_FOV } from '../../src/pet/chunk/rest-spots.js';
+import { spotFor, REST_SPOTS, LEGACY_SPOTS, atEdge, placedSpot, toPlaced, validAt, TAN_HALF_FOV } from '../../src/pet/chunk/rest-spots.js';
 import { SPACING, EDGE_GAP, BODY, PET_HEIGHT } from '../../src/pet/chunk/resting.js';
 
 const H = PET_HEIGHT;
@@ -26,9 +26,11 @@ const away = (p, r) => {
   return ox > 0 || oz > 0 ? Math.hypot(Math.max(ox, 0), Math.max(oz, 0)) : Math.max(ox, oz);
 };
 
-test("the choices are the setting's, 'dice' first", () => {
-  expect(REST_SPOTS).toEqual(['dice', ...CORNERS]);
-  expect(REST_SPOTS.filter(atEdge)).toEqual(CORNERS);
+test("the choices are the setting's, 'dice' first; the 0.2 corners are legacy, still placed", () => {
+  expect(REST_SPOTS).toEqual(['dice', 'placed']);
+  expect(LEGACY_SPOTS).toEqual(CORNERS);
+  expect(LEGACY_SPOTS.filter(atEdge)).toEqual(CORNERS);
+  expect(atEdge('placed')).toBe(false);
   expect(atEdge(undefined) || atEdge('toString')).toBe(false);
 });
 
@@ -166,4 +168,38 @@ test('every creature at every slot, turned any way, draws clear of the UI rects 
 
 test("TAN_HALF_FOV is in step with Dicer's camera", () => {
   expect(TAN_HALF_FOV).toBeCloseTo(Math.tan(((FOV_DEG / 2) * Math.PI) / 180), 12);
+});
+
+// ---- 'placed': where the player last dropped a pet ----
+test('validAt takes {x, z} within -1..1 only', () => {
+  expect(validAt({ x: 0.5, z: -1 })).toBe(true);
+  for (const bad of [null, undefined, {}, { x: 2, z: 0 }, { x: 0, z: NaN }, { x: '0', z: 0 }]) expect(validAt(bad)).toBe(false);
+});
+
+test('toPlaced and placedSpot round-trip a point, slot 0 right there', () => {
+  const p = { x: 3, z: -2 };
+  const at = toPlaced(p, STAGE);
+  expect(at.x).toBeCloseTo(3 / STAGE.halfWidth, 9);
+  const s = placedSpot(at, 0, STAGE, H);
+  expect(s.x).toBeCloseTo(3, 9);
+  expect(s.z).toBeCloseTo(-2, 9);
+  expect(toPlaced({ x: 1e6, z: -1e6 }, STAGE)).toEqual({ x: 1, z: -1 }); // held inside the stage
+});
+
+test('placedSpot: the other slots beside slot 0, SPACING x height apart, all inside the stage', () => {
+  const at = { x: 0, z: 0.5 };
+  const [a, b, c] = [0, 1, 2].map((k) => placedSpot(at, k, STAGE, H));
+  expect(b.x).toBeCloseTo(a.x - SPACING * H, 9);
+  expect(c.x).toBeCloseTo(a.x + SPACING * H, 9);
+  expect(b.z).toBe(a.z);
+  // at the right edge: held EDGE_GAP in, and the slot that would leave the stage goes the other way
+  const edge = [0, 1, 2].map((k) => placedSpot({ x: 1, z: 1 }, k, STAGE, H));
+  const m = EDGE_GAP * H;
+  for (const s of edge) {
+    expect(Math.abs(s.x)).toBeLessThanOrEqual(STAGE.halfWidth - m + 1e-9);
+    expect(Math.abs(s.z)).toBeLessThanOrEqual(STAGE.halfDepth - m + 1e-9);
+  }
+  expect(new Set(edge.map((s) => s.x.toFixed(6))).size).toBe(2); // slots 0 and 2 meet at the edge: two places
+  expect(placedSpot(null, 0, STAGE, H)).toBeNull();
+  expect(placedSpot(at, 0, null, H)).toBeNull();
 });

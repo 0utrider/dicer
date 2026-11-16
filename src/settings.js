@@ -282,10 +282,7 @@ export function registerSettings({
       'dice',
       {
         choices: Object.fromEntries(
-          ['dice', 'bottomLeft', 'bottomRight', 'topLeft', 'topRight', 'bottomCentre'].map((v) => [
-            v,
-            t(`petRestSpot.Choices.${v}`),
-          ]),
+          ['dice', 'placed'].map((v) => [v, t(`petRestSpot.Choices.${v}`)]),
         ),
         onChange: onPetStayChange,
       },
@@ -638,6 +635,7 @@ export function registerSettings({
   register('handRollStash', { scope: 'client', config: false, type: Object, default: {} });
   // The entries Dicer wrote itself: only those are ever removed (a user's own Dicer pick stays).
   register('handRollMapped', { scope: 'client', config: false, type: Array, default: [] });
+  register('petRestAt', { scope: 'client', config: false, type: Object, default: null }); // where 'placed' pets rest
   registerNoticeSetting();
 }
 

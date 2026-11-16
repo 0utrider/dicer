@@ -1,8 +1,16 @@
 /** Where resting pets sit on this screen (the client setting petRestSpot): pure spot logic. */
 import { EDGE_GAP, SPACING } from './resting.js';
 
-/** The setting's choices: 'dice' rests in the ring around the roll area (resting.js restSpot). */
-export const REST_SPOTS = ['dice', 'bottomLeft', 'bottomRight', 'topLeft', 'topRight', 'bottomCentre'];
+/**
+ * The setting's choices: 'dice' rests in the ring around the roll area (resting.js restSpot);
+ * 'placed' where the player last dropped a pet (petRestAt).
+ */
+export const REST_SPOTS = ['dice', 'placed'];
+/**
+ * The corner and edge choices of 0.2 and before: no longer offered, but a saved one still works
+ * (the layer turns it into a placed spot once it can measure one).
+ */
+export const LEGACY_SPOTS = ['bottomLeft', 'bottomRight', 'topLeft', 'topRight', 'bottomCentre'];
 /** Each corner or edge choice's side of the table: x (-1 left, 0 centre, 1 right), z (-1 top, 1 bottom). */
 const SIDE = {
   bottomLeft: [-1, 1],
@@ -96,4 +104,36 @@ export function spotFor(choice, slot, stage, height, uiRects = []) {
     x: pin(ax - sx * dx + along(sx, k) * gap, cx, hw),
     z: pin(az - sz * dz, cz, hd),
   };
+}
+
+/** Whether `at` is a usable petRestAt: {x, z}, each within -1..1 of the stage (its centre 0). */
+export const validAt = (at) =>
+  !!at && Number.isFinite(at.x) && Number.isFinite(at.z) && Math.abs(at.x) <= 1 && Math.abs(at.z) <= 1;
+
+/** A point in die units on `stage` as a petRestAt (-1..1 across its width and depth), held inside it. */
+export function toPlaced(point, stage) {
+  const k = (v, c, h) => Math.max(-1, Math.min(1, (v - c) / h));
+  return { x: k(point.x, stage.cx ?? 0, stage.halfWidth), z: k(point.z, stage.cz ?? 0, stage.halfDepth) };
+}
+
+/**
+ * The `slot`-th (0..2) resting spot at `at` (a petRestAt) for a pet of `height` on `stage`, in die
+ * units: slot 0 right there, the next ones SPACING x height to its left and right (to the other
+ * side where the stage ends), each EDGE_GAP x height inside the stage. Null with no stage or no `at`.
+ */
+export function placedSpot(at, slot, stage, height) {
+  if (!validAt(at) || !stage || !(stage.halfWidth > 0) || !(stage.halfDepth > 0)) return null;
+  const cx = stage.cx ?? 0;
+  const cz = stage.cz ?? 0;
+  const m = EDGE_GAP * height;
+  const hw = Math.max(0, stage.halfWidth - m);
+  const hd = Math.max(0, stage.halfDepth - m);
+  const pin = (v, c, h) => Math.max(c - h, Math.min(c + h, v));
+  const x0 = pin(cx + at.x * stage.halfWidth, cx, hw);
+  const z = pin(cz + at.z * stage.halfDepth, cz, hd);
+  const k = Math.max(0, Math.min(SLOTS - 1, Math.floor(slot) || 0));
+  const gap = SPACING * height;
+  let x = x0 + along(0, k) * gap;
+  if (Math.abs(x - cx) > hw) x = x0 - along(0, k) * gap; // off the stage that way: the other side
+  return { x: pin(x, cx, hw), z };
 }

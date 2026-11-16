@@ -124,19 +124,15 @@
       },
       "petRestSpot": {
         "Name": "Where pets rest",
-        "Hint": "Where your pets wait after a roll.",
+        "Hint": "Where your pets wait after a roll: near the dice, or wherever you last dragged a resting pet (with Click to pet on, drag one anywhere and drop it).",
         "Choices": {
           "dice": "Near the dice",
-          "bottomLeft": "Bottom left",
-          "bottomRight": "Bottom right",
-          "topLeft": "Top left",
-          "topRight": "Top right",
-          "bottomCentre": "Bottom centre"
+          "placed": "Where you put them"
         }
       },
       "petClick": {
         "Name": "Click to pet",
-        "Hint": "Click a pet to pet it."
+        "Hint": "Click a pet to pet it, or drag it to where your pets should rest."
       },
       "petElemental": {
         "Name": "Pet reactions to elemental dice",
