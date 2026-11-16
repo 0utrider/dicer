@@ -14,6 +14,10 @@ import {
   tintsFor,
   dock as dockTray,
   trayProfile,
+  flatFormula,
+  flatDegree,
+  flatFlavor,
+  DEGREES,
   readPrefs,
   trayFor,
   isDuality,
@@ -35,7 +39,12 @@ class FakeRoll {
     this.toMessage = vi.fn(async () => ({ id: 'm' }));
     made.push(this);
   }
+  async evaluate() {
+    this.total = FakeRoll.nextTotal;
+    return this;
+  }
 }
+FakeRoll.nextTotal = 10;
 
 beforeEach(() => {
   settings = { chatTray: true, handRollsAllowed: 'all' };
@@ -509,6 +518,95 @@ describe('trayProfile: the tray follows the world system', () => {
     click(die('d20'));
     click(up);
     expect(rollButton().dataset.tooltip).toContain('2d20kh');
+  });
+});
+
+describe('flat checks (pf2e, sf2e)', () => {
+  const flat = (dc) => dock().querySelector(`[data-flat="${dc}"]`);
+
+  test('PF2e and SF2e get DC 5 and DC 11 buttons after the dice; other systems none', () => {
+    expect(trayProfile('pf2e').flat).toEqual([5, 11]);
+    expect(trayProfile('sf2e').flat).toEqual([5, 11]);
+    expect(trayProfile('dnd5e').flat).toEqual([]);
+    globalThis.game.system.id = 'pf2e';
+    dockTray(undefined, vi.fn());
+    const buttons = [...dock().querySelectorAll('.dicer-chat-tray-dice > *')];
+    expect(buttons.slice(-2).map((b) => b.dataset.flat)).toEqual(['5', '11']);
+    expect(flat(5).dataset.tooltip).toBe('DICER.ChatTray.FlatHint:5');
+  });
+
+  test('one click posts a d20 against the DC with its result; the selection stays', async () => {
+    globalThis.game.system.id = 'pf2e';
+    dockTray(undefined, vi.fn());
+    click(die('d6'));
+    FakeRoll.nextTotal = 11;
+    click(flat(11));
+    await flush();
+    expect(made.map((r) => r.formula)).toEqual(['1d20']);
+    expect(made[0].toMessage).toHaveBeenCalledWith({ flavor: flatFlavor(11, 2) }, { messageMode: 'gm' });
+    // pf2e's check markup: the degree's class is what its chat CSS colours
+    expect(flatFlavor(11, 2)).toContain('<span class="success">DICER.ChatTray.FlatSuccess</span>');
+    expect(flatFlavor(11, 2)).toContain('degree-of-success');
+    FakeRoll.nextTotal = 4;
+    click(flat(5));
+    await flush();
+    expect(made[1].toMessage.mock.calls[0][0].flavor).toBe(flatFlavor(5, 1));
+    expect(die('d6').classList.contains('has-dice')).toBe(true);
+    FakeRoll.nextTotal = 10;
+  });
+
+  test('the degree as pf2e counts it: 10 over or under is critical, a natural 20 / 1 moves it a step', () => {
+    expect(flatDegree(15, 15, 5)).toBe(3);
+    expect(flatDegree(5, 5, 5)).toBe(2);
+    expect(flatDegree(4, 4, 5)).toBe(1);
+    expect(flatDegree(1, 1, 11)).toBe(0);
+    expect(flatDegree(20, 20, 11)).toBe(3); // success, up one
+    expect(flatDegree(1, 1, 5)).toBe(0); // failure, down one
+    expect(DEGREES[flatDegree(10, 10, 11)]).toBe('failure');
+  });
+
+  test("with the system's CheckRoll (pf2e) the card is one, carrying the degree (a natural 20 / 1 colours the total)", async () => {
+    globalThis.game.system.id = 'pf2e';
+    class CheckRoll extends FakeRoll {
+      constructor(formula, data, options) {
+        super(formula);
+        this.options = { ...options };
+      }
+    }
+    globalThis.CONFIG = { Dice: { rolls: [FakeRoll, CheckRoll] } };
+    dockTray(undefined, vi.fn());
+    FakeRoll.nextTotal = 12;
+    click(flat(11));
+    await flush();
+    expect(made[0]).toBeInstanceOf(CheckRoll);
+    expect(made[0].options).toMatchObject({ type: 'flat-check', degreeOfSuccess: 2 });
+    FakeRoll.nextTotal = 10;
+  });
+
+  test('fortune / misfortune roll two and keep the higher / lower', async () => {
+    expect(flatFormula(0, trayProfile('pf2e').helper)).toBe('1d20');
+    expect(flatFormula(1, trayProfile('pf2e').helper)).toBe('2d20kh');
+    expect(flatFormula(-1, trayProfile('pf2e').helper)).toBe('2d20kl');
+    expect(flatFormula(1, null)).toBe('1d20');
+    globalThis.game.system.id = 'pf2e';
+    dockTray(undefined, vi.fn());
+    click(dock().querySelector('[data-adv="-1"]'));
+    click(flat(5));
+    await flush();
+    expect(made.map((r) => r.formula)).toEqual(['2d20kl']);
+  });
+
+  test('a player can hide them in Customize', async () => {
+    globalThis.game.system.id = 'pf2e';
+    dockTray(undefined, vi.fn());
+    click(dock().querySelector('[data-act="customize"]'));
+    const box = dock().querySelector('[data-pref="flat"]');
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(user.flags.dicer.chatTray).toEqual({ flat: false });
+    expect(dock().querySelector('[data-flat]')).toBeNull();
   });
 });
 

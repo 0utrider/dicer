@@ -65,8 +65,9 @@ const PROFILES = {
   sw5e: { helper: 'adv' },
   a5e: { helper: 'adv' },
   'black-flag': { helper: 'adv' },
-  pf2e: { helper: 'fortune' },
-  sf2e: { helper: 'fortune' },
+  // flat: one-click flat checks at these DCs (concealed 5, hidden 11)
+  pf2e: { helper: 'fortune', flat: [5, 11] },
+  sf2e: { helper: 'fortune', flat: [5, 11] },
   daggerheart: { dice: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'], helper: 'hope' },
   'draw-steel': { dice: ['d10', 'd6'], helper: 'edge' },
   swade: { dice: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'] },
@@ -76,12 +77,13 @@ const PROFILES = {
   ModularFate: { dice: ['dF'] },
 };
 
-/** The tray for system `id`: {dice: tray die keys, helper: a HELPERS entry | null}. */
+/** The tray for system `id`: {dice: tray die keys, helper: a HELPERS entry | null, flat: flat check DCs}. */
 export function trayProfile(id = globalThis.game?.system?.id) {
   const p = Object.hasOwn(PROFILES, id) ? PROFILES[id] : {};
   return {
     dice: (p.dice ?? STANDARD).filter((k) => TRAY_DICE.includes(k)),
     helper: HELPERS[p.helper] ?? null,
+    flat: p.flat ?? [],
   };
 }
 
@@ -107,12 +109,14 @@ export function readPrefs(user = globalThis.game?.user) {
   }
   if (raw.helper === false) out.helper = false;
   if (raw.modifier === false) out.modifier = false;
+  if (raw.flat === false) out.flat = false;
   return out;
 }
 
 /**
  * The tray as this user sees it: the system profile with their own choices on top. {dice, helper
- * (null: hidden or none), modifier: shown, systemHelper: the system's pair, hidden or not}.
+ * (null: hidden or none), modifier: shown, systemHelper: the system's pair, hidden or not, flat:
+ * the flat check DCs shown, systemFlat: the system's}.
  */
 export function trayFor(prefs = readPrefs(), profile = trayProfile()) {
   return {
@@ -120,7 +124,45 @@ export function trayFor(prefs = readPrefs(), profile = trayProfile()) {
     helper: prefs.helper === false ? null : profile.helper,
     modifier: prefs.modifier !== false,
     systemHelper: profile.helper,
+    flat: prefs.flat === false ? [] : profile.flat,
+    systemFlat: profile.flat,
   };
+}
+
+/**
+ * A flat check at `dc`: 1d20, or with the d20 helper on the higher (fortune, adv 1) or lower
+ * (misfortune, -1) of two. A success is the total at or above the DC.
+ */
+export const flatFormula = (adv = 0, helper = helperNow()) =>
+  adv && helper?.kind === 'keep' && helper.die === 'd20' ? `2d20${adv > 0 ? 'kh' : 'kl'}` : '1d20';
+
+/** pf2e's degree names, 0 (critical failure) to 3 (critical success): its chat CSS classes. */
+export const DEGREES = ['criticalFailure', 'failure', 'success', 'criticalSuccess'];
+const DEGREE_LABELS = [
+  'DICER.ChatTray.FlatCriticalFailure',
+  'DICER.ChatTray.FlatFailure',
+  'DICER.ChatTray.FlatSuccess',
+  'DICER.ChatTray.FlatCriticalSuccess',
+];
+/**
+ * The degree of success of `total` against `dc`, as pf2e counts it: 10 over is a critical success,
+ * 10 under a critical failure, and a natural 20 / 1 (`natural`, the d20 kept) moves it one step.
+ */
+export function flatDegree(total, natural, dc) {
+  let d = total >= dc + 10 ? 3 : total >= dc ? 2 : total <= dc - 10 ? 0 : 1;
+  if (natural === 20) d = Math.min(3, d + 1);
+  else if (natural === 1) d = Math.max(0, d - 1);
+  return d;
+}
+/** The card's flavor, in pf2e's own check markup, so its chat styles colour the result. */
+export function flatFlavor(dc, degree) {
+  const name = DEGREES[degree];
+  return (
+    `<h4 class="action"><strong>${loc('DICER.ChatTray.FlatTitle')}</strong></h4>` +
+    `<div class="target-dc-result"><div class="target-dc"><span>${fmt('DICER.ChatTray.FlatDC', { dc })}</span></div>` +
+    `<div class="result degree-of-success dicer-flat-result">${loc('DICER.ChatTray.FlatResult')} ` +
+    `<span class="${name}">${loc(DEGREE_LABELS[degree])}</span></div></div>`
+  );
 }
 const helperNow = () => trayFor().helper;
 
@@ -303,7 +345,7 @@ function h(tag, attrs = {}, kids = []) {
 const tip = (attrs, text) => ({ ...attrs, 'aria-label': text, 'data-tooltip': text, 'data-tooltip-direction': 'UP' });
 
 function build() {
-  const { dice: keys, helper: keep, modifier } = trayFor();
+  const { dice: keys, helper: keep, modifier, flat } = trayFor();
   const dice = keys.map((key) =>
     h(
       'button',
@@ -356,8 +398,15 @@ function build() {
       h('span', { class: 'dicer-chat-tray-formula', text: loc('DICER.ChatTray.Roll') }),
     ]),
   ]);
+  // Flat checks (pf2e, sf2e): one click rolls a d20 against the DC, after the dice.
+  const flats = flat.map((dc) =>
+    h('button', tip({ type: 'button', class: 'dicer-chat-tray-flat', 'data-flat': String(dc) }, fmt('DICER.ChatTray.FlatHint', { dc })), [
+      h('span', { class: 'dicer-chat-tray-flat-dc', text: String(dc) }),
+      h('span', { class: 'dicer-chat-tray-name', text: loc('DICER.ChatTray.Flat') }),
+    ]),
+  );
   return h('section', { class: 'dicer-chat-tray', 'aria-label': loc('DICER.ChatTray.Label') }, [
-    h('div', { class: 'dicer-chat-tray-dice' }, dice),
+    h('div', { class: 'dicer-chat-tray-dice' }, [...dice, ...flats]),
     bar,
   ]);
 }
@@ -432,6 +481,30 @@ async function roll() {
     await new Roll(formula).toMessage({}, { messageMode: mode });
   } catch (err) {
     console.warn('dicer: the chat dice tray could not roll', err);
+    globalThis.ui?.notifications?.warn(loc('DICER.Tray.Failed'));
+  }
+}
+
+/**
+ * Posts a flat check at `dc` (flatFormula: fortune or misfortune when on) as the system shows one:
+ * its own CheckRoll where it has one (pf2e, sf2e: a natural 20 / 1 colours the total), the degree
+ * of success in its check markup (flatFlavor). The tray's selection stays as it is.
+ */
+async function rollFlat(dc) {
+  const formula = flatFormula(state.adv);
+  const mode = modeOf();
+  try {
+    const rolls = globalThis.CONFIG?.Dice?.rolls;
+    const Check = Array.isArray(rolls) ? rolls.find((c) => c?.name === 'CheckRoll') : null;
+    const Roll = Check ?? globalThis.foundry.dice.Roll.defaultImplementation;
+    const options = Check ? { type: 'flat-check', rollerId: globalThis.game?.user?.id, showBreakdown: true } : {};
+    const r = await new Roll(formula, {}, options).evaluate();
+    const natural = r.dice?.[0]?.results?.find?.((x) => x.active !== false)?.result;
+    const degree = flatDegree(r.total, natural, dc);
+    if (Check && r.options) r.options.degreeOfSuccess = degree;
+    await r.toMessage({ flavor: flatFlavor(dc, degree) }, { messageMode: mode });
+  } catch (err) {
+    console.warn('dicer: the chat dice tray could not roll a flat check', err);
     globalThis.ui?.notifications?.warn(loc('DICER.Tray.Failed'));
   }
 }
@@ -542,6 +615,9 @@ function openPrefs() {
         ]
       : []),
     check('modifier', tray.modifier, loc('DICER.ChatTray.CustomizeModifier')),
+    ...(tray.systemFlat.length
+      ? [check('flat', tray.flat.length > 0, fmt('DICER.ChatTray.CustomizeFlat', { dcs: tray.systemFlat.join(', ') }))]
+      : []),
     h('button', { type: 'button', 'data-pref-act': 'reset', text: loc('DICER.ChatTray.CustomizeReset') }),
   ]);
   dockEl.append(panel);
@@ -595,7 +671,7 @@ function onPref(target) {
     return savePrefs({ ...prefs, dice });
   }
   const pref = target.dataset.pref;
-  if (pref !== 'helper' && pref !== 'modifier') return;
+  if (pref !== 'helper' && pref !== 'modifier' && pref !== 'flat') return;
   const next = { ...prefs };
   if (target.checked) delete next[pref];
   else next[pref] = false;
@@ -635,6 +711,7 @@ function wire(root) {
       }
     } else if (t.dataset.act === 'clear') clear();
     else if (t.dataset.act === 'roll') return void roll();
+    else if (t.dataset.flat) return void rollFlat(Number(t.dataset.flat));
     else return;
     paint();
   });

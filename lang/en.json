@@ -1003,7 +1003,17 @@
       "Clear": "Clear the dice",
       "Roll": "Roll",
       "RollHint": "Roll these dice",
-      "RollThrowHint": "Roll these dice, or drag onto the table to throw them by hand"
+      "RollThrowHint": "Roll these dice, or drag onto the table to throw them by hand",
+      "Flat": "flat",
+      "FlatHint": "Flat check DC {dc}",
+      "FlatTitle": "Flat Check",
+      "FlatDC": "DC {dc}",
+      "FlatResult": "Result:",
+      "FlatCriticalSuccess": "Critical Success",
+      "FlatSuccess": "Success",
+      "FlatFailure": "Failure",
+      "FlatCriticalFailure": "Critical Failure",
+      "CustomizeFlat": "Flat check buttons (DC {dcs})"
     },
     "Physical": {
       "Mark": "Rolled with physical dice ({methods})"
