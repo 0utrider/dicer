@@ -301,6 +301,8 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         roughness: pct(form.body.roughness),
         density: pct(form.interior.density),
         depth: pct(form.numbers.depth),
+        size: pct(form.numbers.size),
+        weight: pct(form.numbers.weight),
         intensity: pct(form.glow.intensity),
         stripStrength: pct(form.edges.stripStrength),
       },

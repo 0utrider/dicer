@@ -210,6 +210,39 @@ test('numbers get an ink rim on resin: defined from the glyph distance, applied 
   expect(RESIN_REFRACTION).toMatch(/dcRefracted \* \( 1\.0 - [0-9.]+ \* dcRim \)/);
 });
 
+test('number size and weight reach the uNum uniform, not the program', async () => {
+  const { WEIGHT_SHIFT } = await import('../../src/render/shaders/engrave.js');
+  const plain = createDiceMaterial(opaque(), atlas, s, labels, FLAGS);
+  const big = createDiceMaterial(opaque({ numbers: { size: 1.3, weight: 0.75 } }), atlas, s, labels, FLAGS);
+  // an old look (no fields) gets the identity: size 1, no shift
+  expect(plain.userData.uniforms.uNum.value.toArray()).toEqual([1, 0]);
+  expect(big.userData.uniforms.uNum.value.x).toBeCloseTo(1.3);
+  expect(big.userData.uniforms.uNum.value.y).toBeCloseTo(0.75 * WEIGHT_SHIFT);
+  // the safe tier keeps them (the colour mask still draws the numbers)
+  const safe = createDiceMaterial(opaque({ numbers: { size: 0.8 } }), atlas, s, labels, { ...FLAGS, safe: true });
+  expect(safe.userData.uniforms.uNum.value.x).toBeCloseTo(0.8);
+  expect(big.customProgramCacheKey()).toBe(plain.customProgramCacheKey());
+  // the patched shader declares and reads it; isolate copies it
+  const sh = patched(big);
+  expect(sh.uniforms.uNum).toBe(big.userData.uniforms.uNum);
+  expect(sh.fragmentShader).toContain('uniform vec2 uNum;');
+  expect(sh.fragmentShader).toContain('vFaceUV / uNum.x');
+  const iso = isolateMaterial(big);
+  expect(iso.userData.uniforms.uNum.value).not.toBe(big.userData.uniforms.uNum.value);
+  expect(iso.userData.uniforms.uNum.value.toArray()).toEqual(big.userData.uniforms.uNum.value.toArray());
+});
+
+test('weight shifts the glyph distance within the field band; size scales it back to face units', async () => {
+  const { WEIGHT_SHIFT } = await import('../../src/render/shaders/engrave.js');
+  // the digit atlas: 8 px range (4 px pad) over a ~43 px digit at 0.62 face units
+  const pad = (atlas.distanceRange / 2) * (0.62 / atlas.digitHeight);
+  expect(WEIGHT_SHIFT).toBeGreaterThan(0);
+  expect(WEIGHT_SHIFT).toBeLessThan(0.5 * pad); // bold never reaches the glyph rect's edge
+  expect(ENGRAVE_COLOR).toContain('dcD = ( max( dcD0, dcD1 ) + uNum.y ) * uNum.x;');
+  // the extras' whole-line rewrites still find their lines
+  expect(ENGRAVE_COLOR).toContain('float dcMask = smoothstep( - dcAA, dcAA, dcD );');
+});
+
 test('shader modules export the engraving GLSL and the noise library', () => {
   expect(ENGRAVE_PARS).toContain('float dcGlyph(');
   expect(ENGRAVE_COLOR).toContain('dcMask = smoothstep');

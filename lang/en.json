@@ -676,6 +676,8 @@
         "Fill": "Fill",
         "Color": "Colour",
         "Depth": "Depth",
+        "Size": "Size",
+        "Weight": "Thickness",
         "Relief": "Relief",
         "CritIcon": "Icon on the 20",
         "FumbleIcon": "Icon on the 1",

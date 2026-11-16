@@ -601,6 +601,18 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('the size and weight sliders edit the look live', async () => {
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    expect(q(app, 'input[name="numbers.size"]').value).toBe('1');
+    expect(q(app, 'input[name="numbers.weight"]').value).toBe('0');
+    type(app, 'numbers.size', '1.2');
+    type(app, 'numbers.weight', '-0.5');
+    expect(app.theme().appearance.numbers).toMatchObject({ size: 1.2, weight: -0.5 });
+    expect(q(app, 'output[data-for="numbers.size"]').textContent).toBe('120%');
+    expect(q(app, 'output[data-for="numbers.weight"]').textContent).toBe('-50%');
+    await app.close();
+  });
+
   it('controls render with their labels', async () => {
     const L = (k) => localize(`DICER.Appearance.${k}`);
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: { d7: { body: { type: 'wood' } }, df: { numbers: { fill: 'paint' } } }, rules: [] } });
@@ -1259,5 +1271,31 @@ describe('lang/en.json', () => {
   it('has the appearanceEditor menu keys', () => {
     const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings.appearanceEditor;
     expect(Object.keys(en).sort()).toEqual(['Hint', 'Label', 'Name']);
+  });
+});
+
+describe('number size and weight in the form', () => {
+  it('round-trips size and weight; old looks get the defaults', () => {
+    const a = normalizeAppearance({ numbers: { size: 1.35, weight: -0.4 } });
+    const f = formFromAppearance(a);
+    expect(f.numbers).toMatchObject({ size: 1.35, weight: -0.4 });
+    expect(appearanceFromForm(f)).toEqual(a);
+    expect(formFromAppearance({ numbers: { fill: 'paint' } }).numbers).toMatchObject({ size: 1, weight: 0 });
+  });
+  it('slider strings become numbers', () => {
+    let f = setField(formFromAppearance({}), 'numbers.size', '0.75');
+    f = setField(f, 'numbers.weight', '0.6');
+    expect(f.numbers).toMatchObject({ size: 0.75, weight: 0.6 });
+    expect(appearanceFromForm(f).numbers).toMatchObject({ size: 0.75, weight: 0.6 });
+  });
+  it('the numbers section has both sliders, with live outputs and labels', () => {
+    const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+    expect(resolve(lang, 'DICER.Appearance.Numbers.Size')).toBeTypeOf('string');
+    expect(resolve(lang, 'DICER.Appearance.Numbers.Weight')).toBeTypeOf('string');
+    const hbs = readFileSync('templates/appearance-editor.hbs', 'utf8');
+    expect(hbs).toMatch(/<input type="range" name="numbers\.size" min="0\.6" max="1\.4" step="0\.05" value="\{\{form\.numbers\.size\}\}">/);
+    expect(hbs).toMatch(/<input type="range" name="numbers\.weight" min="-1" max="1" step="0\.05" value="\{\{form\.numbers\.weight\}\}">/);
+    expect(hbs).toContain('<output data-for="numbers.size">{{pct.size}}</output>');
+    expect(hbs).toContain('<output data-for="numbers.weight">{{pct.weight}}</output>');
   });
 });
