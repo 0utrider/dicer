@@ -219,6 +219,15 @@ export function registerSettings({
     default: 'none',
     onChange: () => onLayerChange?.(),
   });
+  register('physicalDice', {
+    name: t('physicalDice.Name'),
+    hint: t('physicalDice.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: Object.fromEntries(['animate', 'mark', 'skip'].map((k) => [k, t(`physicalDice.Choices.${k}`)])),
+    default: 'mark',
+  });
   register('timeBeforeHide', {
     name: t('timeBeforeHide.Name'),
     hint: t('timeBeforeHide.Hint'),

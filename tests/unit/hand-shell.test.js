@@ -6,6 +6,7 @@ import {
   setHandDeps,
   HAND_DICE,
 } from '../../src/hand/shell.js';
+import { patchResolverChoice } from '../../src/hand/chunk/config.js';
 import { _setHandImport } from '../../src/hand/hand-loader.js';
 
 const RESOLVERS = new Map();
@@ -288,9 +289,29 @@ describe('syncDiceConfiguration', async () => {
     expect(setCore).not.toHaveBeenCalled();
   });
 
-  test('another interactive method (not manual) configured: nothing mapped, one warning', async () => {
+  test('an interactive method without its own resolver (Pixels) keeps its dice; Dicer takes the rest', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    globalThis.CONFIG = { Dice: { fulfillment: { methods: { manual: { interactive: true }, bt: { interactive: true }, mersenne: {} } } } };
+    globalThis.CONFIG = { Dice: { fulfillment: { methods: { manual: { interactive: true }, pixels: { interactive: true } } } } };
+    let set = await run(on, { d20: 'pixels' });
+    const out = set.mock.calls[0][0];
+    expect(out.d20).toBe('pixels');
+    expect(out).toMatchObject({ d4: 'dicer', d6: 'dicer', d12: 'dicer', default: 'dicer' });
+    // Require never takes a die from it either
+    set = await run({ ...on, handRollsRequired: true }, { d20: 'pixels', d8: 'manual' });
+    expect(set.mock.calls[0][0]).toMatchObject({ d20: 'pixels', d8: 'dicer', d6: 'dicer' });
+    // it holds default: every die is meant for it, nothing is mapped automatically...
+    set = await run(on, { default: 'pixels' });
+    expect(set).not.toHaveBeenCalled();
+    // ...except the dice handRollTypes names
+    set = await run({ ...on, handRollTypes: ['d6'] }, { default: 'pixels' });
+    expect(set.mock.calls[0][0]).toEqual({ default: 'pixels', d6: 'dicer' });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  test('another interactive method with its own resolver configured: nothing mapped, one warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    globalThis.CONFIG = { Dice: { fulfillment: { methods: { manual: { interactive: true }, bt: { interactive: true, resolver: class {} }, mersenne: {} } } } };
     let set = await run(on, { d20: 'bt', d6: 'dicer' });
     expect(set.mock.calls[0][0]).toEqual({ d20: 'bt' });
     set = await run(on, { d20: 'bt' });
@@ -378,5 +399,61 @@ describe('DicerResolver (shell)', () => {
     await expect(r.awaitFulfillment()).resolves.toBeUndefined();
     await expect(r.resolveResult({}, 'dicer', {})).resolves.toBeUndefined();
     vi.restoreAllMocks();
+  });
+});
+
+describe('patchResolverChoice: Dicer next to Pixels keeps its own resolver', () => {
+  const Dicer = class DicerR {};
+  const Own = class OwnR {};
+  let core;
+  const makeRoll = () => {
+    const generic = class Generic {};
+    function Roll() {}
+    Roll.DICE_CONFIGURATION_SETTING = 'diceConfiguration';
+    // Foundry's own choice: one interactive method -> its resolver, more -> the generic one
+    Roll.resolverImplementation = vi.fn(function () {
+      const m = globalThis.CONFIG.Dice.fulfillment.methods;
+      const used = new Set(Object.values(core).filter((x) => x && x !== 'manual' && m[x]?.interactive));
+      return used.size === 1 ? (m[[...used][0]].resolver ?? generic) : generic;
+    });
+    Roll.generic = generic;
+    return Roll;
+  };
+  beforeEach(() => {
+    globalThis.CONFIG = {
+      Dice: {
+        fulfillment: {
+          methods: {
+            manual: { interactive: true },
+            dicer: { interactive: true, resolver: Dicer },
+            pixels: { interactive: true },
+            own: { interactive: true, resolver: Own },
+          },
+        },
+      },
+    };
+    globalThis.game = { settings: { get: () => core } };
+  });
+  afterEach(() => delete globalThis.game);
+
+  test('dicer + Pixels (no resolver of its own): the DicerResolver', () => {
+    const Roll = makeRoll();
+    patchResolverChoice(Roll);
+    core = { d20: 'pixels', d6: 'dicer', d8: 'manual' };
+    expect(Roll.resolverImplementation({})).toBe(Dicer);
+  });
+
+  test('anything else is the choice Foundry makes; patching twice wraps once', () => {
+    const Roll = makeRoll();
+    patchResolverChoice(Roll);
+    const once = Roll.resolverImplementation;
+    patchResolverChoice(Roll);
+    expect(Roll.resolverImplementation).toBe(once);
+    core = { d20: 'own', d6: 'dicer' }; // a method with its own resolver: generic, as Foundry decides
+    expect(Roll.resolverImplementation({})).toBe(Roll.generic);
+    core = { d20: 'pixels' }; // Pixels alone: Foundry's (generic) form
+    expect(Roll.resolverImplementation({})).toBe(Roll.generic);
+    core = { d6: 'dicer' };
+    expect(Roll.resolverImplementation({})).toBe(Dicer);
   });
 });

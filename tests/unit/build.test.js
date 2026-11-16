@@ -231,9 +231,11 @@ describe('build', () => {
     // tester requests (2026-11-16): owner approved raising it for the batch; dice above windows
     // +968 B (2,336 -> 3,304); number size/weight, module dice sets, chat tray and grab and toss
     // +854 B together (3,304 -> 4,158); layered insides and per-look motion +300 B (4,158 -> 4,458).
+    // Physical dice (Pixels coexistence, physicalDice setting and card mark): owner approved +845 B
+    // (4,458 -> 5,303), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(4_458);
+    expect(growth).toBeLessThanOrEqual(5_303);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

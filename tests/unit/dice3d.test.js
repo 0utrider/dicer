@@ -1428,3 +1428,24 @@ test("diceAboveWindows 'mine' marks the local user's own rolls mine, nobody else
     delete globalThis.game;
   }
 });
+
+test('physicalDice skip: a roll all on physical dice is not thrown; a mixed one still is', async () => {
+  globalThis.CONFIG = { Dice: { fulfillment: { methods: { pixels: { interactive: true }, dicer: { interactive: true } } } } };
+  const local = { ...settings, physicalDice: 'skip' };
+  try {
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => local[k] });
+    const physical = { dice: [{ faces: 20, method: 'pixels', results: [{ result: 7, active: true }] }] };
+    expect(await a.showForRoll(physical)).toBe(false);
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    const mixed = { dice: [...physical.dice, { faces: 6, results: [{ result: 2, active: true }] }] };
+    a.showForRoll(mixed);
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    local.physicalDice = 'mark'; // marked, still thrown
+    a.showForRoll(physical);
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledTimes(2);
+  } finally {
+    delete globalThis.CONFIG;
+  }
+});

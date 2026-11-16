@@ -33,6 +33,15 @@
           "all": "All rolls"
         }
       },
+      "physicalDice": {
+        "Name": "Rolls from physical dice",
+        "Hint": "Rolls whose dice came from physical dice (Pixels or another electronic dice module, or typed in by hand): animate them like any roll, also mark their chat card, or only mark the card and skip the 3D dice (a roll that mixes physical and virtual dice is still animated).",
+        "Choices": {
+          "animate": "Animate",
+          "mark": "Animate and mark the card",
+          "skip": "Mark the card, no 3D dice"
+        }
+      },
       "timeBeforeHide": {
         "Name": "Time before hiding (ms)",
         "Hint": "How long the dice stay on the table after landing, before they fade out."
@@ -932,6 +941,9 @@
       "Roll": "Roll",
       "RollHint": "Roll these dice",
       "RollThrowHint": "Roll these dice, or drag onto the table to throw them by hand"
+    },
+    "Physical": {
+      "Mark": "Rolled with physical dice ({methods})"
     }
   }
 }
