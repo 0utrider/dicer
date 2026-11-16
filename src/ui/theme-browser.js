@@ -400,6 +400,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       filter: ThemeBrowser.#onFilter,
       select: ThemeBrowser.#onSelect,
       useDefault: ThemeBrowser.#onUseDefault,
+      worldDefault: ThemeBrowser.#onWorldDefault,
       apply: ThemeBrowser.#onApply,
       clear: ThemeBrowser.#onClear,
       duplicate: ThemeBrowser.#onDuplicate,
@@ -579,6 +580,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         canPublish: theme && isGM && t.source !== 'world',
         canPush: theme && isGM && t.source !== 'user',
         canDelete: t.source === 'user' || (t.source === 'world' && isGM),
+        // the world default: a theme every player has (built-in or world), set by the GM
+        canWorldDefault: isGM && (t.source === 'builtin' || t.source === 'world'),
+        isWorldDefault: (t.source === 'builtin' || t.source === 'world') && isWorldDefault(t.id),
       };
     };
     const cards = visible.map(view);
@@ -746,6 +750,20 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     if (this.#locked) return;
     if (!(await assignTarget('default', target.dataset.theme))) return;
     notify('info', loc('DICER.Themes.Applied'));
+    await this.render();
+  }
+
+  /** GM only: makes the theme the world default (worldDefaultTheme), or clears it (an empty id). */
+  static async #onWorldDefault(event, target) {
+    if (!this.#isGM) return;
+    const id = target.dataset.theme ?? '';
+    try {
+      await settings().set(MODULE, 'worldDefaultTheme', id);
+    } catch {
+      notify('warn', loc('DICER.Themes.NotAllowed'));
+      return;
+    }
+    notify('info', loc(id ? 'DICER.Themes.WorldDefaultSet' : 'DICER.Themes.WorldDefaultCleared'));
     await this.render();
   }
 

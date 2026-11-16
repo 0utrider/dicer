@@ -78,6 +78,14 @@
             <button type="button" class="bright dicer-primary" data-action="useDefault" data-theme="{{detail.id}}"><i class="fa-solid fa-star"></i> {{localize "DICER.Themes.UseAsDefault"}}</button>
           {{/if}}
         {{/if}}
+        {{#if detail.canWorldDefault}}
+          {{#if detail.isWorldDefault}}
+            <p class="dicer-is-default"><i class="fa-solid fa-globe"></i> {{localize "DICER.Themes.WorldDefault"}}
+              <button type="button" data-action="worldDefault" data-theme="" data-tooltip="DICER.Themes.ClearWorldDefaultHint"><i class="fa-solid fa-eraser"></i> {{localize "DICER.Themes.ClearWorldDefault"}}</button></p>
+          {{else}}
+            <button type="button" data-action="worldDefault" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.UseAsWorldDefaultHint"><i class="fa-solid fa-globe"></i> {{localize "DICER.Themes.UseAsWorldDefault"}}</button>
+          {{/if}}
+        {{/if}}
 
         {{#unless locked}}
         <div class="dicer-detail-section">

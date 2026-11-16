@@ -478,6 +478,29 @@ describe('the browser actions', () => {
     expect(await mod.deleteWorld(res.id)).toBe(true);
     expect(store.worldThemes).toEqual([]);
   });
+  it('a GM sets a built-in or world theme as the world default and clears it; a player cannot', async () => {
+    user.isGM = true;
+    store.worldThemes = [raw('world.w', 'W')];
+    store.worldDefaultTheme = '';
+    const app = new mod.ThemeBrowser();
+    app.render = vi.fn(async () => {});
+    const act = mod.ThemeBrowser.DEFAULT_OPTIONS.actions.worldDefault;
+    let { cards } = await app._prepareContext();
+    expect(cards.find((c) => c.id === 'verdant')).toMatchObject({ canWorldDefault: true, isWorldDefault: false });
+    expect(cards.find((c) => c.id === 'world.w').canWorldDefault).toBe(true);
+    await act.call(app, {}, { dataset: { theme: 'verdant' } });
+    expect(store.worldDefaultTheme).toBe('verdant');
+    ({ cards } = await app._prepareContext());
+    expect(cards.find((c) => c.id === 'verdant').isWorldDefault).toBe(true);
+    await act.call(app, {}, { dataset: { theme: '' } });
+    expect(store.worldDefaultTheme).toBe('');
+    user.isGM = false;
+    ({ cards } = await app._prepareContext());
+    expect(cards.every((c) => !c.canWorldDefault)).toBe(true);
+    await act.call(app, {}, { dataset: { theme: 'verdant' } });
+    expect(store.worldDefaultTheme).toBe('');
+  });
+
   it('deleting the world default theme warns in the confirm and clears worldDefaultTheme (M-5)', async () => {
     user.isGM = true;
     store.worldThemes = [raw('world.w', 'W'), raw('world.v', 'V')];
