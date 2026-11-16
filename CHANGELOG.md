@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.3
 
-- **Put your pets where you want them.** Drag a resting pet anywhere on the table and drop it: that is where pets rest on your screen from then on, the others lining up beside it. **Where pets rest** is now **Near the dice** or **Where you put them**; the four corners and bottom centre are gone, and a corner you had picked becomes your placed spot. Dragging needs **Click to pet** on; a click without moving still pets.
+- **Put your pets where you want them.** Drag a resting pet anywhere on the table and drop it: that is where pets rest on your screen from then on, the others lining up beside it, and it watches its owner's rolls from there instead of hopping over to the dice. **Where pets rest** is now **Near the dice** or **Where you put them**; the four corners and bottom centre are gone, and a corner you had picked becomes your placed spot. Dragging needs **Click to pet** on; a click without moving still pets.
 
 ## 0.2.2
 
