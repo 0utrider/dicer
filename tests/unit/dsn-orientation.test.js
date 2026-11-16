@@ -32,15 +32,19 @@ describe('MODEL_ROTATIONS', () => {
       ['d10', 'd100', 'd12', 'd2', 'd20', 'd4', 'd6', 'd8'].sort(),
     );
     for (const q of Object.values(MODEL_ROTATIONS)) {
-      if (q === null) continue;
+      if (q === null || q === 'value') continue;
       expect(q).toHaveLength(4);
       expect(Math.hypot(...q)).toBeCloseTo(1, 9);
     }
   });
 
-  test('only the verified types have a rotation', () => {
-    const verified = Object.keys(MODEL_ROTATIONS).filter((t) => MODEL_ROTATIONS[t] !== null);
-    expect(verified.sort()).toEqual(Object.keys(OBSERVED).sort());
+  test('only the verified types have one rotation; d8-d20 have one per value; d4 and d100 none', () => {
+    const fixed = Object.keys(MODEL_ROTATIONS).filter((t) => Array.isArray(MODEL_ROTATIONS[t]));
+    expect(fixed.sort()).toEqual(Object.keys(OBSERVED).sort());
+    const perValue = Object.keys(MODEL_ROTATIONS).filter((t) => MODEL_ROTATIONS[t] === 'value');
+    expect(perValue.sort()).toEqual(['d10', 'd12', 'd20', 'd8']);
+    expect(MODEL_ROTATIONS.d4).toBeNull();
+    expect(MODEL_ROTATIONS.d100).toBeNull();
   });
 
   test.each(Object.keys(OBSERVED))(
@@ -59,7 +63,14 @@ describe('modelRotationFor', () => {
   test('a verified type gets its rotation; an unverified one gets null', () => {
     expect(modelRotationFor({ type: 'd6', dsnType: 'd6' })).toBe(MODEL_ROTATIONS.d6);
     expect(modelRotationFor({ type: 'd6' })).toBe(MODEL_ROTATIONS.d6);
+    expect(modelRotationFor({ type: 'd4', dsnType: 'd4', value: 3 })).toBeNull();
+  });
+
+  test('a per-value type needs a known value: never a free die, a ghost or a missing value', () => {
+    expect(modelRotationFor({ type: 'd20', dsnType: 'd20', value: 17 })).toBe('value');
     expect(modelRotationFor({ type: 'd20', dsnType: 'd20' })).toBeNull();
+    expect(modelRotationFor({ type: 'd20', value: 17, free: true })).toBeNull();
+    expect(modelRotationFor({ type: 'd12', value: 4, ghost: true })).toBeNull();
   });
 
   test('a custom DSN type aliased onto a Dicer shape is not verified', () => {

@@ -279,8 +279,8 @@ Status is Works, Works with gaps or Not supported. One row per package surveyed.
 | aoe-easy-resolve, draw-steel-combat-tools, pf2e-aztecs-template-wizard, pf2e-combater, pf2e-flatcheck-helper | Works           | `showForRoll` only.                                                                                     |
 | automated-conditions-5e                                                                                      | Works           | `diceSoNiceRollStart` hook.                                                                             |
 | draw-steel-target-damage, storyframe                                                                         | Works           | `diceSoNiceRollComplete` hook.                                                                          |
-| pf2e-ap200, pf2e-ap222, pf2e-ap223, sf2e-murder-in-metal-city, phils-pf2e-realdark                           | Works with gaps | Dice content. Presets, colorsets and textures register. GLB models show for d2 and d6 only.             |
-| trs-black-marble-dice-set, trs-gold-red-armored-dice-set, trs-norse-dd-boneyard                              | Works with gaps | Dice sets. Faces and colours work. GLB models show for d2 and d6 only.                                  |
+| pf2e-ap200, pf2e-ap222, pf2e-ap223, sf2e-murder-in-metal-city, phils-pf2e-realdark                           | Works with gaps | Dice content. Presets, colorsets and textures register; texture art shows on every face.             |
+| trs-black-marble-dice-set, trs-gold-red-armored-dice-set, trs-norse-dd-boneyard                              | Works with gaps | Dice sets. Faces, colours and models work (models on d2, d6, d8, d10, d12, d20; d4 and d100 show Dicer's die).                                  |
 
 "Works" means the surveyed calls and hooks are supported. Some behaviour needs a real world to confirm.
 
@@ -290,7 +290,7 @@ Status is Works, Works with gaps or Not supported. One row per package surveyed.
 - `game.modules.get('dice-so-nice')` checks fail by design, because Dicer has no stub package with that id. Version gates, such as CoC7's, fail too.
 - DSN-scoped user flags and settings that other packages read directly return nothing. Dicer keeps its own under the `dicer` scope.
 - `box`, `pipeline`, `persistent` and `pendingThrows` internals are not supported. Pending and interactive throws come in Plan 6.
-- GLB model presets: only the d2 and d6 orientations are verified. Other die types show Dicer's own die with the preset's faces and colours.
+- GLB model presets: d2, d6, d8, d10, d12 and d20 models show (d8 to d20 are turned per roll so the model's face for the result is the one on top). d4 and d100 models, and dice thrown by hand (whose result physics decides as they fly), show Dicer's own die with the preset's faces and colours.
 - Ghost payloads for synced rolls send dice shapes only. Custom die classes, such as coins and Fate dice, arrive as plain dice with the same face count. Dice whose count comes from another roll show as zero ghost dice. Dice whose face count comes from another roll, such as `1d(1d20)`, are not sent at all.
 - The `diceSoNiceOnMaterialReady` hook is not fired for a GLB model's own material.
 

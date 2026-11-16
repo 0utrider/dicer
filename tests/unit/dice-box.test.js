@@ -20,6 +20,7 @@ import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
+import { dsnModelRotation, dsnFaceNormal } from '../../src/compat/dsn-layouts.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
 import { FATE_FACES } from '../../src/compat/faces.js';
@@ -1254,13 +1255,49 @@ describe('model presets', () => {
   test('a model whose type has no verified rotation renders procedurally, and the roll lands', async () => {
     const models = fakeModels();
     const { renderer, physics, box } = setup({ loadModel: models.loadModel });
-    const r = box.roll([{ type: 'd20', value: 7, dsnType: 'd20', model: 'm/dice_20.glb' }]);
+    const r = box.roll([{ type: 'd4', value: 3, dsnType: 'd4', model: 'm/dice_4.glb' }]);
     expect(models.loadModel).not.toHaveBeenCalled();
     physics.flush();
     expect(renderer.isLooping).toBe(true); // nothing to wait for
     const [mesh] = meshes(renderer);
     expect(mesh.material).toBe(createDiceMaterial.mock.results[0].value);
     expect(await landRoll(renderer, r)).toBe(true);
+    box.clear();
+  });
+
+  test('a d20 model takes the rotation of its value: the model face for it lies on Dicer’s', async () => {
+    const models = fakeModels();
+    const loadModel = vi.fn(() => models.loadModel().then((m) => ({ ...m, rotationFor: dsnModelRotation })));
+    const { renderer, physics, box } = setup({ loadModel });
+    const r = box.roll([{ type: 'd20', value: 17, dsnType: 'd20', model: 'm/dice_20.glb' }]);
+    expect(loadModel).toHaveBeenCalledTimes(1);
+    physics.flush();
+    renderer.tick(16);
+    const forced = meshes(renderer)[0].quaternion.clone();
+    models.pending[0].resolve();
+    await flushMicrotasks();
+    const [mesh] = meshes(renderer);
+    expect(mesh.geometry).toBe(models.model.geometry);
+    const q = new THREE.Quaternion(...dsnModelRotation('d20', 17).rotation);
+    expect(Math.abs(mesh.quaternion.dot(forced.clone().multiply(q)))).toBeCloseTo(1, 9);
+    // the model's 17 points where Dicer's 17 points once forced
+    const shape = getShape('d20');
+    const n = faceNormals(shape)[shape.values.indexOf(17)];
+    const dicer17 = new THREE.Vector3(n.x, n.y, n.z).applyQuaternion(forced);
+    const model17 = dsnFaceNormal('d20', 17).applyQuaternion(mesh.quaternion);
+    expect(model17.distanceTo(dicer17)).toBeLessThan(1e-6);
+    expect(await landRoll(renderer, r)).toBe(true);
+    box.clear();
+  });
+
+  test('a per-value model without the solver keeps Dicer’s die', async () => {
+    const models = fakeModels();
+    const { renderer, physics, box } = setup({ loadModel: models.loadModel });
+    box.roll([{ type: 'd12', value: 4, dsnType: 'd12', model: 'm/dice_12.glb' }]);
+    physics.flush();
+    models.pending[0].resolve();
+    await flushMicrotasks();
+    expect(meshes(renderer)[0].geometry).not.toBe(models.model.geometry);
     box.clear();
   });
 
@@ -1531,7 +1568,7 @@ describe('model loads reach the registry (fix round 1)', () => {
     });
     failing.box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
     const unverified = setup({ loadModel: vi.fn(async () => model()), onModelLoaded });
-    unverified.box.roll([{ type: 'd20', value: 5, dsnType: 'd20', model: 'm/dice_20.glb' }]);
+    unverified.box.roll([{ type: 'd4', value: 3, dsnType: 'd4', model: 'm/dice_4.glb' }]);
     await flushMicrotasks();
     expect(onModelLoaded).not.toHaveBeenCalled();
     failing.box.clear();

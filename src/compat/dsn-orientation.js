@@ -5,6 +5,10 @@
  * show. A rotation that put the wrong number up would be a visible lie, so a type stays null
  * unless every observed model of that type maps onto Dicer's layout by one rotation; a null
  * type falls back to Dicer's procedural die.
+ * 'value' types have no one rotation, but a rotation per value: the model chunk's
+ * dsnModelRotation (compat/dsn-layouts.js) puts the model's face for the die's value on Dicer's
+ * (the face read on top), from Dice So Nice's own layout. Only a die whose value is known when it
+ * is made can use it (never a free die: physics decides its face later).
  */
 
 const H = Math.SQRT1_2;
@@ -17,14 +21,11 @@ export const MODEL_ROTATIONS = Object.freeze({
   d4: null,
   // 1 -Y, 2 -X, 3 -Z, 4 +Z, 5 +X, 6 +Y (five models) -> Dicer's 1 +X, 2 +Y, 3 +Z.
   d6: Object.freeze([-H, H, 0, 0]),
-  // The angle between the 5 and 3 faces differs from Dicer's: no rotation exists.
-  d8: null,
-  // The models put 0 opposite 9; Dicer puts 10 ("0") opposite 1.
-  d10: null,
-  // The angle between the 9 and 1 faces differs from Dicer's: no rotation exists.
-  d12: null,
-  // The angle between the 18 and 9 faces differs from Dicer's: no rotation exists.
-  d20: null,
+  // No one rotation (the face layouts differ from Dicer's), but one per value (dsn-layouts.js).
+  d8: 'value',
+  d10: 'value',
+  d12: 'value',
+  d20: 'value',
   // Same layout as the d10 models (00 opposite 90).
   d100: null,
 });
@@ -43,5 +44,7 @@ export function modelRotationFor(spec) {
   const tens = spec.variant === 'd100tens';
   if (tens !== (dsnType === 'd100')) return null;
   if (!tens && dsnType !== type) return null;
-  return Object.hasOwn(MODEL_ROTATIONS, dsnType) ? MODEL_ROTATIONS[dsnType] : null;
+  const rot = Object.hasOwn(MODEL_ROTATIONS, dsnType) ? MODEL_ROTATIONS[dsnType] : null;
+  if (rot !== 'value') return rot;
+  return spec.free || spec.ghost || !Number.isInteger(spec.value) ? null : rot;
 }

@@ -245,9 +245,11 @@ describe('build', () => {
     // Body images (appearance.bodyImage): owner approved +1,490 B (6,705 -> 8,195), 2026-11-16.
     // Dice So Nice texture images and fonts from module colorsets: owner approved +513 B
     // (8,195 -> 8,708), 2026-11-16.
+    // Per-value Dice So Nice model rotations (d8-d20 models): owner approved +314 B
+    // (8,708 -> 9,022), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(8_708);
+    expect(growth).toBeLessThanOrEqual(9_022);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

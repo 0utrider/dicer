@@ -114,6 +114,9 @@ export function loadDieModel(url, { radius = 1, loader, decoderPath } = {}) {
   });
 }
 
+// Per-value rotations for Dice So Nice models with no one rotation (compat/dsn-orientation.js).
+export { dsnModelRotation } from '../compat/dsn-layouts.js';
+
 /** Test seam: forgets every cached model (does not dispose them). */
 export function clearModelCache() {
   parsed.clear();

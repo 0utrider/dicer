@@ -71,7 +71,9 @@ export function cloneForFade(material) {
 
 /** GLTF loading lives in its own chunk, fetched the first time a roll shows a model. */
 const importModel = (url, options) =>
-  import('../render/model-loader.js').then((m) => m.loadDieModel(url, options));
+  import('../render/model-loader.js').then((m) =>
+    m.loadDieModel(url, options).then((model) => model && { ...model, rotationFor: m.dsnModelRotation }),
+  );
 
 /** True when a face set has image or text faces (drawn from face layers). */
 function needsLayers(faces) {
@@ -1338,9 +1340,14 @@ export class DiceBox {
    */
   #applyModel(roll, dice, model) {
     for (const die of dice) {
+      // A per-value rotation (dsn-orientation.js 'value'): the model's face for this die's value
+      // on Dicer's; without it (no solver, an unknown value) the die keeps Dicer's own shape.
+      const rot =
+        die.modelRotation === 'value' ? model.rotationFor?.(die.shapeType, die.targetValue)?.rotation : die.modelRotation;
+      if (!Array.isArray(rot)) continue;
       const old = die.inner.material;
       die.model = model;
-      die.modelQuat = new THREE.Quaternion(...die.modelRotation);
+      die.modelQuat = new THREE.Quaternion(...rot);
       die.inner.geometry = model.geometry;
       die.inner.material = model.material;
       // Held dice (no playback yet) show it at once; a free die keeps it (Playback: identity x it).
