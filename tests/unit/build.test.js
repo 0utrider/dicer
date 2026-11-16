@@ -239,11 +239,12 @@ describe('build', () => {
     // +854 B together (3,304 -> 4,158); layered insides and per-look motion +300 B (4,158 -> 4,458).
     // Physical dice (Pixels coexistence, physicalDice setting and card mark): owner approved +845 B
     // (4,458 -> 5,303), 2026-11-16.
+    // Face images (appearance.faces): owner approved +911 B (5,303 -> 6,214), 2026-11-16.
     // pet interactions: owner raised it by 300 B for the five pet settings, then by 191 B when
-    // merged with the tester-request batch: +491 B (5,303 -> 5,794).
+    // merged with the tester-request batch: +491 B (6,214 -> 6,705).
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(5_794);
+    expect(growth).toBeLessThanOrEqual(6_705);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

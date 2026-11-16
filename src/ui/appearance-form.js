@@ -97,7 +97,22 @@ export function formFromAppearance(raw) {
     edges: { radius: a.edges.radius, strip: a.edges.strip.style, stripColor: a.edges.strip.color, stripStrength: a.edges.strip.strength },
     shapes: { d4: a.shapes.d4 },
     glow: { ...a.glow },
+    faces: plain(a.faces ?? {}),
+    facesTint: a.facesTint === true,
   };
+}
+
+/** `form` with face `value` of die `type` showing image `url` ('' or null: its number again). A new form. */
+export function setFaceImage(form, type, value, url) {
+  const out = plain(form);
+  const faces = isObj(out.faces) ? out.faces : {};
+  const m = { ...(isObj(faces[type]) ? faces[type] : {}) };
+  if (url) m[value] = String(url);
+  else delete m[value];
+  if (Object.keys(m).length) faces[type] = m;
+  else delete faces[type];
+  out.faces = faces;
+  return out;
 }
 
 const n = (v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v);
@@ -129,6 +144,8 @@ export function appearanceFromForm(form) {
     edges: { radius: n(e.radius), strip: { style: e.strip, color: e.stripColor, strength: n(e.stripStrength) } },
     shapes: { d4: isObj(f.shapes) ? f.shapes.d4 : undefined },
     glow: { color: g.color, intensity: n(g.intensity) },
+    faces: f.faces,
+    facesTint: f.facesTint === true,
   });
 }
 

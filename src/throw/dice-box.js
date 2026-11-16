@@ -16,6 +16,7 @@ import {
 } from '../look/appearance.js';
 import { GHOST_APPEARANCE } from '../compat/colorset-map.js';
 import { modelRotationFor } from '../compat/dsn-orientation.js';
+import { lookFacesFor } from '../compat/faces.js';
 import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_FREE_STEPS, MAX_OBSTACLES, MAX_STEPS, STEP_SECONDS } from '../physics/protocol.js';
@@ -1086,6 +1087,8 @@ export class DiceBox {
     const ghost = spec.ghost === true;
     const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
     const appearance = ghost ? GHOST_APPEARANCE : look;
+    // The look's own face images over a preset's faces (none on a relabelled die: d100 tens, dF).
+    const own = spec.variant ? spec.faces : lookFacesFor(spec.type, look, spec.faces);
     // A d4 with the crystal look is a d4crystal for hull, geometry, reader and labels; its type
     // (and so its value) stays d4. A ghost follows the viewer's look and carries no appearance of
     // its own, so it has the shape of the look it stands for.
@@ -1094,11 +1097,11 @@ export class DiceBox {
     // A spec's own shapeType wins: a replay draws the recorded shape whatever this viewer's look.
     const shapeType =
       spec.shapeType ||
-      (spec.type === 'd4' && !spec.variant && !modelRotationFor(spec) && !spec.faces && look.shapes.d4 === 'crystal'
+      (spec.type === 'd4' && !spec.variant && !modelRotationFor(spec) && !own && look.shapes.d4 === 'crystal'
         ? 'd4crystal'
         : spec.type);
     const shape = getShape(shapeType);
-    const faces = ghost ? undefined : spec.faces;
+    const faces = ghost ? undefined : own;
     const geometry = this.#geometry(shapeType, appearance.edges.radius);
     if (!roll.geometries.has(geometry)) {
       roll.geometries.add(geometry);
@@ -1219,10 +1222,13 @@ export class DiceBox {
   /** Face-layer loads, each resolving to a function that applies it (or null). Never rejects. */
   #faceLoads(roll) {
     const ft = this._faceTextures;
-    if (!ft || this._faceLayers() === false) return [];
+    if (!ft) return [];
+    // presetFaces off drops a preset's image faces, never the look's own (keys 'look|...').
+    const presets = this._faceLayers() !== false;
     const sets = new Map();
     for (const die of roll.dice) {
-      if (!die.ghost && needsLayers(die.faces)) sets.set(die.faces.key, die.faces);
+      const f = die.faces;
+      if (!die.ghost && needsLayers(f) && (presets || f.key.startsWith('look|'))) sets.set(f.key, f);
     }
     if (!sets.size) return [];
     roll.faceSets = [...sets.values()]; // released when the roll finishes, however it ends

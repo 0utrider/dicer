@@ -130,3 +130,10 @@ test('failed and slow faces fall back', async () => {
   await vi.advanceTimersByTimeAsync(4000);
   expect(warn).toHaveBeenCalledTimes(2);
 });
+
+test('a tinted image face is a mask in the number colour, like text', async () => {
+  const ft = createFaceTextures({ loadImage: vi.fn(async () => ({ width: 4, height: 4 })), size: SIZE });
+  const set = { key: 'look|d6|1|x', labels: [image('a.png'), { ...image('b.png'), tint: true }] };
+  const { tint } = await ft.acquire(set);
+  expect(Array.from(tint)).toEqual([0, 1]);
+});

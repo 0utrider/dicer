@@ -775,6 +775,46 @@ describe('the appearance editor', () => {
     }
   });
 
+  it('face images: one slot per face of the previewed die; picked, cleared, tinted, carried by the theme', async () => {
+    const opened = [];
+    class FakePicker {
+      constructor(opts) {
+        this.opts = opts;
+        opened.push(this);
+      }
+      render() {}
+    }
+    const apps = (globalThis.foundry.applications.apps ??= {});
+    const oldPicker = apps.FilePicker;
+    apps.FilePicker = { implementation: FakePicker };
+    try {
+      const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+      expect(app.element.querySelectorAll('.dicer-ae-face')).toHaveLength(20); // d20 previewed
+      await click(app, '.dicer-ae-dice [data-type="d6"]');
+      await vi.waitFor(() => expect(app.element.querySelectorAll('.dicer-ae-face')).toHaveLength(6));
+      const clicked = click(app, '[data-action="pickFace"][data-value="6"]');
+      await vi.waitFor(() => expect(opened.length).toBe(1));
+      expect(opened[0].opts.type).toBe('image');
+      opened[0].opts.callback('worlds/w/six.webp');
+      await clicked;
+      await vi.waitFor(() => expect(q(app, '.dicer-ae-face.has-image img')?.getAttribute('src')).toBe('worlds/w/six.webp'));
+      expect(app.theme().appearance.faces).toEqual({ d6: { 6: 'worlds/w/six.webp' } });
+      const tint = q(app, '[name="facesTint"]');
+      tint.checked = true;
+      tint.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(app.theme().appearance.facesTint).toBe(true);
+      await click(app, '[data-action="clearFace"][data-value="6"]');
+      await vi.waitFor(() => expect(q(app, '.dicer-ae-face.has-image')).toBeNull());
+      expect(app.theme().appearance.faces).toBeUndefined();
+      await click(app, '.dicer-ae-dice [data-type="d100"]');
+      await vi.waitFor(() => expect(app.element.querySelectorAll('.dicer-ae-face')).toHaveLength(0));
+      expect(app.element.textContent).toContain(localize('DICER.Appearance.Faces.NoTensDie'));
+      await app.close();
+    } finally {
+      apps.FilePicker = oldPicker;
+    }
+  });
+
   it('with Sequencer active, the film button opens the JB2A picker over its database', async () => {
     const oldModules = globalThis.game.modules;
     globalThis.game.modules = new Map([

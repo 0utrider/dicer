@@ -632,3 +632,30 @@ describe('numbers.size and numbers.weight', () => {
     expect(fallbackLook(b).numbers).toMatchObject({ size: 1.25, weight: 0.5 });
   });
 });
+
+describe('face images (appearance.faces)', () => {
+  test('valid entries kept per die type; bad types, values and paths dropped', () => {
+    const a = normalizeAppearance({
+      faces: {
+        d20: { 20: 'worlds/w/crit.webp', 1: 'https://cdn.example/fumble.PNG?v=2', x: 'a.png', 5: 'notes.txt' },
+        d6: { 6: 'javascript:alert(1).png', 1: 'data:image/png;base64,AAAA.png' },
+        d100: { 10: 'a.png' },
+        bogus: { 1: 'a.png' },
+      },
+      facesTint: true,
+    });
+    expect(a.faces).toEqual({ d20: { 20: 'worlds/w/crit.webp', 1: 'https://cdn.example/fumble.PNG?v=2' } });
+    expect(a.facesTint).toBe(true);
+  });
+
+  test('no valid image: no field at all (an old look keeps its key); the tint needs images', () => {
+    const plain = normalizeAppearance({});
+    expect('faces' in plain).toBe(false);
+    const junk = normalizeAppearance({ faces: { d6: { 1: 'x.txt' } }, facesTint: true });
+    expect('faces' in junk || 'facesTint' in junk).toBe(false);
+    expect(appearanceKey(junk)).toBe(appearanceKey(plain));
+    const one = normalizeAppearance({ faces: { d6: { 1: 'a.png' } } });
+    expect(appearanceKey(one)).not.toBe(appearanceKey(plain));
+    expect('facesTint' in one).toBe(false);
+  });
+});

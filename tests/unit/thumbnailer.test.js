@@ -18,6 +18,12 @@ vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
   return { ...mod, createDiceMaterial: vi.fn(mod.createDiceMaterial) };
 });
+// The look's face images: a fake face-layer cache (the real one needs a DOM to load images).
+const faceCache = vi.hoisted(() => ({ acquire: null, release: null }));
+vi.mock('../../src/render/face-textures.js', async (importOriginal) => {
+  const mod = await importOriginal();
+  return { ...mod, createFaceTextures: () => ({ acquire: (s) => faceCache.acquire(s), release: (s) => faceCache.release(s) }) };
+});
 
 const atlas = {
   ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))),
@@ -544,5 +550,21 @@ test('a d4 with the crystal look draws the crystal; other types and classic d4s 
   buildDieGeometry.mockClear();
   await t.thumbnail({ appearance: { ...crystal, shapes: { d4: 'classic' } } }, 'd4');
   expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4']);
+  t.dispose();
+});
+
+test('a look with face images draws them from face layers, and gives them back after', async () => {
+  const tex = { texture: new THREE.DataArrayTexture(new Uint8Array(16), 2, 2, 1), layers: null, tint: new Uint8Array(20) };
+  faceCache.acquire = vi.fn(async (set) => ({ ...tex, layers: Int16Array.from(set.labels.map((l) => (l.kind === 'image' ? 0 : -1))) }));
+  faceCache.release = vi.fn();
+  createDiceMaterial.mockClear();
+  const { t } = make();
+  const look = { ...theme().appearance, faces: { d20: { 20: 'worlds/w/crit.webp' } } };
+  expect(await t.thumbnail({ ...theme(), appearance: look, perType: {} }, 'd20')).toBe('blob:t1');
+  expect(faceCache.acquire).toHaveBeenCalledTimes(1);
+  const call = createDiceMaterial.mock.calls.at(-1);
+  expect(call[5]?.texture).toBe(tex.texture);
+  expect(call[3].filter((l) => l === '')).toHaveLength(1); // the 20 is drawn from its layer
+  expect(faceCache.release).toHaveBeenCalledWith(faceCache.acquire.mock.calls[0][0]);
   t.dispose();
 });

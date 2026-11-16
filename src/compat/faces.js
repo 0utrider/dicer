@@ -19,6 +19,30 @@ function hash(text) {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * A look's own face images (appearance.faces[type]: face value -> image path) as a FaceSet over
+ * `base` (a preset's FaceSet): a face with an image shows it, any other keeps base's label or its
+ * number. `appearance.facesTint`: the images are masks in the number colour, like text faces.
+ * `base` itself when the look has no images for this die type.
+ */
+export function lookFacesFor(type, appearance, base) {
+  const map = appearance?.faces?.[type];
+  if (!map) return base;
+  let shape;
+  try {
+    shape = getShape(type);
+  } catch {
+    return base;
+  }
+  const tint = appearance.facesTint === true;
+  const labels = shape.values.map((v, i) =>
+    map[v]
+      ? { kind: 'image', url: map[v], ...(tint ? { tint } : {}) }
+      : (base?.labels?.[i] ?? { kind: 'glyph', text: labelFor(type, v) }),
+  );
+  return { key: `look|${type}|${tint ? 1 : 0}|${hash(JSON.stringify(map))}|${base?.key ?? ''}`, labels };
+}
+
 /** The Fate die's faces on Dicer's d6 (text faces drawn from face layers): 1, 2 +; 3, 4 blank; 5, 6 −. */
 export const FATE_FACES = Object.freeze({
   key: 'dicer|df',
