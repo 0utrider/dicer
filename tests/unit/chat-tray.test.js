@@ -255,17 +255,13 @@ describe('dock', () => {
     expect(mod.value).toBe('0');
   });
 
-  test('the message mode starts at the core chat mode and can be changed', async () => {
+  test('no mode picker: a roll goes out in the chat mode set by its own buttons, read at roll time', async () => {
     dockTray(undefined, vi.fn());
-    const select = dock().querySelector('select');
-    expect(select.value).toBe('gm');
-    expect([...select.options].map((o) => o.value)).toEqual(['public', 'gm', 'blind', 'self']);
-    select.value = 'blind';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(dock().querySelector('select')).toBeNull();
     click(die('d8'));
     click(rollButton());
     await flush();
-    expect(made[0].toMessage).toHaveBeenCalledWith({}, { messageMode: 'blind' });
+    expect(made[0].toMessage).toHaveBeenCalledWith({}, { messageMode: 'gm' });
   });
 
   test('Roll posts the formula as a normal Foundry roll and clears the selection', async () => {

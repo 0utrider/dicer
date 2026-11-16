@@ -1688,6 +1688,8 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
    player's dice look as --dicer-ct-body / --dicer-ct-num (unset: the plain style). */
 .dicer-chat-tray {
   position: relative;
+  /* Foundry's #ui-right / #sidebar / #chat are pointer-events: none; only its own controls opt back in. */
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -1763,13 +1765,6 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-chat-tray-bar > * {
   height: 24px;
-}
-.dicer-chat-tray-mode {
-  flex: 0 1 30%;
-  min-width: 0;
-  height: 24px;
-  padding: 0 2px;
-  font-size: inherit;
 }
 .dicer-chat-tray-mod {
   display: flex;

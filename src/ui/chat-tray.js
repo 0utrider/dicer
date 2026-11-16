@@ -2,7 +2,7 @@
  * The chat dice tray (lazy chat-tray chunk; its world-start half is main.js's dockChat on
  * renderChatInput / renderChatLog and the client setting chatTray). A Dice Tray replacement: one
  * button per die docked under the chat input. Click adds a die, right-click removes one, holding
- * offers quick counts (and advantage on the d20); a modifier, the message mode, Clear and Roll.
+ * offers quick counts (and advantage on the d20); a modifier, Clear and Roll (who sees it: the chat's own mode buttons).
  *
  * Roll posts the formula as a normal Foundry roll, so Dicer animates it like any other. Where the
  * user may roll by hand (shell.handAllowed, engine up), a die or the Roll button dragged out of
@@ -12,7 +12,6 @@
  */
 import {
   TRAY_DICE,
-  TRAY_MODES,
   DIE_SHAPES,
   countOf,
   modOf,
@@ -125,7 +124,7 @@ export function tintsFor(decorateFor, userId) {
 }
 
 /** What the dock holds while the page lives. */
-let state = { counts: {}, modifier: 0, mode: undefined, adv: 0 };
+let state = { counts: {}, modifier: 0, adv: 0 };
 let dockEl = null;
 let loader = null; // main.js's loadHand
 let hooked = false;
@@ -136,7 +135,7 @@ export function _resetChatTray() {
   dockEl = null;
   loader = null;
   hooked = false;
-  state = { counts: {}, modifier: 0, mode: undefined, adv: 0 };
+  state = { counts: {}, modifier: 0, adv: 0 };
 }
 
 const getSetting = (k) => globalThis.game.settings.get('dicer', k);
@@ -180,15 +179,10 @@ function build() {
       ],
     ),
   );
-  const mode = h(
-    'select',
-    tip({ class: 'dicer-chat-tray-mode' }, loc('DICER.Tray.Mode')),
-    TRAY_MODES.map((value) => h('option', { value, text: loc(`DICER.Tray.Modes.${value}`) })),
-  );
   const icon = (cls) => h('i', { class: `fa-solid ${cls}`, 'aria-hidden': 'true' });
   const btn = (attrs, text, kids) => h('button', tip({ type: 'button', ...attrs }, text), kids);
+  // No mode picker: the chat's own roll-mode buttons decide who sees it (coreMode at roll time).
   const bar = h('div', { class: 'dicer-chat-tray-bar' }, [
-    mode,
     h('span', { class: 'dicer-chat-tray-mod' }, [
       btn({ 'data-mod': '-1' }, loc('DICER.Tray.ModifierDown'), [icon('fa-minus')]),
       h(
@@ -240,7 +234,6 @@ function paint({ syncModifier = true } = {}) {
     formula || loc('DICER.ChatTray.Roll');
   if (syncModifier)
     dockEl.querySelector('.dicer-chat-tray-mod input').value = String(modOf(state.modifier));
-  dockEl.querySelector('select').value = TRAY_MODES.includes(state.mode) ? state.mode : coreMode();
   const throwing = canThrow();
   dockEl.classList.toggle('can-throw', throwing);
   roll.dataset.tooltip = loc(throwing ? 'DICER.ChatTray.RollThrowHint' : 'DICER.ChatTray.RollHint');
@@ -259,7 +252,7 @@ function tint() {
   dockEl.dataset.tinted = deps ? '1' : '';
 }
 
-const modeOf = () => (TRAY_MODES.includes(state.mode) ? state.mode : coreMode());
+const modeOf = () => coreMode();
 const clear = () => (state = { ...state, counts: {}, modifier: 0, adv: 0 });
 
 /** Posts the formula as a normal Foundry roll (Dicer animates it as any roll). */
@@ -391,9 +384,6 @@ function wire(root) {
       state.modifier = modOf(event.target.value);
       paint({ syncModifier: false });
     }
-  });
-  root.addEventListener('change', (event) => {
-    if (event.target.matches?.('select')) state.mode = event.target.value;
   });
   // The engine may come up after the first chat render: tint on the first hover then.
   root.addEventListener('pointerenter', () => !root.dataset.tinted && tint());
