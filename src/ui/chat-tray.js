@@ -2,7 +2,7 @@
  * The chat dice tray (lazy chat-tray chunk; its world-start half is main.js's dockChat on
  * renderChatInput / renderChatLog and the client setting chatTray). A Dice Tray replacement: one
  * button per die docked under the chat input. Click adds a die, right-click removes one, holding
- * offers quick counts (and the system's keep-highest / keep-lowest pair on the d20, if it has one);
+ * offers quick counts (and the system's roll helper pair on its main die, if it has one);
  * a modifier, Clear and Roll (who sees it: the chat's own mode buttons). The dice and that pair
  * follow the world's system (trayProfile).
  *
@@ -38,23 +38,35 @@ const fmt = (key, data) => {
 };
 
 const STANDARD = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
-/** Two d20, keep one: each system's own name for it (lang keys DICER.ChatTray.<name>[Hint]). */
-const KEEP = {
-  adv: { up: 'Adv', down: 'Dis' }, // advantage / disadvantage
-  fortune: { up: 'Fortune', down: 'Misfortune' }, // PF2e: roll twice, use the higher / lower
+/**
+ * Each system's pair of roll helpers (labels: lang DICER.ChatTray.<up|down>, tooltips <upHint|downHint>),
+ * offered on its main die `die`:
+ * - keep: two of `die`, keep the highest (up) or lowest (down);
+ * - add: `term` added (up) or subtracted (down) at the end of the formula.
+ */
+const HELPERS = {
+  adv: { kind: 'keep', die: 'd20', up: 'Adv', down: 'Dis', upHint: 'AdvHint', downHint: 'DisHint' },
+  // PF2e: roll twice, use the higher / lower
+  fortune: { kind: 'keep', die: 'd20', up: 'Fortune', down: 'Misfortune', upHint: 'FortuneHint', downHint: 'MisfortuneHint' },
+  // Daggerheart: an advantage die (d6) added to, or a disadvantage die taken from, the duality roll
+  hope: { kind: 'add', die: 'd12', term: '1d6', up: 'Adv', down: 'Dis', upHint: 'AdvD6Hint', downHint: 'DisD6Hint' },
+  // Draw Steel: an edge is +2 and a bane -2 on the power roll (double ones move the tier instead)
+  edge: { kind: 'add', die: 'd10', term: '2', up: 'Edge', down: 'Bane', upHint: 'EdgeHint', downHint: 'BaneHint' },
 };
 /**
- * Per world system (game.system.id): the dice the tray shows (default STANDARD) and its keep pair
- * (default none). A system not listed gets the standard dice and no pair: a helper the rules do
- * not have is worse than none.
+ * Per world system (game.system.id): the dice the tray shows (default STANDARD) and its helper
+ * pair (default none). A system not listed gets the standard dice and no pair: a helper the rules
+ * do not have is worse than none.
  */
 const PROFILES = {
-  dnd5e: { keep: 'adv' },
-  sw5e: { keep: 'adv' },
-  a5e: { keep: 'adv' },
-  'black-flag': { keep: 'adv' },
-  pf2e: { keep: 'fortune' },
-  sf2e: { keep: 'fortune' },
+  dnd5e: { helper: 'adv' },
+  sw5e: { helper: 'adv' },
+  a5e: { helper: 'adv' },
+  'black-flag': { helper: 'adv' },
+  pf2e: { helper: 'fortune' },
+  sf2e: { helper: 'fortune' },
+  daggerheart: { dice: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'], helper: 'hope' },
+  'draw-steel': { dice: ['d10', 'd6'], helper: 'edge' },
   swade: { dice: ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'] },
   'cyberpunk-red-core': { dice: ['d6', 'd10'] },
   CoC7: { dice: ['d4', 'd6', 'd8', 'd10', 'd20', 'd100'] },
@@ -62,34 +74,46 @@ const PROFILES = {
   ModularFate: { dice: ['dF'] },
 };
 
-/** The tray for system `id`: {dice: tray die keys, keep: {up, down} label names | null}. */
+/** The tray for system `id`: {dice: tray die keys, helper: a HELPERS entry | null}. */
 export function trayProfile(id = globalThis.game?.system?.id) {
   const p = Object.hasOwn(PROFILES, id) ? PROFILES[id] : {};
   return {
     dice: (p.dice ?? STANDARD).filter((k) => TRAY_DICE.includes(k)),
-    keep: KEEP[p.keep] ?? null,
+    helper: HELPERS[p.helper] ?? null,
   };
 }
+const helperNow = () => trayProfile().helper;
 
-/** The dock's formula: the tray's, with the d20 term keeping its highest (adv 1) or lowest (-1). */
-export function chatFormula({ counts = {}, modifier = 0, adv = 0 } = {}) {
+/**
+ * The dock's formula: the tray's, with the system helper on (adv 1) or its opposite (-1): a keep
+ * helper keeps the highest / lowest of its die (two at least), an add helper adds / subtracts its term.
+ */
+export function chatFormula({ counts = {}, modifier = 0, adv = 0 } = {}, helper = helperNow()) {
+  if (!adv || !helper) return formulaFromCounts(counts, modifier);
+  if (helper.kind === 'add') {
+    const f = formulaFromCounts(counts, modifier);
+    return f && `${f} ${adv > 0 ? '+' : '-'} ${helper.term}`;
+  }
   const c = { ...counts };
-  if (adv && countOf(c.d20) === 1) c.d20 = 2; // advantage is two d20s at least
-  const f = formulaFromCounts(c, modifier);
-  return adv ? f.replace(/\b(\d+)d20(?!\d)/, `$1d20${adv > 0 ? 'kh' : 'kl'}`) : f;
+  const { die } = helper;
+  if (countOf(c[die]) === 1) c[die] = 2;
+  const term = new RegExp(String.raw`\b(\d+)${die}(?!\d)`);
+  return formulaFromCounts(c, modifier).replace(term, `$1${die}${adv > 0 ? 'kh' : 'kl'}`);
 }
 
 /**
- * `state` with advantage (dir 1) or disadvantage (-1) toggled: switching it on raises the d20s
- * to two, switching it off drops a pair back to one. A new object.
+ * `state` with the helper (dir 1) or its opposite (-1) toggled. A keep helper switched on raises its
+ * die to two, switched off drops a pair back to one. A new object.
  */
-export function toggleAdv(state, dir) {
-  const n = countOf(state.counts?.d20);
+export function toggleAdv(state, dir, helper = helperNow()) {
   const adv = state.adv === dir ? 0 : dir;
-  let d20 = n;
-  if (adv && n < 2) d20 = 2;
-  else if (!adv && n === 2) d20 = 1;
-  return { ...state, adv, counts: { ...state.counts, d20 } };
+  if (helper?.kind !== 'keep') return { ...state, adv };
+  const { die } = helper;
+  const n = countOf(state.counts?.[die]);
+  let m = n;
+  if (adv && n < 2) m = 2;
+  else if (!adv && n === 2) m = 1;
+  return { ...state, adv, counts: { ...state.counts, [die]: m } };
 }
 
 /** Shown: the client setting on and the Dice Tray module not active. Never throws. */
@@ -201,7 +225,7 @@ function h(tag, attrs = {}, kids = []) {
 const tip = (attrs, text) => ({ ...attrs, 'aria-label': text, 'data-tooltip': text });
 
 function build() {
-  const { dice: keys, keep } = trayProfile();
+  const { dice: keys, helper: keep } = trayProfile();
   const dice = keys.map((key) =>
     h(
       'button',
@@ -235,12 +259,12 @@ function build() {
       ? [
           btn(
             { 'data-adv': '1', 'aria-pressed': 'false', class: 'dicer-chat-tray-adv' },
-            loc(`DICER.ChatTray.${keep.up}Hint`),
+            loc(`DICER.ChatTray.${keep.upHint}`),
             [loc(`DICER.ChatTray.${keep.up}`)],
           ),
           btn(
             { 'data-adv': '-1', 'aria-pressed': 'false', class: 'dicer-chat-tray-adv' },
-            loc(`DICER.ChatTray.${keep.down}Hint`),
+            loc(`DICER.ChatTray.${keep.downHint}`),
             [loc(`DICER.ChatTray.${keep.down}`)],
           ),
         ]
@@ -319,8 +343,9 @@ function choiceFor(key) {
     const n = countOf(state.counts[k]);
     if (n || k === key) counts[k] = Math.max(1, n);
   }
-  const adv = key && key !== 'd20' ? 0 : state.adv;
-  if (adv && counts.d20) counts.d20 = Math.max(2, counts.d20);
+  const helper = helperNow();
+  const adv = key && key !== helper?.die ? 0 : state.adv;
+  if (adv && helper?.kind === 'keep' && counts[helper.die]) counts[helper.die] = Math.max(2, counts[helper.die]);
   const modifier = modOf(state.modifier);
   return { counts, modifier, mode: modeOf(), formula: chatFormula({ counts, modifier, adv }) };
 }
@@ -347,27 +372,27 @@ function closeMenu() {
   dockEl?.querySelector('.dicer-chat-tray-menu')?.remove();
 }
 
-/** The quick-count menu of die `key` (and the system's keep pair on the d20). */
+/** The quick-count menu of die `key` (and the system's helper pair on its main die). */
 function openMenu(button) {
   closeMenu();
   const key = button.dataset.die;
   const items = QUICK.map((n) =>
     h('button', { type: 'button', 'data-count': String(n), 'data-die': key, text: `${n}${key}` }),
   );
-  const keep = trayProfile().keep;
-  if (key === 'd20' && keep) {
+  const keep = helperNow();
+  if (keep && key === keep.die) {
     items.push(
       h('button', {
         type: 'button',
         'data-adv': '1',
         'data-menu': '1',
-        text: loc(`DICER.ChatTray.${keep.up}Hint`),
+        text: loc(`DICER.ChatTray.${keep.upHint}`),
       }),
       h('button', {
         type: 'button',
         'data-adv': '-1',
         'data-menu': '1',
-        text: loc(`DICER.ChatTray.${keep.down}Hint`),
+        text: loc(`DICER.ChatTray.${keep.downHint}`),
       }),
     );
   }

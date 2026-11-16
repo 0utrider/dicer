@@ -450,10 +450,10 @@ describe('lang and styles', () => {
 
 describe('trayProfile: the tray follows the world system', () => {
   test('D&D-likes keep advantage; PF2e names it fortune; others get none', () => {
-    expect(trayProfile('dnd5e').keep).toEqual({ up: 'Adv', down: 'Dis' });
-    expect(trayProfile('pf2e').keep).toEqual({ up: 'Fortune', down: 'Misfortune' });
+    expect(trayProfile('dnd5e').helper).toMatchObject({ kind: 'keep', die: 'd20', up: 'Adv', down: 'Dis' });
+    expect(trayProfile('pf2e').helper).toMatchObject({ kind: 'keep', die: 'd20', up: 'Fortune', down: 'Misfortune' });
     for (const id of ['swade', 'CoC7', 'cyberpunk-red-core', 'some-unknown-system'])
-      expect(trayProfile(id).keep).toBeNull();
+      expect(trayProfile(id).helper).toBeNull();
   });
 
   test('dice per system, standard ones for an unknown system, every key a tray die', () => {
@@ -489,5 +489,41 @@ describe('trayProfile: the tray follows the world system', () => {
     click(die('d20'));
     click(up);
     expect(rollButton().textContent).toContain('2d20kh');
+  });
+});
+
+describe('Daggerheart and Draw Steel helpers add a term instead of keeping a die', () => {
+  test('Daggerheart: advantage adds a d6, disadvantage subtracts one, the duality d12s stay as rolled', () => {
+    const h = trayProfile('daggerheart').helper;
+    expect(h).toMatchObject({ kind: 'add', die: 'd12', term: '1d6', up: 'Adv', down: 'Dis' });
+    expect(chatFormula({ counts: { d12: 2 }, modifier: 3, adv: 1 }, h)).toBe('2d12 + 3 + 1d6');
+    expect(chatFormula({ counts: { d12: 2 }, adv: -1 }, h)).toBe('2d12 - 1d6');
+    expect(chatFormula({ counts: {}, adv: 1 }, h)).toBe(''); // nothing picked: nothing to roll
+    expect(toggleAdv({ counts: { d12: 2 }, adv: 0 }, 1, h)).toEqual({ counts: { d12: 2 }, adv: 1 });
+    expect(trayProfile('daggerheart').dice).toEqual(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
+  });
+
+  test('Draw Steel: an edge is +2 and a bane -2 on the 2d10 power roll', () => {
+    const h = trayProfile('draw-steel').helper;
+    expect(h).toMatchObject({ kind: 'add', die: 'd10', term: '2', up: 'Edge', down: 'Bane' });
+    expect(chatFormula({ counts: { d10: 2 }, adv: 1 }, h)).toBe('2d10 + 2');
+    expect(chatFormula({ counts: { d10: 2 }, modifier: 2, adv: -1 }, h)).toBe('2d10 + 2 - 2');
+    expect(trayProfile('draw-steel').dice).toEqual(['d10', 'd6']);
+  });
+
+  test('docked in Draw Steel: Edge / Bane buttons, and the hold menu offers them on the d10', () => {
+    vi.useFakeTimers();
+    globalThis.game.system.id = 'draw-steel';
+    dockTray(undefined, vi.fn());
+    const [edge, bane] = dock().querySelectorAll('[data-adv]');
+    expect([edge.textContent, bane.textContent]).toEqual(['DICER.ChatTray.Edge', 'DICER.ChatTray.Bane']);
+    expect(edge.dataset.tooltip).toBe('DICER.ChatTray.EdgeHint');
+    click(die('d10'));
+    click(die('d10'));
+    click(edge);
+    expect(rollButton().textContent).toContain('2d10 + 2');
+    die('d10').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    vi.advanceTimersByTime(HOLD_MS + 10);
+    expect(dock().querySelectorAll('.dicer-chat-tray-menu [data-adv]')).toHaveLength(2);
   });
 });
