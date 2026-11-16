@@ -50,6 +50,24 @@
           <span class="dicer-badge dicer-badge-{{detail.source}}">{{detail.sourceLabel}}</span>
         </header>
 
+        {{#if detail.isModule}}
+        <p class="dicer-muted">{{detail.kindLabel}}</p>
+        {{#if locked}}
+          <p class="dicer-muted dicer-locked"><i class="fa-solid fa-lock"></i> {{lockedNotice}}</p>
+        {{else}}
+          {{#if detail.isDefault}}
+            <p class="dicer-is-default"><i class="fa-solid fa-star"></i> {{localize "DICER.Themes.YourDefault"}}</p>
+            {{#if detail.canStop}}<button type="button" data-action="stopModule" data-theme="{{detail.id}}"><i class="fa-solid fa-eraser"></i> {{localize "DICER.Themes.Module.Stop"}}</button>{{/if}}
+          {{else}}
+            <button type="button" class="bright dicer-primary" data-action="useModule" data-theme="{{detail.id}}"><i class="fa-solid fa-star"></i> {{localize "DICER.Themes.UseAsDefault"}}</button>
+          {{/if}}
+        {{/if}}
+        <div class="dicer-detail-section dicer-detail-actions">
+          <button type="button" data-action="importModule" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.Module.ImportHint"><i class="fa-solid fa-file-import"></i> {{localize "DICER.Themes.Module.Import"}}</button>
+          <button type="button" data-action="throwTheme" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.ThrowHint"><i class="fa-solid fa-dice"></i> {{localize "DICER.Themes.Throw"}}</button>
+        </div>
+        {{#if detail.dropNote}}<p class="dicer-muted">{{detail.dropNote}}</p>{{/if}}
+        {{else}}
         {{#if locked}}
           <p class="dicer-muted dicer-locked"><i class="fa-solid fa-lock"></i> {{lockedNotice}}</p>
         {{else}}
@@ -104,6 +122,7 @@
           {{#if detail.canPublish}}<button type="button" data-action="publish" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.Publish"><i class="fa-solid fa-globe"></i> {{localize "DICER.Themes.PublishShort"}}</button>{{/if}}
           {{#if detail.canDelete}}<button type="button" class="dicer-danger" data-action="remove" data-theme="{{detail.id}}"><i class="fa-solid fa-trash"></i> {{localize "DICER.Themes.Delete"}}</button>{{/if}}
         </div>
+        {{/if}}
       </aside>
     {{/if}}
   </div>
