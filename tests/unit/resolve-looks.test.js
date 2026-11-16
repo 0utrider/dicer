@@ -284,12 +284,23 @@ describe('damage theme (P4-D3)', () => {
     expect(out.appearance).toBe(THEME.appearance);
     expect(out.soundMaterial).toBe('stone');
   });
-  test('loses to options.colorset and to a flavor colorset, with no soundMaterial', () => {
+  test('loses to options.colorset, with no soundMaterial', () => {
     const r = themed();
-    expect(look(r, term(6, { options: { colorset: 'fire' } }), 'u').appearance).toEqual(fire);
-    const byFlavor = look(r, term(6, { flavor: 'Fire' }), 'u');
-    expect(byFlavor.appearance).toEqual(fire);
-    expect(byFlavor.soundMaterial).toBeUndefined();
+    const byColorset = look(r, term(6, { options: { colorset: 'fire' } }), 'u');
+    expect(byColorset.appearance).toEqual(fire);
+    expect(byColorset.soundMaterial).toBeUndefined();
+  });
+  test('beats a flavor colorset: a PF2e/5e die flavored [fire] gets the fire damage theme, not the flat colorset', () => {
+    const byFlavor = look(themed(), term(6, { flavor: 'Fire' }), 'u');
+    expect(byFlavor.appearance).toBe(THEME.appearance);
+    expect(byFlavor.soundMaterial).toBe('stone');
+    const named = look(themed(), term(6, { flavor: 'die:fire' }), 'u');
+    expect(named.appearance).toBe(THEME.appearance);
+  });
+  test('a flavor colorset still applies to a die with no damage theme', () => {
+    const registry = createRegistry({ warn: () => {} });
+    const r = createLookResolver({ registry, getUser: () => undefined, damageThemeFor: () => () => null, warn: () => {} });
+    expect(look(r, term(6, { flavor: 'Fire' }), 'u').appearance).toEqual(fire);
   });
   test('a throwing damageThemeFor leaves the normal chain', () => {
     const registry = createRegistry({ warn: () => {} });

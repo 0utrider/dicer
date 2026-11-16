@@ -1,7 +1,8 @@
 /**
  * Decides what each die looks like. The first matching rule wins, per term:
- *   1. term.options.appearance   2. term.options.colorset   3. the term's flavor
- *   3b. the damage theme of the term's damage type (P4-D3; also sets soundMaterial)
+ *   1. term.options.appearance   2. term.options.colorset
+ *   3. the damage theme of the term's damage type (P4-D3; also sets soundMaterial)
+ *   3b. the term's flavor as a colorset name (only with no damage theme: a [fire] damage die is themed)
  *   4. the actor's dicer.appearance (options.dsnActorId)   5. the roller's dicer.appearance
  *      (role:<role> when the message has one, die type, base shape, then global)
  *   6. DEFAULT_APPEARANCE.
@@ -144,21 +145,21 @@ export function createLookResolver({
     if (!appearance) {
       appearance = colorsetNameToAppearance(options.colorset, registry, index);
     }
+    // The damage theme (P4-D3): after explicit colorsets, before actor/user looks. It also beats a
+    // flavor colorset: PF2e and 5e flavor each damage die with its type ([fire]), which would
+    // otherwise match the flat built-in colorset of that name.
+    let soundMaterial;
+    let themed = null; // the Plan 5 theme the die resolved to: {themeId, soundMaterial?, ...}
+    const theme = appearance ? null : themeOf?.(term, index);
+    if (theme?.appearance) {
+      appearance = theme.appearance;
+      soundMaterial = theme.soundMaterial;
+      if (theme.themeId) themed = { themeId: theme.themeId, ...(theme.themeSource ? { themeSource: theme.themeSource } : {}) };
+    }
     if (!appearance && typeof term?.flavor === 'string') {
       const flavor = term.flavor.trim();
       const named = flavor.toLowerCase().startsWith('die:') ? flavor.slice(4).trim() : flavor;
       appearance = colorsetNameToAppearance(named, registry, index);
-    }
-    // The damage theme (P4-D3): after explicit colorsets and flavor, before actor/user looks.
-    let soundMaterial;
-    let themed = null; // the Plan 5 theme the die resolved to: {themeId, soundMaterial?, ...}
-    if (!appearance && themeOf) {
-      const theme = themeOf(term, index);
-      if (theme?.appearance) {
-        appearance = theme.appearance;
-        soundMaterial = theme.soundMaterial;
-        if (theme.themeId) themed = { themeId: theme.themeId, ...(theme.themeSource ? { themeSource: theme.themeSource } : {}) };
-      }
     }
     const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
     if (!appearance && !ctx.locked && typeof options.dsnActorId === 'string') {
