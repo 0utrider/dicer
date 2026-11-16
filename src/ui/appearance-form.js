@@ -40,8 +40,8 @@ export { EDGE_STEPS, STRIP_STYLES };
 /** Fonts most computers have, offered as suggestions for "a font on this computer". */
 export const FONT_SUGGESTIONS = ['Georgia', 'Impact', 'Palatino Linotype', 'Trebuchet MS', 'Verdana', 'Courier New', 'Times New Roman'];
 export const LOOK_KIND = 'dicer-look';
-/** Body types with a second colour (marble veins, pearl sheen, resin tint). */
-const TWO_TONE = ['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'];
+/** Body types with a second colour (marble veins, pearl sheen...). Resin has none: its shader never reads it. */
+const TWO_TONE = ['marble', 'pearl', 'iridescent', 'gem', 'wood'];
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const plain = (v) => JSON.parse(JSON.stringify(v));
 

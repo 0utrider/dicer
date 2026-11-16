@@ -195,7 +195,7 @@ describe('bodies, presets and finishes in the form', () => {
     for (const type of BODY_TYPES) {
       const v = visibleSections({ body: { type } });
       expect(v.preset).toBe(Object.hasOwn(BODY_PRESETS, type));
-      expect(v.color2).toBe(['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'].includes(type));
+      expect(v.color2).toBe(['marble', 'pearl', 'iridescent', 'gem', 'wood'].includes(type));
     }
     // a metal's second colour: only for the aged finishes
     for (const finish of FINISHES) {
@@ -331,10 +331,10 @@ describe('visibleSections', () => {
     expect(visibleSections(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'none' } })).insideDetails).toBe(false);
     expect(visibleSections(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'shape' } })).insideShape).toBe(true);
   });
-  it('the finish only for metal; the second colour for marble, pearl and resin; number colour for paint and enamel', () => {
+  it('the finish only for metal; the second colour for marble and pearl (not resin); number colour for paint and enamel', () => {
     const v = (body, numbers) => visibleSections(normalizeAppearance({ body, numbers }));
     expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).finish)).toEqual([false, false, true, false, false]);
-    expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).color2)).toEqual([false, true, false, true, true]);
+    expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).color2)).toEqual([false, false, false, true, true]);
     expect(['paint', 'gold', 'silver', 'enamel'].map((fill) => v({}, { fill }).numberColor)).toEqual([true, false, false, true]);
     expect(visibleSections(formFromAppearance({ numbers: { font: 'css:Impact' } }))).toMatchObject({ fontFamily: true, fontFile: false });
     expect(visibleSections(normalizeAppearance({ numbers: { font: 'file:a/b.ttf' } }))).toMatchObject({ fontFamily: false, fontFile: true });
