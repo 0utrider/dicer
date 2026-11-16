@@ -24,6 +24,15 @@
         "Name": "Pet size",
         "Hint": "Size of the dice pets on screen, independent of the dice size."
       },
+      "diceAboveWindows": {
+        "Name": "Dice above windows",
+        "Hint": "Draw the dice over open windows and character sheets. \"My rolls\" lifts them only while one of your own rolls is on screen; other players' dice stay under your windows (when both show at once, all dice are lifted).",
+        "Choices": {
+          "none": "Never (under windows)",
+          "mine": "My rolls",
+          "all": "All rolls"
+        }
+      },
       "timeBeforeHide": {
         "Name": "Time before hiding (ms)",
         "Hint": "How long the dice stay on the table after landing, before they fade out."

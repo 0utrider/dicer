@@ -212,9 +212,11 @@ describe('build', () => {
     // edge strips plan (2026-11-15-dicer-edge-strips): +300 B on the same base for the strip look
     // field (owner approval, 2026-11-15).
     // elemental trails: owner raised the allowance by 500 B (1,836 -> 2,336) for trails and bursts.
+    // tester requests (2026-11-16): owner approved raising it for the batch; dice above windows
+    // +968 B (2,336 -> 3,304).
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(2_336);
+    expect(growth).toBeLessThanOrEqual(3_304);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

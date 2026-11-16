@@ -154,6 +154,7 @@ export const resetControls = () => {
  * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
  * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
  *   or handRollsRequired changes (the core dice configuration is re-synced)
+ * @param {() => void} [callbacks.onLayerChange] runs when diceAboveWindows changes
  */
 export function registerSettings({
   onAreaChange,
@@ -164,6 +165,7 @@ export function registerSettings({
   onQualityChange,
   onSoundChange,
   onHandChange,
+  onLayerChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   register('enabled', {
@@ -205,6 +207,16 @@ export function registerSettings({
       onChange: () => onAreaChange?.(),
     });
   }
+  register('diceAboveWindows', {
+    name: t('diceAboveWindows.Name'),
+    hint: t('diceAboveWindows.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: Object.fromEntries(['none', 'mine', 'all'].map((k) => [k, t(`diceAboveWindows.Choices.${k}`)])),
+    default: 'none',
+    onChange: () => onLayerChange?.(),
+  });
   register('timeBeforeHide', {
     name: t('timeBeforeHide.Name'),
     hint: t('timeBeforeHide.Hint'),

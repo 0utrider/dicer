@@ -3852,3 +3852,47 @@ describe('living insides: per-die motion (insideMotion)', () => {
     box.clear();
   });
 });
+
+describe('mineShown / onLayer (diceAboveWindows)', () => {
+  test('a roll thrown with mine is shown as mine until it finishes; others are not', async () => {
+    const onLayer = vi.fn();
+    const { renderer, physics, box } = setup({ onLayer });
+    const theirs = box.roll([{ type: 'd6', value: 3 }]);
+    physics.flush();
+    renderer.tick(16);
+    expect(box.mineShown).toBe(false);
+    expect(onLayer).not.toHaveBeenCalled();
+
+    const mine = box.roll([{ type: 'd6', value: 4 }], { mine: true });
+    expect(box.mineShown).toBe(true);
+    physics.flush();
+    renderer.tick(32);
+    expect(onLayer).toHaveBeenCalledTimes(1);
+    expect(onLayer).toHaveBeenLastCalledWith(true);
+    renderer.tick(48); // no change: not told again
+    expect(onLayer).toHaveBeenCalledTimes(1);
+
+    box.clear();
+    await flushMicrotasks();
+    await Promise.all([theirs.finished, mine.finished]);
+    expect(box.mineShown).toBe(false);
+    box.roll([{ type: 'd6', value: 1 }]);
+    physics.flush();
+    renderer.tick(64);
+    expect(onLayer).toHaveBeenLastCalledWith(false);
+  });
+
+  test('a throwing onLayer warns and never breaks the frame', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { renderer, physics, box } = setup({
+      onLayer: () => {
+        throw new Error('x');
+      },
+    });
+    box.roll([{ type: 'd6', value: 2 }], { mine: true });
+    physics.flush();
+    expect(() => renderer.tick(16)).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});

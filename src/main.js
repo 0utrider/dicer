@@ -147,6 +147,16 @@ function syncHand() {
   }
 }
 
+/**
+ * diceAboveWindows: 'all' lifts the dice canvas over Foundry's windows; 'mine' only while one of
+ * this user's rolls (or held dice) is on screen. One canvas draws everyone's dice, so another
+ * player's dice that show at the same time as yours are lifted too.
+ */
+function layerDice(mine = diceBox?.mineShown) {
+  const mode = getSetting('diceAboveWindows');
+  diceRenderer?.canvas?.classList.toggle('dicer-above', mode === 'all' || (mode === 'mine' && !!mine));
+}
+
 function onSoundChange(key, value) {
   if (key === 'sounds' && value) preloadSounds();
 }
@@ -490,6 +500,7 @@ Hooks.once('init', () => {
     onQualityChange,
     onSoundChange,
     onHandChange: () => (syncHand(), resetControls()), // and the tray tool
+    onLayerChange: () => layerDice(),
   });
   try {
     registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver
@@ -643,6 +654,7 @@ Hooks.once('ready', async () => {
         effects: effectLayer,
         pet: () => getPets(),
         fonts: fontAtlases,
+        onLayer: layerDice,
       });
       return box;
     },

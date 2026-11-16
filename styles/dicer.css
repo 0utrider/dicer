@@ -5,6 +5,11 @@
   pointer-events: none;
   z-index: 60; /* above the scene, below Foundry UI apps; placed right after #board */
 }
+/* diceAboveWindows: over windows and sheets (they climb from ~100 as they are focused), still
+   below tooltips; the canvas never takes the pointer. */
+#dicer-canvas.dicer-above {
+  z-index: 9000;
+}
 
 /* Dice So Nice compatible: a chat message hidden until its dice land. */
 .dsn-hide {
