@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Roll filters.** Choose which rolls you see as 3D dice: initiative, roll tables, rolls during combat, damage, other players' rolls, blind and private rolls, and big rolls. Each can show, show only your own, or skip; the GM sets a world default (Configure Settings, Dicer, Roll filters).
 - **Bigger dice.** Dice size (and Pet size) now go up to 3x.
 - **Pet size.** Pets have their own **Pet size** setting, so bigger dice no longer mean bigger pets.
 - **Crit and fumble text stays sharp and on screen.** The JB2A CRITICAL / MISS text keeps one screen size whatever the dice size, and a die landing at the edge of the screen no longer pushes it out of view.

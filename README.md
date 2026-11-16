@@ -189,6 +189,10 @@ Instead of letting the computer roll, you can grab your dice, shake them and thr
 - **Rolls from physical dice** (per player): a roll whose dice came from physical dice (Pixels, another electronic dice module or manual entry) is animated like any roll, with a dice mark on its chat card naming where the dice came from (**Animate and mark the card**, the default). **Animate** drops the mark; **Mark the card, no 3D dice** skips the 3D dice for a roll that is all physical (a mixed roll is still animated).
 - **Review pages and tests**: `npm run dev`, then `/dev/hand.html` is the review page: the throw overlay, **Throw for me**, a cocked die, a d16 read with its glow, a throw at a resting pet, and the last throw replayed from its encoded form at half the area size. `node tests/visual/hand.mjs` drives it with a real mouse and saves screenshots. The owner's live test is `npm run test:live:hand` (a GM and a player; optionally a second player). The benchmark has two hand scenarios, `handReplay10` (a recorded 10-dice throw replayed) and `handSoak100`, which only Dicer runs.
 
+## Roll filters
+
+**Configure Settings, Dicer, Roll filters** chooses which rolls you see as 3D dice: **initiative**, **roll tables**, **any roll during combat**, **damage** (systems that mark damage rolls, such as Pathfinder 2e and D&D 5e), **other players' rolls** (the GM's included), **blind and private rolls**, and **big rolls** (more dice than a number you pick, 10 by default). Each can **Show**, show **Only my own**, or **Skip**. A skipped roll posts its chat card at once, as with 3D dice off; a roll belonging to several kinds is skipped when any of them says so. Your choices are yours (per player); the GM also sets a **world default**, which applies wherever a player leaves **Default**.
+
 ## GM controls
 
 - **World default theme** (a setting): the theme players' dice use until they choose one of their own.

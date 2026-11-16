@@ -50,6 +50,10 @@ describe('build', () => {
     expect(grab).toBeTruthy();
     expect(readFileSync(grab, 'utf8')).toContain('dicer-grab-chunk');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-grab-chunk');
+    const rollFilters = lazy.find((p) => /^dist\/roll-filters-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the Roll filters window
+    expect(rollFilters).toBeTruthy();
+    expect(readFileSync(rollFilters, 'utf8')).toContain('dicer-roll-filters');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-roll-filters');
     const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
     const chatTray = lazy.find((p) => /^dist\/chat-tray-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the chat dice tray (src/ui/chat-tray.js)
     const trayDice = lazy.find((p) => /^dist\/tray-dice-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the tray core, shared by the hand and chat-tray chunks
@@ -158,6 +162,7 @@ describe('build', () => {
         elementOf,
         hand,
         grab,
+        rollFilters,
         jb2a,
         chatTray,
         trayDice,
@@ -249,9 +254,11 @@ describe('build', () => {
     // (8,708 -> 9,022), 2026-11-16.
     // TEXTURELIST in game.dice3d.exports (module dice previews draw texture art): owner approved
     // +48 B (9,022 -> 9,070), 2026-11-16.
+    // Roll filters (the rules showForRoll asks before every throw, two settings, the menu): owner
+    // approved +1,621 B (9,070 -> 10,691), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(9_070);
+    expect(growth).toBeLessThanOrEqual(10_691);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

@@ -13,6 +13,7 @@ import { areaDefFor, withArea } from '../areas/area-store.js';
 import { isGmOnly } from '../areas/gm-only.js';
 import { petFor } from '../pet/pet-for.js';
 import { isHandRoll, allPhysical } from '../hand/gate-hand.js';
+import { filtered } from '../foundry/roll-filters.js';
 import { loadHand, handNow } from '../hand/hand-loader.js';
 
 const STANDARD_SYSTEM = 'standard';
@@ -385,6 +386,10 @@ export function createDice3dApi({
       if (isHandRoll(toThrow) && toThrow.options.dicerHand.by === me()?.id) return false;
       // Every die rolled on physical dice (Pixels, manual entry) and this player skips those.
       if (getSetting('physicalDice') === 'skip' && allPhysical(toThrow)) return false;
+      // Roll filters (initiative, roll tables, combat, damage...): this player's or the GM's choice.
+      const message = s.messageID != null ? globalThis.game?.messages?.get?.(s.messageID) : null;
+      const ctx = { mine: (message?.author?.id ?? s.authorId) === me()?.id, secret: !!(s.blind || s.secret || message?.whisper?.length), combat: !!globalThis.game?.combat?.started };
+      if (filtered(toThrow, message, ctx, getSetting('rollFilters'), getSetting('rollFiltersDefault'))) return false;
       // Client-scope (P3-R11): turning 3D dice off here never suppresses the other clients' dice
       // nor the hooks an integration may wait on.
       if (!getSetting('enabled')) {

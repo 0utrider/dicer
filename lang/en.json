@@ -365,6 +365,11 @@
       "triggerMacros": {
         "Name": "Trigger macros",
         "Hint": "Let trigger rules run a macro when they fire. The macro runs once, on the roller's client."
+      },
+      "rollFilters": {
+        "Name": "Roll filters",
+        "Label": "Roll filters",
+        "Hint": "Choose which rolls you see as 3D dice: initiative, roll tables, rolls during combat, damage, other players' rolls, blind and private rolls, and big rolls. Each can show, show only your own, or skip. The GM sets the world default."
       }
     },
     "Triggers": {
@@ -999,6 +1004,50 @@
     },
     "Physical": {
       "Mark": "Rolled with physical dice ({methods})"
+    },
+    "RollFilters": {
+      "Title": "Roll filters",
+      "Intro": "Which rolls you see as 3D dice. A skipped roll posts its chat card at once, as with 3D dice off. Your choice wins; \"Default\" follows the world setting the GM picks.",
+      "Mine": "You",
+      "World": "World default (GM)",
+      "Default": "Default ({mode})",
+      "BigDice": "A big roll has more dice than",
+      "SaveFailed": "Your roll filters could not be saved.",
+      "Mode": {
+        "show": "Show",
+        "mine": "Only my own",
+        "skip": "Skip"
+      },
+      "Kind": {
+        "initiative": {
+          "Name": "Initiative",
+          "Hint": "Initiative rolls from the combat tracker or a sheet."
+        },
+        "table": {
+          "Name": "Roll tables",
+          "Hint": "Results drawn from a roll table."
+        },
+        "combat": {
+          "Name": "During combat",
+          "Hint": "Any roll while an encounter is running."
+        },
+        "damage": {
+          "Name": "Damage",
+          "Hint": "Damage rolls (systems that mark them, such as Pathfinder 2e and D&D 5e)."
+        },
+        "others": {
+          "Name": "Other players' rolls",
+          "Hint": "Rolls made by anyone else, the GM included."
+        },
+        "secret": {
+          "Name": "Blind and private rolls",
+          "Hint": "Blind rolls, GM-only rolls and whispers."
+        },
+        "big": {
+          "Name": "Big rolls",
+          "Hint": "Rolls with more dice than the number below (a fireball's 10d6, say)."
+        }
+      }
     }
   }
 }

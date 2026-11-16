@@ -1922,3 +1922,47 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   line-height: 1;
   border-radius: 50%;
 }
+
+/* Roll filters window */
+.dicer-roll-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+.dicer-roll-filters table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dicer-roll-filters th,
+.dicer-roll-filters td {
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: middle;
+}
+.dicer-roll-filters tbody th span {
+  display: block;
+  font-weight: bold;
+}
+.dicer-roll-filters tbody th small {
+  display: block;
+  font-weight: normal;
+}
+.dicer-roll-filters tbody tr:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.03);
+}
+.dicer-roll-filters td {
+  width: 27%;
+}
+.dicer-roll-filters select {
+  width: 100%;
+  min-width: 9em;
+}
+.dicer-roll-filters-big {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dicer-roll-filters-big input {
+  width: 64px;
+}

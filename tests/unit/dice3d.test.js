@@ -1449,3 +1449,23 @@ test('physicalDice skip: a roll all on physical dice is not thrown; a mixed one 
     delete globalThis.CONFIG;
   }
 });
+
+test('roll filters: a skipped kind is not thrown; the player’s choice beats the world default', async () => {
+  globalThis.game = { user: { id: 'me' }, messages: { get: (id) => (id === 'init' ? { flags: { core: { initiativeRoll: true } } } : null) }, combat: null };
+  const local = { ...settings, rollFilters: { initiative: 'skip' }, rollFiltersDefault: {} };
+  try {
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => local[k], hooks: { call: () => true, callAll: () => true } });
+    expect(await a.showForRoll(roll(20, 4), { id: 'me' }, false, null, false, 'init')).toBe(false);
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    a.showForRoll(roll(20, 5)); // not initiative: thrown
+    await Promise.resolve();
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    local.rollFilters = {};
+    local.rollFiltersDefault = { others: 'skip' };
+    globalThis.game.user.id = 'someone-else'; // the roll is now another player's
+    expect(await a.showForRoll(roll(20, 6), { id: 'me' })).toBe(false);
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+  } finally {
+    delete globalThis.game;
+  }
+});
