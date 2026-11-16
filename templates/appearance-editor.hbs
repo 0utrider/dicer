@@ -362,21 +362,6 @@
         </div>
       </details>
 
-      {{#if petAllowed}}
-      <details class="dicer-ae-section" data-section="pet" {{#if open.pet}}open{{/if}}>
-        <summary><i class="fa-solid fa-dragon"></i> <span>{{localize "DICER.Appearance.Pet.Title"}}</span><em>{{summary.pet}}</em></summary>
-        <div class="dicer-ae-fields">
-          <p class="dicer-hint">{{localize "DICER.Appearance.Pet.Hint"}}</p>
-          {{#if petHidden}}<p class="dicer-hint dicer-ae-pet-hidden"><i class="fa-solid fa-eye-slash"></i> {{localize "DICER.Appearance.Pet.Hidden"}}</p>{{/if}}
-          <div class="dicer-ae-chips" role="radiogroup" aria-label="{{localize "DICER.Appearance.Pet.Title"}}">
-            {{#each petKinds}}
-              <button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" role="radio" aria-checked="{{#if active}}true{{else}}false{{/if}}" data-action="setPet" data-value="{{id}}"><i class="fa-solid {{icon}}" aria-hidden="true"></i><span>{{label}}</span></button>
-            {{/each}}
-          </div>
-          <div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Pet.Color"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{pet.color}}" data-color-for="pet.color" aria-label="{{localize "DICER.Appearance.Pet.Color"}}"><input type="text" name="pet.color" value="{{pet.color}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Pet.Color"}}"></span></div>
-        </div>
-      </details>
-      {{/if}}
     </div>
   </div>
 

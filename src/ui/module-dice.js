@@ -156,6 +156,8 @@ function systemEntry(id, sys, registry) {
     dropped,
     ...(models.length ? { models: modelFiles } : {}),
     ...(Object.keys(faceImages).length ? { faceImages } : {}),
+    // all its look is in its models: an import takes its colours from them (themes/model-colours.js)
+    ...(models.length && !looks.size ? { colourless: true } : {}),
   };
 }
 

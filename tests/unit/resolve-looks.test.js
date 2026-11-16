@@ -297,6 +297,35 @@ describe('damage theme (P4-D3)', () => {
     const named = look(themed(), term(6, { flavor: 'die:fire' }), 'u');
     expect(named.appearance).toBe(THEME.appearance);
   });
+  test("damageOverDiceSet: the damage look beats the player's module dice set (no model or faces of it); off keeps the set", async () => {
+    const registry = createRegistry({ warn: () => {} });
+    await registry.addDicePreset({ type: 'd6', system: 'trs', labels: ['a', 'b', 'c', 'd', 'e', 'f'], modelFile: 'd6.glb' });
+    const users = { u: user({ global: { look: 'default', system: 'trs', chosen: true } }) };
+    const make1 = (themeOf, damageOverDiceSet) =>
+      createLookResolver({
+        registry,
+        getUser: (id) => users[id],
+        damageThemeFor: () => themeOf,
+        facesFor: () => ({ key: 'f', labels: [] }),
+        ...(damageOverDiceSet ? { damageOverDiceSet } : {}),
+        warn: () => {},
+      });
+    const damaged = look(make1(() => THEME), term(6), 'u');
+    expect(damaged.appearance).toBe(THEME.appearance);
+    expect(damaged).not.toHaveProperty('model');
+    expect(damaged).not.toHaveProperty('faces');
+    expect(damaged.system).toBe('standard');
+    // a die with no damage type still rolls the set
+    const plain = look(make1(() => null), term(6), 'u');
+    expect(plain.model).toBe('d6.glb');
+    expect(plain.system).toBe('trs');
+    // a system the roll names itself still applies
+    expect(look(make1(() => THEME), term(6, { options: { appearance: { system: 'trs' } } }), 'u').model).toBe('d6.glb');
+    // the setting off: the set's model and faces stay on the damage die
+    const kept = look(make1(() => THEME, () => false), term(6), 'u');
+    expect(kept.model).toBe('d6.glb');
+    expect(kept.appearance).toBe(THEME.appearance);
+  });
   test('a flavor colorset still applies to a die with no damage theme', () => {
     const registry = createRegistry({ warn: () => {} });
     const r = createLookResolver({ registry, getUser: () => undefined, damageThemeFor: () => () => null, warn: () => {} });

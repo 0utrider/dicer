@@ -14,7 +14,6 @@ import { USER_SOUNDS } from '../audio/sound-names.js';
 import { LOOKS } from '../look/looks.js';
 import { stripActive } from '../look/appearance.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
-import { PET_KINDS, readPet } from '../pet/pet-for.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm } from './theme-form.js';
 import { jb2aSource } from '../jb2a/source.js';
@@ -84,9 +83,8 @@ const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sph
 const EDGE_NAMES = ['sharp', 'crisp', 'soft', 'round', 'veryRound'];
 /** px radius of the one rounded corner each edge-step icon draws (22 px box): clearly apart. */
 const EDGE_ICON_RADIUS = [0, 5, 10, 15, 22];
-const SECTIONS = ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras', 'pet'];
-const PET_ICONS = { none: 'fa-ban', mimic: 'fa-box-open', slime: 'fa-droplet', dragonling: 'fa-dragon' };
-const HEX6 = /^#[0-9a-f]{6}$/;
+// (the pet has its own window: ui/pet-window.js)
+const SECTIONS = ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras'];
 
 // Stored data of the wrong shape is never written: refused and warned once per kind.
 const warned = new Set();
@@ -147,7 +145,6 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     position: { width: 940, height: 720 },
     actions: {
       setField: AppearanceEditor.#onSetField,
-      setPet: AppearanceEditor.#onSetPet,
       previewDie: AppearanceEditor.#onPreviewDie,
       throwLook: AppearanceEditor.#onThrowLook,
       previewExtra: AppearanceEditor.#onPreviewExtra,
@@ -278,9 +275,6 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     const withKeep = (map, v) => (v === KEEP ? { ...map, [KEEP]: keep } : map);
     const extras = this.#extras;
     const fontLabel = form.numbers.fontKind === 'css' && form.numbers.fontFamily ? form.numbers.fontFamily : loc(`DICER.Appearance.FontKind.${form.numbers.fontKind}`);
-    // The pet is the current user's own (never the look being edited): read from their flag.
-    const petAllowed = settings()?.get(MODULE, 'petsAllowed') !== false;
-    const pet = readPet(me());
     const overrideCount = DIE_TYPES.filter(overridden).length;
     return {
       form,
@@ -337,12 +331,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         glow: look.glow.intensity > 0 ? pct(look.glow.intensity) : loc('DICER.Appearance.Glow.Off'),
         perType: overrideCount ? String(overrideCount) : '',
         extras: '',
-        pet: loc(`DICER.Appearance.Pet.${humanize(pet.kind)}`),
       },
-      petAllowed,
-      pet,
-      petKinds: PET_KINDS.map((id) => ({ id, label: loc(`DICER.Appearance.Pet.${humanize(id)}`), active: id === pet.kind, icon: PET_ICONS[id] })),
-      petHidden: settings()?.get(MODULE, 'showPets') === false,
       overrides: DIE_TYPES.filter(overridden).map((type) => ({ type, editing: type === this.#editing })),
       available: DIE_TYPES.filter((t) => !overridden(t)),
       open: Object.fromEntries(SECTIONS.map((s) => [s, this.#open.has(s)])),
@@ -505,7 +494,6 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       this.#extras = extras;
       return;
     }
-    if (el.name === 'pet.color' || el.dataset.colorFor === 'pet.color') return this.#onPetColor(el, committed);
     let path = el.name;
     let value = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.colorFor) {
@@ -538,38 +526,6 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     notify('info', loc(okKey));
     this.render();
     return true;
-  }
-
-  /**
-   * The pet is the user's own flag, saved at once; it is not part of the look being edited. True
-   * when saved. Only the changed field is written over the RAW stored flag (not readPet's filled
-   * defaults), so a pet with no stored colour keeps following the player colour.
-   */
-  async #savePet(change) {
-    const user = me();
-    try {
-      const raw = user.getFlag(MODULE, 'pet');
-      await user.setFlag(MODULE, 'pet', { ...(raw && typeof raw === 'object' ? raw : {}), ...change });
-      return true;
-    } catch {
-      notify('warn', loc('DICER.Appearance.Pet.SaveFailed'));
-      return false;
-    }
-  }
-
-  /** Typing / dragging only mirrors the value between the picker and the hex box; the save is on `change`. */
-  async #onPetColor(el, committed) {
-    const v = String(el.value).trim().toLowerCase();
-    if (!HEX6.test(v)) return; // half typed: wait
-    for (const input of el.closest('.dicer-ae-color')?.querySelectorAll('input') ?? []) input.value = v;
-    if (!committed) return;
-    if (!(await this.#savePet({ color: v }))) await this.render(); // show the stored colour again
-  }
-
-  static async #onSetPet(event, target) {
-    const kind = target.dataset.value;
-    if (!PET_KINDS.includes(kind) || kind === readPet(me()).kind) return;
-    if (await this.#savePet({ kind })) await this.render();
   }
 
   static async #onSetField(event, target) {

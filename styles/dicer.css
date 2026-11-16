@@ -2176,6 +2176,55 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 
 /* Roll filters window */
+/* The Your pet window (ui/pet-window.js). */
+.dicer-pet-window {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+.dicer-pet-window .dicer-pet-off {
+  color: var(--color-warm-2, #ff6400);
+}
+.dicer-pet-kinds {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.dicer-pet-window .dicer-pet-kind {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  padding: 10px 4px 8px;
+  border-radius: 8px;
+}
+.dicer-pet-kind i {
+  font-size: 1.6em;
+}
+.dicer-pet-window .dicer-pet-kind.active {
+  border-color: var(--color-warm-2, #ff6400);
+  background: color-mix(in srgb, var(--color-warm-2, #ff6400) 22%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-warm-2, #ff6400) 40%, transparent);
+}
+.dicer-pet-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dicer-pet-color span {
+  flex: 1;
+}
+.dicer-pet-color input[type='color'] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+}
+.dicer-pet-color input[type='text'] {
+  width: 90px;
+  font-family: monospace;
+}
 .dicer-roll-filters {
   display: flex;
   flex-direction: column;

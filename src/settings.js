@@ -554,6 +554,14 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
+  register('damageOverDiceSet', {
+    name: t('damageOverDiceSet.Name'),
+    hint: t('damageOverDiceSet.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
   // damage type -> theme id | colorset name | 'none'; edited by the damage-theme UI, not the form.
   register('damageTypeMap', {
     scope: 'world',
@@ -593,6 +601,10 @@ export function registerSettings({
   register('rollFiltersDefault', { scope: 'world', config: false, type: Object, default: {} });
   registerEditorMenu(t, 'rollFilters', 'fa-solid fa-filter', () =>
     import('./ui/roll-filters.js').then((m) => () => m.openRollFilters()),
+  );
+  // The player's own pet (its kind and colour): its own window, since it is not part of any theme.
+  registerEditorMenu(t, 'petWindow', 'fa-solid fa-dragon', () =>
+    import('./ui/pet-window.js').then((m) => () => m.openPetWindow()),
   );
   registerEditorMenu(t, 'themeBrowser', 'fa-solid fa-dice-d20', () =>
     import('./ui/theme-browser.js').then((m) => m.openThemeBrowser),

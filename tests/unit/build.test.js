@@ -54,6 +54,10 @@ describe('build', () => {
     expect(rollFilters).toBeTruthy();
     expect(readFileSync(rollFilters, 'utf8')).toContain('dicer-roll-filters');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-roll-filters');
+    const petWindow = lazy.find((p) => /^dist\/pet-window-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the Your pet window
+    expect(petWindow).toBeTruthy();
+    expect(readFileSync(petWindow, 'utf8')).toContain('dicer-pet-window');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-pet-window');
     const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
     const chatTray = lazy.find((p) => /^dist\/chat-tray-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the chat dice tray (src/ui/chat-tray.js)
     const trayDice = lazy.find((p) => /^dist\/tray-dice-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the tray core, shared by the hand and chat-tray chunks
@@ -163,6 +167,7 @@ describe('build', () => {
         hand,
         grab,
         rollFilters,
+        petWindow,
         jb2a,
         chatTray,
         trayDice,
@@ -264,9 +269,11 @@ describe('build', () => {
     // Theme face images for the coin, the Fate die and the d100 tens die (compat/faces.js keys,
     // the faces schema, DiceBox and the thumbnailer): owner approved +196 B (11,080 -> 11,276),
     // 2026-11-16.
+    // The damageOverDiceSet setting (resolve-looks) and the Your pet menu: owner approved +364 B
+    // (11,276 -> 11,640), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(11_276);
+    expect(growth).toBeLessThanOrEqual(11_640);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

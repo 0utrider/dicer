@@ -686,6 +686,7 @@ Hooks.once('ready', async () => {
         getWorldThemes: () => getSetting('worldThemes'),
         getWorldDefaultTheme: () => getSetting('worldDefaultTheme'),
         getLockPlayerLooks: () => getSetting('lockPlayerLooks'),
+        damageOverDiceSet: () => getSetting('damageOverDiceSet'),
         // Preset faces the digit atlas cannot draw become image / text face layers.
         facesFor: presetFaces,
       });

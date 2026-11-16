@@ -16,6 +16,7 @@ import {
 } from './module-dice.js';
 import { DIE_TYPES, findTheme, readThemeList } from '../themes/themes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
+import { lookFromModels as modelLookOf } from '../themes/model-colours.js';
 import { damageTypeList } from './damage-map-form.js';
 import {
   ROLL_ROLES,
@@ -293,11 +294,21 @@ export async function stopModuleSystem() {
   return true;
 }
 
-/** Copies a module dice set into My themes; `{raw, dropped}`, or null when refused. */
-export async function importModuleDice(entry) {
+/**
+ * Copies a module dice set into My themes; `{raw, dropped}`, or null when refused. A set whose
+ * look is all in its 3D models (no colours) takes its colours from them (`lookFromModels`), so
+ * the theme starts near the set instead of as Dicer's default.
+ */
+export async function importModuleDice(entry, { lookFromModels = modelLookOf } = {}) {
   const list = userList();
   if (!list || !entry) return null;
   const ids = list.map((t) => (isPlainObjectLike(t) ? t.id : undefined)).filter(Boolean);
+  if (entry.colourless && entry.models) {
+    const look = await Promise.resolve()
+      .then(() => lookFromModels(entry.models))
+      .catch(() => null);
+    if (look) entry = { ...entry, appearance: look, perType: {} };
+  }
   const res = moduleThemeRaw(entry, userThemeId(me().id, entry.name, ids));
   await saveUserList(upsertTheme(list, res.raw));
   return res;
@@ -404,6 +415,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       useModule: ThemeBrowser.#onUseModule,
       stopModule: ThemeBrowser.#onStopModule,
       importModule: ThemeBrowser.#onImportModule,
+      openPet: ThemeBrowser.#onOpenPet,
     },
   };
 
@@ -779,6 +791,12 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#selected = res.raw.id;
     await this.render();
     return this.#openEditor({ themeId: res.raw.id });
+  }
+
+  /** The Your pet window (its own lazy chunk): the pet is the player's, not part of a theme. */
+  static async #onOpenPet() {
+    const m = await import('./pet-window.js');
+    return m.openPetWindow();
   }
 
   /** Opens the appearance editor (its own lazy chunk); a save there refreshes the gallery. */

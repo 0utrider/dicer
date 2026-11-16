@@ -314,6 +314,25 @@ describe('the theme browser with module dice', () => {
     expect(ui.notifications.info).toHaveBeenLastCalledWith('DICER.Themes.Module.Imported trs-black');
   });
 
+  it('a set that is all 3D models (no colours) imports in its models’ colours, not the default look', async () => {
+    const look = { ...LOOKS['ruby-classic'].appearance };
+    const lookFromModels = vi.fn(async () => look);
+    const entry = { id: 'dsn-system:gold', kind: 'system', key: 'gold', name: 'Gold Red', source: 'module', appearance: LOOKS.default.appearance, perType: {}, dropped: [], models: { d20: 'd20.gltf' }, colourless: true };
+    const res = await mod.importModuleDice(entry, { lookFromModels });
+    expect(lookFromModels).toHaveBeenCalledWith({ d20: 'd20.gltf' });
+    expect(res.raw.appearance).toEqual(look);
+    // a set with its own colours never asks the models; nor does one whose models give none
+    await mod.importModuleDice({ ...entry, colourless: undefined }, { lookFromModels });
+    expect(lookFromModels).toHaveBeenCalledTimes(1);
+    const none = await mod.importModuleDice(entry, { lookFromModels: async () => null });
+    expect(none.raw.appearance).toEqual(LOOKS.default.appearance);
+  });
+
+  it('systemEntry marks a set with models and no colours as colourless', () => {
+    const systems = new Map([['m', { name: 'M', dice: new Map([['d20', { labels: '', modelFile: 'd20.gltf' }]]) }]]);
+    expect(moduleDiceEntries({ colorsets: new Map(), systems })[0].colourless).toBe(true);
+  });
+
   it('what use writes is what the look resolver rolls', async () => {
     const resolver = createLookResolver({ registry, getUser: () => user, facesFor: (p) => ({ key: p.type }), warn: () => {} });
     const roll = (faces) => resolver.decorate(null, {}, 'u1')({ faces, options: {} }, {}, 0);

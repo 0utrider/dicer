@@ -48,6 +48,8 @@ const systemOf = (v) => (isPlainObject(v) && typeof v.system === 'string' && v.s
  * @param {() => unknown} [deps.getWorldThemes] the raw worldThemes setting
  * @param {() => string} [deps.getWorldDefaultTheme] the worldDefaultTheme setting ('' = none)
  * @param {() => boolean} [deps.getLockPlayerLooks] the lockPlayerLooks setting
+ * @param {() => boolean} [deps.damageOverDiceSet] the damageOverDiceSet setting: a damage-themed die
+ *   drops the player's dice set (its models and faces); false keeps them
  * @param {(msg: string, err?: unknown) => void} [deps.warn]
  */
 export function createLookResolver({
@@ -59,6 +61,7 @@ export function createLookResolver({
   getWorldThemes = () => [],
   getWorldDefaultTheme = () => '',
   getLockPlayerLooks = () => false,
+  damageOverDiceSet = () => true,
   warn = console.warn,
 }) {
   let warned = false;
@@ -187,7 +190,11 @@ export function createLookResolver({
     if (ctx.worldDefault) refs.push(ctx.worldDefault);
     if (!ctx.locked && !Object.hasOwn(looks, 'global')) refs.push(FALLBACK_REF);
 
-    if (system === null) system = refs.map(systemOf).find(Boolean) ?? null;
+    // damageOverDiceSet: a damage-themed die keeps its damage look, so the player's dice set (a
+    // module set's 3D models and faces, whose own material would hide it) is not taken from their
+    // refs. A system the roll names itself (options.appearance) still applies.
+    const damageWins = !!theme?.appearance && damageOverDiceSet() !== false;
+    if (system === null && !damageWins) system = refs.map(systemOf).find(Boolean) ?? null;
 
     const preset = type ? registry.presetFor?.(system ?? STANDARD, type) : null;
     if (!appearance) {
