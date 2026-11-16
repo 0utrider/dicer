@@ -252,21 +252,23 @@ describe('dock', () => {
     expect(die('d6').querySelector('.dicer-chat-tray-count').textContent).toBe('2');
     expect(die('d6').classList.contains('has-dice')).toBe(true);
     expect(die('d4').classList.contains('has-dice')).toBe(false);
-    expect(rollButton().textContent).toContain('2d6 + 1d20');
+    // the button just says Roll; the formula leads its tooltip
+    expect(rollButton().textContent).toBe('DICER.ChatTray.Roll');
+    expect(rollButton().dataset.tooltip).toContain('2d6 + 1d20');
     expect(rollButton().disabled).toBe(false);
     rightClick(die('d6'));
     expect(die('d6').querySelector('.dicer-chat-tray-count').textContent).toBe('1');
     // the modifier stepper and typing
     click(dock().querySelector('[data-mod="1"]'));
     click(dock().querySelector('[data-mod="1"]'));
-    expect(rollButton().textContent).toContain('1d6 + 1d20 + 2');
+    expect(rollButton().dataset.tooltip).toContain('1d6 + 1d20 + 2');
     const mod = dock().querySelector('.dicer-chat-tray-mod input');
     mod.value = '-4';
     mod.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(rollButton().textContent).toContain('1d6 + 1d20 - 4');
+    expect(rollButton().dataset.tooltip).toContain('1d6 + 1d20 - 4');
     // advantage on the d20
     click(dock().querySelector('[data-adv="1"]'));
-    expect(rollButton().textContent).toContain('2d20kh');
+    expect(rollButton().dataset.tooltip).toContain('2d20kh');
     expect(dock().querySelector('[data-adv="1"]').getAttribute('aria-pressed')).toBe('true');
     // clear
     click(dock().querySelector('[data-act="clear"]'));
@@ -330,7 +332,7 @@ describe('dock', () => {
     const m20 = dock().querySelector('.dicer-chat-tray-menu');
     expect(m20.querySelectorAll('[data-adv]')).toHaveLength(2);
     click(m20.querySelector('[data-adv="1"]'));
-    expect(rollButton().textContent).toContain('5d6 + 2d20kh');
+    expect(rollButton().dataset.tooltip).toContain('5d6 + 2d20kh');
     // a short press is a click, no menu
     pointer(die('d4'), 'pointerdown');
     vi.advanceTimersByTime(HOLD_MS / 2);
@@ -506,7 +508,7 @@ describe('trayProfile: the tray follows the world system', () => {
     expect(up.dataset.tooltip).toBe('DICER.ChatTray.FortuneHint');
     click(die('d20'));
     click(up);
-    expect(rollButton().textContent).toContain('2d20kh');
+    expect(rollButton().dataset.tooltip).toContain('2d20kh');
   });
 });
 
@@ -539,7 +541,7 @@ describe('Daggerheart and Draw Steel helpers add a term instead of keeping a die
     click(die('d10'));
     click(die('d10'));
     click(edge);
-    expect(rollButton().textContent).toContain('2d10 + 2');
+    expect(rollButton().dataset.tooltip).toContain('2d10 + 2');
     die('d10').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
     vi.advanceTimersByTime(HOLD_MS + 10);
     expect(dock().querySelectorAll('.dicer-chat-tray-menu [data-adv]')).toHaveLength(2);
@@ -601,7 +603,7 @@ describe('each user customizes their own tray (flag dicer.chatTray)', () => {
     dockTray(undefined, vi.fn());
     click(die('d20'));
     click(dock().querySelector('[data-adv="1"]'));
-    expect(rollButton().textContent).toContain('2d20kh');
+    expect(rollButton().dataset.tooltip).toContain('2d20kh');
     openPanel();
     const helper = dock().querySelector('[data-pref="helper"]');
     expect(helper.parentElement.textContent).toBe('DICER.ChatTray.CustomizeHelper:DICER.ChatTray.Adv,DICER.ChatTray.Dis');
@@ -609,7 +611,7 @@ describe('each user customizes their own tray (flag dicer.chatTray)', () => {
     helper.dispatchEvent(new Event('change', { bubbles: true }));
     await flush();
     expect(dock().querySelectorAll('.dicer-chat-tray-bar [data-adv]')).toHaveLength(0);
-    expect(rollButton().textContent).not.toContain('kh');
+    expect(rollButton().dataset.tooltip).not.toContain('kh');
     const mod = dock().querySelector('[data-pref="modifier"]');
     mod.checked = false;
     mod.dispatchEvent(new Event('change', { bubbles: true }));
@@ -668,9 +670,9 @@ describe('Daggerheart rolls Duality through the system pipeline', () => {
   test('Roll with nothing picked is a Duality roll; advantage goes in as the system state', async () => {
     dockTray(undefined, vi.fn());
     expect(rollButton().disabled).toBe(false);
-    expect(rollButton().textContent).toBe('DICER.ChatTray.Duality');
+    expect(rollButton().dataset.tooltip).toContain('DICER.ChatTray.Duality:');
     click(dock().querySelector('[data-adv="1"]'));
-    expect(rollButton().textContent).toBe('DICER.ChatTray.DualityAdv');
+    expect(rollButton().dataset.tooltip).toContain('DICER.ChatTray.DualityAdv:');
     click(rollButton());
     await flush();
     expect(moveBuild).toHaveBeenCalledWith(
@@ -678,7 +680,7 @@ describe('Daggerheart rolls Duality through the system pipeline', () => {
     );
     expect(dualityBuild).toHaveBeenCalledWith({ built: moveBuild.mock.calls[0][0] });
     expect(made).toHaveLength(0); // no plain roll
-    expect(rollButton().textContent).toBe('DICER.ChatTray.Duality'); // cleared
+    expect(rollButton().dataset.tooltip).toContain('DICER.ChatTray.Duality:'); // cleared
   });
 
   test('other dice roll as a plain formula', async () => {

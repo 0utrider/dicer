@@ -1836,7 +1836,6 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-chat-tray-bar {
   display: flex;
-  flex-wrap: wrap; /* the Roll button takes its own row when its formula does not fit */
   align-items: center;
   gap: 3px;
   min-width: 0;
@@ -1926,8 +1925,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-chat-tray-bar .dicer-chat-tray-roll {
   flex: 1 1 auto;
-  /* never squeezed below its formula: it wraps to a row of its own instead (ellipsis only past a full row) */
-  min-width: min(100%, max-content);
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1951,11 +1949,44 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
     0 0 12px color-mix(in srgb, var(--dicer-ct-accent) 70%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
-.dicer-chat-tray-roll i {
-  transition: transform 300ms ease;
+/* The d20 rocks while there is something to roll, and tumbles on hover. */
+.dicer-chat-tray-roll:not(:disabled) i {
+  animation: dicer-ct-rock 2.4s ease-in-out infinite;
 }
 .dicer-chat-tray-roll:hover:not(:disabled) i {
-  transform: rotate(180deg);
+  animation: dicer-ct-tumble 0.7s cubic-bezier(0.3, 0.7, 0.4, 1) infinite;
+}
+@keyframes dicer-ct-rock {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0deg);
+  }
+  70% {
+    transform: rotate(-18deg) scale(1.08);
+  }
+  80% {
+    transform: rotate(14deg) scale(1.08);
+  }
+  90% {
+    transform: rotate(-6deg);
+  }
+}
+@keyframes dicer-ct-tumble {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  40% {
+    transform: rotate(200deg) translateY(-2px) scale(1.12);
+  }
+  100% {
+    transform: rotate(360deg) translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dicer-chat-tray-roll i {
+    animation: none !important;
+  }
 }
 .dicer-chat-tray-formula {
   overflow: hidden;

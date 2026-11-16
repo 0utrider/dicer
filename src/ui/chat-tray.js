@@ -353,7 +353,7 @@ function build() {
     ]),
     btn({ 'data-act': 'roll', class: 'dicer-chat-tray-roll' }, loc('DICER.ChatTray.RollHint'), [
       icon('fa-dice-d20'),
-      h('span', { class: 'dicer-chat-tray-formula' }),
+      h('span', { class: 'dicer-chat-tray-formula', text: loc('DICER.ChatTray.Roll') }),
     ]),
   ]);
   return h('section', { class: 'dicer-chat-tray', 'aria-label': loc('DICER.ChatTray.Label') }, [
@@ -377,16 +377,19 @@ function paint({ syncModifier = true } = {}) {
   const roll = dockEl.querySelector('[data-act="roll"]');
   const duality = isDuality(state);
   roll.disabled = !duality && !formulaFromCounts(state.counts, 0);
-  roll.querySelector('.dicer-chat-tray-formula').textContent = duality
+  // The button just says Roll; what it rolls (the formula, or Duality) leads its tooltip.
+  const what = duality
     ? loc(state.adv > 0 ? 'DICER.ChatTray.DualityAdv' : state.adv < 0 ? 'DICER.ChatTray.DualityDis' : 'DICER.ChatTray.Duality')
-    : formula || loc('DICER.ChatTray.Roll');
+    : formula;
   const mod = dockEl.querySelector('.dicer-chat-tray-mod input');
   if (syncModifier && mod) mod.value = String(modOf(state.modifier));
   const throwing = canThrow();
   dockEl.classList.toggle('can-throw', throwing);
-  roll.dataset.tooltip = loc(
+  const hint = loc(
     duality ? 'DICER.ChatTray.DualityHint' : throwing ? 'DICER.ChatTray.RollThrowHint' : 'DICER.ChatTray.RollHint',
   );
+  roll.dataset.tooltip = what ? `${what}: ${hint}` : hint;
+  roll.setAttribute('aria-label', roll.dataset.tooltip);
 }
 
 /** Tints the die buttons as this user's dice look (CSS vars; none: the plain style). */
