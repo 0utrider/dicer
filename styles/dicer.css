@@ -1878,3 +1878,42 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-chat-tray-mod[hidden] {
   display: none;
 }
+
+/* Face images (appearance editor, Numbers): one slot per face of the previewed die. */
+.dicer-appearance-editor .dicer-ae-face-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 4px;
+}
+.dicer-appearance-editor .dicer-ae-face {
+  position: relative;
+}
+.dicer-appearance-editor .dicer-ae-face-pick {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  font-weight: bold;
+}
+.dicer-appearance-editor .dicer-ae-face-pick img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: none;
+}
+.dicer-appearance-editor .dicer-ae-face.has-image .dicer-ae-face-pick {
+  outline: 1px solid var(--color-warm-2, #ff6400);
+}
+.dicer-appearance-editor .dicer-ae-face-clear {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  font-size: 9px;
+  line-height: 1;
+  border-radius: 50%;
+}

@@ -3896,3 +3896,42 @@ describe('mineShown / onLayer (diceAboveWindows)', () => {
     warn.mockRestore();
   });
 });
+
+describe('a look’s own face images', () => {
+  const ft = () => ({ acquire: vi.fn(() => new Promise(() => {})), release: vi.fn() });
+  const look = { ...DEFAULT_APPEARANCE, faces: { d6: { 6: 'worlds/w/six.webp' } } };
+
+  test('a die of that type gets a look face set; other types and relabelled dice do not', () => {
+    const faceTextures = ft();
+    const { box } = setup({ faceTextures });
+    box.roll([
+      { type: 'd6', value: 6, appearance: look },
+      { type: 'd20', value: 3, appearance: look },
+      { type: 'd6', value: 2, appearance: look, variant: 'dF' },
+    ]);
+    expect(faceTextures.acquire).toHaveBeenCalledTimes(1);
+    const set = faceTextures.acquire.mock.calls[0][0];
+    expect(set.key.startsWith('look|d6|')).toBe(true);
+    expect(set.labels.find((l) => l.kind === 'image')).toEqual({ kind: 'image', url: 'worlds/w/six.webp' });
+    box.clear();
+  });
+
+  test('presetFaces off drops preset images but never the look’s own', () => {
+    const faceTextures = ft();
+    const { box } = setup({ faceTextures, faceLayers: () => false });
+    const preset = { key: 'sys|d6|x', labels: getShape('d6').values.map(() => ({ kind: 'image', url: 'p.png' })) };
+    box.roll([{ type: 'd6', value: 1, faces: preset }]);
+    expect(faceTextures.acquire).not.toHaveBeenCalled();
+    box.roll([{ type: 'd6', value: 6, appearance: look }]);
+    expect(faceTextures.acquire).toHaveBeenCalledTimes(1);
+    box.clear();
+  });
+
+  test('a ghost never shows them', () => {
+    const faceTextures = ft();
+    const { box } = setup({ faceTextures });
+    box.roll([{ type: 'd6', value: 6, appearance: look, ghost: true }]);
+    expect(faceTextures.acquire).not.toHaveBeenCalled();
+    box.clear();
+  });
+});

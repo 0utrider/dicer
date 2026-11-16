@@ -158,7 +158,7 @@ export function createFaceTextures({
     pixels.forEach((px, i) => {
       if (!px) return;
       layers[i] = used.length;
-      tint[i] = labels[i].kind === 'text' ? 1 : 0;
+      tint[i] = labels[i].kind === 'text' || labels[i].tint === true ? 1 : 0; // a tinted image: a mask too
       used.push(px);
     });
     if (!used.length) return { texture: null, layers, tint };

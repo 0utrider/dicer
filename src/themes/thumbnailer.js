@@ -12,6 +12,8 @@ import { restingQuaternion, minY } from '../core/resting.js';
 import { appearanceKey, normalizeAppearance, needsLookExtras } from '../look/appearance.js';
 import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import { createTurntable } from './turntable.js';
+import { lookFacesFor } from '../compat/faces.js';
+import { createFaceTextures } from '../render/face-textures.js';
 
 const ENV_RESOLUTION = 128;
 /** The face shown on top per type (6 and 9 show the underline mark). */
@@ -214,16 +216,35 @@ export function createThumbnailer({
       ? shape.values.map((v) => labelFor('d10', v * 10, 'd100tens'))
       : shape.values.map((v) => labelFor(shapeType, v));
 
+  // The look's own face images (appearance.faces): this thumbnailer's face-layer cache, made on
+  // first use. d100 shows its tens die, which has no images.
+  let faceCache = null;
+  const faceSetOf = (dieType, appearance) =>
+    dieType === 'd100' ? undefined : lookFacesFor(dieType, normalizeAppearance(appearance));
+  const acquireFaces = (set) => (faceCache ??= createFaceTextures()).acquire(set);
+  /** The labels with the faces drawn from layers left empty (as DiceBox does). */
+  const layered = (labels, tex) => (tex?.texture ? labels.map((l, i) => (tex.layers[i] >= 0 ? '' : l)) : labels);
+
   async function renderOne(theme, dieType, dieAtlas = atlas) {
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
+    const set = faceSetOf(dieType, appearance);
+    const tex = set ? await acquireFaces(set) : null;
+    try {
+      return await renderLook(appearance, dieType, dieAtlas, tex);
+    } finally {
+      if (set) faceCache.release(set);
+    }
+  }
+
+  async function renderLook(appearance, dieType, dieAtlas, tex) {
     const shapeType = shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
-    const labels = labelsOf(dieType, shapeType, shape);
+    const labels = layered(labelsOf(dieType, shapeType, shape), tex);
     const api = sceneApi; // dispose() may null the module state while the blob is pending
     const cam = camera;
     const cvs = canvas;
     const rnd = renderer;
-    const material = createDiceMaterial(appearance, dieAtlas, shape, labels, flags);
+    const material = createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null);
     const releaseAtlas = holdAtlas(dieAtlas);
     // The geometry is acquired only once the material exists; anything after it that throws
     // gives it back.
@@ -341,6 +362,29 @@ export function createThumbnailer({
     let handle = 0;
     let last = null;
     let stopped = false;
+    let faces = null; // {set, tex}: the look's face images, held while this preview shows them
+
+    /** The face layers of the current look, or null; a set still loading rebuilds the die once in. */
+    function facesNow() {
+      const set = faceSetOf(dieType, appearance);
+      if (faces?.set.key === set?.key) return faces?.tex ?? null;
+      dropFaces();
+      if (!set) return null;
+      const mine = (faces = { set, tex: null });
+      acquireFaces(set).then((t) => {
+        if (faces !== mine || stopped) return;
+        mine.tex = t;
+        if (t?.texture && res) {
+          free();
+          redraw();
+        }
+      });
+      return null;
+    }
+    function dropFaces() {
+      if (faces) faceCache.release(faces.set);
+      faces = null;
+    }
     const visible = () => !doc || doc.visibilityState === undefined || doc.visibilityState === 'visible';
 
     const free = () => {
@@ -362,10 +406,11 @@ export function createThumbnailer({
       if (!renderer || broken) return false;
       const shapeType = shapeTypeOf(dieType, appearance);
       const shape = getShape(shapeType);
-      const labels = labelsOf(dieType, shapeType, shape);
+      const tex = facesNow();
+      const labels = layered(labelsOf(dieType, shapeType, shape), tex);
       const fontId = fontOf(appearance);
       const dieAtlas = readyAtlas(fontId);
-      const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags);
+      const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null);
       const releaseAtlas = holdAtlas(dieAtlas);
       if (!dieAtlas) {
         // the serif stands in: rebuild the die once the font is ready
@@ -529,6 +574,7 @@ export function createThumbnailer({
         doc?.removeEventListener?.('visibilitychange', onVisibility);
         previews.delete(p);
         free();
+        dropFaces();
         if (lost) hooks.onLost?.();
       },
       stop() {

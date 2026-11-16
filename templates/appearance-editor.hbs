@@ -207,6 +207,28 @@
             </div>
           {{/if}}
           <p class="dicer-ae-font-msg" role="status" {{#unless fontMessage}}hidden{{/unless}}><i class="fa-solid fa-triangle-exclamation"></i> <span>{{fontMessage}}</span></p>
+          <div class="dicer-field dicer-ae-faces">
+            <span>{{localize "DICER.Appearance.Faces.Title"}}{{#if faceType}} ({{faceType}}){{/if}}</span>
+            {{#if faceType}}
+              <p class="dicer-hint">{{localize "DICER.Appearance.Faces.Hint"}}</p>
+              <div class="dicer-ae-face-grid">
+                {{#each faceSlots}}
+                  <div class="dicer-ae-face {{#if url}}has-image{{/if}}">
+                    <button type="button" class="dicer-ae-face-pick" data-action="pickFace" data-value="{{value}}" {{#unless ../canBrowse}}disabled{{/unless}} data-tooltip="DICER.Appearance.Faces.Pick" aria-label="{{localize "DICER.Appearance.Faces.Pick"}} {{label}}">
+                      {{#if url}}<img src="{{url}}" alt="">{{else}}<span>{{label}}</span>{{/if}}
+                    </button>
+                    {{#if url}}<button type="button" class="dicer-ae-face-clear" data-action="clearFace" data-value="{{value}}" data-tooltip="DICER.Appearance.Faces.Clear" aria-label="{{localize "DICER.Appearance.Faces.Clear"}} {{label}}"><i class="fa-solid fa-xmark"></i></button>{{/if}}
+                  </div>
+                {{/each}}
+              </div>
+              <div class="dicer-ae-row dicer-ae-toggles">
+                <label class="dicer-ae-toggle"><input type="checkbox" name="facesTint" {{#if form.facesTint}}checked{{/if}}><span>{{localize "DICER.Appearance.Faces.Tint"}}</span></label>
+                {{#if faceAny}}<button type="button" class="dicer-ae-pill" data-action="clearFaces">{{localize "DICER.Appearance.Faces.ClearAll"}}</button>{{/if}}
+              </div>
+            {{else}}
+              <p class="dicer-hint">{{localize "DICER.Appearance.Faces.NoTensDie"}}</p>
+            {{/if}}
+          </div>
         </div>
       </details>
 

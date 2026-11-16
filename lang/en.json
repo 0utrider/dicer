@@ -868,7 +868,16 @@
       "Pasted": "Look pasted.",
       "Imported": "Look imported.",
       "BadLook": "That is not a Dicer look (expected the JSON of one appearance).",
-      "ClipboardUnavailable": "The clipboard is not available here."
+      "ClipboardUnavailable": "The clipboard is not available here.",
+      "Faces": {
+        "Title": "Face images",
+        "Hint": "Pick an image for any face of this die; the others keep their numbers. Pick another die above the preview to give it images too.",
+        "Pick": "Pick an image for face",
+        "Clear": "Show the number again on face",
+        "ClearAll": "Clear this die's images",
+        "Tint": "Colour the images like the numbers (for one-colour images with transparency)",
+        "NoTensDie": "A d100 shows its tens die, which has no face images: pick another die above the preview."
+      }
     },
     "Hand": {
       "Hint": "Grab the dice, shake them, and flick to throw.",

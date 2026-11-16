@@ -92,6 +92,24 @@ function fromLegacy(i) {
   return out;
 }
 
+const FACE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+// an image path in the Foundry data folder, or an http(s) url: no other scheme
+const FACE_IMAGE = /^(?:https?:\/\/[^<>"]+|[^:<>"]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"]*)?$/i;
+/**
+ * The look's face images: {faces: {[die type]: {[face value]: path}}, facesTint?}, only valid
+ * entries, or nothing (no field: a look without images keeps its key).
+ */
+function faceImages(f, tint) {
+  const faces = {};
+  for (const t of FACE_TYPES) {
+    const m = {};
+    for (const [v, url] of Object.entries(isObj(f?.[t]) ? f[t] : {}))
+      if (/^\d{1,3}$/.test(v) && typeof url === 'string' && url.length < 400 && FACE_IMAGE.test(url)) m[v] = url;
+    if (Object.keys(m).length) faces[t] = m;
+  }
+  return Object.keys(faces).length ? { faces, ...(tint === true ? { facesTint: true } : {}) } : {};
+}
+
 export function normalizeAppearance(input) {
   try {
     const D = DEFAULT_APPEARANCE;
@@ -154,6 +172,7 @@ export function normalizeAppearance(input) {
       },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
       shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
+      ...faceImages(i.faces, i.facesTint),
     };
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_APPEARANCE));

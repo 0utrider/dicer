@@ -13,6 +13,7 @@ import { DIE_TYPES, SOUND_MATERIALS, KNOWN_EFFECTS, BUILTIN_THEMES, normalizeThe
 import { USER_SOUNDS } from '../audio/sound-names.js';
 import { LOOKS } from '../look/looks.js';
 import { stripActive } from '../look/appearance.js';
+import { getShape, labelFor } from '../core/dice-shapes.js';
 import { PET_KINDS, readPet } from '../pet/pet-for.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm } from './theme-form.js';
@@ -40,6 +41,7 @@ import {
   visibleSections,
   fontInvalid,
   setField,
+  setFaceImage,
   addOverride,
   removeOverride,
   looksFromForms,
@@ -55,6 +57,8 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 /** The preview dice: the per-type looks plus the coin, which only previews (it wears the default look). */
 const PREVIEW_DICE = [...DIE_TYPES, 'd2'];
+/** Die types a look can give face images (d100 shows its tens die, which has none). */
+const FACE_DICE = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 const MODULE = 'dicer';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const notify = (kind, message) => globalThis.ui?.notifications?.[kind]?.(message);
@@ -146,6 +150,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       editType: AppearanceEditor.#onEditType,
       sameAsDefault: AppearanceEditor.#onSameAsDefault,
       pickFont: AppearanceEditor.#onPickFont,
+      pickFace: AppearanceEditor.#onPickFace,
+      clearFace: AppearanceEditor.#onClearFace,
+      clearFaces: AppearanceEditor.#onClearFaces,
       copyLook: AppearanceEditor.#onCopyLook,
       pasteLook: AppearanceEditor.#onPasteLook,
       exportLook: AppearanceEditor.#onExportLook,
@@ -294,6 +301,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       fontSuggestions: FONT_SUGGESTIONS,
       fontMessage,
       canBrowse: Boolean(globalThis.foundry?.applications?.apps?.FilePicker),
+      ...this.#faceContext(form),
       edgeSteps: EDGE_STEPS.map((value, i) => ({
         value,
         label: loc(`DICER.Appearance.Edge.${EDGE_NAMES[i]}`),
@@ -640,6 +648,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     }
     this.#scheduler.schedule(this.#previewTheme());
     await this.#scheduler.flush();
+    if (this.element?.querySelector('.dicer-ae-faces')) await this.render(); // its face slots
   }
 
   static async #onEditType(event, target) {
@@ -664,6 +673,44 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     if (this.#editing === type) this.#editing = 'default';
     this.#scheduler.schedule(this.#previewTheme());
     await this.render();
+  }
+
+  /** The face images of the previewed die type: one slot per face (d100 has none: its tens die). */
+  #faceContext(form) {
+    const type = FACE_DICE.includes(this.#dieType) ? this.#dieType : null;
+    const map = (type && form.faces?.[type]) || {};
+    return {
+      faceType: type,
+      faceSlots: type ? [...getShape(type).values].sort((x, y) => x - y).map((value) => ({ value, label: labelFor(type, value), url: map[value] ?? '' })) : [],
+      faceAny: Object.keys(map).length > 0,
+    };
+  }
+
+  /** Face images are edited for the previewed die; the form changes, then the preview and the slots. */
+  async #setFace(value, url) {
+    const type = this.#dieType;
+    if (!FACE_DICE.includes(type)) return;
+    if (value === null) {
+      const faces = { ...this.#form.faces };
+      delete faces[type];
+      this.#form = { ...this.#form, faces };
+    } else this.#form = setFaceImage(this.#form, type, value, url);
+    this.#scheduler.schedule(this.#previewTheme());
+    await this.render();
+  }
+
+  static async #onPickFace(event, target) {
+    const value = Number(target.dataset.value);
+    const path = await this.#pickFile('image', this.#form.faces?.[this.#dieType]?.[value] ?? '');
+    if (path) await this.#setFace(value, String(path));
+  }
+
+  static async #onClearFace(event, target) {
+    await this.#setFace(Number(target.dataset.value), '');
+  }
+
+  static async #onClearFaces() {
+    await this.#setFace(null);
   }
 
   static #onPickFont() {

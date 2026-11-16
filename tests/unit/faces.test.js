@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { facesFor, atlasGlyphTest, FATE_FACES } from '../../src/compat/faces.js';
+import { facesFor, atlasGlyphTest, FATE_FACES, lookFacesFor } from '../../src/compat/faces.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
-import { getShape } from '../../src/core/dice-shapes.js';
+import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 
 const atlas = parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8')));
 const digitsOnly = atlasGlyphTest(atlas);
@@ -72,4 +72,33 @@ test('a throwing atlas test classifies as text', () => {
     throw new Error('x');
   }).labels;
   expect(face.kind).toBe('text');
+});
+
+describe('lookFacesFor: the face images of a look', () => {
+  const look = (faces, facesTint) => ({ faces, ...(facesTint ? { facesTint } : {}) });
+
+  test('an image on the faces it names, numbers elsewhere; no images: base as it is', () => {
+    const set = lookFacesFor('d6', look({ d6: { 6: 'worlds/w/logo.webp' } }));
+    const values = getShape('d6').values;
+    set.labels.forEach((l, i) =>
+      expect(l).toEqual(values[i] === 6 ? { kind: 'image', url: 'worlds/w/logo.webp' } : { kind: 'glyph', text: labelFor('d6', values[i]) }),
+    );
+    expect(set.key.startsWith('look|d6|0|')).toBe(true);
+    const base = { key: 'p', labels: [] };
+    expect(lookFacesFor('d20', look({ d6: { 6: 'a.png' } }), base)).toBe(base);
+    expect(lookFacesFor('d6', {}, undefined)).toBeUndefined();
+  });
+
+  test('over a preset: its labels stay on the other faces; the key follows both and the tint', () => {
+    const base = { key: 'sys|d6|x', labels: getShape('d6').values.map((v) => ({ kind: 'text', text: `p${v}` })) };
+    const a = lookFacesFor('d6', look({ d6: { 1: 'a.png' } }), base);
+    const i1 = getShape('d6').values.indexOf(1);
+    expect(a.labels[i1]).toEqual({ kind: 'image', url: 'a.png' });
+    expect(a.labels.filter((l) => l.kind === 'text')).toHaveLength(5);
+    expect(a.key.endsWith('|sys|d6|x')).toBe(true);
+    const tinted = lookFacesFor('d6', look({ d6: { 1: 'a.png' } }, true), base);
+    expect(tinted.labels[i1]).toEqual({ kind: 'image', url: 'a.png', tint: true });
+    expect(tinted.key).not.toBe(a.key);
+    expect(lookFacesFor('d6', look({ d6: { 1: 'b.png' } }), base).key).not.toBe(a.key);
+  });
 });
