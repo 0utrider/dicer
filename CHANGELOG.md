@@ -1,7 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
+A big one: a chat dice tray, roll filters, Dice So Nice module dice sets with their 3D models and art, your own images on dice, and pets you can pet.
+
+- **Flat checks in the dice tray (Pathfinder 2e, Starfinder 2e).** DC 5 and DC 11 buttons after the dice: one click rolls a flat check (with Fortune or Misfortune if on) and posts it as the system's own check card, the result coloured by its degree of success. Hide them in the tray's Customize panel.
+- **Face images for coins, Fate dice and the d100.** Themes can picture heads and tails, the Fate die's +, blank and −, and the d100's tens (10 to 00); the dice editor has preview buttons and face slots for them.
+- **Importing a module dice set keeps its images.** Import as theme now carries a set's image faces (a natural 20 icon, full face art, coins, Fate dice, d100 tens) into your theme; only 3D models and word or symbol faces stay with the set, and the note says so. Plain numbered faces are no longer reported as lost.
+- **Throw shows the real set.** The theme browser's Throw button rolls a module dice set with its own models and faces, not just its colours.
+- **A better-looking dice tray.** A solid panel (the chat no longer shows through), dice tiles that glow when picked, a joined modifier, a Fortune / Misfortune switch and a Roll button with a rocking d20 (the formula is in its tooltip). It lines up with the chat box exactly.
+- **Fixed:** pets set to rest in a top corner rested at the bottom instead (Foundry v14's empty interface boxes were taken for buttons).
 - **Roll filters.** Choose which rolls you see as 3D dice: initiative, roll tables, rolls during combat, damage, other players' rolls, blind and private rolls, and big rolls. Each can show, show only your own, or skip; the GM sets a world default (Configure Settings, Dicer, Roll filters).
 - **Bigger dice.** Dice size (and Pet size) now go up to 3x.
 - **Pet size.** Pets have their own **Pet size** setting, so bigger dice no longer mean bigger pets.
