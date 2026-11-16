@@ -396,14 +396,22 @@ describe('reactions in the layer', () => {
     }
   });
 
-  test('each reaction its voice: a cough for smoke, a shiver for cold, a coo for healing, a warble for mental, an "eep!" otherwise', () => {
+  test('each element its own voice (fire and lava share the smoke cough); every voice is a synthesized pet sound', async () => {
+    const { ELEMENT_FX } = await import('../../src/pet/chunk/element-fx.js');
+    const { PET_SOUNDS } = await import('../../src/audio/sound-names.js');
+    const sounds = Object.entries(ELEMENT_FX).filter(([el]) => el !== 'lava').map(([, fx]) => fx.sound);
+    expect(new Set(sounds).size).toBe(sounds.length);
+    for (const s of sounds) expect(PET_SOUNDS).toContain(s);
     for (const [damageType, sound] of [
       ['fire', 'petCough'],
-      ['poison', 'petCough'],
+      ['poison', 'petBleh'],
       ['cold', 'petShiver'],
+      ['electricity', 'petZap'],
+      ['acid', 'petFizz'],
       ['vitality', 'petCoo'],
       ['mental', 'petDizzy'],
-      ['force', 'petYelp'],
+      ['force', 'petOof'],
+      ['bludgeoning', 'petBonk'],
     ]) {
       const m = make();
       rollToRest(m);

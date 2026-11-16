@@ -460,6 +460,71 @@ const RESULT = {
     yield* voice(buf, sr, { freq: 760, dur: 0.6, gain: 0.7, attack: 0.03, tau: 0.5, partials: [[1, 1, 1], [2, 0.15, 0.6]], vib: 0.08, vibRate: 5, vibDelay: 0, pitch: (t) => 1.05 - 0.35 * Math.min(1, t / 0.6) });
     yield* reverb(buf, sr, { mix: 0.12, decay: 0.35 });
   },
+  *petZap(sr, buf, rand) {
+    // Shocked: a buzzing "bzzt" that jumps into a squeak.
+    const n = Math.min(buf.length, Math.floor(0.16 * sr));
+    let ph = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      ph += (TAU * 330) / sr;
+      buf[i] += 0.35 * envAt(t, 0.004, 0.1, 0.16) * Math.sign(Math.sin(ph)) * (0.6 + 0.4 * Math.sin(TAU * 60 * t));
+      if ((i & BLOCK_MASK) === BLOCK_MASK) yield;
+    }
+    yield* clicks(buf, sr, rand, { count: 6, from: 0, to: 0.14, gain: 0.5 });
+    yield* voice(buf, sr, { freq: 1050, start: 0.14, dur: 0.16, gain: 0.7, attack: 0.005, tau: 0.08, partials: [[1, 1, 1], [2, 0.2, 0.6]], pitch: (t) => 0.85 + 0.4 * Math.min(1, t / 0.06) });
+  },
+  *petFizz(sr, buf, rand) {
+    // Acid: a sizzling "tsss" and a squeal climbing over it.
+    yield* noiseBand(buf, sr, rand, { dur: 0.45, fc: () => 5200, q: 1.5, amp: (t) => envAt(t, 0.01, 0.25, 0.45) * (0.7 + 0.3 * Math.sin(TAU * 23 * t)), gain: 0.5 });
+    yield* voice(buf, sr, { freq: 820, start: 0.06, dur: 0.3, gain: 0.6, attack: 0.02, tau: 0.2, partials: [[1, 1, 1], [2, 0.2, 0.6]], pitch: (t) => 0.9 + 0.35 * Math.min(1, t / 0.25) });
+  },
+  *petRing(sr, buf) {
+    // Sonic: ears ringing, a thin high "eeee" that trembles and fades.
+    yield* voice(buf, sr, { freq: 1700, dur: 0.6, gain: 0.45, attack: 0.01, tau: 0.35, partials: [[1, 1, 1], [1.006, 0.8, 1]], vib: 0.02, vibRate: 11, vibDelay: 0 });
+    yield* voice(buf, sr, { freq: 700, dur: 0.12, gain: 0.5, attack: 0.004, tau: 0.05, partials: [[1, 1, 1], [2, 0.3, 0.6]] });
+    yield* reverb(buf, sr, { mix: 0.2, decay: 0.5 });
+  },
+  *petOof(sr, buf, rand) {
+    // Force: knocked back, a short low "oof" with a puff of air.
+    yield* noiseBand(buf, sr, rand, { dur: 0.12, fc: () => 700, q: 0.7, amp: (t) => envAt(t, 0.004, 0.04, 0.12), gain: 0.6 });
+    yield* voice(buf, sr, { freq: 300, dur: 0.22, gain: 0.8, attack: 0.008, tau: 0.09, partials: [[1, 1, 1], [2, 0.5, 0.7], [3, 0.2, 0.5]], pitch: (t) => 1.1 - 0.3 * Math.min(1, t / 0.2) });
+  },
+  *petOw(sr, buf) {
+    // Bleeding: a little hurt "ow-ow", the second lower.
+    const o = { attack: 0.015, tau: 0.1, partials: [[1, 1, 1], [2, 0.35, 0.6], [3, 0.12, 0.5]], gain: 0.75 };
+    yield* voice(buf, sr, { ...o, freq: 740, start: 0, dur: 0.17, pitch: (t) => 1 + 0.15 * Math.sin(Math.min(1, t / 0.17) * Math.PI) - 0.15 * (t / 0.17) });
+    yield* voice(buf, sr, { ...o, freq: 620, start: 0.19, dur: 0.2, pitch: (t) => 1 + 0.1 * Math.sin(Math.min(1, t / 0.2) * Math.PI) - 0.2 * (t / 0.2) });
+  },
+  *petWhoa(sr, buf, rand) {
+    // Slashing: a blade's swish past it, and a startled "whoa!".
+    yield* noiseBand(buf, sr, rand, { dur: 0.16, fc: (t) => 1500 + 9000 * (t / 0.16), q: 2, amp: (t) => envAt(t, 0.02, 0.06, 0.16), gain: 0.5 });
+    yield* voice(buf, sr, { freq: 560, start: 0.12, dur: 0.3, gain: 0.75, attack: 0.02, tau: 0.18, partials: [[1, 1, 1], [2, 0.3, 0.6]], pitch: (t) => 0.85 + 0.35 * Math.sin(Math.min(1, t / 0.3) * Math.PI) });
+  },
+  *petYip(sr, buf) {
+    // Piercing: a sharp, short "yip!".
+    yield* voice(buf, sr, { freq: 1300, dur: 0.1, gain: 0.8, attack: 0.003, tau: 0.04, partials: [[1, 1, 1], [2, 0.3, 0.5]], pitch: (t) => 1.15 - 0.3 * Math.min(1, t / 0.1) });
+  },
+  *petBonk(sr, buf, rand) {
+    // Bludgeoning: a hollow "bonk" on its head and a dazed little "mm".
+    yield* addModes(buf, sr, [[520, 0.06, 0.8], [1310, 0.03, 0.35]]);
+    yield* noiseBand(buf, sr, rand, { dur: 0.05, fc: () => 900, q: 0.8, amp: (t) => Math.exp(-t / 0.012), gain: 0.5 });
+    yield* voice(buf, sr, { freq: 380, start: 0.12, dur: 0.22, gain: 0.5, attack: 0.03, tau: 0.15, partials: [[1, 1, 1], [2, 0.2, 0.6]], pitch: (t) => 1 - 0.15 * Math.min(1, t / 0.22) });
+  },
+  *petBleh(sr, buf, rand) {
+    // Poison: a queasy gag, "bleh", wobbling.
+    yield* voice(buf, sr, { freq: 360, dur: 0.38, gain: 0.7, attack: 0.02, tau: 0.25, partials: [[1, 1, 1], [2, 0.6, 0.7], [3, 0.35, 0.5]], vib: 0.05, vibRate: 9, vibDelay: 0.05, pitch: (t) => 1 - 0.2 * Math.min(1, t / 0.38) });
+    yield* noiseBand(buf, sr, rand, { dur: 0.3, fc: () => 500, q: 0.9, amp: (t) => envAt(t, 0.02, 0.15, 0.3), gain: 0.25 });
+  },
+  *petSpooked(sr, buf) {
+    // Void: a nervous, wavering low "ooo..." sinking away.
+    yield* voice(buf, sr, { freq: 440, dur: 0.6, gain: 0.65, attack: 0.06, tau: 0.5, partials: [[1, 1, 1], [1.5, 0.15, 0.6]], vib: 0.04, vibRate: 7, vibDelay: 0, pitch: (t) => 1 - 0.3 * Math.min(1, t / 0.6) });
+    yield* reverb(buf, sr, { mix: 0.3, decay: 0.7 });
+  },
+  *petWoo(sr, buf) {
+    // Spirit: an airy, ghostly "wooo" rising and falling.
+    yield* voice(buf, sr, { freq: 600, dur: 0.6, gain: 0.55, attack: 0.08, tau: 0.5, partials: [[1, 1, 1], [3, 0.1, 0.5]], vib: 0.025, vibRate: 4, vibDelay: 0.1, pitch: (t) => 0.9 + 0.3 * Math.sin(Math.min(1, t / 0.6) * Math.PI) });
+    yield* reverb(buf, sr, { mix: 0.35, decay: 0.8 });
+  },
 };
 
 const RESULT_DUR = {
@@ -482,6 +547,17 @@ const RESULT_DUR = {
   petCough: 0.36,
   petCoo: 0.7,
   petDizzy: 0.7,
+  petZap: 0.34,
+  petFizz: 0.5,
+  petRing: 0.7,
+  petOof: 0.3,
+  petOw: 0.42,
+  petWhoa: 0.46,
+  petYip: 0.14,
+  petBonk: 0.38,
+  petBleh: 0.42,
+  petSpooked: 0.8,
+  petWoo: 0.85,
 };
 
 /** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */

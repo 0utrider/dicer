@@ -16,31 +16,31 @@ export const ELEMENT_FX = Object.freeze({
   fire: { pose: 'scorch', sound: 'petCough', smoke: true },
   lava: { pose: 'scorch', sound: 'petCough', smoke: true },
   frost: { pose: 'shiver', sound: 'petShiver', tint: [[0.72, 0.88, 1], [0.02, 0.05, 0.1]] },
-  storm: { pose: 'bristle', sound: 'petYelp', sparks: true },
+  storm: { pose: 'bristle', sound: 'petZap', sparks: true },
   // it shudders as green bubbles fizz off its skin, tinted a sickly green
-  acid: { pose: 'shiver', sound: 'petYelp', tint: [[0.72, 1, 0.55], [0.02, 0.07, 0]], motes: { pattern: 'bubble', colors: [[0.45, 1, 0.15], [0.8, 1, 0.35]] } },
+  acid: { pose: 'shiver', sound: 'petFizz', tint: [[0.72, 1, 0.55], [0.02, 0.07, 0]], motes: { pattern: 'bubble', colors: [[0.45, 1, 0.15], [0.8, 1, 0.35]] } },
   // a green haze hangs about it and it goes queasy green
-  poison: { pose: 'shiver', sound: 'petCough', tint: [[0.78, 0.95, 0.6], [0.01, 0.04, 0]], puffs: { pattern: 'cloud', color: [0.18, 0.42, 0.08] } },
+  poison: { pose: 'shiver', sound: 'petBleh', tint: [[0.78, 0.95, 0.6], [0.01, 0.04, 0]], puffs: { pattern: 'cloud', color: [0.18, 0.42, 0.08] } },
   // dark motes sink into it and it goes dim and violet
-  void: { pose: 'shiver', sound: 'petShiver', tint: [[0.55, 0.45, 0.75], [0.03, 0, 0.06]], puffs: { pattern: 'sink', color: [0.06, 0.01, 0.1] } },
+  void: { pose: 'shiver', sound: 'petSpooked', tint: [[0.55, 0.45, 0.75], [0.03, 0, 0.06]], puffs: { pattern: 'sink', color: [0.06, 0.01, 0.1] } },
   // healing: a happy wiggle under rising golden motes
   vitality: { pose: 'pet', sound: 'petCoo', motes: { pattern: 'rise', colors: [[1, 0.8, 0.3], [1, 1, 0.85]] } },
   // rings of sound spread out around it as it bristles
-  sonic: { pose: 'bristle', sound: 'petYelp', motes: { pattern: 'ring', colors: [[0.55, 0.9, 1], [0.9, 1, 1]] } },
+  sonic: { pose: 'bristle', sound: 'petRing', motes: { pattern: 'ring', colors: [[0.55, 0.9, 1], [0.9, 1, 1]] } },
   // it is knocked back as violet shards fly out
-  force: { pose: 'startle', sound: 'petYelp', motes: { pattern: 'burst', colors: [[0.65, 0.35, 1], [0.9, 0.75, 1]] } },
+  force: { pose: 'startle', sound: 'petOof', motes: { pattern: 'burst', colors: [[0.65, 0.35, 1], [0.9, 0.75, 1]] } },
   // pink swirls circle its head, dizzy
   mental: { pose: 'startle', sound: 'petDizzy', motes: { pattern: 'orbit', colors: [[1, 0.4, 0.8], [0.8, 0.5, 1]] } },
   // pale cyan wisps rise off it as it shivers, a ghostly sheen
-  spirit: { pose: 'shiver', sound: 'petShiver', tint: [[0.8, 0.95, 1], [0, 0.06, 0.08]], motes: { pattern: 'wisp', colors: [[0.45, 0.95, 1], [0.85, 1, 1]] } },
+  spirit: { pose: 'shiver', sound: 'petWoo', tint: [[0.8, 0.95, 1], [0, 0.06, 0.08]], motes: { pattern: 'wisp', colors: [[0.45, 0.95, 1], [0.85, 1, 1]] } },
   // drops of blood fall around it
-  bleed: { pose: 'startle', sound: 'petYelp', puffs: { pattern: 'drip', color: [0.45, 0.01, 0.02] } },
+  bleed: { pose: 'startle', sound: 'petOw', puffs: { pattern: 'drip', color: [0.45, 0.01, 0.02] } },
   // a silver arc sweeps past it
-  slashing: { pose: 'startle', sound: 'petYelp', motes: { pattern: 'arc', colors: [[0.85, 0.9, 1], [1, 1, 1]] } },
+  slashing: { pose: 'startle', sound: 'petWhoa', motes: { pattern: 'arc', colors: [[0.85, 0.9, 1], [1, 1, 1]] } },
   // white needles dart in at it
-  piercing: { pose: 'startle', sound: 'petYelp', motes: { pattern: 'needle', colors: [[1, 1, 1], [0.8, 0.85, 0.9]] } },
+  piercing: { pose: 'startle', sound: 'petYip', motes: { pattern: 'needle', colors: [[1, 1, 1], [0.8, 0.85, 0.9]] } },
   // dust bursts up around its feet
-  bludgeoning: { pose: 'startle', sound: 'petYelp', puffs: { pattern: 'dust', color: [0.38, 0.3, 0.2] } },
+  bludgeoning: { pose: 'startle', sound: 'petBonk', puffs: { pattern: 'dust', color: [0.38, 0.3, 0.2] } },
 });
 
 /** Weapon blows: they set a pet off landing nearby, but a direct hit still splats it. */
