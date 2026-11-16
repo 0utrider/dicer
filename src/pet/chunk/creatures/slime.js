@@ -336,6 +336,31 @@ export function slime(color) {
       p.gazePitch = lerp(-0.3, 0.1, wide);
       p.smile = lerp(0.6, 0, wide);
       p.open = 0.5 * wide;
+    } else if (phase === 'proud' || phase === 'sulk') {
+      // A mood (its owner's recent rolls), held at rest: it settles from the standing pose into it
+      // and is static from t 1. Proud: drawn up tall, its jelly leaning back (chest out), a smug
+      // grin and half-lidded eyes looking up. Sulk: flattened low, frowning, eyes down.
+      PK.reset(end);
+      end.upper = 0.08; // the standing pose (exit at t 1)
+      PK.reset(tmp);
+      if (phase === 'proud') {
+        tmp.squash = -0.14;
+        tmp.shear = -0.14;
+        tmp.smile = 1;
+        tmp.upper = 0.42;
+        tmp.lower = 0.32;
+        tmp.gazePitch = 0.2;
+      } else {
+        tmp.squash = 0.4;
+        tmp.pitch = 0.05;
+        tmp.smile = -0.8;
+        tmp.upper = 0.6;
+        tmp.lower = 0.02;
+        tmp.sad = 0.5;
+        tmp.gazePitch = -0.8;
+      }
+      PK.blend(p, end, tmp, smooth(t));
+      if (phase === 'proud' && !look?.calm) p.squash -= 0.08 * bump(t, 0.2, 0.8); // a puff on the way
     } else if (phase === 'throw') {
       PK.reset(p);
       // A fling: it rears back, then lunges its whole jelly forward and wobbles.

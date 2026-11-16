@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED, PUDDLE_LEAVE_MS } from '../../src/pet/chunk/pets.js';
 import { mulberry32 as mulberry } from '../../src/core/rng.js';
 import { REST_HOP_MS } from '../../src/pet/chunk/timeline.js';
+import { createMoods } from '../../src/pet/chunk/moods.js';
 import { spotFor as restSpotFor } from '../../src/pet/chunk/rest-spots.js';
 
 const AREA = { cx: 1, cz: -2, halfWidth: 6, halfDepth: 4 };
@@ -21,6 +22,7 @@ const make = (settings = {}, over = {}) => {
     warm,
     now: () => clockNow,
     wake: vi.fn(),
+    moods: createMoods(), // each layer its own mood history (the page-wide one would carry over)
     ...over,
   };
   return { layer: createPetLayer(deps), scene, playSound, warm, settings, deps };

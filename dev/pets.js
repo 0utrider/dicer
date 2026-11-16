@@ -4,7 +4,8 @@ import { configureRenderer } from '../src/render/renderer.js';
 import { getShape } from '../src/core/dice-shapes.js';
 import { buildDieGeometry } from '../src/core/chamfer.js';
 import { readTopFace, rotationToShow, faceForValue } from '../src/core/face-reader.js';
-import { createPetLayer, SCORCH_MS, SHIVER_MS, BRISTLE_MS, STARTLE_MS } from '../src/pet/chunk/pets.js';
+import { createPetLayer, SCORCH_MS, SHIVER_MS, BRISTLE_MS, STARTLE_MS, MOOD_MS } from '../src/pet/chunk/pets.js';
+import { createMoods } from '../src/pet/chunk/moods.js';
 import { REST_HOP_MS } from '../src/pet/chunk/timeline.js';
 import { REST_SPOTS } from '../src/pet/chunk/rest-spots.js';
 import { DIE_SIZE_PX } from '../src/throw/dice-box.js';
@@ -784,8 +785,86 @@ function reactions() {
   return c.toDataURL('image/png');
 }
 
+// --- moods (round 3, Task 5) -----------------------------------------------------------------
+// The real layer: the owner's recent d20s are already in the mood history (neutral: none; proud:
+// 20, 20, 15; sulk: 1, 1, 4), their pet rolls a d6 (no reaction of its own, the history unchanged)
+// and comes to rest (petStay Always), where it settles into the mood. Settled, static: the shots.
+const MOOD_HISTORY = { neutral: [], proud: [20, 20, 15], sulk: [1, 1, 4] };
+/** `settle`: stop that far (0..1) into the mood's settle instead of after it (null: settled). */
+function stageMood({ kind, color, mood, settle = null }) {
+  clock = 0;
+  const history = createMoods();
+  history.record('u', MOOD_HISTORY[mood]);
+  const layer = createPetLayer({
+    scene,
+    getSetting: (k) => (k === 'petStay' ? -1 : undefined),
+    playSound: () => {},
+    now: () => clock,
+    random: seeded(7),
+    activeRolls: () => 0,
+    reducedMotion: () => false,
+    moods: history,
+  });
+  const px = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
+  layer.areaChanged({ cx: 0, cz: 0, ...STAGE, rect: { left: 0, top: 0, width: px.w, height: px.h } });
+  const at = (ms) => layer.update((clock = ms));
+  const centre = () => ({ x: AREA.cx, z: AREA.cz });
+  layer.begin('k', { spec: { userId: 'u', kind, color, ghost: false }, edge: 3, area: AREA, centre });
+  for (let ms = 0; ms <= 900; ms += 16) at(ms);
+  clock = 1000;
+  layer.landed('k', [{ type: 'd6', value: 4 }]);
+  layer.leave('k', 0);
+  layer.end('k');
+  const pet = scene.children.find((c) => c.userData.dicerPet);
+  let ms = 1000;
+  for (; ms <= 4000 + MOOD_MS; ms += 16) {
+    at(ms);
+    if (settle !== null && pet.userData.dicerPet.phase === mood) break;
+  }
+  if (settle !== null) at(ms + settle * MOOD_MS);
+  return { layer, pet };
+}
+/** 3 kinds x neutral, proud, sulk at rest (close-up), the proud settle's twinkle, and the game view of each. */
+function moods() {
+  const LW = 110;
+  const CW = 210;
+  const CH = 190;
+  const HEAD = 30;
+  const MOODS = ['neutral', 'proud', 'sulk'];
+  const cols = [
+    ...MOODS.map((mood) => ({ mood, name: mood })),
+    { mood: 'proud', settle: 0.55, name: 'proud, settling (twinkle)' },
+    ...MOODS.map((mood) => ({ mood, game: true, name: `game view: ${mood}` })),
+  ];
+  const { c, g } = newSheet(LW + CW * cols.length, HEAD + KINDS.length * (CH + 4));
+  cols.forEach((col, i) => label(g, col.name, LW + i * CW + CW / 2, 20, { align: 'center', size: 12 }));
+  KINDS.forEach((kind, r) => {
+    const y = HEAD + r * (CH + 4);
+    label(g, kind, 8, y + 22, { size: 14 });
+    cols.forEach((col, i) => {
+      const staged = stageMood({ kind, color: KIND_COLOR[kind], mood: col.mood, settle: col.settle ?? null });
+      try {
+        const { pet } = staged;
+        if (col.game) {
+          const fx = Math.sin(pet.rotation.y);
+          const fz = Math.cos(pet.rotation.y);
+          const dieAt = { x: pet.position.x + fz * 2.3, z: pet.position.z - fx * 2.3 };
+          fullGameCrop(g, pet, CW - 2, CH - 2, BG.dark, dieAt, LW + i * CW + 1, y + 1);
+        } else {
+          pet.updateMatrixWorld(true); // never rendered yet: closeUp aims at its box
+          closeUp(pet, CW - 2, CH - 2, '#5b616b', { dist: 5.6, height: 3, side: 2.2 });
+          blit(g, LW + i * CW + 1, y + 1);
+        }
+      } finally {
+        staged.layer.dispose();
+      }
+    });
+  });
+  return c.toDataURL('image/png');
+}
+
 const show = (url) => (document.getElementById('sheet').src = url);
-const SHEETS = { grid, colours, strips, splat, restSpots, reactions };
+const SHEETS = { grid, colours, strips, splat, restSpots, reactions, moods };
 for (const b of document.querySelectorAll('[data-sheet]'))
   b.addEventListener('click', () => {
     try {
@@ -796,4 +875,4 @@ for (const b of document.querySelectorAll('[data-sheet]'))
   });
 show(grid());
 document.getElementById('status').textContent = 'ready';
-window.__pets = { grid, colours, strips, splat, restSpots, reactions, moves: () => strips(KINDS, 'move'), errors, ready: true };
+window.__pets = { grid, colours, strips, splat, restSpots, reactions, moods, moves: () => strips(KINDS, 'move'), errors, ready: true };

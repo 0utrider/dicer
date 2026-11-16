@@ -5,6 +5,7 @@ import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
 import { buildScene } from '../../src/render/scene.js';
 import { KIND_FOOTPRINT } from '../../src/pet/chunk/resting.js';
 import { REST_HOP_MS } from '../../src/pet/chunk/timeline.js';
+import { createMoods } from '../../src/pet/chunk/moods.js';
 
 /** A pointer event: cancelable, with a button and page coordinates. */
 const ev = (type, x = 0, y = 0, button = 0) => {
@@ -128,6 +129,7 @@ const make = (settings = {}, over = {}) => {
     wake: vi.fn(),
     win,
     random: () => 0.5,
+    moods: createMoods(), // each layer its own mood history (the page-wide one would carry over)
     ...over,
   };
   const layer = createPetLayer(deps);

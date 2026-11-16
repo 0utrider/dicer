@@ -420,6 +420,39 @@ export function dragonling(color) {
       p.tailLift = 0.3 * wide;
       p.upper = lerp(0.1, 0, wide);
       p.lower = lerp(0.08, 0, wide);
+    } else if (phase === 'proud' || phase === 'sulk') {
+      // A mood (its owner's recent rolls), held at rest: it settles from the standing pose into it
+      // and is static from t 1. Proud: chest out and leaning back, chin up, wings folded back
+      // high, tail raised, a smug look. Sulk: head hung, wings and tail drooping.
+      PK.reset(end);
+      end.wing = 0.4; // the standing pose (exit at t 1)
+      end.upper = 0.1;
+      PK.reset(tmp);
+      if (phase === 'proud') {
+        tmp.pitch = -0.12;
+        tmp.squash = -0.06;
+        tmp.headPitch = -0.32;
+        tmp.wing = 0.55;
+        tmp.sweep = 0.35;
+        tmp.tailLift = 0.35;
+        tmp.curl = 0.55;
+        tmp.upper = 0.42;
+        tmp.lower = 0.32;
+        tmp.gazePitch = 0.1;
+      } else {
+        tmp.headPitch = 0.55;
+        tmp.pitch = 0.06;
+        tmp.squash = 0.1;
+        tmp.wing = -0.75;
+        tmp.sweep = 0.5;
+        tmp.curl = 0.15;
+        tmp.tailLift = -0.25;
+        tmp.upper = 0.6;
+        tmp.sad = 0.5;
+        tmp.gazePitch = -0.8;
+      }
+      PK.blend(p, end, tmp, smooth(t));
+      if (phase === 'proud' && !look?.calm) p.squash -= 0.05 * bump(t, 0.2, 0.8); // a puff on the way
     } else if (phase === 'throw') {
       PK.reset(p);
       // Rears back with wings up, then lunges: head thrust, wings sweeping forward and down.

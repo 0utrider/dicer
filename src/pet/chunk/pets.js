@@ -28,6 +28,7 @@ import {
 import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, HUFF_IGNORE_MS } from './petting.js';
 import { elementReactions, reactionOf } from './reactions.js';
+import { createMoods } from './moods.js';
 import { petFor } from '../pet-for.js';
 
 /** At most this many pets on screen at once. */
@@ -105,8 +106,18 @@ const ZAP = [1, 0.9, 0.35]; // the sparks: yellow, and white
 const ICE = new THREE.Color(0.72, 0.88, 1);
 const ICE_GLOW = new THREE.Color(0.02, 0.05, 0.1);
 const iceNow = new THREE.Color(); // scratch
+// Moods (petMoods; moods.js keeps each owner's recent d20s): a resting pet settles into its owner's
+// mood pose over MOOD_MS and then holds it, static. A proud pet's settle has one soft twinkle.
+export const MOOD_MS = 800;
+const MOODS = new Set(['proud', 'sulk']);
+const TWINKLES = 3; // of the sparkle's SPARKS points
+/**
+ * Every layer's mood history (one per page: a rebuilt engine's new layer keeps it; only a reload
+ * clears it). deps.moods replaces it (tests, the dev page).
+ */
+const pageMoods = createMoods();
 /** How long each of a resting pet's animations (pet.anim.kind) runs. */
-const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS };
+const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS, proud: MOOD_MS, sulk: MOOD_MS };
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -127,11 +138,15 @@ export function createPetLayer(deps) {
   const doc = deps.doc || globalThis.document; // test seam: Foundry's UI, which rest spots avoid
   const hooks = deps.hooks || globalThis.Hooks; // test seam: Foundry's hooks (area edits)
   const userOf = deps.userOf || ((id) => globalThis.game?.users?.get?.(id)); // test seam: alignFor's absent pets
+  const moods = deps.moods || pageMoods;
   // The last stage DiceBox told us ({cx, cz, halfWidth, halfDepth, rect?}: rect is its px rect): a
   // rest area is always fitted inside it.
   let stage = null;
   const pets = new Map(); // userId -> pet
   const keyOwner = new Map(); // roll key -> userId
+  // roll key -> {userId, ghost} of every begun pet roll until it lands or ends, pet placed or not
+  // (and kept through a splat): whose recent d20s its landing adds to (moods)
+  const keyRoller = new Map();
   // userId -> {area, spot}: the rest spot obstaclesFor chose for a pet that has none yet, which
   // begin then takes (so the physics and the pet agree on it)
   const pending = new Map();
@@ -264,26 +279,42 @@ export function createPetLayer(deps) {
   function float(pet, e, kind, calm) {
     const huff = kind === 'huff';
     const spark = kind === 'bristle';
-    if (!huff && !spark && kind !== 'pet') return false;
+    const proud = kind === 'proud';
+    if (!huff && !spark && !proud && kind !== 'pet') return false;
     const pts = pet.sparkle;
-    pts.material = spark
-      ? (zapMat ??= spriteMat(starTexture(), ZAP_SIZE))
-      : huff
-        ? (puffMat ??= spriteMat(puffTexture()))
-        : (heartMat ??= spriteMat(heartTexture()));
+    pts.material = proud
+      ? sparkMat
+      : spark
+        ? (zapMat ??= spriteMat(starTexture(), ZAP_SIZE))
+        : huff
+          ? (puffMat ??= spriteMat(puffTexture()))
+          : (heartMat ??= spriteMat(heartTexture()));
     const h = pet.creature.height;
     const pos = pts.geometry.attributes.position;
     const col = pts.geometry.attributes.color;
     const P = pos.array;
     const C = col.array;
-    const n = huff ? PUFFS : spark ? SPARKLES : calm ? 3 : HEARTS;
+    const n = huff ? PUFFS : spark ? SPARKLES : proud ? TWINKLES : calm ? 3 : HEARTS;
     for (let i = 0; i < SPARKS; i++) {
       const k = i * 3;
       P[k] = P[k + 1] = P[k + 2] = C[k] = C[k + 1] = C[k + 2] = 0; // unused: black adds nothing
       if (i >= n) continue;
       const sp = SPARK[i];
       let b;
-      if (spark) {
+      if (proud) {
+        // one soft twinkle each, in turn, about its head as it puffs up: a single swell and fade,
+        // never a flicker (dimmer when calm)
+        const s = clamp01((e - 0.3 - 0.12 * i) / 0.45);
+        const a = (i - 1) * 0.9;
+        P[k] = Math.sin(a) * 0.45 * h;
+        P[k + 1] = h * (1.05 + 0.12 * (i % 2) + 0.08 * s);
+        P[k + 2] = Math.cos(a) * 0.3 * h;
+        b = Math.sin(Math.PI * s) * (calm ? 0.6 : 1);
+        const c = i === 1 ? WHITE : GOLD;
+        C[k] = c[0] * b;
+        C[k + 1] = c[1] * b;
+        C[k + 2] = c[2] * b;
+      } else if (spark) {
         // sparks crackling about its body in three waves, so some are always lit; they flicker
         // unless calm
         const s = clamp01((e - (i % 3) * 0.22 - 0.02 * i) / 0.42);
@@ -748,6 +779,7 @@ export function createPetLayer(deps) {
    */
   function begin(key, { spec, edge, area, centre, hand }) {
     if (disposed) return;
+    keyRoller.set(key, { userId: spec.userId, ghost: !!spec.ghost }); // moods: even with no room for its pet
     const make = CREATURES[spec.kind];
     let pet = pets.get(spec.userId);
     const fresh = !pet;
@@ -851,12 +883,37 @@ export function createPetLayer(deps) {
   /** A roll landed: its pet's reaction (by `key`), and every resting pet's to its elemental dice. */
   function landed(key, dice) {
     if (key == null) return elemental(dice); // a roll with no pet of its own: only the reactions
+    noteMood(key, dice);
     const pet = petOf(key);
     const roll = pet?.rolls.get(key);
     if (!roll || roll.summary) return;
     roll.summary = summarize(dice, roll.ghost); // a ghost roll only ever says 'plain'
     settle(pet);
     elemental(dice);
+  }
+
+  /**
+   * A pet roll landed: its active d20 values (every visible d20; advantage gives two) go to its
+   * roller's mood history, whether their pet is shown or not. A ghost roll, or a ghost die, never
+   * counts: its value is not this viewer's to see. Once per roll.
+   */
+  function noteMood(key, dice) {
+    const r = keyRoller.get(key);
+    keyRoller.delete(key);
+    if (!r || r.ghost) return;
+    const values = [];
+    for (const d of dice || []) if (d && !d.ghost && d.type === 'd20' && Number.isFinite(d.value)) values.push(d.value);
+    if (values.length) moods.record(r.userId, values);
+  }
+  /** The mood pose a resting pet holds (petMoods on): 'proud', 'sulk', or null for neutral. */
+  function moodPose(pet) {
+    try {
+      if (getSetting('petMoods') === false) return null;
+    } catch {
+      return null;
+    }
+    const m = moods.moodOf(pet.userId);
+    return MOODS.has(m) ? m : null;
   }
 
   /**
@@ -900,6 +957,7 @@ export function createPetLayer(deps) {
       wake();
     const pet = petOf(key);
     keyOwner.delete(key);
+    keyRoller.delete(key);
     if (!pet) return;
     pet.rolls.delete(key);
     if (pet.rolls.size) return settle(pet); // the rolls still on screen may all have landed now
@@ -940,6 +998,7 @@ export function createPetLayer(deps) {
     );
     pet.group.rotation.y = pet.yaw;
     pet.group.userData.dicerPet.phase = phase;
+    if (!MOODS.has(phase)) pet.mood = null; // posed out of its mood: the next rest settles back in
     pet.shadow.position.y = 0.01 - hop;
     pet.shadow.visible = shadows;
     if (wt >= 0) {
@@ -1064,6 +1123,11 @@ export function createPetLayer(deps) {
       hopTo(pet, huffSpot(pet), 'hop', now);
       pet.yawTo = pet.yaw; // keeps its back turned
       return stepHop(pet, now, shadows);
+    }
+    if (MOODS.has(a.kind)) {
+      show(pet, now, a.kind, 1, pet.px, pet.pz, 0, shadows); // settled: held, nothing redraws after
+      pet.mood = a.kind;
+      return true;
     }
     show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows); // the standing pose: nothing redraws after
     return true;
@@ -1200,10 +1264,20 @@ export function createPetLayer(deps) {
     if (pet.state === 'rest') {
       if (stay && pet.wobble) {
         show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows); // the wobble, or the plain pose once it is over (show clears it)
-        return pet.wobble ? true : 'rest';
+        if (pet.wobble) return true; // over: on to its mood below
       }
       if (stay && pet.anim) return stepAnim(pet, now, shadows);
       if (stay) {
+        // its owner's mood (petMoods): it settles into the pose, or back out of it to standing
+        const mood = moodPose(pet);
+        if (mood !== (pet.mood ?? null)) {
+          if (mood) {
+            pet.anim = { kind: mood, at: now, calm: calmNow() };
+            return stepAnim(pet, now, shadows);
+          }
+          show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows);
+          return true;
+        }
         const was = pet.shadow.visible;
         pet.shadow.visible = shadows; // the only thing that can change while it sits
         return was !== shadows || 'rest'; // a frame to draw it; otherwise nothing moves

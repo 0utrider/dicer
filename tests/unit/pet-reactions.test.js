@@ -13,6 +13,7 @@ import { elementOf as trailsElementOf } from '../../src/effects/library/trails.j
 import { elementOf } from '../../src/effects/element-of.js';
 import { HUFF_HITS } from '../../src/pet/chunk/petting.js';
 import { buildScene } from '../../src/render/scene.js';
+import { createMoods } from '../../src/pet/chunk/moods.js';
 
 const FIRE = { appearance: { interior: { type: 'fire' } } };
 
@@ -135,6 +136,7 @@ const make = (settings = {}, over = {}) => {
     wake: vi.fn(),
     win,
     random: () => 0.5,
+    moods: createMoods(), // each layer its own mood history (the page-wide one would carry over)
     ...over,
   };
   const layer = createPetLayer(deps);

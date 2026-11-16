@@ -416,6 +416,37 @@ export function mimic(color) {
       p.eyeScale = 1 + 0.2 * wide;
       p.upper = lerp(0.1, 0, wide);
       p.lower = lerp(0.1, 0, wide);
+    } else if (phase === 'proud' || phase === 'sulk') {
+      // A mood (its owner's recent rolls), held at rest: it settles from the standing pose into it
+      // and is static from t 1. Proud: up on its toes, chest out and leaning back, lid up, a smug
+      // half-lidded look up at the world. Sulk: lid shut tight, sunk low, leaning forward, feet splayed.
+      PK.reset(end);
+      end.upper = 0.1; // the standing pose (exit at t 1)
+      PK.reset(tmp);
+      if (phase === 'proud') {
+        tmp.squash = -0.1;
+        tmp.pitch = -0.16;
+        tmp.tuck = -0.45;
+        tmp.lid = LID + 0.08;
+        tmp.tongue = 0.35;
+        tmp.upper = 0.42;
+        tmp.lower = 0.32;
+        tmp.gazePitch = 0.1;
+      } else {
+        tmp.lid = 0;
+        tmp.tongue = 0;
+        tmp.squash = 0.16;
+        tmp.lift = -0.03;
+        tmp.pitch = 0.08;
+        tmp.roll = -0.06;
+        tmp.tuck = -0.5;
+        tmp.upper = 0.6;
+        tmp.sad = 0.5;
+        tmp.gazePitch = -0.75;
+      }
+      PK.blend(p, end, tmp, smooth(t));
+      // proud: a little puff of the chest on the way (look.calm: none)
+      if (phase === 'proud' && !look?.calm) p.squash -= 0.06 * bump(t, 0.2, 0.8);
     } else if (phase === 'throw') {
       PK.reset(p);
       // It spits the dice: leans back with the lid shut, then lunges with the jaw wide open.
