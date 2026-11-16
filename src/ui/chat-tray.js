@@ -299,7 +299,8 @@ function h(tag, attrs = {}, kids = []) {
   el.append(...kids);
   return el;
 }
-const tip = (attrs, text) => ({ ...attrs, 'aria-label': text, 'data-tooltip': text });
+// The dock sits at the bottom of the chat: its tooltips open upward, never over its own buttons.
+const tip = (attrs, text) => ({ ...attrs, 'aria-label': text, 'data-tooltip': text, 'data-tooltip-direction': 'UP' });
 
 function build() {
   const { dice: keys, helper: keep, modifier } = trayFor();

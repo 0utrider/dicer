@@ -1698,7 +1698,9 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-chat-tray-dice {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  /* one column per die shown (the system's or the player's choice), filling the width */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 2px;
 }
 .dicer-chat-tray button {
@@ -1721,6 +1723,9 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-chat-tray.can-throw .dicer-chat-tray-die,
 .dicer-chat-tray.can-throw .dicer-chat-tray-roll {
   cursor: grab;
+  /* the Roll button takes the rest of the bar, so the bar reaches the right edge */
+  flex: 1 1 auto;
+  justify-content: center;
 }
 .dicer-chat-tray.is-dragging,
 .dicer-chat-tray.is-dragging * {
