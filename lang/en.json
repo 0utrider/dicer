@@ -161,7 +161,7 @@
       },
       "insideMotion": {
         "Name": "Living insides",
-        "Hint": "The insides of resin dice move: liquid sloshes as the die tumbles and settles about 10 seconds after it lands. Off keeps them still."
+        "Hint": "The insides of resin dice move: liquid sloshes as the die tumbles and settles about 10 seconds after it lands. Off keeps them still, whatever each look says."
       },
       "engraving": {
         "Name": "Engraved numbers",
@@ -638,6 +638,11 @@
         "Inclusion": "Inclusion",
         "Bubble": "Air bubble",
         "Sand": "Sand",
+        "Motion": "Living inside",
+        "MotionHint": "This look's inside moves. The Living insides setting turns motion off for every look.",
+        "Extra": "Also suspended",
+        "ExtraColor": "Suspended colour",
+        "ExtraDensity": "Suspended amount",
         "ResinOnly": "Only clear resin dice have an inside. Choose Clear resin under Body to add one."
       },
       "InsideType": {
@@ -655,6 +660,13 @@
         "lava": "Lava",
         "storm": "Storm",
         "frost": "Frost"
+      },
+      "Extra": {
+        "none": "Nothing",
+        "foil": "Foil flakes",
+        "glitter": "Glitter",
+        "sand": "Sand",
+        "bubbles": "Bubbles"
       },
       "Inclusion": {
         "flower": "Flower",

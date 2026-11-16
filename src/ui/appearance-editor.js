@@ -24,6 +24,7 @@ import {
   BODY_PRESET_LISTS,
   INTERIOR_TYPES,
   INCLUSION_LIST,
+  EXTRA_LIST,
   SHAPES,
   FILLS,
   RELIEFS,
@@ -67,6 +68,7 @@ const pct = (v, scale = 1) => `${Math.round((Number(v) || 0) * 100 * scale) / sc
 
 const INSIDE_ICONS = { none: 'fa-ban', liquid: 'fa-droplet', glitter: 'fa-wand-sparkles', swirl: 'fa-hurricane', nebula: 'fa-cloud', shape: 'fa-shapes', foil: 'fa-certificate', eye: 'fa-eye', botanical: 'fa-seedling', smoke: 'fa-smog', fire: 'fa-fire', lava: 'fa-volcano', storm: 'fa-cloud-bolt', frost: 'fa-snowflake' };
 const INCLUSION_ICONS = { flower: 'fa-fan', moss: 'fa-leaf', butterfly: 'fa-bugs' };
+const EXTRA_ICONS = { none: 'fa-ban', foil: 'fa-certificate', glitter: 'fa-wand-sparkles', sand: 'fa-braille', bubbles: 'fa-circle-dot' };
 const SHAPE_ICONS = { star: 'fa-star', heart: 'fa-heart', skull: 'fa-skull', sphere: 'fa-circle', sword: 'fa-sword', axe: 'fa-axe', shield: 'fa-shield', dragon: 'fa-dragon', runes: 'fa-wand-magic-sparkles' };
 const EDGE_NAMES = ['sharp', 'crisp', 'soft', 'round', 'veryRound'];
 /** px radius of the one rounded corner each edge-step icon draws (22 px box): clearly apart. */
@@ -279,6 +281,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       finishes: active(FINISHES, form.body.finish, 'DICER.Appearance.Finish.'),
       insideTypes: active(INTERIOR_TYPES, form.interior.type, 'DICER.Appearance.InsideType.', INSIDE_ICONS),
       inclusions: active(INCLUSION_LIST, form.interior.inclusion, 'DICER.Appearance.Inclusion.', INCLUSION_ICONS),
+      extraKinds: active(EXTRA_LIST, form.interior.extra, 'DICER.Appearance.Extra.', EXTRA_ICONS),
       shapes: active(SHAPES, form.interior.shape, 'DICER.Appearance.Shape.', SHAPE_ICONS),
       d4Shapes: active(D4_SHAPES, form.shapes.d4, 'DICER.Appearance.Shapes.'),
       coins: active(COIN_CHOICES, form.numbers.coin, 'DICER.Appearance.Coin.'),
@@ -300,13 +303,14 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       pct: {
         roughness: pct(form.body.roughness),
         density: pct(form.interior.density),
+        extraDensity: pct(form.interior.extraDensity),
         depth: pct(form.numbers.depth),
         intensity: pct(form.glow.intensity),
         stripStrength: pct(form.edges.stripStrength),
       },
       summary: {
         body: loc(`DICER.Appearance.BodyType.${look.body.type}`),
-        inside: show.inside ? loc(`DICER.Appearance.InsideType.${form.interior.type}`) : '—',
+        inside: show.inside ? loc(`DICER.Appearance.InsideType.${form.interior.type}`) + (show.extraDetails ? ` + ${loc(`DICER.Appearance.Extra.${form.interior.extra}`)}` : '') : '—',
         numbers: `${loc(`DICER.Appearance.Fill.${look.numbers.fill}`)} · ${fontLabel}`,
         edges: loc(`DICER.Appearance.Edge.${EDGE_NAMES[Math.max(0, edgeIndex)]}`) + (stripActive(look) ? ` · ${loc(`DICER.Appearance.Strip.${look.edges.strip.style}`)}` : ''),
         glow: look.glow.intensity > 0 ? pct(look.glow.intensity) : loc('DICER.Appearance.Glow.Off'),

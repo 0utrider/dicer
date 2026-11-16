@@ -112,6 +112,27 @@
                   </div>
                 </div>
               {{/if}}
+              {{#if show.insideMotion}}
+                <div class="dicer-ae-row dicer-ae-toggles">
+                  <label class="dicer-ae-toggle" data-tooltip="{{localize "DICER.Appearance.Inside.MotionHint"}}"><input type="checkbox" name="interior.motion" {{#if form.interior.motion}}checked{{/if}}><span>{{localize "DICER.Appearance.Inside.Motion"}}</span></label>
+                </div>
+              {{/if}}
+              {{#if show.extraLayer}}
+                <div class="dicer-field">
+                  <span>{{localize "DICER.Appearance.Inside.Extra"}}</span>
+                  <div class="dicer-ae-chips" role="radiogroup" aria-label="{{localize "DICER.Appearance.Inside.Extra"}}">
+                    {{#each extraKinds}}
+                      <button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" role="radio" aria-checked="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="interior.extra" data-value="{{id}}"><i class="fa-solid {{icon}}"></i><span>{{label}}</span></button>
+                    {{/each}}
+                  </div>
+                </div>
+                {{#if show.extraDetails}}
+                  <div class="dicer-ae-row">
+                    <div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Inside.ExtraColor"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.interior.extraColor}}" data-color-for="interior.extraColor" aria-label="{{localize "DICER.Appearance.Inside.ExtraColor"}}"><input type="text" name="interior.extraColor" value="{{form.interior.extraColor}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Inside.ExtraColor"}}"></span></div>
+                  </div>
+                  <label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Inside.ExtraDensity"}}<output data-for="interior.extraDensity">{{pct.extraDensity}}</output></span><input type="range" name="interior.extraDensity" min="0" max="1" step="0.01" value="{{form.interior.extraDensity}}"></label>
+                {{/if}}
+              {{/if}}
             {{/if}}
           {{else}}
             <p class="dicer-hint dicer-ae-note"><i class="fa-solid fa-circle-info"></i> {{localize "DICER.Appearance.Inside.ResinOnly"}}</p>
