@@ -30,6 +30,7 @@ import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, petClickable, HUFF_IGNORE_MS } from './petting.js';
 import { elementReactions, reactionOf, resting } from './reactions.js';
 import { elementOf } from '../../effects/element-of.js';
+import { ELEMENT_FX, PHYSICAL, writeMotes, writePuffs } from './element-fx.js';
 import { createMoods } from './moods.js';
 import { petFor } from '../pet-for.js';
 
@@ -113,9 +114,9 @@ const ZAP_SIZE = SPARK_SIZE * 3.4;
 const ZAP = [1, 0.9, 0.35]; // the sparks: yellow, and white
 // The frosty tint: the pet's colour multiplied by a cool filter (warm channels damped, never washed
 // toward white, so its own colour still shows) and a faint cold sheen.
-const ICE = new THREE.Color(0.72, 0.88, 1);
-const ICE_GLOW = new THREE.Color(0.02, 0.05, 0.1);
+const FROST_TINT = ELEMENT_FX.frost.tint; // [filter, glow]: (0.72, 0.88, 1) and a faint cold sheen
 const iceNow = new THREE.Color(); // scratch
+const glowNow = new THREE.Color(); // scratch
 // Moods (petMoods; moods.js keeps each owner's recent d20s): a resting pet settles into its owner's
 // mood pose over MOOD_MS and then holds it, static. A proud pet's settle has one soft twinkle.
 export const MOOD_MS = 800;
@@ -422,10 +423,53 @@ export function createPetLayer(deps) {
   }
 
   /**
-   * The frosty tint, `amount` 0..1, on every lit material of the pet's creature: the colour through
-   * the cool ICE filter and a faint cold glow (uniforms only: no shader recompiles). 0 puts the colours back.
+   * An element's motes (element-fx.js writeMotes) at e in the pet's sparkle points, glowing star
+   * sprites: fewer when calm (reduced motion).
    */
-  function frost(pet, amount) {
+  function motes(pet, e, m, calm) {
+    const pts = pet.sparkle;
+    sparkTex ??= starTexture();
+    pts.material = sparkMat ??= spriteMat(sparkTex);
+    const pos = pts.geometry.attributes.position;
+    const col = pts.geometry.attributes.color;
+    writeMotes(pos.array, col.array, SPARKS, calm ? 6 : SPARKS, e, m.pattern, m.colors, pet.creature.height, SPARK, calm);
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    pts.position.y = 0;
+    pts.visible = true;
+  }
+
+  /** An element's puffs (element-fx.js writePuffs) at e in the pet's smoke points: dust, a haze, drops. */
+  function puffs(pet, e, p, calm) {
+    if (!pet.smoke) pet.group.add((pet.smoke = makeSmoke()));
+    const pos = pet.smoke.geometry.attributes.position;
+    const col = pet.smoke.geometry.attributes.color;
+    const h = pet.creature.height;
+    writePuffs(pos.array, col.array, SMOKES, e, p.pattern, p.color, h, pet.anim?.top ?? h, SPARK, calm);
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    pet.smoke.visible = true;
+  }
+
+  /**
+   * A reaction's look at e for its element (element-fx.js ELEMENT_FX): smoke or puffs, sparks or
+   * motes, and a tint that comes and goes.
+   */
+  function elementFx(pet, e, fx, calm) {
+    const lit = fx.sparks ? float(pet, e, 'bristle', calm) : fx.motes ? (motes(pet, e, fx.motes, calm), true) : false;
+    if (!lit) pet.sparkle.visible = false;
+    if (fx.smoke) smoke(pet, e, calm);
+    else if (fx.puffs) puffs(pet, e, fx.puffs, calm);
+    if (fx.tint) frost(pet, smooth(clamp01(e / 0.12)) * (1 - smooth(clamp01((e - 0.35) / 0.65))), fx.tint);
+  }
+
+  /**
+   * An element's tint, `amount` 0..1, on every lit material of the pet's creature: the colour through
+   * a filter (`tint` [filter, glow], linear RGB; frost's cool ICE by default, never washed toward
+   * white, so its own colour still shows) and a faint glow (uniforms only: no shader recompiles).
+   * 0 puts the colours back.
+   */
+  function frost(pet, amount, tint = FROST_TINT) {
     let t = pet.tint;
     if (!t || t.creature !== pet.creature) {
       if (!(amount > 0)) return;
@@ -438,10 +482,12 @@ export function createPetLayer(deps) {
       t.glow = t.mats.map((m) => m.emissive.clone());
     }
     const a = clamp01(amount);
-    iceNow.setRGB(1 - a * (1 - ICE.r), 1 - a * (1 - ICE.g), 1 - a * (1 - ICE.b));
+    const [f, g] = tint;
+    iceNow.setRGB(1 - a * (1 - f[0]), 1 - a * (1 - f[1]), 1 - a * (1 - f[2]));
+    glowNow.setRGB(g[0], g[1], g[2]);
     t.mats.forEach((m, i) => {
       m.color.copy(t.color[i]).multiply(iceNow);
-      m.emissive.copy(t.glow[i]).lerp(ICE_GLOW, a);
+      m.emissive.copy(t.glow[i]).lerp(glowNow, a);
     });
     if (a === 0) pet.tint = null;
   }
@@ -1084,19 +1130,22 @@ export function createPetLayer(deps) {
     dropAnim(pet); // a shiver's tint or a scorch's smoke cut short by the next reaction
     const kind = reactionOf(element);
     pet.anim = { kind, at: now, calm: calmNow(), element };
-    // the smoke rises from the top of its body as it stands (the mimic's open lid included)
-    if (kind === 'scorch') pet.anim.top = new THREE.Box3().setFromObject(pet.creature.root).max.y - pet.group.position.y;
+    // smoke and puffs start from the top of its body as it stands (the mimic's open lid included)
+    const fx = ELEMENT_FX[element];
+    if (fx?.smoke || fx?.puffs) pet.anim.top = new THREE.Box3().setFromObject(pet.creature.root).max.y - pet.group.position.y;
     pet.idleAt = now; // a startled pet does not wander off just then
+    voice(fx?.sound ?? 'petYelp');
   }
 
   /**
    * The element of a die that hit a resting pet, when it sets it off instead of knocking it
-   * (petElemental on, pets shown, never a ghost die), else null.
+   * (petElemental on, pets shown, never a ghost die, never a weapon blow: those still splat), else null.
    */
   function hitElement(pet, die) {
     try {
       if (!die || die.ghost || !resting(pet) || disposed || !shown() || getSetting('petElemental') === false) return null;
-      return elementOf(die.appearance, die.damageType) ?? null;
+      const element = elementOf(die.appearance, die.damageType) ?? null;
+      return PHYSICAL.includes(element) ? null : element;
     } catch {
       return null;
     }
@@ -1240,12 +1289,16 @@ export function createPetLayer(deps) {
     stopAnim(pet);
     pet.anim = { kind: 'pet', at: now, calm: calmNow() };
     pet.idleAt = now; // a pet being petted does not wander off
+    voice('petPurr'); // a rolling little trill
+    wake();
+  }
+  /** The pet says `name` (a builtin pet sound), unless pet sounds or sounds are off. Never throws. */
+  function voice(name) {
     try {
-      if (getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: 'petHappy' });
+      if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: name });
     } catch {
       /* no sound */
     }
-    wake();
   }
   /**
    * Too many clicks: it puffs and turns its back (HUFF_MS), hops HUFF_HOP x height toward the middle
@@ -1259,6 +1312,7 @@ export function createPetLayer(deps) {
     pet.anim = { kind: 'huff', at: now, calm: calmNow() };
     pet.huff = { home: { x: home.x, z: home.z }, yaw: pet.yaw, backAt: now + HUFF_IGNORE_MS };
     pet.idleAt = now;
+    voice('petHuff'); // "hmph"
     wake();
   }
   /** Where a huffy pet hops: HUFF_HOP x height from its spot toward the stage's middle. */
@@ -1295,9 +1349,10 @@ export function createPetLayer(deps) {
     }
     show(pet, now, a.kind, e, pet.px, pet.pz, 0, shadows);
     if (e < 1) {
-      if (!float(pet, e, a.kind, a.calm)) pet.sparkle.visible = false;
-      if (a.kind === 'scorch') smoke(pet, e, a.calm);
-      if (a.kind === 'shiver') frost(pet, smooth(clamp01(e / 0.12)) * (1 - smooth(clamp01((e - 0.35) / 0.65))));
+      // an elemental reaction: its element's look; anything else (petting, a huff, a cheer, a mood) its own
+      const fx = a.element ? ELEMENT_FX[a.element] : null;
+      if (fx) elementFx(pet, e, fx, a.calm);
+      else if (!float(pet, e, a.kind, a.calm)) pet.sparkle.visible = false;
       return true;
     }
     dropAnim(pet);

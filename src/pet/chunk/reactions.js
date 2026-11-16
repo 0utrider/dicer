@@ -1,15 +1,15 @@
 import { elementOf } from '../../effects/element-of.js';
+import { ELEMENT_FX } from './element-fx.js';
 
 /** A die with an element lands within this many die widths of a resting pet and the pet reacts. */
 export const REACT_REACH = 2;
 
-/** The pose each element sets off: fire and lava scorch, frost shivers, storm bristles, the rest startle. */
-export const REACTION_OF = Object.freeze({
-  fire: 'scorch',
-  lava: 'scorch',
-  frost: 'shiver',
-  storm: 'bristle',
-});
+/**
+ * The pose each element sets off (element-fx.js ELEMENT_FX: fire and lava scorch, frost, acid,
+ * poison, void and spirit shiver, storm and sonic bristle, vitality wiggles happily, the rest
+ * startle); an element it does not know startles.
+ */
+export const REACTION_OF = Object.freeze(Object.fromEntries(Object.entries(ELEMENT_FX).map(([el, fx]) => [el, fx.pose])));
 export const reactionOf = (element) => REACTION_OF[element] ?? 'startle';
 
 /**

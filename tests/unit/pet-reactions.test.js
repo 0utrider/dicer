@@ -93,16 +93,39 @@ describe('elementReactions', () => {
     ]);
   });
 
-  test('the element sets the pose: fire and lava scorch, frost shivers, storm bristles, the rest startle', () => {
-    expect(['fire', 'lava', 'frost', 'storm', 'acid', 'void', 'sonic'].map(reactionOf)).toEqual([
-      'scorch',
-      'scorch',
-      'shiver',
-      'bristle',
-      'startle',
-      'startle',
-      'startle',
-    ]);
+  test('every damage type’s element has a pose of its own; an unknown element startles', () => {
+    const poses = Object.fromEntries(
+      ['fire', 'lava', 'frost', 'storm', 'acid', 'poison', 'void', 'vitality', 'sonic', 'force', 'mental', 'spirit', 'bleed', 'slashing', 'piercing', 'bludgeoning', 'mystery'].map((el) => [el, reactionOf(el)]),
+    );
+    expect(poses).toEqual({
+      fire: 'scorch',
+      lava: 'scorch',
+      frost: 'shiver',
+      storm: 'bristle',
+      acid: 'shiver',
+      poison: 'shiver',
+      void: 'shiver',
+      vitality: 'pet',
+      sonic: 'bristle',
+      force: 'startle',
+      mental: 'startle',
+      spirit: 'shiver',
+      bleed: 'startle',
+      slashing: 'startle',
+      piercing: 'startle',
+      bludgeoning: 'startle',
+      mystery: 'startle',
+    });
+  });
+
+  test('every element a damage type maps to has its own look (element-fx.js), never just a bare pose', async () => {
+    const { ELEMENT_FX } = await import('../../src/pet/chunk/element-fx.js');
+    const types = ['fire', 'cold', 'electricity', 'acid', 'void', 'vitality', 'poison', 'sonic', 'force', 'mental', 'spirit', 'bleed', 'slashing', 'piercing', 'bludgeoning'];
+    for (const t of types) {
+      const fx = ELEMENT_FX[elementOf(undefined, t)];
+      expect(fx, t).toBeTruthy();
+      expect(!!(fx.smoke || fx.sparks || fx.motes || fx.puffs || fx.tint), t).toBe(true);
+    }
   });
 
   test('elementOf moved to element-of.js; trails.js re-exports the same function', () => {
@@ -351,18 +374,56 @@ describe('reactions in the layer', () => {
     expect(mat.color.r + mat.color.g + mat.color.b).toBeLessThanOrEqual(was.r + was.g + was.b + 1e-6);
   });
 
-  test('each element its pose', () => {
-    for (const [damageType, pose] of [
-      ['cold', 'shiver'],
-      ['electricity', 'bristle'],
-      ['acid', 'startle'],
+  test('each element its pose and its look: motes, puffs or a tint', () => {
+    for (const [damageType, pose, shows] of [
+      ['cold', 'shiver', 'tint'],
+      ['electricity', 'bristle', 'sparkle'],
+      ['acid', 'shiver', 'sparkle'],
+      ['poison', 'shiver', 'smoke'],
+      ['vitality', 'pet', 'sparkle'],
+      ['bleed', 'startle', 'smoke'],
+      ['bludgeoning', 'startle', 'smoke'],
+      ['mental', 'startle', 'sparkle'],
     ]) {
       const m = make();
       rollToRest(m);
       landBeside(m, [{ dx: 1, damageType }]);
-      m.layer.update((clockNow += 16));
-      expect(phase(m)).toBe(pose);
+      runTo(m, clockNow + 200);
+      expect(phase(m), damageType).toBe(pose);
+      const g = group(m);
+      if (shows === 'sparkle') expect(g.children.find((c) => c.name === 'petSparkle').visible, damageType).toBe(true);
+      if (shows === 'smoke') expect(g.children.find((c) => c.name === 'petSmoke')?.visible, damageType).toBe(true);
     }
+  });
+
+  test('each reaction its voice: a cough for smoke, a shiver for cold, a coo for healing, a warble for mental, an "eep!" otherwise', () => {
+    for (const [damageType, sound] of [
+      ['fire', 'petCough'],
+      ['poison', 'petCough'],
+      ['cold', 'petShiver'],
+      ['vitality', 'petCoo'],
+      ['mental', 'petDizzy'],
+      ['force', 'petYelp'],
+    ]) {
+      const m = make();
+      rollToRest(m);
+      m.deps.playSound.mockClear();
+      landBeside(m, [{ dx: 1, damageType }]);
+      expect(m.deps.playSound, damageType).toHaveBeenCalledWith({ builtin: sound });
+    }
+    const quiet = make({ petSounds: false });
+    rollToRest(quiet);
+    quiet.deps.playSound.mockClear();
+    landBeside(quiet, [{ dx: 1, damageType: 'fire' }]);
+    expect(quiet.deps.playSound).not.toHaveBeenCalled();
+  });
+
+  test('a weapon die hitting a resting pet still splats it (it reacts to one landing nearby)', () => {
+    const m = make();
+    rollToRest(m);
+    const g = group(m);
+    m.layer.hit('u1', { speed: 50, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die: { damageType: 'slashing' } });
+    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
   });
 
   test('a resting pet is idle again once its reaction is over', () => {

@@ -184,7 +184,7 @@ describe('petting a pet in the layer', () => {
     expect(got).toEqual([]);
     expect(es.every((e) => e.defaultPrevented)).toBe(true);
     expect(m.deps.wake).toHaveBeenCalled();
-    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
+    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petPurr' }); // a purring trill
     expect(m.layer.update((clockNow += 16))).toBe(true);
     expect(group(m).userData.dicerPet.phase).toBe('pet');
     const hearts = group(m).children.find((c) => c.name === 'petSparkle');
@@ -387,6 +387,7 @@ describe('petting a pet in the layer', () => {
     }
     expect(got).toEqual([]);
     expect(g.userData.dicerPet.phase).toBe('huff');
+    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petHuff' }); // "hmph"
     runTo(m, clockNow + HUFF_MS + REST_HOP_MS + 100);
     expect(m.layer.update((clockNow += 16))).toBe('rest'); // it sits off, idle
     const away = Math.hypot(g.position.x - home.x, g.position.z - home.z);

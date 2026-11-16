@@ -412,12 +412,81 @@ const RESULT = {
     yield* noiseBand(buf, sr, rand, { dur: 0.3, fc: (t) => 2200 * Math.exp(-t / 0.07) + 220, q: 0.8, amp: (t) => envAt(t, 0.004, 0.09, 0.3), gain: 0.8 });
     yield* voice(buf, sr, { freq: 240, dur: 0.25, gain: 0.5, attack: 0.006, tau: 0.07, partials: [[1, 1, 1], [1.5, 0.3, 0.6]], pitch: (t) => Math.pow(0.35, Math.min(1, t / 0.2)) });
   },
+  *petPurr(sr, buf) {
+    // Petted: a rolling "brrrp" trill (a soft tone fluttering 28 times a second) that lifts at the end.
+    const d = 0.6;
+    const n = Math.min(buf.length, Math.floor(d * sr));
+    let ph = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const f = 520 * (1 + 0.35 * Math.max(0, (t - 0.4) / 0.2) ** 2);
+      ph += (TAU * f) / sr;
+      const flutter = 0.55 + 0.45 * Math.sin(TAU * 28 * t);
+      const tone = Math.sin(ph) + 0.25 * Math.sin(2 * ph);
+      buf[i] += 0.7 * envAt(t, 0.04, 0.5, d, 0.08) * flutter * tone;
+      if ((i & BLOCK_MASK) === BLOCK_MASK) yield;
+    }
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petHuff(sr, buf, rand) {
+    // Fed up: a little nasal "hmph", falling, after a puff of breath.
+    yield* noiseBand(buf, sr, rand, { dur: 0.16, fc: () => 1400, q: 0.7, amp: (t) => envAt(t, 0.01, 0.06, 0.16), gain: 0.5 });
+    yield* voice(buf, sr, { freq: 420, start: 0.08, dur: 0.3, gain: 0.7, attack: 0.02, tau: 0.15, partials: [[1, 1, 1], [2, 0.45, 0.7], [3, 0.2, 0.5]], pitch: (t) => 1.05 - 0.25 * Math.min(1, t / 0.3) });
+  },
+  *petYelp(sr, buf) {
+    // Startled: a quick rising "eep!".
+    yield* voice(buf, sr, { freq: 900, dur: 0.18, gain: 0.8, attack: 0.006, tau: 0.08, partials: [[1, 1, 1], [2, 0.25, 0.6]], pitch: (t) => 0.8 + 0.7 * Math.min(1, t / 0.07) });
+    yield* reverb(buf, sr, { mix: 0.08, decay: 0.25 });
+  },
+  *petShiver(sr, buf, rand) {
+    // Cold: teeth chattering (quick clicks) under a wavering little "brrr".
+    yield* clicks(buf, sr, rand, { count: 14, from: 0, to: 0.5, gain: 0.5 });
+    yield* voice(buf, sr, { freq: 600, dur: 0.55, gain: 0.45, attack: 0.03, tau: 0.4, partials: [[1, 1, 1], [2, 0.2, 0.6]], vib: 0.06, vibRate: 16, vibDelay: 0 });
+  },
+  *petCough(sr, buf, rand) {
+    // Smoke or a foul haze: two small coughs, "kff kff".
+    for (const start of [0, 0.2]) {
+      yield* noiseBand(buf, sr, rand, { start, dur: 0.12, fc: (t) => 1100 - 400 * t, q: 1.2, amp: (t) => envAt(t, 0.004, 0.04, 0.12), gain: 0.8 });
+      yield* voice(buf, sr, { freq: 330, start, dur: 0.1, gain: 0.35, attack: 0.004, tau: 0.04, partials: [[1, 1, 1], [2, 0.4, 0.6]] });
+    }
+  },
+  *petCoo(sr, buf) {
+    // Healed: a warm, happy "ooo~" rising and settling, with a gentle vibrato.
+    yield* voice(buf, sr, { freq: 660, dur: 0.55, gain: 0.75, attack: 0.05, tau: 0.45, partials: [[1, 1, 1], [2, 0.15, 0.6]], vib: 0.015, vibRate: 6, vibDelay: 0.15, pitch: (t) => 0.92 + 0.18 * Math.sin(Math.min(1, t / 0.4) * Math.PI * 0.6) });
+    yield* reverb(buf, sr, { mix: 0.12, decay: 0.35 });
+  },
+  *petDizzy(sr, buf) {
+    // Dazed: a woozy "wooo-ooo" warbling down.
+    yield* voice(buf, sr, { freq: 760, dur: 0.6, gain: 0.7, attack: 0.03, tau: 0.5, partials: [[1, 1, 1], [2, 0.15, 0.6]], vib: 0.08, vibRate: 5, vibDelay: 0, pitch: (t) => 1.05 - 0.35 * Math.min(1, t / 0.6) });
+    yield* reverb(buf, sr, { mix: 0.12, decay: 0.35 });
+  },
 };
 
-const RESULT_DUR = { chime: 1.5, fanfare: 1.5, sparkle: 1.3, fizzle: 1.2, thud: 0.7, whoosh: 1.0, crackle: 1.1, zap: 0.5, boom: 1.5, petHappy: 0.45, petSad: 0.6, petSplat: 0.35 };
+const RESULT_DUR = {
+  chime: 1.5,
+  fanfare: 1.5,
+  sparkle: 1.3,
+  fizzle: 1.2,
+  thud: 0.7,
+  whoosh: 1.0,
+  crackle: 1.1,
+  zap: 0.5,
+  boom: 1.5,
+  petHappy: 0.45,
+  petSad: 0.6,
+  petSplat: 0.35,
+  petPurr: 0.7,
+  petHuff: 0.42,
+  petYelp: 0.3,
+  petShiver: 0.6,
+  petCough: 0.36,
+  petCoo: 0.7,
+  petDizzy: 0.7,
+};
 
 /** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */
-const RESULT_PEAK = { petHappy: 0.55, petSad: 0.55, petSplat: 0.55 };
+const PET_PEAK = 0.55;
+const RESULT_PEAK = Object.fromEntries(RESULT_SOUNDS.filter((n) => n.startsWith('pet')).map((n) => [n, PET_PEAK]));
 
 function* resultGen(name, sampleRate) {
   const fn = RESULT[name];
