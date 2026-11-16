@@ -92,7 +92,8 @@ function fromLegacy(i) {
   return out;
 }
 
-const FACE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+// dc / df / d100: the coin (1 heads, 0 tails), the Fate die (-1, 0, 1) and the d100's tens die (10 ... 100).
+const FACE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'dc', 'df', 'd100'];
 // an image path in the Foundry data folder, or an http(s) url: no other scheme
 const FACE_IMAGE = /^(?:https?:\/\/[^<>"]+|[^:<>"]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"]*)?$/i;
 /**
@@ -120,7 +121,7 @@ function faceImages(f, tint) {
   for (const t of FACE_TYPES) {
     const m = {};
     for (const [v, url] of Object.entries(isObj(f?.[t]) ? f[t] : {}))
-      if (/^\d{1,3}$/.test(v) && typeof url === 'string' && url.length < 400 && FACE_IMAGE.test(url)) m[v] = url;
+      if (/^-?\d{1,3}$/.test(v) && typeof url === 'string' && url.length < 400 && FACE_IMAGE.test(url)) m[v] = url;
     if (Object.keys(m).length) faces[t] = m;
   }
   return Object.keys(faces).length ? { faces, ...(tint === true ? { facesTint: true } : {}) } : {};

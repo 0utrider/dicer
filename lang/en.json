@@ -909,7 +909,10 @@
         "Clear": "Show the number again on face",
         "ClearAll": "Clear this die's images",
         "Tint": "Colour the images like the numbers (for one-colour images with transparency)",
-        "NoTensDie": "A d100 shows its tens die, which has no face images: pick another die above the preview."
+        "NoTensDie": "A d100 shows its tens die, which has no face images: pick another die above the preview.",
+        "Heads": "Heads",
+        "Tails": "Tails",
+        "Blank": "Blank"
       },
       "BodyImage": {
         "Title": "Body image",

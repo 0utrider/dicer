@@ -1095,8 +1095,8 @@ export class DiceBox {
     const ghost = spec.ghost === true;
     const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
     const appearance = ghost ? GHOST_APPEARANCE : look;
-    // The look's own face images over a preset's faces (none on a relabelled die: d100 tens, dF).
-    const own = spec.variant ? spec.faces : lookFacesFor(spec.type, look, spec.faces);
+    // The look's own face images over a preset's faces (a coin, Fate or d100 tens die by its own key).
+    const own = lookFacesFor(spec.type, look, spec.faces, spec.variant);
     // A d4 with the crystal look is a d4crystal for hull, geometry, reader and labels; its type
     // (and so its value) stays d4. A ghost follows the viewer's look and carries no appearance of
     // its own, so it has the shape of the look it stands for.

@@ -639,12 +639,20 @@ describe('face images (appearance.faces)', () => {
       faces: {
         d20: { 20: 'worlds/w/crit.webp', 1: 'https://cdn.example/fumble.PNG?v=2', x: 'a.png', 5: 'notes.txt' },
         d6: { 6: 'javascript:alert(1).png', 1: 'data:image/png;base64,AAAA.png' },
+        // the d100's tens die, the coin and the Fate die (its -1 key) keep theirs too
         d100: { 10: 'a.png' },
+        dc: { 0: 't.png' },
+        df: { '-1': 'm.png', '-x': 'n.png' },
         bogus: { 1: 'a.png' },
       },
       facesTint: true,
     });
-    expect(a.faces).toEqual({ d20: { 20: 'worlds/w/crit.webp', 1: 'https://cdn.example/fumble.PNG?v=2' } });
+    expect(a.faces).toEqual({
+      d20: { 20: 'worlds/w/crit.webp', 1: 'https://cdn.example/fumble.PNG?v=2' },
+      d100: { 10: 'a.png' },
+      dc: { 0: 't.png' },
+      df: { '-1': 'm.png' },
+    });
     expect(a.facesTint).toBe(true);
   });
 

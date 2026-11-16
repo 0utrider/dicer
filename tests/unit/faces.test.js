@@ -101,4 +101,26 @@ describe('lookFacesFor: the face images of a look', () => {
     expect(tinted.key).not.toBe(a.key);
     expect(lookFacesFor('d6', look({ d6: { 1: 'b.png' } }), base).key).not.toBe(a.key);
   });
+
+  test('a coin, a Fate die and a d100 tens die read their own keys by what each face shows', () => {
+    // coin on the d2: face 1 is heads (1), face 2 tails (0)
+    const coin = lookFacesFor('d2', look({ dc: { 1: 'h.webp', 0: 't.webp' }, d2: { 1: 'no.webp' } }), undefined, 'dc');
+    const d2 = getShape('d2').values;
+    expect(coin.labels[d2.indexOf(1)]).toEqual({ kind: 'image', url: 'h.webp' });
+    expect(coin.labels[d2.indexOf(2)]).toEqual({ kind: 'image', url: 't.webp' });
+    // Fate on the d6 (1, 2 +; 3, 4 blank; 5, 6 −): unpictured faces keep FATE_FACES
+    const fate = lookFacesFor('d6', look({ df: { '-1': 'm.webp' } }), FATE_FACES, 'dF');
+    const d6 = getShape('d6').values;
+    for (const v of d6) expect(fate.labels[d6.indexOf(v)]).toEqual(v > 4 ? { kind: 'image', url: 'm.webp' } : FATE_FACES.labels[d6.indexOf(v)]);
+    // tens die on the d10: face v shows v x 10, 10 shows 00 (key 100)
+    const tens = lookFacesFor('d10', look({ d100: { 100: 'z.webp', 30: 'c.webp' } }), undefined, 'd100tens');
+    const d10 = getShape('d10').values;
+    expect(tens.labels[d10.indexOf(10)]).toEqual({ kind: 'image', url: 'z.webp' });
+    expect(tens.labels[d10.indexOf(3)]).toEqual({ kind: 'image', url: 'c.webp' });
+    expect(tens.labels[d10.indexOf(5)]).toEqual({ kind: 'glyph', text: '50' });
+    // other relabelled dice have no faces of their own; no images: base as it is
+    const base = { key: 'b', labels: [] };
+    expect(lookFacesFor('d6', look({ d6: { 1: 'a.png' } }), base, 'd3')).toBe(base);
+    expect(lookFacesFor('d6', look({ d6: { 1: 'a.png' } }), FATE_FACES, 'dF')).toBe(FATE_FACES);
+  });
 });

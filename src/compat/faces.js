@@ -3,7 +3,7 @@
  * atlas can draw stay glyphs; image files and other text are rasterized per face
  * (render/face-textures.js). Everything read here is third-party data: nothing may throw.
  */
-import { getShape, labelFor } from '../core/dice-shapes.js';
+import { getShape, labelFor, resultOf } from '../core/dice-shapes.js';
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|svg|gif)$/i;
 /** layoutLabel draws at most two glyph slots per face. */
@@ -20,13 +20,27 @@ function hash(text) {
 }
 
 /**
+ * A relabelled die's face images in a look: [its appearance.faces key, the image key of shape face
+ * v]. A coin: 1 heads, 0 tails; a Fate die: -1, 0, 1; a d100's tens die: 10 ... 100 (00).
+ */
+const VARIANT_FACES = {
+  dc: ['dc', (v) => resultOf(v, 'dc')],
+  dF: ['df', (v) => resultOf(v, 'dF')],
+  d100tens: ['d100', (v) => v * 10],
+};
+
+/**
  * A look's own face images (appearance.faces[type]: face value -> image path) as a FaceSet over
  * `base` (a preset's FaceSet): a face with an image shows it, any other keeps base's label or its
  * number. `appearance.facesTint`: the images are masks in the number colour, like text faces.
- * `base` itself when the look has no images for this die type.
+ * `variant`: a coin, Fate die or d100 tens die reads its own key (VARIANT_FACES); another
+ * relabelled die (d3 / d5 / d7) has none. `base` itself when the look has no images for it.
  */
-export function lookFacesFor(type, appearance, base) {
-  const map = appearance?.faces?.[type];
+export function lookFacesFor(type, appearance, base, variant) {
+  const vf = variant ? VARIANT_FACES[variant] : null;
+  if (variant && !vf) return base;
+  const key = vf ? vf[0] : type;
+  const map = appearance?.faces?.[key];
   if (!map) return base;
   let shape;
   try {
@@ -35,12 +49,13 @@ export function lookFacesFor(type, appearance, base) {
     return base;
   }
   const tint = appearance.facesTint === true;
-  const labels = shape.values.map((v, i) =>
-    map[v]
-      ? { kind: 'image', url: map[v], ...(tint ? { tint } : {}) }
-      : (base?.labels?.[i] ?? { kind: 'glyph', text: labelFor(type, v) }),
-  );
-  return { key: `look|${type}|${tint ? 1 : 0}|${hash(JSON.stringify(map))}|${base?.key ?? ''}`, labels };
+  const labels = shape.values.map((v, i) => {
+    const url = map[vf ? vf[1](v) : v];
+    return url
+      ? { kind: 'image', url, ...(tint ? { tint } : {}) }
+      : (base?.labels?.[i] ?? { kind: 'glyph', text: labelFor(type, variant === 'd100tens' ? v * 10 : v, variant) });
+  });
+  return { key: `look|${key}|${tint ? 1 : 0}|${hash(JSON.stringify(map))}|${base?.key ?? ''}`, labels };
 }
 
 /** The Fate die's faces on Dicer's d6 (text faces drawn from face layers): 1, 2 +; 3, 4 blank; 5, 6 −. */

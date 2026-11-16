@@ -56,9 +56,16 @@ import {
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 /** The preview dice: the per-type looks plus the coin, which only previews (it wears the default look). */
-const PREVIEW_DICE = [...DIE_TYPES, 'd2'];
-/** Die types a look can give face images (d100 shows its tens die, which has none). */
-const FACE_DICE = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+const PREVIEW_DICE = [...DIE_TYPES, 'd2', 'dc', 'df'];
+/** Die types a look can give face images (d100: its tens die; dc: the coin; df: the Fate die). */
+const FACE_DICE = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'dc', 'df'];
+/** A die type's face slots, {value: the faces key, label}; a relabelled die by what it shows. */
+function faceSlotsOf(type) {
+  if (type === 'd100') return Array.from({ length: 10 }, (_, i) => ({ value: (i + 1) * 10, label: i === 9 ? '00' : String((i + 1) * 10) }));
+  if (type === 'dc') return [{ value: 1, label: loc('DICER.Appearance.Faces.Heads') }, { value: 0, label: loc('DICER.Appearance.Faces.Tails') }];
+  if (type === 'df') return [{ value: 1, label: '+' }, { value: 0, label: loc('DICER.Appearance.Faces.Blank') }, { value: -1, label: '−' }];
+  return [...getShape(type).values].sort((x, y) => x - y).map((value) => ({ value, label: labelFor(type, value) }));
+}
 const MODULE = 'dicer';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const notify = (kind, message) => globalThis.ui?.notifications?.[kind]?.(message);
@@ -679,13 +686,13 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     await this.render();
   }
 
-  /** The face images of the previewed die type: one slot per face (d100 has none: its tens die). */
+  /** The face images of the previewed die type: one slot per face (faceSlotsOf). */
   #faceContext(form) {
     const type = FACE_DICE.includes(this.#dieType) ? this.#dieType : null;
     const map = (type && form.faces?.[type]) || {};
     return {
       faceType: type,
-      faceSlots: type ? [...getShape(type).values].sort((x, y) => x - y).map((value) => ({ value, label: labelFor(type, value), url: map[value] ?? '' })) : [],
+      faceSlots: type ? faceSlotsOf(type).map((s) => ({ ...s, url: map[s.value] ?? '' })) : [],
       faceAny: Object.keys(map).length > 0,
     };
   }

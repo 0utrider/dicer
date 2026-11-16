@@ -261,9 +261,12 @@ describe('build', () => {
     // (10,691 -> 10,907), 2026-11-16.
     // The theme browser's Throw hands a module dice set's presets (system, faces, model) to each
     // die: owner approved +173 B (10,907 -> 11,080), 2026-11-16.
+    // Theme face images for the coin, the Fate die and the d100 tens die (compat/faces.js keys,
+    // the faces schema, DiceBox and the thumbnailer): owner approved +196 B (11,080 -> 11,276),
+    // 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(11_080);
+    expect(growth).toBeLessThanOrEqual(11_276);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

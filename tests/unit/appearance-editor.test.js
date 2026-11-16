@@ -806,9 +806,18 @@ describe('the appearance editor', () => {
       await click(app, '[data-action="clearFace"][data-value="6"]');
       await vi.waitFor(() => expect(q(app, '.dicer-ae-face.has-image')).toBeNull());
       expect(app.theme().appearance.faces).toBeUndefined();
+      // the d100's tens die (10 ... 00), the coin (heads, tails) and the Fate die (+, blank, −) have slots too
       await click(app, '.dicer-ae-dice [data-type="d100"]');
-      await vi.waitFor(() => expect(app.element.querySelectorAll('.dicer-ae-face')).toHaveLength(0));
-      expect(app.element.textContent).toContain(localize('DICER.Appearance.Faces.NoTensDie'));
+      await vi.waitFor(() => expect(app.element.querySelectorAll('.dicer-ae-face')).toHaveLength(10));
+      await click(app, '.dicer-ae-dice [data-type="dc"]');
+      await vi.waitFor(() => expect(app.element.querySelectorAll('.dicer-ae-face')).toHaveLength(2));
+      await click(app, '.dicer-ae-dice [data-type="df"]');
+      await vi.waitFor(() => expect(app.element.querySelectorAll('.dicer-ae-face')).toHaveLength(3));
+      const minus = click(app, '[data-action="pickFace"][data-value="-1"]');
+      await vi.waitFor(() => expect(opened.length).toBe(2));
+      opened[1].opts.callback('worlds/w/minus.webp');
+      await minus;
+      await vi.waitFor(() => expect(app.theme().appearance.faces).toEqual({ df: { '-1': 'worlds/w/minus.webp' } }));
       await app.close();
     } finally {
       apps.FilePicker = oldPicker;

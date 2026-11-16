@@ -12,7 +12,7 @@ import { restingQuaternion, minY } from '../core/resting.js';
 import { appearanceKey, normalizeAppearance, needsLookExtras } from '../look/appearance.js';
 import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import { createTurntable } from './turntable.js';
-import { lookFacesFor } from '../compat/faces.js';
+import { lookFacesFor, FATE_FACES } from '../compat/faces.js';
 import { createFaceTextures } from '../render/face-textures.js';
 import { modelRotationFor } from '../compat/dsn-orientation.js';
 
@@ -207,21 +207,25 @@ export function createThumbnailer({
     curSize = 0;
   }
 
-  // d100 shows a d10; a d4 with the crystal look shows the crystal
+  // Relabelled dice, drawn as a roll draws them: [shape, variant, base faces].
+  const RELABELLED = { d100: ['d10', 'd100tens'], dc: ['d2', 'dc'], df: ['d6', 'dF', FATE_FACES] };
+  // d100 shows its tens die, a coin a d2, a Fate die a d6; a d4 with the crystal look the crystal
   const shapeTypeOf = (dieType, appearance) =>
-    dieType === 'd100' ? 'd10' : dieType === 'd4' && normalizeAppearance(appearance).shapes.d4 === 'crystal' ? 'd4crystal' : dieType;
+    RELABELLED[dieType]?.[0] ?? (dieType === 'd4' && normalizeAppearance(appearance).shapes.d4 === 'crystal' ? 'd4crystal' : dieType);
 
   // d100 shows its tens die (10, 20 … 90, 00), as a roll does
-  const labelsOf = (dieType, shapeType, shape) =>
-    dieType === 'd100'
-      ? shape.values.map((v) => labelFor('d10', v * 10, 'd100tens'))
-      : shape.values.map((v) => labelFor(shapeType, v));
+  const labelsOf = (dieType, shapeType, shape) => {
+    const variant = RELABELLED[dieType]?.[1];
+    return shape.values.map((v) => labelFor(shapeType, variant === 'd100tens' ? v * 10 : v, variant));
+  };
 
   // The look's own face images (appearance.faces): this thumbnailer's face-layer cache, made on
-  // first use. d100 shows its tens die, which has no images.
+  // first use. A relabelled die reads its own key (compat/faces.js lookFacesFor).
   let faceCache = null;
-  const faceSetOf = (dieType, appearance) =>
-    dieType === 'd100' ? undefined : lookFacesFor(dieType, normalizeAppearance(appearance));
+  const faceSetOf = (dieType, appearance) => {
+    const r = RELABELLED[dieType];
+    return r ? lookFacesFor(r[0], normalizeAppearance(appearance), r[2], r[1]) : lookFacesFor(dieType, normalizeAppearance(appearance));
+  };
   const acquireFaces = (set) => (faceCache ??= createFaceTextures()).acquire(set);
   /** The labels with the faces drawn from layers left empty (as DiceBox does). */
   const layered = (labels, tex) => (tex?.texture ? labels.map((l, i) => (tex.layers[i] >= 0 ? '' : l)) : labels);

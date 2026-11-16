@@ -150,8 +150,9 @@ describe('module dice entries', () => {
       ['d6', { labels: ['1', '2', '3', '4', '5', 'SKULL'] }],
     ]);
     const [entry] = moduleDiceEntries({ colorsets: new Map(), systems: new Map([['s', { name: 'S', dice }]]) });
-    expect(entry.dropped).toEqual([{ kind: 'faces', types: ['dc', 'd6'] }]);
-    expect(entry.faceImages).toEqual({ d2: { 1: 'tail.webp', 2: 'heads.webp' } });
+    expect(entry.dropped).toEqual([{ kind: 'faces', types: ['d6'] }]);
+    // a coin's labels go tails, heads: Foundry's 0 and 1
+    expect(entry.faceImages).toEqual({ dc: { 0: 'tail.webp', 1: 'heads.webp' }, d2: { 1: 'tail.webp', 2: 'heads.webp' } });
   });
 });
 

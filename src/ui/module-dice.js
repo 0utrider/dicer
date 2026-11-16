@@ -84,12 +84,18 @@ function hasCustomFaces(type, preset) {
 }
 
 // Die types whose face images a theme holds (appearance.js faceImages), and what counts as one.
-const IMAGE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+const IMAGE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'dc', 'df', 'd100'];
 const IMAGE = /^(?:https?:\/\/[^<>"]+|[^:<>"]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"]*)?$/i;
 /**
- * A preset's faces as a theme's face images ({face value: path}), when every custom face is an
- * image and the others are plain numbers (kept as numbers); else null (words, symbols, a Fate die,
- * a coin: a theme cannot hold them).
+ * A theme's faces key for label i of a preset (compat/faces.js VARIANT_FACES): a coin's labels go
+ * tails then heads (0, 1), a Fate die's -, blank, + (-1, 0, 1), a d100's 10 ... 00 (10 ... 100);
+ * any other die's value, from the preset's lowest.
+ */
+const faceKey = (type, i, min) => (type === 'dc' ? (i ? 1 : 0) : type === 'df' ? i - 1 : type === 'd100' ? (i + 1) * 10 : min + i);
+/**
+ * A preset's faces as a theme's face images ({faces key: path}), when every custom face is an
+ * image and the others are plain numbers (kept as numbers); else null (words or symbols: a theme
+ * cannot hold them).
  */
 function faceImagesOf(type, preset) {
   if (!IMAGE_TYPES.includes(type) || preset.bumpMaps || preset.emissiveMaps) return null;
@@ -98,8 +104,9 @@ function faceImagesOf(type, preset) {
   const map = {};
   for (const [i, l] of labels.entries()) {
     if (plainLabel(type, l, i, min)) continue;
-    if (typeof l !== 'string' || l.length >= 400 || !IMAGE.test(l) || !(min + i >= 0 && min + i < 1000)) return null;
-    map[min + i] = l;
+    const key = faceKey(type, i, min);
+    if (typeof l !== 'string' || l.length >= 400 || !IMAGE.test(l) || !(key > -1000 && key < 1000)) return null;
+    map[key] = l;
   }
   return Object.keys(map).length ? map : null;
 }
