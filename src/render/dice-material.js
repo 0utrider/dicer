@@ -237,6 +237,8 @@ function makeLabelTexture(shape, labels, atlas) {
  *   [faceTex] rasterized faces (face-textures.js acquire()): layers[i] >= 0 draws face i from
  *   that layer instead of the MSDF label (pass '' as its label). Without a texture the
  *   program is the plain one.
+ * @param {{texture: THREE.Texture}} [bodyTex] the look's body image, loaded (bodyImages.acquire in
+ *   the look-extras chunk); without it a look with a body image draws its plain body.
  * @returns {THREE.MeshPhysicalMaterial}
  */
 export function createDiceMaterial(
@@ -246,6 +248,7 @@ export function createDiceMaterial(
   labels,
   flags = DEFAULT_FLAGS,
   faceTex = null,
+  bodyTex = null,
 ) {
   let a = normalizeAppearance(appearance);
   let f = { ...DEFAULT_FLAGS, ...flags };
@@ -273,7 +276,7 @@ export function createDiceMaterial(
     if (!x) requestLookExtras();
     else if (!f.safe) {
       try {
-        p = x.patchMaterial(a, f, { shape, labels, atlas });
+        p = x.patchMaterial(a, f, { shape, labels, atlas, bodyTex });
       } catch (err) {
         extrasFailed ||= !warnLookExtras(err); // warns once (warnLookExtras returns undefined)
       }
@@ -380,6 +383,8 @@ ${FX_COLOR}`;
     }
     cacheKey = `${key}|fl1`;
   }
+  // Body image: its define comes from the patch only once the texture is in; the key follows it.
+  if (p.defines?.DICER_BODY_IMAGE !== undefined) cacheKey = `${cacheKey}|bi1`;
   material.userData.uniforms = uniforms;
   material.userData.programKey = cacheKey;
   // The material's own uniforms: an isolated clone (isolateMaterial) binds its copies.

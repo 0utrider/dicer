@@ -151,6 +151,8 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       sameAsDefault: AppearanceEditor.#onSameAsDefault,
       pickFont: AppearanceEditor.#onPickFont,
       pickFace: AppearanceEditor.#onPickFace,
+      pickBodyImage: AppearanceEditor.#onPickBodyImage,
+      clearBodyImage: AppearanceEditor.#onClearBodyImage,
       clearFace: AppearanceEditor.#onClearFace,
       clearFaces: AppearanceEditor.#onClearFaces,
       copyLook: AppearanceEditor.#onCopyLook,
@@ -317,7 +319,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         weight: pct(form.numbers.weight),
         intensity: pct(form.glow.intensity),
         stripStrength: pct(form.edges.stripStrength),
+        bodyBlend: pct(form.bodyImage?.blend ?? 1),
       },
+      bodyImageModes: active(['wrap', 'face'], form.bodyImage?.mode ?? 'wrap', 'DICER.Appearance.BodyImage.Mode.'),
       summary: {
         body: loc(`DICER.Appearance.BodyType.${look.body.type}`),
         inside: show.inside ? loc(`DICER.Appearance.InsideType.${form.interior.type}`) + (show.extraDetails ? ` + ${loc(`DICER.Appearance.Extra.${form.interior.extra}`)}` : '') : '—',
@@ -697,6 +701,22 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     } else this.#form = setFaceImage(this.#form, type, value, url);
     this.#scheduler.schedule(this.#previewTheme());
     await this.render();
+  }
+
+  /** The body image: picked with Foundry's file picker, or cleared (its other settings are kept). */
+  async #setBodyImage(src) {
+    this.#form = setField(this.#form, 'bodyImage.src', src);
+    this.#scheduler.schedule(this.#previewTheme());
+    await this.render();
+  }
+
+  static async #onPickBodyImage() {
+    const path = await this.#pickFile('image', this.#form.bodyImage?.src ?? '');
+    if (path) await this.#setBodyImage(String(path));
+  }
+
+  static async #onClearBodyImage() {
+    await this.#setBodyImage('');
   }
 
   static async #onPickFace(event, target) {

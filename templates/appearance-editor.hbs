@@ -67,6 +67,27 @@
             </div>
           {{/if}}
           {{#if show.color2}}<label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Body.Roughness"}}<output data-for="body.roughness">{{pct.roughness}}</output></span><input type="range" name="body.roughness" min="0" max="1" step="0.01" value="{{form.body.roughness}}"></label>{{/if}}
+          <div class="dicer-field dicer-ae-body-image">
+            <span>{{localize "DICER.Appearance.BodyImage.Title"}}</span>
+            <div class="dicer-ae-inline">
+              <input type="text" name="bodyImage.src" value="{{form.bodyImage.src}}" placeholder="worlds/my-world/dice/pattern.webp" spellcheck="false" autocomplete="off">
+              {{#if canBrowse}}<button type="button" class="dicer-icon" data-action="pickBodyImage" data-tooltip="DICER.Appearance.BodyImage.Pick" aria-label="{{localize "DICER.Appearance.BodyImage.Pick"}}"><i class="fa-solid fa-folder-open"></i></button>{{/if}}
+              {{#if form.bodyImage.src}}<button type="button" class="dicer-icon" data-action="clearBodyImage" data-tooltip="DICER.Appearance.BodyImage.Clear" aria-label="{{localize "DICER.Appearance.BodyImage.Clear"}}"><i class="fa-solid fa-xmark"></i></button>{{/if}}
+            </div>
+            {{#if form.bodyImage.src}}
+              <div class="dicer-segmented dicer-ae-seg">
+                {{#each bodyImageModes}}<button type="button" class="{{#if active}}active{{/if}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="bodyImage.mode" data-value="{{id}}" data-tooltip="DICER.Appearance.BodyImage.ModeHint.{{id}}">{{label}}</button>{{/each}}
+              </div>
+              <div class="dicer-ae-row">
+                <label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.BodyImage.Scale"}}</span><input type="range" name="bodyImage.scale" min="0.25" max="4" step="0.05" value="{{form.bodyImage.scale}}"></label>
+                <label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.BodyImage.Rotation"}}</span><input type="range" name="bodyImage.rotation" min="0" max="360" step="5" value="{{form.bodyImage.rotation}}"></label>
+              </div>
+              <label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.BodyImage.Blend"}}<output data-for="bodyImage.blend">{{pct.bodyBlend}}</output></span><input type="range" name="bodyImage.blend" min="0" max="1" step="0.05" value="{{form.bodyImage.blend}}"></label>
+              <label class="dicer-ae-toggle"><input type="checkbox" name="bodyImage.tint" {{#if form.bodyImage.tint}}checked{{/if}}><span>{{localize "DICER.Appearance.BodyImage.Tint"}}</span></label>
+            {{else}}
+              <p class="dicer-hint">{{localize "DICER.Appearance.BodyImage.Hint"}}</p>
+            {{/if}}
+          </div>
         </div>
       </details>
 

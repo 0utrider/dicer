@@ -99,6 +99,22 @@ const FACE_IMAGE = /^(?:https?:\/\/[^<>"]+|[^:<>"]+)\.(?:png|jpe?g|webp|svg|gif|
  * The look's face images: {faces: {[die type]: {[face value]: path}}, facesTint?}, only valid
  * entries, or nothing (no field: a look without images keeps its key).
  */
+const IMAGE_MODES = ['wrap', 'face'];
+/** The body image: {bodyImage: {src, mode, scale, rotation, blend, tint}}, or nothing (no field). */
+function bodyImageOf(b) {
+  if (!isObj(b) || typeof b.src !== 'string' || b.src.length >= 400 || !FACE_IMAGE.test(b.src)) return {};
+  return {
+    bodyImage: {
+      src: b.src,
+      mode: pick(b.mode, IMAGE_MODES, 'wrap'),
+      scale: num(b.scale, 0.25, 4, 1),
+      rotation: num(b.rotation, 0, 360, 0),
+      blend: num(b.blend, 0, 1, 1),
+      tint: b.tint === true,
+    },
+  };
+}
+
 function faceImages(f, tint) {
   const faces = {};
   for (const t of FACE_TYPES) {
@@ -173,6 +189,7 @@ export function normalizeAppearance(input) {
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
       shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
       ...faceImages(i.faces, i.facesTint),
+      ...bodyImageOf(i.bodyImage),
     };
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_APPEARANCE));
@@ -235,6 +252,7 @@ export const needsLookExtras = (a) =>
   !!BODY_PRESETS[a.body.type] ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
   stripActive(a) ||
+  !!a.bodyImage ||
   (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || INSIDE_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
 
 /** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */

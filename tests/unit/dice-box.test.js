@@ -3994,3 +3994,58 @@ describe('a look’s own face images', () => {
     box.clear();
   });
 });
+
+describe('body images', () => {
+  const look = { body: { type: 'opaque', color: '#ffffff' }, bodyImage: { src: 'worlds/w/galaxy.webp' } };
+  const dieMeshes = (renderer) => dieGroups(renderer).map((g) => g.children[0]);
+
+  test('the roll loads its body image through the chunk, swaps it onto the die, releases it when it ends', async () => {
+    _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+    const x = await requestLookExtras();
+    const texture = new THREE.Texture();
+    const acquire = vi.spyOn(x.bodyImages, 'acquire').mockResolvedValue({ texture });
+    const release = vi.spyOn(x.bodyImages, 'release').mockImplementation(() => {});
+    try {
+      const { renderer, physics, box } = setup();
+      const r = box.roll([
+        { type: 'd6', value: 3, appearance: look },
+        { type: 'd8', value: 2, appearance: look },
+        { type: 'd6', value: 1, appearance: look, ghost: true },
+      ]);
+      await flushMicrotasks();
+      expect(acquire).toHaveBeenCalledTimes(1); // one url, the ghost never
+      expect(acquire).toHaveBeenCalledWith('worlds/w/galaxy.webp');
+      physics.flush();
+      renderer.tick(16);
+      const [d6, d8, ghost] = dieMeshes(renderer);
+      expect(d6.material.defines.DICER_BODY_IMAGE).toBe('');
+      expect(d8.material.userData.programKey).toMatch(/\|bi1$/);
+      expect(ghost.material.defines.DICER_BODY_IMAGE).toBeUndefined();
+      box.clear();
+      await r.finished;
+      expect(release).toHaveBeenCalledWith('worlds/w/galaxy.webp');
+    } finally {
+      acquire.mockRestore();
+      release.mockRestore();
+    }
+  });
+
+  test('an image that fails leaves the plain body', async () => {
+    _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+    const x = await requestLookExtras();
+    const acquire = vi.spyOn(x.bodyImages, 'acquire').mockResolvedValue(null);
+    const release = vi.spyOn(x.bodyImages, 'release').mockImplementation(() => {});
+    try {
+      const { renderer, physics, box } = setup();
+      box.roll([{ type: 'd6', value: 3, appearance: look }]);
+      await flushMicrotasks();
+      physics.flush();
+      renderer.tick(16);
+      expect(dieMeshes(renderer)[0].material.defines.DICER_BODY_IMAGE).toBeUndefined();
+      box.clear();
+    } finally {
+      acquire.mockRestore();
+      release.mockRestore();
+    }
+  });
+});

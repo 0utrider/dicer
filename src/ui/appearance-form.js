@@ -99,8 +99,13 @@ export function formFromAppearance(raw) {
     glow: { ...a.glow },
     faces: plain(a.faces ?? {}),
     facesTint: a.facesTint === true,
+    // the body image: always in the form (src '' is none), so its controls keep their values
+    bodyImage: { ...BODY_IMAGE_FORM, ...a.bodyImage },
   };
 }
+
+/** The body image fields of a form without one (normalizeAppearance's defaults). */
+const BODY_IMAGE_FORM = Object.freeze({ src: '', mode: 'wrap', scale: 1, rotation: 0, blend: 1, tint: false });
 
 /** `form` with face `value` of die `type` showing image `url` ('' or null: its number again). A new form. */
 export function setFaceImage(form, type, value, url) {
@@ -146,6 +151,9 @@ export function appearanceFromForm(form) {
     glow: { color: g.color, intensity: n(g.intensity) },
     faces: f.faces,
     facesTint: f.facesTint === true,
+    bodyImage: isObj(f.bodyImage)
+      ? { ...f.bodyImage, scale: n(f.bodyImage.scale), rotation: n(f.bodyImage.rotation), blend: n(f.bodyImage.blend), tint: f.bodyImage.tint === true }
+      : undefined,
   });
 }
 
@@ -219,7 +227,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'extraDensity'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'extraDensity', 'scale', 'rotation', 'blend'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

@@ -815,6 +815,42 @@ describe('the appearance editor', () => {
     }
   });
 
+  it('body image: picked, its mode and sliders reach the look, cleared again', async () => {
+    const opened = [];
+    class FakePicker {
+      constructor(opts) {
+        this.opts = opts;
+        opened.push(this);
+      }
+      render() {}
+    }
+    const apps = (globalThis.foundry.applications.apps ??= {});
+    const oldPicker = apps.FilePicker;
+    apps.FilePicker = { implementation: FakePicker };
+    try {
+      const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+      expect(q(app, '[data-field="bodyImage.mode"]')).toBeNull(); // no image yet: only the picker
+      const clicked = click(app, '[data-action="pickBodyImage"]');
+      await vi.waitFor(() => expect(opened.length).toBe(1));
+      expect(opened[0].opts.type).toBe('image');
+      opened[0].opts.callback('worlds/w/galaxy.webp');
+      await clicked;
+      await vi.waitFor(() => expect(q(app, '[data-field="bodyImage.mode"][data-value="face"]')).not.toBeNull());
+      expect(app.theme().appearance.bodyImage).toMatchObject({ src: 'worlds/w/galaxy.webp', mode: 'wrap', blend: 1 });
+      await click(app, '[data-field="bodyImage.mode"][data-value="face"]');
+      type(app, 'bodyImage.blend', '0.4');
+      type(app, 'bodyImage.scale', '2');
+      expect(app.theme().appearance.bodyImage).toMatchObject({ mode: 'face', blend: 0.4, scale: 2 });
+      expect(q(app, 'output[data-for="bodyImage.blend"]').textContent).toBe('40%');
+      await click(app, '[data-action="clearBodyImage"]');
+      await vi.waitFor(() => expect(q(app, '[data-field="bodyImage.mode"]')).toBeNull());
+      expect(app.theme().appearance.bodyImage).toBeUndefined();
+      await app.close();
+    } finally {
+      apps.FilePicker = oldPicker;
+    }
+  });
+
   it('with Sequencer active, the film button opens the JB2A picker over its database', async () => {
     const oldModules = globalThis.game.modules;
     globalThis.game.modules = new Map([
@@ -1292,6 +1328,8 @@ describe('lang/en.json', () => {
       'Shapes.': ['D4', 'classic', 'crystal'],
       'Coin.': ['numbers', 'heads-tails', 'sun-moon'],
       'Icon.': ['none', ...ICON_IDS],
+      'BodyImage.Mode.': ['wrap', 'face'],
+      'BodyImage.ModeHint.': ['wrap', 'face'],
       'Edge.': ['sharp', 'crisp', 'soft', 'round', 'veryRound'],
       'Strip.': ['body', 'paint', 'metal', 'glow'],
       'Pet.': ['None', 'Mimic', 'Slime', 'Dragonling'],

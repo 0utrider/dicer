@@ -857,7 +857,7 @@ describe('look extras (lazy chunk)', () => {
     const [pa, pf, ctx] = mod.patchMaterial.mock.calls[0];
     expect(pa.numbers.fill).toBe('holo');
     expect(pf.engraving).toBe(true);
-    expect(ctx).toEqual({ shape: s, labels, atlas });
+    expect(ctx).toEqual({ shape: s, labels, atlas, bodyTex: null });
     const shader = patched(m);
     const fs = shader.fragmentShader;
     const anchor = fs.indexOf('#include <emissivemap_fragment>');

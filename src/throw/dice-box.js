@@ -7,7 +7,7 @@ import {
   isolateMaterial,
   DEFAULT_FLAGS,
 } from '../render/dice-material.js';
-import { getLookExtras } from '../render/extras-loader.js';
+import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import {
   DEFAULT_APPEARANCE,
   appearanceKey,
@@ -814,6 +814,7 @@ export class DiceBox {
         die.ghost,
         die.faceTex,
         die,
+        die.bodyTex,
       );
       if (!roll.materials.has(mat)) {
         roll.materials.add(mat);
@@ -898,9 +899,12 @@ export class DiceBox {
    *   of a non-standard system keys its own materials, so a standard die can neither suppress
    *   the announcement nor share a material a listener may change.
    */
-  #material(appearance, flags, type, variant, faces, ghost = false, faceTex = null, source = null) {
+  #material(appearance, flags, type, variant, faces, ghost = false, faceTex = null, source = null, bodyTex = null) {
     const layered = !ghost && faceTex?.texture ? faceTex : null;
     const layerKey = layered ? `|fl${faceTexId(layered)}` : '';
+    // The body image, once loaded: part of the key (a die without it yet draws the plain body).
+    const bt = !ghost && bodyTex?.texture ? bodyTex : null;
+    const bodyKey = bt ? `|bi:${appearance.bodyImage?.src}` : '';
     const found = ghost ? null : this.#presetOf(source, type);
     const custom = found && found.preset.system !== STANDARD_SYSTEM ? found.preset.system : null;
     const systemKey = custom ? `|sys:${custom}` : '';
@@ -909,7 +913,7 @@ export class DiceBox {
     const font = this.#fontAtlas(ghost ? 'serif' : appearance.numbers?.font);
     // The atlas actually used is part of the key: a serif stand-in is never reused once the
     // font is ready.
-    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${systemKey}${hookKey}|atlas:${font.id}`;
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${bodyKey}${systemKey}${hookKey}|atlas:${font.id}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
@@ -924,9 +928,11 @@ export class DiceBox {
         return dflt(); // a text / image face without a layer shows its number
       });
       const build = () =>
-        layered
-          ? createDiceMaterial(appearance, font.atlas, shape, labels, flags, layered)
-          : createDiceMaterial(appearance, font.atlas, shape, labels, flags);
+        bt
+          ? createDiceMaterial(appearance, font.atlas, shape, labels, flags, layered, bt)
+          : layered
+            ? createDiceMaterial(appearance, font.atlas, shape, labels, flags, layered)
+            : createDiceMaterial(appearance, font.atlas, shape, labels, flags);
       mat = build();
       if (hooks)
         mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
@@ -938,7 +944,7 @@ export class DiceBox {
       this._refs.set(mat, {
         refs: 0,
         stale: false,
-        transient: !!layered,
+        transient: !!(layered || bt),
         key,
         releaseAtlas,
         fontId: font.id,
@@ -1188,7 +1194,7 @@ export class DiceBox {
    * a face, Dicer's own die for a model). Resolves once the roll stops waiting.
    */
   #acquireAssets(roll) {
-    const loads = [...this.#faceLoads(roll), ...this.#modelLoads(roll)];
+    const loads = [...this.#faceLoads(roll), ...this.#modelLoads(roll), ...this.#bodyLoads(roll)];
     if (!loads.length) return Promise.resolve();
     roll.assetsPending = true;
     const deadline = new Promise((resolve) => {
@@ -1252,7 +1258,40 @@ export class DiceBox {
       if (die.ghost || die.model || die.faces?.key !== faces.key) continue;
       die.faceTex = tex;
       const { appearance, shapeType, variant } = die;
-      const mat = this.#material(appearance, roll.flags, shapeType, variant, die.faces, false, tex, die);
+      const mat = this.#material(appearance, roll.flags, shapeType, variant, die.faces, false, tex, die, die.bodyTex);
+      this.#swapMaterial(roll, die, mat);
+    }
+  }
+
+  /**
+   * Body-image loads (one per url, through the look-extras chunk), each resolving to a function
+   * that applies it (or null). Never rejects. What is acquired is released when the roll finishes.
+   */
+  #bodyLoads(roll) {
+    const urls = new Set();
+    for (const die of roll.dice) if (!die.ghost && !die.model && die.appearance?.bodyImage) urls.add(die.appearance.bodyImage.src);
+    if (!urls.size) return [];
+    roll.bodyImages = [];
+    return [...urls].map((url) =>
+      requestLookExtras()
+        .then((x) => x?.bodyImages && Promise.resolve(x.bodyImages.acquire(url)).then((tex) => {
+          if (roll.removed) return void x.bodyImages.release(url); // finished meanwhile
+          roll.bodyImages.push(url);
+          return tex?.texture ? () => this.#applyBody(roll, url, tex) : null;
+        }))
+        .catch((err) => {
+          console.warn('dicer: cannot load a body image; the die keeps its plain body', err);
+          return null;
+        }),
+    );
+  }
+
+  #applyBody(roll, url, tex) {
+    for (const die of roll.dice) {
+      if (die.ghost || die.model || die.appearance?.bodyImage?.src !== url) continue;
+      die.bodyTex = tex;
+      const { appearance, shapeType, variant } = die;
+      const mat = this.#material(appearance, roll.flags, shapeType, variant, die.faces, false, die.faceTex, die, tex);
       this.#swapMaterial(roll, die, mat);
     }
   }
@@ -1682,6 +1721,8 @@ export class DiceBox {
       }
     }
     roll.faceSets = null;
+    for (const url of roll.bodyImages ?? []) getLookExtras()?.bodyImages?.release(url);
+    roll.bodyImages = null;
     if (roll.playback) {
       // A recording or a replay source still owns its chunks: never handed back to the worker.
       if (!roll.keep) for (const data of roll.playback.release()) this._physics.recycle(data);

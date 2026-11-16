@@ -905,6 +905,24 @@
         "ClearAll": "Clear this die's images",
         "Tint": "Colour the images like the numbers (for one-colour images with transparency)",
         "NoTensDie": "A d100 shows its tens die, which has no face images: pick another die above the preview."
+      },
+      "BodyImage": {
+        "Title": "Body image",
+        "Hint": "Put a picture on the die itself: a pattern or photo wrapped around it (galaxy, stone, camo, tartan), or a crest on every face. Pick a file every player can load (world or module folders, or an https link).",
+        "Pick": "Pick an image",
+        "Clear": "Remove the image",
+        "Mode": {
+          "wrap": "Wrap",
+          "face": "Each face"
+        },
+        "ModeHint": {
+          "wrap": "The image flows across the whole die (best for patterns and photos)",
+          "face": "The image sits on every face, under the number (best for a symbol or crest)"
+        },
+        "Scale": "Scale",
+        "Rotation": "Rotation",
+        "Blend": "Strength",
+        "Tint": "Colour it with the body colour"
       }
     },
     "Hand": {

@@ -29,10 +29,13 @@ import { bodyPatch } from './bodies/index.js';
 import { insidePatch } from './insides/index.js';
 import { edgePatch } from './edges.js';
 import { mergePatches } from './merge.js';
+import { bodyImagePatch } from './body-image.js';
 
 export { mergePatches };
 // Living insides: per-die motion state, stepped from DiceBox.#frame (insides/live.js).
 export { insideMotion } from './insides/live.js';
+// Body images: the texture cache DiceBox and the thumbnailer load through (body-image.js).
+export { bodyImages } from './body-image.js';
 
 /** Build-test marker: present in this chunk, never in the world-start bundle. */
 export const EXTRAS_ID = 'dicer-look-extras';
@@ -42,5 +45,5 @@ export const ready = Promise.resolve();
 // Icons relabel only the d20, pips only a plain d6, coin motifs only the d2: at most one of them
 // gives a die labels and an atlas (tests/unit/glyphs.test.js).
 export function patchMaterial(a, flags, ctx) {
-  return mergePatches(bodyPatch(a, flags), insidePatch(a, flags), reliefPatch(a), fillPatch(a), iconPatch(a, ctx), glyphPatch(a, ctx), edgePatch(a));
+  return mergePatches(bodyPatch(a, flags), bodyImagePatch(a, ctx), insidePatch(a, flags), reliefPatch(a), fillPatch(a), iconPatch(a, ctx), glyphPatch(a, ctx), edgePatch(a));
 }

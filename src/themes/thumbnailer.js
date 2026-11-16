@@ -225,18 +225,25 @@ export function createThumbnailer({
   /** The labels with the faces drawn from layers left empty (as DiceBox does). */
   const layered = (labels, tex) => (tex?.texture ? labels.map((l, i) => (tex.layers[i] >= 0 ? '' : l)) : labels);
 
+  // The look's body image: the look-extras chunk's shared cache (it draws the image too).
+  const bodySrcOf = (appearance) => normalizeAppearance(appearance).bodyImage?.src ?? null;
+
   async function renderOne(theme, dieType, dieAtlas = atlas) {
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
     const set = faceSetOf(dieType, appearance);
     const tex = set ? await acquireFaces(set) : null;
+    const src = bodySrcOf(appearance);
+    const images = src ? (await requestLookExtras())?.bodyImages : null;
+    const body = images ? await images.acquire(src) : null;
     try {
-      return await renderLook(appearance, dieType, dieAtlas, tex);
+      return await renderLook(appearance, dieType, dieAtlas, tex, body);
     } finally {
       if (set) faceCache.release(set);
+      if (images) images.release(src);
     }
   }
 
-  async function renderLook(appearance, dieType, dieAtlas, tex) {
+  async function renderLook(appearance, dieType, dieAtlas, tex, body = null) {
     const shapeType = shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
     const labels = layered(labelsOf(dieType, shapeType, shape), tex);
@@ -244,7 +251,7 @@ export function createThumbnailer({
     const cam = camera;
     const cvs = canvas;
     const rnd = renderer;
-    const material = createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null);
+    const material = createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null, body?.texture ? body : null);
     const releaseAtlas = holdAtlas(dieAtlas);
     // The geometry is acquired only once the material exists; anything after it that throws
     // gives it back.
@@ -385,6 +392,33 @@ export function createThumbnailer({
       if (faces) faceCache.release(faces.set);
       faces = null;
     }
+
+    let body = null; // {src, images, tex}: the look's body image, held while this preview shows it
+    /** The body image of the current look, or null; one still loading rebuilds the die once in. */
+    function bodyNow() {
+      const src = bodySrcOf(appearance);
+      if (body?.src === src) return body?.tex ?? null;
+      dropBody();
+      if (!src) return null;
+      const mine = (body = { src, images: null, tex: null });
+      requestLookExtras().then((x) => {
+        if (body !== mine || stopped || !x?.bodyImages) return;
+        mine.images = x.bodyImages;
+        return mine.images.acquire(src).then((t) => {
+          if (body !== mine || stopped) return;
+          mine.tex = t;
+          if (t?.texture && res) {
+            free();
+            redraw();
+          }
+        });
+      });
+      return null;
+    }
+    function dropBody() {
+      body?.images?.release(body.src);
+      body = null;
+    }
     const visible = () => !doc || doc.visibilityState === undefined || doc.visibilityState === 'visible';
 
     const free = () => {
@@ -407,10 +441,11 @@ export function createThumbnailer({
       const shapeType = shapeTypeOf(dieType, appearance);
       const shape = getShape(shapeType);
       const tex = facesNow();
+      const bt = bodyNow();
       const labels = layered(labelsOf(dieType, shapeType, shape), tex);
       const fontId = fontOf(appearance);
       const dieAtlas = readyAtlas(fontId);
-      const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null);
+      const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null, bt?.texture ? bt : null);
       const releaseAtlas = holdAtlas(dieAtlas);
       if (!dieAtlas) {
         // the serif stands in: rebuild the die once the font is ready
@@ -575,6 +610,7 @@ export function createThumbnailer({
         previews.delete(p);
         free();
         dropFaces();
+        dropBody();
         if (lost) hooks.onLost?.();
       },
       stop() {
