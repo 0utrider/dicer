@@ -15,71 +15,34 @@ import { openThrowOverlay } from './overlay.js';
 import { handFor } from './box.js';
 import { planFor, push, handThrows, queued, storeThrow, throwWithin } from './resolve.js';
 import { handAllowed, handDeps } from '../shell.js';
+import {
+  TRAY_DICE,
+  TRAY_MODES,
+  DIE_SHAPES,
+  countOf,
+  modOf,
+  formulaFromCounts,
+  coreMode,
+  stepCount,
+} from './tray-dice.js';
 
-/** The tray's dice, in its order (Foundry denominations: d2 is a two-sided Die, dF Fate). */
-export const TRAY_DICE = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'd2', 'dF'];
-/** The CONFIG.ChatMessage.modes a tray roll can go out in. */
-export const TRAY_MODES = ['public', 'gm', 'blind', 'self'];
-/** A count above this is clamped (Foundry rolls what the throw cannot hold anyway). */
-const MAX_COUNT = 99;
-const MAX_MODIFIER = 9999;
-
-/**
- * Each die's outline for its button (inner SVG of a 24x24 viewBox; trusted constants, never user
- * input): a coin for d2, a triangle for d4, a square for d6 and so on, as the dice look in hand.
- */
-const poly = (points) => `<polygon points="${points}"/>`;
-const KITE = '12,1.5 22,10 12,22.5 2,10';
-export const DIE_SHAPES = {
-  d4: poly('12,2 22.5,21 1.5,21'),
-  d6: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
-  d8: poly('12,1 23,12 12,23 1,12'),
-  d10: poly(KITE),
-  d12: poly('12,1.5 22.5,9.2 18.5,21.5 5.5,21.5 1.5,9.2'),
-  d20: poly('12,1 21.5,6.5 21.5,17.5 12,23 2.5,17.5 2.5,6.5'),
-  d100: poly(KITE),
-  d2: '<circle cx="12" cy="12" r="10.5"/>',
-  dF: '<rect x="3" y="3" width="18" height="18" rx="5"/>',
-};
+// The pure core lives in tray-dice.js (shared with the chat dock); re-exported unchanged.
+export { TRAY_DICE, TRAY_MODES, DIE_SHAPES, formulaFromCounts, stepCount } from './tray-dice.js';
 
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const fmt = (key, data) => {
   const f = globalThis.game?.i18n?.format;
   return f ? f.call(globalThis.game.i18n, key, data) : key;
 };
-const int = (v) => Math.trunc(Number(v)) || 0;
-const countOf = (v) => Math.min(MAX_COUNT, Math.max(0, int(v)));
-/** The modifier, a finite integer within ±MAX_MODIFIER. */
-const modOf = (v) => Math.min(MAX_MODIFIER, Math.max(-MAX_MODIFIER, int(v)));
-
-/** '2d6 + 1d20 + 3' from {d6: 2, d20: 1} and 3: the dice in tray order, then the modifier. */
-export function formulaFromCounts(counts, modifier) {
-  let f = TRAY_DICE.filter((k) => countOf(counts?.[k]) > 0)
-    .map((k) => `${countOf(counts[k])}${k}`)
-    .join(' + ');
-  const m = modOf(modifier);
-  if (m) f = f ? `${f} ${m < 0 ? '-' : '+'} ${Math.abs(m)}` : String(m);
-  return f;
-}
-
-/** The core chat mode when the tray offers it, else public. */
-function coreMode() {
-  try {
-    const m = globalThis.game.settings.get('core', 'messageMode');
-    if (TRAY_MODES.includes(m)) return m;
-  } catch {
-    /* not registered */
-  }
-  return 'public';
-}
 
 /**
  * Throws the chosen dice and posts the roll; the created message, or null when nothing was
- * posted (no dice, no engine, not allowed, cancelled, timed out, never landed). `deps`: the hand
+ * posted (no dice, no engine, not allowed, cancelled, timed out, never landed). `formula`, when
+ * given, is rolled instead of the counts' (the chat dock's keep-highest d20). `deps`: the hand
  * chunk's dependencies (shell.handDeps); `overlay` and `Roll` are test seams.
  */
 export async function throwTray(
-  { counts = {}, modifier = 0, mode } = {},
+  { counts = {}, modifier = 0, mode, formula } = {},
   {
     deps = handDeps(),
     overlay = openThrowOverlay,
@@ -95,7 +58,7 @@ export async function throwTray(
   const me = deps.user();
   if (!handAllowed(me, deps.getSetting)) return null;
   if (!TRAY_MODES.includes(mode)) mode = 'public';
-  const roll = new Roll(formulaFromCounts(counts, modifier));
+  const roll = new Roll(formula || formulaFromCounts(counts, modifier));
   const ms = Number(deps.getSetting('handRollTimeout')) * 1000 || 60000;
   const { specs, owners, dropped } = planFor({ roll, dicer: deps }, roll.dice, (t) =>
     Math.abs(t.number),
@@ -141,12 +104,6 @@ export async function throwTray(
     handThrows.delete(id);
     throw err;
   }
-}
-
-/** `counts` with one more (delta 1) or one fewer (-1) of `key`, within 0..99; a new object. */
-export function stepCount(counts, key, delta) {
-  if (!TRAY_DICE.includes(key)) return { ...counts };
-  return { ...counts, [key]: countOf(countOf(counts?.[key]) + delta) };
 }
 
 /** What the window shows for a choice: the formula, and whether Throw / Clear do anything. */

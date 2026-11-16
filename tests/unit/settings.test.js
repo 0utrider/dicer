@@ -291,6 +291,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
     handFollowUps: { scope: 'client', type: Boolean, default: true, config: true },
     handLiveShare: { scope: 'world', type: Boolean, default: true, config: true },
     diceTray: { scope: 'client', type: Boolean, default: true, config: true },
+    chatTray: { scope: 'client', type: Boolean, default: true, config: true },
   };
   for (const [key, cfg] of Object.entries(want)) expect(r[key]).toMatchObject({ ns: 'dicer', ...cfg });
   // plus the hidden stash of entries handRollsRequired took from another method
@@ -314,6 +315,8 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
   } finally {
     delete globalThis.ui;
   }
+  // chatTray's change is the chat-tray chunk's (clientSettingChanged): nothing to call here
+  expect(() => r.chatTray.onChange?.(false)).not.toThrow();
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER;
   for (const key of Object.keys(want).filter((k) => want[k].config)) {
     expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);

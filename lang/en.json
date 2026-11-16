@@ -160,6 +160,10 @@
         "Name": "Dice tray",
         "Hint": "A dice tray button for free rolls by hand."
       },
+      "chatTray": {
+        "Name": "Chat dice tray",
+        "Hint": "A row of dice under the chat box: click a die to add it, right-click to remove it, hold for more, then Roll. Where you may roll by hand, drag dice onto the table to throw them. Hidden while the Dice Tray module is active."
+      },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
         "Hint": "Roll messages appear in the chat at once instead of waiting for the dice to land. The dice still animate."
@@ -881,6 +885,18 @@
       "NoDice": "Pick at least one die to throw.",
       "NoEngine": "3D dice are off on this client, so the dice tray cannot throw. Turn on Enable 3D dice (Dicer's settings) to use it.",
       "Failed": "The dice tray could not post the roll."
+    },
+    "ChatTray": {
+      "Label": "Chat dice tray",
+      "Die": "{die}: click adds one, right-click removes one, hold for more",
+      "Adv": "Adv",
+      "AdvHint": "Advantage (roll two d20, keep the highest)",
+      "Dis": "Dis",
+      "DisHint": "Disadvantage (roll two d20, keep the lowest)",
+      "Clear": "Clear the dice",
+      "Roll": "Roll",
+      "RollHint": "Roll these dice",
+      "RollThrowHint": "Roll these dice, or drag onto the table to throw them by hand"
     }
   }
 }
