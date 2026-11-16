@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- **Fixed:** the Your pet window could grow taller than the screen with no way to scroll to its last settings. It now stays within the screen, its settings scroll, and it can be resized.
+
 ## 0.2.1
 
 Pets get a reaction and a voice for every damage type, your pet gets its own window, and damage dice win over 3D model sets.
