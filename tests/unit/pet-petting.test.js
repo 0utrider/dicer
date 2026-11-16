@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createPetting, HUFF_HITS, HUFF_WINDOW_MS, HUFF_IGNORE_MS } from '../../src/pet/chunk/petting.js';
+import { createPetting, petClickable, HUFF_HITS, HUFF_WINDOW_MS, HUFF_IGNORE_MS } from '../../src/pet/chunk/petting.js';
 import { createPetLayer, PET_MS, HUFF_MS } from '../../src/pet/chunk/pets.js';
 import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
 import { buildScene } from '../../src/render/scene.js';
@@ -274,6 +274,31 @@ describe('petting a pet in the layer', () => {
     // Dicer's own canvas or layer count as the table
     for (const id of ['dicer-canvas', 'dicer-layer']) clickAt(m.win, at.x, at.y, 0, { id });
     expect(got).toHaveLength(12);
+  });
+
+  test('a click on the interface under the dice canvas (the player list, a module HUD bar) over a resting pet pets it', () => {
+    const m = make();
+    rollToRest(m);
+    const got = foundry(m.win);
+    const at = screenOf(group(m));
+    // an element that matches none of the "above the dice" selectors: Foundry's interface (z 30)
+    const ui = { id: 'players-active', closest: () => null };
+    clickAt(m.win, at.x, at.y, 0, ui);
+    expect(got).toEqual([]); // the pet's: Foundry never sees it
+    expect(m.deps.playSound).toHaveBeenCalled();
+  });
+
+  test('petClickable: windows, dialogs and menus are above the dice; "Dice above windows" lifts the dice over windows only', () => {
+    const el = (...matches) => ({ closest: (sel) => (sel.split(', ').some((s) => matches.includes(s)) ? {} : null) });
+    expect(petClickable(el())).toBe(true); // the board or the interface under the canvas
+    expect(petClickable(el('.application'))).toBe(false);
+    expect(petClickable(el('.window-app'))).toBe(false);
+    expect(petClickable(el('#context-menu'))).toBe(false);
+    expect(petClickable(el('.application'), true)).toBe(true); // the dice drawn over windows
+    expect(petClickable(el('.dicer-hand-overlay'), true)).toBe(false);
+    expect(petClickable(el('#tooltip'), true)).toBe(false);
+    expect(petClickable(null)).toBe(false);
+    expect(petClickable({ id: 'board' })).toBe(false); // no DOM: only the table ids count
   });
 
   test('while dice are held for a hand throw, a pointerdown over a pet reaches the overlay', () => {

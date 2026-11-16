@@ -7,6 +7,22 @@ export const HUFF_WINDOW_MS = 3000;
 export const HUFF_IGNORE_MS = 4000;
 const EVENTS = ['pointerdown', 'pointerup', 'click'];
 
+// Drawn above the dice canvas, so a click there is never a pet's: Foundry's windows (z 100 and up;
+// v2 .application, v1 .window-app) and dialogs, menus and tooltips, and the hand-throw overlay.
+const ABOVE_WINDOWS = '.application, .window-app, dialog, #context-menu, .context-menu';
+const ABOVE_ALWAYS = '#tooltip, .locked-tooltip, .dicer-hand-overlay';
+/**
+ * Whether a click on `target` may be a pet's: the pet is drawn there. The dice canvas (z 60) is above
+ * the board and Foundry's interface (z 30: the controls, player list, hotbar, HUD bars of other
+ * modules), so a pet resting over them takes the click; it is below windows, unless "Dice above
+ * windows" lifted it (`above`), and below menus, tooltips and the hand overlay.
+ */
+export function petClickable(target, above = false) {
+  if (!target?.closest) return false;
+  if (target.closest(ABOVE_ALWAYS)) return false;
+  return above || !target.closest(ABOVE_WINDOWS);
+}
+
 /**
  * Capture-phase pointerdown, pointerup and click listeners on `win`. A left-button pointerdown
  * that `pickPet(clientX, clientY, target)` says hits a resting pet (null: none; it also says null

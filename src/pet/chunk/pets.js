@@ -27,7 +27,7 @@ import {
   FOOTPRINT,
 } from './resting.js';
 import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
-import { createPetting, HUFF_IGNORE_MS } from './petting.js';
+import { createPetting, petClickable, HUFF_IGNORE_MS } from './petting.js';
 import { elementReactions, reactionOf, resting } from './reactions.js';
 import { createMoods } from './moods.js';
 import { petFor } from '../pet-for.js';
@@ -1183,13 +1183,15 @@ export function createPetLayer(deps) {
    * scene units at PET_HEIGHT, scaled by its height) plus PICK_MARGIN x height, around the point
    * under its middle (half its height up, as the top-down camera sees it), in page px. The nearest
    * wins. Only a shown pet settled at its spot: not hopping, throwing, down, wobbling or huffing.
-   * Only a click on the table itself (`target`: Foundry's board, or Dicer's canvas or layer), never
-   * one on a window, menu or the hand-throw overlay above a pet; and none while dice are held
-   * (the overlay grabs them).
+   * Only a click where the pet is drawn on top (petClickable: the table, or the interface under the
+   * dice canvas, such as the player list or a module's HUD bar), never one on a window, menu or the
+   * hand-throw overlay above a pet; and none while dice are held (the overlay grabs them).
    */
   function pickPet(x, y, target) {
     const map = pageMap();
-    if (!map || disposed || !shown() || !TABLE_IDS.includes(target?.id) || holding()) return null;
+    const above = !!target?.ownerDocument?.getElementById?.('dicer-canvas')?.classList?.contains('dicer-above');
+    const onTable = TABLE_IDS.includes(target?.id) || petClickable(target, above);
+    if (!map || disposed || !shown() || !onTable || holding()) return null;
     const camH = stage.halfDepth / TAN_HALF_FOV; // the camera's height above the table
     let best = null;
     let bestD = Infinity;
