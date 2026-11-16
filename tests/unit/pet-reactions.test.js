@@ -193,6 +193,53 @@ const landBeside = (m, dice) => {
 };
 const phase = (m) => group(m).userData.dicerPet.phase;
 
+describe('an elemental die hitting a resting pet', () => {
+  const HARD = 50; // well past SPLAT_SPEED
+  const hitBy = (m, die, speed = HARD) => {
+    const g = group(m);
+    m.layer.hit('u1', { speed, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die });
+    m.layer.update((clockNow += 16));
+  };
+
+  test('sets it off in its element instead of splatting it, however hard', () => {
+    const m = make();
+    rollToRest(m);
+    hitBy(m, { damageType: 'fire' });
+    expect(phase(m)).toBe('scorch');
+    expect(m.deps.playSound).not.toHaveBeenCalledWith({ builtin: 'petSplat' });
+    hitBy(m, { appearance: { interior: { type: 'frost' } } });
+    expect(phase(m)).toBe('shiver');
+  });
+
+  test('a plain or ghost die still splats it; petElemental off, an elemental one does too', () => {
+    const plain = make();
+    rollToRest(plain);
+    hitBy(plain, { damageType: 'untyped' });
+    expect(phase(plain)).not.toBe('scorch');
+    expect(plain.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+    const ghost = make();
+    rollToRest(ghost);
+    hitBy(ghost, { damageType: 'fire', ghost: true });
+    expect(ghost.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+    const off = make({ petElemental: false });
+    rollToRest(off);
+    hitBy(off, { damageType: 'fire' });
+    expect(off.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+  });
+
+  test('more hits of the same element (other dice, bounces) do not restart the reaction', () => {
+    const m = make();
+    rollToRest(m);
+    hitBy(m, { damageType: 'fire' });
+    const started = group(m).userData.dicerPet;
+    runTo(m, clockNow + SCORCH_MS / 2);
+    hitBy(m, { damageType: 'fire' });
+    runTo(m, clockNow + SCORCH_MS / 2 + 50);
+    expect(phase(m)).not.toBe('scorch'); // over on its first clock: not restarted
+    expect(started).toBeTruthy();
+  });
+});
+
 describe('reactions in the layer', () => {
   test('a fire die by a resting pet: it scorches with a smoke puff, the loop runs only for it, then idles', () => {
     const m = make();

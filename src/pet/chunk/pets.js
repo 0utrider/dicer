@@ -29,6 +29,7 @@ import {
 import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, petClickable, HUFF_IGNORE_MS } from './petting.js';
 import { elementReactions, reactionOf, resting } from './reactions.js';
+import { elementOf } from '../../effects/element-of.js';
 import { createMoods } from './moods.js';
 import { petFor } from '../pet-for.js';
 
@@ -1072,15 +1073,33 @@ export function createPetLayer(deps) {
     let any = false;
     const near = skip ? [...pets.values()].filter((p) => !skip.has(p)) : [...pets.values()];
     for (const { pet, element } of elementReactions(dice, near, { dieWidth: DIE_WIDTH })) {
-      dropAnim(pet); // a shiver's tint or a scorch's smoke cut short by the next reaction
-      const kind = reactionOf(element);
-      pet.anim = { kind, at: now, calm: calmNow(), element };
-      // the smoke rises from the top of its body as it stands (the mimic's open lid included)
-      if (kind === 'scorch') pet.anim.top = new THREE.Box3().setFromObject(pet.creature.root).max.y - pet.group.position.y;
-      pet.idleAt = now; // a startled pet does not wander off just then
+      react(pet, element, now);
       any = true;
     }
     if (any) wake();
+  }
+
+  /** `pet` reacts to `element` (reactions.js reactionOf): the anim replaces whatever it was doing. */
+  function react(pet, element, now) {
+    dropAnim(pet); // a shiver's tint or a scorch's smoke cut short by the next reaction
+    const kind = reactionOf(element);
+    pet.anim = { kind, at: now, calm: calmNow(), element };
+    // the smoke rises from the top of its body as it stands (the mimic's open lid included)
+    if (kind === 'scorch') pet.anim.top = new THREE.Box3().setFromObject(pet.creature.root).max.y - pet.group.position.y;
+    pet.idleAt = now; // a startled pet does not wander off just then
+  }
+
+  /**
+   * The element of a die that hit a resting pet, when it sets it off instead of knocking it
+   * (petElemental on, pets shown, never a ghost die), else null.
+   */
+  function hitElement(pet, die) {
+    try {
+      if (!die || die.ghost || !resting(pet) || disposed || !shown() || getSetting('petElemental') === false) return null;
+      return elementOf(die.appearance, die.damageType) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   function leave(key, msLeft) {
@@ -1716,18 +1735,30 @@ export function createPetLayer(deps) {
   }
 
   /**
-   * DiceBox's PetHook.hit(id, { speed, position, dieKey }), at playback time: a die touches the pet
-   * of user `id`. At SPLAT_SPEED or more (and petSplat on) it splats; from WOBBLE_SPEED it wobbles,
-   * pushed away from `position` (a new hit restarts it); less does nothing. A splat, puddle or
-   * pet already down is not hit again, so several hits in one frame give one splat and one sound.
+   * DiceBox's PetHook.hit(id, { speed, position, dieKey, die }), at playback time: a die touches the
+   * pet of user `id`. A die with an element (`die`: its appearance, damageType, ghost) sets a resting
+   * pet off in that element (petElemental), however hard it hits: fire scorches, frost chills,
+   * storm shocks; it never splats or wobbles it. Otherwise, at SPLAT_SPEED or more (and petSplat on)
+   * it splats; from WOBBLE_SPEED it wobbles, pushed away from `position` (a new hit restarts it);
+   * less does nothing. A splat, puddle or pet already down is not hit again, so several hits in one
+   * frame give one splat and one sound.
    */
   function hit(id, info) {
     if (disposed) return;
     const pet = pets.get(id);
     if (!pet || !['routine', 'hop', 'rest', 'move'].includes(pet.state)) return;
     const speed = info?.speed;
-    if (!(speed >= WOBBLE_SPEED)) return; // also NaN
     const now = clock();
+    const element = hitElement(pet, info?.die);
+    if (element) {
+      // the same element going on (a second die of the roll, a bounce) does not restart it
+      if (pet.anim?.element !== element) {
+        react(pet, element, now);
+        wake();
+      }
+      return;
+    }
+    if (!(speed >= WOBBLE_SPEED)) return; // also NaN
     if (speed >= SPLAT_SPEED && splatOn()) return splat(pet, now);
     let dx = (pet.px ?? pet.base.x) - (info.position?.x ?? 0);
     let dz = (pet.pz ?? pet.base.z) - (info.position?.z ?? 0);

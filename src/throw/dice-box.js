@@ -1662,7 +1662,9 @@ export class DiceBox {
           // A pet obstacle (-3 - i): the pet layer decides at playback time whether it splats or
           // wobbles; its own sound covers the contact, so no die click and no dust.
           const id = roll.ids?.[-3 - other];
-          if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey }), roll.hook);
+          // its look and damage type: an elemental die sets the pet off instead (pets.js hit)
+          const die = { appearance: d.appearance, damageType: d.damageType, ghost: d.ghost };
+          if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey, die }), roll.hook);
           continue;
         }
         this.#effectsCall((e) => e.impact?.({ position, speed, surface, dieKey }));

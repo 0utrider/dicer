@@ -366,7 +366,8 @@ function createGrab(
       try {
         if (other <= -3) {
           const id = t.ids[-3 - other];
-          if (id !== undefined) t.hook?.hit?.(id, { speed, position, dieKey });
+          const die = { appearance: e.die.appearance, damageType: e.die.damageType, ghost: e.die.ghost };
+          if (id !== undefined) t.hook?.hit?.(id, { speed, position, dieKey, die });
           continue;
         }
         box._effects?.impact?.({ position, speed, surface, dieKey });
