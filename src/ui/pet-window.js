@@ -124,7 +124,7 @@ export function openPetWindow() {
     static DEFAULT_OPTIONS = {
       id: 'dicer-pet-window',
       classes: ['dicer-pet-window-app'],
-      window: { title: 'DICER.PetWindow.Title', icon: 'fa-solid fa-dragon' },
+      window: { title: 'DICER.PetWindow.Title', icon: 'fa-solid fa-dragon', resizable: true },
       position: { width: 460, height: 'auto' },
     };
     async _renderHTML() {

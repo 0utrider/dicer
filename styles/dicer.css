@@ -2186,6 +2186,14 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   font-weight: 700;
 }
 /* The Your pet window (ui/pet-window.js). */
+/* never taller than the screen: the settings scroll inside it */
+.dicer-pet-window-app {
+  max-height: calc(100vh - 24px);
+}
+.dicer-pet-window-app .window-content {
+  min-height: 0;
+  overflow-y: auto;
+}
 .dicer-pet-window {
   display: flex;
   flex-direction: column;
