@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5
+
+- **Pets look at your cursor.** A resting pet turns its head, then its body, to watch the cursor as it moves over the table, and holds still once it faces it.
+
 ## 0.2.4
 
 - **Only d20s splat pets.** A check's or attack's d20 still splats a pet it hits hard; damage dice and every other die only knock it about.
