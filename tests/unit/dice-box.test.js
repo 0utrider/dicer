@@ -21,6 +21,7 @@ import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
 import { dsnModelRotation, dsnFaceNormal } from '../../src/compat/dsn-layouts.js';
+import { followFor } from '../../src/render/model-loader.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
 import { FATE_FACES } from '../../src/compat/faces.js';
@@ -1255,7 +1256,7 @@ describe('model presets', () => {
   test('a model whose type has no verified rotation renders procedurally, and the roll lands', async () => {
     const models = fakeModels();
     const { renderer, physics, box } = setup({ loadModel: models.loadModel });
-    const r = box.roll([{ type: 'd4', value: 3, dsnType: 'd4', model: 'm/dice_4.glb' }]);
+    const r = box.roll([{ type: 'd6', value: 3, dsnType: 'dX', model: 'm/dice_x.glb' }]);
     expect(models.loadModel).not.toHaveBeenCalled();
     physics.flush();
     expect(renderer.isLooping).toBe(true); // nothing to wait for
@@ -1287,6 +1288,35 @@ describe('model presets', () => {
     const model17 = dsnFaceNormal('d20', 17).applyQuaternion(mesh.quaternion);
     expect(model17.distanceTo(dicer17)).toBeLessThan(1e-6);
     expect(await landRoll(renderer, r)).toBe(true);
+    box.clear();
+  });
+
+  test('a d4 model takes its value’s rotation too, and keeps the plain d4 over the crystal look', async () => {
+    const models = fakeModels();
+    const loadModel = vi.fn(() => models.loadModel().then((m) => ({ ...m, rotationFor: dsnModelRotation })));
+    const { renderer, physics, box } = setup({ loadModel });
+    const crystal = { ...DEFAULT_APPEARANCE, shapes: { ...DEFAULT_APPEARANCE.shapes, d4: 'crystal' } };
+    box.roll([{ type: 'd4', value: 3, dsnType: 'd4', model: 'm/dice_4.glb', appearance: crystal }]);
+    expect(box._rolls.values().next().value.dice[0].shapeType).toBe('d4');
+    physics.flush();
+    renderer.tick(16);
+    const forced = meshes(renderer)[0].quaternion.clone();
+    models.pending[0].resolve();
+    await flushMicrotasks();
+    const [mesh] = meshes(renderer);
+    expect(mesh.geometry).toBe(models.model.geometry);
+    const shape = getShape('d4');
+    const n = faceNormals(shape)[shape.values.indexOf(3)];
+    const dicer3 = new THREE.Vector3(n.x, n.y, n.z).applyQuaternion(forced);
+    expect(dsnFaceNormal('d4', 3).applyQuaternion(mesh.quaternion).distanceTo(dicer3)).toBeLessThan(1e-6);
+    box.clear();
+  });
+
+  test('without a model the crystal look still makes a d4 a d4crystal', () => {
+    const { box } = setup({});
+    const crystal = { ...DEFAULT_APPEARANCE, shapes: { ...DEFAULT_APPEARANCE.shapes, d4: 'crystal' } };
+    box.roll([{ type: 'd4', value: 3, dsnType: 'd4', appearance: crystal }]);
+    expect(box._rolls.values().next().value.dice[0].shapeType).toBe('d4crystal');
     box.clear();
   });
 
@@ -1568,7 +1598,7 @@ describe('model loads reach the registry (fix round 1)', () => {
     });
     failing.box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb' }]);
     const unverified = setup({ loadModel: vi.fn(async () => model()), onModelLoaded });
-    unverified.box.roll([{ type: 'd4', value: 3, dsnType: 'd4', model: 'm/dice_4.glb' }]);
+    unverified.box.roll([{ type: 'd6', value: 3, dsnType: 'dX', model: 'm/dice_x.glb' }]);
     await flushMicrotasks();
     expect(onModelLoaded).not.toHaveBeenCalled();
     failing.box.clear();
@@ -2734,17 +2764,14 @@ describe('the crystal d4 look', () => {
 describe('a DSN preset faces keep the d4 classic; a never-drawn d4 model does not', () => {
   const crystal = { ...DEFAULT_APPEARANCE, shapes: { d4: 'crystal' } };
 
-  test('a d4 with an unused model (no verified rotation) and a crystal look is still the crystal', () => {
+  test('a d4 with a model and a crystal look is the classic d4 (the model is drawn on it)', () => {
     buildDieGeometry.mockClear();
     const { physics, box } = setup();
     box.roll([{ type: 'd4', value: 2, dsnType: 'd4', model: 'm/dice_4.glb', appearance: crystal }]);
-    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4crystal' }]);
-    expect(buildDieGeometry.mock.calls.map((c) => c[0].type)).toEqual(['d4crystal']);
+    expect(physics.streams[0].req.dice).toEqual([{ type: 'd4' }]);
     const die = box._rolls.values().next().value.dice[0];
-    expect(die.shapeType).toBe('d4crystal');
-    expect(die.shape).toBe(getShape('d4crystal'));
+    expect(die.shapeType).toBe('d4');
     expect(die.modelRotation).toBe(MODEL_ROTATIONS.d4);
-    expect(die.modelRotation).toBeNull();
     box.clear();
   });
 
@@ -3499,6 +3526,35 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     expect(die.shape).toBe(getShape('d4crystal'));
     a.box.clear();
     b.box.clear();
+  });
+
+  test('a free (hand) model die follows the face it shows, so it rests on the model’s face for its read value', async () => {
+    const model = { geometry: new THREE.BoxGeometry(1, 1, 1), material: new THREE.MeshStandardMaterial() };
+    const loadModel = vi.fn(async () => ({ ...model, rotationFor: dsnModelRotation, followFor }));
+    const { renderer, physics, box } = handSetup({ loadModel });
+    const r = box.roll([{ type: 'd20', value: 1, dsnType: 'd20', model: 'm/dice_20.glb' }], { free: true, launch: LAUNCH });
+    const die = box._rolls.values().next().value.dice[0];
+    expect(die.modelRotation).toBe('value');
+    await flushMicrotasks();
+    expect(die.model).toBeTruthy();
+    const shape = getShape('d20');
+    // shown at once (the pose at spawn is identity), then a pose showing another face: the model
+    // turns to that face's value
+    const atRest = shape.values[readTopFace(shape, { x: 0, y: 0, z: 0, w: 1 })];
+    expect(Math.abs(die.inner.quaternion.dot(new THREE.Quaternion(...dsnModelRotation('d20', atRest).rotation)))).toBeCloseTo(1, 9);
+    const v = atRest === 7 ? 8 : 7;
+    const nv = faceNormals(shape)[shape.values.indexOf(v)];
+    die.follow(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(nv.x, nv.y, nv.z), new THREE.Vector3(0, 1, 0)));
+    expect(Math.abs(die.modelQuat.dot(new THREE.Quaternion(...dsnModelRotation('d20', v).rotation)))).toBeCloseTo(1, 9);
+    expect(die.inner.quaternion.equals(die.modelQuat)).toBe(true);
+    physics.flush();
+    renderer.tick(100);
+    renderer.tick(5000);
+    const [value] = await r.values;
+    // landed at identity: the model's face for the read value lies on Dicer's face for it
+    const n = faceNormals(shape)[shape.values.indexOf(value)];
+    expect(dsnFaceNormal('d20', value).applyQuaternion(die.inner.quaternion).distanceTo(new THREE.Vector3(n.x, n.y, n.z))).toBeLessThan(1e-6);
+    box.clear();
   });
 
   test('hold shows dice after assets, setPose moves them, release reuses the die objects, drop frees materials and geometries (refcounts back to 0)', async () => {

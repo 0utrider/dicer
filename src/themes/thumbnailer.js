@@ -232,26 +232,28 @@ export function createThumbnailer({
   /**
    * A module entry's model for `dieType` (theme.models: die type -> url), loaded through the model
    * chunk and turned so the face the thumbnail shows (SHOWN) is the model's own, as on a roll:
-   * {geometry, material (shared: never disposed here), quat}; null without one, for a type with no
-   * model rotation (d4, d100), or when it fails (the die draws as Dicer's).
+   * {geometry, material (shared: never disposed here), quat, shapeType}; null without one, for a
+   * type with no model rotation, or when it fails (the die draws as Dicer's). A model die is never
+   * the crystal d4; a d100's model is its tens die's.
    */
   async function modelFor(theme, dieType, appearance) {
-    const url = dieType === 'd100' ? null : theme?.models?.[dieType];
+    const url = theme?.models?.[dieType];
     if (typeof url !== 'string' || !url) return null;
     try {
-      const shapeType = shapeTypeOf(dieType, appearance);
+      const tens = dieType === 'd100';
+      const shapeType = tens ? 'd10' : dieType;
       const shape = getShape(shapeType);
       const shown = SHOWN[shapeType] ?? shape.values[shape.values.length - 1];
-      const fixed = modelRotationFor({ type: dieType, value: shown });
+      const fixed = modelRotationFor(tens ? { type: 'd10', dsnType: 'd100', variant: 'd100tens', value: shown } : { type: dieType, value: shown });
       if (!fixed) return null;
       const m = await import('../render/model-loader.js');
-      const rotation = fixed === 'value' ? m.dsnModelRotation(dieType, shown)?.rotation : fixed;
+      const rotation = fixed === 'value' ? m.dsnModelRotation(shapeType, shown)?.rotation : fixed;
       if (!rotation) return null;
       const held = acquireGeometry(shape, shapeType, appearance);
       const radius = held.geometry.boundingSphere.radius;
       held.release();
       const model = await m.loadDieModel(url, { radius });
-      return model?.geometry && model.material ? { ...model, quat: new THREE.Quaternion(...rotation) } : null;
+      return model?.geometry && model.material ? { ...model, quat: new THREE.Quaternion(...rotation), shapeType } : null;
     } catch (err) {
       warn(`dicer: theme thumbnail model failed (${err?.message ?? err})`);
       return null;
@@ -276,7 +278,7 @@ export function createThumbnailer({
   }
 
   async function renderLook(appearance, dieType, dieAtlas, tex, body = null, model = null) {
-    const shapeType = shapeTypeOf(dieType, appearance);
+    const shapeType = model?.shapeType ?? shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
     const labels = layered(labelsOf(dieType, shapeType, shape), tex);
     const api = sceneApi; // dispose() may null the module state while the blob is pending
@@ -497,9 +499,9 @@ export function createThumbnailer({
     function build() {
       if (!renderer) init();
       if (!renderer || broken) return false;
-      const shapeType = shapeTypeOf(dieType, appearance);
-      const shape = getShape(shapeType);
       const mdl = modelNow();
+      const shapeType = mdl?.shapeType ?? shapeTypeOf(dieType, appearance);
+      const shape = getShape(shapeType);
       const tex = mdl ? null : facesNow();
       const bt = mdl ? null : bodyNow();
       const labels = layered(labelsOf(dieType, shapeType, shape), tex);

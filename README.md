@@ -294,7 +294,7 @@ Status is Works, Works with gaps or Not supported. One row per package surveyed.
 - `game.modules.get('dice-so-nice')` checks fail by design, because Dicer has no stub package with that id. Version gates, such as CoC7's, fail too.
 - DSN-scoped user flags and settings that other packages read directly return nothing. Dicer keeps its own under the `dicer` scope.
 - `box`, `pipeline`, `persistent` and `pendingThrows` internals are not supported. Pending and interactive throws come in Plan 6.
-- GLB model presets: d2, d6, d8, d10, d12 and d20 models show (d8 to d20 are turned per roll so the model's face for the result is the one on top). d4 and d100 models, and dice thrown by hand (whose result physics decides as they fly), show Dicer's own die with the preset's faces and colours.
+- GLB model presets: every die's model shows (d2 to d20 and the d100's tens die). d4, d8 to d20 and d100 models are turned per roll so the model's face for the result is the one read. A die thrown by hand (its result decided by physics as it flies) turns its model to the face it shows as it tumbles, so it lands on the model's own number.
 - Ghost payloads for synced rolls send dice shapes only. Custom die classes, such as coins and Fate dice, arrive as plain dice with the same face count. Dice whose count comes from another roll show as zero ghost dice. Dice whose face count comes from another roll, such as `1d(1d20)`, are not sent at all.
 - The `diceSoNiceOnMaterialReady` hook is not fired for a GLB model's own material.
 

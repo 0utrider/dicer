@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { dsnModelRotation } from '../compat/dsn-layouts.js';
+import { readTopFace } from '../core/face-reader.js';
 
 // Reached only through import('./model-loader.js'): GLTFLoader stays out of the world-start
 // bundle (R10) and loads the first time a roll shows a model preset.
@@ -115,7 +117,31 @@ export function loadDieModel(url, { radius = 1, loader, decoderPath } = {}) {
 }
 
 // Per-value rotations for Dice So Nice models with no one rotation (compat/dsn-orientation.js).
-export { dsnModelRotation } from '../compat/dsn-layouts.js';
+export { dsnModelRotation };
+
+/**
+ * A free die (rolling by hand: physics decides its face) on a per-value model: {rotation, follow}.
+ * `rotation` is the model rotation for the face the die shows now; Playback hands `follow` each
+ * pose, and as the shown face changes the model turns (die.modelQuat and the inner mesh, whose
+ * own rotation a free die never has) so its own face for that value is the one shown. The die
+ * rests on it, so the model shows the value read. Null when the type has no layout.
+ */
+export function followFor(die) {
+  const shownBy = (q) => die.shape.values[readTopFace(die.shape, q)];
+  const turn = (v) => dsnModelRotation(die.shapeType, v)?.rotation;
+  let shown = shownBy(die.outer.quaternion);
+  const rotation = turn(shown);
+  if (!rotation) return null;
+  const follow = (q) => {
+    const v = shownBy(q);
+    const r = v !== shown && turn(v);
+    if (!r) return;
+    shown = v;
+    die.modelQuat.set(...r);
+    die.inner.quaternion.copy(die.modelQuat);
+  };
+  return { rotation, follow };
+}
 
 /** Test seam: forgets every cached model (does not dispose them). */
 export function clearModelCache() {

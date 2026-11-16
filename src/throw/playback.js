@@ -181,6 +181,7 @@ export class Playback {
       );
       THREE.Quaternion.slerpFlat(_q, 0, d0, a + 3, d1, b + 3, t);
       die.outer.quaternion.fromArray(_q);
+      die.follow?.(die.outer.quaternion); // a free model die turns to the face it shows
     });
   }
 

@@ -207,7 +207,7 @@ function shapeTypeOf(spec, rollLook) {
   const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
   return spec.type === 'd4' &&
     !spec.variant &&
-    !modelRotationFor(spec) &&
+    !(spec.model && modelRotationFor(spec)) &&
     !spec.faces &&
     look.shapes.d4 === 'crystal'
     ? 'd4crystal'

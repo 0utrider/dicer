@@ -256,9 +256,12 @@ describe('build', () => {
     // +48 B (9,022 -> 9,070), 2026-11-16.
     // Roll filters (the rules showForRoll asks before every throw, two settings, the menu): owner
     // approved +1,621 B (9,070 -> 10,691), 2026-11-16.
+    // Module models on d4, the d100 tens die and hand-thrown dice (Playback's follow call, the
+    // per-value rules; the follow logic itself is in the model chunk): owner approved +216 B
+    // (10,691 -> 10,907), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(10_691);
+    expect(growth).toBeLessThanOrEqual(10_907);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

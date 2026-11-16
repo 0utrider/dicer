@@ -72,7 +72,7 @@ export function cloneForFade(material) {
 /** GLTF loading lives in its own chunk, fetched the first time a roll shows a model. */
 const importModel = (url, options) =>
   import('../render/model-loader.js').then((m) =>
-    m.loadDieModel(url, options).then((model) => model && { ...model, rotationFor: m.dsnModelRotation }),
+    m.loadDieModel(url, options).then((model) => model && { ...model, rotationFor: m.dsnModelRotation, followFor: m.followFor }),
   );
 
 /** True when a face set has image or text faces (drawn from face layers). */
@@ -1100,12 +1100,12 @@ export class DiceBox {
     // A d4 with the crystal look is a d4crystal for hull, geometry, reader and labels; its type
     // (and so its value) stays d4. A ghost follows the viewer's look and carries no appearance of
     // its own, so it has the shape of the look it stands for.
-    // A DSN preset's own faces, or a model that is actually drawn (modelRotationFor is not null;
-    // the d4 has no verified rotation, so its model is never used), win: that die stays classic.
+    // A DSN preset's own faces, or a model that is actually drawn (modelRotationFor is not null),
+    // win: that die stays classic.
     // A spec's own shapeType wins: a replay draws the recorded shape whatever this viewer's look.
     const shapeType =
       spec.shapeType ||
-      (spec.type === 'd4' && !spec.variant && !modelRotationFor(spec) && !own && look.shapes.d4 === 'crystal'
+      (spec.type === 'd4' && !spec.variant && !(spec.model && modelRotationFor(spec)) && !own && look.shapes.d4 === 'crystal'
         ? 'd4crystal'
         : spec.type);
     const shape = getShape(shapeType);
@@ -1342,16 +1342,23 @@ export class DiceBox {
     for (const die of dice) {
       // A per-value rotation (dsn-orientation.js 'value'): the model's face for this die's value
       // on Dicer's; without it (no solver, an unknown value) the die keeps Dicer's own shape.
-      const rot =
-        die.modelRotation === 'value' ? model.rotationFor?.(die.shapeType, die.targetValue)?.rotation : die.modelRotation;
+      // A free die (rolling by hand) has no value yet: it follows the face it shows (followFor).
+      const follows = die.free && die.modelRotation === 'value' && model.followFor?.(die);
+      const rot = follows
+        ? follows.rotation
+        : die.modelRotation === 'value'
+          ? model.rotationFor?.(die.shapeType, die.targetValue)?.rotation
+          : die.modelRotation;
       if (!Array.isArray(rot)) continue;
+      if (follows) die.follow = follows.follow;
       const old = die.inner.material;
       die.model = model;
       die.modelQuat = new THREE.Quaternion(...rot);
       die.inner.geometry = model.geometry;
       die.inner.material = model.material;
-      // Held dice (no playback yet) show it at once; a free die keeps it (Playback: identity x it).
-      if (!roll.playback || roll.playback.resultsApplied)
+      // Held dice (no playback yet) and free dice show it at once (Playback never turns a free
+      // die's inner mesh: identity x it); a forced die gets it with its result.
+      if (follows || !roll.playback || roll.playback.resultsApplied)
         die.inner.quaternion.multiply(die.modelQuat);
       if (!roll.dice.some((d) => d.inner.material === old)) {
         roll.materials.delete(old);

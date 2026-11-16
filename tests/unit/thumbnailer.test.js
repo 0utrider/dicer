@@ -585,10 +585,11 @@ test('a module entry with a model draws the model, its shown face on top, and ne
   expect(modelChunk.load).toHaveBeenCalledWith('modules/trs/dice_20.gltf', expect.objectContaining({ radius: expect.any(Number) }));
   expect(rig.renderer.render).toHaveBeenCalledTimes(1);
   expect(dispose).not.toHaveBeenCalled();
-  // a different model is a different thumbnail; a d4 model has no rotation: Dicer's die
+  // a different model is a different thumbnail; d4 and d100 models draw too (d100: its tens die)
   expect(await t.thumbnail({ ...entry, models: { d20: 'other.gltf' } }, 'd20')).toBe('blob:t2');
   modelChunk.load.mockClear();
   await t.thumbnail({ ...theme(), perType: {}, models: { d4: 'd4.gltf' } }, 'd4');
-  expect(modelChunk.load).not.toHaveBeenCalled();
+  await t.thumbnail({ ...theme(), perType: {}, models: { d100: 'd100.gltf' } }, 'd100');
+  expect(modelChunk.load.mock.calls.map((c) => c[0])).toEqual(['d4.gltf', 'd100.gltf']);
   t.dispose();
 });

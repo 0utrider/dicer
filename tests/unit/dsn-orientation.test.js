@@ -38,13 +38,11 @@ describe('MODEL_ROTATIONS', () => {
     }
   });
 
-  test('only the verified types have one rotation; d8-d20 have one per value; d4 and d100 none', () => {
+  test('only the verified types have one rotation; d4, d8-d20 and d100 have one per value', () => {
     const fixed = Object.keys(MODEL_ROTATIONS).filter((t) => Array.isArray(MODEL_ROTATIONS[t]));
     expect(fixed.sort()).toEqual(Object.keys(OBSERVED).sort());
     const perValue = Object.keys(MODEL_ROTATIONS).filter((t) => MODEL_ROTATIONS[t] === 'value');
-    expect(perValue.sort()).toEqual(['d10', 'd12', 'd20', 'd8']);
-    expect(MODEL_ROTATIONS.d4).toBeNull();
-    expect(MODEL_ROTATIONS.d100).toBeNull();
+    expect(perValue.sort()).toEqual(['d10', 'd100', 'd12', 'd20', 'd4', 'd8']);
   });
 
   test.each(Object.keys(OBSERVED))(
@@ -63,13 +61,15 @@ describe('modelRotationFor', () => {
   test('a verified type gets its rotation; an unverified one gets null', () => {
     expect(modelRotationFor({ type: 'd6', dsnType: 'd6' })).toBe(MODEL_ROTATIONS.d6);
     expect(modelRotationFor({ type: 'd6' })).toBe(MODEL_ROTATIONS.d6);
-    expect(modelRotationFor({ type: 'd4', dsnType: 'd4', value: 3 })).toBeNull();
+    expect(modelRotationFor({ type: 'd4', dsnType: 'd4', value: 3 })).toBe('value');
   });
 
-  test('a per-value type needs a known value: never a free die, a ghost or a missing value', () => {
+  test('a per-value type needs a known value or a free die (it follows its face); never a ghost', () => {
     expect(modelRotationFor({ type: 'd20', dsnType: 'd20', value: 17 })).toBe('value');
     expect(modelRotationFor({ type: 'd20', dsnType: 'd20' })).toBeNull();
-    expect(modelRotationFor({ type: 'd20', value: 17, free: true })).toBeNull();
+    expect(modelRotationFor({ type: 'd20', value: 17, free: true })).toBe('value');
+    expect(modelRotationFor({ type: 'd4', free: true })).toBe('value');
+    expect(modelRotationFor({ type: 'd20', free: true, ghost: true })).toBeNull();
     expect(modelRotationFor({ type: 'd12', value: 4, ghost: true })).toBeNull();
   });
 
@@ -79,7 +79,7 @@ describe('modelRotationFor', () => {
   });
 
   test('a d100 model belongs to the tens die only', () => {
-    expect(modelRotationFor({ type: 'd10', variant: 'd100tens', dsnType: 'd100' })).toBe(
+    expect(modelRotationFor({ type: 'd10', variant: 'd100tens', dsnType: 'd100', value: 30 })).toBe(
       MODEL_ROTATIONS.d100,
     );
     expect(modelRotationFor({ type: 'd10', dsnType: 'd100' })).toBeNull();

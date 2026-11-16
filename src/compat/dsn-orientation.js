@@ -7,8 +7,8 @@
  * type falls back to Dicer's procedural die.
  * 'value' types have no one rotation, but a rotation per value: the model chunk's
  * dsnModelRotation (compat/dsn-layouts.js) puts the model's face for the die's value on Dicer's
- * (the face read on top), from Dice So Nice's own layout. Only a die whose value is known when it
- * is made can use it (never a free die: physics decides its face later).
+ * (the face read), from Dice So Nice's own layout. A free die (rolling by hand: physics decides
+ * its face) follows the face it shows as it tumbles, so it rests on the model's own face.
  */
 
 const H = Math.SQRT1_2;
@@ -17,8 +17,8 @@ const H = Math.SQRT1_2;
 export const MODEL_ROTATIONS = Object.freeze({
   // 1 on -Z, 2 on +Z (three numbered coins) -> Dicer's 1 on +Y, 2 on -Y: +90 deg about X.
   d2: Object.freeze([H, 0, 0, H]),
-  // Mirror image of Dicer's d4 (the two layouts differ by an odd permutation).
-  d4: null,
+  // Mirror image of Dicer's d4 (an odd permutation): no one rotation, but one per value.
+  d4: 'value',
   // 1 -Y, 2 -X, 3 -Z, 4 +Z, 5 +X, 6 +Y (five models) -> Dicer's 1 +X, 2 +Y, 3 +Z.
   d6: Object.freeze([-H, H, 0, 0]),
   // No one rotation (the face layouts differ from Dicer's), but one per value (dsn-layouts.js).
@@ -26,8 +26,8 @@ export const MODEL_ROTATIONS = Object.freeze({
   d10: 'value',
   d12: 'value',
   d20: 'value',
-  // Same layout as the d10 models (00 opposite 90).
-  d100: null,
+  // The d10 models' layout, faces times ten (00 opposite 90): per value, on the tens die.
+  d100: 'value',
 });
 
 /**
@@ -46,5 +46,5 @@ export function modelRotationFor(spec) {
   if (!tens && dsnType !== type) return null;
   const rot = Object.hasOwn(MODEL_ROTATIONS, dsnType) ? MODEL_ROTATIONS[dsnType] : null;
   if (rot !== 'value') return rot;
-  return spec.free || spec.ghost || !Number.isInteger(spec.value) ? null : rot;
+  return spec.ghost || (!spec.free && !Number.isInteger(spec.value)) ? null : rot;
 }
