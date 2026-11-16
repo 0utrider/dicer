@@ -247,9 +247,11 @@ describe('build', () => {
     // (8,195 -> 8,708), 2026-11-16.
     // Per-value Dice So Nice model rotations (d8-d20 models): owner approved +314 B
     // (8,708 -> 9,022), 2026-11-16.
+    // TEXTURELIST in game.dice3d.exports (module dice previews draw texture art): owner approved
+    // +48 B (9,022 -> 9,070), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(9_022);
+    expect(growth).toBeLessThanOrEqual(9_070);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

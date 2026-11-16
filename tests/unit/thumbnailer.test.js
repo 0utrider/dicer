@@ -18,6 +18,12 @@ vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
   const mod = await importOriginal();
   return { ...mod, createDiceMaterial: vi.fn(mod.createDiceMaterial) };
 });
+// Module dice models: a fake model chunk (the real one fetches glTF files).
+const modelChunk = vi.hoisted(() => ({ load: null }));
+vi.mock('../../src/render/model-loader.js', async (importOriginal) => {
+  const mod = await importOriginal();
+  return { ...mod, loadDieModel: (...a) => modelChunk.load(...a) };
+});
 // The look's face images: a fake face-layer cache (the real one needs a DOM to load images).
 const faceCache = vi.hoisted(() => ({ acquire: null, release: null }));
 vi.mock('../../src/render/face-textures.js', async (importOriginal) => {
@@ -566,5 +572,23 @@ test('a look with face images draws them from face layers, and gives them back a
   expect(call[5]?.texture).toBe(tex.texture);
   expect(call[3].filter((l) => l === '')).toHaveLength(1); // the 20 is drawn from its layer
   expect(faceCache.release).toHaveBeenCalledWith(faceCache.acquire.mock.calls[0][0]);
+  t.dispose();
+});
+
+test('a module entry with a model draws the model, its shown face on top, and never frees its material', async () => {
+  const model = { geometry: new THREE.BoxGeometry(1, 1, 1), material: new THREE.MeshStandardMaterial() };
+  modelChunk.load = vi.fn(async () => model);
+  const dispose = vi.spyOn(model.material, 'dispose');
+  const { t, rig } = make();
+  const entry = { ...theme(), perType: {}, models: { d20: 'modules/trs/dice_20.gltf' } };
+  expect(await t.thumbnail(entry, 'd20')).toBe('blob:t1');
+  expect(modelChunk.load).toHaveBeenCalledWith('modules/trs/dice_20.gltf', expect.objectContaining({ radius: expect.any(Number) }));
+  expect(rig.renderer.render).toHaveBeenCalledTimes(1);
+  expect(dispose).not.toHaveBeenCalled();
+  // a different model is a different thumbnail; a d4 model has no rotation: Dicer's die
+  expect(await t.thumbnail({ ...entry, models: { d20: 'other.gltf' } }, 'd20')).toBe('blob:t2');
+  modelChunk.load.mockClear();
+  await t.thumbnail({ ...theme(), perType: {}, models: { d4: 'd4.gltf' } }, 'd4');
+  expect(modelChunk.load).not.toHaveBeenCalled();
   t.dispose();
 });

@@ -61,7 +61,21 @@ describe('module dice entries', () => {
     expect(marble.dropped).toEqual([
       { kind: 'faces', types: ['d20'] },
       { kind: 'models', types: ['d6'] },
-    ]);
+    ]);    expect(marble.models).toEqual({ d6: 'd6.glb' }); // the thumbnails draw them
+    expect('models' in fire).toBe(false);
+  });
+
+  it('the registry view reads the textures (TEXTURELIST), so texture art reaches the looks', async () => {
+    const registry = await fixtureRegistry();
+    await registry.addTexture('art', { name: 'Art', composite: 'source-over', source: 'modules/m/d20.webp' });
+    await registry.addColorset({ name: 'arty', category: 'M', background: '#272727', foreground: '#ffffff', texture: 'art' });
+    const api = { exports: registry.exports, DiceFactory: { systems: registry.systems } };
+    const view = registryView(api);
+    expect(view.textures.get('art')).toMatchObject({ source: 'modules/m/d20.webp' });
+    const arty = moduleDiceEntries(view).find((e) => e.key === 'arty');
+    expect(arty.appearance.bodyImage).toMatchObject({ src: 'modules/m/d20.webp', mode: 'face' });
+    expect(arty.dropped).toEqual([]);
+    expect(registryView({}).textures.size).toBe(0);
   });
 
   it('a system without colorsets shows the default look; junk registries list nothing', () => {

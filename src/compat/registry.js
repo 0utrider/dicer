@@ -383,7 +383,14 @@ export function createRegistry({
     sfxTriggers,
     sfxModes,
     diceFactory,
-    exports: { Utils, COLORSETS },
+    exports: {
+      Utils,
+      COLORSETS,
+      // Dice So Nice's name for the registered textures (addTexture), as a plain object.
+      get TEXTURELIST() {
+        return Object.fromEntries(textures);
+      },
+    },
     addSystem,
     addDicePreset,
     addColorset,

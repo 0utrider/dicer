@@ -30,6 +30,13 @@ const byName = (a, b) => a.name.localeCompare(b.name);
 export function registryView(api) {
   let colorsets = new Map();
   let systems = new Map();
+  let textures = new Map();
+  try {
+    const t = api?.exports?.TEXTURELIST;
+    if (t && typeof t === 'object') textures = new Map(Object.entries(t));
+  } catch {
+    /* no textures: texture art is not drawn */
+  }
   try {
     const cs = api?.exports?.COLORSETS;
     if (cs && typeof cs === 'object') colorsets = new Map(Object.entries(cs));
@@ -42,7 +49,7 @@ export function registryView(api) {
   } catch {
     /* no systems */
   }
-  return { colorsets, systems };
+  return { colorsets, systems, textures };
 }
 
 const textureId = (t) => (isStr(t) ? t : isObj(t) ? str(t.id) || str(t.name) : '');
@@ -70,6 +77,7 @@ function systemEntry(id, sys, registry) {
   const looks = new Map();
   const faces = [];
   const models = [];
+  const modelFiles = {}; // die type -> model url: the thumbnails draw the models
   const fonts = [];
   for (const [type, preset] of sys.dice) {
     if (!isStr(type) || !isObj(preset)) continue;
@@ -77,7 +85,10 @@ function systemEntry(id, sys, registry) {
     const look = colorsetNameToAppearance(cs, registry);
     if (look) looks.set(type, look);
     if (hasCustomFaces(preset)) faces.push(type);
-    if (isStr(preset.modelFile)) models.push(type);
+    if (isStr(preset.modelFile)) {
+      models.push(type);
+      modelFiles[type] = isStr(preset.modelUrl) ? preset.modelUrl : preset.modelFile;
+    }
     if (isStr(preset.font)) fonts.push(type);
   }
   const appearance = looks.get('d20') ?? looks.values().next().value ?? LOOKS.default.appearance;
@@ -91,7 +102,7 @@ function systemEntry(id, sys, registry) {
   ]
     .filter(([, types]) => types.length)
     .map(([kind, types]) => ({ kind, types }));
-  return { id: SYSTEM_PREFIX + id, kind: 'system', key: id, name: str(sys.name) || id, category: str(sys.group), appearance, perType, dropped };
+  return { id: SYSTEM_PREFIX + id, kind: 'system', key: id, name: str(sys.name) || id, category: str(sys.group), appearance, perType, dropped, ...(models.length ? { models: modelFiles } : {}) };
 }
 
 /**

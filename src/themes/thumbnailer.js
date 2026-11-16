@@ -14,6 +14,7 @@ import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import { createTurntable } from './turntable.js';
 import { lookFacesFor } from '../compat/faces.js';
 import { createFaceTextures } from '../render/face-textures.js';
+import { modelRotationFor } from '../compat/dsn-orientation.js';
 
 const ENV_RESOLUTION = 128;
 /** The face shown on top per type (6 and 9 show the underline mark). */
@@ -228,8 +229,39 @@ export function createThumbnailer({
   // The look's body image: the look-extras chunk's shared cache (it draws the image too).
   const bodySrcOf = (appearance) => normalizeAppearance(appearance).bodyImage?.src ?? null;
 
+  /**
+   * A module entry's model for `dieType` (theme.models: die type -> url), loaded through the model
+   * chunk and turned so the face the thumbnail shows (SHOWN) is the model's own, as on a roll:
+   * {geometry, material (shared: never disposed here), quat}; null without one, for a type with no
+   * model rotation (d4, d100), or when it fails (the die draws as Dicer's).
+   */
+  async function modelFor(theme, dieType, appearance) {
+    const url = dieType === 'd100' ? null : theme?.models?.[dieType];
+    if (typeof url !== 'string' || !url) return null;
+    try {
+      const shapeType = shapeTypeOf(dieType, appearance);
+      const shape = getShape(shapeType);
+      const shown = SHOWN[shapeType] ?? shape.values[shape.values.length - 1];
+      const fixed = modelRotationFor({ type: dieType, value: shown });
+      if (!fixed) return null;
+      const m = await import('../render/model-loader.js');
+      const rotation = fixed === 'value' ? m.dsnModelRotation(dieType, shown)?.rotation : fixed;
+      if (!rotation) return null;
+      const held = acquireGeometry(shape, shapeType, appearance);
+      const radius = held.geometry.boundingSphere.radius;
+      held.release();
+      const model = await m.loadDieModel(url, { radius });
+      return model?.geometry && model.material ? { ...model, quat: new THREE.Quaternion(...rotation) } : null;
+    } catch (err) {
+      warn(`dicer: theme thumbnail model failed (${err?.message ?? err})`);
+      return null;
+    }
+  }
+
   async function renderOne(theme, dieType, dieAtlas = atlas) {
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
+    const model = await modelFor(theme, dieType, appearance);
+    if (model) return renderLook(appearance, dieType, dieAtlas, null, null, model);
     const set = faceSetOf(dieType, appearance);
     const tex = set ? await acquireFaces(set) : null;
     const src = bodySrcOf(appearance);
@@ -243,7 +275,7 @@ export function createThumbnailer({
     }
   }
 
-  async function renderLook(appearance, dieType, dieAtlas, tex, body = null) {
+  async function renderLook(appearance, dieType, dieAtlas, tex, body = null, model = null) {
     const shapeType = shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
     const labels = layered(labelsOf(dieType, shapeType, shape), tex);
@@ -251,23 +283,32 @@ export function createThumbnailer({
     const cam = camera;
     const cvs = canvas;
     const rnd = renderer;
-    const material = createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null, body?.texture ? body : null);
+    // A model brings its own (shared) material: nothing of ours to make or free.
+    const material = model
+      ? model.material
+      : createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null, body?.texture ? body : null);
+    const ours = !model;
+    const freeMaterial = () => {
+      if (!ours) return;
+      material.userData?.uniforms?.uLabels?.value?.dispose();
+      material.dispose();
+    };
     const releaseAtlas = holdAtlas(dieAtlas);
     // The geometry is acquired only once the material exists; anything after it that throws
     // gives it back.
     const held = acquireGeometry(shape, shapeType, appearance);
-    const geometry = held.geometry;
+    const geometry = model ? model.geometry : held.geometry;
     let mesh;
     let shadow;
     try {
       mesh = new THREE.Mesh(geometry, material);
       const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
       mesh.quaternion.copy(restingQuaternion(shape, Math.max(0, face)));
+      if (model) mesh.quaternion.multiply(model.quat);
       mesh.position.y = -minY(geometry, mesh.quaternion);
-      shadow = api.shadowFor({ position: mesh.position, geometry });
+      shadow = api.shadowFor({ position: mesh.position, geometry: held.geometry });
     } catch (err) {
-      material.userData?.uniforms?.uLabels?.value?.dispose();
-      material.dispose();
+      freeMaterial();
       releaseAtlas();
       held.release();
       throw err;
@@ -286,8 +327,7 @@ export function createThumbnailer({
       busy = false;
       api.scene.remove(mesh);
       api.releaseShadow(shadow);
-      material.userData?.uniforms?.uLabels?.value?.dispose();
-      material.dispose();
+      freeMaterial();
       releaseAtlas();
       held.release();
     }
@@ -318,7 +358,7 @@ export function createThumbnailer({
     if (disposed || broken) return Promise.resolve(null);
     const appearance = theme?.perType?.[dieType] ?? theme?.appearance;
     if (!appearance) return Promise.resolve(null);
-    const key = `${appearanceKey(appearance)}|${dieType}|${size}`;
+    const key = `${appearanceKey(appearance)}|${dieType}|${size}|${theme?.models?.[dieType] ?? ''}`;
     if (cache.has(key)) return Promise.resolve(cache.get(key));
     if (inflight.has(key)) return inflight.get(key);
     const fontId = fontOf(appearance);
@@ -369,6 +409,23 @@ export function createThumbnailer({
     let handle = 0;
     let last = null;
     let stopped = false;
+    let model = null; // {key, value}: a module entry's model for this die (modelFor), once loaded
+    /** The model of the current entry and die type, or null; one still loading rebuilds the die once in. */
+    function modelNow() {
+      const key = `${dieType}|${theme?.models?.[dieType] ?? ''}`;
+      if (model?.key === key) return model.value;
+      const mine = (model = { key, value: null });
+      if (!theme?.models?.[dieType]) return null;
+      modelFor(theme, dieType, appearance).then((m) => {
+        if (model !== mine || stopped || !m) return;
+        mine.value = m;
+        if (res) {
+          free();
+          redraw();
+        }
+      });
+      return null;
+    }
     let faces = null; // {set, tex}: the look's face images, held while this preview shows them
 
     /** The face layers of the current look, or null; a set still loading rebuilds the die once in. */
@@ -423,8 +480,10 @@ export function createThumbnailer({
 
     const free = () => {
       if (!res) return;
-      res.material.userData?.uniforms?.uLabels?.value?.dispose();
-      res.material.dispose();
+      if (!res.shared) {
+        res.material.userData?.uniforms?.uLabels?.value?.dispose();
+        res.material.dispose();
+      }
       res.releaseAtlas();
       res.release();
       res = null;
@@ -440,12 +499,15 @@ export function createThumbnailer({
       if (!renderer || broken) return false;
       const shapeType = shapeTypeOf(dieType, appearance);
       const shape = getShape(shapeType);
-      const tex = facesNow();
-      const bt = bodyNow();
+      const mdl = modelNow();
+      const tex = mdl ? null : facesNow();
+      const bt = mdl ? null : bodyNow();
       const labels = layered(labelsOf(dieType, shapeType, shape), tex);
       const fontId = fontOf(appearance);
       const dieAtlas = readyAtlas(fontId);
-      const material = createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null, bt?.texture ? bt : null);
+      const material = mdl
+        ? mdl.material
+        : createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null, bt?.texture ? bt : null);
       const releaseAtlas = holdAtlas(dieAtlas);
       if (!dieAtlas) {
         // the serif stands in: rebuild the die once the font is ready
@@ -465,17 +527,20 @@ export function createThumbnailer({
         });
       }
       const held = acquireGeometry(shape, shapeType, appearance);
-      const geometry = held.geometry;
+      const geometry = mdl ? mdl.geometry : held.geometry;
       let mesh;
       let baseQ;
       try {
         mesh = new THREE.Mesh(geometry, material);
         const face = shape.values.indexOf(SHOWN[shapeType] ?? shape.values[shape.values.length - 1]);
         baseQ = restingQuaternion(shape, Math.max(0, face)).clone();
+        if (mdl) baseQ.multiply(mdl.quat); // the model's own face for SHOWN on top
         mesh.position.y = -minY(geometry, baseQ);
       } catch (err) {
-        material.userData?.uniforms?.uLabels?.value?.dispose();
-        material.dispose();
+        if (!mdl) {
+          material.userData?.uniforms?.uLabels?.value?.dispose();
+          material.dispose();
+        }
         releaseAtlas();
         held.release();
         throw err;
@@ -483,7 +548,8 @@ export function createThumbnailer({
       res = {
         mesh,
         material,
-        geometry,
+        shared: !!mdl, // a model's material is the model chunk's: never disposed here
+        geometry: held.geometry, // the shadow follows Dicer's shape
         release: held.release,
         releaseAtlas,
         baseQ,
@@ -596,6 +662,7 @@ export function createThumbnailer({
         const look = next?.perType?.[type] ?? next?.appearance;
         if (stopped || !look) return;
         appearance = look;
+        theme = next;
         dieType = type;
         free();
         redraw();
