@@ -491,7 +491,7 @@ export function dragonling(color) {
       PK.reset(p);
       idle(p, ms);
     }
-    if (phase === 'watch' || phase === 'react') {
+    if (yaw) {
       p.headYaw += yaw * 0.55;
       p.gazeYaw += yaw * 0.7;
       p.yaw += yaw * 0.15;

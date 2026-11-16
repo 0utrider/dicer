@@ -36,10 +36,10 @@ export function petClickable(target, above = false) {
  * drag: onDragStart(pet) (false: not draggable after all, and the press is let go), onDrag(pet, x,
  * y) on each move, and onDrop(pet, x, y) on release (onDrop(pet, null, null) when the browser
  * cancels the pointer). Everything else (a miss, another button, an ignored pet,
- * `setting('petClick')` false) is left untouched. `now()` is the clock. dispose() removes the
- * listeners.
+ * `setting('petClick')` false) is left untouched. Any other pointermove goes to onPointer(x, y),
+ * untouched (the pets look at the cursor). `now()` is the clock. dispose() removes the listeners.
  */
-export function createPetting({ win, pickPet, onPet, onHuff, onDragStart, onDrag, onDrop, now = () => performance.now(), setting }) {
+export function createPetting({ win, pickPet, onPet, onHuff, onDragStart, onDrag, onDrop, onPointer, now = () => performance.now(), setting }) {
   const hits = new Map(); // pet -> times of its recent hits
   const ignore = new Map(); // pet -> until when its clicks are ignored
   let claimUp = false; // the pointerdown was a pet's: stop the pointerup after it
@@ -89,7 +89,14 @@ export function createPetting({ win, pickPet, onPet, onHuff, onDragStart, onDrag
     }
   }
   function move(e) {
-    if (!press) return;
+    if (!press) {
+      try {
+        onPointer?.(e.clientX, e.clientY); // the pets look at it (never claimed: Foundry's too)
+      } catch {
+        /* no pet looks */
+      }
+      return;
+    }
     stop(e);
     if (!press.drag) {
       if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_PX) return;

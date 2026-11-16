@@ -633,3 +633,42 @@ describe('dragging a pet in the layer', () => {
     expect(m.deps.setSetting).not.toHaveBeenCalled();
   });
 });
+
+// ---- looking at the cursor ----
+describe('a resting pet looks at the cursor', () => {
+  const pageToTable = (p) => ({ x: (p.x - 640) / PX, z: (p.y - 400) / PX });
+  const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+  test('the cursor moves: it turns to face it, then holds still (no frames) until it moves again', () => {
+    const m = make();
+    rollToRest(m);
+    const g = group(m);
+    const at = { x: 1250, y: 60 }; // up and to its side: well off where it faces now
+    m.deps.wake.mockClear();
+    const e = ev('pointermove', at.x, at.y);
+    m.win.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false); // Foundry still gets it
+    expect(m.deps.wake).toHaveBeenCalledTimes(1);
+    let frames = 0;
+    while (m.layer.update((clockNow += 16)) === true) frames++;
+    expect(frames).toBeGreaterThan(3); // it turns, not snaps
+    expect(frames).toBeLessThan(200);
+    const c = pageToTable(at);
+    const want = Math.atan2(c.x - g.position.x, c.z - g.position.z);
+    expect(Math.abs(wrapA(g.rotation.y - want))).toBeLessThan(0.02);
+    m.deps.wake.mockClear();
+    m.win.dispatchEvent(ev('pointermove', at.x, at.y)); // no new spot: nothing to do
+    for (let i = 0; i < 20; i++) expect(m.layer.update((clockNow += 16))).toBe('rest');
+  });
+
+  test('a pet busy with a reaction, or a mood, does not turn; one a cursor sits right over does not spin', () => {
+    const m = make();
+    rollToRest(m);
+    const g = group(m);
+    const yaw = g.rotation.y;
+    const over = screenOf(g, 0); // the cursor right on top of it
+    m.win.dispatchEvent(ev('pointermove', over.x, over.y));
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    expect(g.rotation.y).toBe(yaw);
+  });
+});

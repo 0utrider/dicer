@@ -58,6 +58,9 @@ const DOWN = new Set(['splat', 'puddle', 'reform', 'fade']);
 const HOP = 0.45; // of the height
 const LIFT = 0.6; // of the height: how high a pet held by the mouse hangs
 const LOOK_MAX = 0.6;
+const GAZE_TURN_MS = 260; // a resting pet's body turning toward the cursor (its head is quicker)
+const GAZE_SETTLED = 0.01; // rad: turned this close, it holds still (no more frames)
+const GAZE_NEAR = 0.6; // of the height: a cursor this close above it is ignored (it would spin)
 const MOVED = 1e-3; // a re-used pet farther than this from its new spot hops there
 // Foundry's UI that the dice canvas draws over (v14 puts it at z-index 30, the canvas at 60): its
 // widgets, not v14's #ui-left / #ui-top, which are mostly empty boxes (578 px wide, half the screen
@@ -1248,6 +1251,11 @@ export function createPetLayer(deps) {
       const toDice = Math.atan2(c.x - px, c.z - pz);
       pet.yaw = wrap(pet.yaw + wrap(toDice - pet.yaw) * (1 - Math.exp(-dt / 90)));
       look = Math.max(-LOOK_MAX, Math.min(LOOK_MAX, wrap(toDice - pet.yaw)));
+    } else if (phase === 'exit' && t === 1 && pet.gaze) {
+      // resting, it looks at the cursor: the head at once, the body turning after it, more slowly
+      const to = Math.atan2(pet.gaze.x - px, pet.gaze.z - pz);
+      pet.yaw = wrap(pet.yaw + wrap(to - pet.yaw) * (1 - Math.exp(-Math.min(dt, 50) / GAZE_TURN_MS)));
+      look = Math.max(-LOOK_MAX, Math.min(LOOK_MAX, wrap(to - pet.yaw)));
     }
     // A wobble: a squash on the creature and a push away from the die, out and back.
     let wt = -1;
@@ -1386,6 +1394,31 @@ export function createPetLayer(deps) {
     const k = Math.min(1, step / d);
     return { x: at.x + (cx - at.x) * k, z: at.z + (cz - at.z) * k };
   }
+  // ---- looking at the cursor (petting.js passes its moves on) ----
+  let cursor = null; // the cursor on the table (die units), or null
+  /**
+   * Whether a resting pet should turn to the cursor this frame: one standing plain (no reaction,
+   * mood, wobble, huff or carry), with the cursor moved since it last settled and not right over it.
+   */
+  function gazing(pet) {
+    if (!cursor || pet.gazeDone === cursor || pet.anim || pet.mood || pet.wobble || pet.huff || pet.held) return false;
+    const x = pet.px ?? pet.base.x;
+    const z = pet.pz ?? pet.base.z;
+    return Math.hypot(cursor.x - x, cursor.z - z) > GAZE_NEAR * pet.creature.height;
+  }
+  /** The cursor moved to page (x, y): resting pets look at it (one frame wakes them; they settle). */
+  function pointer(x, y) {
+    if (disposed) return;
+    const at = tableAt(x, y);
+    if (!at) return;
+    cursor = at;
+    for (const pet of pets.values())
+      if (pet.state === 'rest' && gazing(pet)) {
+        wake();
+        return;
+      }
+  }
+
   // ---- drag to place (petClick; petting.js tells a drag from a pat) ----
   /** Page point (x, y) on the table in die units (where a dropped pet stands), or null with no stage. */
   function tableAt(x, y) {
@@ -1499,6 +1532,7 @@ export function createPetLayer(deps) {
           onDragStart: dragStart,
           onDrag: drag,
           onDrop: drop,
+          onPointer: pointer,
           now: clock,
           setting: getSetting,
         });
@@ -1646,6 +1680,14 @@ export function createPetLayer(deps) {
           }
           show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows);
           return true;
+        }
+        if (gazing(pet)) {
+          // the cursor moved: it turns to look, then holds still once it faces it
+          pet.gaze = cursor;
+          show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows);
+          const off = Math.abs(wrap(Math.atan2(cursor.x - pet.px, cursor.z - pet.pz) - pet.yaw));
+          if (off > GAZE_SETTLED) return true;
+          pet.gazeDone = cursor;
         }
         const was = pet.shadow.visible;
         pet.shadow.visible = shadows; // the only thing that can change while it sits

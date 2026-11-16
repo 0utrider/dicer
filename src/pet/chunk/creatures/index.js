@@ -24,8 +24,9 @@ import { REFORM_IN, outBack, smooth, span } from './parts.js';
  *   settle from the standing pose over t and hold, static, from t 1. 'cheer' (someone else's
  *   natural 20: two happy hops; look.calm one small one) starts and ends on the standing pose.
  * - reaction 'crit'|'fumble'|'mixed'|'plain' (meaningful in react and exit; may be null).
- * - look.yaw is the yaw of the dice centre RELATIVE TO the body's current facing, in radians,
- *   clamped to +-0.6 and 0 outside watch/react: the head, eyes and pupils turn by it.
+ * - look.yaw is the yaw of what it looks at (the dice centre, or for a resting pet the cursor)
+ *   RELATIVE TO the body's current facing, in radians, clamped to +-0.6, and 0 when it looks
+ *   ahead: the head, eyes and pupils turn by it, in any phase.
  * The layer owns the root's position and turns the body; a creature only animates inside its
  * root. Its local forward (toward the dice) is +Z, up is +Y and it stands on y = 0.
  * footprint (optional, scene units) is the top-down body radius the physics obstacle uses; without

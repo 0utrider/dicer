@@ -483,7 +483,7 @@ export function mimic(color) {
       PK.reset(p);
       idle(p, ms);
     }
-    if (phase === 'watch' || phase === 'react') {
+    if (yaw) {
       p.gazeYaw += yaw * 1.1;
       p.yaw += yaw * 0.3;
     }
