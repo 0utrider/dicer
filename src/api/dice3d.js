@@ -1023,6 +1023,11 @@ export function createDice3dApi({
             const spec = { type, value: values[Math.floor(Math.random() * values.length)] };
             const appearance = theme?.perType?.[type] ?? theme?.appearance;
             if (appearance) spec.appearance = appearance;
+            // A module dice set (a theme browser system entry): its preset's faces and model, as
+            // a roll with that look gets them (resolve-looks.js).
+            const preset = theme?.kind === 'system' && registry.presetFor?.(theme.key, type);
+            if (preset)
+              Object.assign(spec, { system: theme.key, dsnType: type, faces: facesFor(preset), model: preset.modelUrl ?? preset.modelFile });
             return spec;
           });
           const pet = petFor({ user: me(), view: 'real', getSetting });

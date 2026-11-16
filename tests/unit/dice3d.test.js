@@ -1053,6 +1053,23 @@ describe('_throwLook', () => {
     }
   });
 
+  test('a module dice set throws with its presets: system, DSN type, faces and model', () => {
+    const presets = {
+      d20: { modelFile: 'm/dice_20.gltf', modelUrl: '/m/dice_20.gltf' },
+      d6: { labels: ['a', 'b'] },
+    };
+    const registry = { presetFor: vi.fn((sys, type) => (sys === 'trs' ? presets[type] ?? null : null)) };
+    const facesFor = vi.fn((p) => (p.labels ? { kind: 'labels' } : undefined));
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], registry, facesFor });
+    a._throwLook({ id: 'dsn-system:trs', kind: 'system', key: 'trs', appearance: theme.appearance });
+    const specs = diceBox.roll.mock.calls[0][0];
+    const by = Object.fromEntries(specs.map((s) => [s.type, s]));
+    expect(by.d20).toMatchObject({ system: 'trs', dsnType: 'd20', model: '/m/dice_20.gltf' });
+    expect(by.d6).toMatchObject({ system: 'trs', dsnType: 'd6', faces: { kind: 'labels' } });
+    expect(by.d6.model).toBeUndefined();
+    expect('system' in by.d4).toBe(false); // no preset for it: just the look
+  });
+
   test('omits appearance when the theme has none', () => {
     api._throwLook({ id: 'x' });
     for (const s of diceBox.roll.mock.calls[0][0]) expect('appearance' in s).toBe(false);
