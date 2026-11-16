@@ -31,6 +31,43 @@ function h(tag, attrs = {}, kids = []) {
   return el;
 }
 
+/** This player's pet settings, in the window's order (each registered with config: false in settings.js). */
+export const PET_SETTINGS = ['showPets', 'petScale', 'petRestSpot', 'petStay', 'petSplat', 'petClick', 'petElemental', 'petMoods', 'petCheer', 'petSounds'];
+
+/**
+ * One setting row from its registration (`cfg`: name, hint, type, choices, range) and value: a
+ * checkbox, a select or a slider. Null for an unregistered key.
+ */
+export function settingRow(key, cfg, value) {
+  if (!cfg) return null;
+  const name = `dicer.${key}`;
+  let control;
+  if (cfg.choices) {
+    control = h(
+      'select',
+      { name },
+      Object.entries(cfg.choices).map(([v, label]) => h('option', { value: v, selected: String(value) === v, text: loc(label) })),
+    );
+  } else if (cfg.type === Boolean) {
+    control = h('input', { type: 'checkbox', name, checked: value !== false });
+  } else if (cfg.range) {
+    control = h('span', { class: 'dicer-pet-range' }, [
+      h('input', { type: 'range', name, min: String(cfg.range.min), max: String(cfg.range.max), step: String(cfg.range.step), value: String(value) }),
+      h('output', { text: String(value) }),
+    ]);
+  } else return null;
+  return h('div', { class: 'dicer-pet-setting', 'data-setting': key }, [
+    h('label', {}, [h('span', { class: 'dicer-pet-setting-name', text: loc(cfg.name) }), control]),
+    h('p', { class: 'dicer-hint', text: loc(cfg.hint) }),
+  ]);
+}
+
+/** The value a settings control holds, as its setting's type. */
+export function controlValue(el, cfg) {
+  if (el.type === 'checkbox') return el.checked;
+  return cfg?.type === Number ? Number(el.value) : el.value;
+}
+
 /** The window's content for `pet` ({kind, color}); `allowed`: the GM's petsAllowed; `hidden`: showPets off. */
 export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
   const notes = [
@@ -53,7 +90,14 @@ export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
     h('input', { type: 'color', value: pet.color, 'data-pet-color': '', 'aria-label': loc('DICER.Appearance.Pet.Color') }),
     h('input', { type: 'text', value: pet.color, maxlength: '7', spellcheck: 'false', 'data-pet-color': '', 'aria-label': loc('DICER.Appearance.Pet.Color') }),
   ]);
-  return h('form', { class: 'dicer-pet-window' }, [...notes, chips, ...(pet.kind === 'none' ? [] : [color])]);
+  const registered = globalThis.game?.settings?.settings;
+  const rows = PET_SETTINGS.map((key) => settingRow(key, registered?.get?.(`dicer.${key}`), setting(key))).filter(Boolean);
+  return h('form', { class: 'dicer-pet-window' }, [
+    ...notes,
+    chips,
+    ...(pet.kind === 'none' ? [] : [color]),
+    ...(rows.length ? [h('h3', { class: 'dicer-pet-heading', text: loc('DICER.PetWindow.Settings') }), ...rows] : []),
+  ]);
 }
 
 /**
@@ -81,7 +125,7 @@ export function openPetWindow() {
       id: 'dicer-pet-window',
       classes: ['dicer-pet-window-app'],
       window: { title: 'DICER.PetWindow.Title', icon: 'fa-solid fa-dragon' },
-      position: { width: 420, height: 'auto' },
+      position: { width: 460, height: 'auto' },
     };
     async _renderHTML() {
       return buildPetForm(readPet(me()), { allowed: setting('petsAllowed') !== false, hidden: setting('showPets') === false });
@@ -99,6 +143,8 @@ export function openPetWindow() {
       if (await savePet({ kind })) this.render();
     }
     #mirror(el) {
+      // a slider shows its value as it moves
+      if (el?.type === 'range') el.nextElementSibling.textContent = el.value;
       if (!el?.matches?.('[data-pet-color]')) return null;
       const v = String(el.value).trim().toLowerCase();
       if (!HEX6.test(v)) return null; // half typed: wait
@@ -106,8 +152,20 @@ export function openPetWindow() {
       return v;
     }
     async #onColor(el) {
+      const key = el?.closest?.('[data-setting]')?.dataset.setting;
+      if (key) return this.#onSetting(key, el);
       const v = this.#mirror(el);
       if (v && !(await savePet({ color: v }))) this.render(); // show the stored colour again
+    }
+    /** A pet setting changed: saved at once (its own onChange wakes the pets); showPets redraws the notes. */
+    async #onSetting(key, el) {
+      const cfg = globalThis.game.settings.settings.get(`dicer.${key}`);
+      try {
+        await globalThis.game.settings.set(MODULE, key, controlValue(el, cfg));
+      } catch (err) {
+        console.warn(`dicer: cannot save ${key}`, err);
+      }
+      if (key === 'showPets') this.render();
     }
   }
   if (!app?.rendered) app = new PetWindow();

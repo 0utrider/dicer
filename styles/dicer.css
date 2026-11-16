@@ -2176,6 +2176,15 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 
 /* Roll filters window */
+/* Foundry's settings window: Dicer's section headings (ui/settings-groups.js). */
+.dicer-settings-group {
+  margin: 14px 0 4px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-warm-2, #ff6400);
+  color: var(--color-warm-1, #ff9d4d);
+  font-size: 1.05em;
+  font-weight: 700;
+}
 /* The Your pet window (ui/pet-window.js). */
 .dicer-pet-window {
   display: flex;
@@ -2224,6 +2233,38 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-pet-color input[type='text'] {
   width: 90px;
   font-family: monospace;
+}
+.dicer-pet-heading {
+  margin: 6px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-light-2, rgba(255, 255, 255, 0.12));
+  font-size: 1em;
+}
+.dicer-pet-setting label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dicer-pet-setting-name {
+  font-weight: 600;
+}
+.dicer-pet-setting select {
+  max-width: 55%;
+}
+.dicer-pet-setting .dicer-hint {
+  margin: 2px 0 0;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+.dicer-pet-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dicer-pet-range output {
+  min-width: 2.5em;
+  text-align: right;
 }
 .dicer-roll-filters {
   display: flex;

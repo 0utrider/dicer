@@ -4,7 +4,8 @@
 
 - **Damage dice over your dice set.** If your dice are a module dice set with 3D models (The Rollsmith's sets and the like), damage dice now set it aside and roll in their damage look, instead of the set's models hiding it. Turn it off with **Damage dice over your dice set** to keep the set's models on damage dice.
 - **Importing a 3D model set takes its colours.** A dice set that is all 3D models (no colours of its own) now imports as a Dicer theme in the models' own colours (a gold body with red numbers for Gold Red Armored), instead of Dicer's default look under the set's name.
-- **Your pet has its own window.** Pick your pet and its colour in **Your pet** (Configure Settings, Dicer, or the theme browser's My pet button). It was in the dice editor, but it was never part of a theme: it is yours, whatever dice you roll.
+- **Your pet has its own window.** Pick your pet and its colour in **Your pet** (Configure Settings, Dicer, or the theme browser's My pet button), with all your pet settings (size, where pets rest, how long they stay, splats, petting, reactions, moods, cheering, sounds). It was in the dice editor, but it was never part of a theme: it is yours, whatever dice you roll.
+- **Tidier settings.** Dicer's settings are grouped under headings (General, Graphics, Sound, Effects, Damage dice, Pets, Rolling by hand, Roll areas, Chat and dice trays). The **Dice theme** and **World default theme** dropdowns are gone: the theme browser picks both.
 
 ## 0.2.0
 

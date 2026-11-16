@@ -58,6 +58,10 @@ describe('build', () => {
     expect(petWindow).toBeTruthy();
     expect(readFileSync(petWindow, 'utf8')).toContain('dicer-pet-window');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-pet-window');
+    const settingsGroups = lazy.find((p) => /^dist\/settings-groups-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the settings sections
+    expect(settingsGroups).toBeTruthy();
+    expect(readFileSync(settingsGroups, 'utf8')).toContain('dicer-settings-group');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-settings-group');
     const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
     const chatTray = lazy.find((p) => /^dist\/chat-tray-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the chat dice tray (src/ui/chat-tray.js)
     const trayDice = lazy.find((p) => /^dist\/tray-dice-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the tray core, shared by the hand and chat-tray chunks
@@ -168,6 +172,7 @@ describe('build', () => {
         grab,
         rollFilters,
         petWindow,
+        settingsGroups,
         jb2a,
         chatTray,
         trayDice,

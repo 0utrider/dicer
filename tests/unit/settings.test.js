@@ -51,18 +51,10 @@ test('hideInitiative is a world Boolean, default on', () => {
   expect(cfg.hint).toBe('DICER.Settings.hideInitiative.Hint');
 });
 
-test('theme is a client String whose choices map every built-in theme id to its name (default "default")', () => {
+test('theme is a client String (default "default"), out of the form: the theme browser picks it', () => {
   const { theme } = capture();
-  expect(theme).toMatchObject({
-    ns: 'dicer',
-    scope: 'client',
-    config: true,
-    type: String,
-    default: 'default',
-  });
-  expect(theme.choices).toEqual(Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name])));
-  expect(theme.name).toBe('DICER.Settings.theme.Name');
-  expect(theme.hint).toBe('DICER.Settings.theme.Hint');
+  expect(theme).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'default' });
+  expect(theme.choices).toBeUndefined();
 });
 
 test('the old look setting stays registered, hidden, only so its value can migrate; every LOOKS id is a theme', () => {
@@ -466,45 +458,11 @@ describe('GM controls settings (P7-D4)', () => {
     expect(cfg.name).toBe('DICER.Settings.lockPlayerLooks.Name');
     expect(cfg.hint).toBe('DICER.Settings.lockPlayerLooks.Hint');
   });
-  test("worldDefaultTheme is a world String, '' = none, starting with built-in choices", () => {
-    const cfg = capture().worldDefaultTheme;
-    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'world', config: true, type: String, default: '' });
-    expect(Object.keys(cfg.choices)[0]).toBe('');
-    expect(cfg.choices['']).toBe('DICER.Settings.worldDefaultTheme.None');
-    for (const t of BUILTIN_THEMES) expect(cfg.choices[t.id]).toBe(t.name);
-  });
-  test('a stored world default that no longer exists stays a (missing) choice', async () => {
-    const { worldDefaultChoices } = await import('../../src/settings.js');
-    const get = (k) => (k === 'worldDefaultTheme' ? 'world.gone' : []);
-    expect(worldDefaultChoices('none', get, '(missing)')['world.gone']).toBe('world.gone (missing)');
-    expect(Object.keys(worldDefaultChoices('none', () => 'ruby-classic'))).not.toContain('(missing)');
-  });
-  test('its choices follow the stored world themes live (and never the current user themes)', async () => {
-    const registered = {};
-    const entries = new Map();
-    let worlds = [];
-    globalThis.game = {
-      user: { getFlag: () => [{ id: 'user.u1.m', name: 'M', appearance: BUILTIN_THEMES[0].appearance }] },
-      settings: {
-        settings: entries,
-        get: (_ns, k) => (k === 'worldThemes' ? worlds : undefined),
-        register: (ns, key, cfg) => {
-          registered[key] = { ns, ...cfg };
-          entries.set(`${ns}.${key}`, registered[key]);
-        },
-      },
-    };
-    try {
-      registerSettings();
-      const entry = entries.get('dicer.worldDefaultTheme');
-      expect(Object.keys(entry.choices)).not.toContain('world.w');
-      worlds = [{ id: 'world.w', name: 'W', appearance: BUILTIN_THEMES[0].appearance }];
-      expect(entry.choices['world.w']).toBe('W (world)');
-      expect(entry.choices['']).toBe('DICER.Settings.worldDefaultTheme.None');
-      expect(Object.keys(entry.choices)).not.toContain('user.u1.m');
-    } finally {
-      delete globalThis.game;
-    }
+  test('worldDefaultTheme and theme are kept but out of the form: the theme browser picks both', () => {
+    const c = capture();
+    expect(c.worldDefaultTheme).toMatchObject({ ns: 'dicer', scope: 'world', config: false, type: String, default: '' });
+    expect(c.theme).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'default' });
+    expect(c.worldDefaultTheme.choices).toBeUndefined();
   });
 });
 
@@ -568,14 +526,14 @@ describe('getSetting cache', () => {
   });
 });
 
-test('petsAllowed (world), showPets and petSounds (client) are Booleans, default on', () => {
+test('petsAllowed (world, in the list), showPets and petSounds (client, in the Your pet window) are Booleans, default on', () => {
   const r = capture();
-  for (const [key, scope] of [
-    ['petsAllowed', 'world'],
-    ['showPets', 'client'],
-    ['petSounds', 'client'],
+  for (const [key, scope, config] of [
+    ['petsAllowed', 'world', true],
+    ['showPets', 'client', false],
+    ['petSounds', 'client', false],
   ]) {
-    expect(r[key]).toMatchObject({ ns: 'dicer', scope, config: true, type: Boolean, default: true });
+    expect(r[key]).toMatchObject({ ns: 'dicer', scope, config, type: Boolean, default: true });
     expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
     expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
   }
@@ -594,7 +552,7 @@ test('grabDice (client) is a Boolean, default on, and tells grab and toss on cha
 test('petSplat (client) is a Boolean, default on, and wakes the layer on change', () => {
   const onPetStayChange = vi.fn();
   const r = capture({ onPetStayChange });
-  expect(r.petSplat).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(r.petSplat).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Boolean, default: true });
   expect(r.petSplat.name).toBe('DICER.Settings.petSplat.Name');
   expect(r.petSplat.hint).toBe('DICER.Settings.petSplat.Hint');
   r.petSplat.onChange(false);
@@ -604,11 +562,11 @@ test('petSplat (client) is a Boolean, default on, and wakes the layer on change'
 test('the pet interaction settings are client settings with their defaults and strings', () => {
   const r = capture({});
   for (const key of ['petClick', 'petElemental', 'petMoods', 'petCheer']) {
-    expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Boolean, default: true });
     expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
     expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
   }
-  expect(r.petRestSpot).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: String, default: 'dice' });
+  expect(r.petRestSpot).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'dice' });
   expect(r.petRestSpot.name).toBe('DICER.Settings.petRestSpot.Name');
   expect(r.petRestSpot.hint).toBe('DICER.Settings.petRestSpot.Hint');
   expect(Object.keys(r.petRestSpot.choices)).toEqual([
@@ -633,7 +591,7 @@ test('petStay (client) is a Number with choices 0, 30, 60, 120, -1, default 60, 
   const onPetStayChange = vi.fn();
   const r = capture({ onPetStayChange });
   expect(r.petsStay).toBeUndefined();
-  expect(r.petStay).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Number, default: 60 });
+  expect(r.petStay).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Number, default: 60 });
   expect(r.petStay.name).toBe('DICER.Settings.petStay.Name');
   expect(r.petStay.hint).toBe('DICER.Settings.petStay.Hint');
   expect(Object.keys(r.petStay.choices).sort()).toEqual(['-1', '0', '120', '30', '60']);

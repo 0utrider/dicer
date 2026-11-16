@@ -98,7 +98,7 @@ Open **Configure Settings, Dicer, Theme browser** (the button "Browse dice theme
 - import or export your own themes as a file, to share them or keep a backup;
 - as a GM, publish a theme to the world so every player can use it.
 
-The setting **Dice theme** sets your default theme. Other players see your dice in your theme. A theme's celebration replaces the world rule with the same id (`dicer.nat20` or `dicer.nat1`) for that roller's dice only; other rules in the theme are added.
+The theme you **use as your default** in the browser is your dice. Other players see your dice in your theme. A theme's celebration replaces the world rule with the same id (`dicer.nat20` or `dicer.nat1`) for that roller's dice only; other rules in the theme are added.
 
 Themes follow the same privacy rule as looks and effects. Someone who cannot see a roll's result (a blind roll, a whisper, or a ghost die) sees a neutral die, never your theme.
 
@@ -146,9 +146,9 @@ A small pet can throw your dice. It hops in beside the roll, and when the dice l
 - **Moods**: a pet's resting pose follows its owner's luck. Its owner's last five d20 results on your screen count, from rolls made while pets are shown (advantage counts both dice). With at least three of them, two natural 20s or an average of 15 or more make the pet proud (chest out, head up), and two natural 1s or an average of 6 or less make it sulk (head down; the mimic shuts its lid, the slime goes flat). If both are true, or neither, it stands normally. The mood shows only while the pet rests, holds still without costing anything, and goes away when Foundry reloads. Only rolls you can see count, so a pet's mood can differ between screens.
 - **Cheering**: when another player rolls a natural 20 (and no natural 1 in the same roll), every other resting pet on your screen (yours included) turns toward those dice, hops and cheers, then turns back (into its mood, if it has one). The roller's own pet does its usual natural 20 reaction instead. It happens once per roll, however many 20s it has, and also when the roller has no pet. A roll you cannot see the result of never gets a cheer.
 - **Reduced motion**: with your system's reduced-motion option on, petting, the elemental reactions and cheers are gentler, and no sparks flash (a pet's natural 20 sparkle shines steadily instead of twinkling).
-- **Settings**:
-  - **Allow dice pets** (world, GM): turn pets off for the whole table. The Pet section is hidden while it is off.
-  - **Show dice pets** (per player): hide pets on your own screen. The Pet section tells you they are hidden.
+- **Settings**: your pet (which creature, its colour) and every per-player pet setting below are in the **Your pet** window (Configure Settings, Dicer, **Your pet**, or the theme browser's **My pet** button). Your pet is yours, not part of a theme, so it comes along whatever dice you roll.
+  - **Allow dice pets** (world, GM, in Dicer's settings under Pets): turn pets off for the whole table. The Your pet window says so while it is off.
+  - **Show dice pets** (per player): hide pets on your own screen. The Your pet window tells you they are hidden.
   - **Pet sounds** (per player): mute the pets' chirps (and the splat).
   - **How long pets stay** (per player): how long a pet stays on the table after its owner's last roll: **Leave after the roll** (pets hop away after their reaction, and a puddle fades away instead of waiting), **30 seconds**, **1 minute** (the default), **2 minutes** or **Always**. It replaces the old "Pets stay on the table" checkbox: if you had turned that off, you get "Leave after the roll".
   - **Dice can splat pets** (per player): turn it off and pets stay solid, so dice still bump into them and they wobble, but they never splat.
@@ -195,7 +195,7 @@ Instead of letting the computer roll, you can grab your dice, shake them and thr
 
 ## GM controls
 
-- **World default theme** (a setting): the theme players' dice use until they choose one of their own.
+- **World default theme** (in the theme browser, "Use this theme for: world default"): the theme players' dice use until they choose one of their own.
 - **Push to players**: in the theme browser, select a built-in or world theme (publish a personal theme first) and click "Push to players...". It becomes every player's default theme. Their other choices are kept, unless you tick "Replace everything", which also clears every player's choices for a die type, a kind of roll, a character and a damage type.
 - **Lock player looks** (a setting, needs a world default theme): every player's dice use the world default, whatever they chose, and the browser hides their "use" actions ("Your GM has set everyone's dice"). Players can still design and save themes. GMs are not affected, and a roll, colorset or damage type that names its own look still does.
   - A player whose theme is already Sapphire Nebula (the built-in default) and who selects it again does not override the GM's world default, because Foundry fires no change for an unchanged setting. To keep Sapphire over a world default, they pick another theme and then pick Sapphire again.

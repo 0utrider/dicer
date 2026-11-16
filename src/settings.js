@@ -1,4 +1,4 @@
-import { BUILTIN_THEMES, findTheme, readThemeList } from './themes/themes.js';
+import { findTheme } from './themes/themes.js';
 import { DEFAULT_RULES } from './effects/rules.js';
 
 export const MODULE_ID = 'dicer';
@@ -61,48 +61,6 @@ function registerEditorMenu(t, key, icon, open) {
     type: EditorMenu,
     restricted: false,
   });
-}
-
-/**
- * The `theme` setting's choices: built-ins, the world's themes and the current user's own (name +
- * source). Read live, so a theme chosen in the theme browser stays a valid choice in Foundry's
- * settings form (which would otherwise replace it with the first built-in on save).
- */
-export function themeChoices(get = (key) => game.settings.get(MODULE_ID, key), user = () => game.user) {
-  const quiet = () => {};
-  const label = (t, src) => (src ? `${t.name} (${src})` : t.name);
-  const out = Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name]));
-  const add = (list, src) => {
-    for (const t of list) if (!(t.id in out)) out[t.id] = label(t, src);
-  };
-  try {
-    add(readThemeList(get('worldThemes'), 'world', quiet), 'world');
-    add(readThemeList(user()?.getFlag?.(MODULE_ID, 'themes'), 'user', quiet), 'mine');
-  } catch {
-    /* settings not ready: built-ins only */
-  }
-  return out;
-}
-
-/**
- * The `worldDefaultTheme` choices: none (''), built-ins and the world's themes. Read live, for the
- * same reason as themeChoices. Not the user's own themes: the GM's default must exist for everyone.
- */
-export function worldDefaultChoices(none, get = (key) => game.settings.get(MODULE_ID, key), missing = '(missing)') {
-  const out = { '': none, ...Object.fromEntries(BUILTIN_THEMES.map((t) => [t.id, t.name])) };
-  try {
-    for (const t of readThemeList(get('worldThemes'), 'world', () => {})) if (!(t.id in out)) out[t.id] = `${t.name} (world)`;
-  } catch {
-    /* settings not ready: built-ins only */
-  }
-  // A stored id that no longer exists stays a choice, so the settings form does not clear it.
-  try {
-    const current = get('worldDefaultTheme');
-    if (typeof current === 'string' && current && !(current in out)) out[current] = `${current} ${missing}`;
-  } catch {
-    /* none */
-  }
-  return out;
 }
 
 /**
@@ -197,12 +155,13 @@ export function registerSettings({
     requiresReload: true, // the renderer reads its cap once, at creation
   });
   // Pets have their own on-screen size: the pet layer sizes them by petScale / diceScale.
+  // The per-player pet settings (config: false) are edited in the Your pet window (ui/pet-window.js).
   for (const key of ['diceScale', 'petScale']) {
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
       scope: 'client',
-      config: true,
+      config: key === 'diceScale',
       type: Number,
       range: { min: 0.5, max: 3, step: 0.1 },
       default: 1,
@@ -284,7 +243,7 @@ export function registerSettings({
     name: t('showPets.Name'),
     hint: t('showPets.Hint'),
     scope: 'client',
-    config: true,
+    config: false,
     type: Boolean,
     default: true,
     onChange: () => onPetChange?.(),
@@ -293,7 +252,7 @@ export function registerSettings({
     name: t('petSounds.Name'),
     hint: t('petSounds.Hint'),
     scope: 'client',
-    config: true,
+    config: false,
     type: Boolean,
     default: true,
   });
@@ -301,7 +260,7 @@ export function registerSettings({
     name: t('petStay.Name'),
     hint: t('petStay.Hint'),
     scope: 'client',
-    config: true,
+    config: false,
     type: Number,
     choices: Object.fromEntries([0, 30, 60, 120, -1].map((v) => [v, t(`petStay.Choices.${v}`)])),
     default: 60,
@@ -311,7 +270,7 @@ export function registerSettings({
     name: t('petSplat.Name'),
     hint: t('petSplat.Hint'),
     scope: 'client',
-    config: true,
+    config: false,
     type: Boolean,
     default: true,
     onChange: () => onPetStayChange?.(),
@@ -336,7 +295,7 @@ export function registerSettings({
     ['petMoods'],
     ['petCheer'],
   ]) {
-    register(k, { name: t(`${k}.Name`), hint: t(`${k}.Hint`), scope: 'client', config: true, type, default: def, ...more });
+    register(k, { name: t(`${k}.Name`), hint: t(`${k}.Hint`), scope: 'client', config: false, type, default: def, ...more });
   }
   register('immediatelyDisplayChatMessages', {
     name: t('immediatelyDisplayChatMessages.Name'),
@@ -369,48 +328,23 @@ export function registerSettings({
     type: Number,
     default: 0,
   });
+  // The player's theme and the GM's world default are picked in the theme browser (a dropdown
+  // here duplicated it); both stay settings, out of Foundry's list.
   register('theme', {
-    name: t('theme.Name'),
-    hint: t('theme.Hint'),
     scope: 'client',
-    config: true,
+    config: false,
     type: String,
-    choices: Object.fromEntries(BUILTIN_THEMES.map((theme) => [theme.id, theme.name])),
     default: 'default',
     onChange: (value) => onLookChange?.('theme', value),
   });
-  // P5-R10: the choices follow the stored themes (read each time the settings form renders).
-  try {
-    const entry = game.settings.settings?.get?.(`${MODULE_ID}.theme`);
-    if (entry) Object.defineProperty(entry, 'choices', { get: () => themeChoices(), configurable: true, enumerable: true });
-  } catch {
-    /* the fixed built-in choices stay */
-  }
   // GM controls (P7-D4): a world default theme, and a lock that makes it win for players.
   register('worldDefaultTheme', {
-    name: t('worldDefaultTheme.Name'),
-    hint: t('worldDefaultTheme.Hint'),
     scope: 'world',
-    config: true,
+    config: false,
     type: String,
-    choices: worldDefaultChoices(t('worldDefaultTheme.None'), () => []),
     default: '',
     onChange: (value) => onLookChange?.('worldDefaultTheme', value),
   });
-  try {
-    const entry = game.settings.settings?.get?.(`${MODULE_ID}.worldDefaultTheme`);
-    if (entry) {
-      const none = t('worldDefaultTheme.None');
-      const missing = t('worldDefaultTheme.Missing');
-      Object.defineProperty(entry, 'choices', {
-        get: () => worldDefaultChoices(none, undefined, missing),
-        configurable: true,
-        enumerable: true,
-      });
-    }
-  } catch {
-    /* the fixed built-in choices stay */
-  }
   register('lockPlayerLooks', {
     name: t('lockPlayerLooks.Name'),
     hint: t('lockPlayerLooks.Hint'),

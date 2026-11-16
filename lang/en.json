@@ -1027,11 +1027,24 @@
     "Physical": {
       "Mark": "Rolled with physical dice ({methods})"
     },
+    "SettingsGroup": {
+      "General": "General",
+      "Graphics": "Graphics",
+      "Sound": "Sound",
+      "Effects": "Effects",
+      "Damage": "Damage dice",
+      "Pets": "Pets (your own pet and its settings: Your pet, above)",
+      "Hand": "Rolling by hand",
+      "Areas": "Roll areas",
+      "Chat": "Chat and dice trays",
+      "Other": "Other"
+    },
     "PetWindow": {
       "Title": "Your pet",
       "Button": "My pet",
       "ButtonHint": "Pick your dice pet and its colour (yours, whatever dice you roll)",
-      "Off": "The GM has turned dice pets off in this world."
+      "Off": "The GM has turned dice pets off in this world.",
+      "Settings": "Pet settings"
     },
     "RollFilters": {
       "Title": "Roll filters",

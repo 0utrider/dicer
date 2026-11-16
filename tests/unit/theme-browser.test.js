@@ -198,16 +198,7 @@ describe('mergeEdited', () => {
   });
 });
 
-describe('theme setting choices (P5-R10)', () => {
-  it('offers built-ins, world and my themes, so a chosen default stays valid', async () => {
-    const { themeChoices } = await import('../../src/settings.js');
-    const get = (k) => (k === 'worldThemes' ? [raw('world.w', 'W')] : []);
-    const user = () => ({ getFlag: () => [raw('user.u1.m', 'M')] });
-    const c = themeChoices(get, user);
-    expect(Object.keys(c)).toContain('default');
-    expect(c['world.w']).toBe('W (world)');
-    expect(c['user.u1.m']).toBe('M (mine)');
-  });
+describe('the theme setting (picked in the theme browser, not in Foundry’s list)', () => {
   it('getAppearance resolves a user theme', async () => {
     vi.stubGlobal('Hooks', { on: () => {}, once: () => {}, callAll: () => {} });
     const { getAppearance } = await import('../../src/main.js');

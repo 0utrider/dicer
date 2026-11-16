@@ -50,6 +50,61 @@ describe('the form', () => {
   });
 });
 
+describe('pet settings rows', () => {
+  test('a checkbox, a select or a slider from the registration; changes save as the setting’s type', async () => {
+    const { settingRow, controlValue } = await import('../../src/ui/pet-window.js');
+    const box = settingRow('petClick', { name: 'N', hint: 'H', type: Boolean }, false);
+    expect(box.querySelector('input[type=checkbox]').checked).toBe(false);
+    const sel = settingRow('petRestSpot', { name: 'N', hint: 'H', type: String, choices: { dice: 'D', topLeft: 'TL' } }, 'topLeft');
+    expect(sel.querySelector('select').value).toBe('topLeft');
+    const range = settingRow('petScale', { name: 'N', hint: 'H', type: Number, range: { min: 0.5, max: 3, step: 0.1 } }, 1.5);
+    const slider = range.querySelector('input[type=range]');
+    expect([slider.min, slider.max, slider.value]).toEqual(['0.5', '3', '1.5']);
+    expect(settingRow('x', undefined, 1)).toBeNull();
+    slider.value = '2';
+    expect(controlValue(slider, { type: Number })).toBe(2);
+    expect(controlValue(sel.querySelector('select'), { type: String })).toBe('topLeft');
+  });
+
+  test('the window lists the registered pet settings and saves a change at once', async () => {
+    const set = vi.fn(async () => {});
+    globalThis.game.settings = {
+      get: (ns, k) => store[k],
+      set,
+      settings: new Map([
+        ['dicer.petClick', { name: 'Click', hint: 'h', type: Boolean }],
+        ['dicer.petStay', { name: 'Stay', hint: 'h', type: Number, choices: { 30: '30', 60: '60' } }],
+      ]),
+    };
+    store.petClick = true;
+    store.petStay = 60;
+    const form = buildPetForm({ kind: 'mimic', color: '#112233' });
+    expect([...form.querySelectorAll('[data-setting]')].map((r) => r.dataset.setting)).toEqual(['petStay', 'petClick']);
+    globalThis.foundry = {
+      applications: {
+        api: {
+          ApplicationV2: class {
+            constructor() {
+              this.element = document.createElement('div');
+            }
+            async render() {
+              this._replaceHTML(await this._renderHTML(), this.element);
+              this.rendered = true;
+              return this;
+            }
+          },
+        },
+      },
+    };
+    const app = await openPetWindow();
+    const select = app.element.querySelector('[data-setting="petStay"] select');
+    select.value = '30';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(set).toHaveBeenCalledWith('dicer', 'petStay', 30);
+  });
+});
+
 describe('savePet', () => {
   test('writes only the changed field over the raw flag (no stored colour keeps following the player colour)', async () => {
     flags.pet = { kind: 'dragonling', later: 1 };

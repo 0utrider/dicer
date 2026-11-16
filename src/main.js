@@ -464,6 +464,11 @@ export const addDiceLookButton = guarded((app, buttons) => {
 
 Hooks.on('getHeaderControlsApplicationV2', addDiceLookControl);
 Hooks.on('getActorSheetHeaderButtons', addDiceLookButton);
+// Foundry's settings window: Dicer's settings under section headings (a lazy chunk). Its root is a
+// <form>, whose [0] is its first input: never unwrapped as if it were jQuery.
+Hooks.on('renderSettingsConfig', (app, html) =>
+  import('./ui/settings-groups.js').then((m) => m.groupSettings(app?.element ?? html)),
+);
 
 // Rolling by hand (module load, like the header controls): the card mark (H-15, every viewer) and
 // the "Dice tray" tool under the token controls (diceTray on, hand rolls allowed). The tray
