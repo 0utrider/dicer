@@ -6,6 +6,7 @@ import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
 import { loadHand, prefetchHand, handNow } from './hand/hand-loader.js';
+import { syncGrab } from './grab/grab-loader.js';
 import { createHandGate, markCard } from './hand/gate-hand.js';
 import {
   registerHandMethod,
@@ -490,6 +491,7 @@ Hooks.once('init', () => {
     onQualityChange,
     onSoundChange,
     onHandChange: () => (syncHand(), resetControls()), // and the tray tool
+    onGrabChange: (on) => syncGrab(diceBox, on),
   });
   try {
     registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver
@@ -806,4 +808,5 @@ Hooks.once('ready', async () => {
   preloadPets();
   preloadEditors();
   idle(() => prefetchHand(diceBox, () => wantsHand(game.user, getSetting, getCore()))); // H-20, M8
+  idle(() => syncGrab(diceBox, getSetting('grabDice')));
 });

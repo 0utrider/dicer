@@ -1419,6 +1419,12 @@ export class DiceBox {
     this._fireResults(roll);
     this._fireFx(roll);
     roll.resolveLanded();
+    this._linger(roll);
+  }
+
+  /** (Re)arms a lingering roll's hide timer; grab and toss clears it while a die is held or tossed. */
+  _linger(roll) {
+    clearTimeout(roll.timer);
     roll.timer = setTimeout(() => {
       if (roll.removed) return;
       roll.phase = 'fading';
@@ -1532,6 +1538,8 @@ export class DiceBox {
       // Living insides (the look-extras chunk): stepped every frame, moving until they rest.
       if (getLookExtras()?.insideMotion.frame(this, roll, now) || roll.phase !== 'lingering' || roll.glows) moving = true;
     }
+    // Grab and toss (lazy chunk, this.grab): a landed die held or tossed keeps the loop running.
+    if (this.grab?.frame(now)) moving = true;
     // Held dice follow the pointer: the loop runs while they are shown.
     if (this._hold?.revealed) return true;
     // P9-R18: every shown roll at rest and no effect running: this frame is drawn, then the loop

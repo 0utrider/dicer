@@ -154,6 +154,7 @@ export const resetControls = () => {
  * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
  * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
  *   or handRollsRequired changes (the core dice configuration is re-synced)
+ * @param {(value: boolean) => void} [callbacks.onGrabChange] runs when grabDice changes
  */
 export function registerSettings({
   onAreaChange,
@@ -164,6 +165,7 @@ export function registerSettings({
   onQualityChange,
   onSoundChange,
   onHandChange,
+  onGrabChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   register('enabled', {
@@ -209,6 +211,15 @@ export function registerSettings({
     config: true,
     type: Number,
     default: 2000,
+  });
+  register('grabDice', {
+    name: t('grabDice.Name'),
+    hint: t('grabDice.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: (v) => onGrabChange?.(v),
   });
   register('maxDice', {
     name: t('maxDice.Name'),
