@@ -46,7 +46,20 @@ describe('build', () => {
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
     const elementOf = lazy.find((p) => /^dist\/element-of-[A-Za-z0-9_-]{8}\.js$/.test(p)); // elementOf, shared by the effects and pet chunks
     const hand = lazy.find((p) => /^dist\/hand-[A-Za-z0-9_-]{8}\.js$/.test(p)); // rolling by hand (src/hand/hand.js)
+    const grab = lazy.find((p) => /^dist\/grab-[A-Za-z0-9_-]{8}\.js$/.test(p)); // grab and toss (src/grab/grab.js)
+    expect(grab).toBeTruthy();
+    expect(readFileSync(grab, 'utf8')).toContain('dicer-grab-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-grab-chunk');
     const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
+    const chatTray = lazy.find((p) => /^dist\/chat-tray-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the chat dice tray (src/ui/chat-tray.js)
+    const trayDice = lazy.find((p) => /^dist\/tray-dice-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the tray core, shared by the hand and chat-tray chunks
+    expect(chatTray).toBeTruthy();
+    expect(trayDice).toBeTruthy();
+    // docked lazily on the first chat render: dicer.js only names the chunk, never its code or the hand chunk's
+    expect(readFileSync(chatTray, 'utf8')).toContain('dicer-chat-tray');
+    expect(readFileSync(chatTray, 'utf8')).not.toContain('dicer-hand-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-chat-tray');
+    expect(readFileSync('dist/dicer.js', 'utf8')).toContain(chatTray.slice('dist/'.length));
     expect(jb2a).toBeTruthy();
     expect(readFileSync(jb2a, 'utf8')).toContain('Library/Generic');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Library/Generic');
@@ -144,7 +157,10 @@ describe('build', () => {
         threePoints,
         elementOf,
         hand,
+        grab,
         jb2a,
+        chatTray,
+        trayDice,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),
@@ -218,10 +234,14 @@ describe('build', () => {
     // edge strips plan (2026-11-15-dicer-edge-strips): +300 B on the same base for the strip look
     // field (owner approval, 2026-11-15).
     // elemental trails: owner raised the allowance by 500 B (1,836 -> 2,336) for trails and bursts.
-    // pet interactions: owner raised the allowance by 300 B (2,336 -> 2,636) for the five pet settings.
+    // tester requests (2026-11-16): owner approved raising it for the batch; dice above windows
+    // +968 B (2,336 -> 3,304); number size/weight, module dice sets, chat tray and grab and toss
+    // +854 B together (3,304 -> 4,158); layered insides and per-look motion +300 B (4,158 -> 4,458).
+    // pet interactions: owner raised it by 300 B for the five pet settings (4,458 -> 4,758), then by
+    // 191 B when merged with the tester-request batch (4,758 -> 4,949).
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(2_636);
+    expect(growth).toBeLessThanOrEqual(4_949);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

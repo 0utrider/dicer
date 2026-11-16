@@ -385,3 +385,43 @@ describe('pet settings', () => {
     expect(src).toMatch(/onPetChange: \(\) => \(preloadPets\(\), diceBox\?\.wake\(\)\)/);
   });
 });
+
+describe('the chat dice tray', () => {
+  afterEach(async () => {
+    (await import('../../src/ui/chat-tray.js'))._resetChatTray();
+    document.body.innerHTML = '';
+  });
+  const withSettings = (s, modules = new Map()) => {
+    globalThis.game = {
+      modules,
+      i18n: { localize: (k) => k, format: (k) => k },
+      user: { id: 'u1', role: 1, isGM: false },
+      settings: { get: (ns, k) => (ns === 'dicer' ? s[k] : undefined) },
+    };
+  };
+  const docked = () => new Promise((r) => setTimeout(r, 0)).then(() => document.querySelector('.dicer-chat-tray'));
+
+  test('renderChatInput and renderChatLog dock it lazily under the chat input', async () => {
+    const input = hooks.on.find(([n]) => n === 'renderChatInput')?.[1];
+    const log = hooks.on.find(([n]) => n === 'renderChatLog')?.[1];
+    expect(input).toBeTypeOf('function');
+    expect(log).toBeTypeOf('function');
+    withSettings({ chatTray: true });
+    document.body.innerHTML = '<form class="chat-form"><textarea id="chat-message"></textarea></form>';
+    await input({}, { '#chat-message': document.getElementById('chat-message') });
+    expect(await docked()).toBeTruthy();
+    await log({}, document.body);
+    expect(document.querySelectorAll('.dicer-chat-tray')).toHaveLength(1);
+  });
+
+  test('not docked with chatTray off or the Dice Tray module active', async () => {
+    const input = hooks.on.find(([n]) => n === 'renderChatInput')[1];
+    document.body.innerHTML = '<textarea id="chat-message"></textarea>';
+    withSettings({ chatTray: false });
+    await input({}, {});
+    expect(await docked()).toBeNull();
+    withSettings({ chatTray: true }, new Map([['dice-tray', { active: true }]]));
+    await input({}, {});
+    expect(await docked()).toBeNull();
+  });
+});

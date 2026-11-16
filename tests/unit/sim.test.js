@@ -699,6 +699,21 @@ test("a launched throw's first frame equals the clamped launch states", () => {
   });
 });
 
+test('a rest launch (grab and toss) keeps a landed die where it lies: no margin, no lift to y 1', () => {
+  const pet = { x: 3, z: 0, r: 0.6, h: 1.5 };
+  const edge = area.halfWidth - 0.6;
+  const launch = [
+    { ...L([edge, 0.55, 0]), rest: true },
+    { ...L([3.9, 0.55, 0]), rest: true }, // beside the pet: not lifted over it
+    L([-3, 2.5, 0], [0, 0, 0, 1], [6, 1, 0]),
+  ];
+  const { chunks } = runHand(['d6', 'd6', 'd6'], 4, { launch, obstacles: [pet] });
+  const [first] = posesOf(chunks, 3);
+  expect(first[0].p[0]).toBeCloseTo(edge, 5);
+  expect(first[0].p[1]).toBeCloseTo(0.55, 5);
+  expect(first[1].p[1]).toBeCloseTo(0.55, 5);
+});
+
 test('extreme release speeds are capped', () => {
   const launch = [L([0, 3, 0], [0, 0, 0, 1], [900, 50, -700], [0, 400, 0])];
   const { chunks } = runHand(['d6'], 2, { launch });

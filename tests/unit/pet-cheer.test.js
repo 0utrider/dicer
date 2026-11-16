@@ -272,7 +272,7 @@ describe('cheering in the layer', () => {
         for (let i = 0; i < col.count; i++)
           b.push(sparkle.visible ? col.getX(i) + col.getY(i) + col.getZ(i) : 0);
         seen.push(b);
-        tops.push(groups(m)[1].children.find((c) => c.name === 'slime').position.y);
+        tops.push(groups(m)[1].getObjectByName('slime').position.y);
       }
       // each star swells and fades once: one rise and one fall, never a flicker
       const lit = seen[0].map((_, i) => seen.map((f) => f[i]));

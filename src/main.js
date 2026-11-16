@@ -6,6 +6,7 @@ import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
 import { loadHand, prefetchHand, handNow } from './hand/hand-loader.js';
+import { syncGrab } from './grab/grab-loader.js';
 import { createHandGate, markCard } from './hand/gate-hand.js';
 import {
   registerHandMethod,
@@ -82,7 +83,7 @@ const debugCounters = createDebugCounters();
 
 /** Result sounds (never awaited) and trigger macros, once per landed die carrying fx. */
 const landedFx = createLandedFx({
-  playSound: (sound) => soundEngine?.result(sound),
+  playSound: (sound) => (getSetting('effectSounds') === false ? undefined : soundEngine?.result(sound)),
   onSound: debugCounters.countSound,
   fromUuid: (uuid) => globalThis.fromUuid(uuid),
 });
@@ -145,6 +146,16 @@ function syncHand() {
   } catch (err) {
     console.warn('dicer: cannot update the dice configuration', err);
   }
+}
+
+/**
+ * diceAboveWindows: 'all' lifts the dice canvas over Foundry's windows; 'mine' only while one of
+ * this user's rolls (or held dice) is on screen. One canvas draws everyone's dice, so another
+ * player's dice that show at the same time as yours are lifted too.
+ */
+function layerDice(mine = diceBox?.mineShown) {
+  const mode = getSetting('diceAboveWindows');
+  diceRenderer?.canvas?.classList.toggle('dicer-above', mode === 'all' || (mode === 'mine' && !!mine));
 }
 
 function onSoundChange(key, value) {
@@ -475,6 +486,10 @@ Hooks.on('getSceneControlButtons', (c) => {
   }
 });
 
+// The chat dice tray: its lazy chunk docks it under the chat input, or not (chatTray, Dice Tray).
+const dockChat = (e) => dormant || import('./ui/chat-tray.js').then((m) => m.dock(e, loadHand));
+for (const h of ['renderChatInput', 'renderChatLog']) Hooks.on(h, (a, e) => dockChat(e));
+
 Hooks.once('init', () => {
   if (dsnIsActive(game)) {
     dormant = true;
@@ -490,6 +505,8 @@ Hooks.once('init', () => {
     onQualityChange,
     onSoundChange,
     onHandChange: () => (syncHand(), resetControls()), // and the tray tool
+    onLayerChange: () => layerDice(),
+    onGrabChange: (on) => syncGrab(diceBox, on),
   });
   try {
     registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver
@@ -643,6 +660,7 @@ Hooks.once('ready', async () => {
         effects: effectLayer,
         pet: () => getPets(),
         fonts: fontAtlases,
+        onLayer: layerDice,
       });
       return box;
     },
@@ -806,4 +824,5 @@ Hooks.once('ready', async () => {
   preloadPets();
   preloadEditors();
   idle(() => prefetchHand(diceBox, () => wantsHand(game.user, getSetting, getCore()))); // H-20, M8
+  idle(() => syncGrab(diceBox, getSetting('grabDice')));
 });

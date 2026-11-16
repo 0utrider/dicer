@@ -137,8 +137,12 @@ export class DiceBox {
     effects = null,
     fonts = null,
     pet = null,
+    onLayer = null,
   }) {
     this._renderer = renderer;
+    // onLayer(mine): told when "a roll of this user is on screen" changes (dice above windows).
+    this._onLayer = onLayer;
+    this._mineShown = false;
     this._physics = physics;
     this._atlas = atlas;
     // The font layer (fonts/font-atlas.js) or null: the atlas of a look's numbers.font. A font
@@ -200,7 +204,10 @@ export class DiceBox {
     this._lastRoll = null; // {area, rect, stage, diePx, dice} of the latest roll (lastRollArea)
     this._stageRect = null; // the stage in px, as getArea() gave it at the last onResize
     this._diePx = DIE_SIZE_PX;
-    this._tick = (now) => this.#frame(now);
+    this._tick = (now) => {
+      this.#layer();
+      return this.#frame(now);
+    };
     this.onResize();
     renderer.onContextLost?.(() => this.clear());
     // Rolls waiting for their first rendered frame (armFirstFrame); empty almost always, so the
@@ -362,6 +369,7 @@ export class DiceBox {
    *   stage); absent, the whole stage.
    *   `capacityDice`: the dice that share this area (a throw group's total), when more than this roll's.
    *   `pet`: the PetSpec ({ userId, kind, color, ghost }) of the pet that appears for this roll, or none.
+   *   `mine`: this user's own roll (diceAboveWindows 'mine' lifts the canvas while it shows).
    *   Rolling by hand:
    *   `free`: physics decides every face (as does a spec's `free`): the worker nudges cocked dice,
    *   Playback never holds or forces them and reads each result. The pet hook hears `hand: true`.
@@ -445,11 +453,13 @@ export class DiceBox {
   }
 
   /** Puts a built roll in flight: physics (or a source) -> Playback. Returns roll()'s result. */
-  _throw(roll, { area, capacityDice, pet, free, launch, seed, edge, record, source } = {}) {
+  _throw(roll, { area, capacityDice, pet, free, launch, seed, edge, record, source, mine } = {}) {
     const result = roll.result;
     roll.onFirstFrame = this._armedFirstFrame;
     this._armedFirstFrame = null;
     if (roll.removed) return result;
+    // A released hold is always this user's own throw (rolling by hand).
+    roll.mine = mine === true || this._hold === roll;
     if (this._hold === roll) this._hold = null;
     if (this._visibility?.hidden === true) {
       this._finish(roll);
@@ -1423,6 +1433,12 @@ export class DiceBox {
     this._fireResults(roll);
     this._fireFx(roll);
     roll.resolveLanded();
+    this._linger(roll);
+  }
+
+  /** (Re)arms a lingering roll's hide timer; grab and toss clears it while a die is held or tossed. */
+  _linger(roll) {
+    clearTimeout(roll.timer);
     roll.timer = setTimeout(() => {
       if (roll.removed) return;
       roll.phase = 'fading';
@@ -1500,6 +1516,26 @@ export class DiceBox {
     }
   }
 
+  /** True while dice are held or a roll marked `mine` is on screen. */
+  get mineShown() {
+    if (this._hold) return true;
+    for (const roll of this._rolls) if (roll.mine) return true;
+    return false;
+  }
+
+  /** Tells onLayer when mineShown changed (once per frame: a boolean check, nothing else). */
+  #layer() {
+    if (!this._onLayer) return;
+    const mine = this.mineShown;
+    if (mine === this._mineShown) return;
+    this._mineShown = mine;
+    try {
+      this._onLayer(mine);
+    } catch (err) {
+      console.warn('dicer: onLayer', err);
+    }
+  }
+
   #frame(now) {
     for (const roll of [...this._rolls]) {
       try {
@@ -1536,6 +1572,8 @@ export class DiceBox {
       // Living insides (the look-extras chunk): stepped every frame, moving until they rest.
       if (getLookExtras()?.insideMotion.frame(this, roll, now) || roll.phase !== 'lingering' || roll.glows) moving = true;
     }
+    // Grab and toss (lazy chunk, this.grab): a landed die held or tossed keeps the loop running.
+    if (this.grab?.frame(now)) moving = true;
     // Held dice follow the pointer: the loop runs while they are shown.
     if (this._hold?.revealed) return true;
     // P9-R18: every shown roll at rest and no effect running: this frame is drawn, then the loop

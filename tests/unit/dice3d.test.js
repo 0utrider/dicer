@@ -1413,3 +1413,18 @@ describe('Task 8: hand rolls (H-18) and the recipients rule', () => {
     expect(onHand).toHaveBeenCalledTimes(1);
   });
 });
+
+test("diceAboveWindows 'mine' marks the local user's own rolls mine, nobody else's", async () => {
+  globalThis.game = { user: { id: 'me' } };
+  const local = { ...settings, diceAboveWindows: 'mine' };
+  try {
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => local[k] });
+    a.showForRoll(roll(20, 4));
+    expect(diceBox.roll.mock.lastCall[1]).toEqual({ mine: true });
+    local.diceAboveWindows = 'none';
+    a.showForRoll(roll(20, 6));
+    expect(diceBox.roll.mock.lastCall).toHaveLength(1); // the old call: no options at all
+  } finally {
+    delete globalThis.game;
+  }
+});

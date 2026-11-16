@@ -406,7 +406,9 @@ export function createDice3dApi({
       const opts = {};
       if (area) opts.area = area;
       if (pet) opts.pet = pet;
-      await (area || pet ? diceBox.roll(dice, opts) : diceBox.roll(dice)).landed;
+      // Only 'mine' layering needs it (dice above windows while this user's own roll shows).
+      if (getSetting('diceAboveWindows') === 'mine' && s.senderId != null && s.senderId === me()?.id) opts.mine = true;
+      await (Object.keys(opts).length ? diceBox.roll(dice, opts) : diceBox.roll(dice)).landed;
       return true;
     } catch (err) {
       console.error('dicer: showForRoll failed', err);

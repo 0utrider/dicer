@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { NOISE_GLSL } from '../../shaders/noise.js';
-import { INTERIOR_PARS, INTERIOR_MARCH } from '../../shaders/interior.js';
+import { INTERIOR_PARS, INTERIOR_MARCH, interiorChunk } from '../../shaders/interior.js';
+import { EXTRA_KINDS, withExtra, extraUniforms } from './extra.js';
 import * as foil from './foil.js';
 import * as eye from './eye.js';
 import * as botanical from './botanical.js';
@@ -76,6 +77,11 @@ function tintTarget(a) {
   return l > 0 ? c0.multiplyScalar(luminance(body) / l) : body;
 }
 
+function stillInside(a) {
+  const pars = interiorChunk(a.interior.type, a.interior.shape).pars;
+  return { body: pars.slice(pars.indexOf(INTERIOR_PARS) + INTERIOR_PARS.length) };
+}
+
 const hasLiquidExtras = (i) => i.type === 'liquid' && (i.bubble || i.sand);
 // BUILT_IN_SHAPES (live.js): the closed list of shapes interior.js draws itself (the keys of its SDF_NAME, pinned by a test):
 // every other shape of type 'shape' (plan 3b: sword, axe, shield, dragon, runes) is a module in
@@ -97,6 +103,9 @@ const isFantasy = (i) => i.type === 'shape' && !BUILT_IN_SHAPES.includes(i.shape
  * gets `live` (true) as its second argument (smoke drifts, liquid-extras uses the lagged up);
  * today's liquid, glitter, swirl and nebula are drawn by living.js (animated); the four built-in
  * shapes are never live (no GLSL of theirs reads the uniforms). Without it, every patch is exactly as before.
+ * With interior.extra (a suspension layer, extra.js) on a marched tier, the main inside's body (a
+ * module's, the living one, or interior.js's own for today's still insides) gets the layer
+ * composited over it (withExtra) and the layer's two uniforms; the fake tier ignores the layer.
  * Under prefers-reduced-motion (live.js prefersReduced, read in this chunk), a live marched patch
  * also carries the define DICER_CALM (storm's sparks hold at half brightness instead of flashing).
  * three's program cache key includes material.defines, so a calm program never stands in for a
@@ -110,19 +119,32 @@ export function insidePatch(a, flags) {
   const isNew = Object.hasOwn(INSIDE_TINT, i.type);
   const today = !isNew && !hasLiquidExtras(i) && !isFantasy(i); // interior.js draws it
   const animated = live && today && living.LIVING_TYPES.includes(i.type);
+  // the suspension layer (extra.js): marched tiers only (the low tier's fake tint drops it)
+  const extra = EXTRA_KINDS.includes(i.extra) && flags.interiorSteps > 0;
   // today's insides: still, no patch; with motion, the built-in shapes get only the four uniforms
-  if (today && !animated) return live ? { uniforms: motionUniforms() } : {};
+  if (today && !animated && !extra) return live ? { uniforms: motionUniforms() } : {};
   if (!(flags.interiorSteps > 0)) {
     if (!isNew) return {};
     const t = tintTarget(a);
     return { uniforms: { uResinTint: { value: new THREE.Vector4(t.r, t.g, t.b, INSIDE_TINT[i.type]) } } };
   }
   const key = hasLiquidExtras(i) ? 'liquid' : isFantasy(i) ? i.shape : i.type;
-  const mod = animated ? [living.livingInside, living.USES_NOISE] : Object.hasOwn(MODULES, key) ? MODULES[key] : null;
+  // today's still insides under a layer: interior.js's own body (its pars minus the shared head)
+  const mod = animated
+    ? [living.livingInside, living.USES_NOISE]
+    : today
+      ? [stillInside, true]
+      : Object.hasOwn(MODULES, key)
+        ? MODULES[key]
+        : null;
   if (!mod) throw new Error(`dicer: no inside module for "${key}"`);
   const [build, usesNoise] = mod;
-  const { body, uniforms = {} } = build(a, live);
-  const pars = [usesNoise ? NOISE_GLSL : '', INTERIOR_PARS, live ? MOTION_PARS : '', 'vec3 dcIUp;', body]
+  let { body, uniforms = {} } = build(a, live);
+  if (extra) {
+    body = withExtra(body, live);
+    uniforms = { ...uniforms, ...extraUniforms(i) };
+  }
+  const pars = [usesNoise || extra ? NOISE_GLSL : '', INTERIOR_PARS, live ? MOTION_PARS : '', 'vec3 dcIUp;', body]
     .filter(Boolean)
     .join('\n');
   const out = { interior: { pars, main: marchWithUp() }, uniforms: live ? { ...motionUniforms(), ...uniforms } : uniforms };

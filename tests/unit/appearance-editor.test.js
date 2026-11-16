@@ -14,6 +14,7 @@ import {
   ICON_CHOICES,
   INTERIOR_TYPES,
   INCLUSION_LIST,
+  EXTRA_LIST,
   SHAPES,
   D4_SHAPES,
   COIN_CHOICES,
@@ -195,7 +196,7 @@ describe('bodies, presets and finishes in the form', () => {
     for (const type of BODY_TYPES) {
       const v = visibleSections({ body: { type } });
       expect(v.preset).toBe(Object.hasOwn(BODY_PRESETS, type));
-      expect(v.color2).toBe(['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'].includes(type));
+      expect(v.color2).toBe(['marble', 'pearl', 'iridescent', 'gem', 'wood'].includes(type));
     }
     // a metal's second colour: only for the aged finishes
     for (const finish of FINISHES) {
@@ -331,10 +332,10 @@ describe('visibleSections', () => {
     expect(visibleSections(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'none' } })).insideDetails).toBe(false);
     expect(visibleSections(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'shape' } })).insideShape).toBe(true);
   });
-  it('the finish only for metal; the second colour for marble, pearl and resin; number colour for paint and enamel', () => {
+  it('the finish only for metal; the second colour for marble and pearl (not resin); number colour for paint and enamel', () => {
     const v = (body, numbers) => visibleSections(normalizeAppearance({ body, numbers }));
     expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).finish)).toEqual([false, false, true, false, false]);
-    expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).color2)).toEqual([false, true, false, true, true]);
+    expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).color2)).toEqual([false, false, false, true, true]);
     expect(['paint', 'gold', 'silver', 'enamel'].map((fill) => v({}, { fill }).numberColor)).toEqual([true, false, false, true]);
     expect(visibleSections(formFromAppearance({ numbers: { font: 'css:Impact' } }))).toMatchObject({ fontFamily: true, fontFile: false });
     expect(visibleSections(normalizeAppearance({ numbers: { font: 'file:a/b.ttf' } }))).toMatchObject({ fontFamily: false, fontFile: true });
@@ -598,6 +599,18 @@ describe('the appearance editor', () => {
     expect(app.element.textContent).toContain(L('Numbers.IconsHint'));
     await click(app, '[data-field="numbers.critIcon"][data-value="crown"]');
     expect(app.theme().appearance.numbers.icons.crit).toBe('crown');
+    await app.close();
+  });
+
+  it('the size and weight sliders edit the look live', async () => {
+    const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
+    expect(q(app, 'input[name="numbers.size"]').value).toBe('1');
+    expect(q(app, 'input[name="numbers.weight"]').value).toBe('0');
+    type(app, 'numbers.size', '1.2');
+    type(app, 'numbers.weight', '-0.5');
+    expect(app.theme().appearance.numbers).toMatchObject({ size: 1.2, weight: -0.5 });
+    expect(q(app, 'output[data-for="numbers.size"]').textContent).toBe('120%');
+    expect(q(app, 'output[data-for="numbers.weight"]').textContent).toBe('-50%');
     await app.close();
   });
 
@@ -1231,6 +1244,7 @@ describe('lang/en.json', () => {
       'Preset.': Object.values(BODY_PRESETS).flat(),
       'InsideType.': INTERIOR_TYPES,
       'Inclusion.': INCLUSION_LIST,
+      'Extra.': EXTRA_LIST,
       'Shape.': NINE_SHAPES,
       'Fill.': ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'],
       'FontKind.': [...FONT_IDS_BUILTIN, 'css', 'file'],
@@ -1259,5 +1273,31 @@ describe('lang/en.json', () => {
   it('has the appearanceEditor menu keys', () => {
     const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings.appearanceEditor;
     expect(Object.keys(en).sort()).toEqual(['Hint', 'Label', 'Name']);
+  });
+});
+
+describe('number size and weight in the form', () => {
+  it('round-trips size and weight; old looks get the defaults', () => {
+    const a = normalizeAppearance({ numbers: { size: 1.35, weight: -0.4 } });
+    const f = formFromAppearance(a);
+    expect(f.numbers).toMatchObject({ size: 1.35, weight: -0.4 });
+    expect(appearanceFromForm(f)).toEqual(a);
+    expect(formFromAppearance({ numbers: { fill: 'paint' } }).numbers).toMatchObject({ size: 1, weight: 0 });
+  });
+  it('slider strings become numbers', () => {
+    let f = setField(formFromAppearance({}), 'numbers.size', '0.75');
+    f = setField(f, 'numbers.weight', '0.6');
+    expect(f.numbers).toMatchObject({ size: 0.75, weight: 0.6 });
+    expect(appearanceFromForm(f).numbers).toMatchObject({ size: 0.75, weight: 0.6 });
+  });
+  it('the numbers section has both sliders, with live outputs and labels', () => {
+    const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+    expect(resolve(lang, 'DICER.Appearance.Numbers.Size')).toBeTypeOf('string');
+    expect(resolve(lang, 'DICER.Appearance.Numbers.Weight')).toBeTypeOf('string');
+    const hbs = readFileSync('templates/appearance-editor.hbs', 'utf8');
+    expect(hbs).toMatch(/<input type="range" name="numbers\.size" min="0\.6" max="1\.4" step="0\.05" value="\{\{form\.numbers\.size\}\}">/);
+    expect(hbs).toMatch(/<input type="range" name="numbers\.weight" min="-1" max="1" step="0\.05" value="\{\{form\.numbers\.weight\}\}">/);
+    expect(hbs).toContain('<output data-for="numbers.size">{{pct.size}}</output>');
+    expect(hbs).toContain('<output data-for="numbers.weight">{{pct.weight}}</output>');
   });
 });

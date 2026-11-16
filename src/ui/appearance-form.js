@@ -24,7 +24,9 @@ export const BODY_PRESET_LISTS = {
 export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke', 'fire', 'lava', 'storm', 'frost'];
 // Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
 export const INCLUSION_LIST = ['flower', 'moss', 'butterfly'];
-export const SHAPES = ['star', 'heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
+// Literal copy of the suspension layer kinds (the unit test pins it to what normalisation accepts).
+export const EXTRA_LIST = ['none', 'foil', 'glitter', 'sand', 'bubbles'];
+export const SHAPES = ['star','heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
 // Literal lists (the unit test pins them to what normalisation accepts).
 export const D4_SHAPES = ['classic', 'crystal'];
 export const COIN_CHOICES = ['numbers', 'heads-tails', 'sun-moon'];
@@ -40,8 +42,8 @@ export { EDGE_STEPS, STRIP_STYLES };
 /** Fonts most computers have, offered as suggestions for "a font on this computer". */
 export const FONT_SUGGESTIONS = ['Georgia', 'Impact', 'Palatino Linotype', 'Trebuchet MS', 'Verdana', 'Courier New', 'Times New Roman'];
 export const LOOK_KIND = 'dicer-look';
-/** Body types with a second colour (marble veins, pearl sheen, resin tint). */
-const TWO_TONE = ['marble', 'pearl', 'resin', 'iridescent', 'gem', 'wood'];
+/** Body types with a second colour (marble veins, pearl sheen...). Resin has none: its shader never reads it. */
+const TWO_TONE = ['marble', 'pearl', 'iridescent', 'gem', 'wood'];
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
@@ -74,6 +76,10 @@ export function formFromAppearance(raw) {
       inclusion: inside.inclusion,
       bubble: inside.bubble,
       sand: inside.sand,
+      motion: inside.motion,
+      extra: inside.extra,
+      extraColor: inside.extraColor,
+      extraDensity: inside.extraDensity,
     },
     numbers: {
       fill: a.numbers.fill,
@@ -84,6 +90,8 @@ export function formFromAppearance(raw) {
       depth: a.numbers.depth,
       pips: a.numbers.pips,
       coin: a.numbers.coin,
+      size: a.numbers.size,
+      weight: a.numbers.weight,
       ...fontParts(a.numbers.font),
     },
     edges: { radius: a.edges.radius, strip: a.edges.strip.style, stripColor: a.edges.strip.color, stripStrength: a.edges.strip.strength },
@@ -104,7 +112,8 @@ export function appearanceFromForm(form) {
   const g = isObj(f.glow) ? f.glow : {};
   return normalizeAppearance({
     body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset },
-    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand },
+    interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand,
+      motion: i.motion, extra: i.extra, extraColor: i.extraColor, extraDensity: n(i.extraDensity) },
     numbers: {
       fill: num.fill,
       relief: num.relief,
@@ -114,6 +123,8 @@ export function appearanceFromForm(form) {
       font: fontIdOf(num),
       pips: num.pips === true,
       coin: num.coin,
+      size: n(num.size),
+      weight: n(num.weight),
     },
     edges: { radius: n(e.radius), strip: { style: e.strip, color: e.stripColor, strength: n(e.stripStrength) } },
     shapes: { d4: isObj(f.shapes) ? f.shapes.d4 : undefined },
@@ -135,16 +146,21 @@ export function visibleSections(look) {
   const fill = look?.numbers?.fill;
   const kind = look?.numbers?.fontKind ?? fontParts(look?.numbers?.font).fontKind;
   const resin = body === 'resin';
+  const hasInside = resin && inside !== 'none' && INTERIOR_TYPES.includes(inside);
   const radius = Number(look?.edges?.radius) || 0;
   // a form names the style as edges.strip, an appearance as edges.strip.style
   const stripStyle = typeof look?.edges?.strip === 'string' ? look.edges.strip : look?.edges?.strip?.style;
   return {
     inside: resin,
-    insideDetails: resin && inside !== 'none' && INTERIOR_TYPES.includes(inside),
+    insideDetails: hasInside,
     insideShape: resin && inside === 'shape',
     inclusion: resin && inside === 'botanical',
     liquidOptions: resin && inside === 'liquid',
     irisLabel: resin && inside === 'eye',
+    // the living-inside toggle and the suspension layer: any inside of a resin body
+    insideMotion: hasInside,
+    extraLayer: hasInside,
+    extraDetails: hasInside && EXTRA_LIST.indexOf(look?.interior?.extra) > 0,
     // the aged metal finishes' verdigris / grime colour is the second colour
     color2: TWO_TONE.includes(body) || (body === 'metal' && (look?.body?.finish === 'patina' || look?.body?.finish === 'worn')),
     finish: body === 'metal',
@@ -186,7 +202,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'extraDensity'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

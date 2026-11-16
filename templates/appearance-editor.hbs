@@ -112,6 +112,27 @@
                   </div>
                 </div>
               {{/if}}
+              {{#if show.insideMotion}}
+                <div class="dicer-ae-row dicer-ae-toggles">
+                  <label class="dicer-ae-toggle" data-tooltip="{{localize "DICER.Appearance.Inside.MotionHint"}}"><input type="checkbox" name="interior.motion" {{#if form.interior.motion}}checked{{/if}}><span>{{localize "DICER.Appearance.Inside.Motion"}}</span></label>
+                </div>
+              {{/if}}
+              {{#if show.extraLayer}}
+                <div class="dicer-field">
+                  <span>{{localize "DICER.Appearance.Inside.Extra"}}</span>
+                  <div class="dicer-ae-chips" role="radiogroup" aria-label="{{localize "DICER.Appearance.Inside.Extra"}}">
+                    {{#each extraKinds}}
+                      <button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" role="radio" aria-checked="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="interior.extra" data-value="{{id}}"><i class="fa-solid {{icon}}"></i><span>{{label}}</span></button>
+                    {{/each}}
+                  </div>
+                </div>
+                {{#if show.extraDetails}}
+                  <div class="dicer-ae-row">
+                    <div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Inside.ExtraColor"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.interior.extraColor}}" data-color-for="interior.extraColor" aria-label="{{localize "DICER.Appearance.Inside.ExtraColor"}}"><input type="text" name="interior.extraColor" value="{{form.interior.extraColor}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Inside.ExtraColor"}}"></span></div>
+                  </div>
+                  <label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Inside.ExtraDensity"}}<output data-for="interior.extraDensity">{{pct.extraDensity}}</output></span><input type="range" name="interior.extraDensity" min="0" max="1" step="0.01" value="{{form.interior.extraDensity}}"></label>
+                {{/if}}
+              {{/if}}
             {{/if}}
           {{else}}
             <p class="dicer-hint dicer-ae-note"><i class="fa-solid fa-circle-info"></i> {{localize "DICER.Appearance.Inside.ResinOnly"}}</p>
@@ -133,6 +154,7 @@
             </div>
           </div>
           {{#if show.numberColor}}<div class="dicer-ae-row"><div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Numbers.Color"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.numbers.color}}" data-color-for="numbers.color" aria-label="{{localize "DICER.Appearance.Numbers.Color"}}"><input type="text" name="numbers.color" value="{{form.numbers.color}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Numbers.Color"}}"></span></div><label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Numbers.Depth"}}<output data-for="numbers.depth">{{pct.depth}}</output></span><input type="range" name="numbers.depth" min="0" max="1" step="0.01" value="{{form.numbers.depth}}"></label></div>{{else}}<label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Numbers.Depth"}}<output data-for="numbers.depth">{{pct.depth}}</output></span><input type="range" name="numbers.depth" min="0" max="1" step="0.01" value="{{form.numbers.depth}}"></label>{{/if}}
+          <div class="dicer-ae-row"><label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Numbers.Size"}}<output data-for="numbers.size">{{pct.size}}</output></span><input type="range" name="numbers.size" min="0.6" max="1.4" step="0.05" value="{{form.numbers.size}}"></label><label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Numbers.Weight"}}<output data-for="numbers.weight">{{pct.weight}}</output></span><input type="range" name="numbers.weight" min="-1" max="1" step="0.05" value="{{form.numbers.weight}}"></label></div>
           <div class="dicer-field">
             <span>{{localize "DICER.Appearance.Numbers.Relief"}}</span>
             <div class="dicer-segmented dicer-ae-seg">

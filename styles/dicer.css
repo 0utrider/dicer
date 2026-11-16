@@ -5,6 +5,11 @@
   pointer-events: none;
   z-index: 60; /* above the scene, below Foundry UI apps; placed right after #board */
 }
+/* diceAboveWindows: over windows and sheets (they climb from ~100 as they are focused), still
+   below tooltips; the canvas never takes the pointer. */
+#dicer-canvas.dicer-above {
+  z-index: 9000;
+}
 
 /* Dice So Nice compatible: a chat message hidden until its dice land. */
 .dsn-hide {
@@ -1677,4 +1682,199 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   .dicer-jp-head h2 {
     display: none;
   }
+}
+
+/* Chat dice tray (src/ui/chat-tray.js): a compact strip under the chat input. Each die wears the
+   player's dice look as --dicer-ct-body / --dicer-ct-num (unset: the plain style). */
+.dicer-chat-tray {
+  position: relative;
+  /* Foundry's #ui-right / #sidebar / #chat are pointer-events: none; only its own controls opt back in. */
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 3px 0 0;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-chat-tray-dice {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 2px;
+}
+.dicer-chat-tray button {
+  margin: 0;
+  min-height: 0;
+  line-height: 1;
+}
+.dicer-chat-tray-die {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  height: auto;
+  padding: 2px 0 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: none;
+}
+.dicer-chat-tray.can-throw .dicer-chat-tray-die,
+.dicer-chat-tray.can-throw .dicer-chat-tray-roll {
+  cursor: grab;
+}
+.dicer-chat-tray.is-dragging,
+.dicer-chat-tray.is-dragging * {
+  cursor: grabbing;
+}
+.dicer-chat-tray-die svg {
+  width: 20px;
+  height: 20px;
+  fill: var(--dicer-ct-body, rgba(255, 255, 255, 0.06));
+  stroke: var(--dicer-ct-num, currentColor);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.dicer-chat-tray-name {
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.dicer-chat-tray-die.has-dice {
+  border-color: var(--color-warm-2, #ff6400);
+  box-shadow: 0 0 0 1px var(--color-warm-2, #ff6400) inset;
+}
+.dicer-chat-tray-count {
+  position: absolute;
+  top: -4px;
+  right: -2px;
+  min-width: 14px;
+  padding: 1px 3px;
+  border-radius: 7px;
+  background: var(--color-warm-2, #ff6400);
+  color: #fff;
+  font-size: 0.8em;
+  font-weight: 700;
+  pointer-events: none;
+}
+.dicer-chat-tray-count:empty {
+  display: none;
+}
+.dicer-chat-tray-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dicer-chat-tray-bar > * {
+  height: 24px;
+}
+.dicer-chat-tray-mod {
+  display: flex;
+  flex: 0 0 auto;
+}
+.dicer-chat-tray-mod button {
+  width: 18px;
+  padding: 0;
+}
+.dicer-chat-tray-mod input {
+  width: 34px;
+  height: 24px;
+  padding: 0;
+  text-align: center;
+  font-size: inherit;
+}
+.dicer-chat-tray-adv {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  font-size: 0.9em;
+}
+.dicer-chat-tray-adv[aria-pressed='true'] {
+  background: var(--color-warm-2, #ff6400);
+  color: #fff;
+}
+.dicer-chat-tray-bar [data-act='clear'] {
+  flex: 0 0 22px;
+  padding: 0;
+}
+.dicer-chat-tray-roll {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px;
+  touch-action: none;
+}
+.dicer-chat-tray-formula {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dicer-chat-tray-roll:disabled {
+  opacity: 0.5;
+}
+.dicer-chat-tray-menu {
+  position: absolute;
+  bottom: 100%;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 5px;
+  background: var(--color-cool-5, #1c1c24);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.dicer-chat-tray-menu [data-adv] {
+  grid-column: 1 / -1;
+}
+.dicer-chat-tray-menu button {
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+/* The customize panel: opens above the dock, like the quick-count menu. */
+.dicer-chat-tray-prefs {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  left: 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  border-radius: 5px;
+  background: var(--color-cool-5, #1c1c24);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.dicer-chat-tray-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.dicer-chat-tray-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 2px 6px;
+  opacity: 0.45;
+}
+.dicer-chat-tray-chip[aria-pressed='true'] {
+  opacity: 1;
+  outline: 1px solid var(--color-warm-2, #ff6400);
+}
+.dicer-chat-tray-chip svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.dicer-chat-tray-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.dicer-chat-tray-mod[hidden] {
+  display: none;
 }

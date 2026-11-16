@@ -20,9 +20,26 @@
         "Name": "Dice size",
         "Hint": "Size of the dice on screen."
       },
+      "petScale": {
+        "Name": "Pet size",
+        "Hint": "Size of the dice pets on screen, independent of the dice size."
+      },
+      "diceAboveWindows": {
+        "Name": "Dice above windows",
+        "Hint": "Draw the dice over open windows and character sheets. \"My rolls\" lifts them only while one of your own rolls is on screen; other players' dice stay under your windows (when both show at once, all dice are lifted).",
+        "Choices": {
+          "none": "Never (under windows)",
+          "mine": "My rolls",
+          "all": "All rolls"
+        }
+      },
       "timeBeforeHide": {
         "Name": "Time before hiding (ms)",
         "Hint": "How long the dice stay on the table after landing, before they fade out."
+      },
+      "grabDice": {
+        "Name": "Grab and toss landed dice",
+        "Hint": "Pick up a landed die with the mouse, drag it and fling it across the table. Only on your screen and just for fun: the result never changes, and the dice stay while you play with them."
       },
       "maxDice": {
         "Name": "Maximum dice per message",
@@ -175,6 +192,10 @@
         "Name": "Dice tray",
         "Hint": "A dice tray button for free rolls by hand."
       },
+      "chatTray": {
+        "Name": "Chat dice tray",
+        "Hint": "A row of dice under the chat box: click a die to add it, right-click to remove it, hold for more, then Roll. Where you may roll by hand, drag dice onto the table to throw them. Hidden while the Dice Tray module is active."
+      },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
         "Hint": "Roll messages appear in the chat at once instead of waiting for the dice to land. The dice still animate."
@@ -189,7 +210,7 @@
       },
       "insideMotion": {
         "Name": "Living insides",
-        "Hint": "The insides of resin dice move: liquid sloshes as the die tumbles and settles about 10 seconds after it lands. Off keeps them still."
+        "Hint": "The insides of resin dice move: liquid sloshes as the die tumbles and settles about 10 seconds after it lands. Off keeps them still, whatever each look says."
       },
       "engraving": {
         "Name": "Engraved numbers",
@@ -214,6 +235,10 @@
       "sounds": {
         "Name": "Dice sounds",
         "Hint": "Play impact sounds as the dice hit the table, the walls and each other."
+      },
+      "effectSounds": {
+        "Name": "Theme and effect sounds",
+        "Hint": "Play the sounds themes and triggers add to results (the zap, chime, fanfare and so on). Dice impacts and pet sounds have their own settings."
       },
       "soundVolume": {
         "Name": "Dice sound volume",
@@ -501,7 +526,8 @@
       "Source": {
         "builtin": "Built-in",
         "world": "World",
-        "user": "Mine"
+        "user": "Mine",
+        "module": "Module dice"
       },
       "Role": {
         "attack": "Attack rolls",
@@ -560,7 +586,23 @@
       "Delete": "Delete",
       "ConfirmDelete": "Delete this theme permanently?",
       "ConfirmDeleteWorldDefault": "It is the world default theme: deleting it also clears the world default, and players go back to their own default dice.",
-      "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:"
+      "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:",
+      "Module": {
+        "Colorset": "A colour set another module added (Dice So Nice API).",
+        "System": "A dice set another module added (Dice So Nice API). Its faces and models are used on top of your look; dice it gives no colours keep yours.",
+        "Stop": "Stop using",
+        "Import": "Import as theme",
+        "ImportHint": "Copy its colours into a theme of your own, to edit",
+        "Imported": "Imported as your theme:",
+        "Dropped": "A theme cannot keep:",
+        "KeepHint": "Use the module dice set itself to keep them.",
+        "Drop": {
+          "faces": "custom faces",
+          "models": "3D models",
+          "texture": "texture",
+          "font": "font"
+        }
+      }
     },
     "Commands": {
       "Description": "Open the Dicer settings."
@@ -666,6 +708,11 @@
         "Inclusion": "Inclusion",
         "Bubble": "Air bubble",
         "Sand": "Sand",
+        "Motion": "Living inside",
+        "MotionHint": "This look's inside moves. The Living insides setting turns motion off for every look.",
+        "Extra": "Also suspended",
+        "ExtraColor": "Suspended colour",
+        "ExtraDensity": "Suspended amount",
         "ResinOnly": "Only clear resin dice have an inside. Choose Clear resin under Body to add one."
       },
       "InsideType": {
@@ -683,6 +730,13 @@
         "lava": "Lava",
         "storm": "Storm",
         "frost": "Frost"
+      },
+      "Extra": {
+        "none": "Nothing",
+        "foil": "Foil flakes",
+        "glitter": "Glitter",
+        "sand": "Sand",
+        "bubbles": "Bubbles"
       },
       "Inclusion": {
         "flower": "Flower",
@@ -704,6 +758,8 @@
         "Fill": "Fill",
         "Color": "Colour",
         "Depth": "Depth",
+        "Size": "Size",
+        "Weight": "Thickness",
         "Relief": "Relief",
         "CritIcon": "Icon on the 20",
         "FumbleIcon": "Icon on the 1",
@@ -873,6 +929,37 @@
       "NoDice": "Pick at least one die to throw.",
       "NoEngine": "3D dice are off on this client, so the dice tray cannot throw. Turn on Enable 3D dice (Dicer's settings) to use it.",
       "Failed": "The dice tray could not post the roll."
+    },
+    "ChatTray": {
+      "Label": "Chat dice tray",
+      "Die": "{die}: click adds one, right-click removes one, hold for more",
+      "Adv": "Adv",
+      "AdvHint": "Advantage (roll two d20, keep the highest)",
+      "Dis": "Dis",
+      "DisHint": "Disadvantage (roll two d20, keep the lowest)",
+      "Fortune": "Fortune",
+      "FortuneHint": "Fortune (roll the d20 twice, use the higher)",
+      "Misfortune": "Misfortune",
+      "MisfortuneHint": "Misfortune (roll the d20 twice, use the lower)",
+      "AdvD6Hint": "Advantage (add a d6 to the roll)",
+      "DisD6Hint": "Disadvantage (subtract a d6 from the roll)",
+      "Edge": "Edge",
+      "EdgeHint": "Edge (+2 to the power roll)",
+      "Bane": "Bane",
+      "BaneHint": "Bane (-2 to the power roll)",
+      "Customize": "Customize the tray",
+      "CustomizeHelper": "Show {up} / {down}",
+      "CustomizeModifier": "Show the modifier",
+      "CustomizeReset": "Reset to this system's tray",
+      "CustomizeFailed": "Your tray choices could not be saved.",
+      "Duality": "Duality roll",
+      "DualityAdv": "Duality roll, advantage",
+      "DualityDis": "Duality roll, disadvantage",
+      "DualityHint": "Roll Hope and Fear with Daggerheart's own roll dialog (traits and experiences are added there)",
+      "Clear": "Clear the dice",
+      "Roll": "Roll",
+      "RollHint": "Roll these dice",
+      "RollThrowHint": "Roll these dice, or drag onto the table to throw them by hand"
     }
   }
 }

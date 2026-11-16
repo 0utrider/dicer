@@ -467,6 +467,7 @@ export function createPetLayer(deps) {
   function ensureSplat(pet) {
     if (!pet.splat) {
       pet.splat = createSplat(pet.kind, pet.color);
+      pet.splat.root.scale.setScalar(size);
       pet.group.add(pet.splat.root);
     }
     return pet.splat;
@@ -478,8 +479,56 @@ export function createPetLayer(deps) {
     pet.splat = null;
   }
 
+  /**
+   * The pet size in die units: petScale (on-screen size, like diceScale for dice) over diceScale,
+   * so the two settings are independent. 1 with both unset.
+   */
+  function sizeFactor() {
+    const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1);
+    const get = (k) => {
+      try {
+        return typeof getSetting === 'function' ? getSetting(k) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    return num(get('petScale')) / num(get('diceScale'));
+  }
+  let size = sizeFactor(); // the factor the pets were last sized to
+  const kindFootprint = (kind) => (KIND_FOOTPRINT[kind] != null ? KIND_FOOTPRINT[kind] * size : undefined);
+
+  /**
+   * Wraps a creature's root in a sizer group (once) and sizes it by k: its height and footprint,
+   * which the layer measures everything by, follow. The creature still animates its own root.
+   */
+  function sizeCreature(creature, k) {
+    if (!creature._base) {
+      const sizer = new THREE.Group();
+      sizer.add(creature.root);
+      creature._base = { height: creature.height, footprint: creature.footprint };
+      creature.root = sizer;
+    }
+    creature.root.scale.setScalar(k);
+    creature.height = creature._base.height * k;
+    if (creature._base.footprint != null) creature.footprint = creature._base.footprint * k;
+  }
+
+  /** Re-sizes every pet when petScale or diceScale changed; true if anything changed. */
+  function resize() {
+    const k = sizeFactor();
+    if (Math.abs(k - size) < 1e-6) return false;
+    size = k;
+    for (const pet of pets.values()) {
+      sizeCreature(pet.creature, k);
+      pet.shadow.scale.setScalar(pet.creature.height * 0.7);
+      pet.splat?.root.scale.setScalar(k);
+    }
+    return true;
+  }
+
   /** Puts a new creature in the pet (the first, or a new kind or colour); the old one is freed. */
   function setCreature(pet, creature, spec) {
+    sizeCreature(creature, size);
     if (pet.creature) {
       pet.group.remove(pet.creature.root);
       try {
@@ -1523,13 +1572,13 @@ export function createPetLayer(deps) {
     const list = [];
     if (own?.ok) {
       const mine = pets.get(spec.userId);
-      const h = mine?.creature.height ?? PET_HEIGHT;
+      const h = mine?.creature.height ?? PET_HEIGHT * size;
       // with resting on the pet rolls from its resting spot (a first appearance: the one it will hop
       // to, kept pending for begin); otherwise from the edge spot
       const at = stays()
         ? (watchSpot(mine) ?? newSpot(spec.userId, area, h, own.victim, true))
         : edgeSpot(edge, area, h).base;
-      list.push(obstacle(at, h, spec.userId, KIND_FOOTPRINT[spec.kind]));
+      list.push(obstacle(at, h, spec.userId, mine?.creature.footprint ?? kindFootprint(spec.kind)));
     }
     for (const p of pets.values())
       if (solid(p) && p !== own?.victim && !(own?.ok && p.userId === spec.userId))
@@ -1686,7 +1735,9 @@ export function createPetLayer(deps) {
    * the new stage. Rolling pets keep their edge spot: their roll has its own area.
    */
   function areaChanged(next) {
+    const resized = resize(); // diceScale or petScale changed (both come here through resizeDice)
     const same =
+      !resized &&
       stage &&
       ['cx', 'cz', 'halfWidth', 'halfDepth'].every((k) => (stage[k] ?? 0) === (next[k] ?? 0));
     stage = next;

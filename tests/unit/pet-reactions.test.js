@@ -245,7 +245,7 @@ describe('reactions in the layer', () => {
       const m = make();
       rollToRest(m, 'u1', kind);
       const g = group(m);
-      const top = new THREE.Box3().setFromObject(g.children.find((c) => c.name === kind)).max.y;
+      const top = new THREE.Box3().setFromObject(g.getObjectByName(kind)).max.y;
       landBeside(m, [{ dx: 1, damageType: 'fire' }]);
       runTo(m, clockNow + SCORCH_MS * 0.45);
       const smoke = g.children.find((c) => c.name === 'petSmoke');

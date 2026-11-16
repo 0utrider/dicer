@@ -286,7 +286,7 @@ test('needsLookExtras and fallbackLook', () => {
   expect(fallbackLook(plain)).toBe(plain);
   const fancy = normalizeAppearance({ numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' }, color: '#123456', depth: 0.7, font: 'sans' } });
   expect(needsLookExtras(fancy)).toBe(true);
-  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', depth: 0.7, font: 'sans', pips: false, coin: 'numbers' });
+  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', depth: 0.7, font: 'sans', pips: false, coin: 'numbers', size: 1, weight: 0 });
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'outline' } })).numbers.fill).toBe('paint');
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'glow' } })).numbers.fill).toBe('paint');
   expect(needsLookExtras(normalizeAppearance({ numbers: { icons: { fumble: 'skull' } } }))).toBe(true);
@@ -604,5 +604,31 @@ describe('edges.strip (styled bevel strips)', () => {
     const looks = Object.values(LOOKS);
     expect(looks.length).toBeGreaterThan(0);
     for (const l of looks) expect(normalizeAppearance(l.appearance ?? l).edges.strip.style).toBe('body');
+  });
+});
+
+describe('numbers.size and numbers.weight', () => {
+  test('defaults are identity: size 1, weight 0, also for old looks without the fields', () => {
+    expect(DEFAULT_APPEARANCE.numbers).toMatchObject({ size: 1, weight: 0 });
+    expect(normalizeAppearance({}).numbers).toMatchObject({ size: 1, weight: 0 });
+    expect(normalizeAppearance({ numbers: { fill: 'paint', depth: 0.3 } }).numbers).toMatchObject({ size: 1, weight: 0 });
+    for (const l of Object.values(LOOKS)) expect(normalizeAppearance(l.appearance ?? l).numbers).toMatchObject({ size: 1, weight: 0 });
+  });
+  test('in-range values are kept; out-of-range or non-numeric read as the default', () => {
+    expect(normalizeAppearance({ numbers: { size: 0.6, weight: -1 } }).numbers).toMatchObject({ size: 0.6, weight: -1 });
+    expect(normalizeAppearance({ numbers: { size: 1.4, weight: 1 } }).numbers).toMatchObject({ size: 1.4, weight: 1 });
+    for (const bad of [0.5, 1.5, NaN, Infinity, '1.2', null, true])
+      expect(normalizeAppearance({ numbers: { size: bad } }).numbers.size).toBe(1);
+    for (const bad of [-1.1, 1.1, NaN, '0.5', null])
+      expect(normalizeAppearance({ numbers: { weight: bad } }).numbers.weight).toBe(0);
+  });
+  test('uniforms, not defines: the program key ignores them; the material key does not', () => {
+    const a = normalizeAppearance({});
+    const b = normalizeAppearance({ numbers: { size: 1.25, weight: 0.5 } });
+    const flags = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32 };
+    expect(programKey(b, flags)).toBe(programKey(a, flags));
+    expect(appearanceKey(b)).not.toBe(appearanceKey(a));
+    expect(needsLookExtras(b)).toBe(false);
+    expect(fallbackLook(b).numbers).toMatchObject({ size: 1.25, weight: 0.5 });
   });
 });

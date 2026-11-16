@@ -143,7 +143,7 @@ export const resetControls = () => {
 /**
  * Registers every Dicer setting.
  * @param {object} [callbacks]
- * @param {() => void} [callbacks.onAreaChange] runs when diceScale changes
+ * @param {() => void} [callbacks.onAreaChange] runs when diceScale or petScale changes
  * @param {() => void} [callbacks.onPetChange] runs when petsAllowed or showPets changes
  * @param {() => void} [callbacks.onPetStayChange] runs when petStay, petSplat or petRestSpot changes
  * @param {() => void} [callbacks.onRollAreasChange] runs when rollAreas or gmPrivateArea changes
@@ -154,6 +154,8 @@ export const resetControls = () => {
  * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
  * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
  *   or handRollsRequired changes (the core dice configuration is re-synced)
+ * @param {() => void} [callbacks.onLayerChange] runs when diceAboveWindows changes
+ * @param {(value: boolean) => void} [callbacks.onGrabChange] runs when grabDice changes
  */
 export function registerSettings({
   onAreaChange,
@@ -164,6 +166,8 @@ export function registerSettings({
   onQualityChange,
   onSoundChange,
   onHandChange,
+  onLayerChange,
+  onGrabChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   register('enabled', {
@@ -192,15 +196,28 @@ export function registerSettings({
     default: 1.5,
     requiresReload: true, // the renderer reads its cap once, at creation
   });
-  register('diceScale', {
-    name: t('diceScale.Name'),
-    hint: t('diceScale.Hint'),
+  // Pets have their own on-screen size: the pet layer sizes them by petScale / diceScale.
+  for (const key of ['diceScale', 'petScale']) {
+    register(key, {
+      name: t(`${key}.Name`),
+      hint: t(`${key}.Hint`),
+      scope: 'client',
+      config: true,
+      type: Number,
+      range: { min: 0.5, max: 2, step: 0.1 },
+      default: 1,
+      onChange: () => onAreaChange?.(),
+    });
+  }
+  register('diceAboveWindows', {
+    name: t('diceAboveWindows.Name'),
+    hint: t('diceAboveWindows.Hint'),
     scope: 'client',
     config: true,
-    type: Number,
-    range: { min: 0.5, max: 2, step: 0.1 },
-    default: 1,
-    onChange: () => onAreaChange?.(),
+    type: String,
+    choices: Object.fromEntries(['none', 'mine', 'all'].map((k) => [k, t(`diceAboveWindows.Choices.${k}`)])),
+    default: 'none',
+    onChange: () => onLayerChange?.(),
   });
   register('timeBeforeHide', {
     name: t('timeBeforeHide.Name'),
@@ -209,6 +226,15 @@ export function registerSettings({
     config: true,
     type: Number,
     default: 2000,
+  });
+  register('grabDice', {
+    name: t('grabDice.Name'),
+    hint: t('grabDice.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: (v) => onGrabChange?.(v),
   });
   register('maxDice', {
     name: t('maxDice.Name'),
@@ -432,7 +458,8 @@ export function registerSettings({
       onChange: (value) => onLookChange?.(key, value),
     });
   }
-  for (const key of ['sounds', 'quietWhenUnfocused']) {
+  // effectSounds: theme and trigger result sounds (zap, chime...); pet chirps have their own.
+  for (const key of ['sounds', 'effectSounds', 'quietWhenUnfocused']) {
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
@@ -632,6 +659,7 @@ export function registerSettings({
     ['handLiveShare', 'world', Boolean, true], // a hand throw reaches the others as it flies
     ['elementalDamageInsides', 'world', Boolean, true], // fire, cold and electricity dice get elemental insides
     ['diceTray', 'client', Boolean, true, { onChange: resetControls }], // its tool
+    ['chatTray', 'client', Boolean, true], // its chunk follows it (clientSettingChanged)
   ];
   hand.forEach(([key, scope, type, def, more], i) =>
     register(key, {

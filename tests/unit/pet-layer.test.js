@@ -1879,3 +1879,39 @@ describe('Task 9 review fixes', () => {
     expect(pets(m.scene)).toHaveLength(0);
   });
 });
+
+describe('pet size (petScale, independent of diceScale)', () => {
+  const sizeOf = (scene) => pets(scene)[0].children[0].scale.x; // the creature's sizer
+  const radius = (layer) => layer.obstaclesFor({ spec: spec(), edge: 0, area: AREA })[0].r;
+
+  test('petScale over diceScale sizes the creature, its height and its obstacle', () => {
+    const base = make();
+    const r1 = radius(base.layer);
+    base.layer.begin('k', info());
+    expect(sizeOf(base.scene)).toBeCloseTo(1);
+    const h1 = base.layer.obstaclesFor({ spec: spec('u2'), edge: 0, area: AREA }).find((o) => o.id === 'u1').h;
+
+    const big = make({ petScale: 2, diceScale: 1 });
+    expect(radius(big.layer)).toBeCloseTo(r1 * 2);
+    big.layer.begin('k', info());
+    expect(sizeOf(big.scene)).toBeCloseTo(2);
+    const h2 = big.layer.obstaclesFor({ spec: spec('u2'), edge: 0, area: AREA }).find((o) => o.id === 'u1').h;
+    expect(h2).toBeCloseTo(h1 * 2);
+
+    // bigger dice alone no longer grow the pets on screen: they shrink in die units
+    const dice = make({ diceScale: 2 });
+    dice.layer.begin('k', info());
+    expect(sizeOf(dice.scene)).toBeCloseTo(0.5);
+  });
+
+  test('a changed setting re-sizes the pets on the next areaChanged', () => {
+    const m = make();
+    m.layer.areaChanged(AREA);
+    m.layer.begin('k', info());
+    expect(sizeOf(m.scene)).toBeCloseTo(1);
+    m.settings.petScale = 1.5;
+    m.layer.areaChanged(AREA); // same stage: settings changes come through resizeDice too
+    expect(sizeOf(m.scene)).toBeCloseTo(1.5);
+    expect(pets(m.scene)[0].children[0].children).toHaveLength(1); // wrapped once, not again
+  });
+});

@@ -15,6 +15,7 @@ import {
   FACE_LAYER_COLOR,
   MAX_FACE_LAYERS,
   DECAL_OPAQUE,
+  WEIGHT_SHIFT,
 } from './shaders/engrave.js';
 import {
   BODY_VERTEX_PARS,
@@ -309,6 +310,7 @@ export function createDiceMaterial(
     uFillPBR: { value: new THREE.Vector2(fillMetal, fillRough) },
     uFillGloss: { value: fillGloss },
     uEngrave: { value: a.numbers.depth },
+    uNum: { value: new THREE.Vector2(a.numbers.size, a.numbers.weight * WEIGHT_SHIFT) },
     uBodyColor2: { value: new THREE.Color(a.body.color2) },
     uVeinScale: { value: VEIN_SCALE },
     uGlowColor: { value: new THREE.Color(a.glow.color) },
