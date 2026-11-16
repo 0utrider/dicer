@@ -83,7 +83,7 @@
       },
       "petStay": {
         "Name": "How long pets stay",
-        "Hint": "How long a pet stays on the table after its owner's last roll. Pets move out of your cursor's way while they wait.",
+        "Hint": "How long a pet stays on the table after its owner's last roll.",
         "Choices": {
           "0": "Leave after the roll",
           "30": "30 seconds",

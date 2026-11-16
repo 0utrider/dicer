@@ -420,6 +420,30 @@ export function dragonling(color) {
       p.tailLift = 0.3 * wide;
       p.upper = lerp(0.1, 0, wide);
       p.lower = lerp(0.08, 0, wide);
+    } else if (phase === 'cheer') {
+      // Cheering someone else's natural 20: two happy hops with its wings beating, chin up, tail
+      // raised and swishing, smiling eyes (look.calm: one small hop, slow gentle wingbeats). From
+      // and back to the standing pose.
+      PK.reset(p);
+      const calm = !!look?.calm;
+      const k = calm ? 0.3 : 1;
+      const joy = plateau(t, 0, 1, 0.15);
+      const two = calm ? 0 : 1;
+      const air1 = bump(t, 0.12, 0.42);
+      const air2 = two * bump(t, 0.52, 0.82);
+      p.lift = 0.35 * k * (Math.sin(Math.PI * span(t, 0.12, 0.42)) + two * Math.sin(Math.PI * span(t, 0.52, 0.82)));
+      p.squash =
+        k * (0.12 * bump(t, 0.02, 0.14) - 0.08 * air1 + 0.12 * bump(t, 0.42, 0.54)) +
+        two * (0.1 * bump(t, 0.82, 0.95) - 0.08 * air2);
+      p.tuck = k * (air1 + air2);
+      p.wing = 0.4 + joy * (0.25 + (calm ? 0.1 : 0.6) * Math.sin(t * TAU * (calm ? 3 : 7)));
+      p.sweep = lerp(p.sweep, -0.1, joy);
+      p.headPitch = lerp(p.headPitch, -0.3, joy);
+      p.tailLift = lerp(p.tailLift, 0.4, joy);
+      p.sway = (calm ? 0.15 : 0.4) * Math.sin(t * TAU * 3) * joy;
+      p.upper = lerp(0.1, 0, joy);
+      p.lower = lerp(p.lower, 0.45, joy);
+      p.gazePitch = lerp(p.gazePitch, 0.3, joy);
     } else if (phase === 'proud' || phase === 'sulk') {
       // A mood (its owner's recent rolls), held at rest: it settles from the standing pose into it
       // and is static from t 1. Proud: chest out and leaning back, chin up, wings folded back

@@ -3,6 +3,7 @@ import { CREATURES } from './creatures/index.js';
 import {
   phaseAt,
   ENTER_MS,
+  THROW_MS,
   REACT_MS,
   REST_HOP_MS,
   WOBBLE_MS,
@@ -27,7 +28,7 @@ import {
 } from './resting.js';
 import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, HUFF_IGNORE_MS } from './petting.js';
-import { elementReactions, reactionOf } from './reactions.js';
+import { elementReactions, reactionOf, resting } from './reactions.js';
 import { createMoods } from './moods.js';
 import { petFor } from '../pet-for.js';
 
@@ -116,8 +117,14 @@ const TWINKLES = 3; // of the sparkle's SPARKS points
  * clears it). deps.moods replaces it (tests, the dev page).
  */
 const pageMoods = createMoods();
+// Cheering (petCheer): someone else's natural 20 lands and every other resting pet turns to the
+// dice, cheers (two hops and a few gold stars, each a single swell, never a flicker) and turns back.
+export const CHEER_MS = 1300;
+const CHEERS = 6; // of the sparkle's SPARKS points (reduced motion: 3, dimmer)
+// A pet in the middle of one of these does not cheer: a huff, a reaction, a cheer already.
+const BUSY = new Set(['huff', 'scorch', 'shiver', 'bristle', 'startle', 'cheer']);
 /** How long each of a resting pet's animations (pet.anim.kind) runs. */
-const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS, proud: MOOD_MS, sulk: MOOD_MS };
+const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS, proud: MOOD_MS, sulk: MOOD_MS, cheer: CHEER_MS };
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -271,7 +278,8 @@ export function createPetLayer(deps) {
     });
 
   /**
-   * Petting's hearts, a huff's puff or a bristle's sparks (`kind`, pet.anim's), at e (0..1) in the
+   * Petting's hearts, a huff's puff, a bristle's sparks, a proud settle's twinkle or a cheer's stars
+   * (`kind`, pet.anim's), at e (0..1) in the
    * pet's sparkle points; false for a kind with none (scorch has its own smoke points; shiver,
    * startle). Only the sparks may flicker, and not with `calm` (reduced motion: no flashing);
    * everything else fades in and out once. `calm` also means fewer hearts and less sway.
@@ -280,9 +288,10 @@ export function createPetLayer(deps) {
     const huff = kind === 'huff';
     const spark = kind === 'bristle';
     const proud = kind === 'proud';
-    if (!huff && !spark && !proud && kind !== 'pet') return false;
+    const cheer = kind === 'cheer';
+    if (!huff && !spark && !proud && !cheer && kind !== 'pet') return false;
     const pts = pet.sparkle;
-    pts.material = proud
+    pts.material = proud || cheer
       ? sparkMat
       : spark
         ? (zapMat ??= spriteMat(starTexture(), ZAP_SIZE))
@@ -294,7 +303,7 @@ export function createPetLayer(deps) {
     const col = pts.geometry.attributes.color;
     const P = pos.array;
     const C = col.array;
-    const n = huff ? PUFFS : spark ? SPARKLES : proud ? TWINKLES : calm ? 3 : HEARTS;
+    const n = huff ? PUFFS : spark ? SPARKLES : proud ? TWINKLES : cheer ? (calm ? 3 : CHEERS) : calm ? 3 : HEARTS;
     for (let i = 0; i < SPARKS; i++) {
       const k = i * 3;
       P[k] = P[k + 1] = P[k + 2] = C[k] = C[k + 1] = C[k + 2] = 0; // unused: black adds nothing
@@ -311,6 +320,19 @@ export function createPetLayer(deps) {
         P[k + 2] = Math.cos(a) * 0.3 * h;
         b = Math.sin(Math.PI * s) * (calm ? 0.6 : 1);
         const c = i === 1 ? WHITE : GOLD;
+        C[k] = c[0] * b;
+        C[k + 1] = c[1] * b;
+        C[k + 2] = c[2] * b;
+      } else if (cheer) {
+        // gold stars popping up and out above its head in turn, with its hops: each a single swell
+        // and fade, never a flicker (dimmer when calm)
+        const s = clamp01((e - 0.12 - 0.07 * i) / 0.5);
+        const r = (0.3 + 0.35 * s) * h;
+        P[k] = Math.sin(sp.a) * r;
+        P[k + 1] = h * (1 + 0.15 * sp.rise + 0.45 * s);
+        P[k + 2] = Math.cos(sp.a) * r * 0.7;
+        b = Math.sin(Math.PI * s) * (calm ? 0.55 : 1);
+        const c = i % 3 === 0 ? WHITE : GOLD;
         C[k] = c[0] * b;
         C[k + 1] = c[1] * b;
         C[k + 2] = c[2] * b;
@@ -880,16 +902,70 @@ export function createPetLayer(deps) {
     pet.track.landedAt = clock();
   }
 
-  /** A roll landed: its pet's reaction (by `key`), and every resting pet's to its elemental dice. */
+  /**
+   * A roll landed: its pet's reaction (by `key`), the other resting pets' cheer for a natural 20,
+   * and every resting pet's reaction to its elemental dice (a cheering pet only cheers).
+   */
   function landed(key, dice) {
-    if (key == null) return elemental(dice); // a roll with no pet of its own: only the reactions
+    // a roll with no pet of its own: nobody's roll on screen, so every resting pet may cheer
+    if (key == null) return elemental(dice, cheer(dice, { ghost: false }, null));
+    const roller = keyRoller.get(key); // gone once the roll has landed: it is cheered for once
     noteMood(key, dice);
     const pet = petOf(key);
     const roll = pet?.rolls.get(key);
-    if (!roll || roll.summary) return;
+    if (!roll || roll.summary) {
+      if (roller) cheer(dice, roller, null);
+      return;
+    }
     roll.summary = summarize(dice, roll.ghost); // a ghost roll only ever says 'plain'
     settle(pet);
-    elemental(dice);
+    elemental(dice, roller ? cheer(dice, roller, pet) : null);
+  }
+
+  /**
+   * Someone's natural 20 (a visible roll whose visible d20s say 'crit'; never a ghost roll or a
+   * ghost die): every resting pet but the roller's own turns toward the mean of the roll's visible
+   * dice and cheers, starting as the roller's pet (`own`, if any) starts its crit reaction. One
+   * chirp for them all, unless the roller's pet chirps for its crit already. petCheer, and pets
+   * allowed and shown. Returns the cheering pets (a Set), or null.
+   */
+  function cheer(dice, roller, own) {
+    let on = false;
+    try {
+      on = !disposed && shown() && getSetting('petCheer') !== false;
+    } catch {
+      on = false;
+    }
+    if (!on || roller.ghost || summarize(dice, false) !== 'crit') return null;
+    let x = 0;
+    let z = 0;
+    let n = 0;
+    for (const d of dice)
+      if (d && !d.ghost && Number.isFinite(d.x) && Number.isFinite(d.z)) {
+        x += d.x;
+        z += d.z;
+        n++;
+      }
+    if (!n) return null;
+    x /= n;
+    z /= n;
+    const now = clock();
+    const t = own?.track;
+    const at = t?.landedAt != null ? Math.max(t.landedAt, t.beganAt + ENTER_MS + (t.hand ? 0 : THROW_MS)) : now;
+    const cheering = new Set();
+    for (const pet of pets.values()) {
+      if (pet.userId === roller.userId || !resting(pet) || BUSY.has(pet.anim?.kind)) continue;
+      dropAnim(pet);
+      const px = pet.px ?? pet.base.x;
+      const pz = pet.pz ?? pet.base.z;
+      pet.anim = { kind: 'cheer', at, calm: calmNow(), yaw: pet.yaw ?? 0, to: Math.atan2(x - px, z - pz) };
+      pet.idleAt = now;
+      cheering.add(pet);
+    }
+    if (!cheering.size) return null;
+    if (own?.reaction !== 'crit' || t?.landedAt == null) [...cheering][0].anim.chirp = true;
+    wake();
+    return cheering;
   }
 
   /**
@@ -919,9 +995,10 @@ export function createPetLayer(deps) {
   /**
    * A landing's elemental dice: each resting pet with one within reach reacts to the nearest
    * (reactions.js; a ghost die never counts). petElemental, and pets allowed and shown. The loop
-   * wakes for the reaction and goes idle again when it is over.
+   * wakes for the reaction and goes idle again when it is over. A pet of `skip` (a Set: cheering
+   * for this landing) does not react.
    */
-  function elemental(dice) {
+  function elemental(dice, skip) {
     let on = false;
     try {
       on = !disposed && shown() && getSetting('petElemental') !== false;
@@ -931,7 +1008,8 @@ export function createPetLayer(deps) {
     if (!on) return;
     const now = clock();
     let any = false;
-    for (const { pet, element } of elementReactions(dice, [...pets.values()], { dieWidth: DIE_WIDTH })) {
+    const near = skip ? [...pets.values()].filter((p) => !skip.has(p)) : [...pets.values()];
+    for (const { pet, element } of elementReactions(dice, near, { dieWidth: DIE_WIDTH })) {
       dropAnim(pet); // a shiver's tint or a scorch's smoke cut short by the next reaction
       const kind = reactionOf(element);
       pet.anim = { kind, at: now, calm: calmNow(), element };
@@ -1102,14 +1180,26 @@ export function createPetLayer(deps) {
     return { x: at.x + (cx - at.x) * k, z: at.z + (cz - at.z) * k };
   }
   /**
-   * A resting pet's petting wiggle, huff or elemental reaction, for this frame; a huff ends in its
-   * hop off.
+   * A resting pet's petting wiggle, huff, elemental reaction, mood settle or cheer, for this frame;
+   * a huff ends in its hop off.
    */
   function stepAnim(pet, now, shadows) {
     const a = pet.anim;
     const huff = a.kind === 'huff';
     const e = clamp01((now - a.at) / (ANIM_MS[a.kind] ?? PET_MS));
     if (huff) pet.yaw = wrap(pet.huff.yaw + Math.PI * smooth(clamp01((e - 0.3) / 0.7))); // turns its back
+    if (a.kind === 'cheer') {
+      // turns to the dice, cheers, and turns back to where it faced
+      pet.yaw = wrap(a.yaw + wrap(a.to - a.yaw) * (smooth(clamp01(e / 0.2)) - smooth(clamp01((e - 0.8) / 0.2))));
+      if (a.chirp && now >= a.at) {
+        a.chirp = false;
+        try {
+          if (getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: 'petHappy' });
+        } catch {
+          /* no sound */
+        }
+      }
+    }
     show(pet, now, a.kind, e, pet.px, pet.pz, 0, shadows);
     if (e < 1) {
       if (!float(pet, e, a.kind, a.calm)) pet.sparkle.visible = false;

@@ -336,6 +336,24 @@ export function slime(color) {
       p.gazePitch = lerp(-0.3, 0.1, wide);
       p.smile = lerp(0.6, 0, wide);
       p.open = 0.5 * wide;
+    } else if (phase === 'cheer') {
+      // Cheering someone else's natural 20: two happy hops, stretching tall in the air and squashing
+      // on each landing, a big open grin, smiling eyes looking up (look.calm: one small hop). From
+      // and back to the standing pose.
+      PK.reset(p);
+      const calm = !!look?.calm;
+      const k = calm ? 0.3 : 1;
+      const joy = plateau(t, 0, 1, 0.15);
+      const two = calm ? 0 : 1;
+      p.lift = 0.45 * k * (Math.sin(Math.PI * span(t, 0.12, 0.42)) + two * Math.sin(Math.PI * span(t, 0.52, 0.82)));
+      p.squash =
+        k * (0.18 * bump(t, 0.02, 0.14) - 0.2 * bump(t, 0.12, 0.42) + 0.18 * bump(t, 0.42, 0.54)) +
+        two * (0.15 * bump(t, 0.82, 0.95) - 0.2 * bump(t, 0.52, 0.82));
+      p.upper = lerp(0.08, 0, joy);
+      p.lower = lerp(p.lower, 0.45, joy);
+      p.gazePitch = lerp(p.gazePitch, 0.3, joy);
+      p.smile = lerp(p.smile, 1, joy);
+      p.open = lerp(p.open, 0.8, joy);
     } else if (phase === 'proud' || phase === 'sulk') {
       // A mood (its owner's recent rolls), held at rest: it settles from the standing pose into it
       // and is static from t 1. Proud: drawn up tall, its jelly leaning back (chest out), a smug

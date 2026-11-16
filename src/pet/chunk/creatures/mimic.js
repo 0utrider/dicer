@@ -416,6 +416,28 @@ export function mimic(color) {
       p.eyeScale = 1 + 0.2 * wide;
       p.upper = lerp(0.1, 0, wide);
       p.lower = lerp(0.1, 0, wide);
+    } else if (phase === 'cheer') {
+      // Cheering someone else's natural 20: two happy hops with its feet tucked, the lid flapping
+      // open, tongue out and wagging, smiling eyes looking up (look.calm: one small hop, no flapping).
+      // From and back to the standing pose.
+      PK.reset(p);
+      const calm = !!look?.calm;
+      const k = calm ? 0.3 : 1;
+      const joy = plateau(t, 0, 1, 0.15);
+      const two = calm ? 0 : 1;
+      const air1 = bump(t, 0.12, 0.42);
+      const air2 = two * bump(t, 0.52, 0.82);
+      p.lift = 0.35 * k * (Math.sin(Math.PI * span(t, 0.12, 0.42)) + two * Math.sin(Math.PI * span(t, 0.52, 0.82)));
+      p.squash =
+        k * (0.12 * bump(t, 0.02, 0.14) - 0.1 * air1 + 0.12 * bump(t, 0.42, 0.54)) +
+        two * (0.1 * bump(t, 0.82, 0.95) - 0.1 * air2);
+      p.tuck = k * (air1 + air2);
+      p.lid = lerp(p.lid, LID + 0.3 + two * 0.2 * Math.sin(t * TAU * 6), joy);
+      p.tongue = lerp(p.tongue, 1.2, joy);
+      p.wag = (calm ? 0.15 : 0.5) * Math.sin(t * TAU * 4) * joy;
+      p.upper = lerp(0.1, 0, joy);
+      p.lower = lerp(p.lower, 0.42, joy);
+      p.gazePitch = lerp(p.gazePitch, 0.25, joy);
     } else if (phase === 'proud' || phase === 'sulk') {
       // A mood (its owner's recent rolls), held at rest: it settles from the standing pose into it
       // and is static from t 1. Proud: up on its toes, chest out and leaning back, lid up, a smug

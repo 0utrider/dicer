@@ -4,7 +4,7 @@ import { configureRenderer } from '../src/render/renderer.js';
 import { getShape } from '../src/core/dice-shapes.js';
 import { buildDieGeometry } from '../src/core/chamfer.js';
 import { readTopFace, rotationToShow, faceForValue } from '../src/core/face-reader.js';
-import { createPetLayer, SCORCH_MS, SHIVER_MS, BRISTLE_MS, STARTLE_MS, MOOD_MS } from '../src/pet/chunk/pets.js';
+import { createPetLayer, SCORCH_MS, SHIVER_MS, BRISTLE_MS, STARTLE_MS, MOOD_MS, CHEER_MS } from '../src/pet/chunk/pets.js';
 import { createMoods } from '../src/pet/chunk/moods.js';
 import { REST_HOP_MS } from '../src/pet/chunk/timeline.js';
 import { REST_SPOTS } from '../src/pet/chunk/rest-spots.js';
@@ -863,8 +863,70 @@ function moods() {
   return c.toDataURL('image/png');
 }
 
+// --- moods and cheering (round 3, Task 6) ----------------------------------------------------------
+const CHEER_MOMENTS = [0.15, 0.3, 0.6];
+/**
+ * A resting pet (stageMood, neutral) cheering a natural 20 rolled by a player with no pet (a keyless
+ * landing), the die ahead and to its right; `t` 0..1 into the cheer. dieAt is where the die landed.
+ */
+function stageCheer({ kind, color, t }) {
+  const staged = stageMood({ kind, color, mood: 'neutral' });
+  const { layer, pet } = staged;
+  const fx = Math.sin(pet.rotation.y);
+  const fz = Math.cos(pet.rotation.y);
+  const dieAt = { x: pet.position.x + (fx + fz) * 1.8, z: pet.position.z + (fz - fx) * 1.8 };
+  const start = clock + 100;
+  clock = start;
+  layer.landed(null, [{ type: 'd20', value: 20, ghost: false, x: dieAt.x, z: dieAt.z }]);
+  layer.update((clock = start + 16));
+  layer.update((clock = start + t * CHEER_MS));
+  return { ...staged, dieAt };
+}
+/**
+ * 3 kinds x neutral, proud and sulk at rest, and a cheer for someone else's natural 20 at 3 moments
+ * (close-ups), then the game view (whole stage rendered, then cropped) of proud, sulk and the cheer.
+ */
+function moodsCheer() {
+  const LW = 110;
+  const CW = 200;
+  const CH = 190;
+  const HEAD = 30;
+  const cols = [
+    ...['neutral', 'proud', 'sulk'].map((mood) => ({ mood, name: mood })),
+    ...CHEER_MOMENTS.map((t) => ({ t, name: `cheer, t ${t} (${Math.round(t * CHEER_MS)} ms)` })),
+    ...['proud', 'sulk'].map((mood) => ({ mood, game: true, name: `game view: ${mood}` })),
+    { t: CHEER_MOMENTS[2], game: true, name: `game view: cheer, t ${CHEER_MOMENTS[2]}` },
+  ];
+  const { c, g } = newSheet(LW + CW * cols.length, HEAD + KINDS.length * (CH + 4));
+  cols.forEach((col, i) => label(g, col.name, LW + i * CW + CW / 2, 20, { align: 'center', size: 12 }));
+  KINDS.forEach((kind, r) => {
+    const y = HEAD + r * (CH + 4);
+    label(g, kind, 8, y + 22, { size: 14 });
+    cols.forEach((col, i) => {
+      const color = KIND_COLOR[kind];
+      const staged = col.mood ? stageMood({ kind, color, mood: col.mood }) : stageCheer({ kind, color, t: col.t });
+      try {
+        const { pet } = staged;
+        if (col.game) {
+          const fx = Math.sin(pet.rotation.y);
+          const fz = Math.cos(pet.rotation.y);
+          const dieAt = staged.dieAt ?? { x: pet.position.x + fz * 2.3, z: pet.position.z - fx * 2.3 };
+          fullGameCrop(g, pet, CW - 2, CH - 2, BG.dark, dieAt, LW + i * CW + 1, y + 1);
+        } else {
+          pet.updateMatrixWorld(true); // never rendered yet: closeUp aims at its box
+          closeUp(pet, CW - 2, CH - 2, '#5b616b', { dist: 5.6, height: 3, side: 2.2, follow: false });
+          blit(g, LW + i * CW + 1, y + 1);
+        }
+      } finally {
+        staged.layer.dispose();
+      }
+    });
+  });
+  return c.toDataURL('image/png');
+}
+
 const show = (url) => (document.getElementById('sheet').src = url);
-const SHEETS = { grid, colours, strips, splat, restSpots, reactions, moods };
+const SHEETS = { grid, colours, strips, splat, restSpots, reactions, moods, moodsCheer };
 for (const b of document.querySelectorAll('[data-sheet]'))
   b.addEventListener('click', () => {
     try {
@@ -875,4 +937,4 @@ for (const b of document.querySelectorAll('[data-sheet]'))
   });
 show(grid());
 document.getElementById('status').textContent = 'ready';
-window.__pets = { grid, colours, strips, splat, restSpots, reactions, moods, moves: () => strips(KINDS, 'move'), errors, ready: true };
+window.__pets = { grid, colours, strips, splat, restSpots, reactions, moods, moodsCheer, moves: () => strips(KINDS, 'move'), errors, ready: true };
