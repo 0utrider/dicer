@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed:** a GM had no way to set the world default theme since the settings dropdown was removed in 0.2.1, so **Lock player looks** could not be set up either. Select a built-in or world theme in the theme browser and press **Use as world default**; **Stop** clears it.
+- **A wiki.** Guides to every feature, a settings reference and troubleshooting at [github.com/roileaf/dicer/wiki](https://github.com/roileaf/dicer/wiki); the README is now a short overview, and building and testing Dicer moved to CONTRIBUTING.md.
+
 ## 0.2.5
 
 - **Pets look at your cursor.** A resting pet turns its head, then its body, to watch the cursor as it moves over the table, and holds still once it faces it.
