@@ -340,6 +340,31 @@ export function dragonling(color) {
       p.upper = lerp(0.1, 0, fly);
       p.lower = lerp(0.08, 0.22, fly);
       p.gazePitch = lerp(-0.3, 0.05, fly);
+    } else if (phase === 'pet') {
+      // Petted: it nuzzles side to side, wings fluttering, tail swishing, eyes squeezed shut with
+      // joy (look.calm, reduced motion: a smaller wiggle). From and back to the standing pose.
+      PK.reset(p);
+      const k = look?.calm ? 0.35 : 1;
+      const on = plateau(t, 0, 1, 0.15);
+      p.headRoll = 0.3 * k * Math.sin(t * TAU * 2) * on;
+      p.roll = 0.08 * k * Math.sin(t * TAU * 2 + 0.6) * on;
+      p.wing = lerp(0.4, 0.45 + 0.25 * k * Math.sin(t * TAU * 4), on);
+      p.sway = 0.4 * k * Math.sin(t * TAU * 2.5) * on;
+      p.squash = 0.05 * k * Math.sin(t * TAU * 4) * on;
+      p.upper = lerp(0.1, 0.72, on);
+      p.lower = lerp(0.08, 0.45, on);
+    } else if (phase === 'huff') {
+      // Huffed: wings flare up, it puffs and snorts, eyes narrowed, head turned away.
+      PK.reset(p);
+      const k = look?.calm ? 0.5 : 1;
+      const mad = plateau(t, 0, 1, 0.12);
+      p.squash = (-0.1 * bump(t, 0.05, 0.45) + 0.1 * bump(t, 0.4, 0.75)) * k;
+      p.wing = lerp(0.4, 0.85, mad);
+      p.headYaw = 0.45 * mad;
+      p.headPitch = -0.15 * bump(t, 0.35, 0.8) * k;
+      p.tailLift = 0.3 * mad;
+      p.upper = lerp(0.1, 0.55, mad);
+      p.gazeYaw = 0.5 * mad;
     } else if (phase === 'throw') {
       PK.reset(p);
       // Rears back with wings up, then lunges: head thrust, wings sweeping forward and down.

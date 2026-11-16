@@ -264,6 +264,28 @@ export function slime(color) {
       p.gazePitch = lerp(-0.3, -0.05, joy);
       p.smile = lerp(0.6, 1, joy);
       p.open = 0.8 * joy;
+    } else if (phase === 'pet') {
+      // Petted: a jiggly happy wiggle, eyes squeezed shut, a big open grin (look.calm, reduced
+      // motion: a smaller wiggle). From and back to the standing pose.
+      PK.reset(p);
+      const k = look?.calm ? 0.35 : 1;
+      const on = plateau(t, 0, 1, 0.15);
+      p.squash = 0.12 * k * Math.sin(t * TAU * 3) * on;
+      p.roll = 0.16 * k * Math.sin(t * TAU * 2) * on;
+      p.shear = 0.1 * k * Math.sin(t * TAU * 3 - 1) * on;
+      p.upper = lerp(0.1, 0.7, on);
+      p.lower = lerp(0.08, 0.45, on);
+      p.smile = lerp(0.6, 1, on);
+      p.open = 0.7 * on;
+    } else if (phase === 'huff') {
+      // Huffed: it swells up tall, then blows out flat, frowning, eyes narrowed and looking away.
+      PK.reset(p);
+      const k = look?.calm ? 0.5 : 1;
+      const mad = plateau(t, 0, 1, 0.12);
+      p.squash = (-0.2 * bump(t, 0.05, 0.45) + 0.18 * bump(t, 0.4, 0.75)) * k;
+      p.upper = lerp(0.1, 0.55, mad);
+      p.smile = lerp(0.6, -0.6, mad);
+      p.gazeYaw = 0.7 * mad;
     } else if (phase === 'throw') {
       PK.reset(p);
       // A fling: it rears back, then lunges its whole jelly forward and wobbles.

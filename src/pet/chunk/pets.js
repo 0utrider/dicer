@@ -11,7 +11,7 @@ import {
 } from './timeline.js';
 import { createSplat } from './splat.js';
 import { summarize, merge, reactionSound } from './reaction.js';
-import { discTexture, starTexture } from './textures.js';
+import { discTexture, starTexture, heartTexture, puffTexture } from './textures.js';
 import {
   edgeSpot,
   restSpot,
@@ -23,8 +23,10 @@ import {
   SPACING,
   PET_HEIGHT,
   KIND_FOOTPRINT,
+  FOOTPRINT,
 } from './resting.js';
-import { spotFor as chosenSpot, atEdge } from './rest-spots.js';
+import { spotFor as chosenSpot, atEdge, TAN_HALF_FOV } from './rest-spots.js';
+import { createPetting, HUFF_IGNORE_MS } from './petting.js';
 import { petFor } from '../pet-for.js';
 
 /** At most this many pets on screen at once. */
@@ -74,6 +76,16 @@ const SPARK = Array.from({ length: SPARKS }, (_, i) => {
   };
 });
 
+// Click to pet (petting.js does the listening): the wiggle, the huff before its hop off, the hop.
+export const PET_MS = 900;
+export const HUFF_MS = 600;
+const HUFF_HOP = 1; // of the height: how far a huffy pet hops off, toward the middle of the table
+export const PICK_MARGIN = 0.15; // of the height: added to the footprint for a click's hit area
+const HEARTS = 5; // of the sparkle's SPARKS points (reduced motion: 3)
+const PUFFS = 6;
+const PINK = [1, 0.4, 0.6];
+const GREY = 0.55;
+
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (t) => t * t * (3 - 2 * t);
 const clamp01 = (x) => (x > 0 ? (x < 1 ? x : 1) : 0);
@@ -105,6 +117,9 @@ export function createPetLayer(deps) {
   let shadowGeo = null;
   let sparkTex = null;
   let sparkMat = null;
+  let heartMat = null; // petting's hearts and a huff's puff: the sparkle's points, another sprite
+  let puffMat = null;
+  let petting = null; // the click listeners (petting.js) while a pet is shown
   let disposed = false;
   let timer = null; // the one timer, aimed at the earliest leaveAt (so a held loop wakes up)
   let timerAt = Infinity;
@@ -174,6 +189,64 @@ export function createPetLayer(deps) {
     pos.needsUpdate = true;
     col.needsUpdate = true;
     pts.position.y = -hop;
+  }
+
+  /** A sprite material like the sparkle's (the same shader program, so nothing new to compile). */
+  const spriteMat = (map) =>
+    new THREE.PointsMaterial({
+      size: SPARK_SIZE,
+      map,
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+
+  /**
+   * Petting's hearts, or (huff) a huff's puff, at e (0..1) in the pet's sparkle points. Nothing
+   * twinkles: each sprite fades in and out once. `calm` (reduced motion): fewer hearts, less sway.
+   */
+  function float(pet, e, huff, calm) {
+    const pts = pet.sparkle;
+    pts.material = huff ? (puffMat ??= spriteMat(puffTexture())) : (heartMat ??= spriteMat(heartTexture()));
+    const h = pet.creature.height;
+    const pos = pts.geometry.attributes.position;
+    const col = pts.geometry.attributes.color;
+    const P = pos.array;
+    const C = col.array;
+    const n = huff ? PUFFS : calm ? 3 : HEARTS;
+    for (let i = 0; i < SPARKS; i++) {
+      const k = i * 3;
+      P[k] = P[k + 1] = P[k + 2] = C[k] = C[k + 1] = C[k + 2] = 0; // unused: black adds nothing
+      if (i >= n) continue;
+      const sp = SPARK[i];
+      let b;
+      if (huff) {
+        // a short puff out of each side of its face, spreading and fading
+        const s = clamp01((e - 0.35) / 0.5);
+        P[k] = (i % 2 ? 1 : -1) * (0.35 + 0.5 * s * sp.reach) * h;
+        P[k + 1] = h * (0.6 + 0.15 * s * sp.rise);
+        P[k + 2] = h * (0.25 + 0.1 * (i % 3));
+        b = GREY * Math.sin(Math.PI * s);
+        C[k] = C[k + 1] = C[k + 2] = b;
+      } else {
+        // hearts rising from its head one after another, swaying a little
+        const s = clamp01((e - i * 0.08) / 0.6);
+        const sway = (calm ? 0.05 : 0.12) * h * Math.sin(s * Math.PI * 2 + sp.ph);
+        P[k] = Math.sin(sp.a) * 0.35 * h + sway;
+        P[k + 1] = h * (1 + 0.8 * s);
+        P[k + 2] = Math.cos(sp.a) * 0.35 * h;
+        b = Math.sin(Math.PI * s);
+        C[k] = PINK[0] * b;
+        C[k + 1] = PINK[1] * b;
+        C[k + 2] = PINK[2] * b;
+      }
+    }
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    pts.position.y = 0;
+    pts.visible = true;
   }
 
   function removePet(pet) {
@@ -463,6 +536,7 @@ export function createPetLayer(deps) {
   const watchSpot = (pet) => (pet?.cornered && !pet.aligned ? null : restingSpot(pet));
   const restOf = (pet, now) => {
     pet.aligned = false;
+    pet.huff = null; // a new spot: no going back to the one it huffed away from
     if (pet.state === 'routine') pet.idleAt = now; // idle since its routine ended
     if (stage) pet.area = fitArea(pet.area, stage);
     const corner = cornerSpot(pet);
@@ -703,11 +777,14 @@ export function createPetLayer(deps) {
       WOBBLE_LOOK.leanX = pet.wobble.dx * cy - pet.wobble.dz * sy;
       WOBBLE_LOOK.leanZ = pet.wobble.dx * sy + pet.wobble.dz * cy;
       pet.creature.pose('wobble', wt, pet.reaction, WOBBLE_LOOK);
-    } else pet.creature.pose(phase, t, pet.reaction, { yaw: look });
+    } else pet.creature.pose(phase, t, pet.reaction, { yaw: look, calm: pet.anim?.calm });
     // A ghost roll is never 'crit', so it never bursts.
     const s = phase === 'react' && pet.reaction === 'crit' ? (t * REACT_MS) / BURST_MS : 1;
     pet.sparkle.visible = s < 1;
-    if (s < 1) burst(pet.sparkle, s, h, hop);
+    if (s < 1) {
+      pet.sparkle.material = sparkMat; // petting may have lent the points its hearts
+      burst(pet.sparkle, s, h, hop);
+    }
     if (phase === 'react' && !pet.soundDone) {
       pet.soundDone = true;
       const name = reactionSound(pet.reaction);
@@ -719,6 +796,112 @@ export function createPetLayer(deps) {
   /** The pet comes to rest: from here it costs nothing until something wakes the loop. */
   function toRest(pet) {
     pet.state = 'rest';
+  }
+
+  // ---- click to pet (petClick; petting.js listens) ----
+  /** Reduced motion (test seam deps.reducedMotion): gentler wiggles, fewer hearts. */
+  const calmNow = () => {
+    try {
+      return deps.reducedMotion ? !!deps.reducedMotion() : !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    } catch {
+      return false;
+    }
+  };
+  /**
+   * The resting pet under page point (x, y), or null: its footprint (KIND_FOOTPRINT, which is in
+   * scene units at PET_HEIGHT, scaled by its height) plus PICK_MARGIN x height, around the point
+   * under its middle (half its height up, as the top-down camera sees it), in page px. The nearest
+   * wins. Only a shown pet settled at its spot: not hopping, throwing, down, wobbling or huffing.
+   */
+  function pickPet(x, y) {
+    const map = pageMap();
+    if (!map || disposed || !shown()) return null;
+    const camH = stage.halfDepth / TAN_HALF_FOV; // the camera's height above the table
+    let best = null;
+    let bestD = Infinity;
+    for (const pet of pets.values()) {
+      if (pet.state !== 'rest' || pet.gone || pet.wobble || pet.huff) continue;
+      const h = pet.creature.height;
+      const k = camH / Math.max(1e-6, camH - h / 2); // the camera's lean at half height
+      const foot = (KIND_FOOTPRINT[pet.kind] ?? FOOTPRINT * PET_HEIGHT) * (h / PET_HEIGHT);
+      const r = (foot + PICK_MARGIN * h) * k * map.px;
+      const d = Math.hypot(map.ox + (pet.px ?? pet.base.x) * k * map.px - x, map.oz + (pet.pz ?? pet.base.z) * k * map.px - y);
+      if (d <= r && d < bestD) {
+        best = pet;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+  /** A click on a resting pet: the happy wiggle, hearts and a chirp; the loop runs only for them. */
+  function petPet(pet) {
+    if (disposed || pet.state !== 'rest') return;
+    const now = clock();
+    pet.anim = { kind: 'pet', at: now, calm: calmNow() };
+    pet.idleAt = now; // a pet being petted does not wander off
+    try {
+      if (getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: 'petHappy' });
+    } catch {
+      /* no sound */
+    }
+    wake();
+  }
+  /**
+   * Too many clicks: it puffs and turns its back (HUFF_MS), hops HUFF_HOP x height toward the middle
+   * of the table, and hops back to its spot once petting.js stops ignoring it (HUFF_IGNORE_MS).
+   */
+  function huffPet(pet) {
+    if (disposed || pet.state !== 'rest') return;
+    const now = clock();
+    const home = spotOf(pet);
+    pet.anim = { kind: 'huff', at: now, calm: calmNow() };
+    pet.huff = { home: { x: home.x, z: home.z }, yaw: pet.yaw, backAt: now + HUFF_IGNORE_MS };
+    pet.idleAt = now;
+    wake();
+  }
+  /** Where a huffy pet hops: HUFF_HOP x height from its spot toward the stage's middle. */
+  function huffSpot(pet) {
+    const at = spotOf(pet);
+    const cx = stage?.cx ?? pet.area?.cx ?? 0;
+    const cz = stage?.cz ?? pet.area?.cz ?? 0;
+    const step = HUFF_HOP * pet.creature.height;
+    const d = Math.hypot(cx - at.x, cz - at.z);
+    if (d < 1e-6) return { x: at.x + step, z: at.z };
+    const k = Math.min(1, step / d);
+    return { x: at.x + (cx - at.x) * k, z: at.z + (cz - at.z) * k };
+  }
+  /** A resting pet's petting wiggle or huff, for this frame; a huff ends in its hop off. */
+  function stepAnim(pet, now, shadows) {
+    const a = pet.anim;
+    const huff = a.kind === 'huff';
+    const e = clamp01((now - a.at) / (huff ? HUFF_MS : PET_MS));
+    if (huff) pet.yaw = wrap(pet.huff.yaw + Math.PI * smooth(clamp01((e - 0.3) / 0.7))); // turns its back
+    show(pet, now, a.kind, e, pet.px, pet.pz, 0, shadows);
+    if (e < 1) {
+      float(pet, e, huff, a.calm);
+      return true;
+    }
+    pet.anim = null;
+    pet.sparkle.visible = false;
+    if (huff) {
+      hopTo(pet, huffSpot(pet), 'hop', now);
+      pet.yawTo = pet.yaw; // keeps its back turned
+      return stepHop(pet, now, shadows);
+    }
+    show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows); // the standing pose: nothing redraws after
+    return true;
+  }
+  /** The click listeners: on while any pet is shown (petting.js reads petClick on each click). */
+  function syncPetting() {
+    const want = !disposed && pets.size > 0 && shown();
+    if (want && !petting) {
+      const win = deps.win ?? globalThis.window;
+      if (win?.addEventListener)
+        petting = createPetting({ win, pickPet, onPet: petPet, onHuff: huffPet, now: clock, setting: getSetting });
+    } else if (!want && petting) {
+      petting.dispose();
+      petting = null;
+    }
   }
 
   /** A hop to a rest spot or off the table, on the exit pose. Returns false once a leaver is gone. */
@@ -842,6 +1025,7 @@ export function createPetLayer(deps) {
         show(pet, now, 'exit', 1, pet.px, pet.pz, 0, shadows); // the wobble, or the plain pose once it is over (show clears it)
         return pet.wobble ? true : 'rest';
       }
+      if (stay && pet.anim) return stepAnim(pet, now, shadows);
       if (stay) {
         const was = pet.shadow.visible;
         pet.shadow.visible = shadows; // the only thing that can change while it sits
@@ -900,6 +1084,7 @@ export function createPetLayer(deps) {
    * changes (each of those wakes the loop).
    */
   function update(now) {
+    syncPetting();
     if (!pets.size) {
       arm(Infinity);
       return false;
@@ -944,6 +1129,18 @@ export function createPetLayer(deps) {
             if (!busy) sendOff(pet, now);
           } else if (!held) nextLeave = Math.min(nextLeave, pet.leaveAt);
         }
+        // Petting belongs to a resting pet: one that rolled, left, splatted or moved drops it.
+        if (pet.anim && pet.state !== 'rest') pet.anim = null;
+        if (pet.huff && (pet.gone || (pet.state !== 'rest' && pet.state !== 'hop'))) pet.huff = null;
+        if (pet.huff && now >= pet.huff.backAt) {
+          // over its huff: back to its spot (not while a roll flies: the physics has it where it is)
+          if (!busy && pet.state === 'rest' && !pet.anim) {
+            const { home, yaw } = pet.huff;
+            pet.huff = null;
+            hopTo(pet, home, 'hop', now);
+            pet.yawTo = yaw;
+          }
+        } else if (pet.huff) nextLeave = Math.min(nextLeave, pet.huff.backAt);
         // A pet alignFor placed stays while the replay flies, even with petStay 0 (not mid-routine:
         // that one follows its own roll).
         alive = step(pet, now, shadows, stay || (pet.aligned && busy && pet.state !== 'routine'));
@@ -1123,6 +1320,7 @@ export function createPetLayer(deps) {
     if (len > 1e-6 && Number.isFinite(len)) ((dx /= len), (dz /= len));
     else ((dx = 1), (dz = 0));
     pet.wobble = { at: now, dx, dz };
+    pet.anim = null; // a die knocks a petting wiggle or a huff out of it
     wake();
   }
 
@@ -1246,6 +1444,7 @@ export function createPetLayer(deps) {
   function dispose() {
     disposed = true;
     arm(Infinity);
+    syncPetting(); // the click listeners go
     try {
       hooks?.off?.(AREAS_HOOK, areasHook);
     } catch {
@@ -1267,7 +1466,11 @@ export function createPetLayer(deps) {
     shadowGeo?.dispose();
     sparkTex?.dispose();
     sparkMat?.dispose();
-    shadowTex = shadowGeo = sparkTex = sparkMat = null;
+    for (const m of [heartMat, puffMat]) {
+      m?.map.dispose();
+      m?.dispose();
+    }
+    shadowTex = shadowGeo = sparkTex = sparkMat = heartMat = puffMat = null;
   }
 
   return {

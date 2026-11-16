@@ -1377,7 +1377,7 @@ const near = (p, q) => {
   expect(p.z).toBeCloseTo(q.z, 6);
 };
 
-test('dodging is gone: no pointer listeners on the window, and a resting pet never moves however long it sits', () => {
+test('dodging is gone: no pointer-move listeners on the window, and a resting pet never moves however long it sits', () => {
   // the global window (the layer's old default) is watched: the layer must not listen to it
   const win = fakeWin();
   vi.stubGlobal('window', win);
@@ -1386,7 +1386,9 @@ test('dodging is gone: no pointer listeners on the window, and a resting pet nev
     m.layer.areaChanged(STAGE_BIG);
     rollToRest(m, 'u1');
     const was = posOf(m);
-    expect(win.addEventListener).not.toHaveBeenCalled();
+    // only petting's click listeners (pet-petting.test.js), never the old move/out ones
+    const types = win.addEventListener.mock.calls.map((c) => c[0]);
+    expect(types.every((t) => ['pointerdown', 'pointerup', 'click'].includes(t))).toBe(true);
     m.deps.wake.mockClear();
     for (let i = 0; i < 200; i++) expect(m.layer.update((clockNow += 16))).toBe('rest');
     expect(posOf(m)).toEqual(was);

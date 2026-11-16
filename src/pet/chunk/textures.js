@@ -17,6 +17,22 @@ function texture(n, alphaAt, rgb) {
 export const discTexture = () =>
   texture(32, (u, v) => Math.max(0, 1 - Math.hypot(u, v)) ** 2, 0);
 
+/** A white heart (lobes up; a points sprite's row 0 is its bottom), soft-edged: petting's hearts. */
+export const heartTexture = () =>
+  texture(
+    32,
+    (u, v) => {
+      const x = u * 1.25;
+      const y = v * 1.25 + 0.1;
+      const f = (x * x + y * y - 1) ** 3 - x * x * y ** 3;
+      return Math.max(0, Math.min(1, 0.5 - f * 6));
+    },
+    255,
+  );
+
+/** A soft white disc: a huff's puff. */
+export const puffTexture = () => texture(32, (u, v) => Math.max(0, 1 - Math.hypot(u, v)) ** 1.5, 255);
+
 /** A white four-pointed twinkle: a small round core and two thin arms. */
 export const starTexture = () =>
   texture(

@@ -338,6 +338,31 @@ export function mimic(color) {
       p.eyeScale = 1 + 0.12 * run;
       p.tiltUp = 0.25 * run;
       p.gazePitch = lerp(-0.35, -0.1, run);
+    } else if (phase === 'pet') {
+      // Petted: a happy wiggle, the lid fluttering, tongue wagging, eyes squeezed shut with joy
+      // (look.calm, reduced motion: a smaller wiggle). From and back to the standing pose.
+      PK.reset(p);
+      const k = look?.calm ? 0.35 : 1;
+      const on = plateau(t, 0, 1, 0.15);
+      p.roll = 0.14 * k * Math.sin(t * TAU * 2.5) * on;
+      p.squash = 0.06 * k * Math.sin(t * TAU * 5) * on;
+      p.lid = LID + 0.12 * k * Math.sin(t * TAU * 5) * on;
+      p.wag = 0.5 * k * Math.sin(t * TAU * 3) * on;
+      p.upper = lerp(0.1, 0.75, on);
+      p.lower = lerp(0.1, 0.5, on);
+      p.tiltUp = 0.2 * on;
+    } else if (phase === 'huff') {
+      // Huffed: it puffs up and snaps its lid shut, eyes narrowed, glancing away (the layer turns it).
+      PK.reset(p);
+      const k = look?.calm ? 0.5 : 1;
+      const mad = plateau(t, 0, 1, 0.12);
+      p.squash = (-0.12 * bump(t, 0.05, 0.45) + 0.1 * bump(t, 0.4, 0.75)) * k;
+      p.lid = lerp(LID, 0.05, mad);
+      p.tongue = lerp(1, 0, mad);
+      p.crook = 0.12 * mad;
+      p.upper = lerp(0.1, 0.55, mad);
+      p.tiltUp = 0.3 * mad;
+      p.gazeYaw = 0.7 * mad;
     } else if (phase === 'throw') {
       PK.reset(p);
       // It spits the dice: leans back with the lid shut, then lunges with the jaw wide open.
