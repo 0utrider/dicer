@@ -5,7 +5,15 @@
  * editor, its own lazy chunk), export / import files and the GM's publish. The pure logic is in ./theme-form.js; the data actions below
  * (assign, clear, save, import, export, publish) are exported so they can be tested without a DOM.
  */
-import { chosenRef, isNeverChose, mirrorLookSetting, neverChoseRef } from '../compat/user-looks.js';
+import { chosenRef, isNeverChose, mirrorLookSetting, neverChoseRef, readUserLooks } from '../compat/user-looks.js';
+import {
+  moduleDiceEntries,
+  registryView,
+  useModulePatch,
+  stopSystemPatch,
+  currentModuleIds,
+  moduleThemeRaw,
+} from './module-dice.js';
 import { DIE_TYPES, findTheme, readThemeList } from '../themes/themes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { damageTypeList } from './damage-map-form.js';
@@ -23,6 +31,7 @@ import {
   importThemes,
   slugify,
   themeAssignments,
+  userThemeId,
 } from './theme-form.js';
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -42,8 +51,10 @@ const SOURCE_LABEL = {
   builtin: 'DICER.Themes.Source.builtin',
   world: 'DICER.Themes.Source.world',
   user: 'DICER.Themes.Source.user',
+  module: 'DICER.Themes.Source.module',
 };
-const FILTER_KEYS = { all: 'DICER.Themes.Filter_all', builtin: 'DICER.Themes.Source.builtin', world: 'DICER.Themes.Source.world', user: 'DICER.Themes.Source.user' };
+// 'module' (dice sets other modules registered through the DSN API) is not part of "All": they are not themes.
+const FILTER_KEYS = { all: 'DICER.Themes.Filter_all', builtin: 'DICER.Themes.Source.builtin', world: 'DICER.Themes.Source.world', user: 'DICER.Themes.Source.user', module: 'DICER.Themes.Source.module' };
 const ROLE_LABEL = {
   attack: 'DICER.Themes.Role.attack',
   damage: 'DICER.Themes.Role.damage',
@@ -56,6 +67,16 @@ const ROLE_LABEL = {
 const isPlainObjectLike = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const me = () => globalThis.game?.user;
 const settings = () => globalThis.game?.settings;
+
+/** The GM has set everyone's dice (a world default with the lock on); never true for a GM. */
+function isLocked() {
+  if (me()?.isGM) return false;
+  try {
+    return Boolean(settings()?.get(MODULE, 'lockPlayerLooks')) && Boolean(settings()?.get(MODULE, 'worldDefaultTheme'));
+  } catch {
+    return false;
+  }
+}
 
 // --- data actions ---------------------------------------------------------------------------
 /** 'default' | 'die:d20' | 'role:attack' | 'actor:<id>' | 'damage:fire' | 'worlddamage:fire' -> {kind, key}. */
@@ -247,6 +268,51 @@ export async function pushThemeToPlayers(themeId, { replaceAll = false } = {}) {
   return { updated };
 }
 
+/**
+ * Makes a module dice set (a colorset or system entry of module-dice.js) this user's default, in
+ * the look flag's global slot. Refused under the GM's lock, like every "use".
+ */
+export async function useModuleDice(entry) {
+  const user = me();
+  if (!user || !entry || isLocked()) return false;
+  let theme = 'default';
+  try {
+    theme = settings()?.get(MODULE, 'theme') ?? 'default';
+  } catch {
+    /* settings not ready */
+  }
+  await user.setFlag(MODULE, FLAG, useModulePatch(entry, readUserLooks(user, { fill: false }).global, theme));
+  return true;
+}
+
+/** Stops using the module system of the global slot (its look stays). */
+export async function stopModuleSystem() {
+  const user = me();
+  if (!user || isLocked()) return false;
+  await user.setFlag(MODULE, FLAG, stopSystemPatch());
+  return true;
+}
+
+/** Copies a module dice set into My themes; `{raw, dropped}`, or null when refused. */
+export async function importModuleDice(entry) {
+  const list = userList();
+  if (!list || !entry) return null;
+  const ids = list.map((t) => (isPlainObjectLike(t) ? t.id : undefined)).filter(Boolean);
+  const res = moduleThemeRaw(entry, userThemeId(me().id, entry.name, ids));
+  await saveUserList(upsertTheme(list, res.raw));
+  return res;
+}
+
+/** "custom faces (d20), 3D models (d6)": what a theme could not keep. */
+const DROP_LABEL = {
+  faces: 'DICER.Themes.Module.Drop.faces',
+  models: 'DICER.Themes.Module.Drop.models',
+  texture: 'DICER.Themes.Module.Drop.texture',
+  font: 'DICER.Themes.Module.Drop.font',
+};
+const droppedText = (dropped) =>
+  dropped.map((d) => `${loc(DROP_LABEL[d.kind] ?? d.kind)}${d.types.length ? ` (${d.types.join(', ')})` : ''}`).join(', ');
+
 /** Writes one theme, or all of My themes, to a .json file. */
 export function exportToFile(themes, filename) {
   foundry.utils.saveDataToFile(exportJson(themes), 'application/json', filename);
@@ -335,6 +401,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       publish: ThemeBrowser.#onPublish,
       push: ThemeBrowser.#onPush,
       remove: ThemeBrowser.#onRemove,
+      useModule: ThemeBrowser.#onUseModule,
+      stopModule: ThemeBrowser.#onStopModule,
+      importModule: ThemeBrowser.#onImportModule,
     },
   };
 
@@ -349,19 +418,18 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   #thumbs = null;
   #preview = null; // the live turning die of the detail panel (thumbnailer.preview)
   #token = 0;
+  #modules = null; // module dice entries, read from the registry once per render
 
   get #isGM() {
     return Boolean(me()?.isGM);
   }
 
-  /** The GM has set everyone's dice (a world default with the lock on); never true for a GM. */
   get #locked() {
-    if (this.#isGM) return false;
-    try {
-      return Boolean(settings()?.get(MODULE, 'lockPlayerLooks')) && Boolean(settings()?.get(MODULE, 'worldDefaultTheme'));
-    } catch {
-      return false;
-    }
+    return isLocked();
+  }
+
+  #moduleEntries() {
+    return (this.#modules ??= moduleDiceEntries(registryView(globalThis.game?.dice3d)));
   }
 
   /**
@@ -385,7 +453,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   #find(id) {
-    return this.#entries().themes.find((t) => t.id === id) ?? null;
+    return this.#entries().themes.find((t) => t.id === id) ?? this.#moduleEntries().find((e) => e.id === id) ?? null;
   }
 
   #actors() {
@@ -416,12 +484,16 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     } catch {
       /* settings not ready */
     }
-    return themeAssignments({
+    const out = themeAssignments({
       defaultId: this.#defaultId(looks),
       looks,
       actors: this.#actors(),
       damageOverrides: damage,
     });
+    // A module system is used on top of the look, so it is a second "Your default".
+    const { system } = currentModuleIds(looks?.global, this.#moduleEntries());
+    if (system) out.set(system, ['default']);
+    return out;
   }
 
   /**
@@ -433,6 +505,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const global = isPlainObjectLike(looks?.global) ? looks.global : null;
     const noChoice = !global || isNeverChose(global);
     if (!noChoice) {
+      // A registered module colorset outranks the slot's theme (lookRefToAppearance).
+      const { colorset } = currentModuleIds(global, this.#moduleEntries());
+      if (colorset) return colorset;
       if (typeof global.theme === 'string' && global.theme) return global.theme;
     } else {
       let world = '';
@@ -451,7 +526,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _prepareContext() {
+    this.#modules = null; // a module may have registered more since the last render
     const { themes, unreadable } = this.#entries();
+    const modules = this.#moduleEntries();
     const filter = Object.hasOwn(FILTER_KEYS, this.#filter) ? this.#filter : 'all';
     const isGM = this.#isGM;
     const groups = targetGroups({
@@ -462,18 +539,24 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const assignments = this.#assignments();
     for (const g of groups) for (const o of g.options) if (o.value === this.#target) o.selected = true;
     const labelOf = targetLabeller(groups);
-    const visible = themes.filter((t) => filter === 'all' || t.source === filter);
+    const visible = filter === 'module' ? modules : themes.filter((t) => filter === 'all' || t.source === filter);
     const defaultId = [...assignments].find(([, list]) => list.includes('default'))?.[0] ?? 'default';
     this.#selected = pickSelected(visible, this.#selected, defaultId);
     const view = (t) => {
       const targets = assignments.get(t.id) ?? [];
       const others = targets.filter((x) => x !== 'default');
+      const isModule = t.source === 'module';
+      const theme = !isModule;
       return {
         id: t.id,
         name: t.name,
         source: t.source,
-        sourceLabel: loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
-        showBadge: t.source !== 'builtin', // cards name only world and own themes; the detail panel always does
+        sourceLabel: (isModule && t.category) || loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
+        showBadge: t.source !== 'builtin', // cards name only world, own and module sets; the detail panel always does
+        isModule,
+        kindLabel: isModule ? loc(t.kind === 'system' ? 'DICER.Themes.Module.System' : 'DICER.Themes.Module.Colorset') : '',
+        dropNote: isModule && t.dropped.length ? `${loc('DICER.Themes.Module.Dropped')} ${droppedText(t.dropped)}` : '',
+        canStop: isModule && t.kind === 'system' && targets.includes('default'),
         swatch: t.appearance?.body?.color ?? '#444',
         selected: t.id === this.#selected,
         isDefault: targets.includes('default'),
@@ -481,8 +564,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         slotTooltip: others.map(labelOf).join(', '),
         assigned: targets.map((target) => ({ target, label: labelOf(target), isDefault: target === 'default' })),
         canEdit: t.source === 'user' || (t.source === 'world' && isGM),
-        canPublish: isGM && t.source !== 'world',
-        canPush: isGM && t.source !== 'user',
+        canPublish: theme && isGM && t.source !== 'world',
+        canPush: theme && isGM && t.source !== 'user',
         canDelete: t.source === 'user' || (t.source === 'world' && isGM),
       };
     };
@@ -491,12 +574,14 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       locked: this.#locked,
       lockedNotice: loc('DICER.Themes.Locked'),
       filter,
-      filters: Object.entries(FILTER_KEYS).map(([id, key]) => ({
-        id,
-        label: loc(key),
-        active: id === filter,
-        count: id === 'all' ? themes.length : themes.filter((t) => t.source === id).length,
-      })),
+      filters: Object.entries(FILTER_KEYS)
+        .filter(([id]) => id !== 'module' || modules.length || filter === 'module') // only when a module registered any
+        .map(([id, key]) => ({
+          id,
+          label: loc(key),
+          active: id === filter,
+          count: id === 'all' ? themes.length : id === 'module' ? modules.length : themes.filter((t) => t.source === id).length,
+        })),
       targetGroups: groups,
       cards,
       hasCards: cards.length > 0,
@@ -594,7 +679,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     const thumbs = this.#thumbnailer();
     if (!thumbs) return;
-    const themes = new Map(this.#entries().themes.map((t) => [t.id, t]));
+    const themes = new Map([...this.#entries().themes, ...this.#moduleEntries()].map((t) => [t.id, t]));
     // The selected theme first, so the detail preview fills in at once.
     const first = (card) => (card.dataset.theme === this.#selected ? 0 : 1);
     const order = [...cards].sort((x, y) => first(x) - first(y));
@@ -664,6 +749,36 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const ok = await clearTarget(ThemeBrowser.#targetOf(target));
     notify(ok ? 'info' : 'warn', loc(ok ? 'DICER.Themes.Cleared' : 'DICER.Themes.NotAllowed'));
     if (ok) await this.render();
+  }
+
+  static async #onUseModule(event, target) {
+    if (this.#locked) return;
+    const entry = ThemeBrowser.#themeOf(this, target);
+    if (entry?.source !== 'module' || !(await useModuleDice(entry))) return;
+    notify('info', loc('DICER.Themes.Applied'));
+    await this.render();
+  }
+
+  static async #onStopModule() {
+    if (this.#locked || !(await stopModuleSystem())) return;
+    notify('info', loc('DICER.Themes.Cleared'));
+    await this.render();
+  }
+
+  /** Import as theme: a theme of mine from the set, opened in the editor; what it cannot hold is named. */
+  static async #onImportModule(event, target) {
+    const entry = ThemeBrowser.#themeOf(this, target);
+    if (entry?.source !== 'module') return;
+    const res = await importModuleDice(entry);
+    if (!res) return;
+    const done = `${loc('DICER.Themes.Module.Imported')} ${res.raw.name}`;
+    if (res.dropped.length)
+      notify('warn', `${done}. ${loc('DICER.Themes.Module.Dropped')} ${droppedText(res.dropped)}. ${loc('DICER.Themes.Module.KeepHint')}`);
+    else notify('info', done);
+    this.#filter = 'user';
+    this.#selected = res.raw.id;
+    await this.render();
+    return this.#openEditor({ themeId: res.raw.id });
   }
 
   /** Opens the appearance editor (its own lazy chunk); a save there refreshes the gallery. */

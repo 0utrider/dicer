@@ -473,7 +473,8 @@
       "Source": {
         "builtin": "Built-in",
         "world": "World",
-        "user": "Mine"
+        "user": "Mine",
+        "module": "Module dice"
       },
       "Role": {
         "attack": "Attack rolls",
@@ -532,7 +533,23 @@
       "Delete": "Delete",
       "ConfirmDelete": "Delete this theme permanently?",
       "ConfirmDeleteWorldDefault": "It is the world default theme: deleting it also clears the world default, and players go back to their own default dice.",
-      "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:"
+      "Unreadable": "Some stored themes cannot be read by this version and are kept as they are:",
+      "Module": {
+        "Colorset": "A colour set another module added (Dice So Nice API).",
+        "System": "A dice set another module added (Dice So Nice API). Its faces and models are used on top of your look; dice it gives no colours keep yours.",
+        "Stop": "Stop using",
+        "Import": "Import as theme",
+        "ImportHint": "Copy its colours into a theme of your own, to edit",
+        "Imported": "Imported as your theme:",
+        "Dropped": "A theme cannot keep:",
+        "KeepHint": "Use the module dice set itself to keep them.",
+        "Drop": {
+          "faces": "custom faces",
+          "models": "3D models",
+          "texture": "texture",
+          "font": "font"
+        }
+      }
     },
     "Commands": {
       "Description": "Open the Dicer settings."

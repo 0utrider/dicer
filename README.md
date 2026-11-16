@@ -236,6 +236,8 @@ With the chat-commands module installed, `/dice3d`, `/d3d` and `/dsn` open the F
 
 Dicer replaces Dice So Nice (DSN). It gives other packages a `game.dice3d` with the DSN API and fires the same hooks. Do not run both: if DSN is active, Dicer stays dormant.
 
+Dice sets that other modules register through the DSN API (`addColorset`, `addSystem`, `addDicePreset`) show in the theme browser under **Module dice**, which appears once any are registered. Hidden colorsets and the stock DSN colours Dicer maps itself (white, fire, ...) are not listed. **Use as my default** writes the colorset or system to your look flag, like any theme choice, and is locked when the GM locks player dice. A colorset replaces your look. A system adds its faces and models on top of your look, and **Stop using** removes it. **Import as theme** copies the colours into a theme of your own to edit. Faces, models and textures a theme cannot hold are named in a notification. To keep them, use the module set itself.
+
 ### Compatibility table
 
 Status is Works, Works with gaps or Not supported. One row per package surveyed.
