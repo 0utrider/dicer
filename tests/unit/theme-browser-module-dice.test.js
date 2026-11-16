@@ -142,6 +142,7 @@ describe('module dice entries', () => {
     const n = (k, from = 1) => Array.from({ length: k }, (_, i) => String(from + i));
     const dice = new Map([
       ['d20', { labels: n(20) }],
+      ['d10', { labels: [...n(9), '0'] }], // Dicer draws its 10 as 0 too
       ['d100', { labels: [...n(9).map((x) => String(x * 10)), '00'] }],
       ['df', { labels: ['-', '', '+'] }],
       ['dc', { labels: ['tail.webp', 'heads.webp'] }],

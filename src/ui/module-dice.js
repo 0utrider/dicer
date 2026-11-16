@@ -69,7 +69,7 @@ const FATE = [['-', '−', '–'], ['', ' '], ['+']];
 /** Face i's label is what Dicer draws there anyway: its number, a d100's tens (00 or 100 last), a Fate - blank +. */
 function plainLabel(type, label, i, min) {
   const t = String(label ?? '').trim();
-  if (t === String(min + i)) return true;
+  if (t === String(min + i) || (type === 'd10' && min + i === 10 && t === '0')) return true;
   if (type === 'd100') return t === String((i + 1) * 10) || (i === 9 && (t === '00' || t === '0'));
   if (type === 'df') return FATE[i]?.includes(t) ?? false;
   return false;
