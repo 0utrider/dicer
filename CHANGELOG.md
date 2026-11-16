@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Bigger dice.** Dice size (and Pet size) now go up to 3x.
 - **Pet size.** Pets have their own **Pet size** setting, so bigger dice no longer mean bigger pets.
 - **Crit and fumble text stays sharp and on screen.** The JB2A CRITICAL / MISS text keeps one screen size whatever the dice size, and a die landing at the edge of the screen no longer pushes it out of view.
 - **Theme and effect sounds** can be turned off on their own (the zap, chime, fanfare and the rest), leaving dice impacts and pet sounds as they are.

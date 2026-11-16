@@ -204,7 +204,7 @@ export function registerSettings({
       scope: 'client',
       config: true,
       type: Number,
-      range: { min: 0.5, max: 2, step: 0.1 },
+      range: { min: 0.5, max: 3, step: 0.1 },
       default: 1,
       onChange: () => onAreaChange?.(),
     });
