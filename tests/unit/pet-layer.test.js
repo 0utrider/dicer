@@ -169,7 +169,7 @@ test('warm gets the meshes of one creature of each kind, the shadow and the spar
   expect(objs.length).toBeGreaterThan(6);
   expect(objs.every((o) => o.isMesh || o.isPoints)).toBe(true);
   expect(objs.some((o) => o.isMesh && o.name === 'petShadow' && o.material.map)).toBe(true);
-  expect(objs.filter((o) => o.isPoints)).toHaveLength(1);
+  expect(objs.filter((o) => o.isPoints).map((o) => o.name).sort()).toEqual(['petSmoke', 'petSparkle']); // a scorch's smoke has RGBA colours: another program
   const mats = new Set(objs.flatMap((o) => (Array.isArray(o.material) ? o.material : [o.material])));
   let disposed = 0;
   for (const m of mats) m.addEventListener('dispose', () => disposed++);

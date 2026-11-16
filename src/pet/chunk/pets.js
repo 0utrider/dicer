@@ -11,7 +11,7 @@ import {
 } from './timeline.js';
 import { createSplat } from './splat.js';
 import { summarize, merge, reactionSound } from './reaction.js';
-import { discTexture, starTexture, heartTexture, puffTexture } from './textures.js';
+import { discTexture, starTexture, heartTexture, puffTexture, smokeTexture } from './textures.js';
 import {
   edgeSpot,
   restSpot,
@@ -94,11 +94,17 @@ export const SCORCH_MS = 1200; // fire, lava: a smoke puff, and it fans itself
 export const SHIVER_MS = 1300; // frost: a shiver under a frosty tint that fades
 export const BRISTLE_MS = 1000; // storm: it bristles, a few sparks
 export const STARTLE_MS = 750; // any other element: a jump
-const SMOKES = 7; // of the sparkle's SPARKS points
-const SPARKLES = 5;
-const STORM = [0.55, 0.8, 1];
-const ICE = new THREE.Color(0.72, 0.9, 1); // the frosty tint's colour
-const ICE_GLOW = new THREE.Color(0.1, 0.22, 0.35); // and a faint cold glow, so dark pets show it too
+const SMOKES = 8; // a scorch's smoke puffs: their own points, normally blended (grey reads as smoke)
+const SMOKE_SIZE = SPARK_SIZE * 2.6;
+const SMOKE_GREY = [0.03, 0.42]; // linear: charcoal and pale grey puffs in turn, smoke on any map
+const SPARKLES = 9; // of the sparkle's SPARKS points
+const ZAP_SIZE = SPARK_SIZE * 3.4;
+const ZAP = [1, 0.9, 0.35]; // the sparks: yellow, and white
+// The frosty tint: the pet's colour multiplied by a cool filter (warm channels damped, never washed
+// toward white, so its own colour still shows) and a faint cold sheen.
+const ICE = new THREE.Color(0.72, 0.88, 1);
+const ICE_GLOW = new THREE.Color(0.02, 0.05, 0.1);
+const iceNow = new THREE.Color(); // scratch
 /** How long each of a resting pet's animations (pet.anim.kind) runs. */
 const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS };
 
@@ -135,7 +141,7 @@ export function createPetLayer(deps) {
   let sparkMat = null;
   let heartMat = null; // petting's hearts and a huff's puff: the sparkle's points, another sprite
   let puffMat = null;
-  let smokeMat = null; // a scorch's smoke and a bristle's sparks: bigger sprites than the sparkle's
+  let smokeMat = null; // a scorch's smoke (makeSmoke) and a bristle's sparks (bigger star sprites)
   let zapMat = null;
   let petting = null; // the click listeners (petting.js) while a pet is shown
   let disposed = false;
@@ -184,6 +190,34 @@ export function createPetLayer(deps) {
     return pts;
   };
 
+  /**
+   * A scorch's smoke puffs: soft grey discs, normally blended so they darken like smoke, each with
+   * its own alpha (an RGBA colour). One shared material, a small geometry per pet made on its first
+   * scorch.
+   */
+  const makeSmoke = () => {
+    smokeMat ??= new THREE.PointsMaterial({
+      size: SMOKE_SIZE,
+      map: smokeTexture(),
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const geo = new THREE.BufferGeometry();
+    for (const [name, n] of [
+      ['position', 3],
+      ['color', 4],
+    ])
+      geo.setAttribute(name, new THREE.BufferAttribute(new Float32Array(SMOKES * n), n).setUsage(THREE.DynamicDrawUsage));
+    const pts = new THREE.Points(geo, smokeMat);
+    pts.name = 'petSmoke';
+    pts.renderOrder = 2; // after the slime's see-through shell (1), which would veil it from above
+    pts.visible = false;
+    pts.frustumCulled = false;
+    return pts;
+  };
+
   /** Writes the burst at s (0..1) in the pet's own space, anchored to the ground while it jumps. */
   function burst(pts, s, h, hop) {
     const pos = pts.geometry.attributes.position;
@@ -222,55 +256,44 @@ export function createPetLayer(deps) {
     });
 
   /**
-   * Petting's hearts, a huff's puff, a scorch's smoke or a bristle's sparks (`kind`, pet.anim's), at
-   * e (0..1) in the pet's sparkle points; false for a kind with none (shiver, startle). Only the
-   * sparks may twinkle, and not with `calm` (reduced motion: no flashing); everything else fades in
-   * and out once. `calm` also means fewer hearts and less sway.
+   * Petting's hearts, a huff's puff or a bristle's sparks (`kind`, pet.anim's), at e (0..1) in the
+   * pet's sparkle points; false for a kind with none (scorch has its own smoke points; shiver,
+   * startle). Only the sparks may flicker, and not with `calm` (reduced motion: no flashing);
+   * everything else fades in and out once. `calm` also means fewer hearts and less sway.
    */
   function float(pet, e, kind, calm) {
     const huff = kind === 'huff';
-    const smoke = kind === 'scorch';
     const spark = kind === 'bristle';
-    if (!huff && !smoke && !spark && kind !== 'pet') return false;
+    if (!huff && !spark && kind !== 'pet') return false;
     const pts = pet.sparkle;
     pts.material = spark
-      ? (zapMat ??= spriteMat(starTexture(), SPARK_SIZE * 1.6))
-      : smoke
-        ? (smokeMat ??= spriteMat(puffTexture(), SPARK_SIZE * 2.2))
-        : huff
-          ? (puffMat ??= spriteMat(puffTexture()))
-          : (heartMat ??= spriteMat(heartTexture()));
+      ? (zapMat ??= spriteMat(starTexture(), ZAP_SIZE))
+      : huff
+        ? (puffMat ??= spriteMat(puffTexture()))
+        : (heartMat ??= spriteMat(heartTexture()));
     const h = pet.creature.height;
     const pos = pts.geometry.attributes.position;
     const col = pts.geometry.attributes.color;
     const P = pos.array;
     const C = col.array;
-    const n = huff ? PUFFS : smoke ? SMOKES : spark ? SPARKLES : calm ? 3 : HEARTS;
+    const n = huff ? PUFFS : spark ? SPARKLES : calm ? 3 : HEARTS;
     for (let i = 0; i < SPARKS; i++) {
       const k = i * 3;
       P[k] = P[k + 1] = P[k + 2] = C[k] = C[k + 1] = C[k + 2] = 0; // unused: black adds nothing
       if (i >= n) continue;
       const sp = SPARK[i];
       let b;
-      if (smoke) {
-        // smoke curling up off its top one puff after another, spreading and fading
-        const s = clamp01((e - i * 0.07) / 0.55);
-        const curl = 0.15 * h * Math.sin(s * Math.PI * 1.5 + sp.ph) * (calm ? 0.4 : 1);
-        P[k] = Math.sin(sp.a) * (0.15 + 0.3 * s) * h + curl;
-        P[k + 1] = h * (0.85 + 0.9 * s * (0.7 + 0.3 * sp.rise));
-        P[k + 2] = Math.cos(sp.a) * (0.15 + 0.3 * s) * h;
-        b = GREY * 0.8 * Math.sin(Math.PI * s);
-        C[k] = C[k + 1] = C[k + 2] = b;
-      } else if (spark) {
-        // a few sparks crackling about its body, each in its own beat; they flicker unless calm
-        const s = clamp01((e - i * 0.1) / 0.5);
-        const r = (0.7 + 0.25 * sp.reach * s) * h; // outside its body, where they show
+      if (spark) {
+        // sparks crackling about its body in three waves, so some are always lit; they flicker
+        // unless calm
+        const s = clamp01((e - (i % 3) * 0.22 - 0.02 * i) / 0.42);
+        const r = (0.65 + 0.3 * sp.reach * s) * h; // outside its body, where they show
         P[k] = Math.sin(sp.a) * r;
-        P[k + 1] = h * (0.35 + 0.6 * sp.rise + 0.15 * s);
+        P[k + 1] = h * (0.3 + 0.75 * sp.rise + 0.2 * s);
         P[k + 2] = Math.cos(sp.a) * r;
-        b = Math.sin(Math.PI * s);
-        if (!calm) b *= Math.sin(s * 37 + sp.ph) > -0.2 ? 1 : 0.15;
-        const c = i % 2 ? WHITE : STORM;
+        b = Math.sin(Math.PI * s) ** 0.5;
+        if (!calm) b *= Math.sin(s * 37 + sp.ph) > -0.3 ? 1 : 0.3;
+        const c = i % 3 === 1 ? WHITE : ZAP;
         C[k] = c[0] * b;
         C[k + 1] = c[1] * b;
         C[k + 2] = c[2] * b;
@@ -303,8 +326,42 @@ export function createPetLayer(deps) {
   }
 
   /**
-   * The frosty tint, `amount` 0..1, on every lit material of the pet's creature: the colour lerped
-   * toward ICE and a faint cold glow (uniforms only: no shader recompiles). 0 puts the colours back.
+   * A scorch's smoke at e (0..1), or (e null) none: grey puffs rising one after another from just
+   * above the top of its body (pet.anim.top, measured when the scorch began, so it clears the
+   * mimic's open lid) and a little in front, swelling, drifting and fading. `calm`: less drift.
+   */
+  function smoke(pet, e, calm) {
+    if (e === null) {
+      if (pet.smoke) pet.smoke.visible = false;
+      return;
+    }
+    if (!pet.smoke) pet.group.add((pet.smoke = makeSmoke()));
+    const h = pet.creature.height;
+    const top = pet.anim?.top ?? h;
+    const pos = pet.smoke.geometry.attributes.position;
+    const col = pet.smoke.geometry.attributes.color;
+    const P = pos.array;
+    const C = col.array;
+    for (let i = 0; i < SMOKES; i++) {
+      const sp = SPARK[i];
+      const s = clamp01((e - i * 0.06) / 0.6);
+      const drift = (calm ? 0.06 : 0.16) * h * Math.sin(s * Math.PI * 1.5 + sp.ph);
+      const k = i * 3;
+      P[k] = Math.sin(sp.a) * (0.12 + 0.25 * s) * h + drift;
+      P[k + 1] = top + h * (0.05 + 0.6 * s * (0.75 + 0.25 * sp.rise));
+      P[k + 2] = 0.2 * h + Math.cos(sp.a) * (0.12 + 0.2 * s) * h;
+      const g = SMOKE_GREY[i % 2];
+      C[i * 4] = C[i * 4 + 1] = C[i * 4 + 2] = g;
+      C[i * 4 + 3] = 0.95 * Math.min(1, 3 * s) * (1 - s * s); // in fast, then thins out as it rises
+    }
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    pet.smoke.visible = true;
+  }
+
+  /**
+   * The frosty tint, `amount` 0..1, on every lit material of the pet's creature: the colour through
+   * the cool ICE filter and a faint cold glow (uniforms only: no shader recompiles). 0 puts the colours back.
    */
   function frost(pet, amount) {
     let t = pet.tint;
@@ -319,8 +376,9 @@ export function createPetLayer(deps) {
       t.glow = t.mats.map((m) => m.emissive.clone());
     }
     const a = clamp01(amount);
+    iceNow.setRGB(1 - a * (1 - ICE.r), 1 - a * (1 - ICE.g), 1 - a * (1 - ICE.b));
     t.mats.forEach((m, i) => {
-      m.color.copy(t.color[i]).lerp(ICE, 0.6 * a);
+      m.color.copy(t.color[i]).multiply(iceNow);
       m.emissive.copy(t.glow[i]).lerp(ICE_GLOW, a);
     });
     if (a === 0) pet.tint = null;
@@ -329,6 +387,7 @@ export function createPetLayer(deps) {
   function dropAnim(pet) {
     pet.anim = null;
     if (pet.tint) frost(pet, 0);
+    smoke(pet, null);
   }
 
   function removePet(pet) {
@@ -344,6 +403,7 @@ export function createPetLayer(deps) {
     }
     pet.shadow.material.dispose();
     pet.sparkle.geometry.dispose();
+    pet.smoke?.geometry.dispose();
     dropSplat(pet);
   }
 
@@ -788,7 +848,9 @@ export function createPetLayer(deps) {
     pet.track.landedAt = clock();
   }
 
+  /** A roll landed: its pet's reaction (by `key`), and every resting pet's to its elemental dice. */
   function landed(key, dice) {
+    if (key == null) return elemental(dice); // a roll with no pet of its own: only the reactions
     const pet = petOf(key);
     const roll = pet?.rolls.get(key);
     if (!roll || roll.summary) return;
@@ -813,8 +875,11 @@ export function createPetLayer(deps) {
     const now = clock();
     let any = false;
     for (const { pet, element } of elementReactions(dice, [...pets.values()], { dieWidth: DIE_WIDTH })) {
-      if (pet.tint) frost(pet, 0); // a shiver cut short by the next reaction
-      pet.anim = { kind: reactionOf(element), at: now, calm: calmNow(), element };
+      dropAnim(pet); // a shiver's tint or a scorch's smoke cut short by the next reaction
+      const kind = reactionOf(element);
+      pet.anim = { kind, at: now, calm: calmNow(), element };
+      // the smoke rises from the top of its body as it stands (the mimic's open lid included)
+      if (kind === 'scorch') pet.anim.top = new THREE.Box3().setFromObject(pet.creature.root).max.y - pet.group.position.y;
       pet.idleAt = now; // a startled pet does not wander off just then
       any = true;
     }
@@ -989,6 +1054,7 @@ export function createPetLayer(deps) {
     show(pet, now, a.kind, e, pet.px, pet.pz, 0, shadows);
     if (e < 1) {
       if (!float(pet, e, a.kind, a.calm)) pet.sparkle.visible = false;
+      if (a.kind === 'scorch') smoke(pet, e, a.calm);
       if (a.kind === 'shiver') frost(pet, smooth(clamp01(e / 0.12)) * (1 - smooth(clamp01((e - 0.35) / 0.65))));
       return true;
     }
@@ -1526,6 +1592,7 @@ export function createPetLayer(deps) {
   const samples = [];
   let sampleShadow = null;
   let sampleSparkle = null;
+  let sampleSmoke = null;
   if (warm) {
     try {
       const objs = [];
@@ -1545,7 +1612,8 @@ export function createPetLayer(deps) {
       }
       sampleShadow = makeShadow();
       sampleSparkle = makeSparkle();
-      objs.push(sampleShadow, sampleSparkle);
+      sampleSmoke = makeSmoke(); // its RGBA colours are another program: compiled up front too
+      objs.push(sampleShadow, sampleSparkle, sampleSmoke);
       Promise.resolve(warm(objs)).catch(() => {}); // a context loss or timeout: compiled on use
     } catch (err) {
       console.warn('Dicer | pet', err);
@@ -1572,7 +1640,8 @@ export function createPetLayer(deps) {
     samples.length = 0;
     sampleShadow?.material.dispose();
     sampleSparkle?.geometry.dispose();
-    sampleShadow = sampleSparkle = null;
+    sampleSmoke?.geometry.dispose();
+    sampleShadow = sampleSparkle = sampleSmoke = null;
     shadowTex?.dispose();
     shadowGeo?.dispose();
     sparkTex?.dispose();

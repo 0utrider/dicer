@@ -603,16 +603,17 @@ export class DiceBox {
   /**
    * Calls the pet layer for `roll` (or, with no roll, its per-frame update). A throwing pet warns
    * once, and stops being called for that roll (an update that throws, for every roll in flight);
-   * a roll is never failed by its pet.
+   * a roll is never failed by its pet. A roll without a pet reaches it too (its landing: resting
+   * pets react to elemental dice), but only a layer already loaded and hooked: nothing loads.
    */
   #petCall(fn, roll) {
     const hook = this._petHook;
     if (!hook) return undefined;
-    if (roll ? !roll.pet || roll.pet.dead : this._petUpdateDead) return undefined;
+    if (roll ? roll.pet?.dead : this._petUpdateDead) return undefined;
     try {
       return fn(hook);
     } catch (err) {
-      if (roll) roll.pet.dead = true;
+      if (roll) (roll.pet ?? {}).dead = true;
       else {
         this._petUpdateDead = true;
         for (const r of this._rolls) if (r.pet) r.pet.dead = true;
@@ -1408,17 +1409,17 @@ export class DiceBox {
     if (roll.record) {
       roll.record.dice = roll.dice.map((d) => ({ x: d.outer.position.x, z: d.outer.position.z }));
     }
-    if (roll.pet?.begun) {
-      const dice = roll.dice.map((d) => ({
-        type: d.dsnType ?? d.type,
-        value: d.value,
-        ghost: d.ghost === true,
-        x: d.outer.position.x,
-        z: d.outer.position.z,
-        ...(!d.ghost && { appearance: d.appearance, damageType: d.damageType }),
-      }));
-      this.#petCall((h) => h.landed(roll.pet.key, dice), roll);
-    }
+    // Every landing reaches a loaded pet layer (resting pets react to elemental dice); a roll
+    // without a pet of its own lands with no key. Ghost dice carry no appearance or damage type.
+    const dice = roll.dice.map((d) => ({
+      type: d.dsnType ?? d.type,
+      value: d.value,
+      ghost: !!d.ghost, // the same truthiness that strips its appearance below
+      x: d.outer.position.x,
+      z: d.outer.position.z,
+      ...(!d.ghost && { appearance: d.appearance, damageType: d.damageType }),
+    }));
+    this.#petCall((h) => h.landed(roll.pet?.key, dice), roll); // no key: a roll without a pet (or not begun)
     this._fireResults(roll);
     this._fireFx(roll);
     roll.resolveLanded();

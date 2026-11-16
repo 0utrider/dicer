@@ -30,6 +30,13 @@ export const heartTexture = () =>
     255,
   );
 
+/** A white smoke puff: a solid billowy core (three lobes) with a soft rim, for a scorch's smoke. */
+export const smokeTexture = () =>
+  texture(32, (u, v) => {
+    const lobe = (cx, cy, r) => Math.max(0, Math.min(1, (r - Math.hypot(u - cx, v - cy)) / 0.25));
+    return Math.max(lobe(0, 0.15, 0.7), lobe(-0.35, -0.2, 0.55), lobe(0.35, -0.25, 0.5));
+  }, 255);
+
 /** A soft white disc: a huff's puff. */
 export const puffTexture = () => texture(32, (u, v) => Math.max(0, 1 - Math.hypot(u, v)) ** 1.5, 255);
 

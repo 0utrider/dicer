@@ -2820,12 +2820,50 @@ describe('pet hook', () => {
     box.clear();
   });
 
-  test('no pet spec, no pet calls', async () => {
+  test('no pet spec: no begin, leave or end, only a keyless landed (resting pets react to its dice), ghosts stripped', async () => {
     const pet = fakePet();
     const { renderer, physics, box } = setup({ pet });
-    box.roll([{ type: 'd6', value: 3 }]);
+    box.roll([
+      { type: 'd6', value: 3, damageType: 'fire' },
+      { type: 'd6', value: 4, ghost: true, damageType: 'fire' },
+    ]);
     await playOut(renderer, physics);
-    expect(pet.calls).toEqual([]);
+    expect(names(pet)).toEqual(['landed']);
+    const [, key, dice] = pet.calls[0];
+    expect(key == null).toBe(true);
+    expect(dice[0].damageType).toBe('fire');
+    expect(Number.isFinite(dice[0].x) && Number.isFinite(dice[0].z)).toBe(true);
+    // privacy: the ghost passes no look and no damage type
+    expect(dice[1].ghost).toBe(true);
+    expect('appearance' in dice[1]).toBe(false);
+    expect('damageType' in dice[1]).toBe(false);
+  });
+
+  test('no pet spec and no pet layer loaded: nothing is called or loaded', async () => {
+    const hook = vi.fn(() => null); // getPets() before the chunk loads
+    const { renderer, physics, box } = setup({ pet: hook });
+    box.roll([{ type: 'd6', value: 3, damageType: 'fire' }]);
+    await playOut(renderer, physics);
+    expect(hook.mock.results.every((r) => r.value === null)).toBe(true);
+  });
+
+  test('a keyless landed that throws warns, and the roll still finishes', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pet = fakePet({
+      landed: vi.fn(() => {
+        throw new Error('pet boom');
+      }),
+    });
+    const { renderer, physics, box } = setup({ pet });
+    const { landed, finished } = box.roll([{ type: 'd6', value: 3 }]);
+    const isLanded = settled(landed);
+    const isFinished = settled(finished);
+    await playOut(renderer, physics);
+    expect(isLanded()).toBe(true);
+    expect(isFinished()).toBe(true);
+    expect(warn.mock.calls.filter((c) => c[0] === 'Dicer | pet')).toHaveLength(1);
+    expect(pet.update).toHaveBeenCalled(); // the update still runs: only that roll's call failed
+    warn.mockRestore();
   });
 
   test('the loop keeps running while pet.update returns true, and holds once it returns false', () => {

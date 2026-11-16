@@ -199,11 +199,107 @@ describe('reactions in the layer', () => {
     expect(m.deps.wake).toHaveBeenCalled();
     m.layer.update((clockNow += 16));
     expect(phase(m)).toBe('scorch');
-    const smoke = group(m).children.find((c) => c.name === 'petSparkle');
+    const smoke = group(m).children.find((c) => c.name === 'petSmoke');
     expect(smoke.visible).toBe(true);
     runTo(m, clockNow + SCORCH_MS);
     expect(phase(m)).not.toBe('scorch');
     expect(smoke.visible).toBe(false);
+  });
+
+  /** A roll by a player with no pet lands `die` beside u1's resting pet (DiceBox: landed with no key). */
+  const landNoPet = (m, die) => {
+    const g = group(m);
+    m.deps.wake.mockClear();
+    m.layer.landed(undefined, [{ type: 'd6', value: 3, x: g.position.x + DIE_WIDTH, z: g.position.z, ...die }]);
+  };
+
+  test('a roll whose roller has no pet: a fire die by a resting pet scorches it', () => {
+    const m = make();
+    rollToRest(m);
+    landNoPet(m, { damageType: 'fire' });
+    expect(m.deps.wake).toHaveBeenCalled();
+    m.layer.update((clockNow += 16));
+    expect(phase(m)).toBe('scorch');
+  });
+
+  test('a roll whose roller has no pet: a ghost die (stripped, as DiceBox sends it) does nothing', () => {
+    const m = make();
+    rollToRest(m);
+    landNoPet(m, { ghost: true });
+    expect(m.deps.wake).not.toHaveBeenCalled();
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    expect(phase(m)).toBe('exit');
+  });
+
+  test('a keyless landing with no pets on screen wakes nothing', () => {
+    const m = make();
+    m.layer.landed(null, [{ type: 'd6', value: 3, x: 0, z: 0, damageType: 'fire' }]);
+    expect(m.deps.wake).not.toHaveBeenCalled();
+    expect(m.layer.update((clockNow += 16))).toBe(false);
+  });
+
+  test('scorch smoke: grey puffs, normally blended (not a glow), rising above the top of the pet', () => {
+    for (const kind of ['mimic', 'slime', 'dragonling']) {
+      const m = make();
+      rollToRest(m, 'u1', kind);
+      const g = group(m);
+      const top = new THREE.Box3().setFromObject(g.children.find((c) => c.name === kind)).max.y;
+      landBeside(m, [{ dx: 1, damageType: 'fire' }]);
+      runTo(m, clockNow + SCORCH_MS * 0.45);
+      const smoke = g.children.find((c) => c.name === 'petSmoke');
+      expect(smoke.material.blending).toBe(THREE.NormalBlending);
+      const col = smoke.geometry.attributes.color;
+      expect(col.itemSize).toBe(4); // each puff its own alpha
+      const pos = smoke.geometry.attributes.position;
+      let shown = 0;
+      for (let i = 0; i < col.count; i++) {
+        if (col.getW(i) < 0.05) continue;
+        shown++;
+        expect(col.getX(i)).toBe(col.getZ(i)); // grey
+        expect(col.getX(i)).toBeLessThan(0.5); // never a bright glow
+        expect(pos.getY(i)).toBeGreaterThan(top - 0.05); // clear of the body (the mimic's lid too)
+      }
+      expect(shown, kind).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  test('bristle sparks: several bright yellow-white sparks lit through the reaction', () => {
+    const m = make();
+    rollToRest(m);
+    landBeside(m, [{ dx: 1, damageType: 'electricity' }]);
+    const pts = group(m).children.find((c) => c.name === 'petSparkle');
+    const t0 = clockNow;
+    for (const at of [0.2, 0.5, 0.8]) {
+      runTo(m, t0 + BRISTLE_MS * at);
+      const col = pts.geometry.attributes.color;
+      let lit = 0;
+      for (let i = 0; i < col.count; i++) if (col.getX(i) > 0.5 && col.getY(i) > 0.45) lit++;
+      expect(lit, `t ${at}`).toBeGreaterThanOrEqual(2);
+      expect(pts.material.size).toBeGreaterThan(3); // bigger than the crit sparkle's
+    }
+  });
+
+  test('frost on a light pet: a gentle icy tint, its own colour still shows', () => {
+    const m = make();
+    const key = 'light';
+    m.layer.begin(key, { spec: { userId: 'u1', kind: 'slime', color: '#f4e04d' }, edge: 0, area: AREA, centre: () => ({ x: 0, z: 0 }) });
+    runTo(m, 400);
+    m.layer.landed(key, [{ type: 'd20', value: 5 }]);
+    runTo(m, clockNow + 2500);
+    m.layer.leave(key, 0);
+    m.layer.end(key);
+    runTo(m, clockNow + 1000);
+    let mat;
+    group(m).traverse((o) => (mat ??= o.material?.emissive ? o.material : undefined));
+    const was = mat.color.clone();
+    landBeside(m, [{ dx: 1, damageType: 'cold' }]);
+    runTo(m, clockNow + SHIVER_MS * 0.2); // the tint at its fullest
+    // cooler: the warm channels damped more than blue
+    expect(mat.color.r / was.r).toBeLessThan(0.85);
+    expect(mat.color.b / was.b).toBeGreaterThan(0.95);
+    // but not washed out toward white: the yellow body still has clearly more red than blue
+    expect(mat.color.r - mat.color.b).toBeGreaterThan(0.5 * (was.r - was.b));
+    expect(mat.color.r + mat.color.g + mat.color.b).toBeLessThanOrEqual(was.r + was.g + was.b + 1e-6);
   });
 
   test('each element its pose', () => {
@@ -296,10 +392,10 @@ describe('reactions in the layer', () => {
     const before = mats.map((x) => [x.color.getHex(), x.emissive.getHex()]);
     landBeside(m, [{ dx: 1, damageType: 'cold' }]);
     runTo(m, clockNow + SHIVER_MS * 0.15);
-    // the red body is now nearer an icy blue (more blue and green than before)
+    // the red body is cooler (its red damped) under a faint cold sheen
     const was = new THREE.Color(before[0][0]);
-    expect(mats[0].color.b).toBeGreaterThan(was.b + 0.1);
-    expect(mats[0].emissive.b).toBeGreaterThan(0);
+    expect(mats[0].color.r).toBeLessThan(was.r * 0.85);
+    expect(mats[0].emissive.b).toBeGreaterThan(mats[0].emissive.r);
     runTo(m, clockNow + SHIVER_MS);
     expect(mats.map((x) => [x.color.getHex(), x.emissive.getHex()])).toEqual(before);
   });

@@ -715,6 +715,28 @@ function stageReaction({ kind, color, reaction, t }) {
   if (other) other.visible = false;
   return { layer, pet, dieAt };
 }
+/**
+ * The game view as the player sees it: the whole stage rendered at its real size (so point sprites,
+ * which size by the canvas height, are true to the game; gameView's small view-offset window draws
+ * them several times too small), then the w x h window around the pet copied into the sheet.
+ */
+function fullGameCrop(g, pet, w, h, bg, dieAt, dx, dy) {
+  scene.background = new THREE.Color(bg);
+  d20.visible = true;
+  d20.position.x = dieAt.x;
+  d20.position.z = dieAt.z;
+  const full = { w: STAGE.halfWidth * 2 * DIE_SIZE_PX, h: STAGE.halfDepth * 2 * DIE_SIZE_PX };
+  camera.clearViewOffset();
+  camera.position.set(0, H, 0);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  _v.set(pet.position.x, 0.5, pet.position.z).project(camera);
+  const cx = ((_v.x + 1) / 2) * full.w;
+  const cy = ((1 - _v.y) / 2) * full.h;
+  renderer.setSize(full.w, full.h, false);
+  renderer.render(scene, camera);
+  g.drawImage(renderer.domElement, cx - w / 2, cy - h / 2, w, h, dx, dy, w, h);
+}
 /** 3 kinds x scorch/shiver/bristle/startle: 3 close-up moments and the game view at the middle one. */
 function reactions() {
   const LW = 130;
@@ -722,25 +744,34 @@ function reactions() {
   const CH = 200;
   const HEAD = 30;
   const rows = KINDS.flatMap((kind) => REACTIONS.map((reaction) => ({ kind, reaction })));
+  // the frosty tint on light pets: their own colour must still show
+  for (const [kind, color] of [
+    ['mimic', '#f2c9a0'],
+    ['slime', '#f4e04d'],
+  ])
+    rows.push({ kind, color, reaction: REACTIONS[1] });
   const { c, g } = newSheet(LW + CW * 4, HEAD + rows.length * (CH + 4));
   ['moment 1', 'moment 2', 'moment 3', 'game view (48 px/die), moment 2'].forEach((n, i) =>
     label(g, n, LW + i * CW + CW / 2, 20, { align: 'center' }),
   );
   const was = d20.material.color.getHex();
   try {
-    rows.forEach(({ kind, reaction }, r) => {
+    rows.forEach(({ kind, color = KIND_COLOR[kind], reaction }, r) => {
       const y = HEAD + r * (CH + 4);
       label(g, kind, 8, y + 22, { size: 14 });
       label(g, `${reaction.name} (${reaction.damageType})`, 8, y + 42, { size: 12, color: '#9aa0aa' });
+      if (color !== KIND_COLOR[kind]) label(g, `light: ${color}`, 8, y + 60, { size: 12, color: '#9aa0aa' });
       d20.material.color.set(reaction.die);
       const cells = [...reaction.moments.map((t) => ({ t, game: false })), { t: reaction.moments[1], game: true }];
       cells.forEach(({ t, game }, i) => {
-        const staged = stageReaction({ kind, color: KIND_COLOR[kind], reaction, t });
+        const staged = stageReaction({ kind, color, reaction, t });
         try {
           d20.position.set(staged.dieAt.x, d20.position.y, staged.dieAt.z);
-          if (game) gameView(staged.pet, CW - 2, CH - 2, BG.dark, 3, true, staged.dieAt);
-          else closeUp(staged.pet, CW - 2, CH - 2, '#5b616b', { dist: 6.6, height: 3.4, side: 2.8, follow: false, die: true });
-          blit(g, LW + i * CW + 1, y + 1);
+          if (game) fullGameCrop(g, staged.pet, CW - 2, CH - 2, BG.dark, staged.dieAt, LW + i * CW + 1, y + 1);
+          else {
+            closeUp(staged.pet, CW - 2, CH - 2, '#5b616b', { dist: 6.6, height: 3.4, side: 2.8, follow: false, die: true });
+            blit(g, LW + i * CW + 1, y + 1);
+          }
         } finally {
           staged.layer.dispose();
         }
