@@ -16,6 +16,7 @@ import {
   trayProfile,
   readPrefs,
   trayFor,
+  isDuality,
   _resetChatTray,
   HOLD_MS,
 } from '../../src/ui/chat-tray.js';
@@ -89,6 +90,7 @@ afterEach(() => {
   delete globalThis.foundry;
   delete globalThis.Hooks;
   delete globalThis.ui;
+  delete globalThis.CONFIG;
 });
 
 const textarea = () => document.getElementById('chat-message');
@@ -511,7 +513,7 @@ describe('trayProfile: the tray follows the world system', () => {
 describe('Daggerheart and Draw Steel helpers add a term instead of keeping a die', () => {
   test('Daggerheart: advantage adds a d6, disadvantage subtracts one, the duality d12s stay as rolled', () => {
     const h = trayProfile('daggerheart').helper;
-    expect(h).toMatchObject({ kind: 'add', die: 'd12', term: '1d6', up: 'Adv', down: 'Dis' });
+    expect(h).toMatchObject({ kind: 'duality', die: 'd12', term: '1d6', up: 'Adv', down: 'Dis' });
     expect(chatFormula({ counts: { d12: 2 }, modifier: 3, adv: 1 }, h)).toBe('2d12 + 3 + 1d6');
     expect(chatFormula({ counts: { d12: 2 }, adv: -1 }, h)).toBe('2d12 - 1d6');
     expect(chatFormula({ counts: {}, adv: 1 }, h)).toBe(''); // nothing picked: nothing to roll
@@ -640,5 +642,64 @@ describe('each user customizes their own tray (flag dicer.chatTray)', () => {
     user.flags.dicer = { chatTray: { dice: ['d6', 'd20'] } };
     for (const [name, fn] of hooks) if (name === 'updateUser') fn(user, { flags: { dicer: { chatTray: {} } } });
     expect(shownDice()).toEqual(['d6', 'd20']);
+  });
+});
+
+describe('Daggerheart rolls Duality through the system pipeline', () => {
+  let moveBuild;
+  let dualityBuild;
+  beforeEach(() => {
+    globalThis.game.system = { id: 'daggerheart', api: { data: { actions: { MoveContext: { build: null } } } } };
+    moveBuild = vi.fn(async (data) => ({ built: data }));
+    dualityBuild = vi.fn(async () => ({}));
+    globalThis.game.system.api.data.actions.MoveContext.build = moveBuild;
+    globalThis.CONFIG = { Dice: { daggerheart: { DualityRoll: { build: dualityBuild } } } };
+  });
+
+  test('isDuality: empty or exactly 2d12, only with the system API', () => {
+    expect(isDuality({ counts: {} })).toBe(true);
+    expect(isDuality({ counts: { d12: 2 } })).toBe(true);
+    expect(isDuality({ counts: { d12: 1 } })).toBe(false);
+    expect(isDuality({ counts: { d12: 2, d8: 1 } })).toBe(false);
+    delete globalThis.CONFIG;
+    expect(isDuality({ counts: {} })).toBe(false);
+  });
+
+  test('Roll with nothing picked is a Duality roll; advantage goes in as the system state', async () => {
+    dockTray(undefined, vi.fn());
+    expect(rollButton().disabled).toBe(false);
+    expect(rollButton().textContent).toBe('DICER.ChatTray.Duality');
+    click(dock().querySelector('[data-adv="1"]'));
+    expect(rollButton().textContent).toBe('DICER.ChatTray.DualityAdv');
+    click(rollButton());
+    await flush();
+    expect(moveBuild).toHaveBeenCalledWith(
+      expect.objectContaining({ roll: expect.objectContaining({ type: 'trait', advantage: 1 }) }),
+    );
+    expect(dualityBuild).toHaveBeenCalledWith({ built: moveBuild.mock.calls[0][0] });
+    expect(made).toHaveLength(0); // no plain roll
+    expect(rollButton().textContent).toBe('DICER.ChatTray.Duality'); // cleared
+  });
+
+  test('other dice roll as a plain formula', async () => {
+    dockTray(undefined, vi.fn());
+    click(die('d8'));
+    click(die('d8'));
+    click(rollButton());
+    await flush();
+    expect(dualityBuild).not.toHaveBeenCalled();
+    expect(made.map((r) => r.formula)).toEqual(['2d8']);
+  });
+
+  test('without the system API, 2d12 is a plain roll with the advantage d6', async () => {
+    delete globalThis.CONFIG;
+    dockTray(undefined, vi.fn());
+    expect(rollButton().disabled).toBe(true);
+    click(die('d12'));
+    click(die('d12'));
+    click(dock().querySelector('[data-adv="1"]'));
+    click(rollButton());
+    await flush();
+    expect(made.map((r) => r.formula)).toEqual(['2d12 + 1d6']);
   });
 });

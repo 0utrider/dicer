@@ -42,14 +42,16 @@ const STANDARD = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
  * Each system's pair of roll helpers (labels: lang DICER.ChatTray.<up|down>, tooltips <upHint|downHint>),
  * offered on its main die `die`:
  * - keep: two of `die`, keep the highest (up) or lowest (down);
- * - add: `term` added (up) or subtracted (down) at the end of the formula.
+ * - add: `term` added (up) or subtracted (down) at the end of the formula;
+ * - duality: Daggerheart's advantage state, given to the system's own Duality roll (rollDuality);
+ *   without that API it acts as add (`term`).
  */
 const HELPERS = {
   adv: { kind: 'keep', die: 'd20', up: 'Adv', down: 'Dis', upHint: 'AdvHint', downHint: 'DisHint' },
   // PF2e: roll twice, use the higher / lower
   fortune: { kind: 'keep', die: 'd20', up: 'Fortune', down: 'Misfortune', upHint: 'FortuneHint', downHint: 'MisfortuneHint' },
   // Daggerheart: an advantage die (d6) added to, or a disadvantage die taken from, the duality roll
-  hope: { kind: 'add', die: 'd12', term: '1d6', up: 'Adv', down: 'Dis', upHint: 'AdvD6Hint', downHint: 'DisD6Hint' },
+  hope: { kind: 'duality', die: 'd12', term: '1d6', up: 'Adv', down: 'Dis', upHint: 'AdvD6Hint', downHint: 'DisD6Hint' },
   // Draw Steel: an edge is +2 and a bane -2 on the power roll (double ones move the tier instead)
   edge: { kind: 'add', die: 'd10', term: '2', up: 'Edge', down: 'Bane', upHint: 'EdgeHint', downHint: 'BaneHint' },
 };
@@ -128,7 +130,7 @@ const helperNow = () => trayFor().helper;
  */
 export function chatFormula({ counts = {}, modifier = 0, adv = 0 } = {}, helper = helperNow()) {
   if (!adv || !helper) return formulaFromCounts(counts, modifier);
-  if (helper.kind === 'add') {
+  if (helper.kind === 'add' || helper.kind === 'duality') {
     const f = formulaFromCounts(counts, modifier);
     return f && `${f} ${adv > 0 ? '+' : '-'} ${helper.term}`;
   }
@@ -152,6 +154,43 @@ export function toggleAdv(state, dir, helper = helperNow()) {
   if (adv && n < 2) m = 2;
   else if (!adv && n === 2) m = 1;
   return { ...state, adv, counts: { ...state.counts, [die]: m } };
+}
+
+/**
+ * Daggerheart's own Duality roll pipeline (the one its [[/dr]] button uses): MoveContext builds the
+ * roll config, DualityRoll.build opens the system's roll dialog, rolls Hope and Fear and posts the
+ * card. Null when the system does not offer it.
+ */
+function dualityApi() {
+  const Move = globalThis.game?.system?.api?.data?.actions?.MoveContext;
+  const Duality = globalThis.CONFIG?.Dice?.daggerheart?.DualityRoll;
+  return typeof Move?.build === 'function' && typeof Duality?.build === 'function' ? { Move, Duality } : null;
+}
+
+/**
+ * The selection is a Duality roll: the system has one (a duality helper and its API) and the
+ * selection is empty or exactly two d12.
+ */
+export function isDuality(st, helper = helperNow()) {
+  if (helper?.kind !== 'duality' || !dualityApi()) return false;
+  const d12 = countOf(st.counts?.d12);
+  return (d12 === 0 || d12 === 2) && TRAY_DICE.every((k) => k === 'd12' || !countOf(st.counts?.[k]));
+}
+
+/**
+ * Rolls Daggerheart's Duality roll with the tray's advantage (-1, 0, 1: the system's advantage
+ * states). The tray modifier is not carried: the system's dialog adds traits and experiences.
+ * True once handed to the system.
+ */
+export async function rollDuality(adv = 0) {
+  const api = dualityApi();
+  if (!api) return false;
+  const config = await api.Move.build({
+    roll: { type: 'trait', trait: null, difficulty: undefined, advantage: adv || undefined },
+    skips: { resources: false, triggers: false },
+  });
+  await api.Duality.build(config);
+  return true;
 }
 
 /** Shown: the client setting on and the Dice Tray module not active. Never throws. */
@@ -335,14 +374,18 @@ function paint({ syncModifier = true } = {}) {
   }
   const formula = chatFormula(state);
   const roll = dockEl.querySelector('[data-act="roll"]');
-  roll.disabled = !formulaFromCounts(state.counts, 0);
-  roll.querySelector('.dicer-chat-tray-formula').textContent =
-    formula || loc('DICER.ChatTray.Roll');
+  const duality = isDuality(state);
+  roll.disabled = !duality && !formulaFromCounts(state.counts, 0);
+  roll.querySelector('.dicer-chat-tray-formula').textContent = duality
+    ? loc(state.adv > 0 ? 'DICER.ChatTray.DualityAdv' : state.adv < 0 ? 'DICER.ChatTray.DualityDis' : 'DICER.ChatTray.Duality')
+    : formula || loc('DICER.ChatTray.Roll');
   const mod = dockEl.querySelector('.dicer-chat-tray-mod input');
   if (syncModifier && mod) mod.value = String(modOf(state.modifier));
   const throwing = canThrow();
   dockEl.classList.toggle('can-throw', throwing);
-  roll.dataset.tooltip = loc(throwing ? 'DICER.ChatTray.RollThrowHint' : 'DICER.ChatTray.RollHint');
+  roll.dataset.tooltip = loc(
+    duality ? 'DICER.ChatTray.DualityHint' : throwing ? 'DICER.ChatTray.RollThrowHint' : 'DICER.ChatTray.RollHint',
+  );
 }
 
 /** Tints the die buttons as this user's dice look (CSS vars; none: the plain style). */
@@ -363,6 +406,18 @@ const clear = () => (state = { ...state, counts: {}, modifier: 0, adv: 0 });
 
 /** Posts the formula as a normal Foundry roll (Dicer animates it as any roll). */
 async function roll() {
+  if (isDuality(state)) {
+    const adv = state.adv;
+    clear();
+    paint();
+    try {
+      if (await rollDuality(adv)) return;
+    } catch (err) {
+      console.warn('dicer: the chat dice tray could not roll duality', err);
+      globalThis.ui?.notifications?.warn(loc('DICER.Tray.Failed'));
+    }
+    return;
+  }
   const formula = chatFormula(state);
   if (!formulaFromCounts(state.counts, 0)) return;
   const mode = modeOf();
