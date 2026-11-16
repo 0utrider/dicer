@@ -597,6 +597,34 @@ describe('dragging a pet in the layer', () => {
     expect(g.position.z).toBeGreaterThan(0);
   });
 
+  test("a placed pet watches its owner's next roll from its spot: it never leaves it", () => {
+    const saved = {};
+    const m = make({}, { setSetting: (k, v) => ((saved[k] = v), Promise.resolve()) });
+    rollToRest(m);
+    dragAlong(m.win, screenOf(group(m)), [{ x: 700, y: 300 }, { x: 300, y: 250 }]);
+    expect(runTo(m, clockNow + 1500)).toBe('rest');
+    const g = group(m);
+    const home = { x: g.position.x, z: g.position.z };
+    const key = `k-again-${clockNow}`;
+    const area = { cx: 0, cz: 0, halfWidth: STAGE.halfWidth, halfDepth: STAGE.halfDepth };
+    m.layer.begin(key, { spec: spec('u1'), edge: 0, area, centre: () => ({ x: 0, z: 0 }) });
+    let far = 0;
+    const track = (ms) => {
+      while (clockNow < ms) {
+        m.layer.update((clockNow += 16));
+        far = Math.max(far, Math.hypot(g.position.x - home.x, g.position.z - home.z));
+      }
+    };
+    track(clockNow + 400);
+    m.layer.landed(key, [{ type: 'd20', value: 12 }]);
+    track(clockNow + 2500);
+    m.layer.leave(key, 0);
+    m.layer.end(key);
+    track(clockNow + 1500);
+    expect(far).toBeLessThan(0.05);
+    expect(g.position.x).toBeCloseTo(home.x, 6);
+  });
+
   test('a pet mid-hop, or any while a roll flies, is not picked up', () => {
     const m = make({ petRestSpot: 'dice' }, { setSetting: vi.fn(), activeRolls: () => 1 });
     rollToRest(m);

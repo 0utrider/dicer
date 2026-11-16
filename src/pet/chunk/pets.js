@@ -881,10 +881,12 @@ export function createPetLayer(deps) {
     return null;
   }
   /**
-   * Where a pet watches its owner's roll from: not its corner (it hops out to the roll area), but
-   * the thrower's spot a hand replay put it on (alignFor).
+   * Where a pet watches its owner's roll from: where it rests, a placed spot included (the player
+   * put it there), but not a 0.2 corner nothing could save as one (it hops out to the roll area);
+   * a hand replay's pet from the thrower's spot it was put on (alignFor).
    */
-  const watchSpot = (pet) => (pet?.cornered && !pet.aligned ? null : restingSpot(pet));
+  const watchSpot = (pet) =>
+    pet?.cornered && !pet.aligned && !String(pet.restChoice).startsWith('placed') ? null : restingSpot(pet);
   const restOf = (pet, now) => {
     pet.aligned = false;
     pet.huff = null; // a new spot: no going back to the one it huffed away from
@@ -976,8 +978,8 @@ export function createPetLayer(deps) {
     // resting is on: the pet watches from where it rests (a first appearance hops straight to a new
     // rest spot, the one obstaclesFor sent the physics); otherwise it takes the edge spot.
     // A hand replay's pet that alignFor placed at the thrower's spot watches from it (petStay 0 too).
-    // One resting at a corner or edge spot (petRestSpot) hops out to the roll area to watch, and
-    // back to its slot afterwards.
+    // One resting at a placed spot watches from there; one at a 0.2 corner nothing could save as a
+    // placed spot hops out to the roll area to watch, and back to its slot afterwards.
     const rest = stays()
       ? (watchSpot(pet) ?? newSpot(spec.userId, area, pet.creature.height, null, false))
       : hand && pet.aligned
