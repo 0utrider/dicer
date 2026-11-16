@@ -9,7 +9,8 @@ const EVENTS = ['pointerdown', 'pointerup', 'click'];
 
 /**
  * Capture-phase pointerdown, pointerup and click listeners on `win`. A left-button pointerdown
- * that `pickPet(clientX, clientY)` says hits a resting pet (null: none) is the pet's: onPet(pet),
+ * that `pickPet(clientX, clientY, target)` says hits a resting pet (null: none; it also says null
+ * when `target`, the element clicked, is not the table but a window over it) is the pet's: onPet(pet),
  * or onHuff(pet) on its HUFF_HITS-th hit within HUFF_WINDOW_MS (then that pet's clicks are ignored
  * for HUFF_IGNORE_MS), and that pointerdown and the pointerup and click after it are stopped
  * (preventDefault + stopImmediatePropagation), so Foundry neither selects nor drags. Everything
@@ -37,7 +38,7 @@ export function createPetting({ win, pickPet, onPet, onHuff, now = () => perform
     if (e.button !== 0 || !on()) return;
     let pet = null;
     try {
-      pet = pickPet(e.clientX, e.clientY);
+      pet = pickPet(e.clientX, e.clientY, e.target);
     } catch {
       /* no pet: the click is Foundry's */
     }

@@ -84,6 +84,9 @@ export const PET_MS = 900;
 export const HUFF_MS = 600;
 const HUFF_HOP = 1; // of the height: how far a huffy pet hops off, toward the middle of the table
 export const PICK_MARGIN = 0.15; // of the height: added to the footprint for a click's hit area
+// The table under the pets: Foundry's board canvas, and Dicer's canvas and layer (pointer-events
+// none today, listed in case). A click on anything else (a window, a menu, the hand overlay) is not a pet's.
+const TABLE_IDS = ['board', 'dicer-canvas', 'dicer-layer'];
 const HEARTS = 5; // of the sparkle's SPARKS points (reduced motion: 3)
 const PUFFS = 6;
 const PINK = [1, 0.4, 0.6];
@@ -241,7 +244,7 @@ export function createPetLayer(deps) {
   };
 
   /** Writes the burst at s (0..1) in the pet's own space, anchored to the ground while it jumps. */
-  function burst(pts, s, h, hop) {
+  function burst(pts, s, h, hop, calm) {
     const pos = pts.geometry.attributes.position;
     const col = pts.geometry.attributes.color;
     const P = pos.array;
@@ -255,7 +258,7 @@ export function createPetLayer(deps) {
       P[k] = Math.sin(sp.a) * r;
       P[k + 1] = h * (0.55 + sp.rise * grow) - 0.5 * h * s * s;
       P[k + 2] = Math.cos(sp.a) * r;
-      const b = Math.min(1, fade * (0.6 + 0.4 * Math.sin(s * 22 + sp.ph))); // twinkle, clamped
+      const b = Math.min(1, fade * (calm ? 0.8 : 0.6 + 0.4 * Math.sin(s * 22 + sp.ph))); // twinkle (none when calm), clamped
       C[k] = sp.c[0] * b;
       C[k + 1] = sp.c[1] * b;
       C[k + 2] = sp.c[2] * b;
@@ -914,7 +917,9 @@ export function createPetLayer(deps) {
     const pet = petOf(key);
     const roll = pet?.rolls.get(key);
     if (!roll || roll.summary) {
-      if (roller) cheer(dice, roller, null);
+      // no pet for this roll (no room, or an unknown kind): the others still cheer and react to its
+      // dice, once (a second landed of the same key finds its roller gone)
+      if (roller) elemental(dice, cheer(dice, roller, null));
       return;
     }
     roll.summary = summarize(dice, roll.ghost); // a ghost roll only ever says 'plain'
@@ -1092,7 +1097,7 @@ export function createPetLayer(deps) {
     pet.sparkle.visible = s < 1;
     if (s < 1) {
       pet.sparkle.material = sparkMat; // petting may have lent the points its hearts
-      burst(pet.sparkle, s, h, hop);
+      burst(pet.sparkle, s, h, hop, calmNow()); // reduced motion: a steady burst, no twinkle
     }
     if (phase === 'react' && !pet.soundDone) {
       pet.soundDone = true;
@@ -1121,10 +1126,13 @@ export function createPetLayer(deps) {
    * scene units at PET_HEIGHT, scaled by its height) plus PICK_MARGIN x height, around the point
    * under its middle (half its height up, as the top-down camera sees it), in page px. The nearest
    * wins. Only a shown pet settled at its spot: not hopping, throwing, down, wobbling or huffing.
+   * Only a click on the table itself (`target`: Foundry's board, or Dicer's canvas or layer), never
+   * one on a window, menu or the hand-throw overlay above a pet; and none while dice are held
+   * (the overlay grabs them).
    */
-  function pickPet(x, y) {
+  function pickPet(x, y, target) {
     const map = pageMap();
-    if (!map || disposed || !shown()) return null;
+    if (!map || disposed || !shown() || !TABLE_IDS.includes(target?.id) || holding()) return null;
     const camH = stage.halfDepth / TAN_HALF_FOV; // the camera's height above the table
     let best = null;
     let bestD = Infinity;
@@ -1142,10 +1150,16 @@ export function createPetLayer(deps) {
     }
     return best;
   }
+  /** Ends whatever a clicked pet was doing (smoke, frost, a cheer's turn) before petting starts. */
+  function stopAnim(pet) {
+    if (pet.anim?.kind === 'cheer') pet.yaw = pet.anim.yaw; // faces where it faced before the cheer
+    dropAnim(pet);
+  }
   /** A click on a resting pet: the happy wiggle, hearts and a chirp; the loop runs only for them. */
   function petPet(pet) {
     if (disposed || pet.state !== 'rest') return;
     const now = clock();
+    stopAnim(pet);
     pet.anim = { kind: 'pet', at: now, calm: calmNow() };
     pet.idleAt = now; // a pet being petted does not wander off
     try {
@@ -1163,6 +1177,7 @@ export function createPetLayer(deps) {
     if (disposed || pet.state !== 'rest') return;
     const now = clock();
     const home = spotOf(pet);
+    stopAnim(pet);
     pet.anim = { kind: 'huff', at: now, calm: calmNow() };
     pet.huff = { home: { x: home.x, z: home.z }, yaw: pet.yaw, backAt: now + HUFF_IGNORE_MS };
     pet.idleAt = now;

@@ -114,7 +114,7 @@
       },
       "petElemental": {
         "Name": "Pet reactions to elemental dice",
-        "Hint": "Pets react to dice of an elemental damage type."
+        "Hint": "Resting pets react to dice that land next to them: fire and lava make them fan away smoke, frost makes them shiver, storm makes them bristle, and every other element or damage type (slashing, piercing and bludgeoning included) makes them jump."
       },
       "petMoods": {
         "Name": "Pet moods",

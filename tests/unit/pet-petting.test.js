@@ -7,10 +7,17 @@ import { KIND_FOOTPRINT } from '../../src/pet/chunk/resting.js';
 import { REST_HOP_MS } from '../../src/pet/chunk/timeline.js';
 import { createMoods } from '../../src/pet/chunk/moods.js';
 
-/** A pointer event: cancelable, with a button and page coordinates. */
-const ev = (type, x = 0, y = 0, button = 0) => {
+/** The element a click lands on: Foundry's board canvas (the open table) unless said otherwise. */
+const BOARD = { id: 'board' };
+/** A pointer event: cancelable, with a button, page coordinates and the element it lands on. */
+const ev = (type, x = 0, y = 0, button = 0, target = BOARD) => {
   const e = new Event(type, { cancelable: true });
-  Object.defineProperties(e, { button: { value: button }, clientX: { value: x }, clientY: { value: y } });
+  Object.defineProperties(e, {
+    button: { value: button },
+    clientX: { value: x },
+    clientY: { value: y },
+    target: { value: target },
+  });
   return e;
 };
 /** Foundry's side: a listener added after Dicer's, which sees only what Dicer lets through. */
@@ -20,8 +27,8 @@ const foundry = (win) => {
   return got;
 };
 /** A full left click at (x, y): pointerdown, pointerup, click. */
-const clickAt = (win, x, y, button = 0) => {
-  const es = [ev('pointerdown', x, y, button), ev('pointerup', x, y, button), ev('click', x, y, button)];
+const clickAt = (win, x, y, button = 0, target = BOARD) => {
+  const es = ['pointerdown', 'pointerup', 'click'].map((t) => ev(t, x, y, button, target));
   for (const e of es) win.dispatchEvent(e);
   return es;
 };
@@ -244,6 +251,83 @@ describe('petting a pet in the layer', () => {
     m.settings.showPets = false;
     m.layer.update((clockNow += 16)); // the setting's onChange wakes the loop
     expect(remove).toHaveBeenCalledTimes(3);
+    const got = foundry(m.win);
+    const es = clickAt(m.win, screenOf(group(m)).x, screenOf(group(m)).y);
+    expect(got).toEqual(['pointerdown:false', 'pointerup:false', 'click:false']);
+    expect(es.some((e) => e.defaultPrevented)).toBe(false);
+    expect(m.deps.playSound).not.toHaveBeenCalled();
+  });
+
+  test('a window, sheet or menu over a resting pet gets its clicks: nothing is intercepted', () => {
+    const m = make();
+    rollToRest(m);
+    const got = foundry(m.win);
+    const at = screenOf(group(m));
+    // a button in an application window (z-index 100+, above the dice canvas), the context menu,
+    // the hand-throw overlay, and a click with no element at all
+    for (const target of [{ id: '', className: 'button' }, { id: 'context-menu' }, { id: '', className: 'dicer-hand-overlay' }, null])
+      clickAt(m.win, at.x, at.y, 0, target);
+    expect(got).toHaveLength(12);
+    expect(got.every((s) => s.endsWith(':false'))).toBe(true);
+    expect(m.deps.playSound).not.toHaveBeenCalled();
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    // Dicer's own canvas or layer count as the table
+    for (const id of ['dicer-canvas', 'dicer-layer']) clickAt(m.win, at.x, at.y, 0, { id });
+    expect(got).toHaveLength(12);
+  });
+
+  test('while dice are held for a hand throw, a pointerdown over a pet reaches the overlay', () => {
+    let held = true;
+    const m = make({}, { holding: () => held });
+    held = false;
+    rollToRest(m);
+    held = true;
+    const got = foundry(m.win);
+    const at = screenOf(group(m));
+    clickAt(m.win, at.x, at.y);
+    expect(got).toEqual(['pointerdown:false', 'pointerup:false', 'click:false']);
+    held = false;
+    clickAt(m.win, at.x, at.y);
+    expect(got).toHaveLength(3); // the same click, dice let go: the pet's
+  });
+
+  test('petting a pet mid-scorch or mid-shiver ends the smoke and the frost tint at once', () => {
+    for (const damageType of ['fire', 'cold']) {
+      const m = make();
+      rollToRest(m);
+      const g = group(m);
+      const colours = [];
+      g.traverse((o) => o.isMesh && colours.push(o.material.color.getHex()));
+      m.layer.landed(null, [{ type: 'd6', value: 3, x: g.position.x, z: g.position.z, damageType }]);
+      runTo(m, clockNow + 200); // mid-reaction: smoke up, or the tint on
+      expect(g.userData.dicerPet.phase).toBe(damageType === 'fire' ? 'scorch' : 'shiver');
+      const at = screenOf(g);
+      clickAt(m.win, at.x, at.y);
+      m.layer.update((clockNow += 16));
+      expect(g.userData.dicerPet.phase).toBe('pet');
+      const smoke = g.children.find((c) => c.name === 'petSmoke');
+      expect(smoke?.visible ?? false).toBe(false);
+      const now = [];
+      g.traverse((o) => o.isMesh && now.push(o.material.color.getHex()));
+      expect(now).toEqual(colours);
+    }
+  });
+
+  test('petting a pet mid-cheer turns it back to where it faced', () => {
+    const m = make();
+    rollToRest(m);
+    const g = group(m);
+    const yaw = g.rotation.y;
+    // someone with no pet rolls a natural 20 up the table: u1's pet turns to cheer
+    m.layer.landed(null, [{ type: 'd20', value: 20, x: g.position.x, z: g.position.z - 5 }]); // straight up the screen
+    runTo(m, clockNow + 300);
+    expect(g.userData.dicerPet.phase).toBe('cheer');
+    expect(Math.abs(Math.cos(g.rotation.y - yaw) - 1)).toBeGreaterThan(1e-3);
+    const at = screenOf(g);
+    clickAt(m.win, at.x, at.y);
+    m.layer.update((clockNow += 16));
+    expect(g.userData.dicerPet.phase).toBe('pet');
+    expect(Math.cos(g.rotation.y - yaw)).toBeCloseTo(1, 6);
   });
 
   test('dispose() removes the click listeners', () => {

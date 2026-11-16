@@ -363,6 +363,7 @@ describe('reactions in the layer', () => {
           button: { value: 0 },
           clientX: { value: x },
           clientY: { value: y },
+          target: { value: { id: 'board' } }, // on the open table
         });
         m.win.dispatchEvent(e);
       }
@@ -491,3 +492,43 @@ describe.each(['mimic', 'slime', 'dragonling'])(
     });
   },
 );
+
+// ---- final-review fix wave ----
+test('a roll whose pet has no room (an unknown kind) still sets off the resting pets, once', () => {
+  const m = make();
+  rollToRest(m);
+  const g = group(m);
+  m.layer.begin('nopet', { spec: { userId: 'u9', kind: 'unicorn', color: '#fff' }, edge: 0, area: AREA, centre: () => ({ x: 0, z: 0 }) });
+  m.deps.wake.mockClear();
+  const dice = [{ type: 'd6', value: 3, x: g.position.x + DIE_WIDTH, z: g.position.z, damageType: 'fire' }];
+  m.layer.landed('nopet', dice);
+  expect(m.deps.wake).toHaveBeenCalled();
+  m.layer.update((clockNow += 16));
+  expect(phase(m)).toBe('scorch');
+  runTo(m, clockNow + SCORCH_MS + 100);
+  expect(m.layer.update((clockNow += 16))).toBe('rest');
+  m.deps.wake.mockClear();
+  m.layer.landed('nopet', dice); // the same roll again: no second reaction
+  expect(m.deps.wake).not.toHaveBeenCalled();
+});
+
+test("reduced motion: the roller's own natural 20 sparkle fades steadily, with no twinkle", () => {
+  const brightness = (calm) => {
+    const m = make({}, { reducedMotion: () => calm });
+    m.layer.begin('k', { spec: spec(), edge: 0, area: AREA, centre: () => ({ x: 0, z: 0 }) });
+    runTo(m, clockNow + 700);
+    m.layer.landed('k', [{ type: 'd20', value: 20 }]);
+    const pts = group(m).children.find((c) => c.name === 'petSparkle');
+    const out = [];
+    for (let i = 0; i < 60; i++) {
+      m.layer.update((clockNow += 16));
+      if (pts.visible) out.push(pts.geometry.attributes.color.array[1]);
+    }
+    return out;
+  };
+  const rises = (xs) => xs.slice(1).some((v, i) => v > xs[i] + 1e-6);
+  const calm = brightness(true);
+  expect(calm.length).toBeGreaterThan(10);
+  expect(rises(calm)).toBe(false);
+  expect(rises(brightness(false))).toBe(true); // the full burst twinkles
+});
