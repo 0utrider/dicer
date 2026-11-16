@@ -46,6 +46,15 @@ describe('build', () => {
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
     const hand = lazy.find((p) => /^dist\/hand-[A-Za-z0-9_-]{8}\.js$/.test(p)); // rolling by hand (src/hand/hand.js)
     const jb2a = lazy.find((p) => /^dist\/jb2a-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the JB2A player (src/jb2a/jb2a.js)
+    const chatTray = lazy.find((p) => /^dist\/chat-tray-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the chat dice tray (src/ui/chat-tray.js)
+    const trayDice = lazy.find((p) => /^dist\/tray-dice-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the tray core, shared by the hand and chat-tray chunks
+    expect(chatTray).toBeTruthy();
+    expect(trayDice).toBeTruthy();
+    // docked lazily on the first chat render: dicer.js only names the chunk, never its code or the hand chunk's
+    expect(readFileSync(chatTray, 'utf8')).toContain('dicer-chat-tray');
+    expect(readFileSync(chatTray, 'utf8')).not.toContain('dicer-hand-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-chat-tray');
+    expect(readFileSync('dist/dicer.js', 'utf8')).toContain(chatTray.slice('dist/'.length));
     expect(jb2a).toBeTruthy();
     expect(readFileSync(jb2a, 'utf8')).toContain('Library/Generic');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Library/Generic');
@@ -139,6 +148,8 @@ describe('build', () => {
         threePoints,
         hand,
         jb2a,
+        chatTray,
+        trayDice,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),

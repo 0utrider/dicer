@@ -475,6 +475,10 @@ Hooks.on('getSceneControlButtons', (c) => {
   }
 });
 
+// The chat dice tray: its lazy chunk docks it under the chat input, or not (chatTray, Dice Tray).
+const dockChat = (e) => dormant || import('./ui/chat-tray.js').then((m) => m.dock(e, loadHand));
+for (const h of ['renderChatInput', 'renderChatLog']) Hooks.on(h, (a, e) => dockChat(e));
+
 Hooks.once('init', () => {
   if (dsnIsActive(game)) {
     dormant = true;

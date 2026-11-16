@@ -1678,3 +1678,156 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
     display: none;
   }
 }
+
+/* Chat dice tray (src/ui/chat-tray.js): a compact strip under the chat input. Each die wears the
+   player's dice look as --dicer-ct-body / --dicer-ct-num (unset: the plain style). */
+.dicer-chat-tray {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 3px 0 0;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-chat-tray-dice {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 2px;
+}
+.dicer-chat-tray button {
+  margin: 0;
+  min-height: 0;
+  line-height: 1;
+}
+.dicer-chat-tray-die {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  height: auto;
+  padding: 2px 0 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: none;
+}
+.dicer-chat-tray.can-throw .dicer-chat-tray-die,
+.dicer-chat-tray.can-throw .dicer-chat-tray-roll {
+  cursor: grab;
+}
+.dicer-chat-tray.is-dragging,
+.dicer-chat-tray.is-dragging * {
+  cursor: grabbing;
+}
+.dicer-chat-tray-die svg {
+  width: 20px;
+  height: 20px;
+  fill: var(--dicer-ct-body, rgba(255, 255, 255, 0.06));
+  stroke: var(--dicer-ct-num, currentColor);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.dicer-chat-tray-name {
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.dicer-chat-tray-die.has-dice {
+  border-color: var(--color-warm-2, #ff6400);
+  box-shadow: 0 0 0 1px var(--color-warm-2, #ff6400) inset;
+}
+.dicer-chat-tray-count {
+  position: absolute;
+  top: -4px;
+  right: -2px;
+  min-width: 14px;
+  padding: 1px 3px;
+  border-radius: 7px;
+  background: var(--color-warm-2, #ff6400);
+  color: #fff;
+  font-size: 0.8em;
+  font-weight: 700;
+  pointer-events: none;
+}
+.dicer-chat-tray-count:empty {
+  display: none;
+}
+.dicer-chat-tray-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dicer-chat-tray-bar > * {
+  height: 24px;
+}
+.dicer-chat-tray-mode {
+  flex: 0 1 30%;
+  min-width: 0;
+  height: 24px;
+  padding: 0 2px;
+  font-size: inherit;
+}
+.dicer-chat-tray-mod {
+  display: flex;
+  flex: 0 0 auto;
+}
+.dicer-chat-tray-mod button {
+  width: 18px;
+  padding: 0;
+}
+.dicer-chat-tray-mod input {
+  width: 34px;
+  height: 24px;
+  padding: 0;
+  text-align: center;
+  font-size: inherit;
+}
+.dicer-chat-tray-adv {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  font-size: 0.9em;
+}
+.dicer-chat-tray-adv[aria-pressed='true'] {
+  background: var(--color-warm-2, #ff6400);
+  color: #fff;
+}
+.dicer-chat-tray-bar [data-act='clear'] {
+  flex: 0 0 22px;
+  padding: 0;
+}
+.dicer-chat-tray-roll {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px;
+  touch-action: none;
+}
+.dicer-chat-tray-formula {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dicer-chat-tray-roll:disabled {
+  opacity: 0.5;
+}
+.dicer-chat-tray-menu {
+  position: absolute;
+  bottom: 100%;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 5px;
+  background: var(--color-cool-5, #1c1c24);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.dicer-chat-tray-menu [data-adv] {
+  grid-column: 1 / -1;
+}
+.dicer-chat-tray-menu button {
+  padding: 3px 6px;
+  white-space: nowrap;
+}

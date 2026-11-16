@@ -610,6 +610,7 @@ export function registerSettings({
     ['handLiveShare', 'world', Boolean, true], // a hand throw reaches the others as it flies
     ['elementalDamageInsides', 'world', Boolean, true], // fire, cold and electricity dice get elemental insides
     ['diceTray', 'client', Boolean, true, { onChange: resetControls }], // its tool
+    ['chatTray', 'client', Boolean, true], // its chunk follows it (clientSettingChanged)
   ];
   hand.forEach(([key, scope, type, def, more], i) =>
     register(key, {
