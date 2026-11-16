@@ -52,7 +52,8 @@ describe('module dice entries', () => {
     const [fire, black, marble] = entries;
     expect(fire).toMatchObject({ kind: 'colorset', key: 'pf2e-fire-red', name: 'Fire Red', category: 'PF2e', source: 'module' });
     expect(fire.appearance).toEqual(colorsetNameToAppearance('pf2e-fire-red', registry));
-    expect(fire.dropped.map((d) => d.kind)).toEqual(['texture', 'font']);
+    expect(fire.dropped.map((d) => d.kind)).toEqual(['texture']); // no image for 'flames'; the font maps (css:Eczar)
+    expect(fire.appearance.numbers.font).toBe('css:Eczar');
     expect(black).toMatchObject({ name: 'trs-black', category: 'TRS', dropped: [] }); // marble maps to a body
     expect(marble).toMatchObject({ kind: 'system', key: 'trs-marble', name: 'TRS Black Marble', category: 'TRS dice' });
     expect(marble.appearance).toEqual(colorsetNameToAppearance('trs-black', registry)); // the d20 preset's colours

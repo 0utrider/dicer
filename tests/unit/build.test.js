@@ -243,9 +243,11 @@ describe('build', () => {
     // pet interactions: owner raised it by 300 B for the five pet settings, then by 191 B when
     // merged with the tester-request batch: +491 B (6,214 -> 6,705).
     // Body images (appearance.bodyImage): owner approved +1,490 B (6,705 -> 8,195), 2026-11-16.
+    // Dice So Nice texture images and fonts from module colorsets: owner approved +513 B
+    // (8,195 -> 8,708), 2026-11-16.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(8_195);
+    expect(growth).toBeLessThanOrEqual(8_708);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

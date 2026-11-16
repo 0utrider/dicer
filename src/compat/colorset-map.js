@@ -38,9 +38,9 @@ const MATERIALS = {
 const PLASTIC = { type: 'opaque', roughness: 0.35 };
 
 /**
- * Texture ruling: only the texture's name/id matters. marble/stone gives a marble body,
- * metal/bronze gives an antique metal body. Every other texture is ignored (Dicer draws
- * no bitmap textures from third-party colorsets).
+ * Texture ruling: a texture with an image file (a module's addTexture source) is drawn as the
+ * body image (textureImage); otherwise only the texture's name/id matters: marble/stone gives a
+ * marble body, metal/bronze gives an antique metal body, anything else is ignored.
  */
 function textureBody(texture, textures) {
   const id = typeof texture === 'string' ? texture : texture && typeof texture === 'object' ? texture.id ?? texture.name : null;
@@ -52,12 +52,28 @@ function textureBody(texture, textures) {
   return null;
 }
 
+/**
+ * A colorset texture with an image file, as a body image on every face (Dice So Nice lays its
+ * texture on each face): source-over draws it over the colour as it is, multiply tints it with
+ * the colour, any other composite tints it at half strength. Null without an image file.
+ */
+function textureImage(texture, textures) {
+  const id = typeof texture === 'string' ? texture : texture && typeof texture === 'object' ? texture.id ?? texture.name : null;
+  const entry = (typeof id === 'string' && textures instanceof Map ? textures.get(id) : null) ?? (typeof texture === 'object' ? texture : null);
+  const src = typeof entry?.source === 'string' ? entry.source : null;
+  if (!src) return null;
+  const composite = typeof entry.composite === 'string' ? entry.composite : 'source-over';
+  const over = composite === 'source-over';
+  return { src, mode: 'face', tint: !over, blend: over || composite === 'multiply' ? 1 : 0.5 };
+}
+
 export function colorsetToAppearance(colorset, { textures, index = 0 } = {}) {
   const cs = colorset && typeof colorset === 'object' ? colorset : {};
   const hex = (v) => cssToHex(pickAt(v, index), null) ?? undefined;
   const material = typeof cs.material === 'string' ? cs.material.toLowerCase() : '';
   const spec = { ...(Object.hasOwn(MATERIALS, material) ? MATERIALS[material] : PLASTIC) };
-  Object.assign(spec, textureBody(cs.texture, textures) ?? {});
+  const image = textureImage(cs.texture, textures);
+  if (!image) Object.assign(spec, textureBody(cs.texture, textures) ?? {});
 
   const fg = hex(cs.foreground);
   const body = { type: spec.type, color: hex(cs.background), color2: hex(cs.edge) ?? hex(cs.outline) };
@@ -68,7 +84,11 @@ export function colorsetToAppearance(colorset, { textures, index = 0 } = {}) {
     body,
     numbers: { fill: metallic && fg && isYellowish(fg) ? 'gold' : 'paint', color: fg },
   };
+  // The colorset's font, as a page font (normalizeAppearance keeps a valid family; one the page
+  // never loaded draws in the serif, as any missing css font does).
+  if (typeof cs.font === 'string' && cs.font.trim() && cs.font !== 'auto') input.numbers.font = `css:${cs.font.trim()}`;
   if (spec.interior) input.interior = { type: spec.interior };
+  if (image) input.bodyImage = image; // normalizeAppearance drops a path it does not accept
   const glowColor = cssToHex(cs.emissive, null);
   if (glowColor) {
     const raw = typeof cs.emissiveIntensity === 'number' && Number.isFinite(cs.emissiveIntensity) ? cs.emissiveIntensity : 1;

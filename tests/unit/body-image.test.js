@@ -5,7 +5,8 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { normalizeAppearance, appearanceKey, needsLookExtras, fallbackLook } from '../../src/look/appearance.js';
-import { bodyImagePatch, createBodyImages } from '../../src/render/extras/body-image.js';
+import { bodyImagePatch, createBodyImages, faceFit, FACE_FIT } from '../../src/render/extras/body-image.js';
+import { colorsetToAppearance } from '../../src/compat/colorset-map.js';
 import { patchMaterial } from '../../src/render/extras/look-extras.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
@@ -108,5 +109,54 @@ describe('createDiceMaterial with a body image', () => {
     const withTex = createDiceMaterial(a, atlas, shape, labels, FLAGS, null, { texture: new THREE.Texture() });
     expect(withTex.defines.DICER_BODY_IMAGE).toBe('');
     expect(withTex.userData.programKey).toBe(`${plain.userData.programKey}|bi1`);
+  });
+});
+
+describe('each face: laid out as Dice So Nice lays a texture on a face', () => {
+  const deg = (r) => Math.round((r * 180) / Math.PI);
+
+  test('the measured fit per die type; the d6 art turns to sit square, the d10 keeps its sharp pole up', () => {
+    for (const t of ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+      const { fit } = faceFit(getShape(t));
+      expect([fit.x, fit.y, fit.z]).toEqual([FACE_FIT[t][0], 0.5, FACE_FIT[t][1]]);
+    }
+    const d6 = Array.from(faceFit(getShape('d6')).rot).slice(0, 6).map(deg);
+    for (const a of d6) expect(Math.abs(a)).toBe(45);
+    for (const t of ['d8', 'd10', 'd12', 'd20']) expect(Array.from(faceFit(getShape(t)).rot).every((r) => Math.abs(r) < 1e-6)).toBe(true);
+  });
+
+  test('another shape fits the face’s outer circle, centred; the face uniforms reach the patch', () => {
+    const { fit } = faceFit(getShape('d4crystal'));
+    expect(fit.y).toBe(0.5);
+    expect(fit.z).toBe(0.5);
+    expect(fit.x).toBeGreaterThan(0);
+    expect(fit.x).toBeLessThan(0.5);
+    const a = normalizeAppearance({ bodyImage: { src: 'a.png', mode: 'face' } });
+    const p = bodyImagePatch(a, { bodyTex: { texture: new THREE.Texture() }, shape: getShape('d20') });
+    expect(p.uniforms.uBodyImageFit.value.x).toBe(FACE_FIT.d20[0]);
+    expect(p.uniforms.uBodyImageRot.value).toHaveLength(20);
+  });
+});
+
+describe('Dice So Nice colorset textures', () => {
+  const textures = new Map([
+    ['art', { id: 'art', name: 'Art', composite: 'source-over', source: 'modules/m/assets/d20.webp' }],
+    ['tinted', { id: 'tinted', name: 'Tinted', composite: 'multiply', source: 'modules/m/t.png' }],
+    ['soft', { id: 'soft', name: 'Soft', composite: 'soft-light', source: 'modules/m/s.png' }],
+  ]);
+
+  test('a texture image becomes an each-face body image; the composite sets tint and strength', () => {
+    const a = colorsetToAppearance({ background: '#272727', foreground: '#fffec8', texture: 'art', material: 'plastic' }, { textures });
+    expect(a.bodyImage).toEqual({ src: 'modules/m/assets/d20.webp', mode: 'face', scale: 1, rotation: 0, blend: 1, tint: false });
+    expect(colorsetToAppearance({ texture: 'tinted' }, { textures }).bodyImage).toMatchObject({ tint: true, blend: 1 });
+    expect(colorsetToAppearance({ texture: 'soft' }, { textures }).bodyImage).toMatchObject({ tint: true, blend: 0.5 });
+  });
+
+  test('a named texture without an image keeps the old ruling; the font becomes a page font', () => {
+    const a = colorsetToAppearance({ texture: 'stone', font: 'Grenze' }, { textures: new Map() });
+    expect('bodyImage' in a).toBe(false);
+    expect(a.body.type).toBe('marble');
+    expect(a.numbers.font).toBe('css:Grenze');
+    expect(colorsetToAppearance({ font: 'Bad<Font>' }).numbers.font).toBe('serif');
   });
 });

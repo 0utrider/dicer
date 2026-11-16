@@ -3,18 +3,26 @@ import * as THREE from 'three';
 /**
  * Body image (look-extras chunk): a picture on the die's body (appearance.bodyImage), not on its
  * numbers. Wrap projects it from three sides of the die (die-local position, weighted sharply by
- * the face direction so slanted faces do not ghost); face puts it on every face in that face's own
- * coordinates (bevels fall back to wrap). It is mixed into the body colour after the body's own
+ * the face direction so slanted faces do not ghost); face puts it on every face the way Dice So
+ * Nice lays a texture on a face (FACE_FIT, measured from its baked dice), so a module's texture art
+ * fits the face as its author drew it (bevels fall back to wrap). It is mixed into the body colour after the body's own
  * pattern (marble veins, wood grain: colorPre) and never over the numbers (1 - dcMask). On resin
- * the body colour is the glass's absorption, so the picture shows like stained glass.
+ * the covered part is a lit print on the surface (LIGHTING): the refraction is replaced by the
+ * ordinary diffuse light of the image there, so dark glass cannot swallow the art.
  * The texture comes from bodyImages (one per url, refcounted), loaded by DiceBox and the
  * thumbnailer; a material is only patched once it is in (createDiceMaterial's bodyTex).
  */
+
+/** Most faces of any die (the d20): the per-face rotation array's length. */
+const MAX_FACES = 20;
 
 const PARS = /* glsl */ `
 uniform sampler2D uBodyImage;
 uniform vec4 uBodyImageMap; // x: 1 each face, 0 wrap; y: scale; z: rotation (rad); w: blend
 uniform float uBodyImageTint; // 1: multiplied by the body colour
+uniform vec3 uBodyImageFit; // each face: inradius in image units, face centre in the image (x right, y down)
+uniform float uBodyImageRot[ ${MAX_FACES} ]; // each face: the turn that puts its "up" (FACE_FIT) at the top
+// uv: centred image coordinates (y up); the user's rotation and scale turn and zoom about the centre
 vec4 dcBodyImageAt( vec2 uv ) {
 	float c = cos( uBodyImageMap.z );
 	float s = sin( uBodyImageMap.z );
@@ -24,10 +32,13 @@ vec4 dcBodyImageAt( vec2 uv ) {
 
 const COLOR = /* glsl */ `
 #ifdef DICER_BODY_IMAGE
+	float dcBodyPrint = 0.0; // how much of this fragment the image covers (resin: LIGHTING)
 	{
 		vec4 dcBi;
 		if ( uBodyImageMap.x > 0.5 && vFaceId > - 0.5 ) {
-			dcBi = dcBodyImageAt( vFaceUV * 0.5 ); // the inradius-1 face over the image
+			float dcBr = uBodyImageRot[ clamp( int( floor( vFaceId + 0.5 ) ), 0, ${MAX_FACES - 1} ) ];
+			vec2 dcBq = mat2( cos( dcBr ), sin( dcBr ), - sin( dcBr ), cos( dcBr ) ) * vFaceUV;
+			dcBi = dcBodyImageAt( vec2( uBodyImageFit.y - 0.5, 0.5 - uBodyImageFit.z ) + uBodyImageFit.x * dcBq );
 		} else {
 			vec3 dcBw = pow( abs( normalize( cross( dFdx( vLocalPos ), dFdy( vLocalPos ) ) ) ), vec3( 4.0 ) );
 			dcBw /= dcBw.x + dcBw.y + dcBw.z + 1e-5;
@@ -35,10 +46,74 @@ const COLOR = /* glsl */ `
 			dcBi = dcBodyImageAt( dcBp.yz ) * dcBw.x + dcBodyImageAt( dcBp.xz ) * dcBw.y + dcBodyImageAt( dcBp.xy ) * dcBw.z;
 		}
 		vec3 dcBc = uBodyImageTint > 0.5 ? dcBi.rgb * diffuseColor.rgb : dcBi.rgb;
-		diffuseColor.rgb = mix( diffuseColor.rgb, dcBc, uBodyImageMap.w * dcBi.a * ( 1.0 - dcMask ) );
+		dcBodyPrint = uBodyImageMap.w * dcBi.a * ( 1.0 - dcMask );
+		diffuseColor.rgb = mix( diffuseColor.rgb, dcBc, dcBodyPrint );
 	}
 #endif
 `;
+
+/** After the resin refraction (transmission_fragment): the covered part is lit as a surface print. */
+const LIGHTING = /* glsl */ `
+#if defined( DICER_BODY_IMAGE ) && defined( DICER_RESIN )
+	totalDiffuse = mix( totalDiffuse, reflectedLight.directDiffuse + reflectedLight.indirectDiffuse, dcBodyPrint );
+#endif
+`;
+
+/**
+ * How Dice So Nice lays a texture on one face of each die (measured from its baked dice, version
+ * 6.4.5): [inradius in image units, the face centre's y in the image (y down; x is 0.5)]. Its
+ * "up" is a vertex on triangles and pentagons, an edge on the square, the sharp pole on the d10's
+ * kite. Other shapes fit the face's outer circle in the image, centred.
+ */
+export const FACE_FIT = Object.freeze({
+  d4: [0.284, 0.567],
+  d6: [0.489, 0.5],
+  d8: [0.267, 0.537],
+  d10: [0.269, 0.626],
+  d12: [0.418, 0.521],
+  d20: [0.288, 0.577],
+});
+
+const sub = (a, b) => a.map((x, i) => x - b[i]);
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (a) => {
+  const l = Math.hypot(...a) || 1;
+  return a.map((x) => x / l);
+};
+
+/**
+ * Each face's turn, in Dicer's face frame (chamfer.js: V towards the first vertex or labelUp, U =
+ * V x n), from V to the face's "up": a regular odd face keeps V (a vertex), a regular even face
+ * turns to an edge's middle, any other face to its farthest vertex (the d10 kite's sharp pole).
+ * And the fit: FACE_FIT for the die type, else the face's outer circle in the image.
+ */
+export function faceFit(shape) {
+  const rot = new Float32Array(MAX_FACES);
+  let outer = 1;
+  (shape?.faces ?? []).slice(0, MAX_FACES).forEach((f, i) => {
+    const pts = f.map((vi) => shape.vertices[vi]);
+    const c = pts.reduce((s, p) => s.map((x, k) => x + p[k] / pts.length), [0, 0, 0]);
+    let n = [0, 0, 0];
+    pts.forEach((p, j) => (n = n.map((x, k) => x + cross(p, pts[(j + 1) % pts.length])[k])));
+    n = unit(n);
+    const plane = (v) => unit(sub(v, n.map((x) => x * dot(v, n))));
+    const v = plane(shape.labelUp ?? sub(pts[0], c));
+    const u = cross(v, n);
+    const dist = pts.map((p) => Math.hypot(...sub(p, c)));
+    const regular = Math.max(...dist) - Math.min(...dist) < 1e-3 * Math.max(...dist);
+    let up;
+    if (regular && pts.length % 2 === 1) up = v;
+    else if (regular) up = plane(sub(pts[0].map((x, k) => (x + pts[1][k]) / 2), c));
+    else up = plane(sub(pts[dist.indexOf(Math.max(...dist))], c));
+    rot[i] = Math.atan2(dot(up, u), dot(up, v));
+    // the outer circle in inradius units (the inradius: the nearest edge line)
+    const r = Math.min(...pts.map((p, j) => Math.hypot(...cross(sub(pts[(j + 1) % pts.length], p), sub(c, p))) / Math.hypot(...sub(pts[(j + 1) % pts.length], p))));
+    outer = Math.max(outer, Math.max(...dist) / r);
+  });
+  const fit = FACE_FIT[shape?.type] ?? [0.5 / outer, 0.5];
+  return { fit: new THREE.Vector3(fit[0], 0.5, fit[1]), rot };
+}
 
 /** The patch for a look with a body image whose texture is loaded (ctx.bodyTex); {} otherwise. */
 export function bodyImagePatch(a, ctx) {
@@ -53,9 +128,15 @@ export function bodyImagePatch(a, ctx) {
         value: new THREE.Vector4(im.mode === 'face' ? 1 : 0, im.scale, (im.rotation * Math.PI) / 180, im.blend),
       },
       uBodyImageTint: { value: im.tint ? 1 : 0 },
+      ...(im.mode === 'face' ? faceUniforms(ctx.shape) : { uBodyImageFit: { value: new THREE.Vector3(0.5, 0.5, 0.5) }, uBodyImageRot: { value: new Float32Array(MAX_FACES) } }),
     },
-    chunks: { pars: PARS, colorPost: COLOR },
+    chunks: { pars: PARS, colorPost: COLOR, lighting: LIGHTING },
   };
+}
+
+function faceUniforms(shape) {
+  const { fit, rot } = faceFit(shape);
+  return { uBodyImageFit: { value: fit }, uBodyImageRot: { value: rot } };
 }
 
 function defaultLoadImage(url) {

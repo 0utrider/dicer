@@ -52,8 +52,9 @@ function colorsetEntry(name, cs, registry) {
   if (!appearance) return null;
   const dropped = [];
   const tex = textureId(cs.texture);
-  if (tex && tex !== 'none' && !MAPPED_TEXTURE.test(tex)) dropped.push({ kind: 'texture', types: [] });
-  if (isStr(cs.font)) dropped.push({ kind: 'font', types: [] });
+  // A texture image becomes the body image and the font a page font: only what did not map is dropped.
+  if (tex && tex !== 'none' && !MAPPED_TEXTURE.test(tex) && !appearance.bodyImage) dropped.push({ kind: 'texture', types: [] });
+  if (isStr(cs.font) && !appearance.numbers.font.startsWith('css:')) dropped.push({ kind: 'font', types: [] });
   return { id: COLORSET_PREFIX + name, kind: 'colorset', key: name, name: str(cs.description) || name, category: str(cs.category), appearance, perType: {}, dropped };
 }
 
