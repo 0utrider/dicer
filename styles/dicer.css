@@ -1836,6 +1836,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-chat-tray-bar {
   display: flex;
+  flex-wrap: wrap; /* the Roll button takes its own row when its formula does not fit */
   align-items: center;
   gap: 3px;
   min-width: 0;
@@ -1925,7 +1926,8 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-chat-tray-bar .dicer-chat-tray-roll {
   flex: 1 1 auto;
-  min-width: 0;
+  /* never squeezed below its formula: it wraps to a row of its own instead (ellipsis only past a full row) */
+  min-width: min(100%, max-content);
   display: flex;
   align-items: center;
   justify-content: center;
