@@ -1283,6 +1283,44 @@
         "other": "Does more than add dice: activate the module to use them.",
         "bundle": "Its dice are part of a bundle: activate the module to use them."
       }
+    },
+    "DsnReport": {
+      "Title": "Dice So Nice migration report",
+      "None": "This world has no Dice So Nice data to migrate.",
+      "NoWorld": "No Dice So Nice world settings are stored in this world.",
+      "NoneUsers": "Users with no Dice So Nice dice colours",
+      "Saves": "{n} Dice So Nice save profiles (load one with game.dice3d.loadSaveFile)",
+      "Yes": "Yes",
+      "No": "No",
+      "Section": {
+        "Status": "Status",
+        "World": "World settings",
+        "Users": "Players",
+        "Unmigrated": "Not migrated"
+      },
+      "Field": {
+        "Enabled": "Import Dice So Nice settings",
+        "WorldMigrated": "World settings imported",
+        "Dsn": "Dice So Nice module"
+      },
+      "Dsn": {
+        "active": "Active",
+        "installed": "Installed, not active",
+        "missing": "Not installed"
+      },
+      "Status": {
+        "copied": "Copied",
+        "dicer": "Dicer value kept",
+        "would-copy": "Will be copied",
+        "would-keep": "Dicer value will be kept",
+        "invalid": "Value not usable",
+        "no-counterpart": "No Dicer setting",
+        "unusable": "Colours not usable"
+      },
+      "User": {
+        "pending": "Not migrated yet (logs in next)",
+        "migrated": "Migrated"
+      }
     }
   }
 }
