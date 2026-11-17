@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1
 
 - **Fixed: clear dice hid their insides when thrown.** Dice on the table are seen from straight above, so each top face mirrored the studio's overhead light, and that glare washed out what is inside a clear die (Eruption's lava barely showed, Nautilus's swirls were faint). The overhead light is dimmer now, so insides look as they do in the theme browser. Metal and solid dice look the same as before.
 
