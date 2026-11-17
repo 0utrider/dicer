@@ -45,7 +45,7 @@ export function registerNoticeSetting() {
  * render() lazily imports the real editor (a separate chunk) and renders that instead.
  * `open` is the dynamic import, written out by each caller so the bundler emits one chunk each.
  */
-function registerEditorMenu(t, key, icon, open) {
+function registerEditorMenu(t, key, icon, open, { restricted = false } = {}) {
   const Base = globalThis.foundry?.applications?.api?.ApplicationV2;
   if (!Base || typeof game.settings.registerMenu !== 'function') return;
   class EditorMenu extends Base {
@@ -59,7 +59,7 @@ function registerEditorMenu(t, key, icon, open) {
     hint: t(`${key}.Hint`),
     icon,
     type: EditorMenu,
-    restricted: false,
+    restricted,
   });
 }
 
@@ -387,6 +387,14 @@ export function registerSettings({
     type: Number,
     default: 0,
   });
+  // The GM's read-only report of what the Dice So Nice migration copied, kept or skipped.
+  registerEditorMenu(
+    t,
+    'dsnReport',
+    'fa-solid fa-clipboard-list',
+    () => import('./ui/dsn-report.js').then((m) => m.openDsnReport),
+    { restricted: true },
+  );
   // The player's theme and the GM's world default are picked in the theme browser (a dropdown
   // here duplicated it); both stay settings, out of Foundry's list.
   register('theme', {

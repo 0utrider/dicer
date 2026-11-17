@@ -40,7 +40,7 @@ describe('build', () => {
     const fontWorker = lazy.find((p) => /font-worker-/.test(p));
     const benchAdapter = lazy.find((p) => /dicer-adapter-/.test(p)); // game.dice3d.benchmark(): adapter + runner
     const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
-    const benchReport = lazy.find((p) => /report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
+    const benchReport = lazy.find((p) => /^dist\/report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
     const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
     const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
@@ -106,6 +106,10 @@ describe('build', () => {
     const installedDice = lazy.filter((p) => /^dist\/installed-dice-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(installedDice).toHaveLength(2);
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-installed-dice');
+    // the GM's Dice So Nice migration report window (with its report data)
+    const dsnReport = lazy.find((p) => /^dist\/dsn-report-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(dsnReport).toBeTruthy();
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-dsn-report');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-edge');
     // roll stats: the window, the pet moods it shares with the pet chunk, the recorder (first roll)
     const rollStats = lazy.find((p) => /^dist\/roll-stats-[A-Za-z0-9_-]{8}\.js$/.test(p));
@@ -201,6 +205,7 @@ describe('build', () => {
         trayModel,
         trayWindow,
         ...installedDice,
+        dsnReport,
         hand,
         grab,
         rollFilters,
@@ -343,9 +348,11 @@ describe('build', () => {
     // Roll stats (the rollStats, statsTool, rollStatsSession and rollStatsHidden settings, the menu,
     // the token tool and main's loader for the lazy recorder; the window and recorder are lazy
     // chunks): owner approved +1,227 B (28,573 -> 29,800), 2026-11-17.
+    // The GM's Dice So Nice migration report menu (its settings entry; the window and report data
+    // are the lazy dsn-report chunk): owner approved +147 B (29,800 -> 29,947), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(29_800);
+    expect(growth).toBeLessThanOrEqual(29_947);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

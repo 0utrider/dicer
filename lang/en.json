@@ -131,6 +131,11 @@
         "Name": "Import Dice So Nice settings",
         "Hint": "On first load, copy each user's Dice So Nice dice colours and the world's Dice So Nice settings into Dicer. Choices already made in Dicer are kept."
       },
+      "dsnReport": {
+        "Name": "Dice So Nice migration report",
+        "Label": "Open the report",
+        "Hint": "What was copied from Dice So Nice, what was kept, and which players have not migrated yet. Read-only."
+      },
       "hideInitiative": {
         "Name": "Hide initiative until the dice land",
         "Hint": "In the combat tracker, a combatant's rolled initiative stays hidden until the dice of its initiative roll have landed. When chat messages are shown immediately, the tracker shows the value at once too, as the chat card already does."
@@ -1355,6 +1360,46 @@
       "Status": {
         "other": "Does more than add dice: activate the module to use them.",
         "bundle": "Its dice are part of a bundle: activate the module to use them."
+      }
+    },
+    "DsnReport": {
+      "Title": "Dice So Nice migration report",
+      "None": "This world has no Dice So Nice data to migrate.",
+      "NoWorld": "No Dice So Nice world settings are stored in this world.",
+      "NoneUsers": "Users with no Dice So Nice dice colours",
+      "Saves": "{n} Dice So Nice save profiles (load one with game.dice3d.loadSaveFile)",
+      "Yes": "Yes",
+      "No": "No",
+      "Section": {
+        "Status": "Status",
+        "World": "World settings",
+        "Users": "Players",
+        "Unmigrated": "Not migrated"
+      },
+      "Field": {
+        "Enabled": "Import Dice So Nice settings",
+        "WorldMigrated": "World settings imported",
+        "Dsn": "Dice So Nice module"
+      },
+      "Dsn": {
+        "active": "Active",
+        "installed": "Installed, not active",
+        "missing": "Not installed"
+      },
+      "Status": {
+        "copied": "Copied",
+        "dicer": "Dicer value kept",
+        "would-copy": "Will be copied",
+        "would-keep": "Dicer value will be kept",
+        "invalid": "Value not usable",
+        "no-counterpart": "No Dicer setting",
+        "unusable": "Colours not usable",
+        "off": "Not copied: import is switched off"
+      },
+      "User": {
+        "pending": "Not migrated yet (logs in next)",
+        "migrated": "Migrated",
+        "off": "Not migrated: import is switched off"
       }
     }
   }
