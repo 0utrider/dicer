@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Nine new themes by Sherp:** Antelope Canyon, Carbon Fiber, Dark Opal, Edgelight, Ivory & Ebony, Jelly Belly, Olympus Heights, Rare Shiny and Vault Floor, made with the newer materials (sandstone, brick, granite, opal, chameleon, mirror and patina metal, bone, jelly). Stone dice sound like stone, metal like metal, and Jelly Belly and Carbon Fiber like plastic.
+- **Wonderland's numbers are easier to read, and Eruption's living insides easier to see** (Sherp's updates).
+
 ## 0.6.2
 
 - **Fixed: brick dice shimmered.** On some faces (every d8 face, half the d20's) the bricks broke into flickering speckles as the die turned, in the preview and in rolls. Those faces point as much along one direction as another, and the brick pattern kept flipping between the two pixel by pixel. Each face now settles on one.

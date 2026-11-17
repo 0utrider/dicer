@@ -234,7 +234,8 @@ describe('build', () => {
     expect(main).not.toContain('dicer-hand-chunk');
     expect(main).not.toContain('dicer: a throw recorder threw');
   });
-  it('keeps the built-in theme table under 6 KiB minified (P5-R1)', () => {
+  // 7 KiB since Sherp's second batch (nine themes, 39 in all): owner approved, 2026-11-17.
+  it('keeps the built-in theme table under 7 KiB minified (P5-R1)', () => {
     const js = readFileSync('dist/dicer.js', 'utf8');
     const a = js.indexOf('@@dicer-themes-start');
     const b = js.indexOf('@@dicer-themes-end');
@@ -242,7 +243,7 @@ describe('build', () => {
     expect(b).toBeGreaterThan(a);
     const bytes = Buffer.byteLength(js.slice(a, b + 20));
     console.info(`dicer theme table: ${bytes} bytes minified`);
-    expect(bytes).toBeLessThanOrEqual(6 * 1024);
+    expect(bytes).toBeLessThanOrEqual(7 * 1024);
   });
   it('leaves api.js out of the bundle: it ships beside module.json, imported at runtime', () => {
     expect(statSync('api.js').isFile()).toBe(true);
@@ -364,9 +365,11 @@ describe('build', () => {
     // second colour: owner approved +152 B (31,529 -> 31,681), 2026-11-17.
     // Keep numbers readable (numbers.contrast: a picked colour is drawn as picked): owner approved
     // +62 B (31,681 -> 31,743), 2026-11-17.
+    // Sherp's second batch of themes (nine new, Wonderland and Eruption updated; the theme table
+    // is in the world-start bundle): owner approved +2,237 B (31,743 -> 33,980), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(31_743);
+    expect(growth).toBeLessThanOrEqual(33_980);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

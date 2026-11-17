@@ -21,7 +21,7 @@ const good = () => ({
 
 describe('built-in themes', () => {
   it('has at least 20 themes with unique ids, including every look', () => {
-    expect(BUILTIN_THEMES.length).toBe(30);
+    expect(BUILTIN_THEMES.length).toBe(39);
     const ids = BUILTIN_THEMES.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of Object.keys(LOOKS)) {
@@ -40,8 +40,11 @@ describe('built-in themes', () => {
       expect(findTheme(id)).toBeTruthy();
     }
   });
-  it("Sherp's eight shared themes are built in with the credit; only built-ins Sherp designed carry it", () => {
-    const sherp = ['against-the-grain', 'all-seeing', 'ebony-ivory', 'eruption', 'nautilus', 'sandalwood-sense', 'scarborough', 'wonderland'];
+  it("Sherp's seventeen shared themes are built in with the credit; only built-ins Sherp designed carry it", () => {
+    const sherp = [
+      'against-the-grain', 'all-seeing', 'antelope-canyon', 'carbon-fiber', 'dark-opal', 'ebony-ivory', 'edgelight', 'eruption', 'ivory-ebony',
+      'jelly-belly', 'nautilus', 'olympus-heights', 'rare-shiny', 'sandalwood-sense', 'scarborough', 'vault-floor', 'wonderland',
+    ];
     expect(BUILTIN_THEMES.filter((t) => t.author).map((t) => t.id)).toEqual(sherp);
     for (const id of sherp) expect(findTheme(id).author).toBe('Sherp');
     expect(findTheme('default').author).toBeUndefined();
@@ -51,6 +54,14 @@ describe('built-in themes', () => {
     expect(eruption.appearance.interior).toMatchObject({ type: 'lava', colors: ['#da7734', '#d11010'], extra: 'sand' });
     expect(eruption.appearance.numbers).toMatchObject({ fill: 'glow', font: 'uncial', icons: { crit: 'flame', fumble: null }, weight: -0.6 });
     expect(findTheme('ebony-ivory')).toMatchObject({ name: 'Ebony & Ivory', soundMaterial: 'wood' });
+    // Sherp's second batch: Eruption's insides easier to see, Wonderland's numbers easier to read
+    expect(eruption.appearance.interior).toMatchObject({ extraColor: '#e6d0c6', extraDensity: 0.25 });
+    expect(findTheme('wonderland').appearance.numbers).toMatchObject({ color: '#ded9d9', icons: { crit: 'starburst' } });
+    // the new materials, with a sound to match
+    expect(findTheme('vault-floor')).toMatchObject({ name: 'Vault Floor', soundMaterial: 'stone', appearance: { body: { type: 'stone', preset: 'granite' } } });
+    expect(findTheme('ivory-ebony').appearance.body).toMatchObject({ type: 'bone', preset: 'ivory' });
+    expect(findTheme('jelly-belly')).toMatchObject({ soundMaterial: 'plastic', appearance: { body: { type: 'jelly' } } });
+    expect(findTheme('olympus-heights').appearance.body).toMatchObject({ type: 'metal', finish: 'patina' });
   });
   it('every appearance normalizes to itself and every rule is valid and themed', () => {
     for (const t of BUILTIN_THEMES) {
