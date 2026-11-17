@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.2
 
 - **Fixed: brick dice shimmered.** On some faces (every d8 face, half the d20's) the bricks broke into flickering speckles as the die turned, in the preview and in rolls. Those faces point as much along one direction as another, and the brick pattern kept flipping between the two pixel by pixel. Each face now settles on one.
 - **Fixed: the Dice tray window's buttons ran off its edge** in a narrow window; they now wrap onto another row. The GM's **Save for players** button no longer spills its label out of the window.
