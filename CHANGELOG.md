@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
+
+Dicer 1.0: the first official release. 3D dice that tumble and land on your real roll for everyone at once, with real physics (or let the physics decide), 39 themes, your own dice designs, damage dice, effects and trigger rules with JB2A, dice trays, rolling by hand, dice pets and roll stats, and Dice So Nice modules and dice sets kept working.
 
 - **Nine new themes by Sherp:** Antelope Canyon, Carbon Fiber, Dark Opal, Edgelight, Ivory & Ebony, Jelly Belly, Olympus Heights, Rare Shiny and Vault Floor, made with the newer materials (sandstone, brick, granite, opal, chameleon, mirror and patina metal, bone, jelly). Stone dice sound like stone, metal like metal, and Jelly Belly and Carbon Fiber like plastic.
 - **Wonderland's numbers are easier to read, and Eruption's living insides easier to see** (Sherp's updates).
