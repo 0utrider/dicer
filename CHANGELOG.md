@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - **The tray shows while you edit it.** With **Show the dice tray: Only while rolling**, the tray now stays on screen while the Dice tray window is open.
 - **The tray fades with the dice.** A tray that shows only while rolling now fades out together with the dice, not a moment after.
