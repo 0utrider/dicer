@@ -12,16 +12,16 @@ export const DSN_SCOPE = 'dice-so-nice';
 export const MIGRATED_FLAG = 'migratedFromDsn';
 export const WORLD_FLAG = 'dsnWorldMigrated';
 
-const SCOPE_KEY = /^(global|d[a-z0-9]+)$/i;
+export const SCOPE_KEY = /^(global|d[a-z0-9]+)$/i;
 
 /** DSN world setting -> Dicer world setting (with the value check that maps it). */
-const WORLD_MAP = {
+export const WORLD_MAP = {
   maxDiceNumber: ['maxDice', (v) => (Number.isFinite(v) ? Math.min(100, Math.max(1, Math.round(v))) : undefined)],
   immediatelyDisplayChatMessages: ['immediatelyDisplayChatMessages', (v) => (typeof v === 'boolean' ? v : undefined)],
   showGhostDice: ['showGhostDice', (v) => (typeof v === 'boolean' ? v : undefined)],
 };
 /** DSN settings Dicer has no counterpart for yet. */
-const UNMAPPED = ['hideNpcRolls', 'diceCanBeFlipped'];
+export const UNMAPPED = ['hideNpcRolls', 'diceCanBeFlipped'];
 
 const str = (v) => (typeof v === 'string' && v ? v : undefined);
 
@@ -74,7 +74,7 @@ const dsnFlags = (user) => {
 };
 
 /** The bare `{theme:'default'}` (before Plan 5 `{look:'default'}`) the ready-time mirror writes: not a choice the user made. */
-const isMirroredDefault = (ref) =>
+export const isMirroredDefault = (ref) =>
   Object.keys(ref).length === 1 && (ref.theme === 'default' || ref.look === 'default');
 
 /** The user's own `dicer.appearance` entries; no default is invented. */
@@ -110,7 +110,7 @@ export async function migrateUser(user) {
 }
 
 /** True when the world settings storage holds an explicit `dicer.<key>` value. */
-function storedWorldValue(key) {
+export function storedWorldValue(key) {
   try {
     const storage = globalThis.game?.settings?.storage?.get('world');
     return (storage?.getItem?.(`${FLAG_SCOPE}.${key}`) ?? null) !== null;
