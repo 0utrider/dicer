@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - **The dice tray on another screen.** In the Dice tray window, **Show on another screen** opens the tray in a window of its own: drag it to your second monitor and the tray fills it. Every roll on your screen then lands there instead of on the map, pets included, and rolling by hand happens in that window too (grab, shake and flick the dice right there). Close the window to bring the dice back. Your browser must allow pop-ups for Foundry, and keep the main Foundry window open (not minimized) while you use it.
 - **Fixed: dice stopped well short of round, hexagon and octagon tray walls.** For those shapes the dice could only use the largest rectangle that fits inside, leaving a wide band of empty floor along the curved or slanted sides. The dice's walls now follow the tray's own outline, so they hit its sides there too.
