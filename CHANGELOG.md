@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1
 
 - **Dice trays have more depth.** The floor now sits below the walls: the top wall casts a deep shadow on it, the side walls softer ones, the corners darken and the bottom wall catches a little light. The tray casts a fuller shadow on the table, and the rim's bevel is crisper. Hexagon and octagon trays get the same depth.
 - **Let the physics decide every roll.** A new setting, **Physics decides the result** (General): every roll is thrown for you, and the faces the physics lands up are the result, instead of Foundry choosing the numbers and the dice turning to show them. With **Roll by hand** on **Ask**, the rolls you let roll automatically are decided by the physics too. The dice are solved in a few milliseconds, so rolls do not wait for the animation, and everyone at the table sees the same throw. The chat card shows an atom for a roll the physics decided. When the GM requires rolling by hand, the throw screen still opens.
