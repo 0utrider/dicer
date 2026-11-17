@@ -603,6 +603,7 @@ describe('flat checks (pf2e, sf2e)', () => {
     globalThis.game.system.id = 'pf2e';
     dockTray(undefined, vi.fn());
     click(dock().querySelector('[data-act="customize"]'));
+    click(dock().querySelector('[data-panel-tab="prefs"]'));
     const box = dock().querySelector('[data-pref="flat"]');
     expect(box.checked).toBe(true);
     box.checked = false;
@@ -651,7 +652,10 @@ describe('Daggerheart and Draw Steel helpers add a term instead of keeping a die
 
 describe('each user customizes their own tray (flag dicer.chatTray)', () => {
   const chip = (k) => dock().querySelector(`[data-pref-die="${k}"]`);
-  const openPanel = () => click(dock().querySelector('[data-act="customize"]'));
+  const openPanel = () => {
+    click(dock().querySelector('[data-act="customize"]'));
+    click(dock().querySelector('[data-panel-tab="prefs"]'));
+  };
   const shownDice = () => [...dock().querySelectorAll('.dicer-chat-tray-die')].map((b) => b.dataset.die);
 
   test('readPrefs validates the flag: tray dice only, in tray order; only false hides a part', () => {
@@ -821,20 +825,52 @@ describe('the dice bag', () => {
     expect(bagPicks('junk').all).toBe('default');
   });
 
-  test('the bag button opens the panel (all dice and each die type) and closes the customize panel', () => {
+  test('the gear opens one panel with two tabs (dice bag first, then customize), remembering the last', () => {
+    settings.theme = 'default';
+    settings.worldThemes = [];
+    dockTray(undefined, vi.fn());
+    expect(dock().querySelector('[data-act="bag"]')).toBeNull(); // no button of its own: the bar keeps room for Roll
+    const gear = dock().querySelector('[data-act="customize"]');
+    click(gear);
+    expect(dock().querySelector('.dicer-chat-tray-bag')).toBeTruthy();
+    expect(gear.getAttribute('aria-expanded')).toBe('true');
+    expect([...dock().querySelectorAll('[data-panel-tab]')].map((t) => t.dataset.panelTab)).toEqual(['bag', 'prefs']);
+    expect([...dock().querySelectorAll('[data-bag-slot]')].map((s) => s.dataset.bagSlot)).toEqual(['all', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100']);
+    click(dock().querySelector('[data-panel-tab="prefs"]'));
+    expect(dock().querySelector('.dicer-chat-tray-bag')).toBeNull();
+    expect(dock().querySelector('.dicer-chat-tray-prefs')).toBeTruthy();
+    click(gear); // closes
+    expect(dock().querySelector('.dicer-chat-tray-prefs, .dicer-chat-tray-bag')).toBeNull();
+    expect(gear.getAttribute('aria-expanded')).toBe('false');
+    click(gear); // back on the tab last shown
+    expect(dock().querySelector('.dicer-chat-tray-prefs')).toBeTruthy();
+  });
+
+  test('the bag shows each look as a tile (a picture of the die), the picked one pressed', () => {
     settings.theme = 'default';
     settings.worldThemes = [];
     dockTray(undefined, vi.fn());
     click(dock().querySelector('[data-act="customize"]'));
-    expect(dock().querySelector('.dicer-chat-tray-prefs')).toBeTruthy();
-    click(dock().querySelector('[data-act="bag"]'));
-    const bag = dock().querySelector('.dicer-chat-tray-bag');
-    expect(bag).toBeTruthy();
-    expect(dock().querySelector('.dicer-chat-tray-prefs')).toBeNull();
-    expect([...bag.querySelectorAll('select')].map((s) => s.dataset.bag)).toEqual(['all', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100']);
-    expect(bag.querySelector('[data-bag="all"]').value).toBe('default');
-    expect(bag.querySelector('[data-bag="d20"]').value).toBe(''); // same as all dice
-    click(dock().querySelector('[data-act="bag"]'));
-    expect(dock().querySelector('.dicer-chat-tray-bag')).toBeNull();
+    let bag = dock().querySelector('.dicer-chat-tray-bag');
+    const tiles = [...bag.querySelectorAll('[data-bag-theme]')];
+    expect(tiles).toHaveLength(BUILTIN_THEMES.length); // all dice: no "same as all" tile
+    expect(tiles.every((t) => t.querySelector('img') && t.querySelector('svg'))).toBe(true);
+    expect(bag.querySelector('[aria-pressed="true"][data-bag-theme]').dataset.bagTheme).toBe('default');
+    // one die type: its own slot, led by "same as all dice" (picked while it has no theme of its own)
+    click(bag.querySelector('[data-bag-slot="d20"]'));
+    bag = dock().querySelector('.dicer-chat-tray-bag');
+    expect(bag.querySelector('[data-bag-slot="d20"]').getAttribute('aria-pressed')).toBe('true');
+    const first = bag.querySelector('[data-bag-theme]');
+    expect(first.dataset.bagTheme).toBe('');
+    expect(first.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('a long helper word (Fortune) can give way to its arrow; a short one (Adv) never does', () => {
+    globalThis.game.system.id = 'pf2e';
+    dockTray(undefined, vi.fn());
+    const [up] = dock().querySelectorAll('[data-adv]');
+    expect(up.classList.contains('is-long')).toBe(true);
+    expect(up.textContent).toBe('DICER.ChatTray.Fortune');
+    expect(up.querySelector('i.fa-angles-up')).toBeTruthy();
   });
 });

@@ -10,6 +10,8 @@ import {
   TRAY_SURFACES,
   TRAY_RIMS,
   TRAY_DESIGNS,
+  TRAY_SHAPES,
+  trayStyle,
 } from '../tray/tray-model.js';
 
 const MODULE = 'dicer';
@@ -23,6 +25,26 @@ const setting = (key) => {
   }
 };
 const isGM = () => globalThis.game?.user?.isGM === true;
+const routeOf = (url) =>
+  /^([a-z][a-z0-9+.-]*:|\/)/i.test(url) ? url : (globalThis.foundry?.utils?.getRoute?.(url) ?? url);
+
+/** Paints `el` (a .dicer-tt) as `look`: the live preview at the top of the window. */
+export function paintPreview(el, look) {
+  if (!el.querySelector('.dicer-tt-skin')) {
+    const skin = document.createElement('div');
+    skin.className = 'dicer-tt-skin';
+    el.prepend(skin);
+  }
+  el.dataset.surface = look.surface;
+  el.dataset.rim = look.rim.style;
+  el.dataset.shape = look.shape;
+  for (const [k, v] of Object.entries(trayStyle(look, routeOf))) el.style.setProperty(k, v);
+}
+/** A slider's readout: percent for fractions, px otherwise. */
+export const rangeText = (field, value) =>
+  ['design.size', 'design.opacity'].includes(field)
+    ? `${Math.round(Number(value) * 100)}%`
+    : `${Math.round(Number(value))} px`;
 
 const SURFACE_ICONS = {
   felt: 'fa-square',
@@ -31,6 +53,18 @@ const SURFACE_ICONS = {
   leather: 'fa-briefcase',
   metal: 'fa-shield-halved',
   image: 'fa-image',
+};
+const SHAPE_ICONS = {
+  rect: 'fa-square',
+  round: 'fa-circle',
+  hex: 'fa-hexagon',
+  octagon: 'fa-octagon',
+};
+const SHAPE_LABELS = {
+  rect: 'DICER.DiceTray.Shape.rect',
+  round: 'DICER.DiceTray.Shape.round',
+  hex: 'DICER.DiceTray.Shape.hex',
+  octagon: 'DICER.DiceTray.Shape.octagon',
 };
 const DESIGN_ICONS = {
   none: 'fa-ban',
@@ -144,14 +178,19 @@ export function trayForm(
   const row = (label, control) =>
     h('label', { class: 'dicer-tt-row' }, [h('span', { text: loc(label) }), control]);
   const range = (field, min, max, step, value) =>
-    h('input', {
-      type: 'range',
-      'data-field': field,
-      min: String(min),
-      max: String(max),
-      step: String(step),
-      value: String(value),
-    });
+    h('span', { class: 'dicer-tt-range' }, [
+      h('input', {
+        type: 'range',
+        'data-field': field,
+        min: String(min),
+        max: String(max),
+        step: String(step),
+        value: String(value),
+      }),
+      h('output', { 'data-for': field, text: rangeText(field, value) }),
+    ]);
+  const section = (title, kids) =>
+    h('section', { class: 'dicer-tt-section' }, [h('h3', { text: loc(title) }), ...kids]);
   const colour = (field, value) => h('input', { type: 'color', 'data-field': field, value });
   const path = (field, value, kind) =>
     h('span', { class: 'dicer-tt-path' }, [
@@ -169,7 +208,10 @@ export function trayForm(
     ]);
   const design = pickingDesign ? 'custom' : designChoice(look);
   const surface = pickingImage ? 'image' : look.surface;
+  const preview = h('div', { class: 'dicer-tt dicer-tt-preview', 'aria-hidden': 'true' });
+  paintPreview(preview, look);
   return h('form', { class: 'dicer-tt-editor' }, [
+    h('div', { class: 'dicer-tt-stage' }, [preview]),
     h('p', { class: 'dicer-hint', text: loc('DICER.DiceTray.Hint') }),
     ...(gm
       ? [
@@ -189,37 +231,45 @@ export function trayForm(
           ]),
         ]
       : []),
-    h('h3', { text: loc('DICER.DiceTray.SurfaceTitle') }),
-    chips('surface', TRAY_SURFACES, surface, SURFACE_LABELS, SURFACE_ICONS),
-    surface === 'image'
-      ? row('DICER.DiceTray.Image', path('image', look.image, 'image'))
-      : row('DICER.DiceTray.Color', colour('color', look.color)),
-    h('h3', { text: loc('DICER.DiceTray.RimTitle') }),
-    chips('rim.style', TRAY_RIMS, look.rim.style, RIM_LABELS),
-    row('DICER.DiceTray.RimColor', colour('rim.color', look.rim.color)),
-    row('DICER.DiceTray.RimWidth', range('rim.width', 0, 40, 1, look.rim.width)),
-    row('DICER.DiceTray.Corners', range('radius', 0, 80, 1, look.radius)),
-    h('h3', { text: loc('DICER.DiceTray.DesignTitle') }),
-    chips(
-      'design.choice',
-      ['none', ...TRAY_DESIGNS, 'custom'],
-      design,
-      DESIGN_LABELS,
-      DESIGN_ICONS,
-    ),
-    ...(design === 'custom'
-      ? [row('DICER.DiceTray.DesignImage', path('design.src', look.design.src, 'image'))]
-      : []),
-    ...(design !== 'none'
-      ? [
-          row('DICER.DiceTray.DesignColor', colour('design.color', look.design.color)),
-          row('DICER.DiceTray.DesignSize', range('design.size', 0.15, 1, 0.05, look.design.size)),
-          row(
-            'DICER.DiceTray.DesignOpacity',
-            range('design.opacity', 0, 1, 0.05, look.design.opacity),
-          ),
-        ]
-      : []),
+    section('DICER.DiceTray.ShapeTitle', [
+      chips('shape', TRAY_SHAPES, look.shape, SHAPE_LABELS, SHAPE_ICONS),
+    ]),
+    section('DICER.DiceTray.SurfaceTitle', [
+      chips('surface', TRAY_SURFACES, surface, SURFACE_LABELS, SURFACE_ICONS),
+      surface === 'image'
+        ? row('DICER.DiceTray.Image', path('image', look.image, 'image'))
+        : row('DICER.DiceTray.Color', colour('color', look.color)),
+    ]),
+    section('DICER.DiceTray.RimTitle', [
+      chips('rim.style', TRAY_RIMS, look.rim.style, RIM_LABELS),
+      row('DICER.DiceTray.RimColor', colour('rim.color', look.rim.color)),
+      row('DICER.DiceTray.RimWidth', range('rim.width', 0, 40, 1, look.rim.width)),
+      ...(look.shape === 'rect'
+        ? [row('DICER.DiceTray.Corners', range('radius', 0, 80, 1, look.radius))]
+        : []),
+    ]),
+    section('DICER.DiceTray.DesignTitle', [
+      chips(
+        'design.choice',
+        ['none', ...TRAY_DESIGNS, 'custom'],
+        design,
+        DESIGN_LABELS,
+        DESIGN_ICONS,
+      ),
+      ...(design === 'custom'
+        ? [row('DICER.DiceTray.DesignImage', path('design.src', look.design.src, 'image'))]
+        : []),
+      ...(design !== 'none'
+        ? [
+            row('DICER.DiceTray.DesignColor', colour('design.color', look.design.color)),
+            row('DICER.DiceTray.DesignSize', range('design.size', 0.15, 1, 0.05, look.design.size)),
+            row(
+              'DICER.DiceTray.DesignOpacity',
+              range('design.opacity', 0, 1, 0.05, look.design.opacity),
+            ),
+          ]
+        : []),
+    ]),
     h('p', {
       class: 'dicer-hint',
       text: loc(target === 'table' ? 'DICER.DiceTray.TableNote' : 'DICER.DiceTray.MineNote'),
@@ -251,7 +301,7 @@ export function openTrayEditor() {
       id: 'dicer-tt-editor',
       classes: ['dicer-tt-editor-app'],
       window: { title: 'DICER.DiceTray.Title', icon: 'fa-solid fa-chess-board', resizable: true },
-      position: { width: 440, height: 'auto' },
+      position: { width: 460, height: 'auto' },
     };
     #target = 'mine';
     #look = null;
@@ -301,6 +351,11 @@ export function openTrayEditor() {
       // a typed picture path for the Image surface: the surface becomes the picture
       if (field === 'image' && this.#look.image)
         this.#look = applyField(this.#look, 'surface', 'image');
+      const root = el.closest('form');
+      const out = root?.querySelector(`output[data-for="${field}"]`);
+      if (out) out.textContent = rangeText(field, el.value);
+      const preview = root?.querySelector('.dicer-tt-preview');
+      if (preview) paintPreview(preview, this.#look);
       this.#save();
     }
     async #onClick(event) {

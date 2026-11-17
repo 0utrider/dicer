@@ -4,7 +4,14 @@
  * its corner grip resizes it (the place is saved to the client `trayRect`); with trayShow 'rolls'
  * it slides in while dice are on screen and out once they clear.
  */
-import { trayLookFor, trayPixels, trayFractions, trayStyle, traySound } from './tray-model.js';
+import {
+  trayLookFor,
+  trayPixels,
+  trayFractions,
+  trayStyle,
+  traySound,
+  trayArea,
+} from './tray-model.js';
 
 /** Dice keep this far inside the rim (px), so they never sit on it. */
 const INSET = 6;
@@ -94,6 +101,10 @@ export function createTray({
     el = doc.createElement('div');
     el.className = 'dicer-tt';
     el.setAttribute('aria-hidden', 'true');
+    // the hexagon and octagon draw their rim and floor here (clipped to the shape)
+    const skin = doc.createElement('div');
+    skin.className = 'dicer-tt-skin';
+    el.append(skin);
     for (const side of ['top', 'right', 'bottom', 'left']) {
       const edge = doc.createElement('div');
       edge.className = `dicer-tt-edge dicer-tt-edge-${side}`;
@@ -133,6 +144,7 @@ export function createTray({
       if (!el) build();
       el.dataset.surface = look.surface;
       el.dataset.rim = look.rim.style;
+      el.dataset.shape = look.shape;
       for (const [k, v] of Object.entries(trayStyle(look, route))) el.style.setProperty(k, v);
       el.classList.toggle('is-hidden', showMode() === 'rolls' && !(activeRolls() > 0));
       place();
@@ -140,13 +152,7 @@ export function createTray({
     /** The px rect dice land in (inside the rim), or null with no tray: the roll area decides. */
     area() {
       if (!el || !look || !px) return null;
-      const inset = look.rim.width + INSET;
-      return {
-        left: px.left + inset,
-        top: px.top + inset,
-        width: Math.max(1, px.width - 2 * inset),
-        height: Math.max(1, px.height - 2 * inset),
-      };
+      return trayArea(px, look, INSET);
     },
     /** Dice are coming: a tray that shows only during rolls slides in, and out once they clear. */
     rolling() {

@@ -11,6 +11,18 @@
 
 export const TRAY_SURFACES = ['felt', 'wood', 'stone', 'leather', 'metal', 'image'];
 export const TRAY_RIMS = ['plain', 'wood', 'leather', 'stone', 'metal'];
+/** The tray's outline: a rectangle (its corners rounded by `radius`), an oval, a hexagon, an octagon. */
+export const TRAY_SHAPES = ['rect', 'round', 'hex', 'octagon'];
+/**
+ * How far in (fractions of the floor, each side) dice keep in each shape: the largest rectangle
+ * inside it, so a die never lands on the rim. The hexagon has its points left and right.
+ */
+export const SHAPE_INSET = Object.freeze({
+  rect: Object.freeze({ x: 0, y: 0 }),
+  round: Object.freeze({ x: 0.147, y: 0.147 }),
+  hex: Object.freeze({ x: 0.18, y: 0.14 }),
+  octagon: Object.freeze({ x: 0.125, y: 0.125 }),
+});
 /** Built-in floor designs (assets/trays/<id>.svg), drawn in the design colour; or any picture. */
 export const TRAY_DESIGNS = ['sigil', 'moon', 'compass', 'skull'];
 export const TRAY_MODES = ['table', 'mine', 'none'];
@@ -27,6 +39,7 @@ const SURFACE_SOUND = {
 
 export const DEFAULT_TRAY = Object.freeze({
   surface: 'felt',
+  shape: 'rect',
   color: '#1f4d36',
   image: '',
   rim: Object.freeze({ style: 'wood', color: '#4a2f1b', width: 16 }),
@@ -61,6 +74,7 @@ export function normalizeTray(raw) {
       : '';
   return {
     surface: surface === 'image' && !image ? DEFAULT_TRAY.surface : surface,
+    shape: TRAY_SHAPES.includes(t.shape) ? t.shape : DEFAULT_TRAY.shape,
     color: color(t.color, DEFAULT_TRAY.color),
     image,
     rim: {
@@ -87,6 +101,24 @@ export function trayLookFor({ mode, mine, table } = {}) {
   if (mode === 'mine')
     return normalizeTray(isObj(mine) ? mine : isObj(table) ? table : DEFAULT_TRAY);
   return isObj(table) ? normalizeTray(table) : null;
+}
+
+/**
+ * The px rect dice land in for a tray at `px` with `look`: inside the rim (and `gap` more), then
+ * inside the shape (SHAPE_INSET).
+ */
+export function trayArea(px, look, gap = 0) {
+  const t = normalizeTray(look);
+  const rim = t.rim.width + gap;
+  const fw = Math.max(1, px.width - 2 * rim);
+  const fh = Math.max(1, px.height - 2 * rim);
+  const s = SHAPE_INSET[t.shape];
+  return {
+    left: px.left + rim + fw * s.x,
+    top: px.top + rim + fh * s.y,
+    width: Math.max(1, fw * (1 - 2 * s.x)),
+    height: Math.max(1, fh * (1 - 2 * s.y)),
+  };
 }
 
 /** The table sound of a tray look. */
@@ -144,7 +176,8 @@ export function trayStyle(look, route = (p) => p) {
     '--dicer-tt-design': design ? `url("${route(design)}")` : 'none',
     '--dicer-tt-design-color': t.design.color,
     '--dicer-tt-design-size': `${Math.round(t.design.size * 100)}%`,
-    '--dicer-tt-design-opacity': String(t.design.opacity),
+    // no design: nothing to mask with, so the layer must not paint at all
+    '--dicer-tt-design-opacity': design ? String(t.design.opacity) : '0',
     '--dicer-tt-color': t.color,
     '--dicer-tt-image': t.surface === 'image' ? `url("${route(t.image)}")` : 'none',
     '--dicer-tt-rim': t.rim.color,

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Dice trays look real.** Surfaces and rims are now textured: wood grain with planks, rough stone, pebbled leather, fine felt and brushed metal, each in the colour you pick. Rims have a lit bevel and drop into the floor, metal rims have rivets and leather rims have stitching.
+- **Tray shapes.** A tray can be a **Rectangle**, **Round**, a **Hexagon** or an **Octagon**. Dice always land inside the shape.
+- **A new Dice tray window.** A live preview of your tray at the top, then Shape, Surface, Rim and Floor design, each as picture buttons, with sliders that show their values.
+- **Fixed:** a tray with no floor design was covered in a gold tint.
+- **The Dice bag shows the looks.** It is now the first tab of the chat dice tray's gear panel (next to Customize), with a picture of each look on the die you are changing. Pick All dice or one die type at the top.
+- **Fixed:** the chat dice tray's Roll button had shrunk to a sliver (on PF2e, for example). It keeps its full size now, and Fortune / Misfortune become arrows when the bar is tight. Their tooltips still name them.
+
 ## 0.3.1
 
 - **No more look-alike themes.** Three built-in themes looked like others in the theme browser. **Verdant** is now green malachite (it was Jade Marble's look with a wood sound) and sounds like stone. **Dragon Hoard**'s d20 is now amber resin full of gold, like the rest of the set, no longer a copy of Polished Gold. **Celestial**'s d20 is now midnight-blue resin with a gold star and sparkles inside, no longer a copy of Starlit Glitter.

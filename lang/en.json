@@ -1049,6 +1049,13 @@
       "Hint": "Your rolls land in your tray. Drag its rim on the table to move it, and its corner to resize it.",
       "EditMine": "My tray",
       "EditTable": "Table tray (everyone)",
+      "ShapeTitle": "Shape",
+      "Shape": {
+        "rect": "Rectangle",
+        "round": "Round",
+        "hex": "Hexagon",
+        "octagon": "Octagon"
+      },
       "SurfaceTitle": "Surface",
       "RimTitle": "Rim",
       "DesignTitle": "Floor design",

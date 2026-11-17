@@ -912,6 +912,26 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 }
 
 /** Opens (or brings to front) the browser: what the settings menu's proxy class calls. */
+let bagThumbs = null;
+/**
+ * The chat tray's dice bag: a small picture of `dieType` in `theme` (an object URL; the
+ * renderer keeps them for the page's life, so a reopened bag fills at once); null without the
+ * dice atlas or WebGL.
+ */
+export function bagThumbnail(theme, dieType = 'd20') {
+  if (!bagThumbs) {
+    let context = null;
+    try {
+      context = globalThis.game?.dice3d?._themeContext?.();
+    } catch {
+      context = null;
+    }
+    if (!context?.atlas) return Promise.resolve(null);
+    bagThumbs = createThumbnailer({ atlas: context.atlas, fonts: context.fonts ?? null, size: 128 });
+  }
+  return bagThumbs.thumbnail(theme, dieType).catch(() => null);
+}
+
 export function openThemeBrowser({ target } = {}) {
   instance ??= new ThemeBrowser();
   if (target) instance.focusTarget(target);

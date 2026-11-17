@@ -11,6 +11,7 @@ import {
   trayPixels,
   trayFractions,
   trayStyle,
+  trayArea,
   DEFAULT_TRAY,
 } from '../../src/tray/tray-model.js';
 import { createTray } from '../../src/tray/tray.js';
@@ -80,6 +81,35 @@ describe('tray model', () => {
     expect(s['--dicer-tt-design']).toBe('url("/r/modules/dicer/assets/trays/moon.svg")');
     expect(s['--dicer-tt-design-size']).toBe('50%');
     expect(trayStyle({})['--dicer-tt-design']).toBe('none');
+  });
+
+  test('shape: rect, round, hex or octagon (junk is a rectangle); dice keep inside the shape', () => {
+    expect(normalizeTray({}).shape).toBe('rect');
+    expect(normalizeTray({ shape: 'hex' }).shape).toBe('hex');
+    expect(normalizeTray({ shape: 'star' }).shape).toBe('rect');
+    const px = { left: 100, top: 50, width: 520, height: 420 };
+    const rim = { width: 10 };
+    // a rectangle: the whole floor, inside the rim and the gap
+    expect(trayArea(px, { rim }, 6)).toEqual({ left: 116, top: 66, width: 488, height: 388 });
+    // a hexagon (points left and right): in from the sides more than from the top
+    const hex = trayArea(px, { rim, shape: 'hex' });
+    expect(hex.left).toBeCloseTo(110 + 500 * 0.18);
+    expect(hex.top).toBeCloseTo(60 + 400 * 0.14);
+    expect(hex.width).toBeCloseTo(500 * 0.64);
+    // the oval's rectangle has its corners on the ellipse: (x-.5)²/.25 + (y-.5)²/.25 ≈ 1
+    const o = trayArea(
+      { left: 0, top: 0, width: 100, height: 100 },
+      { rim: { width: 0 }, shape: 'round' },
+    );
+    expect(((o.left - 50) / 50) ** 2 + ((o.top - 50) / 50) ** 2).toBeCloseTo(1, 1);
+  });
+
+  test('style: no design paints nothing (an unmasked design layer would cover the floor)', () => {
+    const s = trayStyle({ design: { src: '', opacity: 0.7 } });
+    expect(s['--dicer-tt-design-opacity']).toBe('0');
+    expect(trayStyle({ design: { src: 'moon', opacity: 0.7 } })['--dicer-tt-design-opacity']).toBe(
+      '0.7',
+    );
   });
 });
 

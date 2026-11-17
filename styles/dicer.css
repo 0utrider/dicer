@@ -109,7 +109,7 @@
 /* Editor windows (themes, appearance, trigger rules, damage map). Everything is scoped under */
 /* app's root class and built on Foundry's own variables, so dark and light themes both work.  */
 /* ------------------------------------------------------------------------------------------- */
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) {
   --dicer-accent: var(--color-warm-1, #ee9b3a);
   --dicer-line: color-mix(in srgb, currentColor 14%, transparent);
   --dicer-line-strong: color-mix(in srgb, currentColor 28%, transparent);
@@ -122,11 +122,11 @@
   --dicer-radius: 6px;
   --dicer-head-bg: #17151c;
 }
-body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark),
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark).theme-light {
+body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app),
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app).theme-light {
   --dicer-head-bg: #ece6dc;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .window-content {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .window-content {
   padding: 0;
   overflow: hidden;
   display: flex;
@@ -142,7 +142,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 
 /* shared pieces */
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) button {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) button {
   flex: 0 0 auto;
   width: auto;
   height: var(--dicer-control-h);
@@ -151,12 +151,12 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   font-size: var(--font-size-13, 13px);
   white-space: nowrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) button.dicer-icon {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) button.dicer-icon {
   width: var(--dicer-control-h);
   flex: 0 0 var(--dicer-control-h);
   padding: 0;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) button.dicer-ghost {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) button.dicer-ghost {
   --button-background-color: transparent;
   --button-border-color: transparent;
   --button-text-color: var(--color-text-secondary);
@@ -164,42 +164,42 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   --button-hover-border-color: var(--dicer-line-strong);
   --button-hover-text-color: var(--color-text-emphatic);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) button.dicer-danger:hover:not(:disabled) {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) button.dicer-danger:hover:not(:disabled) {
   --button-hover-background-color: var(--color-level-error, #ce0707);
   --button-hover-border-color: var(--color-level-error, #ce0707);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) :is(select, input[type='text'], input[type='number']) {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) :is(select, input[type='text'], input[type='number']) {
   height: var(--dicer-control-h);
   width: 100%;
   min-width: 0;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-hint {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-hint {
   margin: 0;
   font-size: var(--font-size-12, 12px);
   line-height: 1.4;
   color: var(--dicer-muted);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-muted {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-muted {
   color: var(--dicer-muted);
   font-size: var(--font-size-12, 12px);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-empty {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-empty {
   margin: 12px;
   color: var(--dicer-muted);
   font-style: italic;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-toolbar {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-toolbar-actions {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-toolbar-actions {
   display: flex;
   gap: 6px;
   margin-left: auto;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-segmented {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-segmented {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
@@ -207,7 +207,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   border-radius: calc(var(--dicer-radius) + 2px);
   background: var(--dicer-surface);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-segmented button {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-segmented button {
   --button-background-color: transparent;
   --button-border-color: transparent;
   --button-text-color: var(--color-text-secondary);
@@ -219,7 +219,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   border-radius: var(--dicer-radius);
   gap: 6px;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-segmented button.active {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-segmented button.active {
   --button-background-color: var(--dicer-selected);
   --button-hover-background-color: var(--dicer-selected);
   --button-text-color: var(--color-text-emphatic);
@@ -230,39 +230,39 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   outline: none; /* Foundry outlines an active button; the fill marks it here */
   font-weight: 600;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-count {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-count {
   font-size: var(--font-size-11, 11px);
   font-weight: normal;
   color: var(--dicer-muted);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-field {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-field {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
   margin: 0;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-field > span:first-child {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-field > span:first-child {
   font-size: var(--font-size-12, 12px);
   color: var(--dicer-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-footer {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid var(--dicer-line);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-footer button {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-footer button {
   min-width: 120px;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-footer:empty {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-footer:empty {
   display: none;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-badge {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-badge {
   display: inline-block;
   padding: 1px 7px;
   border-radius: 999px;
@@ -274,15 +274,15 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   color: var(--dicer-muted);
   white-space: nowrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-badge-user {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-badge-user {
   border-color: color-mix(in srgb, var(--dicer-accent) 45%, transparent);
   color: var(--dicer-accent);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-badge-world {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-badge-world {
   border-color: color-mix(in srgb, var(--color-level-info, #59a1f6) 45%, transparent);
   color: var(--color-level-info, #59a1f6);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-chip {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -294,16 +294,16 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   background: var(--dicer-surface-strong);
   font-size: var(--font-size-12, 12px);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-chip > span {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-chip > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-chip.is-default {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-chip.is-default {
   padding-right: 8px;
   background: var(--dicer-selected);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) button.dicer-chip-x {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) button.dicer-chip-x {
   --button-background-color: transparent;
   --button-border-color: transparent;
   --button-hover-background-color: var(--dicer-surface-strong);
@@ -316,7 +316,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   font-size: 10px;
   color: var(--dicer-muted);
 }
-:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark) .dicer-sr {
+:is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1897,6 +1897,24 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   align-items: center;
   gap: 3px;
   min-width: 0;
+  /* its width decides whether a long helper word gives way to its arrow (below) */
+  container: dicer-ct-bar / inline-size;
+}
+/* A helper button shows its word; a long one (Fortune / Misfortune) shows its arrow instead when
+   the bar is tight, so Roll keeps its room. The tooltip always names it. */
+.dicer-chat-tray-adv i {
+  display: none;
+}
+@container dicer-ct-bar (max-width: 360px) {
+  .dicer-chat-tray-adv.is-long {
+    padding: 0 7px;
+  }
+  .dicer-chat-tray-adv.is-long i {
+    display: inline;
+  }
+  .dicer-chat-tray-adv.is-long .dicer-chat-tray-adv-label {
+    display: none;
+  }
 }
 .dicer-chat-tray-bar > * {
   height: 26px;
@@ -1982,9 +2000,9 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   opacity: 1;
 }
 .dicer-chat-tray-bar .dicer-chat-tray-roll {
-  /* the rest of the bar, to the right edge; the other buttons keep their full labels */
+  /* the rest of the bar, to the right edge; never squeezed below its die and word */
   flex: 1 1 0;
-  min-width: 0;
+  min-width: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2132,27 +2150,145 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   stroke: currentColor;
   stroke-width: 1.6;
 }
-.dicer-chat-tray-bag-row {
-  display: grid;
-  grid-template-columns: 5.5em 1fr;
-  align-items: center;
-  gap: 6px;
+/* the gear panel's tabs: dice bag, customize */
+.dicer-chat-tray-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
 }
-.dicer-chat-tray-bag-row select {
-  min-width: 0;
-  width: 100%;
-}
-.dicer-chat-tray-bag-die {
+.dicer-chat-tray .dicer-chat-tray-tab {
+  flex: 1 1 0;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: none;
+  font-weight: 600;
+  opacity: 0.65;
 }
-.dicer-chat-tray-bag-die svg {
-  width: 14px;
-  height: 14px;
+.dicer-chat-tray .dicer-chat-tray-tab:hover {
+  opacity: 1;
+}
+.dicer-chat-tray .dicer-chat-tray-tab[aria-selected='true'] {
+  background: color-mix(in srgb, var(--dicer-ct-accent) 26%, transparent);
+  color: #fff;
+  opacity: 1;
+}
+/* the dice bag: slot chips, then a grid of look tiles (a rendered die each) */
+.dicer-chat-tray-bag-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.dicer-chat-tray .dicer-chat-tray-bag-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.dicer-chat-tray .dicer-chat-tray-bag-slot[aria-pressed='true'] {
+  border-color: var(--dicer-ct-accent);
+  background: color-mix(in srgb, var(--dicer-ct-accent) 22%, transparent);
+  opacity: 1;
+}
+.dicer-chat-tray-bag-slot svg,
+.dicer-chat-tray-bag-thumb svg {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
+}
+.dicer-chat-tray-bag-slot svg {
+  width: 13px;
+  height: 13px;
+}
+/* a die type with a look of its own */
+.dicer-chat-tray-bag-own {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dicer-ct-accent);
+}
+.dicer-chat-tray-bag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 5px;
+  max-height: min(340px, 50vh);
+  overflow-y: auto;
+  padding: 2px;
+}
+.dicer-chat-tray-bag-group {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.dicer-chat-tray .dicer-chat-tray-bag-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  height: auto;
+  padding: 4px 2px 3px;
+  border-radius: 7px;
+  background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.15) 70%);
+}
+.dicer-chat-tray .dicer-chat-tray-bag-tile:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.dicer-chat-tray .dicer-chat-tray-bag-tile[aria-pressed='true'] {
+  border-color: var(--dicer-ct-accent);
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--dicer-ct-accent) 30%, transparent), rgba(0, 0, 0, 0.15) 75%);
+  box-shadow: 0 0 0 1px var(--dicer-ct-accent), 0 0 10px color-mix(in srgb, var(--dicer-ct-accent) 45%, transparent);
+}
+.dicer-chat-tray-bag-thumb {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+}
+.dicer-chat-tray-bag-thumb > * {
+  grid-area: 1 / 1;
+}
+.dicer-chat-tray-bag-thumb svg {
+  width: 30px;
+  height: 30px;
+  opacity: 0.35;
+}
+.dicer-chat-tray-bag-thumb img {
+  width: 48px;
+  height: 48px;
+  border: none;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+.dicer-chat-tray-bag-thumb.has-thumb svg {
+  display: none;
+}
+.dicer-chat-tray-bag-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.2;
 }
 .dicer-chat-tray-check {
   display: flex;
@@ -2347,15 +2483,46 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 /* Dice trays (src/tray): a roll area with a look, just under the dice canvas. The rim drags it,
    the corner grip resizes it; only those take the pointer. */
 .dicer-tt {
+  /* layers: floor light, floor texture, floor colour (inside the rim); rim light, rim decoration,
+     rim texture, rim colour (under the rim). Textures are grey noise (assets/trays/tex) laid over
+     the colour with overlay, so they take any colour. */
+  /* each of these is one layer: a comma inside would shift the blend modes */
+  --tt-floor-light: radial-gradient(ellipse 85% 80% at 50% 40%, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.36));
+  --tt-floor-tex: none;
+  --tt-floor-size: auto;
+  --tt-floor-blend: overlay;
+  --tt-rim-light: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.3));
+  --tt-rim-deco: none;
+  --tt-rim-step: max(var(--dicer-tt-rim-width), 12px);
+  --tt-rim-tex: none;
   position: fixed;
   z-index: 59;
   box-sizing: border-box;
   pointer-events: none;
-  border: var(--dicer-tt-rim-width) solid var(--dicer-tt-rim);
+  border: var(--dicer-tt-rim-width) solid transparent;
   border-radius: var(--dicer-tt-radius);
-  background-color: var(--dicer-tt-color);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 10px 28px rgba(0, 0, 0, 0.5);
+  background:
+    var(--tt-floor-light) padding-box,
+    var(--tt-floor-tex) center / var(--tt-floor-size) padding-box,
+    linear-gradient(var(--dicer-tt-color), var(--dicer-tt-color)) padding-box,
+    var(--tt-rim-light) border-box,
+    var(--tt-rim-deco) 0 0 / calc(4 * var(--tt-rim-step)) var(--tt-rim-step) space border-box,
+    var(--tt-rim-deco) 0 0 / var(--tt-rim-step) calc(4 * var(--tt-rim-step)) space border-box,
+    var(--tt-rim-tex) border-box,
+    linear-gradient(var(--dicer-tt-rim), var(--dicer-tt-rim)) border-box;
+  background-blend-mode: normal, var(--tt-floor-blend), normal, normal, normal, normal, overlay, normal;
+  /* outside: the tray's shadow on the table; inside: the wall's shadow on the floor */
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 10px 22px rgba(0, 0, 0, 0.55), inset 0 -2px 8px rgba(0, 0, 0, 0.3);
   transition: opacity 0.35s ease, transform 0.35s ease;
+}
+/* the rim's bevel: a lit outer edge and a dark inner lip where it drops to the floor */
+.dicer-tt::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--dicer-tt-rim-width));
+  pointer-events: none;
+  border-radius: var(--dicer-tt-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 .dicer-tt.dicer-above {
   z-index: 8999;
@@ -2385,48 +2552,107 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 /* surfaces */
 .dicer-tt[data-surface='felt'] {
-  background-image: repeating-radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px),
-    radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.08), transparent 70%);
+  --tt-floor-tex: url('../assets/trays/tex/felt.svg');
 }
 .dicer-tt[data-surface='wood'] {
-  background-image: repeating-linear-gradient(92deg, rgba(0, 0, 0, 0.14) 0 2px, transparent 2px 7px, rgba(255, 255, 255, 0.04) 7px 8px, transparent 8px 15px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18));
+  --tt-floor-tex: url('../assets/trays/tex/wood.svg');
 }
 .dicer-tt[data-surface='stone'] {
-  background-image: radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.07) 0 12%, transparent 13%),
-    radial-gradient(circle at 70% 60%, rgba(0, 0, 0, 0.12) 0 18%, transparent 19%),
-    radial-gradient(circle at 45% 80%, rgba(255, 255, 255, 0.05) 0 9%, transparent 10%),
-    repeating-radial-gradient(circle at 60% 40%, rgba(0, 0, 0, 0.06) 0 1px, transparent 1px 4px);
+  --tt-floor-tex: url('../assets/trays/tex/stone.svg');
 }
 .dicer-tt[data-surface='leather'] {
-  background-image: radial-gradient(ellipse at 50% 35%, rgba(255, 255, 255, 0.1), transparent 65%),
-    repeating-radial-gradient(circle at 40% 40%, rgba(0, 0, 0, 0.08) 0 1px, transparent 1px 2.5px);
+  --tt-floor-tex: url('../assets/trays/tex/leather.svg');
 }
 .dicer-tt[data-surface='metal'] {
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(0, 0, 0, 0.25)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+  --tt-floor-tex: url('../assets/trays/tex/metal.svg');
+  --tt-floor-light: linear-gradient(160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0.08) 60%, rgba(0, 0, 0, 0.3));
 }
 .dicer-tt[data-surface='image'] {
-  background-image: var(--dicer-tt-image);
-  background-size: cover;
-  background-position: center;
+  --tt-floor-tex: var(--dicer-tt-image);
+  --tt-floor-size: cover;
+  --tt-floor-blend: normal;
+  --tt-floor-light: radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.3));
 }
 /* rims */
 .dicer-tt[data-rim='wood'] {
-  border-image: repeating-linear-gradient(90deg, color-mix(in srgb, var(--dicer-tt-rim) 80%, #000) 0 3px, var(--dicer-tt-rim) 3px 9px, color-mix(in srgb, var(--dicer-tt-rim) 85%, #fff) 9px 11px) 1;
-  border-radius: 0;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.35), inset 0 14px 24px rgba(0, 0, 0, 0.55);
+  --tt-rim-tex: url('../assets/trays/tex/wood.svg');
 }
 .dicer-tt[data-rim='leather'] {
-  outline: 2px dashed color-mix(in srgb, var(--dicer-tt-rim) 55%, #fff);
+  --tt-rim-tex: url('../assets/trays/tex/leather.svg');
+  outline: 2px dashed color-mix(in srgb, var(--dicer-tt-rim) 45%, #f3e3c3);
   outline-offset: calc(-0.55 * var(--dicer-tt-rim-width));
 }
 .dicer-tt[data-rim='stone'] {
-  border-style: ridge;
+  --tt-rim-tex: url('../assets/trays/tex/stone.svg');
+  --tt-rim-light: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(0, 0, 0, 0.25));
 }
 .dicer-tt[data-rim='metal'] {
-  border-style: outset;
-  border-color: color-mix(in srgb, var(--dicer-tt-rim) 70%, #fff);
+  --tt-rim-tex: url('../assets/trays/tex/metal.svg');
+  --tt-rim-light: linear-gradient(170deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.05) 30%, rgba(0, 0, 0, 0.1) 55%, rgba(255, 255, 255, 0.18) 75%, rgba(0, 0, 0, 0.35));
+  /* rivets: two layers (top and bottom, then the sides), spaced so the rows sit on the rims */
+  --tt-rim-deco: radial-gradient(circle 5px at 50% 50%, rgba(255, 255, 255, 0.85) 0 1px, color-mix(in srgb, var(--dicer-tt-rim) 60%, #fff) 1.5px, color-mix(in srgb, var(--dicer-tt-rim) 70%, #000) 3px, rgba(0, 0, 0, 0.45) 3.6px, transparent 4.4px);
+}
+/* shapes. Round: the rectangle's own rim and shadows, fully rounded. Hexagon and octagon: the
+   box draws nothing; its skin (clipped to the shape) draws the rim, the floor inside it, and a dark
+   lip between, and a drop shadow follows the outline. */
+.dicer-tt[data-shape='round'],
+.dicer-tt[data-shape='round']::before {
+  border-radius: 50%;
+}
+.dicer-tt-skin {
+  display: none;
+}
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon']) {
+  --tt-poly: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  outline: none;
+  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.55)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+}
+.dicer-tt[data-shape='octagon'] {
+  --tt-poly: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+}
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon'])::before {
+  display: none;
+}
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon'])::after {
+  clip-path: var(--tt-poly);
+}
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin,
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin::before,
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin::after {
+  position: absolute;
+  pointer-events: none;
+  clip-path: var(--tt-poly);
+}
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin {
+  display: block;
+  inset: calc(-1 * var(--dicer-tt-rim-width));
+  isolation: isolate;
+  background:
+    var(--tt-rim-light),
+    var(--tt-rim-tex),
+    linear-gradient(var(--dicer-tt-rim), var(--dicer-tt-rim));
+  background-blend-mode: normal, overlay, normal;
+}
+/* the floor */
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin::before {
+  content: '';
+  z-index: 1;
+  inset: var(--dicer-tt-rim-width);
+  background:
+    var(--tt-floor-light),
+    var(--tt-floor-tex) center / var(--tt-floor-size),
+    linear-gradient(var(--dicer-tt-color), var(--dicer-tt-color));
+  background-blend-mode: normal, var(--tt-floor-blend), normal;
+}
+/* the lip: a dark edge where the rim drops to the floor */
+.dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin::after {
+  content: '';
+  z-index: 0;
+  inset: calc(var(--dicer-tt-rim-width) - 3px);
+  background: rgba(0, 0, 0, 0.55);
 }
 /* the drag edges (the rim, at least 10 px to grab) and the resize grip */
 .dicer-tt-edge {
@@ -2460,4 +2686,152 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   pointer-events: auto;
   cursor: nwse-resize;
   background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.55) 50% 58%, transparent 58% 68%, rgba(255, 255, 255, 0.55) 68% 76%, transparent 76%);
+}
+
+/* The Dice tray window (src/ui/tray-editor.js): a live preview, then one card per part. */
+.dicer-tt-editor-app .dicer-tt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  max-height: 82vh;
+  overflow-y: auto;
+}
+.dicer-tt-editor-app .dicer-tt-stage {
+  flex: 0 0 auto;
+  height: 150px;
+  padding: 18px 28px;
+  border: 1px solid var(--dicer-line);
+  border-radius: calc(var(--dicer-radius) + 2px);
+  background: radial-gradient(ellipse at 50% 40%, #3a3440, #15131a 75%);
+}
+.dicer-tt-editor-app .dicer-tt-preview {
+  position: relative;
+  z-index: auto;
+  width: 100%;
+  height: 100%;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 8px 20px rgba(0, 0, 0, 0.45);
+  transition: none;
+}
+.dicer-tt-editor-app .dicer-tt-target {
+  display: flex;
+}
+.dicer-tt-editor-app .dicer-tt-target button {
+  flex: 1 1 0;
+}
+.dicer-tt-editor-app .dicer-tt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--dicer-line);
+  border-radius: calc(var(--dicer-radius) + 2px);
+  background: var(--dicer-surface);
+}
+.dicer-tt-editor-app .dicer-tt-section h3 {
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-size: var(--font-size-11, 11px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dicer-label);
+}
+.dicer-tt-editor-app .dicer-tt-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 6px;
+}
+.dicer-tt-editor-app button.dicer-tt-chip {
+  --button-background-color: var(--dicer-surface);
+  --button-border-color: var(--dicer-line);
+  --button-text-color: var(--color-text-secondary);
+  --button-hover-background-color: var(--dicer-surface-strong);
+  --button-hover-border-color: var(--dicer-line-strong);
+  --button-hover-text-color: var(--color-text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: auto;
+  min-height: 34px;
+  padding: 7px 4px;
+  border-radius: var(--dicer-radius);
+  font-size: var(--font-size-11, 11px);
+  line-height: 1.15;
+  white-space: normal;
+  text-align: center;
+}
+.dicer-tt-editor-app button.dicer-tt-chip i {
+  margin: 0;
+  font-size: 16px;
+}
+.dicer-tt-editor-app button.dicer-tt-chip.active {
+  --button-background-color: color-mix(in srgb, var(--dicer-accent) 22%, transparent);
+  --button-hover-background-color: color-mix(in srgb, var(--dicer-accent) 22%, transparent);
+  --button-border-color: var(--dicer-accent);
+  --button-hover-border-color: var(--dicer-accent);
+  --button-text-color: var(--color-text-emphatic);
+  --button-hover-text-color: var(--color-text-emphatic);
+  outline: none;
+  box-shadow: none;
+  font-weight: 600;
+}
+.dicer-tt-editor-app button.dicer-tt-chip.active i {
+  color: var(--dicer-accent);
+}
+.dicer-tt-editor-app .dicer-tt-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.dicer-tt-editor-app .dicer-tt-row > span:first-child {
+  font-size: var(--font-size-12, 12px);
+  color: var(--dicer-label);
+}
+.dicer-tt-editor-app .dicer-tt-row input[type='color'] {
+  width: 56px;
+  height: 26px;
+  padding: 2px;
+  border: 1px solid var(--dicer-line-strong);
+  border-radius: var(--dicer-radius);
+  background: transparent;
+  cursor: pointer;
+}
+.dicer-tt-editor-app .dicer-tt-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dicer-tt-editor-app .dicer-tt-range input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--dicer-accent);
+}
+.dicer-tt-editor-app .dicer-tt-range output {
+  min-width: 42px;
+  text-align: right;
+  font-size: var(--font-size-12, 12px);
+  font-variant-numeric: tabular-nums;
+  color: var(--dicer-muted);
+}
+.dicer-tt-editor-app .dicer-tt-path {
+  display: flex;
+  gap: 6px;
+}
+.dicer-tt-editor-app .dicer-tt-path button {
+  width: var(--dicer-control-h);
+  padding: 0;
+}
+.dicer-tt-editor-app .dicer-tt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dicer-line);
 }
