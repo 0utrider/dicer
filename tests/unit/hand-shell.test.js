@@ -61,7 +61,8 @@ test('main.js registers at init, syncs at ready and on the hand settings, and in
   expect(init).toContain('registerHandMethod();');
   const ready = src.slice(src.indexOf("Hooks.once('ready'"));
   expect(ready).toContain('syncHand();');
-  expect(ready).toMatch(/setHandDeps\(\{\s*diceBox: box,\s*areas,\s*decorateFor,\s*plan,/);
+  // hand throws land in the dice tray too: the areas the hand gets go through areaFor
+  expect(ready).toMatch(/setHandDeps\(\{\s*diceBox: box,[^}]*areas: \{ \.\.\.areas, rectFor: areaFor \},\s*decorateFor,\s*plan,/);
   expect(ready).toContain('setHandDeps(null);');
   expect(src).toContain("const getCore = () => game.settings.get('core', 'diceConfiguration');");
 });

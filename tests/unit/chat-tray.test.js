@@ -25,6 +25,8 @@ import {
   HOLD_MS,
   bagChoices,
   bagPicks,
+  bagView,
+  bagFavorites,
 } from '../../src/ui/chat-tray.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { TRAY_DICE } from '../../src/hand/chunk/tray.js';
@@ -863,6 +865,35 @@ describe('the dice bag', () => {
     const first = bag.querySelector('[data-bag-theme]');
     expect(first.dataset.bagTheme).toBe('');
     expect(first.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('bagView: with looks starred, only those (one Favourites group); else every group', () => {
+    const groups = [
+      { group: 'Mine', themes: [{ id: 'a', name: 'A' }] },
+      { group: 'Builtin', themes: [{ id: 'b', name: 'B' }, { id: 'c', name: 'C' }] },
+    ];
+    expect(bagView(groups, [])).toBe(groups);
+    expect(bagView(groups, ['c', 'a'])).toEqual([{ group: 'Favorites', themes: [{ id: 'a', name: 'A' }, { id: 'c', name: 'C' }] }]);
+    expect(bagView(groups, ['c'], true)).toBe(groups); // show all
+    expect(bagView(groups, ['gone'])).toBe(groups); // starred looks that are gone: everything
+    expect(bagFavorites(['a', 'a', 3, '', 'b'])).toEqual(['a', 'b']);
+    expect(bagFavorites('junk')).toEqual([]);
+  });
+
+  test('a star saves the look to favourites; the bag then lists only those, with a switch to all', async () => {
+    settings.theme = 'default';
+    settings.worldThemes = [];
+    dockTray(undefined, vi.fn());
+    click(dock().querySelector('[data-act="customize"]'));
+    click(dock().querySelector('[data-bag-fav="default"]'));
+    await flush();
+    expect(user.flags.dicer.bagFavorites).toEqual(['default']);
+    let bag = dock().querySelector('.dicer-chat-tray-bag');
+    expect([...bag.querySelectorAll('[data-bag-theme]')].map((t) => t.dataset.bagTheme)).toEqual(['default']);
+    click(bag.querySelector('[data-bag-all]')); // show all
+    bag = dock().querySelector('.dicer-chat-tray-bag');
+    expect(bag.querySelectorAll('[data-bag-theme]')).toHaveLength(BUILTIN_THEMES.length);
+    expect(bag.querySelector('[data-bag-fav="default"]').getAttribute('aria-pressed')).toBe('true');
   });
 
   test('a long helper word (Fortune) can give way to its arrow; a short one (Adv) never does', () => {

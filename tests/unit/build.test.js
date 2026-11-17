@@ -301,9 +301,12 @@ describe('build', () => {
     // owner approved +1,764 B (20,613 -> 22,377), 2026-11-17.
     // Dice trays (their settings and the lazy tray's hookup; the tray, its rules and its window
     // are lazy chunks): owner approved with the 0.3.0 release, +1,334 B (22,377 -> 23,711), 2026-11-17.
+    // Tester fixes: the petInTray and trayPresets settings, the tray shown while its window is open,
+    // hand throws into the tray, glowing dice lighting the table, the Animater moment check and the
+    // tray fading with the dice: owner approved +735 B (23,711 -> 24,446), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(23_711);
+    expect(growth).toBeLessThanOrEqual(24_446);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

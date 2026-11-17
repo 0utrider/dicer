@@ -74,6 +74,12 @@ let effectLayer = null; // trigger effects; its library is a lazy chunk
 let petDeps = null; // what the lazy pet chunk's layer is made from
 let tray = null; // this screen's dice tray (the lazy tray chunk), once loaded
 let trayDeps = null; // what it is made from (activate sets them)
+let trayEditing = false; // the Dice tray window is open (the tray shows while it is)
+// The Dice tray window (its lazy chunk) says when it opens and closes.
+Hooks.on('dicerTrayEditing', (on) => {
+  trayEditing = !!on;
+  tray?.preview(trayEditing);
+});
 
 /**
  * This screen's dice tray: the tray chunk loads once a tray is wanted (a mode that is not 'none',
@@ -89,6 +95,7 @@ function syncTray() {
     .then((m) => {
       if (tray || trayDeps !== deps) return;
       tray = m.createTray(deps);
+      tray.preview(trayEditing);
       tray.refresh();
       layerDice();
     })
@@ -105,11 +112,18 @@ export function soundSurface(get) {
  * A trigger rule's Animater moment (rules.js MOMENT_KINDS), on the whole screen of everyone.
  * Animater takes a moment from a GM only, so only the active GM's client calls it: once per roll.
  */
+let momentNoted = false;
 function playAnimaterMoment(m) {
   if (!game.user?.isGM || game.users?.activeGM?.id !== game.user.id) return;
   const api = game.modules?.get('animater')?.active ? game.modules.get('animater').api : null;
+  if (typeof api?.moment !== 'function') {
+    // said once: a rule asked for a moment this Animater cannot play (off, or a version without moments)
+    if (!momentNoted) console.warn('dicer: Animater is off or too old for moments');
+    momentNoted = true;
+    return;
+  }
   const held = !['pulse', 'shake'].includes(m.kind);
-  api?.moment?.({ kind: m.kind, where: 'screen', ...(m.colour && { colour: m.colour }), ...(m.strength !== undefined && { strength: m.strength }), ...(held && { ms: 1500, fade: 400 }) });
+  api.moment({ kind: m.kind, where: 'screen', ...(m.colour && { colour: m.colour }), ...(m.strength !== undefined && { strength: m.strength }), ...(held && { ms: 1500, fade: 400 }) });
 }
 
 /** game.dice3d._debug.fxPlays / resultSounds: counted where effects start and sounds are requested. */
@@ -782,7 +796,7 @@ Hooks.once('ready', async () => {
         setSetting: (k, v) => game.settings.set('dicer', k, v),
         measure: () => measureArea(),
         route: routeOf,
-        activeRolls: () => box.activeRolls,
+        activeRolls: () => box.showingRolls,
       };
       syncTray();
       const areaFor = (o) => {
@@ -794,7 +808,9 @@ Hooks.once('ready', async () => {
         return areas.rectFor(o);
       };
       // A user's area as their throws use it: the pet layer moves resting pets when areas change.
-      petDeps.areaOf = (id) => box.dieArea(tray?.area() ?? areas.rectFor({ rollerId: id }));
+      // (petInTray off: pets keep to the roll areas, out of the tray)
+      petDeps.areaOf = (id) =>
+        box.dieArea((getSetting('petInTray') !== false && tray?.area()) || areas.rectFor({ rollerId: id }));
       // Task 8: hand throws from other users, buffered until their message; the chunk on demand.
       const hand = createHandGate({ importChunk: () => loadHand(box), chunkNow: handNow });
       gate = createMessageGate({
@@ -846,7 +862,8 @@ Hooks.once('ready', async () => {
       // What the DicerResolver's body (the hand chunk) throws with.
       setHandDeps({
         diceBox: box,
-        areas,
+        // rolling by hand lands in the tray too (and shows a tray that shows only during rolls)
+        areas: { ...areas, rectFor: areaFor },
         decorateFor,
         plan,
         getSetting,

@@ -58,6 +58,24 @@ describe('light pools', () => {
       poolColor(normalizeAppearance({ body: { type: 'jelly', color: '#e8264f' } })).r,
     ).toBeCloseTo(1);
     expect(poolColor(normalizeAppearance({ body: { type: 'metal' } }))).toBeNull();
+    // a glowing die gives off its glow's light (any body), stronger with the glow
+    const lit = poolColor(
+      normalizeAppearance({ body: { type: 'metal' }, glow: { color: '#00ff40', intensity: 2 } }),
+    );
+    expect(lit.g).toBeCloseTo(1);
+    expect(lit.r).toBeCloseTo(0);
+    const dim = poolColor(
+      normalizeAppearance({ body: { type: 'opaque' }, glow: { color: '#00ff40', intensity: 0.5 } }),
+    );
+    expect(dim.g).toBeCloseTo(0.5);
+    expect(
+      poolColor(
+        normalizeAppearance({
+          body: { type: 'opaque' },
+          glow: { color: '#00ff40', intensity: 0.2 },
+        }),
+      ),
+    ).toBeNull(); // a faint glow: none
     expect(
       poolColor(
         normalizeAppearance({

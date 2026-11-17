@@ -12,6 +12,8 @@ import {
   trayFractions,
   trayStyle,
   trayArea,
+  normalizeTrayPresets,
+  MAX_TRAY_PRESETS,
   DEFAULT_TRAY,
 } from '../../src/tray/tray-model.js';
 import { createTray } from '../../src/tray/tray.js';
@@ -104,6 +106,23 @@ describe('tray model', () => {
     expect(((o.left - 50) / 50) ** 2 + ((o.top - 50) / 50) ** 2).toBeCloseTo(1, 1);
   });
 
+  test('saved trays: {id, name, look}, the look made safe; junk, repeats and extras dropped', () => {
+    const list = normalizeTrayPresets([
+      { id: 'crest', name: '  Party crest  ', look: { surface: 'wood', shape: 'hex' } },
+      { id: 'crest', name: 'again' },
+      { name: 'no id' },
+      'junk',
+      { id: 'x', name: 'A'.repeat(60), look: 'junk' },
+    ]);
+    expect(list.map((p) => p.id)).toEqual(['crest', 'x']);
+    expect(list[0]).toMatchObject({ name: 'Party crest', look: { surface: 'wood', shape: 'hex' } });
+    expect(list[1].name).toHaveLength(40);
+    expect(list[1].look).toEqual(normalizeTray({}));
+    expect(normalizeTrayPresets('junk')).toEqual([]);
+    const many = Array.from({ length: 40 }, (_, i) => ({ id: `p${i}`, look: {} }));
+    expect(normalizeTrayPresets(many)).toHaveLength(MAX_TRAY_PRESETS);
+  });
+
   test('style: no design paints nothing (an unmasked design layer would cover the floor)', () => {
     const s = trayStyle({ design: { src: '', opacity: 0.7 } });
     expect(s['--dicer-tt-design-opacity']).toBe('0');
@@ -150,6 +169,20 @@ describe('the tray on screen', () => {
     expect(document.querySelector('.dicer-tt')).toBeNull();
     expect(t.area()).toBeNull();
     expect(t.sound()).toBeNull();
+  });
+
+  test('shown only while rolling: the Dice tray window open shows it anyway, and closing hides it again', () => {
+    settings.trayShow = 'rolls';
+    const t = make();
+    t.refresh();
+    expect(t.element.classList.contains('is-hidden')).toBe(true);
+    t.preview(true);
+    expect(t.element.classList.contains('is-hidden')).toBe(false);
+    t.refresh(); // a save while the window is open
+    expect(t.element.classList.contains('is-hidden')).toBe(false);
+    t.preview(false);
+    expect(t.element.classList.contains('is-hidden')).toBe(true);
+    settings.trayShow = 'always';
   });
 
   test('dragging the rim moves it, the grip resizes it; the place is saved on release', () => {
@@ -222,6 +255,27 @@ describe('the tray editor', () => {
     expect(
       trayForm(look, 'mine', { pickingImage: true }).querySelector('[data-field="image"]'),
     ).toBeTruthy();
+    delete globalThis.game;
+  });
+
+  test('saved trays: a player sees them to pick; the GM may also save and remove; none, no section for a player', () => {
+    globalThis.game = { i18n: { localize: (k) => k } };
+    const look = startingLook('mine', {});
+    const presets = normalizeTrayPresets([
+      { id: 'crest', name: 'Crest', look: { shape: 'octagon' } },
+    ]);
+    const player = trayForm(look, 'mine', { presets });
+    expect(player.querySelector('[data-preset="crest"]').textContent).toBe('Crest');
+    expect(player.querySelector('[data-preset="crest"] .dicer-tt-swatch').dataset.shape).toBe(
+      'octagon',
+    );
+    expect(player.querySelector('[data-preset-del]')).toBeNull();
+    expect(player.querySelector('[data-act="save-preset"]')).toBeNull();
+    const gm = trayForm(look, 'table', { presets, gm: true });
+    expect(gm.querySelector('[data-preset-del="crest"]')).toBeTruthy();
+    expect(gm.querySelector('[data-act="save-preset"]')).toBeTruthy();
+    expect(trayForm(look, 'mine').querySelector('[data-preset]')).toBeNull();
+    expect(trayForm(look, 'mine').querySelector('.dicer-tt-preset-name')).toBeNull();
     delete globalThis.game;
   });
 });

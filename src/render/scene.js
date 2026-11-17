@@ -8,9 +8,10 @@ const SHADOW_Y = 0.01;
 
 /**
  * Radial-gradient blob texture, built once and shared by every shadow instance. `rgb` 255: the
- * light pool's white blob (its colour comes from the quad's vertex colour).
+ * light pool's white blob (its colour comes from the quad's vertex colour). `peak`: its opacity at
+ * the centre (the shadow reads clearly on a busy map; the pool takes its strength from POOL.light).
  */
-function makeShadowTexture(rgb = 0) {
+function makeShadowTexture(rgb = 0, peak = 0.7) {
   const size = 64;
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
@@ -19,7 +20,7 @@ function makeShadowTexture(rgb = 0) {
       const a = Math.max(0, 1 - d);
       const i = (y * size + x) * 4;
       data[i] = data[i + 1] = data[i + 2] = rgb;
-      data[i + 3] = Math.round(255 * a * a * 0.55);
+      data[i + 3] = Math.round(255 * a ** 1.6 * peak);
     }
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
@@ -136,7 +137,8 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
   let poolMesh = null;
   let poolCap = 0;
   const pools = [];
-  const POOL = { scale: 1.5, dx: 0.35, dz: -0.45, light: 0.35 };
+  // light: how bright the pool is by the table (it is added over the map, so it must be strong to show)
+  const POOL = { scale: 1.5, dx: 0.35, dz: -0.45, light: 0.75 };
 
   function poolCapacity(n) {
     if (poolCap >= n) return;
@@ -158,7 +160,7 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
       poolMesh.geometry.dispose();
       poolMesh.geometry = geo;
     } else {
-      poolTex = makeShadowTexture(255);
+      poolTex = makeShadowTexture(255, 1);
       poolMat = new THREE.MeshBasicMaterial({ map: poolTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
       poolMesh = new THREE.Mesh(geo, poolMat);
       poolMesh.renderOrder = -1;

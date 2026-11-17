@@ -417,6 +417,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       stopModule: ThemeBrowser.#onStopModule,
       importModule: ThemeBrowser.#onImportModule,
       openPet: ThemeBrowser.#onOpenPet,
+      openTray: ThemeBrowser.#onOpenTray,
+      openSettings: ThemeBrowser.#onOpenSettings,
     },
   };
 
@@ -816,6 +818,24 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #onOpenPet() {
     const m = await import('./pet-window.js');
     return m.openPetWindow();
+  }
+
+  /** The Dice tray window (its own lazy chunk). */
+  static async #onOpenTray() {
+    const m = await import('./tray-editor.js');
+    return m.openTrayEditor();
+  }
+
+  /** Foundry's settings, on Dicer's page. */
+  static async #onOpenSettings() {
+    const sheet = globalThis.game?.settings?.sheet;
+    if (!sheet) return;
+    await sheet.render({ force: true });
+    try {
+      sheet.changeTab?.('dicer', 'categories');
+    } catch {
+      /* another layout: the settings stay on their first page */
+    }
   }
 
   /** Opens the appearance editor (its own lazy chunk); a save there refreshes the gallery. */

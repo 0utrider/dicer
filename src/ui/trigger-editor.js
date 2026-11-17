@@ -5,6 +5,7 @@
  */
 import { EFFECTS } from '../effects/library/effects.js';
 import { DEFAULT_RULES, normalizeRule, MOMENT_KINDS } from '../effects/rules.js';
+import { animaterMoments } from '../effects/fx-resolver.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
 
 // Literal keys (the lang test scans them): Animater's moment kinds (rules.js MOMENT_KINDS).
@@ -280,7 +281,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     return {
       isGM: this.#isGM,
       // Animater moments: offered only with Animater active (its api plays them).
-      animater: globalThis.game?.modules?.get?.('animater')?.active === true,
+      animater: animaterMoments(),
       canEdit,
       tab: this.#tab,
       tabs: [

@@ -213,6 +213,16 @@ export function registerSettings({
     default: 'always',
     onChange: () => onTrayChange?.(),
   });
+  register('petInTray', {
+    name: t('petInTray.Name'),
+    hint: t('petInTray.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  // the GM's saved trays, each a look any player may take for their own (the Dice tray window)
+  register('trayPresets', { scope: 'world', config: false, type: Array, default: [] });
   for (const [key, scope] of [['tableTray', 'world'], ['myTray', 'client'], ['trayRect', 'client']])
     register(key, { scope, config: false, type: Object, default: null, onChange: () => onTrayChange?.() });
   registerEditorMenu(t, 'trayEditor', 'fa-solid fa-chess-board', () =>

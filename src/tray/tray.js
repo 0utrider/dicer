@@ -15,7 +15,8 @@ import {
 
 /** Dice keep this far inside the rim (px), so they never sit on it. */
 const INSET = 6;
-const HIDE_POLL_MS = 400;
+/** How often a tray that shows only during rolls checks that the dice have started fading. */
+const HIDE_POLL_MS = 100;
 
 /**
  * @param {object} deps
@@ -38,6 +39,7 @@ export function createTray({
   let look = null;
   let px = null;
   let poll = null;
+  let previewing = false; // the Dice tray window is open: shown whatever trayShow says
 
   const lookNow = () =>
     trayLookFor({
@@ -127,7 +129,7 @@ export function createTray({
       if (activeRolls() > 0) return;
       clearInterval(poll);
       poll = null;
-      if (showMode() === 'rolls') el?.classList.add('is-hidden');
+      if (showMode() === 'rolls' && !previewing) el?.classList.add('is-hidden');
     }, HIDE_POLL_MS);
   }
 
@@ -146,7 +148,10 @@ export function createTray({
       el.dataset.rim = look.rim.style;
       el.dataset.shape = look.shape;
       for (const [k, v] of Object.entries(trayStyle(look, route))) el.style.setProperty(k, v);
-      el.classList.toggle('is-hidden', showMode() === 'rolls' && !(activeRolls() > 0));
+      el.classList.toggle(
+        'is-hidden',
+        showMode() === 'rolls' && !previewing && !(activeRolls() > 0),
+      );
       place();
     },
     /** The px rect dice land in (inside the rim), or null with no tray: the roll area decides. */
@@ -159,6 +164,13 @@ export function createTray({
       if (!el || showMode() !== 'rolls') return;
       el.classList.remove('is-hidden');
       hideWhenClear();
+    },
+    /** The Dice tray window opened (true) or closed: while open the tray shows, so its look can be seen. */
+    preview(on) {
+      previewing = !!on;
+      if (!el) return;
+      if (previewing) el.classList.remove('is-hidden');
+      else if (showMode() === 'rolls' && !(activeRolls() > 0)) el.classList.add('is-hidden');
     },
     /** Over windows with the dice (diceAboveWindows). */
     raise(on) {

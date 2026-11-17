@@ -25,7 +25,7 @@ import { handAllowed, handDeps } from '../hand/shell.js';
 import { BUILTIN_THEMES, DIE_TYPES } from '../themes/themes.js';
 
 // --- the dice bag -------------------------------------------------------------------------------
-const BAG_GROUPS = { Mine: 'DICER.ChatTray.BagGroupMine', World: 'DICER.ChatTray.BagGroupWorld', Builtin: 'DICER.ChatTray.BagGroupBuiltin' };
+const BAG_GROUPS = { Favorites: 'DICER.ChatTray.BagGroupFavorites', Mine: 'DICER.ChatTray.BagGroupMine', World: 'DICER.ChatTray.BagGroupWorld', Builtin: 'DICER.ChatTray.BagGroupBuiltin' };
 const named = (list) => (Array.isArray(list) ? list.filter((t) => t && typeof t.id === 'string' && t.id && typeof t.name === 'string') : []);
 
 /**
@@ -40,6 +40,22 @@ export function bagChoices({ userThemes, worldThemes } = {}) {
   ]
     .filter(([, themes]) => themes.length)
     .map(([group, themes]) => ({ group, themes: themes.map((t) => ({ id: t.id, name: t.name })) }));
+}
+
+/** The user flag with the looks starred in the dice bag (theme ids). */
+const FAVS_FLAG = 'bagFavorites';
+/** The starred look ids of a stored flag: strings only, no repeats. */
+export const bagFavorites = (flag) => (Array.isArray(flag) ? [...new Set(flag.filter((id) => typeof id === 'string' && id))] : []);
+
+/**
+ * What the bag lists: with looks starred (and not `showAll`), only those, as one Favourites group
+ * (in the order of `groups`); else every group. Starred looks that no longer exist are left out.
+ */
+export function bagView(groups, favs, showAll = false) {
+  if (showAll || !favs.length) return groups;
+  const starred = new Set(favs);
+  const themes = groups.flatMap((g) => g.themes).filter((t) => starred.has(t.id));
+  return themes.length ? [{ group: 'Favorites', themes }] : groups;
 }
 
 /**
@@ -344,6 +360,7 @@ export function _resetChatTray() {
   dockEl = null;
   panelTab = 'bag';
   bagSlot = 'all';
+  bagAll = false;
   loader = null;
   hooked = false;
   state = { counts: {}, modifier: 0, adv: 0 };
@@ -616,6 +633,8 @@ function closeBag() {
 let panelTab = 'bag';
 /** The bag slot shown: all dice, or one die type. */
 let bagSlot = 'all';
+/** The bag lists every look, not only the starred ones. */
+let bagAll = false;
 
 /** The gear panel's tabs (dice bag, customize), `open` the one shown. */
 function panelTabs(open) {
@@ -654,6 +673,10 @@ function openBag(slot = bagSlot) {
   const groups = bagChoices({ userThemes, worldThemes });
   const picks = bagPicks(game?.user?.getFlag?.('dicer', 'appearance'), setting('theme'));
   const current = picks[slot] ?? '';
+  const favs = bagFavorites(game?.user?.getFlag?.('dicer', FAVS_FLAG));
+  const starred = new Set(favs);
+  const shown = bagView(groups, favs, bagAll);
+  const filtered = shown !== groups;
   const die = slot === 'all' ? 'd20' : slot;
   const shape = (type) => h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', html: DIE_SHAPES[type] ?? '' });
   const slots = h(
@@ -668,25 +691,55 @@ function openBag(slot = bagSlot) {
     ),
   );
   // the tile's picture: the die as a stand-in until its thumbnail comes (thumb: the theme it shows)
+  // a look's tile and its star (a look: starred ones are all the bag lists, once there are any)
   const tile = (id, name, thumb) =>
-    h('button', tip({ type: 'button', class: 'dicer-chat-tray-bag-tile', 'data-bag-theme': id, 'aria-pressed': String(id === current) }, name), [
-      h('span', { class: 'dicer-chat-tray-bag-thumb' }, [shape(die), h('img', { alt: '', hidden: '', 'data-thumb': thumb })]),
-      h('span', { class: 'dicer-chat-tray-bag-name', text: name }),
+    h('div', { class: 'dicer-chat-tray-bag-cell' }, [
+      h('button', tip({ type: 'button', class: 'dicer-chat-tray-bag-tile', 'data-bag-theme': id, 'aria-pressed': String(id === current) }, name), [
+        h('span', { class: 'dicer-chat-tray-bag-thumb' }, [shape(die), h('img', { alt: '', hidden: '', 'data-thumb': thumb })]),
+        h('span', { class: 'dicer-chat-tray-bag-name', text: name }),
+      ]),
+      ...(id
+        ? [
+            h(
+              'button',
+              tip({ type: 'button', class: 'dicer-chat-tray-bag-star', 'data-bag-fav': id, 'aria-pressed': String(starred.has(id)) }, loc(starred.has(id) ? 'DICER.ChatTray.BagUnstar' : 'DICER.ChatTray.BagStar')),
+              [h('i', { class: `${starred.has(id) ? 'fa-solid' : 'fa-regular'} fa-star`, 'aria-hidden': 'true' })],
+            ),
+          ]
+        : []),
     ]);
   const grid = h('div', { class: 'dicer-chat-tray-bag-grid' }, [
     ...(slot === 'all' ? [] : [tile('', loc('DICER.ChatTray.BagSame'), picks.all)]),
-    ...groups.flatMap(({ group, themes }) => [h('div', { class: 'dicer-chat-tray-bag-group', text: loc(BAG_GROUPS[group]) }), ...themes.map((t) => tile(t.id, t.name, t.id))]),
+    ...shown.flatMap(({ group, themes }) => [h('div', { class: 'dicer-chat-tray-bag-group', text: loc(BAG_GROUPS[group]) }), ...themes.map((t) => tile(t.id, t.name, t.id))]),
   ]);
+  // with looks starred: show them only, or every look
+  const showAll = favs.length
+    ? [h('button', { type: 'button', class: 'dicer-chat-tray-bag-all', 'data-bag-all': filtered ? 'on' : 'off', text: loc(filtered ? 'DICER.ChatTray.BagShowAll' : 'DICER.ChatTray.BagShowFavorites') })]
+    : [h('p', { class: 'dicer-chat-tray-bag-hint', text: loc('DICER.ChatTray.BagStarHint') })];
   const panel = h('div', { class: 'dicer-chat-tray-bag', role: 'dialog', 'aria-label': loc('DICER.ChatTray.Bag') }, [
     panelTabs('bag'),
     slots,
     grid,
+    ...showAll,
     h('button', { type: 'button', 'data-bag-act': 'browse', text: loc('DICER.ChatTray.BagBrowse') }),
   ]);
   dockEl.append(panel);
   dockEl.querySelector('[data-act="customize"]')?.setAttribute('aria-expanded', 'true');
   const byId = new Map([...named(userThemes), ...named(worldThemes), ...BUILTIN_THEMES].map((t) => [t.id, t]));
   void bagThumbnails(panel, byId, die);
+}
+
+/** Stars a look in the bag, or unstars it (the user flag), then shows the bag again. */
+async function starLook(id) {
+  const user = globalThis.game?.user;
+  const favs = bagFavorites(user?.getFlag?.('dicer', FAVS_FLAG));
+  const next = favs.includes(id) ? favs.filter((f) => f !== id) : [...favs, id];
+  try {
+    await user?.setFlag?.('dicer', FAVS_FLAG, next);
+  } catch (err) {
+    console.warn('dicer: the dice bag could not save your favourites', err);
+  }
+  if (dockEl?.querySelector('.dicer-chat-tray-bag')) openBag();
 }
 
 /** Fills the bag's tiles with pictures, one at a time, while the panel is open. Never throws. */
@@ -844,6 +897,11 @@ function wire(root) {
     if (t.dataset.prefDie || t.dataset.prefAct) return void onPref(t);
     if (t.dataset.bagAct || t.dataset.bagTheme !== undefined) return void onBag(t);
     if (t.dataset.bagSlot) return void openBag(t.dataset.bagSlot);
+    if (t.dataset.bagFav) return void starLook(t.dataset.bagFav);
+    if (t.dataset.bagAll) {
+      bagAll = t.dataset.bagAll === 'on';
+      return void openBag();
+    }
     if (t.dataset.panelTab) return void openPanel(t.dataset.panelTab);
     if (t.dataset.act === 'customize') {
       // the gear: the panel (dice bag / customize) open or closed

@@ -2282,6 +2282,39 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-chat-tray-bag-thumb.has-thumb svg {
   display: none;
 }
+/* a look's star (favourites): faint until hovered or starred */
+.dicer-chat-tray-bag-cell {
+  position: relative;
+}
+.dicer-chat-tray .dicer-chat-tray-bag-star {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font-size: 10px;
+  opacity: 0;
+}
+.dicer-chat-tray-bag-cell:hover .dicer-chat-tray-bag-star,
+.dicer-chat-tray .dicer-chat-tray-bag-star:focus-visible {
+  opacity: 0.7;
+}
+.dicer-chat-tray .dicer-chat-tray-bag-star[aria-pressed='true'] {
+  color: #ffcf4a;
+  opacity: 1;
+}
+.dicer-chat-tray .dicer-chat-tray-bag-all {
+  font-size: 11px;
+}
+.dicer-chat-tray-bag-hint {
+  margin: 0;
+  font-size: 10px;
+  opacity: 0.6;
+}
 .dicer-chat-tray-bag-name {
   max-width: 100%;
   overflow: hidden;
@@ -2513,7 +2546,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   background-blend-mode: normal, var(--tt-floor-blend), normal, normal, normal, normal, overlay, normal;
   /* outside: the tray's shadow on the table; inside: the wall's shadow on the floor */
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 10px 22px rgba(0, 0, 0, 0.55), inset 0 -2px 8px rgba(0, 0, 0, 0.3);
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  transition: opacity 0.4s ease, transform 0.4s ease; /* the dice fade (DiceBox FADE_MS) */
 }
 /* the rim's bevel: a lit outer edge and a dark inner lip where it drops to the floor */
 .dicer-tt::before {
@@ -2834,4 +2867,46 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid var(--dicer-line);
+}
+/* the GM's saved trays: a chip each, with the tray in small */
+.dicer-tt-editor-app .dicer-tt-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dicer-tt-editor-app .dicer-tt-preset {
+  display: inline-flex;
+  align-items: center;
+}
+.dicer-tt-editor-app .dicer-tt-preset > button[data-preset] {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 10px 0 5px;
+}
+.dicer-tt-editor-app .dicer-tt-preset:has(.dicer-tt-preset-del) > button[data-preset] {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.dicer-tt-editor-app button.dicer-tt-preset-del {
+  height: 32px;
+  width: 24px;
+  padding: 0;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  opacity: 0.7;
+}
+.dicer-tt-editor-app .dicer-tt-swatch {
+  position: relative;
+  z-index: auto;
+  width: 34px;
+  height: 22px;
+  --dicer-tt-rim-width: 3px !important;
+  transition: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.dicer-tt-editor-app .dicer-tt-swatch.dicer-tt::after {
+  display: none;
 }

@@ -59,6 +59,10 @@
           "rolls": "Only while rolling"
         }
       },
+      "petInTray": {
+        "Name": "Pets in the dice tray",
+        "Hint": "Your dice pets walk and rest inside the dice tray. Off: they keep to the roll area, out of the tray."
+      },
       "trayEditor": {
         "Name": "Dice tray",
         "Label": "Dice tray",
@@ -672,7 +676,10 @@
           "texture": "texture",
           "font": "font"
         }
-      }
+      },
+      "Tray": "Dice tray",
+      "TrayHint": "Your dice tray: its shape, surface, rim and design",
+      "SettingsHint": "All Dicer settings"
     },
     "Commands": {
       "Description": "Open the Dicer settings."
@@ -1096,7 +1103,14 @@
       "TableNote": "Everyone on “Table tray” sees this tray, each in their own place on their own screen.",
       "ResetPlace": "Put it back in the middle",
       "RemoveTable": "Remove the table tray",
-      "SaveFailed": "Your tray could not be saved."
+      "SaveFailed": "Your tray could not be saved.",
+      "PresetsTitle": "Saved trays",
+      "PresetsHint": "Trays your GM saved for the table: pick one to make it yours (you can still change it below).",
+      "PresetsHintGM": "Save the tray shown here for your players (a party emblem, say): each of them can pick it as their own tray.",
+      "PresetName": "Name, e.g. Party crest",
+      "PresetSave": "Save for players",
+      "PresetDelete": "Remove this saved tray",
+      "PresetDefault": "Tray"
     },
     "ChatTray": {
       "Label": "Chat dice tray",
@@ -1145,7 +1159,13 @@
       "FlatSuccess": "Success",
       "FlatFailure": "Failure",
       "FlatCriticalFailure": "Critical Failure",
-      "CustomizeFlat": "Flat check buttons (DC {dcs})"
+      "CustomizeFlat": "Flat check buttons (DC {dcs})",
+      "BagGroupFavorites": "Favourites",
+      "BagStar": "Add to favourites",
+      "BagUnstar": "Remove from favourites",
+      "BagShowAll": "Show all looks",
+      "BagShowFavorites": "Show favourites only",
+      "BagStarHint": "Star the looks you like: the bag then shows only those."
     },
     "Physical": {
       "Mark": "Rolled with physical dice ({methods})"

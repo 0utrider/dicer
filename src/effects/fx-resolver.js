@@ -317,7 +317,13 @@ export function dicerRules({ animater = false } = {}) {
   return normalizeRules(rules, 'module');
 }
 
-const animaterActive = () => safe(() => globalThis.game?.modules?.get?.('animater')?.active === true, false);
+/** Animater is on and can play moments (its api.moment: older versions have none). */
+export const animaterMoments = () =>
+  safe(() => {
+    const m = globalThis.game?.modules?.get?.('animater');
+    return m?.active === true && typeof m.api?.moment === 'function';
+  }, false);
+const animaterActive = animaterMoments;
 
 export function moduleRulesOf(registry, warn = console.warn, { hasAnimater = animaterActive } = {}) {
   const warned = new Set();

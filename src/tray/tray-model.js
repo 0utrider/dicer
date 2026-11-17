@@ -92,6 +92,27 @@ export function normalizeTray(raw) {
   };
 }
 
+/** At most this many saved trays (the world's trayPresets). */
+export const MAX_TRAY_PRESETS = 24;
+
+/**
+ * The GM's saved trays (world `trayPresets`), made safe: {id, name, look} each (the look
+ * normalised, a name of 40 characters at most), unique ids, MAX_TRAY_PRESETS at most.
+ */
+export function normalizeTrayPresets(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const p of raw) {
+    if (!isObj(p) || typeof p.id !== 'string' || !p.id || seen.has(p.id)) continue;
+    seen.add(p.id);
+    const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 40) : p.id;
+    out.push({ id: p.id, name, look: normalizeTray(p.look) });
+    if (out.length >= MAX_TRAY_PRESETS) break;
+  }
+  return out;
+}
+
 /**
  * The look this screen's tray has, or null (no tray: dice land on the scene's roll area as they
  * always did). 'mine' falls back to the table's look, then the default; 'table' needs the GM's.

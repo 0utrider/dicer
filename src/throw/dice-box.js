@@ -79,9 +79,17 @@ const importModel = (url, options) =>
 /**
  * The colour a die's light pool takes on the table (scene.js shadowFor), or null: a clear body
  * (resin, jelly) passes light in its own colour (a resin's inside, when it has one, in the inside's
- * main colour), as bright as white at that hue. Opaque bodies cast only their shadow.
+ * main colour), as bright as white at that hue. A glowing die (any body) lights it in its glow
+ * colour instead, by its glow strength. Other opaque bodies cast only their shadow.
  */
 export function poolColor(a) {
+  // a glowing die lights the table in its glow colour (strength 0.3 up; full at 1)
+  const g = a?.glow?.intensity;
+  if (Number.isFinite(g) && g >= 0.3) {
+    const c = new THREE.Color(a.glow.color);
+    const m = Math.max(c.r, c.g, c.b);
+    if (m > 0.02) return c.multiplyScalar(Math.min(1, g) / m);
+  }
   const t = a?.body?.type;
   if (t !== 'resin' && t !== 'jelly') return null;
   const c = new THREE.Color(t === 'resin' && a.interior?.type && a.interior.type !== 'none' ? a.interior.colors?.[0] : a.body.color);
@@ -243,6 +251,13 @@ export class DiceBox {
 
   get activeRolls() {
     return this._rolls.size;
+  }
+
+  /** Rolls still in view: not yet fading out, plus dice held for a throw (a tray waits for these). */
+  get showingRolls() {
+    let n = this._hold ? 1 : 0;
+    for (const roll of this._rolls) if (roll.phase !== 'fading') n++;
+    return n;
   }
 
   // Rolling by hand: `this.hand` is set by the lazy hand chunk (src/hand/chunk/box.js handFor):

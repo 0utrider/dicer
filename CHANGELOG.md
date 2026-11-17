@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **The tray shows while you edit it.** With **Show the dice tray: Only while rolling**, the tray now stays on screen while the Dice tray window is open.
+- **The tray fades with the dice.** A tray that shows only while rolling now fades out together with the dice, not a moment after.
+- **Rolling by hand uses the tray.** Hand-thrown dice now start and land in your tray, and a tray that shows only while rolling appears as soon as the hand dice load.
+- **Saved trays.** A GM can save trays (a party crest, say) in the Dice tray window, and each player can pick one as their own tray.
+- **Pets in the dice tray.** A new setting keeps your dice pets out of the tray if you prefer.
+- **Dice bag favourites.** Star the looks you like and the bag shows only those, with a switch to show them all.
+- **Shortcuts in the themes window.** A **Dice tray** button sits next to **My pet**, and a gear opens all Dicer settings.
+- **Glowing dice light the table.** A die with a strong glow casts a pool of its glow colour, brighter the stronger the glow.
+- **Easier to see:** dice shadows are darker and the coloured light under clear dice is much stronger.
+- **Animater moments:** the trigger editor offers moments only when your Animater version can play them, and the console says so when a moment is skipped.
+
 ## 0.3.2
 
 - **Dice trays look real.** Surfaces and rims are now textured: wood grain with planks, rough stone, pebbled leather, fine felt and brushed metal, each in the colour you pick. Rims have a lit bevel and drop into the floor, metal rims have rivets and leather rims have stitching.

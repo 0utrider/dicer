@@ -12,6 +12,7 @@ import {
   TRAY_DESIGNS,
   TRAY_SHAPES,
   trayStyle,
+  normalizeTrayPresets,
 } from '../tray/tray-model.js';
 
 const MODULE = 'dicer';
@@ -149,7 +150,7 @@ export function applyField(look, field, value) {
 export function trayForm(
   look,
   target,
-  { gm = false, pickingImage = false, pickingDesign = false } = {},
+  { gm = false, pickingImage = false, pickingDesign = false, presets = [] } = {},
 ) {
   const chips = (field, list, current, labels, icons) =>
     h(
@@ -206,6 +207,12 @@ export function trayForm(
         [h('i', { class: 'fa-solid fa-folder-open' })],
       ),
     ]);
+  // a saved tray's little picture: the tray itself, small
+  const swatch = (l) => {
+    const el = h('span', { class: 'dicer-tt dicer-tt-swatch', 'aria-hidden': 'true' });
+    paintPreview(el, l);
+    return el;
+  };
   const design = pickingDesign ? 'custom' : designChoice(look);
   const surface = pickingImage ? 'image' : look.surface;
   const preview = h('div', { class: 'dicer-tt dicer-tt-preview', 'aria-hidden': 'true' });
@@ -228,6 +235,63 @@ export function trayForm(
               'data-target': 'table',
               text: loc('DICER.DiceTray.EditTable'),
             }),
+          ]),
+        ]
+      : []),
+    // the GM's saved trays: a player takes one as their own; the GM saves the look shown, or drops one
+    ...(presets.length || gm
+      ? [
+          section('DICER.DiceTray.PresetsTitle', [
+            ...(presets.length
+              ? [
+                  h(
+                    'div',
+                    { class: 'dicer-tt-presets' },
+                    presets.map((p) =>
+                      h('span', { class: 'dicer-tt-preset' }, [
+                        h('button', { type: 'button', 'data-preset': p.id }, [
+                          swatch(p.look),
+                          h('span', { text: p.name }),
+                        ]),
+                        ...(gm
+                          ? [
+                              h(
+                                'button',
+                                {
+                                  type: 'button',
+                                  class: 'dicer-tt-preset-del',
+                                  'data-preset-del': p.id,
+                                  'aria-label': loc('DICER.DiceTray.PresetDelete'),
+                                },
+                                [h('i', { class: 'fa-solid fa-xmark', 'aria-hidden': 'true' })],
+                              ),
+                            ]
+                          : []),
+                      ]),
+                    ),
+                  ),
+                ]
+              : []),
+            h('p', {
+              class: 'dicer-hint',
+              text: loc(gm ? 'DICER.DiceTray.PresetsHintGM' : 'DICER.DiceTray.PresetsHint'),
+            }),
+            ...(gm
+              ? [
+                  h('span', { class: 'dicer-tt-path' }, [
+                    h('input', {
+                      type: 'text',
+                      class: 'dicer-tt-preset-name',
+                      maxlength: '40',
+                      placeholder: loc('DICER.DiceTray.PresetName'),
+                    }),
+                    h('button', { type: 'button', 'data-act': 'save-preset' }, [
+                      h('i', { class: 'fa-solid fa-floppy-disk', 'aria-hidden': 'true' }),
+                      ` ${loc('DICER.DiceTray.PresetSave')}`,
+                    ]),
+                  ]),
+                ]
+              : []),
           ]),
         ]
       : []),
@@ -313,11 +377,22 @@ export function openTrayEditor() {
     }
     async _renderHTML() {
       this.#look ??= this.#lookFor(this.#target);
-      return trayForm(this.#look, this.#target, {
+      const presets = normalizeTrayPresets(setting('trayPresets'));
+      const form = trayForm(this.#look, this.#target, {
+        presets,
         gm: isGM(),
         pickingImage: this.#pickingImage && this.#look.surface !== 'image',
         pickingDesign: this.#pickingDesign && designChoice(this.#look) !== 'custom',
       });
+      return form;
+    }
+    _onRender(context, options) {
+      super._onRender?.(context, options);
+      globalThis.Hooks?.callAll('dicerTrayEditing', true); // the tray shows while this is open
+    }
+    _onClose(options) {
+      super._onClose?.(options);
+      globalThis.Hooks?.callAll('dicerTrayEditing', false);
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
@@ -391,6 +466,32 @@ export function openTrayEditor() {
         return;
       }
       const s = globalThis.game.settings;
+      const presets = normalizeTrayPresets(setting('trayPresets'));
+      if (b.dataset.preset) {
+        // take a saved tray as the look edited (yours, or the table's for a GM on that tab)
+        const p = presets.find((x) => x.id === b.dataset.preset);
+        if (!p) return;
+        this.#look = normalizeTray(p.look);
+        this.#save();
+        return void this.render();
+      }
+      if (b.dataset.presetDel && isGM()) {
+        await s.set(
+          MODULE,
+          'trayPresets',
+          presets.filter((x) => x.id !== b.dataset.presetDel),
+        );
+        return void this.render();
+      }
+      if (b.dataset.act === 'save-preset' && isGM()) {
+        const input = b.closest('form')?.querySelector('.dicer-tt-preset-name');
+        const name =
+          input?.value?.trim() || `${loc('DICER.DiceTray.PresetDefault')} ${presets.length + 1}`;
+        const id = globalThis.foundry?.utils?.randomID?.() ?? `tray-${Date.now()}`;
+        const next = normalizeTrayPresets([...presets, { id, name, look: this.#look }]);
+        await s.set(MODULE, 'trayPresets', next);
+        return void this.render();
+      }
       if (b.dataset.act === 'reset-place') await s.set(MODULE, 'trayRect', null);
       if (b.dataset.act === 'remove-table' && isGM()) {
         await s.set(MODULE, 'tableTray', null);
