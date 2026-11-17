@@ -280,6 +280,7 @@ export function createFxResolver({
             ruleId: rule.id,
             effect,
             sound: rule.sound ?? null,
+            moment: rule.moment ?? null,
             macro: macros ? (rule.macro ?? null) : null,
             slowMotion:
               slow &&
@@ -301,7 +302,24 @@ export function createFxResolver({
  * The module rules (Dice So Nice `addSFXDefaults`) of a registry, normalized once per change of
  * the defaults or triggers. Warnings are deduplicated across recomputations.
  */
-export function moduleRulesOf(registry, warn = console.warn) {
+/**
+ * Dicer's own ready-made rules, listed with the module rules (a GM switches each off in the
+ * trigger editor): attack d20s glint as they land; with Animater active, a natural crit pulses the
+ * screen gold and a fumble shakes it (Animater moments, played from the active GM's view).
+ */
+export function dicerRules({ animater = false } = {}) {
+  const rules = [{ id: 'dicer-attack-glint', name: 'Attack dice glint', die: 'd20', context: { role: 'attack' }, effect: { id: 'glint' } }];
+  if (animater)
+    rules.push(
+      { id: 'dicer-animater-crit', name: 'Animater: critical success', die: 'd20', outcome: 'critical-success', moment: { kind: 'pulse', colour: '#ffcf4a', strength: 0.35 } },
+      { id: 'dicer-animater-fumble', name: 'Animater: critical failure', die: 'd20', outcome: 'critical-failure', moment: { kind: 'shake', strength: 0.35 } },
+    );
+  return normalizeRules(rules, 'module');
+}
+
+const animaterActive = () => safe(() => globalThis.game?.modules?.get?.('animater')?.active === true, false);
+
+export function moduleRulesOf(registry, warn = console.warn, { hasAnimater = animaterActive } = {}) {
   const warned = new Set();
   const warnOnce = (msg) => {
     if (warned.has(msg)) return;
@@ -313,15 +331,16 @@ export function moduleRulesOf(registry, warn = console.warn) {
   return () => {
     const defaults = safe(() => registry.getSFXDefaults(), []);
     const triggers = registry?.sfxTriggers;
+    const animater = hasAnimater();
     let next;
     try {
-      next = JSON.stringify([defaults, triggers ? [...triggers.values()] : []]);
+      next = JSON.stringify([defaults, triggers ? [...triggers.values()] : [], animater]);
     } catch {
       next = undefined;
     }
     if (next !== undefined && next === key) return rules;
     key = next;
-    rules = safe(() => dsnDefaultsToRules(defaults, triggers, warnOnce), []);
+    rules = [...safe(() => dsnDefaultsToRules(defaults, triggers, warnOnce), []), ...dicerRules({ animater })];
     return rules;
   };
 }
@@ -369,7 +388,7 @@ export function composeDecorateFor({ looks, fx, warn = console.warn }) {
  * leaves `macro` set on the roller's client with triggerMacros on. Failures warn once per
  * source and never throw.
  */
-export function createLandedFx({ playSound, fromUuid, onSound = () => {}, warn = console.warn }) {
+export function createLandedFx({ playSound, fromUuid, playMoment = () => {}, onSound = () => {}, warn = console.warn }) {
   const ran = new WeakMap(); // rollKey -> Set<ruleId>
   const warned = new Set();
   const warnOnce = (key, ...args) => {
@@ -402,16 +421,24 @@ export function createLandedFx({ playSound, fromUuid, onSound = () => {}, warn =
           warnOnce(`sound:${f.ruleId}`, 'Dicer: result sound failed', err);
         }
       }
-      if (typeof f.macro === 'string' && f.macro) {
+      const once = (what) => {
         const key = isObj(rollKey) ? rollKey : null;
-        if (key) {
-          if (!ran.has(key)) ran.set(key, new Set());
-          const done = ran.get(key);
-          if (done.has(f.ruleId)) continue;
-          done.add(f.ruleId);
+        if (!key) return true;
+        if (!ran.has(key)) ran.set(key, new Set());
+        const done = ran.get(key);
+        if (done.has(`${what}:${f.ruleId}`)) return false;
+        done.add(`${what}:${f.ruleId}`);
+        return true;
+      };
+      // An Animater moment: once per roll and rule, however many of its dice matched.
+      if (isObj(f.moment) && once('moment')) {
+        try {
+          playMoment(f.moment);
+        } catch (err) {
+          warnOnce(`moment:${f.ruleId}`, 'Dicer: Animater moment failed', err);
         }
-        runMacro(f);
       }
+      if (typeof f.macro === 'string' && f.macro && once('macro')) runMacro(f);
     }
   };
 }

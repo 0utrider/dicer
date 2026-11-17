@@ -17,6 +17,7 @@ import { handFor } from './box.js';
 import { HAND_UNFAIR } from '../unfair.js';
 import { handAllowed } from '../shell.js';
 import { normalizeAppearance } from '../../look/appearance.js';
+import { shapeTypeFor } from '../../core/dice-shapes.js';
 import { modelRotationFor } from '../../compat/dsn-orientation.js';
 
 /** id (roll.options.dicerHand.id) -> {recording, handle, specs} of the thrower's hand throw (Task 8). */
@@ -202,15 +203,11 @@ function failed(resolver, err) {
   if (h && !h.fallback && !handThrows.has(h.id)) h.fallback = st.fallback;
 }
 
-/** The geometry DiceBox draws `spec` with (its #makeDie rule): a crystal-look d4 is a d4crystal. */
+/** The geometry DiceBox draws `spec` with (its #makeDie rule): a crystal-look d4 is a d4crystal, a bullet-look d6 a d6bullet. */
 function shapeTypeOf(spec, rollLook) {
   const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
-  return spec.type === 'd4' &&
-    !spec.variant &&
-    !(spec.model && modelRotationFor(spec)) &&
-    !spec.faces &&
-    look.shapes.d4 === 'crystal'
-    ? 'd4crystal'
+  return !spec.variant && spec.dsnType !== 'd100' && !(spec.model && modelRotationFor(spec)) && !spec.faces
+    ? shapeTypeFor(spec.type, look.shapes)
     : spec.type;
 }
 

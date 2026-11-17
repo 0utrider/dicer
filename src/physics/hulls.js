@@ -1,7 +1,7 @@
 import { getShape } from '../core/dice-shapes.js';
 import { minkowskiHull } from '../core/chamfer.js';
 
-export const HULL_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd14', 'd16', 'd4crystal'];
+export const HULL_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd14', 'd16', 'd4crystal', 'd6bullet', 'd8crystal', 'd10crystal'];
 
 /**
  * Physics hull of a die (P2-R4): the exact Minkowski solid its rounded visual mesh

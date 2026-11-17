@@ -92,13 +92,20 @@ export function planThrow(roll, { maxDice = 20, showExtra = true, decorate, shap
       let out = diceFor(term, res.result, shapeOf(term), i & 1);
       const extra = out && decorate ? decorateSafely(term, res, termIndex) : null;
       if (out && extra) {
-        out = out.map((d) => {
+        const d100 = out.length === 2;
+        out = out.map((d, p) => {
           const merged = { ...d, ...extra, type: d.type, value: d.value };
+          delete merged.onesFaces;
           if (d.variant) merged.variant = d.variant;
           else delete merged.variant;
           // A relabelled die (dF, d3, d5, d7) keeps its own faces: a preset's fit another shape.
           if (d.faces) merged.faces = d.faces;
           else if (d.variant && d.variant !== 'd100tens' && d.variant !== 'dc') delete merged.faces;
+          // A d100's ones die: the system's d10 faces (extra.onesFaces), never the tens die's.
+          else if (d100 && p === 1) {
+            if (extra.onesFaces) merged.faces = extra.onesFaces;
+            else delete merged.faces;
+          }
           return merged;
         });
       }

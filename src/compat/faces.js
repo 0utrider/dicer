@@ -97,7 +97,8 @@ export function atlasGlyphTest(atlas) {
 /** Preset label index per face of the base shape (face i shows value values[i]). */
 function faceOrder(preset, count) {
   try {
-    const values = getShape(preset.shape ?? preset.type).values;
+    // A d100 preset dresses the tens die, a d10.
+    const values = getShape(preset.shape ?? (preset.type === 'd100' ? 'd10' : preset.type)).values;
     if (values.length === count) return values.map((v) => v - 1);
   } catch {
     /* an unknown shape keeps the preset's own order */
@@ -118,8 +119,13 @@ export function facesFor(preset, atlasHasGlyphs) {
   const ordered = order.map((i) => given[i] ?? '');
   const labels = ordered.map((l) => classifyLabel(l, atlasHasGlyphs));
   // Plain numbers: Dicer's own labels draw the same digits (and underline 6 and 9).
+  const tens = preset.type === 'd100';
   const plain = labels.every(
-    (l, i) => l.kind === 'glyph' && (l.text === String(order[i] + 1) || l.text === labelFor(preset.type, order[i] + 1)),
+    (l, i) =>
+      l.kind === 'glyph' &&
+      (tens
+        ? l.text === labelFor('d10', (order[i] + 1) * 10, 'd100tens') || l.text === String((order[i] + 1) * 10)
+        : l.text === String(order[i] + 1) || l.text === labelFor(preset.type, order[i] + 1)),
   );
   if (plain) return undefined;
   const key = `${preset.system ?? ''}|${preset.type ?? ''}|${hash(ordered.join('\u0000'))}`;

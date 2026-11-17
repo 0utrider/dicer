@@ -186,8 +186,8 @@ describe('bodies, presets and finishes in the form', () => {
   });
   it("the form's body lists are exactly what normalisation accepts", () => {
     expect(BODY_PRESET_LISTS).toEqual(BODY_PRESETS);
-    expect(BODY_TYPES).toEqual(['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood']);
-    expect(FINISHES).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn']);
+    expect(BODY_TYPES).toEqual(['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood', 'stone', 'bone', 'jelly']);
+    expect(FINISHES).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn', 'mirror']);
     for (const type of BODY_TYPES) expect(normalizeAppearance({ body: { type } }).body.type).toBe(type);
     for (const finish of FINISHES) expect(normalizeAppearance({ body: { type: 'metal', finish } }).body.finish).toBe(finish);
     for (const id of [...Object.values(BODY_PRESETS).flat(), 'patina', 'worn']) expect(PRESET_COLORS[id]).toBeTruthy();
@@ -196,7 +196,7 @@ describe('bodies, presets and finishes in the form', () => {
     for (const type of BODY_TYPES) {
       const v = visibleSections({ body: { type } });
       expect(v.preset).toBe(Object.hasOwn(BODY_PRESETS, type));
-      expect(v.color2).toBe(['marble', 'pearl', 'iridescent', 'gem', 'wood'].includes(type));
+      expect(v.color2).toBe(['marble', 'pearl', 'iridescent', 'gem', 'wood', 'stone', 'bone', 'jelly'].includes(type));
     }
     // a metal's second colour: only for the aged finishes
     for (const finish of FINISHES) {
@@ -619,7 +619,8 @@ describe('the appearance editor', () => {
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: { d7: { body: { type: 'wood' } }, df: { numbers: { fill: 'paint' } } }, rules: [] } });
     const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
     expect(labels('[data-field="shapes.d4"]')).toEqual([L('Shapes.classic'), L('Shapes.crystal')]);
-    expect(app.element.textContent).toContain(L('Shapes.D4'));
+    expect(labels('[data-field="shapes.d6"]')).toEqual([L('Shapes.classic'), L('Shapes.bullet')]);
+    expect(labels('[data-field="shapes.d10"]')).toEqual([L('Shapes.classic'), L('Shapes.crystal')]);
     expect(labels('[data-field="numbers.coin"]')).toEqual(COIN_CHOICES.map((c) => L(`Coin.${c}`)));
     expect(app.element.textContent).toContain(L('Numbers.Pips'));
     expect(q(app, 'input[name="numbers.pips"]')).toBeTruthy();
@@ -929,12 +930,12 @@ describe('the appearance editor', () => {
     await sharp.close();
   });
 
-  it('the material section renders preset chips only for types with presets, and five finishes for metal', async () => {
+  it('the material section renders preset chips only for types with presets, and six finishes for metal', async () => {
     const L = (k) => localize(`DICER.Appearance.${k}`);
     const app = await open({ base: { id: 't', name: 'T', appearance: metal, perType: {}, rules: [] } });
     const labels = (sel) => [...app.element.querySelectorAll(sel)].map((e) => e.textContent.trim());
-    expect(labels('[data-field="body.type"]')).toHaveLength(8);
-    expect(labels('[data-field="body.finish"]')).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn'].map((f) => L(`Finish.${f}`)));
+    expect(labels('[data-field="body.type"]')).toHaveLength(11);
+    expect(labels('[data-field="body.finish"]')).toEqual(['polished', 'brushed', 'antique', 'patina', 'worn', 'mirror'].map((f) => L(`Finish.${f}`)));
     expect(q(app, '[data-field="body.preset"]')).toBeNull();
     expect(q(app, 'input[name="body.luminous"]')).toBeNull();
     await click(app, '[data-field="body.type"][data-value="wood"]');
@@ -1245,7 +1246,7 @@ describe('lang/en.json', () => {
 
     });
     expect(keys.length).toBeGreaterThan(30);
-    expect([BODY_TYPES.length, Object.values(BODY_PRESETS).flat().length, FINISHES.length]).toEqual([8, 11, 5]);
+    expect([BODY_TYPES.length, Object.values(BODY_PRESETS).flat().length, FINISHES.length]).toEqual([11, 19, 6]);
     expect(keys).toEqual(expect.arrayContaining(['Body.Preset']));
     for (const k of keys) expect(typeof resolve(lang, k), `DICER.Appearance.${k}`).toBe('string');
     // dynamic keys built from lists

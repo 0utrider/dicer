@@ -124,3 +124,12 @@ describe('lookFacesFor: the face images of a look', () => {
     expect(lookFacesFor('d6', look({ d6: { 1: 'a.png' } }), FATE_FACES, 'dF')).toBe(FATE_FACES);
   });
 });
+
+test("a d100 preset's ten labels sit on the tens die's d10 faces by value; its plain tens are no faces", () => {
+  const digits = atlasGlyphTest(atlas);
+  const tensLabels = ['t10.webp', 't20.webp', 't30.webp', 't40.webp', 't50.webp', 't60.webp', 't70.webp', 't80.webp', 't90.webp', 't00.webp'];
+  const set = facesFor({ system: 's', type: 'd100', labels: tensLabels }, digits);
+  const d10 = getShape('d10').values;
+  expect(set.labels.map((l) => l.url)).toEqual(d10.map((v) => tensLabels[v - 1]));
+  expect(facesFor({ system: 's', type: 'd100', labels: ['10', '20', '30', '40', '50', '60', '70', '80', '90', '00'] }, digits)).toBeUndefined();
+});

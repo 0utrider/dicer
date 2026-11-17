@@ -4,8 +4,18 @@
  * Mine tab: the user's own `dicer.triggers` flag. All rule <-> form logic is in ./trigger-form.js.
  */
 import { EFFECTS } from '../effects/library/effects.js';
-import { DEFAULT_RULES, normalizeRule } from '../effects/rules.js';
+import { DEFAULT_RULES, normalizeRule, MOMENT_KINDS } from '../effects/rules.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
+
+// Literal keys (the lang test scans them): Animater's moment kinds (rules.js MOMENT_KINDS).
+const MOMENT_LABELS = {
+  pulse: 'DICER.Triggers.Moments.pulse',
+  shake: 'DICER.Triggers.Moments.shake',
+  rumble: 'DICER.Triggers.Moments.rumble',
+  grey: 'DICER.Triggers.Moments.grey',
+  blur: 'DICER.Triggers.Moments.blur',
+  split: 'DICER.Triggers.Moments.split',
+};
 import {
   blankEntry,
   entriesOf,
@@ -94,6 +104,7 @@ export function ruleSummary(e, { dice = {}, effects = {}, kinds = {}, outcomes =
   if (e.soundKind === 'builtin' && e.soundBuiltin) then.push(sounds[e.soundBuiltin] ?? humanize(e.soundBuiltin));
   if (e.soundKind === 'file' && e.soundSrc) then.push(basename(e.soundSrc));
   if (e.macro) then.push(loc('DICER.Triggers.MacroShort'));
+  if (e.momentKind) then.push(`${loc('DICER.Triggers.Moment')}: ${loc(MOMENT_LABELS[e.momentKind] ?? e.momentKind)}`);
   return `${when.filter(Boolean).join(' · ')} → ${then.join(' + ') || '—'}`;
 }
 
@@ -253,6 +264,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
           file: loc('DICER.Triggers.Sound.file'),
         },
         soundChoices: options(choices.sounds, e.soundBuiltin),
+        momentChoices: options(Object.fromEntries([['', loc('DICER.Triggers.NoMoment')], ...MOMENT_KINDS.map((k) => [k, loc(MOMENT_LABELS[k])])]), e.momentKind),
         showValue: e.resultKind === 'value',
         showRange: e.resultKind === 'range',
         showLabel: e.resultKind === 'label',
@@ -267,6 +279,8 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const current = selected === null ? null : rules[selected];
     return {
       isGM: this.#isGM,
+      // Animater moments: offered only with Animater active (its api plays them).
+      animater: globalThis.game?.modules?.get?.('animater')?.active === true,
       canEdit,
       tab: this.#tab,
       tabs: [

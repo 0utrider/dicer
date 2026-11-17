@@ -18,14 +18,21 @@ const isObj = (v) => v !== null && typeof v === 'object';
 const isStr = (v) => typeof v === 'string' && v.length > 0;
 const isMapLike = (v) => isObj(v) && typeof v.forEach === 'function';
 
-/** Number of faces implied by a `dN` die type, else null. */
+/**
+ * Number of faces implied by a `dN` die type, else null. A d100 preset is its tens die, as in
+ * Dice So Nice: ten labels (10 ... 90, 00); the ones die takes the system's d10.
+ */
 function facesOfType(type) {
+  if (type === 'd100') return 10;
   const m = /^d(\d+)$/.exec(type);
   return m ? Number(m[1]) : null;
 }
 
 /** Default model loader: the GLTF chunk loads only when a preset's model is first asked for. */
 const importModel = (url) => import('../render/model-loader.js').then((m) => m.loadDieModel(url));
+const SAFE_PATH = /^[^:<>"#?\\]+$/;
+// The atlas reader is its own chunk: only sets that use Dice So Nice's `atlas` load it.
+const importAtlas = () => import('./atlas.js');
 
 /**
  * @param {object} [deps]
@@ -35,12 +42,14 @@ const importModel = (url) => import('../render/model-loader.js').then((m) => m.l
  * @param {(url: string) => Promise<unknown>} [deps.loadModel]
  * @param {(url: string) => string} [deps.routeUrl] turns a preset's modelFile into the url
  *   Dicer loads (main.js: the same routeOf as face images)
+ * @param {(url: string) => Promise<unknown>} [deps.loadJson] reads a preset's or texture's atlas
  */
 export function createRegistry({
   warn = console.warn,
   hooks = { callAll() {} },
   loadModel = importModel,
   routeUrl = (url) => url,
+  loadJson = null,
 } = {}) {
   const systems = new Map();
   const colorsets = new Map();
@@ -100,6 +109,32 @@ export function createRegistry({
       return file;
     }
   };
+
+  const atlases = new Map(); // atlas path -> Promise<frame map>, read once
+  /**
+   * Once the atlas at `path` is read, `apply(frames)` points labels or a texture at its frames
+   * (true: something changed, listeners hear it). Null without a usable path.
+   */
+  function fromAtlas(member, path, apply) {
+    if (!isStr(path) || !SAFE_PATH.test(path)) return null;
+    let read = atlases.get(path);
+    if (!read) {
+      read = importAtlas()
+        .then((m) =>
+          Promise.resolve((loadJson ?? m.fetchJson)(routed(path))).then((json) =>
+            m.atlasFrames(json, path),
+          ),
+        )
+        .catch((err) => {
+          bad(member, `cannot read the atlas ${path}: ${err?.message ?? err}`);
+          return new Map();
+        });
+      atlases.set(path, read);
+    }
+    return read.then((frames) => {
+      if (frames.size && apply(frames)) changed();
+    });
+  }
 
   /** Marks a model preset loaded and fires diceSoNiceModelLoaded, once per preset. */
   function markModelLoaded(entry) {
@@ -164,15 +199,18 @@ export function createRegistry({
     }
     const faces = facesOfType(type) ?? facesOfType(base ?? '') ?? (given.length || null);
     const v = preset.values;
-    const values = isObj(v) && Number.isFinite(v.min) && Number.isFinite(v.max)
-      ? { min: v.min, max: v.max }
-      : { min: 1, max: faces ?? given.length };
+    const values =
+      isObj(v) && Number.isFinite(v.min) && Number.isFinite(v.max)
+        ? { min: v.min, max: v.max }
+        : { min: 1, max: faces ?? given.length };
     let labels = given.map(String);
     if (faces && given.length !== faces && !(hasModel && given.length === 0)) {
       bad('addDicePreset', `"${type}": expected ${faces} labels, got ${given.length}; padding`);
     }
     if (faces && !(hasModel && given.length === 0)) {
-      labels = Array.from({ length: faces }, (_, i) => (i < given.length ? String(given[i]) : String(values.min + i)));
+      labels = Array.from({ length: faces }, (_, i) =>
+        i < given.length ? String(given[i]) : String(values.min + i),
+      );
     }
     const sys = ensureSystem(systemId);
     const entry = {
@@ -209,7 +247,14 @@ export function createRegistry({
     // A model preset's textures live in its model.
     entry.loadTextures = () => entry.loadModel();
     sys.dice.set(type, entry);
-    return true;
+    // Atlas labels name frames of one sheet (Dice So Nice's `atlas`): until it is read they are
+    // not found and the die shows numbers. Its bump maps are relief Dicer leaves out.
+    entry.atlasReady = fromAtlas('addDicePreset', preset.atlas, (frames) => {
+      let hit = false;
+      entry.labels = entry.labels.map((l) => (frames.has(l) ? ((hit = true), frames.get(l)) : l));
+      return hit;
+    });
+    return entry;
   }
 
   function addSystem(system, mode = 'default') {
@@ -235,7 +280,10 @@ export function createRegistry({
   }
 
   async function addDicePreset(preset, shape) {
-    if (storePreset(preset, shape)) changed();
+    const entry = storePreset(preset, shape);
+    if (!entry) return;
+    changed();
+    await entry.atlasReady;
   }
 
   async function addColorset(colorset, mode = 'default') {
@@ -253,8 +301,15 @@ export function createRegistry({
       bad('addTexture', 'expected (id: string, texture: object)');
       return;
     }
-    textures.set(id, { ...texture, id, name: isStr(texture.name) ? texture.name : id });
+    const entry = { ...texture, id, name: isStr(texture.name) ? texture.name : id };
+    textures.set(id, entry);
     changed();
+    // An atlas texture's source names a frame of its sheet.
+    await fromAtlas(
+      'addTexture',
+      texture.atlas,
+      (frames) => frames.has(entry.source) && ((entry.source = frames.get(entry.source)), true),
+    );
   }
 
   function addDiceShape(def) {
@@ -346,7 +401,8 @@ export function createRegistry({
     prepareTextureList: () => names(textures, (k, t) => t.name),
     prepareFontList() {
       const out = {};
-      for (const s of systems.values()) for (const p of s.dice.values()) if (isStr(p.font)) out[p.font] = p.font;
+      for (const s of systems.values())
+        for (const p of s.dice.values()) if (isStr(p.font)) out[p.font] = p.font;
       return out;
     },
     contrastOf: (hex) => (luminance(hex) > 0.5 ? '#000000' : '#ffffff'),

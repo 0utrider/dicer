@@ -227,6 +227,16 @@ export function createLookResolver({
         warnOnce(err);
       }
       if (faces !== undefined) out.faces = faces;
+      // A d100 preset dresses its tens die; the ones die wears the system's d10 (throw-planner).
+      if (type === 'd100') {
+        try {
+          const ones = registry.presetFor?.(out.system, 'd10');
+          const onesFaces = ones ? facesFor(ones) : undefined;
+          if (onesFaces !== undefined) out.onesFaces = onesFaces;
+        } catch (err) {
+          warnOnce(err);
+        }
+      }
       // The routed url (registry routeUrl): the one the registry and DiceBox both load.
       if (preset.modelFile) out.model = preset.modelUrl ?? preset.modelFile;
     }

@@ -53,6 +53,7 @@ import { createDamageThemer } from './effects/damage-themes.js';
 import { createEffectLayer } from './effects/effect-layer.js';
 import { createDsnSfx } from './effects/dsn-sfx.js';
 import { jb2aSource } from './jb2a/source.js';
+import { lightingFor } from './render/scene-light.js';
 import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay, resetControls } from './settings.js';
 
 let dormant = false;
@@ -71,11 +72,44 @@ let dice3d = null; // game.dice3d, once activate() made it
 let soundEngine = null; // impact and result sounds; its synth is a lazy chunk
 let effectLayer = null; // trigger effects; its library is a lazy chunk
 let petDeps = null; // what the lazy pet chunk's layer is made from
+let tray = null; // this screen's dice tray (the lazy tray chunk), once loaded
+let trayDeps = null; // what it is made from (activate sets them)
+
+/**
+ * This screen's dice tray: the tray chunk loads once a tray is wanted (a mode that is not 'none',
+ * and a look for it), then follows the settings. Until it is in, rolls use the roll areas.
+ */
+function syncTray() {
+  if (tray) return void tray.refresh();
+  if (!trayDeps) return;
+  const mode = getSetting('trayMode');
+  if (mode === 'none' || (mode !== 'mine' && !getSetting('tableTray'))) return;
+  const deps = trayDeps;
+  import('./tray/tray.js')
+    .then((m) => {
+      if (tray || trayDeps !== deps) return;
+      tray = m.createTray(deps);
+      tray.refresh();
+      layerDice();
+    })
+    .catch((err) => console.warn('dicer: cannot load the dice tray', err));
+}
 
 /** The table surface the dice sound on: the client's override unless it is 'world'. */
 export function soundSurface(get) {
   const own = get('soundSurfaceOverride');
   return own && own !== 'world' ? own : get('soundSurface') || 'felt';
+}
+
+/**
+ * A trigger rule's Animater moment (rules.js MOMENT_KINDS), on the whole screen of everyone.
+ * Animater takes a moment from a GM only, so only the active GM's client calls it: once per roll.
+ */
+function playAnimaterMoment(m) {
+  if (!game.user?.isGM || game.users?.activeGM?.id !== game.user.id) return;
+  const api = game.modules?.get('animater')?.active ? game.modules.get('animater').api : null;
+  const held = !['pulse', 'shake'].includes(m.kind);
+  api?.moment?.({ kind: m.kind, where: 'screen', ...(m.colour && { colour: m.colour }), ...(m.strength !== undefined && { strength: m.strength }), ...(held && { ms: 1500, fade: 400 }) });
 }
 
 /** game.dice3d._debug.fxPlays / resultSounds: counted where effects start and sounds are requested. */
@@ -86,6 +120,7 @@ const landedFx = createLandedFx({
   playSound: (sound) => (getSetting('effectSounds') === false ? undefined : soundEngine?.result(sound)),
   onSound: debugCounters.countSound,
   fromUuid: (uuid) => globalThis.fromUuid(uuid),
+  playMoment: playAnimaterMoment,
 });
 
 /** Runs `run` in an idle callback (a 200 ms timer where there is none). */
@@ -156,7 +191,9 @@ function syncHand() {
  */
 function layerDice(mine = diceBox?.mineShown) {
   const mode = getSetting('diceAboveWindows');
-  diceRenderer?.canvas?.classList.toggle('dicer-above', mine === 'always' || mode === 'all' || (mode === 'mine' && !!mine));
+  const above = mine === 'always' || mode === 'all' || (mode === 'mine' && !!mine);
+  diceRenderer?.canvas?.classList.toggle('dicer-above', above);
+  tray?.raise(above);
 }
 
 function onSoundChange(key, value) {
@@ -196,6 +233,21 @@ export const getAppearance = () => {
   }
   return DEFAULT_APPEARANCE;
 };
+
+/** Foundry's v12+ colour (a Number with .rgb) or anything else as [r, g, b] 0..1, else null. */
+const rgbOf = (c) => (Array.isArray(c?.rgb) ? c.rgb : null);
+
+/**
+ * The diceLighting setting on the dice scene: scene mode follows the canvas's darkness and
+ * ambient colours (re-read on lightingRefresh).
+ */
+function lightDice() {
+  const env = globalThis.canvas?.environment;
+  diceRenderer?.sceneApi?.setLighting?.(
+    lightingFor(getSetting('diceLighting'), { darkness: env?.darknessLevel, daylight: rgbOf(env?.colors?.ambientDaylight), night: rgbOf(env?.colors?.ambientDarkness) }),
+  );
+  diceBox?.wake?.();
+}
 
 /** A module-relative or absolute URL as the browser can fetch it. */
 const routeOf = (url) =>
@@ -512,6 +564,8 @@ Hooks.once('init', () => {
     onSoundChange,
     onHandChange: () => (syncHand(), resetControls()), // and the tray tool
     onLayerChange: () => layerDice(),
+    onLightingChange: () => lightDice(),
+    onTrayChange: () => syncTray(),
     onGrabChange: (on) => syncGrab(diceBox, on),
   });
   try {
@@ -520,6 +574,8 @@ Hooks.once('init', () => {
     console.warn('dicer: cannot register rolling by hand', err);
   }
   loadPublicApi();
+  // Scene lighting follows the canvas: a new scene, a darkness change, a light colour change.
+  for (const hook of ['canvasReady', 'lightingRefresh']) Hooks.on(hook, () => getSetting('diceLighting') === 'scene' && lightDice());
   // On the author's client, before the message is stored: everyone then skips Foundry's clatter.
   Hooks.on('preCreateChatMessage', (message) =>
     dropCoreDiceSound(message, {
@@ -661,7 +717,7 @@ Hooks.once('ready', async () => {
         // addSystem(DiceSystem instance): its material callbacks and dice events (api.js).
         systemFor: (id) => registry?.systems.get(id)?.instance ?? null,
         onImpact: (e) => soundEngine?.impact(e),
-        getSurface: () => soundSurface(getSetting),
+        getSurface: () => tray?.sound() ?? soundSurface(getSetting),
         onLandedFx: (die, fx, rollKey) => landedFx(die, fx, rollKey),
         effects: effectLayer,
         pet: () => getPets(),
@@ -673,6 +729,7 @@ Hooks.once('ready', async () => {
     activate: ({ renderer, diceBox: box }) => {
       diceBox = box;
       diceRenderer = renderer;
+      lightDice();
       // Each die resolves its look from its roll's options and its roller's flag; custom die
       // types are shaped through the registry.
       // Model urls go through the same routeOf as face images: one url policy.
@@ -717,8 +774,27 @@ Hooks.once('ready', async () => {
       const decorateFor = composeDecorateFor({ looks: resolver, fx: fxResolver });
       // Which area each throw lands in on this screen (the roller's; the GM private corner).
       const areas = createAreaResolver({ getSetting, measureUsable: () => measureArea(), currentUser: () => game.user });
+      // A dice tray takes every roll this screen shows (whoever rolled); without one, the roll areas.
+      tray?.dispose();
+      tray = null;
+      trayDeps = {
+        getSetting,
+        setSetting: (k, v) => game.settings.set('dicer', k, v),
+        measure: () => measureArea(),
+        route: routeOf,
+        activeRolls: () => box.activeRolls,
+      };
+      syncTray();
+      const areaFor = (o) => {
+        const inTray = tray?.area();
+        if (inTray) {
+          tray.rolling();
+          return inTray;
+        }
+        return areas.rectFor(o);
+      };
       // A user's area as their throws use it: the pet layer moves resting pets when areas change.
-      petDeps.areaOf = (id) => box.dieArea(areas.rectFor({ rollerId: id }));
+      petDeps.areaOf = (id) => box.dieArea(tray?.area() ?? areas.rectFor({ rollerId: id }));
       // Task 8: hand throws from other users, buffered until their message; the chunk on demand.
       const hand = createHandGate({ importChunk: () => loadHand(box), chunkNow: handNow });
       gate = createMessageGate({
@@ -727,7 +803,7 @@ Hooks.once('ready', async () => {
         decorateFor,
         hooks: Hooks,
         getSetting,
-        areaFor: areas.rectFor,
+        areaFor,
         hand,
         onStarted: sendHand,
       });
@@ -754,7 +830,7 @@ Hooks.once('ready', async () => {
         faceTextures,
         facesFor: presetFaces,
         getArea: () => measureArea(),
-        areaFor: areas.rectFor,
+        areaFor,
         debugCounters,
         getAtlas: () => digitAtlas,
         getFonts: () => fontAtlases,
@@ -779,7 +855,7 @@ Hooks.once('ready', async () => {
         user: () => game.user,
       });
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
-      stopWatchingArea = watchArea(resizeDice);
+      stopWatchingArea = watchArea(() => (resizeDice(), tray?.refresh()));
       // The look-extras chunk landed: later rolls draw the real looks, not their fallbacks.
       stopLookExtras = onLookExtrasReady(refreshMaterials);
       // 'shader': the low fallback or the P2-R12 safe flags; dice in flight move over too.

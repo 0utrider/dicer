@@ -15,9 +15,9 @@ test('computeReaders covers every hull type and d2, normals unit length, crystal
     expect(mode).toBe(t === 'd4' || t === 'd16' ? -1 : 1);
     expect(gap).toBeCloseTo(flatGap(s), 6);
     expect(gap).toBeGreaterThan(0.1);
-    if (t === 'd4crystal') {
+    if (s.readFaces) {
       expect(read).toBeInstanceOf(Int8Array);
-      expect([...read]).toEqual([0, 1, 2, 3]);
+      expect([...read]).toEqual(s.readFaces); // the crystal d4's [0, 1, 2, 3], a long die's sides
     } else expect(read).toBeNull();
   }
   // Plain data only (no three.js objects), so it travels with INIT by structured clone.

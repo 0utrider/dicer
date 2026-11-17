@@ -4,6 +4,7 @@ import { createRegistry } from '../../src/compat/registry.js';
 import { createLookResolver } from '../../src/compat/resolve-looks.js';
 import { colorsetNameToAppearance, chosenRef } from '../../src/compat/user-looks.js';
 import { LOOKS } from '../../src/look/looks.js';
+import { normalizeAppearance } from '../../src/look/appearance.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import {
   moduleDiceEntries,
@@ -153,6 +154,21 @@ describe('module dice entries', () => {
     expect(entry.dropped).toEqual([{ kind: 'faces', types: ['d6'] }]);
     // a coin's labels go tails, heads: Foundry's 0 and 1
     expect(entry.faceImages).toEqual({ dc: { 0: 'tail.webp', 1: 'heads.webp' }, d2: { 1: 'tail.webp', 2: 'heads.webp' } });
+  });
+
+  it('bump and emissive maps leave the image faces in (Daggerdice, Dice Soup); an atlas frame is an image face', () => {
+    const faces = (k) => Array.from({ length: k }, (_, i) => `modules/m/f${i + 1}.webp`);
+    const dice = new Map([
+      ['d12', { labels: faces(12), bumpMaps: faces(12) }],
+      ['d6', { labels: faces(6), emissiveMaps: faces(6) }],
+      ['d2', { labels: ['modules/m/s.webp#xywh=0,0,64,64', 'modules/m/s.webp#xywh=64,0,64,64'] }],
+    ]);
+    const [entry] = moduleDiceEntries({ colorsets: new Map(), systems: new Map([['s', { name: 'S', dice }]]) });
+    expect(entry.dropped).toEqual([]);
+    expect(Object.keys(entry.faceImages)).toEqual(['d12', 'd6', 'd2']);
+    expect(entry.faceImages.d2[2]).toBe('modules/m/s.webp#xywh=64,0,64,64');
+    // and a theme keeps them (appearance.js faceImages)
+    expect(normalizeAppearance({ faces: entry.faceImages }).faces.d2).toEqual(entry.faceImages.d2);
   });
 });
 

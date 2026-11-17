@@ -113,6 +113,8 @@ export const resetControls = () => {
  * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
  *   or handRollsRequired changes (the core dice configuration is re-synced)
  * @param {() => void} [callbacks.onLayerChange] runs when diceAboveWindows changes
+ * @param {() => void} [callbacks.onLightingChange] runs when diceLighting changes
+ * @param {() => void} [callbacks.onTrayChange] runs when a dice tray setting changes
  * @param {(value: boolean) => void} [callbacks.onGrabChange] runs when grabDice changes
  */
 export function registerSettings({
@@ -125,6 +127,8 @@ export function registerSettings({
   onSoundChange,
   onHandChange,
   onLayerChange,
+  onLightingChange,
+  onTrayChange,
   onGrabChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
@@ -178,6 +182,42 @@ export function registerSettings({
     default: 'none',
     onChange: () => onLayerChange?.(),
   });
+  register('diceLighting', {
+    name: t('diceLighting.Name'),
+    hint: t('diceLighting.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: Object.fromEntries(['studio', 'scene', 'sun'].map((k) => [k, t(`diceLighting.Choices.${k}`)])),
+    default: 'studio',
+    onChange: () => onLightingChange?.(),
+  });
+  // Dice trays (src/tray): the GM's table look, this player's choice, own look, place and showing.
+  register('trayMode', {
+    name: t('trayMode.Name'),
+    hint: t('trayMode.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: Object.fromEntries(['table', 'mine', 'none'].map((k) => [k, t(`trayMode.Choices.${k}`)])),
+    default: 'table',
+    onChange: () => onTrayChange?.(),
+  });
+  register('trayShow', {
+    name: t('trayShow.Name'),
+    hint: t('trayShow.Hint'),
+    scope: 'client',
+    config: true,
+    type: String,
+    choices: Object.fromEntries(['always', 'rolls'].map((k) => [k, t(`trayShow.Choices.${k}`)])),
+    default: 'always',
+    onChange: () => onTrayChange?.(),
+  });
+  for (const [key, scope] of [['tableTray', 'world'], ['myTray', 'client'], ['trayRect', 'client']])
+    register(key, { scope, config: false, type: Object, default: null, onChange: () => onTrayChange?.() });
+  registerEditorMenu(t, 'trayEditor', 'fa-solid fa-chess-board', () =>
+    import('./ui/tray-editor.js').then((m) => m.openTrayEditor),
+  );
   register('physicalDice', {
     name: t('physicalDice.Name'),
     hint: t('physicalDice.Hint'),

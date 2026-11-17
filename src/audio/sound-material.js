@@ -13,7 +13,7 @@ const HINTS = {
   stone: 'stone',
 };
 
-const BODY = { metal: 'metal', marble: 'stone', resin: 'glass', opaque: 'plastic', pearl: 'plastic', wood: 'wood', gem: 'stone', iridescent: 'glass' };
+const BODY = { metal: 'metal', marble: 'stone', resin: 'glass', opaque: 'plastic', pearl: 'plastic', wood: 'wood', gem: 'stone', iridescent: 'glass', stone: 'stone', bone: 'wood', jelly: 'plastic' };
 
 export function soundMaterialOf(appearance, preset) {
   const hint = preset?.material ?? appearance?.material;

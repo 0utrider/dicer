@@ -1,0 +1,172 @@
+/**
+ * The dice tray on this screen (tray-model.js has the rules): an element just under the dice
+ * canvas, drawn from the tray look, that every roll this screen shows lands in. Its rim drags it,
+ * its corner grip resizes it (the place is saved to the client `trayRect`); with trayShow 'rolls'
+ * it slides in while dice are on screen and out once they clear.
+ */
+import { trayLookFor, trayPixels, trayFractions, trayStyle, traySound } from './tray-model.js';
+
+/** Dice keep this far inside the rim (px), so they never sit on it. */
+const INSET = 6;
+const HIDE_POLL_MS = 400;
+
+/**
+ * @param {object} deps
+ * @param {(key: string) => unknown} deps.getSetting
+ * @param {(key: string, value: unknown) => unknown} deps.setSetting
+ * @param {() => {left, top, width, height}} deps.measure the stage
+ * @param {(path: string) => string} [deps.route] a data path as a url
+ * @param {() => number} [deps.activeRolls] dice rolls on screen (trayShow 'rolls')
+ * @param {Document} [deps.doc]
+ */
+export function createTray({
+  getSetting,
+  setSetting,
+  measure,
+  route = (p) => p,
+  activeRolls = () => 0,
+  doc = globalThis.document,
+}) {
+  let el = null;
+  let look = null;
+  let px = null;
+  let poll = null;
+
+  const lookNow = () =>
+    trayLookFor({
+      mode: getSetting('trayMode'),
+      mine: getSetting('myTray'),
+      table: getSetting('tableTray'),
+    });
+  const showMode = () => (getSetting('trayShow') === 'rolls' ? 'rolls' : 'always');
+
+  function place() {
+    if (!el) return;
+    px = trayPixels(getSetting('trayRect'), measure());
+    Object.assign(el.style, {
+      left: `${px.left}px`,
+      top: `${px.top}px`,
+      width: `${px.width}px`,
+      height: `${px.height}px`,
+    });
+  }
+
+  /** Drags the tray (`mode` 'move') or its corner ('size') with the pointer; the place is saved on release. */
+  function drag(event, mode) {
+    if (event.button !== 0 || !px) return;
+    event.preventDefault();
+    const start = { x: event.clientX, y: event.clientY, ...px };
+    const stage = measure();
+    el.classList.add('is-dragging');
+    const move = (e) => {
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      const next =
+        mode === 'move'
+          ? { ...start, left: start.left + dx, top: start.top + dy }
+          : {
+              ...start,
+              width: Math.max(120, start.width + dx),
+              height: Math.max(90, start.height + dy),
+            };
+      // the same rules as a stored place (kept inside the stage, never too small), shown live
+      const fr = trayFractions(next, stage);
+      const shown = trayPixels(fr, stage);
+      Object.assign(el.style, {
+        left: `${shown.left}px`,
+        top: `${shown.top}px`,
+        width: `${shown.width}px`,
+        height: `${shown.height}px`,
+      });
+      px = shown;
+    };
+    const up = () => {
+      doc.removeEventListener('pointermove', move);
+      doc.removeEventListener('pointerup', up);
+      el?.classList.remove('is-dragging');
+      if (px) Promise.resolve(setSetting('trayRect', trayFractions(px, stage))).catch(() => {});
+    };
+    doc.addEventListener('pointermove', move);
+    doc.addEventListener('pointerup', up);
+  }
+
+  function build() {
+    el = doc.createElement('div');
+    el.className = 'dicer-tt';
+    el.setAttribute('aria-hidden', 'true');
+    for (const side of ['top', 'right', 'bottom', 'left']) {
+      const edge = doc.createElement('div');
+      edge.className = `dicer-tt-edge dicer-tt-edge-${side}`;
+      edge.addEventListener('pointerdown', (e) => drag(e, 'move'));
+      el.append(edge);
+    }
+    const grip = doc.createElement('div');
+    grip.className = 'dicer-tt-grip';
+    grip.addEventListener('pointerdown', (e) => drag(e, 'size'));
+    el.append(grip);
+    // just under the dice canvas: after the board, as the canvas's layer is
+    const board = doc.getElementById('board');
+    if (board) board.after(el);
+    else doc.body.append(el);
+  }
+
+  function hideWhenClear() {
+    clearInterval(poll);
+    poll = setInterval(() => {
+      if (activeRolls() > 0) return;
+      clearInterval(poll);
+      poll = null;
+      if (showMode() === 'rolls') el?.classList.add('is-hidden');
+    }, HIDE_POLL_MS);
+  }
+
+  return {
+    /** Re-reads the settings: draws, restyles, moves or removes the tray. */
+    refresh() {
+      look = lookNow();
+      if (!look) {
+        el?.remove();
+        el = null;
+        px = null;
+        return;
+      }
+      if (!el) build();
+      el.dataset.surface = look.surface;
+      el.dataset.rim = look.rim.style;
+      for (const [k, v] of Object.entries(trayStyle(look, route))) el.style.setProperty(k, v);
+      el.classList.toggle('is-hidden', showMode() === 'rolls' && !(activeRolls() > 0));
+      place();
+    },
+    /** The px rect dice land in (inside the rim), or null with no tray: the roll area decides. */
+    area() {
+      if (!el || !look || !px) return null;
+      const inset = look.rim.width + INSET;
+      return {
+        left: px.left + inset,
+        top: px.top + inset,
+        width: Math.max(1, px.width - 2 * inset),
+        height: Math.max(1, px.height - 2 * inset),
+      };
+    },
+    /** Dice are coming: a tray that shows only during rolls slides in, and out once they clear. */
+    rolling() {
+      if (!el || showMode() !== 'rolls') return;
+      el.classList.remove('is-hidden');
+      hideWhenClear();
+    },
+    /** Over windows with the dice (diceAboveWindows). */
+    raise(on) {
+      el?.classList.toggle('dicer-above', !!on);
+    },
+    /** The table sound of the tray's surface, or null with no tray. */
+    sound: () => (look ? traySound(look) : null),
+    get element() {
+      return el;
+    },
+    dispose() {
+      clearInterval(poll);
+      el?.remove();
+      el = null;
+    },
+  };
+}

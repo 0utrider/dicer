@@ -2069,7 +2069,8 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   opacity: 0.45;
 }
 .dicer-chat-tray-menu,
-.dicer-chat-tray-prefs {
+.dicer-chat-tray-prefs,
+.dicer-chat-tray-bag {
   border: 1px solid var(--dicer-ct-edge);
   background: linear-gradient(180deg, #2a2933, #1b1a21);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
@@ -2091,8 +2092,9 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   padding: 4px 8px;
   white-space: nowrap;
 }
-/* The customize panel: opens above the dock, like the quick-count menu. */
-.dicer-chat-tray-prefs {
+/* The customize panel and the dice bag: open above the dock, like the quick-count menu. */
+.dicer-chat-tray-prefs,
+.dicer-chat-tray-bag {
   position: absolute;
   bottom: calc(100% + 4px);
   right: 0;
@@ -2124,6 +2126,28 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   opacity: 1;
 }
 .dicer-chat-tray-chip svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.dicer-chat-tray-bag-row {
+  display: grid;
+  grid-template-columns: 5.5em 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.dicer-chat-tray-bag-row select {
+  min-width: 0;
+  width: 100%;
+}
+.dicer-chat-tray-bag-die {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dicer-chat-tray-bag-die svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -2318,4 +2342,122 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 }
 .dicer-roll-filters-big input {
   width: 64px;
+}
+
+/* Dice trays (src/tray): a roll area with a look, just under the dice canvas. The rim drags it,
+   the corner grip resizes it; only those take the pointer. */
+.dicer-tt {
+  position: fixed;
+  z-index: 59;
+  box-sizing: border-box;
+  pointer-events: none;
+  border: var(--dicer-tt-rim-width) solid var(--dicer-tt-rim);
+  border-radius: var(--dicer-tt-radius);
+  background-color: var(--dicer-tt-color);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 10px 28px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.dicer-tt.dicer-above {
+  z-index: 8999;
+}
+.dicer-tt.is-hidden {
+  opacity: 0;
+  transform: translateY(28px) scale(0.97);
+}
+.dicer-tt.is-hidden > * {
+  pointer-events: none !important;
+}
+.dicer-tt.is-dragging {
+  transition: none;
+}
+/* the floor design: a picture tinted in the design colour (white shows, black and clear do not) */
+.dicer-tt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-color: var(--dicer-tt-design-color);
+  opacity: var(--dicer-tt-design-opacity);
+  -webkit-mask: var(--dicer-tt-design) center / var(--dicer-tt-design-size) no-repeat;
+  mask: var(--dicer-tt-design) center / var(--dicer-tt-design-size) no-repeat;
+  mask-mode: luminance;
+}
+/* surfaces */
+.dicer-tt[data-surface='felt'] {
+  background-image: repeating-radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.08), transparent 70%);
+}
+.dicer-tt[data-surface='wood'] {
+  background-image: repeating-linear-gradient(92deg, rgba(0, 0, 0, 0.14) 0 2px, transparent 2px 7px, rgba(255, 255, 255, 0.04) 7px 8px, transparent 8px 15px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18));
+}
+.dicer-tt[data-surface='stone'] {
+  background-image: radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.07) 0 12%, transparent 13%),
+    radial-gradient(circle at 70% 60%, rgba(0, 0, 0, 0.12) 0 18%, transparent 19%),
+    radial-gradient(circle at 45% 80%, rgba(255, 255, 255, 0.05) 0 9%, transparent 10%),
+    repeating-radial-gradient(circle at 60% 40%, rgba(0, 0, 0, 0.06) 0 1px, transparent 1px 4px);
+}
+.dicer-tt[data-surface='leather'] {
+  background-image: radial-gradient(ellipse at 50% 35%, rgba(255, 255, 255, 0.1), transparent 65%),
+    repeating-radial-gradient(circle at 40% 40%, rgba(0, 0, 0, 0.08) 0 1px, transparent 1px 2.5px);
+}
+.dicer-tt[data-surface='metal'] {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(0, 0, 0, 0.25)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+}
+.dicer-tt[data-surface='image'] {
+  background-image: var(--dicer-tt-image);
+  background-size: cover;
+  background-position: center;
+}
+/* rims */
+.dicer-tt[data-rim='wood'] {
+  border-image: repeating-linear-gradient(90deg, color-mix(in srgb, var(--dicer-tt-rim) 80%, #000) 0 3px, var(--dicer-tt-rim) 3px 9px, color-mix(in srgb, var(--dicer-tt-rim) 85%, #fff) 9px 11px) 1;
+  border-radius: 0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.35), inset 0 14px 24px rgba(0, 0, 0, 0.55);
+}
+.dicer-tt[data-rim='leather'] {
+  outline: 2px dashed color-mix(in srgb, var(--dicer-tt-rim) 55%, #fff);
+  outline-offset: calc(-0.55 * var(--dicer-tt-rim-width));
+}
+.dicer-tt[data-rim='stone'] {
+  border-style: ridge;
+}
+.dicer-tt[data-rim='metal'] {
+  border-style: outset;
+  border-color: color-mix(in srgb, var(--dicer-tt-rim) 70%, #fff);
+}
+/* the drag edges (the rim, at least 10 px to grab) and the resize grip */
+.dicer-tt-edge {
+  position: absolute;
+  pointer-events: auto;
+  cursor: move;
+}
+.dicer-tt-edge-top,
+.dicer-tt-edge-bottom {
+  left: calc(-1 * var(--dicer-tt-rim-width));
+  right: calc(-1 * var(--dicer-tt-rim-width));
+  height: max(10px, var(--dicer-tt-rim-width));
+}
+.dicer-tt-edge-left,
+.dicer-tt-edge-right {
+  top: calc(-1 * var(--dicer-tt-rim-width));
+  bottom: calc(-1 * var(--dicer-tt-rim-width));
+  width: max(10px, var(--dicer-tt-rim-width));
+}
+.dicer-tt-edge-top { top: calc(-1 * var(--dicer-tt-rim-width)); }
+.dicer-tt-edge-bottom { bottom: calc(-1 * var(--dicer-tt-rim-width)); }
+.dicer-tt-edge-left { left: calc(-1 * var(--dicer-tt-rim-width)); }
+.dicer-tt-edge-right { right: calc(-1 * var(--dicer-tt-rim-width)); }
+.dicer-tt-grip {
+  position: absolute;
+  right: calc(-1 * var(--dicer-tt-rim-width) - 4px);
+  bottom: calc(-1 * var(--dicer-tt-rim-width) - 4px);
+  width: 18px;
+  height: 18px;
+  z-index: 1;
+  pointer-events: auto;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.55) 50% 58%, transparent 58% 68%, rgba(255, 255, 255, 0.55) 68% 76%, transparent 76%);
 }

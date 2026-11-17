@@ -4,7 +4,8 @@ import { withInsideFlare } from './inside-flare.js';
 /**
  * Die effects: they change the landed die itself. color-shift and number-flare write the fx
  * uniform block (uFxTint, uFxFlare) of the die's isolated material; glow-pulse adds a shell
- * mesh around it. All three are bound to their die (released with it) and cost 1.
+ * mesh around it, glint a light band sweeping across it. All are bound to their die (released with
+ * it) and cost 1.
  */
 
 export const EASE_IN_MS = 150;
@@ -232,7 +233,65 @@ export const glowPulse = Object.freeze({
   },
 });
 
+// Glint: a band of light sweeping once across the die's lit faces (a shell just over the surface,
+// front faces only), as light catching a cut face. The band runs along the view-space normal.
+const GLINT_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uStrength;
+uniform float uSweep;
+varying vec3 vDcN;
+varying vec3 vDcV;
+void main() {
+	vec3 n = normalize( vDcN );
+	float d = dot( n, vec3( - 0.6, 0.8, 0.0 ) );
+	float band = exp( - ( d - uSweep ) * ( d - uSweep ) / 0.012 );
+	float face = clamp( dot( n, normalize( vDcV ) ), 0.0, 1.0 );
+	vec3 c = uColor * ( uStrength * band * ( 0.35 + 0.65 * face ) );
+	gl_FragColor = vec4( c, clamp( max( max( c.r, c.g ), c.b ), 0.0, 1.0 ) );
+}
+`;
+const GLINT_SCALE = 1.012;
+
+export const glint = Object.freeze({
+  id: 'glint',
+  cost: 1,
+  bindsDie: true,
+  defaults: Object.freeze({ color: '#ffffff', intensity: 1.1, duration: 650 }),
+  start(ctx) {
+    const parent = ctx.die?.inner;
+    const geometry = parent?.geometry;
+    if (!parent?.add || !geometry) return NOOP;
+    const material = new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: ctx.color.clone() }, uStrength: { value: 0 }, uSweep: { value: -1.2 } },
+      vertexShader: GLOW_VERTEX,
+      fragmentShader: GLINT_FRAGMENT,
+      transparent: true,
+      depthWrite: false,
+      ...ADDITIVE,
+    });
+    const shell = new THREE.Mesh(geometry, material); // the die's geometry: never disposed here
+    shell.scale.setScalar(GLINT_SCALE);
+    shell.renderOrder = 1;
+    parent.add(shell);
+    const { uStrength, uSweep } = material.uniforms;
+    const base = Math.max(0, ctx.intensity);
+    return timed(
+      ctx.duration,
+      (e) => {
+        const t = e / ctx.duration;
+        uSweep.value = -1.2 + 2.4 * t;
+        uStrength.value = base * Math.sin(Math.PI * t);
+      },
+      () => {
+        parent.remove(shell);
+        material.dispose();
+      },
+    );
+  },
+});
+
 export const DIE_EFFECTS = Object.freeze({
+  [glint.id]: glint,
   [colorShift.id]: colorShift,
   [numberFlare.id]: numberFlare,
   [glowPulse.id]: glowPulse,

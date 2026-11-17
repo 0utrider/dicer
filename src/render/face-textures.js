@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { splitCrop } from './image-crop.js';
 
 /**
  * Rasterized die faces: one RGBA layer of a DataArrayTexture per image or text face of a
@@ -45,12 +46,14 @@ function newContext(size) {
   return ctx;
 }
 
-function drawImage(img, size) {
+/** `img` fitted to the square; `crop` ([x, y, w, h]): only that rectangle of it (an atlas frame). */
+function drawImage(img, size, crop = null) {
   const ctx = newContext(size);
-  const w = img.naturalWidth || img.width || size;
-  const h = img.naturalHeight || img.height || size;
+  const [x, y, w, h] = crop ?? [0, 0, img.naturalWidth || img.width || size, img.naturalHeight || img.height || size];
   const s = Math.min(size / w, size / h);
-  ctx.drawImage(img, (size - w * s) / 2, (size - h * s) / 2, w * s, h * s);
+  const to = [(size - w * s) / 2, (size - h * s) / 2, w * s, h * s];
+  if (crop) ctx.drawImage(img, x, y, w, h, ...to);
+  else ctx.drawImage(img, ...to);
   return ctx.getImageData(0, 0, size, size).data;
 }
 
@@ -126,12 +129,24 @@ export function createFaceTextures({
     return fontReady;
   }
 
+  const sheets = new Map(); // atlas sheet url -> its load: every frame of a die shares one
+  const load = (src, shared) => {
+    if (!shared) return loadImage(src);
+    let p = sheets.get(src);
+    if (!p) {
+      sheets.set(src, (p = Promise.resolve().then(() => loadImage(src))));
+      p.catch(() => sheets.delete(src)); // a failed sheet is tried again next time
+    }
+    return p;
+  };
+
   async function rasterize(label) {
     if (label.kind === 'image') {
       const url = String(label.url ?? '');
+      const { src, crop } = splitCrop(url);
       try {
-        const img = await withTimeout(Promise.resolve().then(() => loadImage(url)), timeoutMs, url);
-        return drawImage(img, size);
+        const img = await withTimeout(Promise.resolve().then(() => load(src, !!crop)), timeoutMs, url);
+        return drawImage(img, size, crop);
       } catch (err) {
         warnOnce(`url:${url}`, `dicer: cannot use face image ${url}; the die shows its number`, err);
         return null;

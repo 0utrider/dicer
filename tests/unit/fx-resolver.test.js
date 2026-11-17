@@ -384,7 +384,16 @@ describe('createLandedFx', () => {
 test('moduleRulesOf converts the DSN defaults once per change, warning once', async () => {
   const { createRegistry } = await import('../../src/compat/registry.js');
   const registry = createRegistry();
-  const getModule = moduleRulesOf(registry, warn);
+  const all = moduleRulesOf(registry, warn, { hasAnimater: () => false });
+  let last;
+  let shown;
+  // the DSN rules, Dicer's own ready-made ones left out (the same list while nothing changed)
+  const getModule = () => {
+    const rules = all();
+    if (rules !== last) shown = rules.filter((r) => !r.id.startsWith('dicer-'));
+    last = rules;
+    return shown;
+  };
   expect(getModule()).toEqual([]);
   registry.addSFXDefaults([
     { diceType: 'd20', onResult: ['20'], specialEffect: 'PlayAnimationBright' },
@@ -768,5 +777,37 @@ describe('theme sounds and celebrations (P5-D4)', () => {
     const damageThemeFor = vi.fn(() => null);
     decor(make({ damageThemeFor }), 'bob');
     expect(damageThemeFor).toHaveBeenCalledWith(expect.anything(), 'bob');
+  });
+});
+
+describe("Dicer's ready-made rules and Animater moments", () => {
+  test('attack d20s glint; with Animater, crits pulse and fumbles shake (module rules a GM can switch off)', async () => {
+    const { dicerRules } = await import('../../src/effects/fx-resolver.js');
+    const plain = dicerRules();
+    expect(plain.map((r) => r.id)).toEqual(['dicer-attack-glint']);
+    expect(plain[0]).toMatchObject({ source: 'module', die: 'd20', context: { role: 'attack' }, effect: { id: 'glint' } });
+    const withAnimater = dicerRules({ animater: true });
+    expect(withAnimater.map((r) => [r.outcome, r.moment?.kind])).toEqual([['any', undefined], ['critical-success', 'pulse'], ['critical-failure', 'shake']]);
+    const { createRegistry } = await import('../../src/compat/registry.js');
+    let on = false;
+    const get = moduleRulesOf(createRegistry(), warn, { hasAnimater: () => on });
+    expect(get().map((r) => r.id)).toEqual(['dicer-attack-glint']);
+    on = true;
+    expect(get().map((r) => r.id)).toContain('dicer-animater-crit');
+  });
+
+  test('a moment plays once per roll and rule, however many dice match; a throwing player only warns', () => {
+    const playMoment = vi.fn();
+    const landed = createLandedFx({ playSound: () => {}, fromUuid: async () => null, playMoment, warn });
+    const f = { ruleId: 'r1', moment: { kind: 'shake' }, value: 20, type: 'd20' };
+    const key = {};
+    landed({}, [f], key);
+    landed({}, [f], key);
+    expect(playMoment).toHaveBeenCalledTimes(1);
+    expect(playMoment).toHaveBeenCalledWith({ kind: 'shake' });
+    landed({}, [f], {});
+    expect(playMoment).toHaveBeenCalledTimes(2);
+    const bad = createLandedFx({ playSound: () => {}, fromUuid: async () => null, playMoment: () => { throw new Error('x'); }, warn: vi.fn() });
+    expect(() => bad({}, [f], {})).not.toThrow();
   });
 });

@@ -180,6 +180,58 @@ function buildD4Crystal() {
   };
 }
 
+/**
+ * A long die (bullet d6, crystal d8 and d10): an n-gonal prism along Y, the ring corners at
+ * circumradius R and y = +-L, each end closed by a pyramid to a tip at L + top (up) and
+ * -(L + bottom) (down). The n long sides are faces 0 .. n-1 (side k faces angle 2 pi k / n), valued
+ * so opposite sides sum to n + 1; the 2n cap triangles are value 0 and never read. A cap can never
+ * be rested on while its tip height exceeds a^2 / L (a: the ring's apothem): the centre then
+ * projects past the cap's ring edge, as on the crystal d4.
+ */
+function buildLong(type, n, R, L, top, bottom) {
+  const ring = (y) => Array.from({ length: n }, (_, k) => [R * Math.cos((2 * Math.PI * k) / n - Math.PI / n), y, R * Math.sin((2 * Math.PI * k) / n - Math.PI / n)]);
+  const vertices = [[0, L + top, 0], [0, -(L + bottom), 0], ...ring(L), ...ring(-L)];
+  const U = (k) => 2 + (k % n);
+  const D = (k) => 2 + n + (k % n);
+  const faces = [];
+  const values = [];
+  for (let k = 0; k < n; k++) {
+    faces.push([U(k), U(k + 1), D(k + 1), D(k)]);
+    values.push(k < n / 2 ? k + 1 : n - (k - n / 2));
+  }
+  for (let k = 0; k < n; k++) faces.push([0, U(k + 1), U(k)], [1, D(k), D(k + 1)]);
+  const c = [0, 0, 0];
+  return {
+    type,
+    kind: 'polyhedron',
+    vertices,
+    // every loop CCW seen from outside
+    faces: faces.map((f) => {
+      const m = f.reduce((s, i) => s.map((x, j) => x + vertices[i][j] / f.length), c);
+      return dot(loopNormal(vertices, f), m) < 0 ? [...f].reverse() : f;
+    }),
+    values: [...values, ...Array(2 * n).fill(0)],
+    readFaces: values.map((_, i) => i),
+    labelUp: [0, 1, 0],
+    readMode: 'up',
+  };
+}
+
+/**
+ * The die shapes a look may give a die type (appearance.shapes): the classic polyhedron, or one
+ * of these, drawn, thrown and read as `<type><shape>` (d4crystal, d6bullet ...).
+ */
+export const ALT_SHAPES = Object.freeze({ d4: ['crystal'], d6: ['bullet'], d8: ['crystal'], d10: ['crystal'] });
+
+/** The shape a die of `type` is drawn with under a look's shapes: its own, or its alternative. */
+export function shapeTypeFor(type, shapes) {
+  const alt = shapes?.[type];
+  return ALT_SHAPES[type]?.includes(alt) ? `${type}${alt}` : type;
+}
+
+/** The die type an alternative shape stands for (d6bullet -> d6); any other type: itself. */
+export const baseTypeOf = (shapeType) => /^(d\d+)(crystal|bullet)$/.exec(shapeType)?.[1] ?? shapeType;
+
 const buildD2 = () => ({
   type: 'd2',
   kind: 'coin',
@@ -200,6 +252,9 @@ const BUILDERS = {
   d16: () => buildTrapezohedron('d16', 8),
   d20: buildD20,
   d4crystal: buildD4Crystal,
+  d6bullet: () => buildLong('d6bullet', 6, 0.3, 0.5, 0.5, 0.26),
+  d8crystal: () => buildLong('d8crystal', 8, 0.32, 0.52, 0.48, 0.48),
+  d10crystal: () => buildLong('d10crystal', 10, 0.34, 0.52, 0.48, 0.48),
 };
 const cache = new Map();
 

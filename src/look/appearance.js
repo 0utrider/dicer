@@ -5,9 +5,11 @@ export const BODY_PRESETS = Object.freeze({
   iridescent: ['chameleon', 'opal', 'dichroic'],
   gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
   wood: ['oak', 'walnut', 'cherry', 'ebony'],
+  stone: ['granite', 'slate', 'sandstone', 'rock', 'brick'],
+  bone: ['bone', 'ivory', 'fossil'],
 });
-const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
-const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
+const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood', 'stone', 'bone', 'jelly'];
+const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn', 'mirror'];
 const AGED = ['patina', 'worn']; // metal finishes drawn by the look-extras chunk
 const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke', 'fire', 'lava', 'storm', 'frost'];
 const INCLUSIONS = ['flower', 'moss', 'butterfly'];
@@ -56,6 +58,11 @@ const num = (v, min, max, fallback) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : fallback;
 const pick = (v, list, fallback) => (list.includes(v) ? v : fallback);
 
+// The other die types' shapes (dice-shapes ALT_SHAPES): only a chosen one is kept, so a look
+// without one keeps its key.
+const ALT = { d6: 'bullet', d8: 'crystal', d10: 'crystal' };
+const altShapes = (s) => Object.fromEntries(Object.entries(ALT).filter(([t, v]) => s?.[t] === v));
+
 const snapEdge = (v) => EDGE_STEPS.reduce((best, s) => (Math.abs(s - v) < Math.abs(best - v) ? s : best), EDGE_STEPS[0]);
 
 // radius wins; a legacy edges.style 'sharp' means radius 0
@@ -95,7 +102,8 @@ function fromLegacy(i) {
 // dc / df / d100: the coin (1 heads, 0 tails), the Fate die (-1, 0, 1) and the d100's tens die (10 ... 100).
 const FACE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'dc', 'df', 'd100'];
 // an image path in the Foundry data folder, or an http(s) url: no other scheme
-const FACE_IMAGE = /^(?:https?:\/\/[^<>"]+|[^:<>"]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"]*)?$/i;
+// (#xywh=x,y,w,h: one frame of a Dice So Nice atlas sheet, render/image-crop.js)
+const FACE_IMAGE = /^(?:https?:\/\/[^<>"#]+|[^:<>"#]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"#]*)?(?:#xywh=\d{1,5},\d{1,5},\d{1,5},\d{1,5})?$/i;
 /**
  * The look's face images: {faces: {[die type]: {[face value]: path}}, facesTint?}, only valid
  * entries, or nothing (no field: a look without images keeps its key).
@@ -188,7 +196,7 @@ export function normalizeAppearance(input) {
         strip: { style: pick(es.style, STRIP_STYLES, STRIP_STYLES[0]), color: color(es.color, '#e2b04a'), strength: num(es.strength, 0, 1, 1) },
       },
       glow: { color: color(g.color, D.glow.color), intensity: num(g.intensity, 0, 2, D.glow.intensity) },
-      shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic' },
+      shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic', ...altShapes(i.shapes) },
       ...faceImages(i.faces, i.facesTint),
       ...bodyImageOf(i.bodyImage),
     };
@@ -251,6 +259,7 @@ export const needsLookExtras = (a) =>
   !!(a.numbers.icons.crit || a.numbers.icons.fumble || a.numbers.pips) ||
   a.numbers.coin !== 'numbers' ||
   !!BODY_PRESETS[a.body.type] ||
+  a.body.type === 'jelly' ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
   stripActive(a) ||
   !!a.bodyImage ||
@@ -263,7 +272,7 @@ export const fallbackLook = (a) =>
         ...a,
         body: {
           ...a.body,
-          type: { iridescent: 'pearl', gem: 'marble', wood: 'opaque' }[a.body.type] ?? a.body.type,
+          type: { iridescent: 'pearl', gem: 'marble', wood: 'opaque', stone: 'marble', bone: 'opaque', jelly: 'resin' }[a.body.type] ?? a.body.type,
           finish: AGED.includes(a.body.finish) ? 'antique' : a.body.finish,
           preset: null,
         },

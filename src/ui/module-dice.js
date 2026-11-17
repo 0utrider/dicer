@@ -75,9 +75,12 @@ function plainLabel(type, label, i, min) {
   return false;
 }
 
-/** A preset whose labels are not the plain numbers Dicer draws anyway (images, symbols, words). */
+/**
+ * A preset whose labels are not the plain numbers Dicer draws anyway (images, symbols, words).
+ * Bump and emissive maps are only relief and glow on those faces: Dicer leaves them out and keeps
+ * the faces.
+ */
 function hasCustomFaces(type, preset) {
-  if (preset.bumpMaps || preset.emissiveMaps) return true;
   const labels = Array.isArray(preset.labels) ? preset.labels : [];
   const min = Number.isFinite(preset.values?.min) ? preset.values.min : 1;
   return labels.some((l, i) => !plainLabel(type, l, i, min));
@@ -85,7 +88,8 @@ function hasCustomFaces(type, preset) {
 
 // Die types whose face images a theme holds (appearance.js faceImages), and what counts as one.
 const IMAGE_TYPES = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'dc', 'df', 'd100'];
-const IMAGE = /^(?:https?:\/\/[^<>"]+|[^:<>"]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"]*)?$/i;
+// A Dice So Nice atlas face: its sheet plus the frame's rectangle (registry.js atlasFrames).
+const IMAGE = /^(?:https?:\/\/[^<>"#]+|[^:<>"#]+)\.(?:png|jpe?g|webp|svg|gif|avif)(?:\?[^<>"#]*)?(?:#xywh=\d{1,5},\d{1,5},\d{1,5},\d{1,5})?$/i;
 /**
  * A theme's faces key for label i of a preset (compat/faces.js VARIANT_FACES): a coin's labels go
  * tails then heads (0, 1), a Fate die's -, blank, + (-1, 0, 1), a d100's 10 ... 00 (10 ... 100);
@@ -98,7 +102,7 @@ const faceKey = (type, i, min) => (type === 'dc' ? (i ? 1 : 0) : type === 'df' ?
  * cannot hold them).
  */
 function faceImagesOf(type, preset) {
-  if (!IMAGE_TYPES.includes(type) || preset.bumpMaps || preset.emissiveMaps) return null;
+  if (!IMAGE_TYPES.includes(type)) return null;
   const labels = Array.isArray(preset.labels) ? preset.labels : [];
   const min = Number.isFinite(preset.values?.min) ? preset.values.min : 1;
   const map = {};

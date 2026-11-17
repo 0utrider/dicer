@@ -1,12 +1,15 @@
 // Pure motion model of the theme preview die: a slow turntable around a slightly tilted vertical
 // axis, a drag that spins it by hand (with inertia that settles back to the slow turn) and a pitch
-// that eases back to level. No three.js and no DOM: update(dt) returns {yaw, pitch, tilt}.
+// that eases back to level. A drag can turn the die right over (its bottom faces, its 1), and
+// the view it was let go at is held a few seconds before the slow turn resumes.
+// No three.js and no DOM: update(dt) returns {yaw, pitch, tilt}.
 export const TURN_SECONDS = 8;
 export const TILT = (12 * Math.PI) / 180;
 const AUTO = (2 * Math.PI) / TURN_SECONDS;
 const SPIN_SETTLE = 1.6; // 1/s: how fast a flung spin decays back to the slow turn
 const PITCH_SETTLE = 2.4; // 1/s: how fast a dragged pitch eases back to level
-const MAX_PITCH = (70 * Math.PI) / 180;
+const MAX_PITCH = Math.PI; // upside down: every face can be brought round to the front
+export const HOLD_SECONDS = 4; // a let-go view stays put this long
 const DRAG_RAD_PER_PX = 0.012;
 const MAX_SPIN = 14; // rad/s
 
@@ -16,6 +19,7 @@ export function createTurntable({ reducedMotion = false } = {}) {
   let omega = reducedMotion ? 0 : AUTO;
   let dragging = false;
   let lastMove = 0;
+  let hold = 0; // seconds the let-go view still stays put
   const base = () => (reducedMotion ? 0 : AUTO);
 
   return {
@@ -48,19 +52,26 @@ export function createTurntable({ reducedMotion = false } = {}) {
     release() {
       if (!dragging) return;
       dragging = false;
-      if (reducedMotion || lastMove > 0.12) omega = base(); // held still before letting go: no fling
+      // Held still before letting go: no fling, and the view stays put to be read.
+      if (reducedMotion || lastMove > 0.12) {
+        omega = 0;
+        hold = HOLD_SECONDS;
+      }
     },
     reset() {
       yaw = 0;
       pitch = 0;
       omega = base();
       dragging = false;
+      hold = 0;
     },
     update(dt) {
       const step = Math.max(0, Math.min(dt, 0.1));
       if (dragging) {
         lastMove += step;
         if (lastMove > 0.12) omega = 0;
+      } else if (hold > 0) {
+        hold = Math.max(0, hold - step);
       } else {
         omega = base() + (omega - base()) * Math.exp(-SPIN_SETTLE * step);
         pitch *= reducedMotion ? 1 : Math.exp(-PITCH_SETTLE * step);

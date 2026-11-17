@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+- **More module dice sets keep their faces.** Sets whose face pictures come with bump or glow maps (for example **Daggerdice** and some of **Nice More Dice**) now show their pictures in the theme browser and keep them in **Save to My themes**. Only the bump and glow are left out.
+- **Dice So Nice atlases.** Sets that pack all their face pictures, or their texture, into one sheet (Dice So Nice's `atlas` option, used by **Dice Soup**) now show those pictures instead of plain numbers.
+- **Fixed:** a module set's d100 pictures landed on the wrong faces, and its ones die wore the tens die's pictures. The tens die now shows the set's d100 faces in order, and the ones die shows the set's d10.
+- **New materials.** In the dice editor: **Stone** (granite, slate, sandstone, rough rock and brick), **Bone** (bone, ivory and fossil), **Jelly** (a soft, gummy see-through die) and a **Mirror** finish for metal. For a hollow see-through die, pick Clear resin with nothing inside.
+- **New dice shapes.** Next to the crystal d4: a **bullet d6** and **crystal d8 and d10**, long dice that land on their sides. Pick them per die type in the dice editor.
+- **Turn the preview die right over.** Drag the preview die up or down to see its bottom faces and its 1; it holds the view a few seconds when you let go.
+- **Dice bag.** A bag button on the chat dice tray swaps the look of all your dice, or of one die type, from your themes, the world's or the built-in ones.
+- **Dice lighting.** A new setting: Studio (as before), **Scene light** (your dice take the scene's light, darker at night and tinted by its colours) or **Sunlight**.
+- **Coloured light.** Clear dice cast a pool of light in their own colour on the table beside their shadow.
+- **Glint.** A new effect: a band of light sweeps across the die as it lands. Attack d20s glint by default (the **Attack dice glint** trigger; a GM can switch it off in the trigger editor).
+- **Dice trays.** Your dice can land in a tray on the table: felt, wood, stone, leather, metal or your own picture, with a wooden, stitched leather, stone, metal or plain rim, rounded corners and a design on its floor (a sigil, a triangle and moon, a compass, a skull seal, or your own picture, in any colour). The GM sets a table tray for everyone; each player can use it, make their own, or turn trays off. Drag the rim to move it, drag the corner to resize it; keep it on the table or let it slide in only while dice roll. Your dice sound like its surface. Set it up under Configure Settings, Dicer, **Dice tray**.
+- **Animater moments.** With Animater active, trigger rules can also play an Animater screen moment (a pulse of colour, a shake, a rumble and more) for everyone, and two ready-made triggers pulse the screen gold on a critical success and shake it on a critical failure. Moments play from the GM's view, so a GM must be online.
+
 ## 0.2.6
 
 - **Eight new themes by Sherp:** Against the Grain, All-Seeing, Ebony & Ivory, Eruption, Nautilus, Sandalwood Sense, Scarborough and Wonderland, now built in. Their details in the theme browser say **Theme by Sherp**.

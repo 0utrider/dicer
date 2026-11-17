@@ -280,12 +280,14 @@
           {{else}}
             <p class="dicer-hint">{{localize "DICER.Appearance.Edges.StripNeedsRound"}}</p>
           {{/if}}
+          {{#each dieShapes}}
           <div class="dicer-field">
-            <span>{{localize "DICER.Appearance.Shapes.D4"}}</span>
+            <span>{{label}}</span>
             <div class="dicer-segmented dicer-ae-seg">
-              {{#each d4Shapes}}<button type="button" class="{{#if active}}active{{/if}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="shapes.d4" data-value="{{id}}">{{label}}</button>{{/each}}
+              {{#each choices}}<button type="button" class="{{#if active}}active{{/if}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}" data-action="setField" data-field="shapes.{{../type}}" data-value="{{id}}">{{label}}</button>{{/each}}
             </div>
           </div>
+          {{/each}}
         </div>
       </details>
 

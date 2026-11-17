@@ -4,7 +4,7 @@
  * checked against the chat message, matched to this screen's own plan by die key (H-10), and
  * placed into the roller's area here (H-11).
  */
-import { getShape, resultOf } from '../../core/dice-shapes.js';
+import { getShape, resultOf, baseTypeOf } from '../../core/dice-shapes.js';
 import { readResult } from '../../core/physical-read.js';
 import { FLOATS_PER_DIE } from '../../physics/protocol.js';
 import { decodeTrajectory, placeTrajectory, replaySource } from './trajectory.js';
@@ -137,7 +137,7 @@ export function benchReplay(box, payload) {
   const d = decodeTrajectory(payload);
   if (!d) return false;
   const specs = d.shapes.map((shape, i) => ({
-    type: shape === 'd4crystal' ? 'd4' : shape,
+    type: baseTypeOf(shape),
     shapeType: shape,
     value: d.values[i] ?? 1,
     free: true,
@@ -157,7 +157,7 @@ const resultOfSpec = (s) => (s.variant === 'd100tens' ? s.value : resultOf(s.val
  * - `full`: the roll planned with every result (showExtra, no maxDice cut), same looks;
  * - `diceBox`, `rect` (the px area the gate throws in, or null: the stage), `capacity` (the dice
  *   that share the area).
- * Every recorded die must have a unique key of `full`, its own shape (a d4 may be a crystal d4),
+ * Every recorded die must have a unique key of `full`, its own shape (or its alternative: a crystal d4, a bullet d6 ...),
  * and the final frame must read the message's result for it. Its replay spec is this plan's spec
  * for the key, or a look-only one (no fx or damage type) when this plan dropped it (maxDice,
  * showExtraDice off); it is drawn with the recorded shape and is free (physics already decided).
@@ -176,7 +176,7 @@ export function replayFor(decoded, { n, specs, full, diceBox, rect, capacity = 0
   for (let i = 0; i < keys.length; i++) {
     const ref = all.get(keys[i]);
     const shape = shapes[i];
-    if (!ref || !(shape === ref.type || (ref.type === 'd4' && shape === 'd4crystal'))) return null;
+    if (!ref || !(shape === ref.type || baseTypeOf(shape) === ref.type)) return null;
     const o = at + i * FLOATS_PER_DIE;
     const q = { x: last[o + 3], y: last[o + 4], z: last[o + 5], w: last[o + 6] };
     if (readResult(getShape(shape), q, ref.variant) !== resultOfSpec(ref)) return null;

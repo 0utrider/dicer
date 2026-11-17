@@ -285,7 +285,8 @@ describe('registry and module rules', () => {
   test('a daggerheart addSFXDefaults entry becomes a module rule matching a critical die', () => {
     const warn = vi.fn();
     const reg = make();
-    const getModuleRules = moduleRulesOf(reg, warn);
+    const dsnOnly = moduleRulesOf(reg, warn);
+    const getModuleRules = () => dsnOnly().filter((r) => !r.id.startsWith('dicer-')); // Dicer's own ready-made rules ride along
     expect(getModuleRules()).toEqual([]);
     reg.addSFXDefaults([
       { diceType: 'daggerheart-duality-trigger', onResult: ['critical'], specialEffect: 'PlayAnimationConvergence' },

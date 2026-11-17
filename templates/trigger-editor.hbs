@@ -209,6 +209,18 @@
               <input type="text" name="rules.{{index}}.macro" value="{{macro}}" data-macro placeholder="{{localize "DICER.Triggers.Macro"}}" {{#if readonly}}disabled{{/if}}>
             </span>
           </label>
+          {{#if ../animater}}
+          <div class="dicer-grid-2">
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.Moment"}}</span>
+              <select name="rules.{{index}}.momentKind" data-tooltip="DICER.Triggers.MomentHint" {{#if readonly}}disabled{{/if}}>{{selectOptions momentChoices selected=momentKind}}</select>
+            </label>
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.MomentColour"}}</span>
+              <input type="color" name="rules.{{index}}.momentColour" value="{{#if momentColour}}{{momentColour}}{{else}}#ffcf4a{{/if}}" {{#if readonly}}disabled{{/if}}>
+            </label>
+          </div>
+          {{/if}}
         </section>
       </fieldset>
       {{/if}}

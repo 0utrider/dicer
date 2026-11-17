@@ -3,6 +3,9 @@ import { mergePatches } from '../merge.js';
 import * as iridescent from './iridescent.js';
 import * as gem from './gem.js';
 import * as wood from './wood.js';
+import * as stone from './stone.js';
+import * as bone from './bone.js';
+import * as jelly from './jelly.js';
 import * as metalFinishes from './metal-finishes.js';
 
 /**
@@ -26,6 +29,9 @@ const MODULES = [
   [iridescent.iridescentPatch, iridescent.USES_NOISE],
   [gem.gemPatch, gem.USES_NOISE],
   [wood.woodPatch, wood.USES_NOISE],
+  [stone.stonePatch, stone.USES_NOISE],
+  [bone.bonePatch, bone.USES_NOISE],
+  [jelly.jellyPatch, jelly.USES_NOISE],
   [metalFinishes.metalFinishPatch, metalFinishes.USES_NOISE],
 ];
 

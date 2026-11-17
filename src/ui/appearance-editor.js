@@ -29,7 +29,7 @@ import {
   FILLS,
   RELIEFS,
   ICON_CHOICES,
-  D4_SHAPES,
+  DIE_SHAPES,
   COIN_CHOICES,
   FONT_KINDS,
   EDGE_STEPS,
@@ -67,6 +67,7 @@ function faceSlotsOf(type) {
 }
 const MODULE = 'dicer';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
+const fmt = (key, data) => globalThis.game?.i18n?.format?.(key, data) ?? key;
 const notify = (kind, message) => globalThis.ui?.notifications?.[kind]?.(message);
 const me = () => globalThis.game?.user;
 const settings = () => globalThis.game?.settings;
@@ -293,7 +294,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       inclusions: active(INCLUSION_LIST, form.interior.inclusion, 'DICER.Appearance.Inclusion.', INCLUSION_ICONS),
       extraKinds: active(EXTRA_LIST, form.interior.extra, 'DICER.Appearance.Extra.', EXTRA_ICONS),
       shapes: active(SHAPES, form.interior.shape, 'DICER.Appearance.Shape.', SHAPE_ICONS),
-      d4Shapes: active(D4_SHAPES, form.shapes.d4, 'DICER.Appearance.Shapes.'),
+      dieShapes: Object.entries(DIE_SHAPES).map(([type, list]) => ({ type, label: fmt('DICER.Appearance.Shapes.Of', { die: type }), choices: active(list, form.shapes[type] ?? 'classic', 'DICER.Appearance.Shapes.') })),
       coins: active(COIN_CHOICES, form.numbers.coin, 'DICER.Appearance.Coin.'),
       fills: active(FILLS, form.numbers.fill, 'DICER.Appearance.Fill.'),
       reliefs: active(RELIEFS, form.numbers.relief, 'DICER.Appearance.Relief.'),

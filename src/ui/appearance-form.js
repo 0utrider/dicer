@@ -12,14 +12,16 @@ import { DIE_TYPES } from '../themes/themes.js';
 import { PRESET_COLORS } from '../look/body-colors.js';
 import { upsertTheme, userThemeId, worldThemeId, mergeEdited } from './theme-form.js';
 
-export const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood'];
-export const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn'];
+export const BODY_TYPES = ['opaque', 'resin', 'metal', 'marble', 'pearl', 'iridescent', 'gem', 'wood', 'stone', 'bone', 'jelly'];
+export const FINISHES = ['polished', 'brushed', 'antique', 'patina', 'worn', 'mirror'];
 // Literal copy of BODY_PRESETS (importing it would add an export to the world-start chunk; the unit
 // test pins it to the real one).
 export const BODY_PRESET_LISTS = {
   iridescent: ['chameleon', 'opal', 'dichroic'],
   gem: ['amethyst', 'malachite', 'obsidian', 'quartz'],
   wood: ['oak', 'walnut', 'cherry', 'ebony'],
+  stone: ['granite', 'slate', 'sandstone', 'rock', 'brick'],
+  bone: ['bone', 'ivory', 'fossil'],
 };
 export const INTERIOR_TYPES = ['none', 'liquid', 'glitter', 'swirl', 'nebula', 'shape', 'foil', 'eye', 'botanical', 'smoke', 'fire', 'lava', 'storm', 'frost'];
 // Literal copy of the inclusion kinds (the unit test pins it to what normalisation accepts).
@@ -29,6 +31,8 @@ export const EXTRA_LIST = ['none', 'foil', 'glitter', 'sand', 'bubbles'];
 export const SHAPES = ['star','heart', 'skull', 'sphere', 'sword', 'axe', 'shield', 'dragon', 'runes'];
 // Literal lists (the unit test pins them to what normalisation accepts).
 export const D4_SHAPES = ['classic', 'crystal'];
+/** Each die type's shapes (dice-shapes ALT_SHAPES, the classic first; the unit test pins them). */
+export const DIE_SHAPES = { d4: D4_SHAPES, d6: ['classic', 'bullet'], d8: ['classic', 'crystal'], d10: ['classic', 'crystal'] };
 export const COIN_CHOICES = ['numbers', 'heads-tails', 'sun-moon'];
 export const FILLS = ['paint', 'gold', 'silver', 'enamel', 'outline', 'holo', 'glow'];
 export const RELIEFS = ['engraved', 'raised'];
@@ -43,7 +47,7 @@ export { EDGE_STEPS, STRIP_STYLES };
 export const FONT_SUGGESTIONS = ['Georgia', 'Impact', 'Palatino Linotype', 'Trebuchet MS', 'Verdana', 'Courier New', 'Times New Roman'];
 export const LOOK_KIND = 'dicer-look';
 /** Body types with a second colour (marble veins, pearl sheen...). Resin has none: its shader never reads it. */
-const TWO_TONE = ['marble', 'pearl', 'iridescent', 'gem', 'wood'];
+const TWO_TONE = ['marble', 'pearl', 'iridescent', 'gem', 'wood', 'stone', 'bone', 'jelly'];
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
@@ -95,7 +99,7 @@ export function formFromAppearance(raw) {
       ...fontParts(a.numbers.font),
     },
     edges: { radius: a.edges.radius, strip: a.edges.strip.style, stripColor: a.edges.strip.color, stripStrength: a.edges.strip.strength },
-    shapes: { d4: a.shapes.d4 },
+    shapes: Object.fromEntries(Object.keys(DIE_SHAPES).map((t) => [t, a.shapes[t] ?? 'classic'])),
     glow: { ...a.glow },
     faces: plain(a.faces ?? {}),
     facesTint: a.facesTint === true,
@@ -147,7 +151,7 @@ export function appearanceFromForm(form) {
       weight: n(num.weight),
     },
     edges: { radius: n(e.radius), strip: { style: e.strip, color: e.stripColor, strength: n(e.stripStrength) } },
-    shapes: { d4: isObj(f.shapes) ? f.shapes.d4 : undefined },
+    shapes: isObj(f.shapes) ? Object.fromEntries(Object.keys(DIE_SHAPES).map((t) => [t, f.shapes[t]])) : {},
     glow: { color: g.color, intensity: n(g.intensity) },
     faces: f.faces,
     facesTint: f.facesTint === true,

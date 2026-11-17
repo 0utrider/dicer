@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { splitCrop, cropImage } from '../image-crop.js';
 
 /**
  * Body image (look-extras chunk): a picture on the die's body (appearance.bodyImage), not on its
@@ -163,9 +164,10 @@ export function createBodyImages({ loadImage = defaultLoadImage, timeoutMs = 400
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error(`${url} timed out after ${timeoutMs} ms`)), timeoutMs);
     });
-    return Promise.race([Promise.resolve().then(() => loadImage(url)), timeout])
+    const { src, crop } = splitCrop(url); // an atlas frame: its sheet, cropped
+    return Promise.race([Promise.resolve().then(() => loadImage(src)), timeout])
       .then((img) => {
-        const texture = new THREE.Texture(img);
+        const texture = new THREE.Texture(crop ? cropImage(img, crop) : img);
         texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.anisotropy = 4;

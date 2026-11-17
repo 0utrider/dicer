@@ -68,7 +68,7 @@ const BODY_PRESETS = {
   metal: (b, color) => ({
     color,
     metalness: 1,
-    roughness: b.roughness,
+    roughness: b.finish === 'mirror' ? 0.02 : b.roughness, // a mirror finish: polished flawless
     clearcoat: METAL_COAT,
     anisotropy: b.finish === 'brushed' ? 0.8 : 0,
   }),

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getShape, labelFor, resultOf } from '../core/dice-shapes.js';
+import { getShape, labelFor, resultOf, shapeTypeFor, baseTypeOf } from '../core/dice-shapes.js';
 import { buildDieGeometry } from '../core/chamfer.js';
 import {
   createDiceMaterial,
@@ -76,6 +76,19 @@ const importModel = (url, options) =>
   );
 
 /** True when a face set has image or text faces (drawn from face layers). */
+/**
+ * The colour a die's light pool takes on the table (scene.js shadowFor), or null: a clear body
+ * (resin, jelly) passes light in its own colour (a resin's inside, when it has one, in the inside's
+ * main colour), as bright as white at that hue. Opaque bodies cast only their shadow.
+ */
+export function poolColor(a) {
+  const t = a?.body?.type;
+  if (t !== 'resin' && t !== 'jelly') return null;
+  const c = new THREE.Color(t === 'resin' && a.interior?.type && a.interior.type !== 'none' ? a.interior.colors?.[0] : a.body.color);
+  const m = Math.max(c.r, c.g, c.b);
+  return m > 0.02 ? c.multiplyScalar(1 / m) : null;
+}
+
 function needsLayers(faces) {
   return (
     Array.isArray(faces?.labels) &&
@@ -1084,7 +1097,7 @@ export class DiceBox {
   #presetOf(source, type) {
     if (typeof source?.system !== 'string') return null;
     try {
-      const dsnType = source.dsnType ?? (type === 'd4crystal' ? 'd4' : type);
+      const dsnType = source.dsnType ?? baseTypeOf(type);
       const preset = this._presetFor(source.system, dsnType);
       return preset && typeof preset === 'object' ? { preset, dsnType } : null;
     } catch (err) {
@@ -1099,16 +1112,17 @@ export class DiceBox {
     const appearance = ghost ? GHOST_APPEARANCE : look;
     // The look's own face images over a preset's faces (a coin, Fate or d100 tens die by its own key).
     const own = lookFacesFor(spec.type, look, spec.faces, spec.variant);
-    // A d4 with the crystal look is a d4crystal for hull, geometry, reader and labels; its type
-    // (and so its value) stays d4. A ghost follows the viewer's look and carries no appearance of
+    // A d4 with the crystal look is a d4crystal (a d6 with the bullet look a d6bullet ...: the look's
+    // shapes, dice-shapes ALT_SHAPES) for hull, geometry, reader and labels; its type (and so its
+    // value) stays the die's. A d100's two d10s always stay classic. A ghost follows the viewer's look and carries no appearance of
     // its own, so it has the shape of the look it stands for.
     // A DSN preset's own faces, or a model that is actually drawn (modelRotationFor is not null),
     // win: that die stays classic.
     // A spec's own shapeType wins: a replay draws the recorded shape whatever this viewer's look.
     const shapeType =
       spec.shapeType ||
-      (spec.type === 'd4' && !spec.variant && !(spec.model && modelRotationFor(spec)) && !own && look.shapes.d4 === 'crystal'
-        ? 'd4crystal'
+      (!spec.variant && spec.dsnType !== 'd100' && !(spec.model && modelRotationFor(spec)) && !own
+        ? shapeTypeFor(spec.type, look.shapes)
         : spec.type);
     const shape = getShape(shapeType);
     const faces = ghost ? undefined : own;
@@ -1404,7 +1418,7 @@ export class DiceBox {
       if (!shadows || die.shadow) continue;
       // The shadow follows the outer group's position and scales by the geometry's sphere.
       const follow = { position: die.outer.position, geometry: die.geometry };
-      roll.shadows.push((die.shadow = this._renderer.sceneApi.shadowFor(follow)));
+      roll.shadows.push((die.shadow = this._renderer.sceneApi.shadowFor(follow, { pool: die.ghost ? null : poolColor(die.appearance) })));
     }
     if (roll.pet && !roll.revealed) this.#petBegin(roll);
     roll.revealed = true;

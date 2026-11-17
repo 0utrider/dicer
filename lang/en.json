@@ -33,6 +33,37 @@
           "all": "All rolls"
         }
       },
+      "diceLighting": {
+        "Name": "Dice lighting",
+        "Hint": "How your dice are lit. Studio: a bright photo studio, so every look reads clearly. Scene light: the dice take the scene's light, darker at night and coloured by its daylight or darkness. Sunlight: warm, low sunlight.",
+        "Choices": {
+          "studio": "Studio",
+          "scene": "Scene light",
+          "sun": "Sunlight"
+        }
+      },
+      "trayMode": {
+        "Name": "Dice tray",
+        "Hint": "Where your dice land on this screen: in the GM's table tray, in your own tray (set its look in the Dice tray window), or on the scene's roll area with no tray. Drag the tray's rim to move it and its corner to resize it.",
+        "Choices": {
+          "table": "Table tray",
+          "mine": "My own tray",
+          "none": "No tray"
+        }
+      },
+      "trayShow": {
+        "Name": "Show the dice tray",
+        "Hint": "Always on the table, or only while dice are rolling (it slides in and out).",
+        "Choices": {
+          "always": "Always",
+          "rolls": "Only while rolling"
+        }
+      },
+      "trayEditor": {
+        "Name": "Dice tray",
+        "Label": "Dice tray",
+        "Hint": "The look of your dice tray: its surface, rim, corners and a design on its floor. A GM also sets the table tray here."
+      },
       "physicalDice": {
         "Name": "Rolls from physical dice",
         "Hint": "Rolls whose dice came from physical dice (Pixels or another electronic dice module, or typed in by hand): animate them like any roll, also mark their chat card, or only mark the card and skip the 3D dice (a roll that mixes physical and virtual dice is still animated).",
@@ -423,6 +454,18 @@
       "Volume": "Volume",
       "Browse": "Browse",
       "Macro": "Drop a macro here, or paste its UUID",
+      "Moment": "Animater moment",
+      "MomentHint": "A screen moment from Animater for everyone at the table: played once per roll from the GM's view, so a GM must be online and see the roll.",
+      "MomentColour": "Moment colour",
+      "NoMoment": "No moment",
+      "Moments": {
+        "pulse": "Pulse of colour",
+        "shake": "Shake",
+        "rumble": "Rumble",
+        "grey": "Colour drains",
+        "blur": "Swim",
+        "split": "Colours split"
+      },
       "Preview": "Preview",
       "MoveUp": "Move up",
       "MoveDown": "Move down",
@@ -703,7 +746,10 @@
         "pearl": "Pearl",
         "iridescent": "Iridescent",
         "gem": "Gemstone",
-        "wood": "Wood"
+        "wood": "Wood",
+        "stone": "Stone",
+        "bone": "Bone",
+        "jelly": "Jelly"
       },
       "Preset": {
         "chameleon": "Chameleon",
@@ -716,14 +762,23 @@
         "oak": "Oak",
         "walnut": "Walnut",
         "cherry": "Cherry",
-        "ebony": "Ebony"
+        "ebony": "Ebony",
+        "granite": "Granite",
+        "slate": "Slate",
+        "sandstone": "Sandstone",
+        "rock": "Rough rock",
+        "brick": "Brick",
+        "bone": "Bone",
+        "ivory": "Ivory",
+        "fossil": "Fossil"
       },
       "Finish": {
         "polished": "Polished",
         "brushed": "Brushed",
         "antique": "Antique",
         "patina": "Copper patina",
-        "worn": "Battle-worn"
+        "worn": "Battle-worn",
+        "mirror": "Mirror"
       },
       "Inside": {
         "Type": "Inside the resin",
@@ -842,8 +897,10 @@
       },
       "Shapes": {
         "D4": "d4 shape",
+        "Of": "{die} shape",
         "classic": "Classic",
-        "crystal": "Crystal"
+        "crystal": "Crystal",
+        "bullet": "Bullet"
       },
       "Edges": {
         "Sharpness": "Sharpness",
@@ -987,6 +1044,53 @@
       "NoEngine": "3D dice are off on this client, so the dice tray cannot throw. Turn on Enable 3D dice (Dicer's settings) to use it.",
       "Failed": "The dice tray could not post the roll."
     },
+    "DiceTray": {
+      "Title": "Dice tray",
+      "Hint": "Your rolls land in your tray. Drag its rim on the table to move it, and its corner to resize it.",
+      "EditMine": "My tray",
+      "EditTable": "Table tray (everyone)",
+      "SurfaceTitle": "Surface",
+      "RimTitle": "Rim",
+      "DesignTitle": "Floor design",
+      "Surface": {
+        "felt": "Felt",
+        "wood": "Wood",
+        "stone": "Stone",
+        "leather": "Leather",
+        "metal": "Metal",
+        "image": "Picture"
+      },
+      "Rim": {
+        "plain": "Plain",
+        "wood": "Wooden box",
+        "leather": "Stitched leather",
+        "stone": "Stone",
+        "metal": "Metal"
+      },
+      "Design": {
+        "none": "None",
+        "sigil": "Sigil",
+        "moon": "Triangle and moon",
+        "compass": "Compass",
+        "skull": "Skull seal",
+        "custom": "Your picture"
+      },
+      "Color": "Colour",
+      "Image": "Picture",
+      "Browse": "Browse",
+      "RimColor": "Rim colour",
+      "RimWidth": "Rim width",
+      "Corners": "Rounded corners",
+      "DesignImage": "Design picture",
+      "DesignColor": "Design colour",
+      "DesignSize": "Design size",
+      "DesignOpacity": "Design strength",
+      "MineNote": "Editing your own tray switches you to it. Your dice sound like its surface.",
+      "TableNote": "Everyone on “Table tray” sees this tray, each in their own place on their own screen.",
+      "ResetPlace": "Put it back in the middle",
+      "RemoveTable": "Remove the table tray",
+      "SaveFailed": "Your tray could not be saved."
+    },
     "ChatTray": {
       "Label": "Chat dice tray",
       "Die": "{die}: click adds one, right-click removes one, hold for more",
@@ -1004,6 +1108,14 @@
       "EdgeHint": "Edge (+2 to the power roll)",
       "Bane": "Bane",
       "BaneHint": "Bane (-2 to the power roll)",
+      "Bag": "Dice bag: swap your dice",
+      "BagAll": "All dice",
+      "BagSame": "Same as all dice",
+      "BagBrowse": "More in the theme browser…",
+      "BagFailed": "Your dice could not be changed.",
+      "BagGroupMine": "My themes",
+      "BagGroupWorld": "World themes",
+      "BagGroupBuiltin": "Built-in themes",
       "Customize": "Customize the tray",
       "CustomizeHelper": "Show {up} / {down}",
       "CustomizeModifier": "Show the modifier",

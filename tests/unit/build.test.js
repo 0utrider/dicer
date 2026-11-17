@@ -88,6 +88,18 @@ describe('build', () => {
     // lazy for real: only the lazy chunks import it, never the world-start bundle
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain(threePoints.slice('dist/'.length));
     expect(elementOf).toBeTruthy();
+    const atlasReader = lazy.find((p) => /^dist\/atlas-[A-Za-z0-9_-]{8}\.js$/.test(p)); // Dice So Nice atlases (src/compat/atlas.js)
+    expect(atlasReader).toBeTruthy();
+    expect(readFileSync(atlasReader, 'utf8')).toContain('#xywh=');
+    const trayEditor = lazy.find((p) => /^dist\/tray-editor-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the Dice tray window
+    expect(trayEditor).toBeTruthy();
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-editor-app');
+    // the table tray itself and its rules, shared by the tray and its window: loaded once a tray is wanted
+    const tableTray = lazy.find((p) => /^dist\/tray-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    const trayModel = lazy.find((p) => /^dist\/tray-model-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(tableTray).toBeTruthy();
+    expect(trayModel).toBeTruthy();
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-edge');
     // lazy for real too: no world-start file names it
     for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
       expect(readFileSync(f, 'utf8')).not.toContain(elementOf.slice('dist/'.length));
@@ -168,6 +180,10 @@ describe('build', () => {
         pets,
         threePoints,
         elementOf,
+        atlasReader,
+        trayEditor,
+        tableTray,
+        trayModel,
         hand,
         grab,
         rollFilters,
@@ -278,9 +294,16 @@ describe('build', () => {
     // (11,276 -> 11,640), 2026-11-16.
     // Sherp's eight built-in themes (the theme table and its author credit): owner approved
     // +1,722 B (11,640 -> 13,362), 2026-11-16.
+    // Module dice faces (bump/glow maps, atlases, d100), dice lighting, light pools, the long dice
+    // shapes and the stone/bone/jelly/mirror hooks: owner approved +7,251 B (13,362 -> 20,613),
+    // 2026-11-17.
+    // The glint trigger, Animater moments in trigger rules and Dicer's ready-made module rules:
+    // owner approved +1,764 B (20,613 -> 22,377), 2026-11-17.
+    // Dice trays (their settings and the lazy tray's hookup; the tray, its rules and its window
+    // are lazy chunks): owner approved with the 0.3.0 release, +1,334 B (22,377 -> 23,711), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(13_362);
+    expect(growth).toBeLessThanOrEqual(23_711);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

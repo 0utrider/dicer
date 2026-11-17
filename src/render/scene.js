@@ -6,8 +6,11 @@ export const DEFAULT_ENV_RESOLUTION = 256;
 export const FOV_DEG = 20;
 const SHADOW_Y = 0.01;
 
-/** Radial-gradient blob texture, built once and shared by every shadow instance. */
-function makeShadowTexture() {
+/**
+ * Radial-gradient blob texture, built once and shared by every shadow instance. `rgb` 255: the
+ * light pool's white blob (its colour comes from the quad's vertex colour).
+ */
+function makeShadowTexture(rgb = 0) {
   const size = 64;
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
@@ -15,7 +18,7 @@ function makeShadowTexture() {
       const d = Math.hypot((x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5) * 2;
       const a = Math.max(0, 1 - d);
       const i = (y * size + x) * 4;
-      data[i] = data[i + 1] = data[i + 2] = 0;
+      data[i] = data[i + 1] = data[i + 2] = rgb;
       data[i + 3] = Math.round(255 * a * a * 0.55);
     }
   }
@@ -48,6 +51,26 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
   key.position.set(-3, 8, 4);
   key.castShadow = false;
   scene.add(key);
+  // Scene and sun lighting (setLighting): a tinted fill over the studio, off by default.
+  const fill = new THREE.HemisphereLight(0xffffff, 0x000000, 0);
+  scene.add(fill);
+
+  /**
+   * The light the dice are lit by. studio (default): the product-photo studio as baked.
+   * Otherwise `intensity` scales the studio (scene.environmentIntensity) and the key light,
+   * `tint` ([r, g, b], 0..1) colours the key light and a fill, and `sun` drops the key to a low
+   * warm angle with a stronger beam.
+   * @param {{tint?: number[], intensity?: number, sun?: boolean}} [light]
+   */
+  function setLighting({ tint = null, intensity = 1, sun = false } = {}) {
+    const k = Math.max(0.05, Math.min(1.5, Number.isFinite(intensity) ? intensity : 1));
+    scene.environmentIntensity = k;
+    key.position.set(...(sun ? [-7, 5, 3] : [-3, 8, 4]));
+    key.color.setRGB(...(tint ?? [1, 1, 1]));
+    key.intensity = (sun ? 3.4 : 2.2) * k;
+    fill.color.setRGB(...(tint ?? [1, 1, 1]));
+    fill.intensity = tint ? 0.6 * k : 0;
+  }
 
   function fitArea({ halfWidth, halfDepth }) {
     const h = cameraHeightFor(halfDepth);
@@ -105,6 +128,66 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
   let shadowMesh = null;
   let shadowCap = 0;
   const live = [];
+  // Light pools: a clear die passes coloured light, so the table beside its (lighter) shadow takes
+  // its colour. One additive quad per pooled die, in its own mesh (vertex colours), drawn only
+  // while one is live; the pool lies away from the key light, a little larger than the shadow.
+  let poolTex = null;
+  let poolMat = null;
+  let poolMesh = null;
+  let poolCap = 0;
+  const pools = [];
+  const POOL = { scale: 1.5, dx: 0.35, dz: -0.45, light: 0.35 };
+
+  function poolCapacity(n) {
+    if (poolCap >= n) return;
+    poolCap = Math.max(16, 2 * poolCap);
+    const geo = new THREE.BufferGeometry();
+    const uv = new Float32Array(poolCap * 8);
+    const index = new Uint32Array(poolCap * 6);
+    for (let q = 0; q < poolCap; q++) {
+      uv.set([0, 1, 1, 1, 1, 0, 0, 0], q * 8);
+      const v = q * 4;
+      index.set([v, v + 3, v + 2, v, v + 2, v + 1], q * 6);
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(poolCap * 12), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(poolCap * 12), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(new THREE.BufferAttribute(index, 1));
+    if (poolMesh) {
+      scene.remove(poolMesh);
+      poolMesh.geometry.dispose();
+      poolMesh.geometry = geo;
+    } else {
+      poolTex = makeShadowTexture(255);
+      poolMat = new THREE.MeshBasicMaterial({ map: poolTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      poolMesh = new THREE.Mesh(geo, poolMat);
+      poolMesh.renderOrder = -1;
+      poolMesh.frustumCulled = false;
+      poolMesh.userData.dicerPools = true;
+    }
+  }
+
+  function updatePools() {
+    if (!poolMesh) return;
+    const pos = poolMesh.geometry.attributes.position;
+    const col = poolMesh.geometry.attributes.color;
+    for (let i = 0; i < pools.length; i++) {
+      const { follow: m, color: c } = pools[i];
+      const r = m.geometry?.boundingSphere?.radius ?? 1;
+      const h = r * 1.3 * POOL.scale;
+      const x = m.position.x + POOL.dx * r;
+      const z = m.position.z + POOL.dz * r;
+      // brighter the nearer the table: a die in the air casts a fainter pool
+      const k = POOL.light * Math.max(0, 1 - Math.max(0, m.position.y - r) / (4 * r));
+      pos.array.set([x - h, SHADOW_Y * 1.5, z - h, x + h, SHADOW_Y * 1.5, z - h, x + h, SHADOW_Y * 1.5, z + h, x - h, SHADOW_Y * 1.5, z + h], i * 12);
+      for (let v = 0; v < 4; v++) col.array.set([c.r * k, c.g * k, c.b * k], i * 12 + v * 3);
+    }
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    poolMesh.geometry.setDrawRange(0, pools.length * 6);
+    if (pools.length && !poolMesh.parent) scene.add(poolMesh);
+    else if (!pools.length) scene.remove(poolMesh);
+  }
 
   function shadowCapacity(n) {
     if (shadowCap >= n) return;
@@ -133,6 +216,7 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
   }
 
   function updateShadows() {
+    updatePools();
     if (!shadowMesh) return;
     const pos = shadowMesh.geometry.attributes.position;
     const a = pos.array;
@@ -150,7 +234,11 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
     else if (!live.length) scene.remove(shadowMesh);
   }
 
-  function shadowFor(mesh) {
+  /**
+   * A blob shadow following `mesh` ({position, geometry}). `pool` (a THREE.Color): the die is
+   * clear: a light pool in that colour lies beside its shadow.
+   */
+  function shadowFor(mesh, { pool = null } = {}) {
     if (!shadowTex) {
       shadowTex = makeShadowTexture();
       shadowMat = new THREE.MeshBasicMaterial({
@@ -162,6 +250,11 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
     shadowCapacity(live.length + 1);
     const handle = { follow: mesh, index: live.length };
     live.push(handle);
+    if (pool) {
+      poolCapacity(pools.length + 1);
+      handle.pool = { follow: mesh, color: pool, index: pools.length };
+      pools.push(handle.pool);
+    }
     updateShadows();
     return handle;
   }
@@ -176,15 +269,33 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
     }
     handle.index = -1;
     handle.follow = null;
+    const p = handle.pool;
+    if (p && pools[p.index] === p) {
+      const lastPool = pools.pop();
+      if (lastPool !== p) {
+        pools[p.index] = lastPool;
+        lastPool.index = p.index;
+      }
+    }
+    handle.pool = null;
     updateShadows();
   }
 
   function dispose() {
     live.length = 0;
+    pools.length = 0;
     if (shadowMesh) {
       scene.remove(shadowMesh);
       shadowMesh.geometry.dispose();
     }
+    if (poolMesh) {
+      scene.remove(poolMesh);
+      poolMesh.geometry.dispose();
+    }
+    poolTex?.dispose();
+    poolMat?.dispose();
+    poolTex = poolMat = poolMesh = null;
+    poolCap = 0;
     resetEnvironment();
     shadowTex?.dispose();
     shadowMat?.dispose();
@@ -196,6 +307,7 @@ export function buildScene({ PMREMGenerator = THREE.PMREMGenerator } = {}) {
     scene,
     camera,
     fitArea,
+    setLighting,
     setEnvironment,
     resetEnvironment,
     shadowFor,

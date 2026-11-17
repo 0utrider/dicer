@@ -240,3 +240,14 @@ test('keys are t:r:p, d100 parts 0 and 1, stable under decorate', () => {
   const tens = plan(roll).dice[2];
   expect(tens).toEqual({ type: 'd10', value: 40, variant: 'd100tens', key: '1:0:0' });
 });
+
+test("a d100's ones die wears the system's d10 faces (onesFaces), never the tens die's", () => {
+  const tensFaces = { key: 'tens' };
+  const onesFaces = { key: 'ones' };
+  const [tens, ones] = plan({ dice: [term(100, [47])] }, { decorate: () => ({ faces: tensFaces, onesFaces }) }).dice;
+  expect(tens.faces).toBe(tensFaces);
+  expect(ones.faces).toBe(onesFaces);
+  expect('onesFaces' in tens || 'onesFaces' in ones).toBe(false);
+  const [, bare] = plan({ dice: [term(100, [47])] }, { decorate: () => ({ faces: tensFaces }) }).dice;
+  expect('faces' in bare).toBe(false); // no d10 preset: the ones die shows its numbers
+});

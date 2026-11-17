@@ -1,4 +1,5 @@
 import { createRegistry } from '../../src/compat/registry.js';
+import { atlasFrames } from '../../src/compat/atlas.js';
 
 const labels = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
 const make = () => {
@@ -364,5 +365,56 @@ describe('hardening (Task 12)', () => {
     expect(reg.baseShape('dspindle')).toBe('d14');
     await reg.addDicePreset({ type: 'd16', labels: labels(16) }, 'd20');
     expect(reg.baseShape('d16')).toBe('d16');
+  });
+});
+
+describe('Dice So Nice atlases', () => {
+  const sheet = {
+    frames: {
+      'd6_1.webp': { frame: { x: 0, y: 0, w: 64, h: 64 } },
+      'd6_2.webp': { frame: { x: 64, y: 0, w: 64, h: 64 } },
+      'tex.webp': { frame: { x: 0, y: 64, w: 128, h: 128 } },
+      'turned.webp': { frame: { x: 0, y: 0, w: 8, h: 8 }, rotated: true },
+    },
+    meta: { image: 'sheet.webp' },
+  };
+
+  test('atlasFrames: each frame is the sheet beside the JSON plus #xywh; rotated or unsafe ones are left out', () => {
+    const f = atlasFrames(sheet, 'modules/m/tex/a.json');
+    expect(f.get('d6_2.webp')).toBe('modules/m/tex/sheet.webp#xywh=64,0,64,64');
+    expect(f.has('turned.webp')).toBe(false);
+    for (const image of ['../x.webp', 'http://e.vil/x.webp', 'a?b.webp', 5]) expect(atlasFrames({ ...sheet, meta: { image } }, 'a.json').size).toBe(0);
+    expect(atlasFrames(null, 'a.json').size).toBe(0);
+  });
+
+  test("a preset's frame labels and a texture's source become sheet crops, read once per atlas through the router", async () => {
+    const loadJson = vi.fn(async () => sheet);
+    const reg = createRegistry({ warn: vi.fn(), loadJson, routeUrl: (u) => `/r/${u}` });
+    const heard = vi.fn();
+    reg.onChange(heard);
+    await reg.addDicePreset({ type: 'd6', system: 's', atlas: 'modules/m/a.json', labels: ['d6_1.webp', 'd6_2.webp', '3', '4', '5', 'gone.webp'] });
+    await reg.addTexture('t', { name: 'T', atlas: 'modules/m/a.json', source: 'tex.webp' });
+    expect(reg.presetFor('s', 'd6').labels).toEqual(['modules/m/sheet.webp#xywh=0,0,64,64', 'modules/m/sheet.webp#xywh=64,0,64,64', '3', '4', '5', 'gone.webp']);
+    expect(reg.textures.get('t').source).toBe('modules/m/sheet.webp#xywh=0,64,128,128');
+    expect(loadJson).toHaveBeenCalledTimes(1);
+    expect(loadJson).toHaveBeenCalledWith('/r/modules/m/a.json');
+    expect(heard).toHaveBeenCalledTimes(4); // stored, then rewritten, for each
+  });
+
+  test('an atlas that cannot be read warns once and leaves the labels (the die shows numbers)', async () => {
+    const warn = vi.fn();
+    const reg = createRegistry({ warn, loadJson: async () => Promise.reject(new Error('404')) });
+    await reg.addDicePreset({ type: 'd2', system: 's', atlas: 'modules/m/x.json', labels: ['a.webp', 'b.webp'] });
+    await reg.addDicePreset({ type: 'd4', system: 's', atlas: 'modules/m/x.json', labels: ['a.webp', '2', '3', '4'] });
+    expect(reg.presetFor('s', 'd2').labels).toEqual(['a.webp', 'b.webp']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('cannot read the atlas modules/m/x.json');
+  });
+
+  test('a d100 preset is its tens die: ten labels, no padding warning', async () => {
+    const { reg, warn } = make();
+    await reg.addDicePreset({ type: 'd100', system: 's', labels: ['a.webp', '20', '30', '40', '50', '60', '70', '80', '90', '00'] });
+    expect(reg.presetFor('s', 'd100').labels).toHaveLength(10);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

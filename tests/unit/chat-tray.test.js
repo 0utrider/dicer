@@ -23,7 +23,10 @@ import {
   isDuality,
   _resetChatTray,
   HOLD_MS,
+  bagChoices,
+  bagPicks,
 } from '../../src/ui/chat-tray.js';
+import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { TRAY_DICE } from '../../src/hand/chunk/tray.js';
 import { setHandDeps } from '../../src/hand/shell.js';
 
@@ -801,5 +804,37 @@ describe('Daggerheart rolls Duality through the system pipeline', () => {
     click(rollButton());
     await flush();
     expect(made.map((r) => r.formula)).toEqual(['2d12 + 1d6']);
+  });
+});
+
+describe('the dice bag', () => {
+  test('bagChoices: my themes, then the world ones, then the built-ins; junk entries and empty groups left out', () => {
+    const groups = bagChoices({ userThemes: [{ id: 'user.u1.a', name: 'Mine A' }, { name: 'no id' }, null], worldThemes: 'junk' });
+    expect(groups.map((g) => g.group)).toEqual(['Mine', 'Builtin']);
+    expect(groups[0].themes).toEqual([{ id: 'user.u1.a', name: 'Mine A' }]);
+    expect(groups[1].themes).toHaveLength(BUILTIN_THEMES.length);
+  });
+
+  test('bagPicks: the default theme (the slot one, else the setting) and the own theme of each die type', () => {
+    expect(bagPicks({ global: { theme: 'ember' }, d20: { theme: 'verdant' }, d6: { look: 'x' } }, 'default')).toMatchObject({ all: 'ember', d20: 'verdant', d6: '', d4: '' });
+    expect(bagPicks(undefined, 'frost').all).toBe('frost');
+    expect(bagPicks('junk').all).toBe('default');
+  });
+
+  test('the bag button opens the panel (all dice and each die type) and closes the customize panel', () => {
+    settings.theme = 'default';
+    settings.worldThemes = [];
+    dockTray(undefined, vi.fn());
+    click(dock().querySelector('[data-act="customize"]'));
+    expect(dock().querySelector('.dicer-chat-tray-prefs')).toBeTruthy();
+    click(dock().querySelector('[data-act="bag"]'));
+    const bag = dock().querySelector('.dicer-chat-tray-bag');
+    expect(bag).toBeTruthy();
+    expect(dock().querySelector('.dicer-chat-tray-prefs')).toBeNull();
+    expect([...bag.querySelectorAll('select')].map((s) => s.dataset.bag)).toEqual(['all', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100']);
+    expect(bag.querySelector('[data-bag="all"]').value).toBe('default');
+    expect(bag.querySelector('[data-bag="d20"]').value).toBe(''); // same as all dice
+    click(dock().querySelector('[data-act="bag"]'));
+    expect(dock().querySelector('.dicer-chat-tray-bag')).toBeNull();
   });
 });

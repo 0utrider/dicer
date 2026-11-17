@@ -22,6 +22,36 @@ import {
   stepCount,
 } from '../hand/chunk/tray-dice.js';
 import { handAllowed, handDeps } from '../hand/shell.js';
+import { BUILTIN_THEMES, DIE_TYPES } from '../themes/themes.js';
+
+// --- the dice bag -------------------------------------------------------------------------------
+const BAG_GROUPS = { Mine: 'DICER.ChatTray.BagGroupMine', World: 'DICER.ChatTray.BagGroupWorld', Builtin: 'DICER.ChatTray.BagGroupBuiltin' };
+const named = (list) => (Array.isArray(list) ? list.filter((t) => t && typeof t.id === 'string' && t.id && typeof t.name === 'string') : []);
+
+/**
+ * The looks the dice bag offers, grouped: this user's own themes, the world's, then the built-ins.
+ * @returns {{group: string, themes: {id: string, name: string}[]}[]} groups with themes only
+ */
+export function bagChoices({ userThemes, worldThemes } = {}) {
+  return [
+    ['Mine', named(userThemes)],
+    ['World', named(worldThemes)],
+    ['Builtin', BUILTIN_THEMES],
+  ]
+    .filter(([, themes]) => themes.length)
+    .map(([group, themes]) => ({ group, themes: themes.map((t) => ({ id: t.id, name: t.name })) }));
+}
+
+/**
+ * What the bag shows as picked: `all` (the default theme: the slot's theme, else the setting) and
+ * one entry per die type that has its own theme ('' : it follows `all`).
+ */
+export function bagPicks(flag, settingTheme = 'default') {
+  const ref = (k) => (flag && typeof flag === 'object' && flag[k] && typeof flag[k].theme === 'string' ? flag[k].theme : '');
+  const out = { all: ref('global') || (typeof settingTheme === 'string' && settingTheme) || 'default' };
+  for (const t of DIE_TYPES) out[t] = ref(t);
+  return out;
+}
 
 /** A press held this long (ms) opens the quick-count menu. */
 export const HOLD_MS = 450;
@@ -390,6 +420,7 @@ function build() {
         ]
       : []),
     btn({ 'data-act': 'clear' }, loc('DICER.ChatTray.Clear'), [icon('fa-eraser')]),
+    btn({ 'data-act': 'bag', 'aria-expanded': 'false' }, loc('DICER.ChatTray.Bag'), [icon('fa-bag-shopping')]),
     btn({ 'data-act': 'customize', 'aria-expanded': 'false' }, loc('DICER.ChatTray.Customize'), [
       icon('fa-gear'),
     ]),
@@ -574,6 +605,55 @@ function openMenu(button) {
   dockEl.append(menu);
 }
 
+function closeBag() {
+  dockEl?.querySelector('.dicer-chat-tray-bag')?.remove();
+  dockEl?.querySelector('[data-act="bag"]')?.setAttribute('aria-expanded', 'false');
+}
+
+/** The dice bag: swap the look of all dice, or of one die type, from your saved looks. */
+function openBag() {
+  closeMenu();
+  closePrefs();
+  closeBag();
+  const game = globalThis.game;
+  const groups = bagChoices({ userThemes: game?.user?.getFlag?.('dicer', 'themes'), worldThemes: getSetting('worldThemes') });
+  const picks = bagPicks(game?.user?.getFlag?.('dicer', 'appearance'), getSetting('theme'));
+  const select = (slot, value, first) =>
+    h('select', { 'data-bag': slot, 'aria-label': slot === 'all' ? loc('DICER.ChatTray.BagAll') : slot }, [
+      ...(first ? [h('option', { value: '', text: first })] : []),
+      ...groups.map(({ group, themes }) =>
+        h('optgroup', { label: loc(BAG_GROUPS[group]) }, themes.map((t) => h('option', { value: t.id, text: t.name, ...(t.id === value ? { selected: '' } : {}) }))),
+      ),
+    ]);
+  const row = (slot, label, first) =>
+    h('label', { class: 'dicer-chat-tray-bag-row' }, [
+      slot === 'all' ? h('strong', { text: label }) : h('span', { class: 'dicer-chat-tray-bag-die' }, [h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', html: DIE_SHAPES[slot] ?? '' }), label]),
+      select(slot, picks[slot], first),
+    ]);
+  const panel = h('div', { class: 'dicer-chat-tray-bag', role: 'dialog', 'aria-label': loc('DICER.ChatTray.Bag') }, [
+    h('strong', { text: loc('DICER.ChatTray.Bag') }),
+    row('all', loc('DICER.ChatTray.BagAll')),
+    ...DIE_TYPES.map((t) => row(t, t, loc('DICER.ChatTray.BagSame'))),
+    h('button', { type: 'button', 'data-bag-act': 'browse', text: loc('DICER.ChatTray.BagBrowse') }),
+  ]);
+  dockEl.append(panel);
+  dockEl.querySelector('[data-act="bag"]')?.setAttribute('aria-expanded', 'true');
+}
+
+/** A pick in the bag: the theme browser's own assignment (loaded on the first pick), then the tint. */
+async function onBag(target) {
+  try {
+    const tb = await import('./theme-browser.js');
+    if (target.dataset.bagAct === 'browse') return void tb.openThemeBrowser?.();
+    const slot = target.dataset.bag;
+    await tb.assignTarget(slot === 'all' ? 'default' : `die:${slot}`, target.value || null);
+    tint();
+  } catch (err) {
+    console.warn('dicer: the dice bag could not change your dice', err);
+    globalThis.ui?.notifications?.warn(loc('DICER.ChatTray.BagFailed'));
+  }
+}
+
 function closePrefs() {
   dockEl?.querySelector('.dicer-chat-tray-prefs')?.remove();
   dockEl?.querySelector('[data-act="customize"]')?.setAttribute('aria-expanded', 'false');
@@ -583,6 +663,7 @@ function closePrefs() {
 function openPrefs() {
   closeMenu();
   closePrefs();
+  closeBag();
   const tray = trayFor();
   const chip = (key) =>
     h(
@@ -691,6 +772,12 @@ function wire(root) {
       if (t.matches('.dicer-chat-tray-die, [data-act="roll"]')) return;
     }
     if (t.dataset.prefDie || t.dataset.prefAct) return void onPref(t);
+    if (t.dataset.bagAct) return void onBag(t);
+    if (t.dataset.act === 'bag') {
+      if (dockEl?.querySelector('.dicer-chat-tray-bag')) closeBag();
+      else openBag();
+      return;
+    }
     if (t.dataset.act === 'customize') {
       if (dockEl?.querySelector('.dicer-chat-tray-prefs')) closePrefs();
       else openPrefs();
@@ -732,6 +819,7 @@ function wire(root) {
   });
   root.addEventListener('change', (event) => {
     if (event.target.dataset?.pref) onPref(event.target);
+    else if (event.target.dataset?.bag) onBag(event.target);
   });
   root.addEventListener('input', (event) => {
     if (event.target.matches?.('.dicer-chat-tray-mod input')) {

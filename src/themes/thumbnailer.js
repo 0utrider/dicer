@@ -7,7 +7,7 @@ import { configureRenderer } from '../render/renderer.js';
 import { createDiceMaterial } from '../render/dice-material.js';
 import { TIERS, flagsFor } from '../render/quality.js';
 import { buildDieGeometry, snapEdgeRadius } from '../core/chamfer.js';
-import { getShape, labelFor } from '../core/dice-shapes.js';
+import { getShape, labelFor, shapeTypeFor } from '../core/dice-shapes.js';
 import { restingQuaternion, minY } from '../core/resting.js';
 import { appearanceKey, normalizeAppearance, needsLookExtras } from '../look/appearance.js';
 import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
@@ -18,7 +18,7 @@ import { modelRotationFor } from '../compat/dsn-orientation.js';
 
 const ENV_RESOLUTION = 128;
 /** The face shown on top per type (6 and 9 show the underline mark). */
-const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d14: 14, d16: 16, d20: 20, d2: 2, d4crystal: 4 };
+const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d14: 14, d16: 16, d20: 20, d2: 2, d4crystal: 4, d6bullet: 6, d8crystal: 8, d10crystal: 9 };
 const FOV = 26;
 const VIEW_DISTANCE = 4.6;
 const VIEW_ANGLE = THREE.MathUtils.degToRad(52);
@@ -209,9 +209,10 @@ export function createThumbnailer({
 
   // Relabelled dice, drawn as a roll draws them: [shape, variant, base faces].
   const RELABELLED = { d100: ['d10', 'd100tens'], dc: ['d2', 'dc'], df: ['d6', 'dF', FATE_FACES] };
-  // d100 shows its tens die, a coin a d2, a Fate die a d6; a d4 with the crystal look the crystal
+  // d100 shows its tens die, a coin a d2, a Fate die a d6; a d4 with the crystal look the crystal (a
+  // d6 with the bullet look the bullet ...)
   const shapeTypeOf = (dieType, appearance) =>
-    RELABELLED[dieType]?.[0] ?? (dieType === 'd4' && normalizeAppearance(appearance).shapes.d4 === 'crystal' ? 'd4crystal' : dieType);
+    RELABELLED[dieType]?.[0] ?? shapeTypeFor(dieType, normalizeAppearance(appearance).shapes);
 
   // d100 shows its tens die (10, 20 … 90, 00), as a roll does
   const labelsOf = (dieType, shapeType, shape) => {

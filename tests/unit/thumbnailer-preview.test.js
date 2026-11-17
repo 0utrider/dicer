@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { buildScene } from '../../src/render/scene.js';
 import { createThumbnailer } from '../../src/themes/thumbnailer.js';
-import { createTurntable, TURN_SECONDS } from '../../src/themes/turntable.js';
+import { createTurntable, TURN_SECONDS, HOLD_SECONDS } from '../../src/themes/turntable.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { _setLookExtrasImport } from '../../src/render/extras-loader.js';
 
@@ -326,6 +326,20 @@ describe('turntable', () => {
     const a = t.pose().yaw;
     turns(t, 1);
     expect(t.pose().yaw - a).toBeCloseTo((2 * Math.PI) / TURN_SECONDS, 1);
+  });
+  test('a drag turns the die right over, and a view let go of still is held before the turn resumes', () => {
+    const t = createTurntable();
+    t.grab();
+    t.drag(0, 2000, 0.016); // far past level: clamped at upside down
+    expect(t.pose().pitch).toBeCloseTo(Math.PI, 5);
+    turns(t, 0.2); // held still before letting go
+    t.release();
+    const { yaw, pitch } = t.pose();
+    turns(t, HOLD_SECONDS - 0.5);
+    expect(t.pose()).toMatchObject({ yaw, pitch });
+    turns(t, 6);
+    expect(Math.abs(t.pose().pitch)).toBeLessThan(0.01);
+    expect(t.pose().yaw).toBeGreaterThan(yaw);
   });
   test('reduced motion does not turn by itself and drag has no fling', () => {
     const t = createTurntable({ reducedMotion: true });

@@ -40,6 +40,8 @@ export function blankEntry(id, source = 'user') {
     soundSrc: '',
     soundVolume: '',
     macro: '',
+    momentKind: '',
+    momentColour: '',
     rawJson: '',
   };
 }
@@ -78,6 +80,8 @@ export function entryFromRule(rule) {
     e.soundVolume = rule.sound.volume ?? '';
   }
   e.macro = rule.macro ?? '';
+  e.momentKind = rule.moment?.kind ?? '';
+  e.momentColour = rule.moment?.colour ?? '';
   return e;
 }
 
@@ -192,6 +196,8 @@ export function rawRuleFromEntry(e) {
   }
 
   const macro = str(e.macro).trim();
+  const momentKind = str(e.momentKind).trim();
+  const momentColour = str(e.momentColour).trim();
   return {
     id: str(e.id) || undefined,
     name: str(e.name).trim() || undefined,
@@ -203,6 +209,7 @@ export function rawRuleFromEntry(e) {
     effect,
     sound,
     macro: macro || null,
+    ...(momentKind && { moment: { kind: momentKind, ...(momentColour && { colour: momentColour }) } }),
   };
 }
 

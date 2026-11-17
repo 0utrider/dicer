@@ -137,3 +137,15 @@ test('a tinted image face is a mask in the number colour, like text', async () =
   const { tint } = await ft.acquire(set);
   expect(Array.from(tint)).toEqual([0, 1]);
 });
+
+test('atlas frames: one load per sheet, each face drawn from its rectangle', async () => {
+  const loadImage = vi.fn(async () => ({ naturalWidth: 128, naturalHeight: 64 }));
+  const ft = createFaceTextures({ loadImage, size: SIZE });
+  const set = { key: 'atlas', labels: [image('s.webp#xywh=0,0,64,64'), image('s.webp#xywh=64,0,64,32')] };
+  const { layers } = await ft.acquire(set);
+  expect(Array.from(layers)).toEqual([0, 1]);
+  expect(loadImage).toHaveBeenCalledTimes(1);
+  expect(loadImage).toHaveBeenCalledWith('s.webp');
+  expect(ctx.drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 64, 64, 0, 0, 8, 8);
+  expect(ctx.drawImage).toHaveBeenCalledWith(expect.anything(), 64, 0, 64, 32, 0, 2, 8, 4);
+});

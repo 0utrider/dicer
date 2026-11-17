@@ -112,6 +112,19 @@ function normalizeEffect(raw) {
   return out;
 }
 
+/**
+ * Animater's screen moments a rule may call (its api.moment kinds): a short one, or one held for
+ * MOMENT_MS. Only a GM's client may call one, so it plays from the active GM's view of the roll.
+ */
+export const MOMENT_KINDS = ['pulse', 'shake', 'rumble', 'grey', 'blur', 'split'];
+function normalizeMoment(raw) {
+  if (!isObj(raw) || !MOMENT_KINDS.includes(raw.kind)) return null;
+  const out = { kind: raw.kind };
+  if (typeof raw.colour === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw.colour)) out.colour = raw.colour;
+  if (Number.isFinite(raw.strength)) out.strength = clamp(raw.strength, 0, 1);
+  return out;
+}
+
 function normalizeSound(raw) {
   if (!isObj(raw)) return null;
   if (isStr(raw.builtin)) return { builtin: raw.builtin };
@@ -133,7 +146,8 @@ export function normalizeRule(raw, source, warn = console.warn) {
     const effect = normalizeEffect(raw.effect);
     const sound = normalizeSound(raw.sound);
     const macro = isStr(raw.macro) ? raw.macro : null;
-    if (!effect && !sound && !macro) reject('rule has no effect, sound or macro');
+    const moment = normalizeMoment(raw.moment);
+    if (!effect && !sound && !macro && !moment) reject('rule has no effect, sound, macro or moment');
     const result = normalizeResult(raw.result);
     const context = normalizeContext(raw.context);
     const outcome = raw.outcome ?? 'any';
@@ -151,6 +165,7 @@ export function normalizeRule(raw, source, warn = console.warn) {
       effect,
       sound,
       macro,
+      ...(moment && { moment }),
     };
   } catch (err) {
     if (!(err instanceof Reject)) throw err;

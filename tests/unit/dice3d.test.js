@@ -1025,7 +1025,7 @@ describe('trigger editor helpers (Task 12)', () => {
     const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], registry });
     const ctx = a._triggerContext();
     expect(Object.keys(a)).not.toContain('_triggerContext');
-    expect(ctx.moduleRules.map((r) => r.id)).toEqual(['dsn:d20:myfx:0']);
+    expect(ctx.moduleRules.map((r) => r.id).filter((id) => !id.startsWith('dicer-'))).toEqual(['dsn:d20:myfx:0']);
     expect(ctx.triggers).toEqual([{ id: 'mytrig', name: 'My trigger', results: ['Hope', 'Fear'] }]);
     expect(ctx.modes).toEqual({ myfx: 'My Fx' });
     expect(Array.isArray(ctx.diceTypes)).toBe(true);
