@@ -347,7 +347,8 @@ export class DiceBox {
     // dice pile up inside it instead (room for one die at least).
     return {
       rect: clamped,
-      area: fitDieCapacity(toDieArea(clamped, stage, this._diePx), rect.strict ? 1 : n, this._area),
+      // a tray's shape goes to the physics: its walls follow the outline (sim.js shapeEdges)
+      area: { ...fitDieCapacity(toDieArea(clamped, stage, this._diePx), rect.strict ? 1 : n, this._area), ...(rect.shape && { shape: rect.shape }) },
     };
   }
 

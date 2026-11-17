@@ -191,9 +191,48 @@ function throwArea(reqArea, stage) {
       cz: finiteOr0(reqArea.cz),
       halfWidth: reqArea.halfWidth,
       halfDepth: reqArea.halfDepth,
+      ...(SHAPES.includes(reqArea.shape) && { shape: reqArea.shape }),
     };
   }
   return { cx: 0, cz: 0, halfWidth: stage.halfWidth, halfDepth: stage.halfDepth };
+}
+
+/** A throw area's outline besides the rectangle (a dice tray's shape): its walls follow it. */
+const SHAPES = ['round', 'hex', 'octagon'];
+const ROUND_SIDES = 16; // the oval as a polygon with its corners on it (within 2% of the oval)
+
+/**
+ * The walls an area's shape adds to its four (shapeWalls): the outline's edges that are not on
+ * the rectangle, as {x1, z1, x2, z2, nx, nz} (world, die units; n the unit normal pointing out),
+ * the outline matching the tray's own (hexagon points left and right, octagon corners cut at a
+ * quarter of each side, oval inscribed). [] for a rectangle.
+ */
+export function shapeEdges(a) {
+  const { cx, cz, halfWidth: w, halfDepth: d, shape } = a;
+  let pts;
+  if (shape === 'hex') pts = [[-0.5 * w, -d], [0.5 * w, -d], [w, 0], [0.5 * w, d], [-0.5 * w, d], [-w, 0]];
+  else if (shape === 'octagon')
+    pts = [[-0.5 * w, -d], [0.5 * w, -d], [w, -0.5 * d], [w, 0.5 * d], [0.5 * w, d], [-0.5 * w, d], [-w, 0.5 * d], [-w, -0.5 * d]];
+  else if (shape === 'round')
+    pts = Array.from({ length: ROUND_SIDES }, (_, k) => {
+      const t = (2 * Math.PI * k) / ROUND_SIDES;
+      return [w * Math.cos(t), d * Math.sin(t)];
+    });
+  else return [];
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, z1] = pts[i];
+    const [x2, z2] = pts[(i + 1) % pts.length];
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    if (Math.abs(dx) < 1e-9 || Math.abs(dz) < 1e-9) continue; // on the rectangle: its own wall
+    const len = Math.hypot(dx, dz);
+    let nx = dz / len;
+    let nz = -dx / len;
+    if (nx * (x1 + x2) + nz * (z1 + z2) < 0) [nx, nz] = [-nx, -nz]; // pointing away from the centre
+    out.push({ x1: cx + x1, z1: cz + z1, x2: cx + x2, z2: cz + z2, nx, nz });
+  }
+  return out;
 }
 
 /** Run one 1-die throw per type and discard it: warms colliders, hulls and the wasm paths. */
@@ -346,6 +385,29 @@ export function createSim(initialArea, hulls, readers) {
         for (const w of walls) owner.set(w.handle, -2);
         const spawnWall = walls[edge];
         if (!allLaunched) spawnWall.setEnabled(false);
+        // The tray's outline (round, hexagon, octagon): a wall along each edge off the rectangle,
+        // so dice hit the tray's own sides. Those facing the spawn side start open, as the spawn
+        // wall does (a hexagon's point would shut the dice out), and each closes once every die
+        // centre is inside it. No shape: none, and no rand() draws (old throws unchanged).
+        const shaped = shapeEdges(a).map((e) => {
+          const len = Math.hypot(e.x2 - e.x1, e.z2 - e.z1);
+          const yaw = Math.atan2(-(e.z2 - e.z1), e.x2 - e.x1);
+          const t = WALL_HALF_THICKNESS;
+          const wall = world.createCollider(
+            RAPIER.ColliderDesc.cuboid(len / 2 + t, WALL_HALF_HEIGHT, t)
+              .setTranslation((e.x1 + e.x2) / 2 + e.nx * t, WALL_HALF_HEIGHT, (e.z1 + e.z2) / 2 + e.nz * t)
+              .setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) })
+              .setRestitution(allLaunched ? HAND_WALL_RESTITUTION : DIE_RESTITUTION)
+              .setRestitutionCombineRule(
+                allLaunched ? RAPIER.CoefficientCombineRule.Max : RAPIER.CoefficientCombineRule.Average,
+              )
+              .setFriction(DIE_FRICTION),
+          );
+          owner.set(wall.handle, -2);
+          const open = !allLaunched && (alongX ? e.nx : e.nz) * sign > 1e-6;
+          if (open) wall.setEnabled(false);
+          return { wall, e, open };
+        });
 
         // Pets standing on the floor: fixed capsules, owner code -3 - i. No rand() draws. A die
         // contact at splatSpeed or more splats the pet: its collider is gone from the next step.
@@ -575,6 +637,32 @@ export function createSim(initialArea, hulls, readers) {
           }
           inChunk++;
 
+          // The shape's open walls: each closes once every centre is inside it. Until then a die
+          // in a corner (inside the rectangle, beyond an open wall) is herded towards the centre,
+          // once per step (after HERD_AFTER_STEP, as the spawn wall's): never a die still flying
+          // in, which the pushes of every open wall would add up on and throw over the far wall.
+          let shapeOpen = false;
+          const herd = step >= HERD_AFTER_STEP ? new Map() : null; // die -> the wall it is furthest beyond
+          for (const sw of shaped) {
+            if (!sw.open) continue;
+            let inside = true;
+            for (let d = 0; d < n; d++) {
+              const p = bodies[d].translation();
+              const out = (p.x - sw.e.x1) * sw.e.nx + (p.z - sw.e.z1) * sw.e.nz;
+              if (out > -CLOSE_EPSILON) inside = false;
+              if (herd && out > 0 && Math.abs(p.x - cx) <= hw && Math.abs(p.z - cz) <= hd && !(herd.get(d)?.out >= out))
+                herd.set(d, { e: sw.e, out });
+            }
+            if (inside) {
+              sw.wall.setEnabled(true);
+              sw.open = false;
+            } else shapeOpen = true;
+          }
+          for (const [d, { e }] of herd ?? []) {
+            const k = HERD_DELTA_V * bodies[d].mass();
+            bodies[d].applyImpulse({ x: -e.nx * k, y: 0, z: -e.nz * k }, true);
+          }
+
           // Close once every centre is inside the plane: any overlap with the new wall is then
           // resolved inwards. Never force it closed over a die that is still outside.
           if (!wallClosed && allInside) {
@@ -582,7 +670,7 @@ export function createSim(initialArea, hulls, readers) {
             wallClosed = true;
           }
 
-          restSteps = wallClosed && allAtRest ? restSteps + 1 : 0;
+          restSteps = wallClosed && !shapeOpen && allAtRest ? restSteps + 1 : 0;
           let finished = step === maxSteps;
           if (restSteps >= SETTLE_STEPS) {
             // A free throw runs on after a nudge, while a nudge still has time to settle.

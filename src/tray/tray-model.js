@@ -13,16 +13,6 @@ export const TRAY_SURFACES = ['felt', 'wood', 'stone', 'leather', 'metal', 'imag
 export const TRAY_RIMS = ['plain', 'wood', 'leather', 'stone', 'metal'];
 /** The tray's outline: a rectangle (its corners rounded by `radius`), an oval, a hexagon, an octagon. */
 export const TRAY_SHAPES = ['rect', 'round', 'hex', 'octagon'];
-/**
- * How far in (fractions of the floor, each side) dice keep in each shape: the largest rectangle
- * inside it, so a die never lands on the rim. The hexagon has its points left and right.
- */
-export const SHAPE_INSET = Object.freeze({
-  rect: Object.freeze({ x: 0, y: 0 }),
-  round: Object.freeze({ x: 0.147, y: 0.147 }),
-  hex: Object.freeze({ x: 0.18, y: 0.14 }),
-  octagon: Object.freeze({ x: 0.125, y: 0.125 }),
-});
 /** Built-in floor designs (assets/trays/<id>.svg), drawn in the design colour; or any picture. */
 export const TRAY_DESIGNS = ['sigil', 'moon', 'compass', 'skull'];
 export const TRAY_MODES = ['table', 'mine', 'none'];
@@ -125,20 +115,19 @@ export function trayLookFor({ mode, mine, table } = {}) {
 }
 
 /**
- * The px rect dice land in for a tray at `px` with `look`: inside the rim (and `gap` more), then
- * inside the shape (SHAPE_INSET).
+ * The px rect dice land in for a tray at `px` with `look`: its floor, inside the rim (and `gap`
+ * more), with its shape when it is not a rectangle: the dice's walls then follow that outline
+ * (sim.js shapeEdges: the hexagon has its points left and right), so they hit the tray's sides.
  */
 export function trayArea(px, look, gap = 0) {
   const t = normalizeTray(look);
   const rim = t.rim.width + gap;
-  const fw = Math.max(1, px.width - 2 * rim);
-  const fh = Math.max(1, px.height - 2 * rim);
-  const s = SHAPE_INSET[t.shape];
   return {
-    left: px.left + rim + fw * s.x,
-    top: px.top + rim + fh * s.y,
-    width: Math.max(1, fw * (1 - 2 * s.x)),
-    height: Math.max(1, fh * (1 - 2 * s.y)),
+    left: px.left + rim,
+    top: px.top + rim,
+    width: Math.max(1, px.width - 2 * rim),
+    height: Math.max(1, px.height - 2 * rim),
+    ...(t.shape !== 'rect' && { shape: t.shape }),
   };
 }
 

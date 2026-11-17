@@ -1144,7 +1144,10 @@
       "PresetName": "Name, e.g. Party crest",
       "PresetSave": "Save for players",
       "PresetDelete": "Remove this saved tray",
-      "PresetDefault": "Tray"
+      "PresetDefault": "Tray",
+      "PopOut": "Show on another screen",
+      "WindowTitle": "Dice tray",
+      "WindowBlocked": "The dice tray window could not open: allow pop-ups for Foundry and try again."
     },
     "ChatTray": {
       "Label": "Chat dice tray",

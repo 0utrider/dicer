@@ -86,25 +86,24 @@ describe('tray model', () => {
     expect(trayStyle({})['--dicer-tt-design']).toBe('none');
   });
 
-  test('shape: rect, round, hex or octagon (junk is a rectangle); dice keep inside the shape', () => {
+  test('shape: rect, round, hex or octagon (junk is a rectangle); the dice area is the whole floor, with its shape', () => {
     expect(normalizeTray({}).shape).toBe('rect');
     expect(normalizeTray({ shape: 'hex' }).shape).toBe('hex');
     expect(normalizeTray({ shape: 'star' }).shape).toBe('rect');
     const px = { left: 100, top: 50, width: 520, height: 420 };
     const rim = { width: 10 };
-    // a rectangle: the whole floor, inside the rim and the gap
+    // a rectangle: the whole floor, inside the rim (and a gap, when asked); no shape
     expect(trayArea(px, { rim }, 6)).toEqual({ left: 116, top: 66, width: 488, height: 388 });
-    // a hexagon (points left and right): in from the sides more than from the top
-    const hex = trayArea(px, { rim, shape: 'hex' });
-    expect(hex.left).toBeCloseTo(110 + 500 * 0.18);
-    expect(hex.top).toBeCloseTo(60 + 400 * 0.14);
-    expect(hex.width).toBeCloseTo(500 * 0.64);
-    // the oval's rectangle has its corners on the ellipse: (x-.5)²/.25 + (y-.5)²/.25 ≈ 1
-    const o = trayArea(
-      { left: 0, top: 0, width: 100, height: 100 },
-      { rim: { width: 0 }, shape: 'round' },
-    );
-    expect(((o.left - 50) / 50) ** 2 + ((o.top - 50) / 50) ** 2).toBeCloseTo(1, 1);
+    expect(trayArea(px, { rim })).toEqual({ left: 110, top: 60, width: 500, height: 400 });
+    // the others: the same whole floor, with the shape the dice's walls follow (no padding)
+    for (const shape of ['round', 'hex', 'octagon'])
+      expect(trayArea(px, { rim, shape })).toEqual({
+        left: 110,
+        top: 60,
+        width: 500,
+        height: 400,
+        shape,
+      });
   });
 
   test('the rim pets sit on: a strip along the middle of the top edge, as wide as the shape allows', () => {

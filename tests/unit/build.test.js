@@ -99,6 +99,9 @@ describe('build', () => {
     const trayModel = lazy.find((p) => /^dist\/tray-model-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(tableTray).toBeTruthy();
     expect(trayModel).toBeTruthy();
+    // the dice tray in a window of its own (another screen): opened from the Dice tray window
+    const trayWindow = lazy.find((p) => /^dist\/popout-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(trayWindow).toBeTruthy();
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-edge');
     // lazy for real too: no world-start file names it
     for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
@@ -184,6 +187,7 @@ describe('build', () => {
         trayEditor,
         tableTray,
         trayModel,
+        trayWindow,
         hand,
         grab,
         rollFilters,
@@ -311,9 +315,14 @@ describe('build', () => {
     // Animater moments, all 16 with where each plays (screen, at the dice, the roller's token) and a
     // strength, the dice's map point and the speaker token: owner approved +1,031 B (24,945 -> 25,976),
     // 2026-11-17.
+    // Dice walls that follow round, hexagon and octagon trays (the physics worker's shape walls,
+    // their closing and corner herding; the tray's shape passed to it): owner approved +1,700 B
+    // (25,976 -> 27,676), 2026-11-17.
+    // The dice tray on another screen (main's hookup: the pop-out's stage and tray, the button's
+    // hook; the window is the lazy popout chunk): owner approved +467 B (27,676 -> 28,143), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(25_976);
+    expect(growth).toBeLessThanOrEqual(28_143);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

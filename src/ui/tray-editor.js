@@ -339,6 +339,11 @@ export function trayForm(
       text: loc(target === 'table' ? 'DICER.DiceTray.TableNote' : 'DICER.DiceTray.MineNote'),
     }),
     h('div', { class: 'dicer-tt-actions' }, [
+      // the tray, with the dice, in a window of its own (to drag onto another screen)
+      h('button', { type: 'button', 'data-act': 'popout' }, [
+        h('i', { class: 'fa-solid fa-up-right-from-square' }),
+        ` ${loc('DICER.DiceTray.PopOut')}`,
+      ]),
       h('button', { type: 'button', 'data-act': 'reset-place' }, [
         h('i', { class: 'fa-solid fa-arrows-to-dot' }),
         ` ${loc('DICER.DiceTray.ResetPlace')}`,
@@ -492,6 +497,7 @@ export function openTrayEditor() {
         await s.set(MODULE, 'trayPresets', next);
         return void this.render();
       }
+      if (b.dataset.act === 'popout') return void globalThis.Hooks?.callAll('dicerTrayPopOut');
       if (b.dataset.act === 'reset-place') await s.set(MODULE, 'trayRect', null);
       if (b.dataset.act === 'remove-table' && isGM()) {
         await s.set(MODULE, 'tableTray', null);

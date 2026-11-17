@@ -153,12 +153,12 @@ function randomQuat(rng) {
 }
 
 /** Injects the overlay's styles once per page (they live in the lazy chunk, not dicer.css). */
-function injectStyle() {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement('style');
+function injectStyle(doc) {
+  if (doc.getElementById(STYLE_ID)) return;
+  const style = doc.createElement('style');
   style.id = STYLE_ID;
   style.textContent = OVERLAY_CSS;
-  document.head.append(style);
+  doc.head.append(style);
 }
 
 let active = false; // one overlay at a time
@@ -203,6 +203,9 @@ export function openThrowOverlay({
 }) {
   if (active) return Promise.resolve({ cancelled: true });
   active = true;
+  // the page the dice are drawn on: the dice tray's own window when it is popped out
+  const doc = diceBox._renderer?.canvas?.ownerDocument ?? document;
+  const win = doc.defaultView ?? window;
   stage ??= diceBox._stageRect;
   diePx ??= diceBox._diePx;
   rect ??= stage;
@@ -248,27 +251,27 @@ export function openThrowOverlay({
   }
 
   // ---- DOM ----
-  injectStyle();
-  const el = document.createElement('div');
+  injectStyle(doc);
+  const el = doc.createElement('div');
   el.className = 'dicer-hand-overlay';
   el.tabIndex = -1;
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', label || loc('DICER.Hand.Hint'));
-  const areaEl = document.createElement('div');
+  const areaEl = doc.createElement('div');
   areaEl.className = 'dicer-hand-area';
-  const bar = document.createElement('div');
+  const bar = doc.createElement('div');
   bar.className = 'dicer-hand-bar';
   const text = (cls, s) => {
-    const t = document.createElement('span');
+    const t = doc.createElement('span');
     t.className = cls;
     t.textContent = s;
     return t;
   };
   const button = (action, key, kbd) => {
-    const b = document.createElement('button');
+    const b = doc.createElement('button');
     b.type = 'button';
     b.dataset.action = action;
-    b.append(loc(key), ' ', Object.assign(document.createElement('kbd'), { textContent: kbd }));
+    b.append(loc(key), ' ', Object.assign(doc.createElement('kbd'), { textContent: kbd }));
     return b;
   };
   const count = text('dicer-hand-count', '');
@@ -278,7 +281,7 @@ export function openThrowOverlay({
   if (label) bar.append(text('dicer-hand-label', label));
   bar.append(text('dicer-hand-hint', loc('DICER.Hand.Hint')), count, auto, cancel);
   el.append(areaEl, bar);
-  document.body.append(el);
+  doc.body.append(el);
   /** Places the overlay on the stage, the outline on the area, the bar under (or over) it. */
   function place() {
     const px = (v) => `${v}px`;
@@ -305,7 +308,7 @@ export function openThrowOverlay({
     bar.style.left = px(clamp(rect.left - stage.left + rect.width / 2, half, stage.width - half));
   }
   place();
-  const focused = document.activeElement;
+  const focused = doc.activeElement;
   el.focus?.({ preventScroll: true });
 
   // ---- listeners (each removed by name at release or close) ----
@@ -324,11 +327,11 @@ export function openThrowOverlay({
     if (!open) return;
     open = false;
     active = false;
-    document.body.classList.remove(FADE);
+    doc.body.classList.remove(FADE);
     for (const off of offs.splice(0)) off();
     clearTimeout(timer);
     clearInterval(ticker);
-    if (frame) globalThis.cancelAnimationFrame?.(frame);
+    if (frame) win.cancelAnimationFrame?.(frame);
     frame = 0;
     try {
       if (focused?.isConnected) focused.focus?.({ preventScroll: true });
@@ -445,7 +448,7 @@ export function openThrowOverlay({
       d.j = d.j.map(() => jig * (2 * rng() - 1));
     }
     pose(now);
-    frame = globalThis.requestAnimationFrame?.(tick) ?? 0;
+    frame = win.requestAnimationFrame?.(tick) ?? 0;
   }
   const clock = () => globalThis.performance?.now?.() ?? Date.now();
 
@@ -605,7 +608,7 @@ export function openThrowOverlay({
   // Capture, before Foundry: Space would pause the game, Esc close a window. Space on a focused
   // button (or a text field) is that element's own.
   on(
-    window,
+    win,
     'keydown',
     (e) => {
       const t = e.target;
@@ -621,7 +624,7 @@ export function openThrowOverlay({
     },
     true,
   );
-  on(window, 'resize', () => (stale = 2));
+  on(win, 'resize', () => (stale = 2));
 
   // ---- the countdown (wall clock: a blur or a throttled tab does not pause it) ----
   if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
@@ -641,7 +644,7 @@ export function openThrowOverlay({
   // I3: Foundry's windows (z-index 100 and up) sit over the dice canvas (60) and this overlay;
   // they fade and let the pointer through until the release (detach).
   pose(clock()); // first, so a throw here can't leave the windows faded
-  document.body.classList.add(FADE);
-  frame = globalThis.requestAnimationFrame?.(tick) ?? 0;
+  doc.body.classList.add(FADE);
+  frame = win.requestAnimationFrame?.(tick) ?? 0;
   return done;
 }

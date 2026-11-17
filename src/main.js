@@ -75,6 +75,21 @@ let petDeps = null; // what the lazy pet chunk's layer is made from
 let tray = null; // this screen's dice tray (the lazy tray chunk), once loaded
 let trayDeps = null; // what it is made from (activate sets them)
 let trayEditing = false; // the Dice tray window is open (the tray shows while it is)
+// The dice tray in a window of its own (src/tray/popout.js: another screen): {win, tray, stage()}.
+// Every roll this screen shows lands there, the dice drawn in it; the table's tray hides meanwhile.
+let popped = null;
+const onTray = () => popped?.tray ?? tray;
+const stageRect = () => popped?.stage() ?? measureArea();
+Hooks.on('dicerTrayPopOut', () => {
+  if (!diceRenderer || !trayDeps) return;
+  const set = (p) => {
+    popped = p;
+    if (tray?.element) tray.element.style.display = p ? 'none' : '';
+  };
+  import('./tray/popout.js')
+    .then((m) => m.popOut({ ...trayDeps, canvas: diceRenderer.canvas, resize: resizeDice, set }))
+    .catch((err) => console.warn('dicer: cannot open the dice tray window', err));
+});
 // The Dice tray window (its lazy chunk) says when it opens and closes.
 Hooks.on('dicerTrayEditing', (on) => {
   trayEditing = !!on;
@@ -736,7 +751,7 @@ Hooks.once('ready', async () => {
         getFlags: () => quality.flags(),
         shadows: () => getSetting('shadows') !== false,
         lightPools: () => getSetting('diceLight') === true,
-        getArea: () => measureArea(),
+        getArea: stageRect,
         diceScale: () => Number(getSetting('diceScale')) || 1,
         timeBeforeHide: () => Number(getSetting('timeBeforeHide')) || 0,
         faceTextures,
@@ -748,7 +763,7 @@ Hooks.once('ready', async () => {
         // addSystem(DiceSystem instance): its material callbacks and dice events (api.js).
         systemFor: (id) => registry?.systems.get(id)?.instance ?? null,
         onImpact: (e) => soundEngine?.impact(e),
-        getSurface: () => tray?.sound() ?? soundSurface(getSetting),
+        getSurface: () => onTray()?.sound() ?? soundSurface(getSetting),
         onLandedFx: (die, fx, rollKey) => landedFx(die, fx, rollKey),
         effects: effectLayer,
         pet: () => getPets(),
@@ -804,7 +819,7 @@ Hooks.once('ready', async () => {
       // (message, roll, authorId?, rollerId?): looks from the author, rules from the roller.
       const decorateFor = composeDecorateFor({ looks: resolver, fx: fxResolver });
       // Which area each throw lands in on this screen (the roller's; the GM private corner).
-      const areas = createAreaResolver({ getSetting, measureUsable: () => measureArea(), currentUser: () => game.user });
+      const areas = createAreaResolver({ getSetting, measureUsable: stageRect, currentUser: () => game.user });
       // A dice tray takes every roll this screen shows (whoever rolled); without one, the roll areas.
       tray?.dispose();
       tray = null;
@@ -817,9 +832,9 @@ Hooks.once('ready', async () => {
       };
       syncTray();
       const areaFor = (o) => {
-        const inTray = tray?.area();
+        const inTray = onTray()?.area();
         if (inTray) {
-          tray.rolling();
+          onTray().rolling();
           return inTray;
         }
         return areas.rectFor(o);
@@ -827,9 +842,9 @@ Hooks.once('ready', async () => {
       // A user's area as their throws use it: the pet layer moves resting pets when areas change.
       // petTray: 'rim' (pets sit on the tray's rim: perch), 'in' (in the tray), 'away' (roll areas)
       petDeps.areaOf = (id) =>
-        box.dieArea((getSetting('petTray') !== 'away' && tray?.area()) || areas.rectFor({ rollerId: id }));
+        box.dieArea((getSetting('petTray') !== 'away' && onTray()?.area()) || areas.rectFor({ rollerId: id }));
       petDeps.perch = () => {
-        const r = getSetting('petTray') === 'rim' && tray?.perch();
+        const r = getSetting('petTray') === 'rim' && onTray()?.perch();
         return r ? box.dieArea(r) : null;
       };
       // Task 8: hand throws from other users, buffered until their message; the chunk on demand.
@@ -866,7 +881,7 @@ Hooks.once('ready', async () => {
         registry,
         faceTextures,
         facesFor: presetFaces,
-        getArea: () => measureArea(),
+        getArea: stageRect,
         areaFor,
         debugCounters,
         getAtlas: () => digitAtlas,

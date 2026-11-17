@@ -4,7 +4,7 @@ import { beforeAll, expect, test, vi } from 'vitest';
 import { getShape } from '../../src/core/dice-shapes.js';
 import { faceNormals, readTopFace } from '../../src/core/face-reader.js';
 import { isCocked, topFaceClearance } from '../../src/core/physical-read.js';
-import { clearanceOf, createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
+import { clearanceOf, createSim, initPhysics, prewarm, shapeEdges } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
 import { computeReaders } from '../../src/physics/readers.js';
 import { throwEdge } from '../../src/core/rng.js';
@@ -433,6 +433,51 @@ test('an overfull area (a dice tray: never grown) takes every die: the ones left
       const tag = `seed ${seed} die ${d}`;
       expect(Math.abs(p.x - tray.cx), tag).toBeLessThan(tray.halfWidth + 1);
       expect(Math.abs(p.z - tray.cz), tag).toBeLessThan(tray.halfDepth + 1);
+    }
+  }
+});
+
+test("a shaped area's walls follow its outline: dice settle inside a round, hex or octagon tray", () => {
+  const box = { cx: 1, cz: -1, halfWidth: 5, halfDepth: 3.5 };
+  // inside the outline, give or take a die's radius (a die rests against the wall, centre in)
+  const insideBy = {
+    round: (x, z) => Math.hypot((x - box.cx) / (box.halfWidth + 1), (z - box.cz) / (box.halfDepth + 1)) <= 1,
+    hex: (x, z) => shapeEdges({ ...box, shape: 'hex' }).every((e) => (x - e.x1) * e.nx + (z - e.z1) * e.nz <= 1),
+    octagon: (x, z) => shapeEdges({ ...box, shape: 'octagon' }).every((e) => (x - e.x1) * e.nx + (z - e.z1) * e.nz <= 1),
+  };
+  for (const shape of ['round', 'hex', 'octagon']) {
+    for (const seed of [1, 2, 3, 4]) {
+      const n = 8;
+      const { res, chunks } = runEv(Array(n).fill('d6'), seed, area, { ...box, shape });
+      expect(res.settledStep, `${shape} seed ${seed}`).toBeLessThan(MAX_STEPS);
+      for (const [d, p] of firstAndLast(chunks, n).entries())
+        expect(insideBy[shape](p.x, p.z), `${shape} seed ${seed} die ${d} at ${p.x.toFixed(2)},${p.z.toFixed(2)}`).toBe(true);
+    }
+  }
+  // the edges: a hexagon's four slanted sides (its top and bottom are the rectangle's walls),
+  // an octagon's four corners, the oval's sixteen; none for a rectangle
+  expect(shapeEdges({ ...box, shape: 'hex' })).toHaveLength(4);
+  expect(shapeEdges({ ...box, shape: 'octagon' })).toHaveLength(4);
+  expect(shapeEdges({ ...box, shape: 'round' })).toHaveLength(16);
+  expect(shapeEdges(box)).toEqual([]);
+  for (const e of shapeEdges({ ...box, shape: 'octagon' })) expect(e.nx * (e.x1 - box.cx) + e.nz * (e.z1 - box.cz)).toBeGreaterThan(0);
+});
+
+test('a crowded shaped tray (40 dice) keeps them all: none flies over a wall, every throw settles', () => {
+  // the stage and tray a 1472 px screen gives; herding once pushed dice still flying in, and the
+  // pushes of every open wall added up and threw the last ones over the far side
+  const stage = { halfWidth: 11.7, halfDepth: 10.19 };
+  const tray = { cx: 0, cz: 0, halfWidth: 5.52, halfDepth: 5.78 };
+  for (const shape of ['round', 'hex', 'octagon']) {
+    for (const seed of [1, 2, 3]) {
+      const n = 40;
+      const { res, chunks } = runEv(Array(n).fill('d6'), seed, stage, { ...tray, shape });
+      expect(res.settledStep, `${shape} seed ${seed}`).toBeLessThan(MAX_STEPS);
+      for (const [d, p] of firstAndLast(chunks, n).entries()) {
+        const tag = `${shape} seed ${seed} die ${d}`;
+        expect(Math.abs(p.x - tray.cx), tag).toBeLessThan(tray.halfWidth + 1);
+        expect(Math.abs(p.z - tray.cz), tag).toBeLessThan(tray.halfDepth + 1);
+      }
     }
   }
 });
