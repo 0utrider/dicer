@@ -418,6 +418,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       importModule: ThemeBrowser.#onImportModule,
       openPet: ThemeBrowser.#onOpenPet,
       openTray: ThemeBrowser.#onOpenTray,
+      openInstalledDice: ThemeBrowser.#onOpenInstalledDice,
       openSettings: ThemeBrowser.#onOpenSettings,
     },
   };
@@ -591,6 +592,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const cards = visible.map(view);
     return {
       locked: this.#locked,
+      isGM: globalThis.game?.user?.isGM === true,
       lockedNotice: loc('DICER.Themes.Locked'),
       filter,
       filters: Object.entries(FILTER_KEYS)
@@ -821,6 +823,11 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /** The Dice tray window (its own lazy chunk). */
+  static async #onOpenInstalledDice() {
+    const m = await import('./installed-dice.js');
+    return m.openInstalledDice();
+  }
+
   static async #onOpenTray() {
     const m = await import('./tray-editor.js');
     return m.openTrayEditor();

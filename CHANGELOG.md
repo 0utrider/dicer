@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Dice from installed modules, without activating them.** In the theme browser, the GM's **Installed dice** button lists the installed modules that add dice but are off in this world. Tick one and its dice load for everyone, under **Module dice**, while the module itself stays off. Only modules that do nothing but add dice can be loaded this way (dice sets like The Rollsmith's). Adventure and system modules that also do other things are listed greyed out: activate those to use their dice. Dice you untick go away at the next reload.
+
 ## 0.5.0
 
 - **The dice tray on another screen.** In the Dice tray window, **Show on another screen** opens the tray in a window of its own: drag it to your second monitor and the tray fills it. Every roll on your screen then lands there instead of on the map, pets included, and rolling by hand happens in that window too (grab, shake and flick the dice right there). Close the window to bring the dice back. Your browser must allow pop-ups for Foundry, and keep the main Foundry window open (not minimized) while you use it.

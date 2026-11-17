@@ -102,6 +102,10 @@ describe('build', () => {
     // the dice tray in a window of its own (another screen): opened from the Dice tray window
     const trayWindow = lazy.find((p) => /^dist\/popout-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(trayWindow).toBeTruthy();
+    // dice of installed modules that are not active: the loader and the GM's picker
+    const installedDice = lazy.filter((p) => /^dist\/installed-dice-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(installedDice).toHaveLength(2);
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-installed-dice');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-edge');
     // lazy for real too: no world-start file names it
     for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
@@ -188,6 +192,7 @@ describe('build', () => {
         tableTray,
         trayModel,
         trayWindow,
+        ...installedDice,
         hand,
         grab,
         rollFilters,
@@ -320,9 +325,11 @@ describe('build', () => {
     // (25,976 -> 27,676), 2026-11-17.
     // The dice tray on another screen (main's hookup: the pop-out's stage and tray, the button's
     // hook; the window is the lazy popout chunk): owner approved +467 B (27,676 -> 28,143), 2026-11-17.
+    // Dice from installed modules that are not active (the installedDice setting and main's call
+    // into the lazy loader): owner approved +310 B (28,143 -> 28,453), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(28_143);
+    expect(growth).toBeLessThanOrEqual(28_453);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

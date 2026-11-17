@@ -294,6 +294,12 @@ function lightDice() {
   diceBox?.wake?.();
 }
 
+/** The dice of installed modules that are not active (the GM's picks; a lazy chunk), after diceSoNiceReady. */
+function loadInstalled() {
+  const list = dice3d && getSetting('installedDice');
+  if (list?.length) import('./compat/installed-dice.js').then((m) => m.loadInstalledDice(list, { api: dice3d })).catch(() => {});
+}
+
 /** A module-relative or absolute URL as the browser can fetch it. */
 const routeOf = (url) =>
   /^([a-z][a-z0-9+.-]*:|\/)/i.test(url) ? url : foundry.utils.getRoute(url);
@@ -612,6 +618,7 @@ Hooks.once('init', () => {
     onLightingChange: () => lightDice(),
     onTrayChange: () => syncTray(),
     onGrabChange: (on) => syncGrab(diceBox, on),
+    onInstalledDiceChange: () => loadInstalled(),
   });
   try {
     registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver
@@ -954,7 +961,7 @@ Hooks.once('ready', async () => {
   }
   // After api.js has loaded, so game.dice3d.DiceSystem is set inside both hooks. Not awaited:
   // the engine is already up, and announceReady never rejects.
-  announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady });
+  announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady }).then(loadInstalled);
   preloadSounds();
   preloadEffects();
   preloadPets();

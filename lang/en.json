@@ -713,7 +713,9 @@
       },
       "Tray": "Dice tray",
       "TrayHint": "Your dice tray: its shape, surface, rim and design",
-      "SettingsHint": "All Dicer settings"
+      "SettingsHint": "All Dicer settings",
+      "InstalledDice": "Installed dice",
+      "InstalledDiceHint": "Load dice from installed modules that are not active"
     },
     "Commands": {
       "Description": "Open the Dicer settings."
@@ -1268,6 +1270,18 @@
           "Name": "Big rolls",
           "Hint": "Rolls with more dice than the number below (a fireball's 10d6, say)."
         }
+      }
+    },
+    "InstalledDice": {
+      "Title": "Dice from installed modules",
+      "Intro": "These installed modules add dice but are not active in this world. Tick one to load just its dice: the module stays off, and its dice appear in the theme browser under Module dice for everyone.",
+      "None": "No inactive installed module adds dice that Dicer can load.",
+      "Remove": "Dice you untick go away at the next reload.",
+      "AfterReload": "Its dice stay until the next reload.",
+      "SaveFailed": "Could not save the installed module dice.",
+      "Status": {
+        "other": "Does more than add dice: activate the module to use them.",
+        "bundle": "Its dice are part of a bundle: activate the module to use them."
       }
     }
   }

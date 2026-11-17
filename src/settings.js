@@ -116,6 +116,7 @@ export const resetControls = () => {
  * @param {() => void} [callbacks.onLightingChange] runs when diceLighting changes
  * @param {() => void} [callbacks.onTrayChange] runs when a dice tray setting changes
  * @param {(value: boolean) => void} [callbacks.onGrabChange] runs when grabDice changes
+ * @param {() => void} [callbacks.onInstalledDiceChange] runs when installedDice changes (every client)
  */
 export function registerSettings({
   onAreaChange,
@@ -130,6 +131,7 @@ export function registerSettings({
   onLightingChange,
   onTrayChange,
   onGrabChange,
+  onInstalledDiceChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
   register('enabled', {
@@ -597,6 +599,9 @@ export function registerSettings({
   registerEditorMenu(t, 'petWindow', 'fa-solid fa-dragon', () =>
     import('./ui/pet-window.js').then((m) => () => m.openPetWindow()),
   );
+  // Dice of installed modules that are not active (compat/installed-dice.js): the GM's picks, each
+  // {id, title, scripts}, made in the theme browser; every client loads new picks as they are made.
+  register('installedDice', { scope: 'world', config: false, type: Array, default: [], onChange: () => onInstalledDiceChange?.() });
   registerEditorMenu(t, 'themeBrowser', 'fa-solid fa-dice-d20', () =>
     import('./ui/theme-browser.js').then((m) => m.openThemeBrowser),
   );
