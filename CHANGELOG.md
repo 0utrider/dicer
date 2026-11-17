@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
 - **Dice from installed modules, without activating them.** In the theme browser, the GM's **Installed dice** button lists the installed modules that add dice but are off in this world. Tick one and its dice load for everyone, under **Module dice**, while the module itself stays off. Only modules that do nothing but add dice can be loaded this way (dice sets like The Rollsmith's). Adventure and system modules that also do other things are listed greyed out: activate those to use their dice. Dice you untick go away at the next reload.
 
