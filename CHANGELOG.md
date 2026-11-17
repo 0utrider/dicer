@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2
 
 - **Fixed: no insides at Low quality.** On **Low** quality, and on **Auto** when Dicer judged the computer slow at start-up (a judgment it keeps), thrown dice showed only a flat tint where their inside should be, while the theme browser's previews looked right. Low now draws insides too, at the fewest steps they are made for; it stays cheaper than the other tiers in every other way. Only if an inside shader fails to compile do dice fall back to the tint.
 
