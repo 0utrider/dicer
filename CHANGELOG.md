@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3
 
 - **Fixed: dice bounced off empty space before the tray's sides.** The dice's walls stood 6 px inside the rim, so dice turned back just short of it. They now hit the rim itself.
 - **Fixed: pets reacted to how dice look.** A pet now reacts only to a roll's damage type (fire damage, cold damage and so on). Dice that merely look elemental, like **Eruption**'s lava or a fire, frost or storm inside, no longer make it scorch or shiver. Dice trails and bursts still follow the look.
