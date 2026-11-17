@@ -12,6 +12,7 @@ import { MAX_RELEASE_SPIN } from '../../physics/protocol.js';
 import { toDieArea } from '../../areas/area-model.js';
 import { cameraHeightFor } from '../../render/scene.js';
 import { handEdge } from './edge.js';
+import { seedFrom } from '../../core/rng.js';
 import { OVERLAY_CSS } from './overlay-style.js';
 
 /** The release velocity is read from the pointer's last this-many ms. */
@@ -475,7 +476,7 @@ export function openThrowOverlay({
       const options = {
         area: rect,
         free: true,
-        seed: Math.floor(rng() * 2 ** 32) >>> 0,
+        seed: seedFrom(rng), // nudges only: the launch decides the throw
         record: (rec) => gotRecording((recording = rec)),
         launch,
         edge: handEdge(launch, area),

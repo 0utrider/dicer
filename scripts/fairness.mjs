@@ -1,7 +1,7 @@
 /**
  * Physics dice fairness (rolling by hand, Task 4; G10).
  *
- * `npm run test:fairness` throws 10,000 free one-die throws per shape through the real Rapier sim
+ * `npm run test:fairness` throws 100,000 free one-die throws per shape through the real Rapier sim
  * (half a human-like random launch, half the seeded spawn), reads each settled pose with Task 1's
  * readers, runs a chi-square test on the face counts, writes docs/research/fairness.md and exits
  * non-zero when any shape has p <= 0.01. `chiSquare` and `runFairness` are exported for the fast
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 export const FAIR_TYPES = ['d2', 'd4', 'd4crystal', 'd6', 'd8', 'd10', 'd12', 'd14', 'd16', 'd20'];
 /** A shape fails at p <= FAIR_P (G10). */
 export const FAIR_P = 0.01;
-export const FAIR_THROWS = 10000;
+export const FAIR_THROWS = 100000;
 export const FAIR_SEED = 20261114;
 /** The default stage rectangle of the sim tests (die units). */
 const AREA = { halfWidth: 12, halfDepth: 7 };
@@ -90,12 +90,20 @@ export function chiSquare(counts) {
 
 // ---------------------------------------------------------------- the run
 
-/** Seed of throw i of a shape: a 32-bit mix of seed0, the shape's name and i. */
+/**
+ * Seed of throw i of a shape: a 128-bit seed (four words, the kind every live throw uses, so the
+ * run goes through the same xoshiro128** path), word w an FNV-1a mix of seed0, the shape, i and w.
+ */
 function throwSeed(seed0, type, i) {
-  let h = (seed0 ^ 0x811c9dc5) >>> 0;
-  for (const ch of `${type}:${i}`) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
-  return h;
+  return [0, 1, 2, 3].map((w) => {
+    let h = (seed0 ^ 0x811c9dc5) >>> 0;
+    for (const ch of `${type}:${i}:${w}`) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    return h;
+  });
 }
+
+/** The launch stream of a throw: its seed against a fixed salt, apart from the sim's own stream. */
+const launchSeed = (seed) => seed.map((w) => (w ^ 0x5bd1e995) >>> 0);
 
 /**
  * A human-like release: anywhere in the area away from the walls, 1.5..4 up, any orientation,
@@ -172,15 +180,19 @@ function oneThrow({ sim }, req) {
 
 /**
  * Throws `throws` free one-die throws per type (even i: a human-like launch from
- * mulberry32(seed ^ 0x5bd1e995); odd i: the seeded spawn), reads each settled pose and tests the
+ * seededRandom(launchSeed(seed)); odd i: the seeded spawn), reads each settled pose and tests the
  * face counts.
  * - counts[v - 1]: throws whose read value is v (the face that counts; d16 from below, H-1).
  * - nudged: share of throws with at least one nudge (cocked or outside at rest; H-2).
  * - cocked: share still cocked after the last nudge (read anyway: the reading stands).
+ * - maxDev: the largest |count - expected| / expected over the faces (the worst face's bias).
+ * - ci95: the 95 % half-width of one face's share relative to its expected share,
+ *   1.96 * sqrt((faces - 1) / throws): the bias a face can hide at this many throws.
  * - rimRate (d2): share of coin throws whose first rest was on the rim (the same throw without
  *   `free` ends cocked); null for dice.
  * @returns {Promise<Record<string, {counts: number[], stat: number, df: number, p: number,
- *   nudged: number, cocked: number, rimRate: number|null, throws: number}>>}
+ *   maxDev: number, ci95: number, nudged: number, cocked: number, rimRate: number|null,
+ *   throws: number}>>}
  */
 export async function runFairness({
   types = FAIR_TYPES,
@@ -200,7 +212,7 @@ export async function runFairness({
     for (let i = 0; i < throws; i++) {
       const seed = throwSeed(seed0, type, i);
       const req = { dice: [{ type }], seed, free: true };
-      if (i % 2 === 0) req.launch = [humanLaunch(rng.mulberry32(seed ^ 0x5bd1e995), AREA)];
+      if (i % 2 === 0) req.launch = [humanLaunch(rng.seededRandom(launchSeed(seed)), AREA)];
       const r = oneThrow(env, req);
       counts[reader.readResult(shape, r.q) - 1]++;
       if (reader.isCocked(shape, r.q)) cocked++;
@@ -211,10 +223,13 @@ export async function runFairness({
           rims++;
       }
     }
+    const expected = throws / faces;
     out[type] = {
       throws,
       counts,
       ...chiSquare(counts),
+      maxDev: Math.max(...counts.map((c) => Math.abs(c - expected))) / expected,
+      ci95: 1.96 * Math.sqrt((faces - 1) / throws),
       nudged: nudged / throws,
       cocked: cocked / throws,
       rimRate: type === 'd2' ? rims / throws : null,
@@ -233,7 +248,7 @@ export function reportOf(results, { date, commit, seconds, unfair }) {
     ([t, r]) =>
       `| ${t} | ${r.throws} | ${r.df} | ${r.stat.toFixed(2)} | ${r.p.toFixed(4)} | ${
         r.p > FAIR_P ? 'pass' : '**fail**'
-      } | ${pct(r.nudged)} | ${pct(r.cocked)} |`,
+      } | ${pct(r.maxDev)} | ±${pct(r.ci95)} | ${pct(r.nudged)} | ${pct(r.cocked)} |`,
   );
   const counts = Object.entries(results).map(([t, r]) => `| ${t} | ${r.counts.join(' ')} |`);
   const coin = results.d2?.rimRate;
@@ -253,8 +268,9 @@ ${seconds.toFixed(0)} s.
 - Even throws are a human-like launch: released anywhere at least 2 units inside the walls, 1.5..4
   units up, uniformly random orientation, flicked 6..30 units/s in a random horizontal direction
   (vertical -2..2) with 3..25 rad/s of spin about a random axis. Odd throws are the seeded spawn
-  (the automatic throw's entry from beyond the stage edge). Seeds are fixed (seed0 ${FAIR_SEED}),
-  so a run is reproducible.
+  (the automatic throw's entry from beyond the stage edge). Each throw has a fixed 128-bit seed
+  (seed0 ${FAIR_SEED}), the kind live throws draw from Web Crypto, so the sim runs the same
+  xoshiro128** generator as a live throw and a run is reproducible.
 - The settled pose is read by Task 1's \`readResult\` (the d4 and the d16 from below, the d16 as its
   paired top kite, H-1; the crystal d4 among its four read faces). A die that rests cocked or
   outside the area is nudged (at most 3 times); the reading then stands.
@@ -265,9 +281,14 @@ ${seconds.toFixed(0)} s.
 
 ## Results
 
-| Shape | Throws | df | chi-square | p | Result | Nudged | Cocked at end |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Shape | Throws | df | chi-square | p | Result | Worst face | ±95 % | Nudged | Cocked at end |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${rows.join('\n')}
+
+"Worst face": the face furthest from its fair share, relative to that share (1 % means a d20 face
+landing 5.05 % of the time instead of 5 %). "±95 %": how far one face's share may sit from fair by
+chance alone at this many throws, so a face biased by less than this cannot be told from luck; a
+fair die's worst face usually lands somewhat above it (it is the largest of all the faces).
 
 "Nudged": throws with at least one nudge (a rest cocked or outside the area). "Cocked at end": still
 cocked after the last nudge (3 used, or no time left); the reading stands, so these are counted.
@@ -325,7 +346,7 @@ async function main() {
     console.log(
       `${t.padEnd(10)} n=${r.throws} chi2=${r.stat.toFixed(2)} df=${r.df} p=${r.p.toFixed(4)} ${
         r.p > FAIR_P ? 'pass' : 'FAIL'
-      } nudged=${pct(r.nudged)} cocked=${pct(r.cocked)}${r.rimRate == null ? '' : ` rim=${pct(r.rimRate)}`}`,
+      } worst=${pct(r.maxDev)} ci95=±${pct(r.ci95)} nudged=${pct(r.nudged)} cocked=${pct(r.cocked)}${r.rimRate == null ? '' : ` rim=${pct(r.rimRate)}`}`,
     );
   }
   console.log(`${seconds.toFixed(1)} s; wrote docs/research/fairness.md`);

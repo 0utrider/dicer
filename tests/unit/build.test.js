@@ -356,9 +356,13 @@ describe('build', () => {
     // lazy hand chunk), with the v14 resolver getter fix: owner approved +139 B (30,066 -> 30,205), 2026-11-17.
     // Physics decides as its own setting (physicsResults), out of Roll by hand: owner approved +28 B
     // (30,205 -> 30,233), 2026-11-17.
+    // 128-bit throw seeds (Web Crypto seed creation and checks in DiceBox; xoshiro128** in the
+    // physics worker): owner approved +819 B (30,233 -> 31,052), 2026-11-17.
+    // A fresh collider frame and point order per throw (sim.js framedPoints: the d12 face bias
+    // from Rapier's internal layout averages out): owner approved +477 B (31,052 -> 31,529), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(30_233);
+    expect(growth).toBeLessThanOrEqual(31_529);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

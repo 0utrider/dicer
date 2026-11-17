@@ -401,7 +401,7 @@ export function createEffectLayer({
     },
 
     /**
-     * Dust and sparks where a die hits the table (the emitter is in the library chunk). Free of
+     * Sparks where a die hits the table hard (the emitter is in the library chunk). Free of
      * budget: the pool's own life keeps the loop running. Never throws.
      * Skipped in safe mode like every library effect (the pool's shaders are library shaders).
      * @param {{position: {x: number, y?: number, z: number}, speed: number, surface?: string, dieKey?: string}} hit

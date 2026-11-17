@@ -431,9 +431,8 @@ describe('elemental trails flight', () => {
   });
 });
 
-describe('impact effects (dust and sparks)', () => {
-  const KINDS = { SMOKE: 2, STREAK: 6 };
-  const RING = 7;
+describe('impact effects (sparks on hard hits)', () => {
+  const KINDS = { STREAK: 6 };
   async function impactSetup({ settings = {}, ...rest } = {}) {
     const emit = vi.fn();
     const clock = { t: 1000 };
@@ -449,22 +448,18 @@ describe('impact effects (dust and sparks)', () => {
   }
   const hit = (speed, extra = {}) => ({ position: { x: 1, y: 0.4, z: -2 }, speed, dieKey: 'r:0', ...extra });
 
-  test('impact below speed 11 emits nothing; at 14 a dust ring; at 20 dust and sparks', async () => {
+  test('below speed 18 nothing (no dust ring); at 18 and up one spark burst', async () => {
     const { layer, emit } = await impactSetup();
     layer.impact(hit(10.9));
-    expect(emit).not.toHaveBeenCalled();
     layer.impact(hit(14, { dieKey: 'a' }));
+    layer.impact(hit(17.9, { dieKey: 'b' }));
+    expect(emit).not.toHaveBeenCalled();
+    layer.impact(hit(20, { dieKey: 'c' }));
     expect(emit).toHaveBeenCalledTimes(1);
-    const dust = emit.mock.calls[0][0];
-    expect(dust).toMatchObject({ kind: KINDS.SMOKE, shape: RING, blend: 'normal', color: '#d8cfc0', alpha: 0.35 });
-    expect(dust.count).toBe(Math.round(3 + 5 * (3 / 7)));
-    expect(dust.origin).toEqual({ x: 1, y: 0.05, z: -2 });
-    layer.impact(hit(20, { dieKey: 'b' }));
-    expect(emit).toHaveBeenCalledTimes(3);
-    const sparks = emit.mock.calls[2][0];
-    expect(sparks).toMatchObject({ kind: KINDS.STREAK, color: '#fff3d0' });
-    expect(sparks.count).toBe(Math.round(2 + 4 * 1));
-    expect(emit.mock.calls[1][0].count).toBe(8);
+    const sparks = emit.mock.calls[0][0];
+    expect(sparks).toMatchObject({ kind: KINDS.STREAK, color: '#fff3d0', count: 6 });
+    expect(sparks.origin).toEqual({ x: 1, y: 0.1, z: -2 });
+    expect(sparks.shape).toBeUndefined();
   });
 
   test('counts follow the tier particleScale and a THREE.Vector3 position is copied', async () => {
@@ -472,23 +467,23 @@ describe('impact effects (dust and sparks)', () => {
     const p = new THREE.Vector3(3, 1, 4);
     layer.impact({ position: p, speed: 18 });
     p.set(9, 9, 9);
-    expect(emit.mock.calls[0][0].origin).toEqual({ x: 3, y: 0.05, z: 4 });
-    expect(emit.mock.calls[0][0].count).toBe(Math.round(8 * TIERS.low.particleScale));
+    expect(emit.mock.calls[0][0].origin).toEqual({ x: 3, y: 0.1, z: 4 });
+    expect(emit.mock.calls[0][0].count).toBe(Math.round(6 * TIERS.low.particleScale));
   });
 
   test('impact debounces per die for 120 ms and caps 12 live emits', async () => {
     const { layer, emit, clock } = await impactSetup();
-    layer.impact(hit(14));
+    layer.impact(hit(20));
     clock.t += 119;
-    layer.impact(hit(14));
+    layer.impact(hit(20));
     expect(emit).toHaveBeenCalledTimes(1);
     clock.t += 2;
-    layer.impact(hit(14));
+    layer.impact(hit(20));
     expect(emit).toHaveBeenCalledTimes(2);
-    for (let i = 0; i < 20; i++) layer.impact(hit(14, { dieKey: `k${i}` }));
+    for (let i = 0; i < 20; i++) layer.impact(hit(20, { dieKey: `k${i}` }));
     expect(emit).toHaveBeenCalledTimes(12); // 2 + 10 more, then capped
-    clock.t += 700; // their longest life has passed
-    layer.impact(hit(14, { dieKey: 'late' }));
+    clock.t += 500; // their longest life has passed
+    layer.impact(hit(20, { dieKey: 'late' }));
     expect(emit).toHaveBeenCalledTimes(13);
   });
 

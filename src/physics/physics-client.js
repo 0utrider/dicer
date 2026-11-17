@@ -52,7 +52,7 @@ export class PhysicsClient {
   }
 
   /**
-   * @param {{ dice: {type: string}[], seed: number, area?: {cx:number, cz:number, halfWidth:number, halfDepth:number} }} req
+   * @param {{ dice: {type: string}[], seed: number[] | number, area?: {cx:number, cz:number, halfWidth:number, halfDepth:number} }} req
    *   `area`: this throw's own rectangle (die units, relative to the stage centre); absent: the stage.
    *   `free?`, `launch?`: a hand throw (protocol.js).
    * @returns {{ onChunk(cb): void, done: Promise<{settledStep:number, nudges:number[]}> }}

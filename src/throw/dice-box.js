@@ -20,7 +20,7 @@ import { lookFacesFor } from '../compat/faces.js';
 import { Playback, RAMP_STEPS } from './playback.js';
 import { soundMaterialOf } from '../audio/sound-material.js';
 import { MAX_FREE_STEPS, MAX_OBSTACLES, MAX_STEPS, STEP_SECONDS, maySplat } from '../physics/protocol.js';
-import { throwEdge } from '../core/rng.js';
+import { normalizeSeed, randomSeed, throwEdge } from '../core/rng.js';
 import { fitDieCapacity, toDieArea } from '../areas/area-model.js';
 
 /** Die edge size on screen, in CSS px, at diceScale 1. One world unit is one die size. */
@@ -410,7 +410,7 @@ export class DiceBox {
    *   Rolling by hand:
    *   `free`: physics decides every face (as does a spec's `free`): the worker nudges cocked dice,
    *   Playback never holds or forces them and reads each result. The pet hook hears `hand: true`.
-   *   `launch`: per-die release states for the worker (THROW.launch). `seed`: the throw's seed.
+   *   `launch`: per-die release states for the worker (THROW.launch). `seed`: the throw's seed (four uint32 words, or a legacy integer; absent: a fresh 128-bit one).
    *   `edge`: the pet edge 0..3 (a hand throw passes handEdge(launch, area)); else throwEdge(seed).
    *   `record(rec)`: once at physics done, with {chunks, events, settledStep, nudges,
    *   dice: [{shapeType, key}], area, obstacles: [{id, x, z, r, h}], splatSpeed}.
@@ -530,9 +530,8 @@ export class DiceBox {
         read: this.hand?.read,
       });
       roll.received = 0;
-      seed = Number.isInteger(seed)
-        ? seed >>> 0
-        : globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
+      // A caller's seed (128-bit or a legacy integer) as given; else a fresh 128-bit crypto seed.
+      seed = normalizeSeed(seed) ?? randomSeed();
       roll.seed = seed;
       roll.edge = [0, 1, 2, 3].includes(edge) ? edge : throwEdge(seed);
       // only a check's d20 may splat a pet (pets.js maySplat): the sim lets the rest bounce off

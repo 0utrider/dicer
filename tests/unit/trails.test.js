@@ -447,17 +447,17 @@ describe('createTrailFx', () => {
     }
   });
 
-  test('bludgeoning: brownish-grey dust puffs (not void smoke, not the impact ring) and falling grit', () => {
+  test('bludgeoning: brownish-grey dust puffs (not void smoke, not a ring) and falling grit', () => {
     const emits = flown('bludgeoning');
     const puffs = emits.filter((e) => e.kind === KIND.SMOKE);
     expect(puffs.length).toBeGreaterThan(0);
     for (const e of puffs) {
-      expect(e.shape).toBe(SHAPE.SMOKE); // the impact dust is a RING
+      expect(e.shape).toBe(SHAPE.SMOKE); // not a ring
       expect(e.blend).toBe('normal');
       const hex = e.color.getHex(); // sRGB: THREE.Color keeps linear channels
       const sum = ((hex >> 16) + ((hex >> 8) & 255) + (hex & 255)) / 255;
       expect(sum).toBeGreaterThan(0.9); // not void's near-black smoke (#1c1028)
-      expect(sum).toBeLessThan(2.1); // darker than the pale impact dust (#d8cfc0, 2.38)
+      expect(sum).toBeLessThan(2.1); // darker than pale dust (#d8cfc0, 2.38)
       expect(e.color.r).toBeGreaterThanOrEqual(e.color.g); // warm: brown-grey
       expect(e.color.g).toBeGreaterThanOrEqual(e.color.b);
       expect(chroma(e.color)).toBeLessThan(0.2);

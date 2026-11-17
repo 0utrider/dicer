@@ -4,7 +4,7 @@ import { beforeAll, expect, test, vi } from 'vitest';
 import { getShape } from '../../src/core/dice-shapes.js';
 import { faceNormals, readTopFace } from '../../src/core/face-reader.js';
 import { isCocked, topFaceClearance } from '../../src/core/physical-read.js';
-import { clearanceOf, createSim, initPhysics, prewarm, shapeEdges } from '../../src/physics/sim.js';
+import { clearanceOf, createSim, framedPoints, initPhysics, prewarm, shapeEdges } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
 import { computeReaders } from '../../src/physics/readers.js';
 import { throwEdge } from '../../src/core/rng.js';
@@ -150,7 +150,11 @@ function crystalRest(seed, stage) {
 test('a d4crystal dropped from 20 random orientations rests on a long face', () => {
   // A wide stage, so the drop lands in the open: by a wall the long crystal can lean on it.
   const open = { halfWidth: 40, halfDepth: 40 };
-  for (let seed = 1; seed <= 20; seed++) expect(crystalRest(seed, open), `seed ${seed}`).toBeGreaterThan(0.99);
+  // About 1 drop in 60 is called settled mid-roll between two long faces (so before the per-throw
+  // collider frame too: 7 of 400 then, 5 of 400 now), so at most one of 20 may be; none stands on a tip.
+  const ups = Array.from({ length: 20 }, (_, i) => crystalRest(i + 1, open));
+  expect(ups.filter((y) => y > 0.99).length).toBeGreaterThanOrEqual(19);
+  for (const [i, y] of ups.entries()) expect(y, `seed ${i + 1}`).toBeGreaterThan(0.7);
   // In the usual stage it never stands on a tip (that would put every long face sideways); a
   // few lean on a wall or are called settled mid-roll between two long faces (like a d8 today).
   for (let seed = 1; seed <= 100; seed++) expect(crystalRest(seed, area), `seed ${seed}`).toBeGreaterThan(0.7);
@@ -272,11 +276,12 @@ function runEv(dice, seed, stage, throwArea) {
   return { res, chunks };
 }
 
-// Recorded from the code before per-throw areas existed (commit 19b15a5).
+// Recorded from the code before per-throw areas existed (commit 19b15a5), re-recorded when each
+// throw got its own collider frame and point order (framedPoints): same seed, new trajectory.
 test('no area: frames and events are identical to before per-throw areas', () => {
-  expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area).chunks)).toBe('1118cbd0');
+  expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area).chunks)).toBe('e1f6a393');
   const small = { halfWidth: 9, halfDepth: 5 };
-  expect(framesHash(runEv(['d8', 'd10', 'd12', 'd4', 'd2'], 42, small).chunks)).toBe('1662dbb4');
+  expect(framesHash(runEv(['d8', 'd10', 'd12', 'd4', 'd2'], 42, small).chunks)).toBe('3bb3ce69');
 });
 
 test("throwEdge matches the worker's spawn edge", () => {
@@ -342,12 +347,12 @@ test('a per-throw area does not change the stage area of later throws', () => {
     chunks.push({ ...c, data: c.data.slice(), events: c.events.slice() }),
   );
   sim.dispose();
-  expect(framesHash(chunks)).toBe('1118cbd0');
+  expect(framesHash(chunks)).toBe('e1f6a393');
 });
 
 test('a malformed area falls back to the stage', () => {
   for (const bad of [{ cx: NaN, cz: 0, halfWidth: 4, halfDepth: 3 }, { halfWidth: 0 }, 'x', null]) {
-    expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area, bad).chunks)).toBe('1118cbd0');
+    expect(framesHash(runEv(['d20', 'd6', 'd6'], 7, area, bad).chunks)).toBe('e1f6a393');
   }
 });
 
@@ -521,7 +526,7 @@ function pathPoint(seed, below = 1.2) {
 
 const FAR = { x: -11, z: -6, r: 0.3, h: 1 }; // a corner no seed-5 die passes through
 test('a throw without obstacles is byte-identical to before', () => {
-  expect(framesHash(runObs(['d20', 'd6', 'd6'], 7, { obstacles: [] }).chunks)).toBe('1118cbd0');
+  expect(framesHash(runObs(['d20', 'd6', 'd6'], 7, { obstacles: [] }).chunks)).toBe('e1f6a393');
 });
 
 test('a die aimed at an obstacle reports an impact with other -3', () => {
@@ -648,24 +653,25 @@ test('the worker clearance equals topFaceClearance for sampled poses of every sh
 });
 
 test('a throw without free or launch is byte-identical to before (hash, with and without obstacles)', () => {
-  expect(framesHash(runHand(['d20', 'd6', 'd6'], 7).chunks)).toBe('1118cbd0');
-  expect(framesHash(runHand(['d20', 'd6', 'd6'], 7, { launch: [] }).chunks)).toBe('1118cbd0');
+  expect(framesHash(runHand(['d20', 'd6', 'd6'], 7).chunks)).toBe('e1f6a393');
+  expect(framesHash(runHand(['d20', 'd6', 'd6'], 7, { launch: [] }).chunks)).toBe('e1f6a393');
   const small = { halfWidth: 9, halfDepth: 5 };
   expect(framesHash(runHand(['d8', 'd10', 'd12', 'd4', 'd2'], 42, {}, readers, small).chunks)).toBe(
-    '1662dbb4',
+    '3bb3ce69',
   );
-  // Recorded at 73b3cda, before free throws and launch states existed.
+  // Recorded at 73b3cda, before free throws and launch states existed; re-recorded for the
+  // per-throw collider frame (framedPoints).
   const obstacles = [
     { x: 1, z: 0.5, r: 0.6, h: 1.5 },
     { x: -3, z: -2, r: 0.5, h: 1.2 },
   ];
   expect(framesHash(runHand(['d20', 'd6', 'd6'], 7, { obstacles, splatSpeed: 8 }).chunks)).toBe(
-    '3d028bef',
+    '8796fab',
   );
   const pet = [{ x: 0, z: 0, r: 0.8, h: 2 }];
   expect(
     framesHash(runHand(['d2', 'd4crystal', 'd16', 'd14'], 99, { obstacles: pet }).chunks),
-  ).toBe('c95198b1');
+  ).toBe('51df8e65');
   expect(runHand(['d6', 'd6'], 7).res.nudges).toEqual([0, 0]);
 });
 
@@ -915,4 +921,58 @@ test('hand throws: the walls are livelier, so a hard flick smashes and ricochets
   expect(hard.peak).toBeGreaterThan(medium.peak * 1.8);
   expect(hard.after).toBeGreaterThan(medium.after * 3);
   expect(hard.after).toBeGreaterThan(20); // across a 15-unit area and back
+});
+
+test('framedPoints: rotated back by q, the same point set in a shuffled order', () => {
+  const { points } = computeHulls(['d12']).d12;
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.7, -1.3, 2.1)).normalize();
+  let st = 7;
+  const rand = () => ((st = (Math.imul(st, 1103515245) + 12345) >>> 0) / 2 ** 32);
+  const framed = framedPoints(points, q, rand);
+  expect(framed).toHaveLength(points.length);
+  const back = [];
+  for (let i = 0; i < framed.length; i += 3) {
+    back.push(new THREE.Vector3(framed[i], framed[i + 1], framed[i + 2]).applyQuaternion(q));
+  }
+  const orig = [];
+  for (let i = 0; i < points.length; i += 3) orig.push(new THREE.Vector3(points[i], points[i + 1], points[i + 2]));
+  // every original point comes back exactly once (float32 rounding aside)
+  const used = new Set();
+  for (const p of orig) {
+    const j = back.findIndex((b, k) => !used.has(k) && b.distanceTo(p) < 1e-5);
+    expect(j).toBeGreaterThanOrEqual(0);
+    used.add(j);
+  }
+  // and the order really changed
+  expect(back.some((b, i) => b.distanceTo(orig[i]) > 1e-3)).toBe(true);
+});
+
+test('a die keeps its body-frame solid under the per-throw frame: it rests at the same height', () => {
+  // A d12 dropped flat settles with its face plane at the floor: the centre at the hull's inradius
+  // (plane distance + border radius), whatever internal frame the throw drew.
+  const hulls = computeHulls(['d12']);
+  const s = createSim({ halfWidth: 12, halfDepth: 7 }, hulls, computeReaders(['d12']));
+  const shape = getShape('d12');
+  const n = faceNormals(shape)[0];
+  const down = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(n.x, n.y, n.z), new THREE.Vector3(0, -1, 0));
+  const { points, radius } = hulls.d12;
+  let plane = 0;
+  for (let i = 0; i < points.length; i += 3) plane = Math.max(plane, points[i] * n.x + points[i + 1] * n.y + points[i + 2] * n.z);
+  for (const seed of [[1, 2, 3, 4], [9, 8, 7, 6], 42]) {
+    let last = null;
+    s.throw(
+      {
+        dice: [{ type: 'd12' }],
+        seed,
+        launch: [{ pos: [0, 1.2, 0], quat: [down.x, down.y, down.z, down.w], linvel: [0, 0, 0], angvel: [0, 0, 0] }],
+      },
+      (c) => {
+        if (c.done) last = c.data.slice((c.steps - 1) * 7, c.steps * 7);
+        s.recycle(c.data, c.events);
+      },
+    );
+    expect(last[1]).toBeCloseTo(plane + radius, 2);
+    const q = { x: last[3], y: last[4], z: last[5], w: last[6] };
+    expect(readTopFace(shape, q)).toBe(shape.values.indexOf(12)); // value 1 down, 12 up
+  }
 });

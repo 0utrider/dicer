@@ -14,6 +14,7 @@ import { readTopFace, rotationToShow } from '../core/face-reader.js';
 import { cameraHeightFor } from '../render/scene.js';
 import { FLOATS_PER_DIE, MAX_OBSTACLES, maySplat } from '../physics/protocol.js';
 import { loadHand } from '../hand/hand-loader.js';
+import { seedFrom } from '../core/rng.js';
 
 export const CHUNK = 'dicer-grab-chunk';
 /** A held die's height above the table (die units), as the throw overlay holds dice. */
@@ -261,7 +262,7 @@ function createGrab(
     }
     const req = {
       dice: entries.map(({ die }) => ({ type: die.shapeType, ...(!maySplat(die.shapeType, die.damageType) && { splat: false }) })),
-      seed: Math.floor(random() * 2 ** 32) >>> 0,
+      seed: seedFrom(random), // nudges only: every die is launched
       launch,
     };
     // Resting pets stand in the way as in any throw; a hard hit may splat one (petSplat).

@@ -13,7 +13,8 @@ export const MAX_STEPS = 600;
 export const STEP_SECONDS = 1 / 60;
 
 /**
- * THROW: {id, dice, seed, area?}; `area` = {cx, cz, halfWidth, halfDepth} (die units relative to
+ * THROW: {id, dice, seed, area?}; `seed` is four uint32 words (128 bits: xoshiro128**, what live
+ * throws send) or a 32-bit integer (mulberry32: fixtures and tests), core/rng.js seededRandom; `area` = {cx, cz, halfWidth, halfDepth} (die units relative to
  * the stage centre) is that throw's own walls/spawn/aim rectangle; absent, the stage (RESIZE).
  * `obstacles?: {x, z, r, h}[]` are fixed pet capsules on the floor (scene units, radius r,
  * standing height h; r > 3 or h > 6 is ignored); the caller keeps them inside the stage, off the
@@ -22,7 +23,7 @@ export const STEP_SECONDS = 1 / 60;
  * collider is gone from the next step (absent or null: obstacles stay solid; petSplat off). A die
  * entry with `splat: false` never splats a pet (only a check's d20 does: pets.js maySplat).
  * `free?: true` (rolling by hand): once the dice settle, a die that is cocked (INIT's readers) or
- * whose centre is outside the area gets a nudge from mulberry32(seed ^ 0x9e3779b9), and the same
+ * whose centre is outside the area gets a nudge from seededRandom(deriveSeed(seed)), and the same
  * world runs on: at most MAX_NUDGES per die, within MAX_FREE_STEPS. Then the reading stands.
  * `launch?: ({pos:[x,y,z], quat:[x,y,z,w], linvel:[x,y,z], angvel:[x,y,z]} | null)[]`: die i
  * starts at launch[i] (die units relative to the stage centre; clamped into the area with a

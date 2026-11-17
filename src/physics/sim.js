@@ -1,6 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-deterministic';
 import * as glue from '@dimforge/rapier3d-deterministic/rapier_wasm3d_bg.js';
-import { mulberry32 } from '../core/rng.js';
+import { deriveSeed, seededRandom, throwEdge } from '../core/rng.js';
 import {
   CHUNK_STEPS,
   COCKED_FRACTION,
@@ -86,15 +86,56 @@ export function initPhysics(wasm) {
  */
 const isCoin = (type) => type === 'd2';
 
-function dieColliderDesc(type, hulls) {
+/** The frame stream's salt (deriveSeed): apart from the spawn and nudge streams. */
+const FRAME_SALT = 0x85ebca6b;
+
+/**
+ * A hull's points as one throw's collider holds them: rotated by the inverse of the uniform random
+ * rotation `q` and in a random order, from `rand`. With the collider at rotation `q` on its body,
+ * the solid in the body frame is the same; only Rapier's own representation of it (its frame and
+ * the order it builds the hull in) changes. Rapier's contact handling is not perfectly even across
+ * that representation: with one fixed frame and order, the faces in some internal roles land a few
+ * percent more often (the d12 at 100,000 throws: face 4 about 3 % short, p < 0.001; a shuffled
+ * order or a rotated frame moves the bias to other faces). A fresh frame and order per throw gives
+ * every face every role alike, so the bias averages out.
+ */
+export function framedPoints(points, q, rand) {
+  const n = points.length / 3;
+  const order = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  // v' = q^-1 v q (the conjugate's rotation), written out for a unit quaternion.
+  const { x, y, z, w } = q;
+  const out = new Float32Array(points.length);
+  order.forEach((src, k) => {
+    const vx = points[3 * src];
+    const vy = points[3 * src + 1];
+    const vz = points[3 * src + 2];
+    // t = 2 * cross(-q.xyz, v); v' = v + w * t + cross(-q.xyz, t)
+    const tx = 2 * (-y * vz + z * vy);
+    const ty = 2 * (-z * vx + x * vz);
+    const tz = 2 * (-x * vy + y * vx);
+    out[3 * k] = vx + w * tx + (-y * tz + z * ty);
+    out[3 * k + 1] = vy + w * ty + (-z * tx + x * tz);
+    out[3 * k + 2] = vz + w * tz + (-x * ty + y * tx);
+  });
+  return out;
+}
+
+function dieColliderDesc(type, hulls, frameRand) {
   let desc;
   if (isCoin(type)) {
     desc = RAPIER.ColliderDesc.cylinder(0.125, 1);
   } else {
     const hull = hulls?.[type];
     if (!hull) throw new Error(`dicer: no hull supplied for "${type}"`);
-    // P2-R4: the exact Minkowski solid (shrunk polyhedron + border radius) of the visual mesh.
-    desc = RAPIER.ColliderDesc.roundConvexHull(hull.points, hull.radius);
+    // P2-R4: the exact Minkowski solid (shrunk polyhedron + border radius) of the visual mesh, in a
+    // fresh internal frame and point order per throw (framedPoints).
+    const q = randomQuaternion(frameRand(), frameRand(), frameRand());
+    desc = RAPIER.ColliderDesc.roundConvexHull(framedPoints(hull.points, q, frameRand), hull.radius);
+    desc?.setRotation(q);
   }
   if (!desc) throw new Error(`dicer: could not build collider for "${type}"`);
   return desc.setRestitution(DIE_RESTITUTION).setFriction(DIE_FRICTION).setDensity(1);
@@ -348,7 +389,8 @@ export function createSim(initialArea, hulls, readers) {
       // when the area lies inside it, which is the default).
       const floorHw = Math.max(area.halfWidth, Math.abs(cx) + hw);
       const floorHd = Math.max(area.halfDepth, Math.abs(cz) + hd);
-      const rand = mulberry32(req.seed);
+      const rand = seededRandom(req.seed);
+      const frameRand = seededRandom(deriveSeed(req.seed, FRAME_SALT));
       const n = req.dice.length;
       const free = req.free === true;
       if (free && !readers && !warned) {
@@ -377,8 +419,10 @@ export function createSim(initialArea, hulls, readers) {
         owner.set(floor.handle, -1);
 
         // Seeded spawn edge: 0 = +x, 1 = -x, 2 = +z, 3 = -z. Its wall starts disabled ("open").
-        // The same first draw as throwEdge(seed) (core/rng.js), which names it to the pet layer.
-        const edge = Math.floor(rand() * 4);
+        // throwEdge(seed) (core/rng.js), which also names it to the pet layer. The stream's first
+        // draw is still taken (for an integer seed it is that edge), so legacy seeds keep their spawn.
+        const edge = throwEdge(req.seed);
+        rand();
         const walls = addWalls(world, edge, a, allLaunched);
         const alongX = edge < 2;
         const sign = edge % 2 === 0 ? 1 : -1;
@@ -493,7 +537,7 @@ export function createSim(initialArea, hulls, readers) {
               .setCcdEnabled(true),
           );
           const collider = world.createCollider(
-            withEvents(dieColliderDesc(req.dice[i].type, hulls)),
+            withEvents(dieColliderDesc(req.dice[i].type, hulls, frameRand)),
             body,
           );
           owner.set(collider.handle, i);
@@ -510,7 +554,7 @@ export function createSim(initialArea, hulls, readers) {
         const maxSteps = free ? MAX_FREE_STEPS : MAX_STEPS;
         let settledStep = maxSteps;
         const nudges = Array(n).fill(0);
-        const nudgeRand = mulberry32(req.seed ^ 0x9e3779b9);
+        const nudgeRand = seededRandom(deriveSeed(req.seed));
         let relaxFrom = 0; // the rest thresholds widen from here (the last nudge)
         /** Writes die d's pose into frame slot `slot` of buf; returns its position. */
         const put = (slot, d) => {

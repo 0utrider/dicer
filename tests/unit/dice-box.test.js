@@ -33,7 +33,7 @@ import { EFFECTS, flareRolls, withBursts } from '../../src/effects/library/index
 import { TIERS } from '../../src/render/quality.js';
 import { CAPACITY_PER_DIE, ONE_DIE_HALF } from '../../src/areas/area-model.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
-import { throwEdge } from '../../src/core/rng.js';
+import { isSeed128, throwEdge } from '../../src/core/rng.js';
 import { handEdge, handFor, readFree, RESULT_GLOW_MS } from '../../src/hand/hand.js';
 
 vi.mock('../../src/render/dice-material.js', async (importOriginal) => {
@@ -374,7 +374,7 @@ test('tens dice use their own label set and map onto d10 faces 1..10', () => {
   expect(tens.material).not.toBe(ones.material);
   expect(tens.geometry).toBe(ones.geometry);
   expect(physics.streams[0].req.dice.map((d) => d.type)).toEqual(['d10', 'd10']);
-  expect(Number.isInteger(physics.streams[0].req.seed)).toBe(true);
+  expect(isSeed128(physics.streams[0].req.seed)).toBe(true); // a fresh 128-bit seed
   box.clear();
 });
 
@@ -2854,8 +2854,8 @@ describe('pet hook', () => {
   }
 
   test('a roll with a pet spec calls begin at reveal, landed with each die, leave on fade, end on finish', async () => {
-    const seed = 123456;
-    vi.stubGlobal('crypto', { getRandomValues: (a) => ((a[0] = seed), a) });
+    const seed = [0xc0001234, 5, 6, 7]; // a 128-bit seed (edge 3)
+    vi.stubGlobal('crypto', { getRandomValues: (a) => (a.set(seed), a) });
     try {
       const pet = fakePet();
       const { renderer, physics, box } = setup({ pet });
@@ -3023,8 +3023,8 @@ describe('pet hook', () => {
     };
 
     test('roll() asks obstaclesFor before the throw and sends at most 3 obstacles without ids', () => {
-      const seed = 987;
-      vi.stubGlobal('crypto', { getRandomValues: (a) => ((a[0] = seed), a) });
+      const seed = [0x80000987, 1, 2, 3]; // edge 2
+      vi.stubGlobal('crypto', { getRandomValues: (a) => (a.set(seed), a) });
       try {
         const pet = fakePet({ obstaclesFor: vi.fn(() => OBS(4)) });
         const { physics, box } = setup({ pet: () => pet });
@@ -3785,8 +3785,8 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
   });
 
   test('a hand roll passes edge and hand: true to obstaclesFor and begin', () => {
-    const seed = 777;
-    vi.stubGlobal('crypto', { getRandomValues: (a) => ((a[0] = seed), a) });
+    const seed = [0x40000777, 9, 9, 9]; // edge 1, not the hand throw's 2
+    vi.stubGlobal('crypto', { getRandomValues: (a) => (a.set(seed), a) });
     try {
       const pet = hook({ obstaclesFor: vi.fn(() => []) });
       const { renderer, physics, box } = handSetup({ pet });

@@ -1042,7 +1042,7 @@ function piercingTrail(pool, emit) {
 
 const BLUDGEONING = {
   // Brownish-grey dust puffs, normal blend, kicked up and settling (void's smoke is near-black and
-  // rises; the impact dust is a pale ring on the table).
+  // rises).
   puff: spec({
     dir: UP,
     speed: 0.4,
