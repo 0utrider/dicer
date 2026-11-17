@@ -62,3 +62,11 @@ test('a non-GM gets nothing', () => {
   globalThis.game = { user: { isGM: false } };
   expect(openDsnReport()).toBeNull();
 });
+
+test('every verdict the report can give has a string', async () => {
+  const { readFileSync } = await import('node:fs');
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.DsnReport;
+  for (const s of ['copied', 'dicer', 'would-copy', 'would-keep', 'invalid', 'no-counterpart', 'unusable', 'off'])
+    expect(en.Status[s], s).toBeTruthy();
+  for (const s of ['pending', 'migrated', 'off']) expect(en.User[s], s).toBeTruthy();
+});

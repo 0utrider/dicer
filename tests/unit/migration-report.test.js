@@ -115,6 +115,21 @@ describe('users', () => {
     expect(report({ users: [user] }).users[0].status).toBe('pending');
   });
 
+  test('a user whose DSN colours are all unusable has nothing to migrate', () => {
+    for (const appearance of [{ global: 'x' }, { global: null, d20: { colorset: '' } }]) {
+      const [u] = report({ users: [makeUser({ dsn: { appearance } })] }).users;
+      expect(u.status).toBe('none');
+    }
+  });
+
+  test('with the import switched off, nothing is promised', () => {
+    const fire = { appearance: { global: { colorset: 'fire' } } };
+    const r = report({ users: [makeUser({ dsn: fire })], world: { maxDiceNumber: 30 }, settings: { migrateFromDsn: false } });
+    expect(r.users[0].status).toBe('off');
+    expect(scopes(r.users[0])).toEqual({ global: 'off' });
+    expect(row(r, 'maxDiceNumber').status).toBe('off');
+  });
+
   test('order: pending, migrated, none, then name', () => {
     const fire = { appearance: { global: { colorset: 'fire' } } };
     const users = [
@@ -135,6 +150,7 @@ describe('status', () => {
   });
 
   test('data present', () => {
+    expect(report({ users: [makeUser({ dsn: { saves: { a: {} } } })] }).hasData).toBe(true);
     expect(report({ world: { maxDiceNumber: 5 } }).hasData).toBe(true);
     expect(report({ users: [makeUser({ dsn: { appearance: { global: { colorset: 'fire' } } } })] }).hasData).toBe(true);
   });

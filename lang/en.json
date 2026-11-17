@@ -1320,11 +1320,13 @@
         "would-keep": "Dicer value will be kept",
         "invalid": "Value not usable",
         "no-counterpart": "No Dicer setting",
-        "unusable": "Colours not usable"
+        "unusable": "Colours not usable",
+        "off": "Not copied: import is switched off"
       },
       "User": {
         "pending": "Not migrated yet (logs in next)",
-        "migrated": "Migrated"
+        "migrated": "Migrated",
+        "off": "Not migrated: import is switched off"
       }
     }
   }

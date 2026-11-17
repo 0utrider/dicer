@@ -17,7 +17,7 @@ import {
 } from './migration.js';
 import { FLAG_SCOPE, FLAG_KEY, isPlainObject } from './user-looks.js';
 
-const USER_ORDER = { pending: 0, migrated: 1, none: 2 };
+const USER_ORDER = { pending: 0, off: 0, migrated: 1, none: 2 };
 
 function deepEqual(a, b) {
   if (a === b) return true;
@@ -36,7 +36,7 @@ const safe = (fn, fallback) => {
   }
 };
 
-function worldRows(world, getSetting, isCustomized, migrated) {
+function worldRows(world, getSetting, isCustomized, migrated, enabled) {
   const rows = [];
   for (const [dsnKey, [key, check]] of Object.entries(WORLD_MAP)) {
     const raw = safe(() => world.get(dsnKey), undefined);
@@ -48,6 +48,7 @@ function worldRows(world, getSetting, isCustomized, migrated) {
     let status;
     if (value === undefined) status = 'invalid';
     else if (migrated) status = deepEqual(safe(() => getSetting(key), undefined), value) ? 'copied' : 'dicer';
+    else if (!enabled) status = 'off';
     else status = safe(() => isCustomized(key), false) ? 'would-keep' : 'would-copy';
     rows.push({ dsnKey, key, status, value: value === undefined ? raw : value });
   }
@@ -58,7 +59,7 @@ function worldRows(world, getSetting, isCustomized, migrated) {
   return rows;
 }
 
-function userRow(user) {
+function userRow(user, enabled) {
   const raw = user?._source?.flags?.[DSN_SCOPE];
   const flags = isPlainObject(raw) ? raw : {};
   const appearance = isPlainObject(flags.appearance) ? flags.appearance : {};
@@ -68,21 +69,23 @@ function userRow(user) {
     .filter((k) => k !== 'appearance' && k !== 'saves')
     .sort();
   const base = { id: user?.id, name: String(user?.name ?? ''), saves, otherKeys };
-  if (!dsnScopes.length) return { ...base, status: 'none', scopes: [] };
+  const looks = dsnAppearanceToLooks(appearance);
+  // As migrateUser: with no usable entry there is nothing to copy, and it never flags the user.
+  if (!Object.keys(looks).length) return { ...base, status: 'none', scopes: [] };
 
   const migrated = Boolean(safe(() => user.getFlag(FLAG_SCOPE, MIGRATED_FLAG), false));
   const ownFlag = safe(() => user.getFlag(FLAG_SCOPE, FLAG_KEY), null);
   const own = isPlainObject(ownFlag) ? ownFlag : {};
-  const looks = dsnAppearanceToLooks(appearance);
   const scopes = dsnScopes.map((scope) => {
     const ref = looks[scope];
     if (!ref) return { scope, status: 'unusable' };
     const mine = own[scope];
     if (migrated) return { scope, status: deepEqual(mine, ref) ? 'copied' : 'dicer' };
+    if (!enabled) return { scope, status: 'off' };
     const chosen = isPlainObject(mine) && !isMirroredDefault(mine);
     return { scope, status: chosen ? 'would-keep' : 'would-copy' };
   });
-  return { ...base, status: migrated ? 'migrated' : 'pending', scopes };
+  return { ...base, status: migrated ? 'migrated' : enabled ? 'pending' : 'off', scopes };
 }
 
 /**
@@ -95,16 +98,19 @@ function userRow(user) {
  * @param {{ active?: boolean }} [deps.dsnModule] `game.modules.get('dice-so-nice')`
  */
 export function buildReport({ users = [], world, getSetting, isCustomized = storedWorldValue, dsnModule }) {
+  const enabled = safe(() => getSetting('migrateFromDsn'), true) !== false;
   const worldMigrated = Boolean(safe(() => getSetting(WORLD_FLAG), false));
-  const worldList = worldRows(world, getSetting, isCustomized, worldMigrated);
+  const worldList = worldRows(world, getSetting, isCustomized, worldMigrated, enabled);
   const userList = [...(users ?? [])]
-    .map(userRow)
+    .map((u) => userRow(u, enabled))
     .sort((a, b) => USER_ORDER[a.status] - USER_ORDER[b.status] || a.name.localeCompare(b.name));
   return {
-    enabled: safe(() => getSetting('migrateFromDsn'), true) !== false,
+    enabled,
     worldMigrated,
     dsn: dsnModule ? (dsnModule.active ? 'active' : 'installed') : 'missing',
-    hasData: worldList.some((w) => w.status !== 'absent') || userList.some((u) => u.status !== 'none'),
+    hasData:
+      worldList.some((w) => w.status !== 'absent') ||
+      userList.some((u) => u.status !== 'none' || u.saves > 0 || u.otherKeys.length > 0),
     world: worldList,
     users: userList,
   };
