@@ -213,11 +213,19 @@
           <div class="dicer-grid-2">
             <label class="dicer-field">
               <span>{{localize "DICER.Triggers.Moment"}}</span>
-              <select name="rules.{{index}}.momentKind" data-tooltip="DICER.Triggers.MomentHint" {{#if readonly}}disabled{{/if}}>{{selectOptions momentChoices selected=momentKind}}</select>
+              <select name="rules.{{index}}.momentKind" data-refresh data-tooltip="DICER.Triggers.MomentHint" {{#if readonly}}disabled{{/if}}>{{selectOptions momentChoices selected=momentKind}}</select>
             </label>
             <label class="dicer-field">
               <span>{{localize "DICER.Triggers.MomentColour"}}</span>
               <input type="color" name="rules.{{index}}.momentColour" value="{{#if momentColour}}{{momentColour}}{{else}}#ffcf4a{{/if}}" {{#if readonly}}disabled{{/if}}>
+            </label>
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.MomentWhere"}}</span>
+              <select name="rules.{{index}}.momentWhere" data-tooltip="DICER.Triggers.MomentWhereHint" {{#if readonly}}disabled{{/if}}>{{selectOptions momentWhereChoices selected=momentWhere}}</select>
+            </label>
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.MomentStrength"}}</span>
+              <select name="rules.{{index}}.momentStrength" {{#if readonly}}disabled{{/if}}>{{selectOptions momentStrengthChoices selected=momentStrengthPick}}</select>
             </label>
           </div>
           {{/if}}

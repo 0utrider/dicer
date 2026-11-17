@@ -422,6 +422,21 @@ test('P5-R6: 12 d6 in a minimum-size area (grown for capacity) settle inside it 
   }
 });
 
+test('an overfull area (a dice tray: never grown) takes every die: the ones left outside hop in onto the pile', () => {
+  // room for about 12 lying flat (CAPACITY_PER_DIE 4), 25 thrown
+  const tray = { cx: 1, cz: -1, halfWidth: 3.5, halfDepth: 3.5 };
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const n = 25;
+    const { res, chunks } = runEv(Array(n).fill('d20'), seed, area, tray);
+    expect(res.settledStep, `seed ${seed}`).toBeLessThan(MAX_STEPS);
+    for (const [d, p] of firstAndLast(chunks, n).entries()) {
+      const tag = `seed ${seed} die ${d}`;
+      expect(Math.abs(p.x - tray.cx), tag).toBeLessThan(tray.halfWidth + 1);
+      expect(Math.abs(p.z - tray.cz), tag).toBeLessThan(tray.halfDepth + 1);
+    }
+  }
+});
+
 // --- pet obstacles --------------------------------------------------------------------------
 
 /** runEv with obstacles (and an optional test start) on the request. */

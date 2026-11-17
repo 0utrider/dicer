@@ -4,14 +4,17 @@
 
 - **The tray shows while you edit it.** With **Show the dice tray: Only while rolling**, the tray now stays on screen while the Dice tray window is open.
 - **The tray fades with the dice.** A tray that shows only while rolling now fades out together with the dice, not a moment after.
+- **Fixed: big rolls spilled out of the tray.** A roll with more dice than the tray holds lying flat used to widen its landing area past the tray, so dice came to rest outside it. Now the dice pile up inside the tray.
 - **Rolling by hand uses the tray.** Hand-thrown dice now start and land in your tray, and a tray that shows only while rolling appears as soon as the hand dice load.
 - **Saved trays.** A GM can save trays (a party crest, say) in the Dice tray window, and each player can pick one as their own tray.
-- **Pets in the dice tray.** A new setting keeps your dice pets out of the tray if you prefer.
+- **Pets sit on the tray's rim.** With a dice tray on screen, your dice pets now sit along its top edge, out of the dice's way. They still react to every roll (cheering a 20, shivering at cold dice and so on), and a die slamming into the wall beside one makes it wobble. A tray that shows only while rolling takes its pets with it when it slides away, and brings them back for the next roll. The new **Pets and the dice tray** setting can put them back in the tray, where the dice can hit them, or keep them in the roll area instead.
 - **Dice bag favourites.** Star the looks you like and the bag shows only those, with a switch to show them all.
 - **Shortcuts in the themes window.** A **Dice tray** button sits next to **My pet**, and a gear opens all Dicer settings.
-- **Glowing dice light the table.** A die with a strong glow casts a pool of its glow colour, brighter the stronger the glow.
-- **Easier to see:** dice shadows are darker and the coloured light under clear dice is much stronger.
-- **Animater moments:** the trigger editor offers moments only when your Animater version can play them, and the console says so when a moment is skipped.
+- **Coloured light from dice is now a setting, off by default.** Turn on **Coloured light from dice** to have clear dice cast light in their colour onto the table. Glowing dice then light it too, in their glow colour and brighter the stronger the glow.
+- **Easier to see:** dice shadows are darker, and the coloured light (when on) is much stronger. With **Dice lighting: Scene**, a dark scene no longer dims the dice as far, nor tints them so deeply blue, so a resin die's inside still shows at night.
+- **Many more Animater moments, where you want them.** Trigger rules now offer 16 of Animater's moments, up from 6: new are Lean, Smear, Close in, Grain, Speed lines, Glow, Shockwave, Dust falls, Token sways and Token bobs. Each plays on the whole screen, where the dice landed, or on the roller's token (whichever that moment allows), at Animater's own strength or Gentle, Medium, Strong or Full. A crit can send a shockwave out from the d20, or a fumble make your token wobble.
+- **Animater moments:** the trigger editor offers moments only when your Animater version can play them, and the console says so when a moment is skipped. **Fixed:** a rule's **Preview** now plays its moment too. It used to leave the moment out, and with more than one GM online it only played for the active GM.
+- **Fixed: Glow pulse was nearly invisible.** It only drew a thin rim, which was lost on light maps and among many dice, then flashed solid as the dice faded, so it looked as if it played at the end. The glowing die now takes the glow's colour too, with a wider rim, as soon as it lands.
 
 ## 0.3.2
 

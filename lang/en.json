@@ -42,6 +42,10 @@
           "sun": "Sunlight"
         }
       },
+      "diceLight": {
+        "Name": "Coloured light from dice",
+        "Hint": "Clear dice pass light in their colour onto the table, and glowing dice light it in their glow colour. Applies to the next roll."
+      },
       "trayMode": {
         "Name": "Dice tray",
         "Hint": "Where your dice land on this screen: in the GM's table tray, in your own tray (set its look in the Dice tray window), or on the scene's roll area with no tray. Drag the tray's rim to move it and its corner to resize it.",
@@ -59,9 +63,14 @@
           "rolls": "Only while rolling"
         }
       },
-      "petInTray": {
-        "Name": "Pets in the dice tray",
-        "Hint": "Your dice pets walk and rest inside the dice tray. Off: they keep to the roll area, out of the tray."
+      "petTray": {
+        "Name": "Pets and the dice tray",
+        "Hint": "Where your dice pets go when there is a dice tray. On the rim, they sit on its top edge, out of the dice’s way: they still react to every roll, and a die hitting the wall beside them makes them wobble.",
+        "Choices": {
+          "rim": "On the tray’s rim",
+          "in": "In the tray (the dice can hit them)",
+          "away": "In the roll area, not the tray"
+        }
       },
       "trayEditor": {
         "Name": "Dice tray",
@@ -468,7 +477,17 @@
         "rumble": "Rumble",
         "grey": "Colour drains",
         "blur": "Swim",
-        "split": "Colours split"
+        "split": "Colours split",
+        "roll": "Lean",
+        "smear": "Smear",
+        "vignette": "Close in",
+        "grain": "Grain",
+        "streak": "Speed lines",
+        "glow": "Glow",
+        "shock": "Shockwave",
+        "dust": "Dust falls",
+        "sway": "Token sways",
+        "bob": "Token bobs"
       },
       "Preview": "Preview",
       "MoveUp": "Move up",
@@ -504,6 +523,21 @@
         "none": "No sound",
         "builtin": "Built-in",
         "file": "Sound file"
+      },
+      "MomentWhere": "Where",
+      "MomentWhereHint": "The whole screen, where the dice landed (as the GM sees it), or on the roller’s token. Each moment offers the places it can happen.",
+      "MomentWheres": {
+        "screen": "Whole screen",
+        "dice": "Where the dice landed",
+        "token": "The roller’s token"
+      },
+      "MomentStrength": "Strength",
+      "MomentStrengths": {
+        "default": "Animater’s own",
+        "gentle": "Gentle",
+        "medium": "Medium",
+        "strong": "Strong",
+        "full": "Full"
       }
     },
     "AreaEditor": {

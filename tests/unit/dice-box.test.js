@@ -975,6 +975,22 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     await r.finished;
   });
 
+  test('a clear die casts no coloured light unless lightPools() (the diceLight setting) says so', async () => {
+    const clear = { body: { type: 'resin', color: '#2050ff' }, interior: { type: 'none' } };
+    for (const [on, pooled] of [[undefined, false], [() => true, true]]) {
+      const { renderer, physics, box } = setup({ appearance: clear, ...(on && { lightPools: on }) });
+      const spy = vi.spyOn(renderer.sceneApi, 'shadowFor');
+      const r = box.roll([{ type: 'd6', value: 3 }]);
+      physics.flush();
+      renderer.tick(0);
+      renderer.tick(16);
+      expect(spy).toHaveBeenCalled();
+      expect(spy.mock.calls.every(([, o]) => (o?.pool != null) === pooled)).toBe(true);
+      box.clear();
+      await r.finished;
+    }
+  });
+
   test('acquireWarmup() holds the current look materials until released', () => {
     const { box } = setup({ appearance: ruby });
     const warm = box.acquireWarmup(['d6', 'd20']);
@@ -2362,6 +2378,22 @@ test('P5-R6: a tiny per-throw area is grown to hold its dice, around its centre,
   expect(4 * many.halfWidth * many.halfDepth).toBeGreaterThanOrEqual(12 * CAPACITY_PER_DIE - 1e-9);
   expect(many.cx - many.halfWidth).toBeCloseTo(-10, 9);
   expect(many.cz - many.halfDepth).toBeCloseTo(-5, 9);
+});
+
+test('a strict area (a dice tray) is never grown for its dice: they pile inside it instead', () => {
+  const { physics, box } = setup();
+  const tray = { left: 380, top: 160, width: 240, height: 180, strict: true };
+  box.roll(Array.from({ length: 25 }, () => ({ type: 'd20', value: 5 })), { area: tray });
+  const a = physics.streams[0].req.area;
+  const loose = box.lastRollArea;
+  expect(4 * a.halfWidth * a.halfDepth).toBeLessThan(25 * CAPACITY_PER_DIE); // not grown to fit 25
+  expect(a.halfWidth * 2 * loose.diePx).toBeCloseTo(240, 6);
+  expect(a.halfDepth * 2 * loose.diePx).toBeCloseTo(180, 6);
+  // the same rect without strict grows as before
+  const { physics: p2, box: b2 } = setup();
+  b2.roll(Array.from({ length: 25 }, () => ({ type: 'd20', value: 5 })), { area: { ...tray, strict: false } });
+  const grown = p2.streams[0].req.area;
+  expect(4 * grown.halfWidth * grown.halfDepth).toBeGreaterThanOrEqual(25 * CAPACITY_PER_DIE - 1e-9);
 });
 
 describe('per-look fonts (font layer)', () => {

@@ -192,6 +192,15 @@ export function registerSettings({
     default: 'studio',
     onChange: () => onLightingChange?.(),
   });
+  // clear and glowing dice cast coloured light on the table (DiceBox lightPools); off by default
+  register('diceLight', {
+    name: t('diceLight.Name'),
+    hint: t('diceLight.Hint'),
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: false,
+  });
   // Dice trays (src/tray): the GM's table look, this player's choice, own look, place and showing.
   register('trayMode', {
     name: t('trayMode.Name'),
@@ -213,13 +222,14 @@ export function registerSettings({
     default: 'always',
     onChange: () => onTrayChange?.(),
   });
-  register('petInTray', {
-    name: t('petInTray.Name'),
-    hint: t('petInTray.Hint'),
+  register('petTray', {
+    name: t('petTray.Name'),
+    hint: t('petTray.Hint'),
     scope: 'client',
     config: true,
-    type: Boolean,
-    default: true,
+    type: String,
+    choices: Object.fromEntries(['rim', 'in', 'away'].map((k) => [k, t(`petTray.Choices.${k}`)])),
+    default: 'rim',
   });
   // the GM's saved trays, each a look any player may take for their own (the Dice tray window)
   register('trayPresets', { scope: 'world', config: false, type: Array, default: [] });

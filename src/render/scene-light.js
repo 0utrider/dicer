@@ -2,8 +2,9 @@
  * The diceLighting setting as the dice scene's light (scene.js setLighting). Pure: main.js reads
  * Foundry's canvas environment and passes it in.
  * - studio: the baked product-photo studio, as always;
- * - scene: the Foundry scene's light: its darkness dims the dice (never below a readable floor)
- *   and its ambient colour (daylight towards darkness) tints them;
+ * - scene: the Foundry scene's light: its darkness dims the dice (never below a floor where a
+ *   resin die's inside still shows) and its ambient colour (daylight towards darkness) tints them,
+ *   half way to white (a deep night colour would drown a green or red inside);
  * - sun: a warm low sun, whatever the scene.
  */
 export const LIGHTING_MODES = ['studio', 'scene', 'sun'];
@@ -12,10 +13,11 @@ const rgb = (c) =>
   Array.isArray(c) && c.length >= 3 && c.every((v) => Number.isFinite(v))
     ? c.slice(0, 3).map((v) => Math.max(0, Math.min(1, v)))
     : null;
-// a colour as bright as white at its own hue: a tint, never a dimmer (darkness does the dimming)
+// a colour as bright as white at its own hue, half way to white: a tint, never a dimmer (darkness
+// does the dimming), and never so deep it drowns a die's colour
 const asTint = (c) => {
   const m = Math.max(...c, 1e-3);
-  return c.map((v) => v / m);
+  return c.map((v) => 0.5 + v / m / 2);
 };
 
 /**
@@ -31,5 +33,5 @@ export function lightingFor(mode, env = {}) {
   const day = rgb(env.daylight) ?? [1, 1, 1];
   const night = rgb(env.night) ?? [0.4, 0.45, 0.7];
   const mixed = day.map((v, i) => v + (night[i] - v) * d);
-  return { tint: asTint(mixed), intensity: 1 - 0.65 * d, sun: false };
+  return { tint: asTint(mixed), intensity: 1 - 0.4 * d, sun: false };
 }

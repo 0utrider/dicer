@@ -301,11 +301,11 @@ describe('die effects (library)', () => {
     expect(layer.update(600)).toBe(false);
     expect(u.uFxFlare.value.toArray()).toEqual([0, 0, 0]);
   });
-  test('glow-pulse: a back-face additive shell at scale 1.08 on the die, removed when done', async () => {
+  test('glow-pulse: a back-face additive shell at scale 1.15 on the die, removed when done', async () => {
     const { layer, die } = await run('glow-pulse', { duration: 400 });
     const shell = die.inner.children[0];
     expect(shell).toBeTruthy();
-    expect(shell.scale.x).toBeCloseTo(1.08);
+    expect(shell.scale.x).toBeCloseTo(1.15);
     expect(shell.material.side).toBe(THREE.BackSide);
     // additive colour AND alpha: THREE.AdditiveBlending with alpha 1 left black boxes on the canvas
     expect(shell.material.blending).toBe(THREE.CustomBlending);
@@ -320,6 +320,18 @@ describe('die effects (library)', () => {
     expect(die.inner.children).toHaveLength(0);
     expect(dispose).toHaveBeenCalled();
   });
+  test('glow-pulse also tints the die in its colour while it pulses (a rim alone is lost on a light map), then clears it', async () => {
+    const { layer, u, isolate } = await run('glow-pulse', { color: '#ff0000', intensity: 2, duration: 600 });
+    expect(isolate).toHaveBeenCalledTimes(1);
+    layer.update(0);
+    layer.update(200);
+    expect(u.uFxTint.value.w).toBeGreaterThan(0.2);
+    expect(u.uFxTint.value.x).toBeGreaterThan(0.9); // red
+    expect(u.uFxTint.value.y).toBeLessThan(0.1);
+    expect(layer.update(600)).toBe(false);
+    expect(u.uFxTint.value.w).toBe(0);
+  });
+
   test('a die effect on a die that cannot be isolated (model, fading) is a no-op', async () => {
     const { layer } = setup({ tier: 'ultra', modules: EFFECTS, isolate: () => null });
     await layer.prefetch();

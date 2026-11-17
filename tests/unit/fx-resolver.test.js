@@ -213,6 +213,13 @@ test('context: outcome from roll.options, role from flags, formula, actor id, da
   expect(plan(r, fire, msg)[0].damageType).toBe('fire');
 });
 
+test("a rule's fx carries the roll's speaker token, for a moment on the roller's token", () => {
+  const world = [{ id: 'shock', die: 'd20', moment: { kind: 'shock', where: 'token' } }];
+  const msg = { author: { id: 'alice' }, speaker: { actor: 'A1', token: 'T9' } };
+  const [die] = plan(make({ getWorldRules: () => world }), d20(14), msg);
+  expect(die.fx[0]).toMatchObject({ ruleId: 'shock', moment: { kind: 'shock', where: 'token' }, token: 'T9' });
+});
+
 test("the actor id falls back to the term's dsnActorId", () => {
   const world = [{ id: 'a', context: { actorId: 'A2' }, sound: { builtin: 'x' } }];
   const roll = { dice: [{ faces: 20, options: { dsnActorId: 'A2' }, results: [{ result: 3 }] }] };
@@ -804,9 +811,16 @@ describe("Dicer's ready-made rules and Animater moments", () => {
     landed({}, [f], key);
     landed({}, [f], key);
     expect(playMoment).toHaveBeenCalledTimes(1);
-    expect(playMoment).toHaveBeenCalledWith({ kind: 'shake' });
+    expect(playMoment).toHaveBeenCalledWith({ kind: 'shake' }, undefined, {}, undefined); // a roll's: the active GM plays it
     landed({}, [f], {});
     expect(playMoment).toHaveBeenCalledTimes(2);
+    // a preview's: played on the GM who clicked it (the only screen it runs on)
+    landed({}, [{ ...f, preview: true }], {});
+    expect(playMoment).toHaveBeenLastCalledWith({ kind: 'shake' }, true, {}, undefined);
+    // the die it landed on and the roller's token go along (a moment at the dice, or on the token)
+    const die = { value: 20 };
+    landed(die, [{ ...f, moment: { kind: 'shock', where: 'token' }, token: 't1' }], {});
+    expect(playMoment).toHaveBeenLastCalledWith({ kind: 'shock', where: 'token' }, undefined, die, 't1');
     const bad = createLandedFx({ playSound: () => {}, fromUuid: async () => null, playMoment: () => { throw new Error('x'); }, warn: vi.fn() });
     expect(() => bad({}, [f], {})).not.toThrow();
   });

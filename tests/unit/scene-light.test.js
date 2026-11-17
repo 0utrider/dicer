@@ -10,14 +10,16 @@ test('studio is the baked studio; sun is warm and low', () => {
   expect(sun.tint[0]).toBeGreaterThan(sun.tint[2]); // warm
 });
 
-test('scene light: darkness dims (never below a floor) and moves the tint to the night colour', () => {
+test('scene light: darkness dims (never below a floor the insides still show at) and leans the tint to the night colour', () => {
   const day = lightingFor('scene', { darkness: 0, daylight: [1, 1, 1], night: [0.2, 0.3, 0.8] });
   expect(day).toEqual({ tint: [1, 1, 1], intensity: 1, sun: false });
   const night = lightingFor('scene', { darkness: 1, daylight: [1, 1, 1], night: [0.2, 0.3, 0.8] });
-  expect(night.intensity).toBeCloseTo(0.35);
+  expect(night.intensity).toBeCloseTo(0.6);
   expect(night.tint[2]).toBe(1); // a tint at full brightness: darkness does the dimming
-  expect(night.tint[0]).toBeLessThan(0.5);
-  expect(lightingFor('scene', { darkness: 9, daylight: 'x' }).intensity).toBeCloseTo(0.35); // clamped, defaults
+  // half way to white: a deep blue night must not drown a green or red die's inside
+  expect(night.tint[0]).toBeGreaterThan(0.55);
+  expect(night.tint[0]).toBeLessThan(0.7);
+  expect(lightingFor('scene', { darkness: 9, daylight: 'x' }).intensity).toBeCloseTo(0.6); // clamped, defaults
 });
 
 test('setLighting drives the environment intensity, key light and fill', () => {
@@ -25,8 +27,8 @@ test('setLighting drives the environment intensity, key light and fill', () => {
   const key = api.scene.children.find((c) => c.isDirectionalLight);
   const fill = api.scene.children.find((c) => c.isHemisphereLight);
   api.setLighting(lightingFor('scene', { darkness: 1, night: [0, 0, 1] }));
-  expect(api.scene.environmentIntensity).toBeCloseTo(0.35);
-  expect(key.color.equals(new THREE.Color().setRGB(0, 0, 1))).toBe(true);
+  expect(api.scene.environmentIntensity).toBeCloseTo(0.6);
+  expect(key.color.equals(new THREE.Color().setRGB(0.5, 0.5, 1))).toBe(true);
   expect(fill.intensity).toBeGreaterThan(0);
   api.setLighting(lightingFor('sun'));
   expect(key.position.y).toBeLessThan(8);

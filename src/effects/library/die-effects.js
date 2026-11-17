@@ -4,13 +4,16 @@ import { withInsideFlare } from './inside-flare.js';
 /**
  * Die effects: they change the landed die itself. color-shift and number-flare write the fx
  * uniform block (uFxTint, uFxFlare) of the die's isolated material; glow-pulse adds a shell
- * mesh around it, glint a light band sweeping across it. All are bound to their die (released with
+ * mesh around it and tints the die itself (a rim alone is lost on a light map, and among many
+ * dice), glint a light band sweeping across it. All are bound to their die (released with
  * it) and cost 1.
  */
 
 export const EASE_IN_MS = 150;
 const EASE_OUT_MAX_MS = 300;
-const GLOW_SCALE = 1.08;
+const GLOW_SCALE = 1.15;
+/** How much of its colour glow-pulse lays over the die at full strength (the rest stays the die). */
+const GLOW_TINT = 0.55;
 const GLOW_PERIOD_MS = 600;
 
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -213,14 +216,21 @@ export const glowPulse = Object.freeze({
     const halo = haloBehind(ctx);
     const strength = material.uniforms.uStrength;
     const base = Math.max(0, ctx.intensity);
+    // the die itself takes the colour too, in phase (none on a die that cannot be isolated)
+    const tint = ctx.isolate?.(ctx.die)?.uFxTint?.value ?? null;
+    const { r, g, b } = ctx.color;
+    const share = GLOW_TINT * Math.min(1, base);
     return timed(
       ctx.duration,
       (e) => {
         const pulse = 1 + 0.5 * Math.sin((2 * Math.PI * e) / GLOW_PERIOD_MS);
-        strength.value = base * pulse * envelope(e, ctx.duration);
+        const env = envelope(e, ctx.duration);
+        strength.value = base * pulse * env;
         if (halo) halo.material.uniforms.uAlpha.value = HALO_SHARE * strength.value; // in phase
+        tint?.set(r, g, b, share * env * (0.75 + 0.25 * pulse));
       },
       () => {
+        tint?.set(0, 0, 0, 0);
         parent.remove(shell);
         material.dispose();
         if (halo) {

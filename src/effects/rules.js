@@ -113,13 +113,37 @@ function normalizeEffect(raw) {
 }
 
 /**
- * Animater's screen moments a rule may call (its api.moment kinds): a short one, or one held for
- * MOMENT_MS. Only a GM's client may call one, so it plays from the active GM's view of the roll.
+ * Animater's moments a rule may call (its api.moment kinds) and where each may happen (Animater's
+ * own list): on the whole screen, where the dice landed (its 'point') or on the roller's token (its
+ * 'tokens'); the first is its default. Only a GM's client may call one, so a roll's plays from the
+ * active GM's view. Tether is left out: it needs two tokens picked by hand.
  */
-export const MOMENT_KINDS = ['pulse', 'shake', 'rumble', 'grey', 'blur', 'split'];
+export const MOMENT_WHERES = {
+  pulse: ['screen', 'dice', 'token'],
+  shake: ['screen', 'dice'],
+  rumble: ['screen', 'dice'],
+  grey: ['screen', 'dice'],
+  blur: ['screen', 'dice'],
+  split: ['screen', 'dice'],
+  roll: ['screen'],
+  smear: ['screen'],
+  vignette: ['screen', 'dice', 'token'],
+  grain: ['screen', 'dice'],
+  streak: ['screen', 'dice'],
+  glow: ['dice', 'token'],
+  shock: ['dice', 'token'],
+  dust: ['dice', 'token'],
+  sway: ['token'],
+  bob: ['token'],
+};
+export const MOMENT_KINDS = Object.keys(MOMENT_WHERES);
 function normalizeMoment(raw) {
-  if (!isObj(raw) || !MOMENT_KINDS.includes(raw.kind)) return null;
+  const wheres = isObj(raw) && Object.hasOwn(MOMENT_WHERES, raw.kind) && MOMENT_WHERES[raw.kind];
+  if (!wheres) return null;
   const out = { kind: raw.kind };
+  // where it happens, when that is not the whole screen (a place it cannot be: its default)
+  const where = wheres.includes(raw.where) ? raw.where : wheres[0];
+  if (where !== 'screen') out.where = where;
   if (typeof raw.colour === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw.colour)) out.colour = raw.colour;
   if (Number.isFinite(raw.strength)) out.strength = clamp(raw.strength, 0, 1);
   return out;

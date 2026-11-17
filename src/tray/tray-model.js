@@ -142,6 +142,20 @@ export function trayArea(px, look, gap = 0) {
   };
 }
 
+/** How much of the tray's width its top edge gives the pets to sit on, by shape (a hexagon's and an octagon's flat top is half; an oval's top curves away). */
+const PERCH_SHARE = { rect: 0.8, round: 0.4, hex: 0.5, octagon: 0.5 };
+
+/**
+ * Where pets sit on a tray at `px` with `look` (petTray 'rim'): a px strip along the middle of its
+ * top edge, the rim's own width tall (12 px at least), as wide as that shape's top edge allows.
+ */
+export function perchRect(px, look) {
+  const t = normalizeTray(look);
+  const width = px.width * PERCH_SHARE[t.shape];
+  const height = Math.max(12, t.rim.width);
+  return { left: px.left + (px.width - width) / 2, top: px.top, width, height };
+}
+
 /** The table sound of a tray look. */
 export const traySound = (look) => SURFACE_SOUND[look?.surface] ?? 'felt';
 

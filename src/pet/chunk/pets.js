@@ -72,6 +72,14 @@ const UI_BOXES = ['ui-left', 'ui-top'];
 const AREAS_HOOK = 'dicerRollAreasChanged';
 
 const FLY_PEAK = 1.2; // the dragonling's flight arc on a move (alignFor), die units
+// The dice tray's rim (petTray 'rim', deps.perch): a die hitting the tray wall at this speed or more
+// within WALL_REACH of a pet sitting on the rim makes it wobble (it never reaches the pet itself).
+export const WALL_FLINCH_SPEED = 4;
+// The table tray (tray.js TRAY_ID / TRAY_EVENT, copied: the tray chunk is not imported here). One
+// that shows only while rolling slides away between rolls: the pets on its rim leave with it.
+const TRAY_ID = 'dicer-table-tray';
+const TRAY_EVENT = 'dicertray';
+export const WALL_REACH = 2.5;
 
 // The crit's sparkle burst: a few additive star points thrown out around the pet.
 const SPARKS = 12;
@@ -733,6 +741,46 @@ export function createPetLayer(deps) {
     return restSpot(area, height, taken, rand, uiRects(), clear);
   }
 
+  // ---- the dice tray's rim (petTray 'rim') ----
+  /** The rim pets sit on ({cx, cz, halfWidth, halfDepth}: the strip along the tray's top edge), or null. */
+  const perch = () => {
+    try {
+      return deps.perch?.() ?? null;
+    } catch {
+      return null;
+    }
+  };
+  /**
+   * `userId`'s pet's place on the rim, or null with no rim: one of MAX_PETS places along it, by user
+   * id among the pets on screen.
+   */
+  /** Pets sit on the tray's rim (petTray 'rim', the default), but the tray has slid away. */
+  const rimAway = () => {
+    try {
+      const mode = getSetting('petTray') ?? 'rim';
+      return mode === 'rim' && doc?.getElementById?.(TRAY_ID)?.classList.contains('is-hidden') === true;
+    } catch {
+      return false;
+    }
+  };
+  /** The tray slid in or out: slid away, the pets resting on its rim hop off with it (begin brings them back). */
+  function onTray() {
+    if (disposed || !rimAway()) return;
+    const now = clock();
+    for (const pet of pets.values()) if (['rest', 'hop', 'move'].includes(pet.state)) sendOff(pet, now);
+    wake();
+  }
+  doc?.addEventListener?.(TRAY_EVENT, onTray);
+
+  function perchSpot(userId) {
+    const p = perch();
+    if (!p) return null;
+    const ids = [...new Set([...pets.keys(), userId])].sort();
+    // MAX_PETS fixed places along it, so a pet stays put as others come and go
+    const i = ids.indexOf(userId) % MAX_PETS;
+    return { x: p.cx + ((2 * (i + 1)) / (MAX_PETS + 1) - 1) * p.halfWidth, z: p.cz };
+  }
+
   const activeRolls = () => {
     try {
       return deps.activeRolls?.() ?? 0;
@@ -896,6 +944,17 @@ export function createPetLayer(deps) {
     pet.huff = null; // a new spot: no going back to the one it huffed away from
     if (pet.state === 'routine') pet.idleAt = now; // idle since its routine ended
     if (stage) pet.area = fitArea(pet.area, stage);
+    // its routine ended after the tray slid away: it leaves with it, rather than rest on the floor
+    if (rimAway()) return sendOff(pet, now);
+    const onRim = perchSpot(pet.userId);
+    if (onRim) {
+      // on the tray's rim: there it rests (a little hop in place when it watched from there)
+      pet.cornered = false;
+      pet.atRest = true;
+      hopTo(pet, onRim, 'hop', now);
+      if (pet.base && Math.hypot(onRim.x - pet.base.x, onRim.z - pet.base.z) < MOVED) pet.yawTo = pet.yaw;
+      return;
+    }
     const corner = cornerSpot(pet);
     pet.cornered = !!corner;
     if (!corner && pet.state === 'routine' && pet.atRest && inRestRing(pet.area, pet.creature.height, pet.base)) {
@@ -984,11 +1043,11 @@ export function createPetLayer(deps) {
     // A hand replay's pet that alignFor placed at the thrower's spot watches from it (petStay 0 too).
     // One resting at a placed spot watches from there; one at a 0.2 corner nothing could save as a
     // placed spot hops out to the roll area to watch, and back to its slot afterwards.
-    const rest = stays()
+    const rest = perchSpot(spec.userId) ?? (stays()
       ? (watchSpot(pet) ?? newSpot(spec.userId, area, pet.creature.height, null, false))
       : hand && pet.aligned
         ? restingSpot(pet)
-        : null;
+        : null);
     if (!rest) pending.delete(spec.userId);
     pet.cornered = false;
     if (down) {
@@ -1082,7 +1141,27 @@ export function createPetLayer(deps) {
       return;
     }
     roll.summary = summarize(dice, roll.ghost); // a ghost roll only ever says 'plain'
+    const wasWatching = watching(pet); // before settle: its landing turns the watch into the reaction
     settle(pet);
+    // On the tray's rim no die reaches its own pet: one with nothing to cheer or mourn reacts to
+    // the roll's element instead of its plain nod. Watching from its rim spot, it does at once (its
+    // routine ends there: it rests where it sits); otherwise once back at rest (toRest), and a pet
+    // that leaves after its roll voices it at its reaction (show).
+    if (perch() && pet.track.landedAt != null && pet.reaction === 'plain' && !roll.ghost) {
+      const at = { state: 'rest', px: pet.base?.x, pz: pet.base?.z };
+      const element = elementReactions(dice, [at], { dieWidth: Infinity })[0]?.element ?? null;
+      const now = clock();
+      if (element && stays() && pet.atRest && wasWatching && getSetting('petElemental') !== false) {
+        pet.state = 'rest';
+        pet.spot = { x: pet.base.x, z: pet.base.z };
+        pet.px = pet.base.x;
+        pet.pz = pet.base.z;
+        pet.hop = 0;
+        pet.idleAt = now;
+        react(pet, element, now);
+        wake();
+      } else pet.elementAfter = element;
+    }
     elemental(dice, roller ? cheer(dice, roller, pet) : null);
   }
 
@@ -1173,7 +1252,9 @@ export function createPetLayer(deps) {
     const now = clock();
     let any = false;
     const near = skip ? [...pets.values()].filter((p) => !skip.has(p)) : [...pets.values()];
-    for (const { pet, element } of elementReactions(dice, near, { dieWidth: DIE_WIDTH })) {
+    // on the tray's rim the dice never land beside a pet: it reacts to the nearest one anywhere
+    const dieWidth = perch() ? Infinity : DIE_WIDTH;
+    for (const { pet, element } of elementReactions(dice, near, { dieWidth })) {
       react(pet, element, now);
       any = true;
     }
@@ -1294,7 +1375,9 @@ export function createPetLayer(deps) {
     }
     if (phase === 'react' && !pet.soundDone) {
       pet.soundDone = true;
-      const name = reactionSound(pet.reaction);
+      // a pet that leaves after its roll never rests to react to its element: it voices it here
+      const el = !stays() && pet.elementAfter;
+      const name = reactionSound(pet.reaction) ?? (el ? (ELEMENT_FX[el]?.sound ?? 'petYelp') : null);
       if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false)
         playSound({ builtin: name });
     }
@@ -1303,6 +1386,12 @@ export function createPetLayer(deps) {
   /** The pet comes to rest: from here it costs nothing until something wakes the loop. */
   function toRest(pet) {
     pet.state = 'rest';
+    const element = pet.elementAfter;
+    pet.elementAfter = null;
+    if (element && perch() && getSetting('petElemental') !== false) {
+      react(pet, element, clock()); // its roll's element, now it sits on the rim again
+      wake();
+    }
   }
 
   // ---- click to pet (petClick; petting.js listens) ----
@@ -1840,9 +1929,9 @@ export function createPetLayer(deps) {
       const h = mine?.creature.height ?? PET_HEIGHT * size;
       // with resting on the pet rolls from its resting spot (a first appearance: the one it will hop
       // to, kept pending for begin); otherwise from the edge spot
-      const at = stays()
+      const at = perchSpot(spec.userId) ?? (stays()
         ? (watchSpot(mine) ?? newSpot(spec.userId, area, h, own.victim, true))
-        : edgeSpot(edge, area, h).base;
+        : edgeSpot(edge, area, h).base);
       list.push(obstacle(at, h, spec.userId, mine?.creature.footprint ?? kindFootprint(spec.kind)));
     }
     for (const p of pets.values())
@@ -2009,6 +2098,29 @@ export function createPetLayer(deps) {
   }
 
   /**
+   * DiceBox's PetHook.wall(position, speed): a die hit the roll area's wall at `position`. With the
+   * pets on the tray's rim, one standing within WALL_REACH wobbles away from the hit (at
+   * WALL_FLINCH_SPEED or more): the dice reach the rim it sits on, never the pet. A pet already
+   * wobbling is left to finish.
+   */
+  function wall(position, speed) {
+    if (disposed || !(speed >= WALL_FLINCH_SPEED) || !position || !perch()) return;
+    const now = clock();
+    for (const pet of pets.values()) {
+      if (!['routine', 'hop', 'rest', 'move'].includes(pet.state)) continue;
+      if (pet.wobble && now - pet.wobble.at < WOBBLE_MS) continue;
+      const x = pet.px ?? pet.base?.x ?? 0;
+      const z = pet.pz ?? pet.base?.z ?? 0;
+      const d = Math.hypot(x - position.x, z - position.z);
+      if (!(d < WALL_REACH)) continue;
+      const k = d > 1e-6 ? 1 / d : 0;
+      pet.wobble = { at: now, dx: k ? (x - position.x) * k : 0, dz: k ? (z - position.z) * k : 1 };
+      dropAnim(pet);
+      wake();
+    }
+  }
+
+  /**
    * The stage changed size. Each resting pet hops to a fresh valid spot inside its owner's area:
    * the area of that owner's most recent roll (kept on the pet at begin), shrunk and shifted to fit
    * the new stage. Rolling pets keep their edge spot: their roll has its own area.
@@ -2138,6 +2250,7 @@ export function createPetLayer(deps) {
     } catch {
       /* Foundry is gone */
     }
+    doc?.removeEventListener?.(TRAY_EVENT, onTray);
     for (const pet of [...pets.values()]) removePet(pet);
     for (const c of samples) {
       try {
@@ -2175,6 +2288,7 @@ export function createPetLayer(deps) {
     /** petRestSpot may have changed: resting pets move to the new spot (update also checks). */
     restSpotChanged: () => restSpotChanged(),
     hit,
+    wall,
     dispose,
     /** The contact speed at which the physics splats a pet (THROW splatSpeed); null: petSplat off. */
     get splatSpeed() {

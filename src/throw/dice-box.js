@@ -143,6 +143,7 @@ export class DiceBox {
     getAppearance,
     getFlags = () => DEFAULT_FLAGS,
     shadows = () => true,
+    lightPools = () => false,
     getArea,
     diceScale = () => 1,
     timeBeforeHide = () => DEFAULT_LINGER_MS,
@@ -183,6 +184,7 @@ export class DiceBox {
     this._getAppearance = getAppearance ?? (() => appearance ?? DEFAULT_APPEARANCE);
     this._getFlags = getFlags;
     this._shadows = shadows;
+    this._lightPools = lightPools; // clear and glowing dice light the table (diceLight setting)
     this._getArea = getArea;
     this._diceScale = diceScale;
     this._timeBeforeHide = timeBeforeHide;
@@ -341,9 +343,11 @@ export class DiceBox {
       width: w,
       height: h,
     };
+    // A strict rect (a dice tray) keeps its size: never grown past what the player sees, its
+    // dice pile up inside it instead (room for one die at least).
     return {
       rect: clamped,
-      area: fitDieCapacity(toDieArea(clamped, stage, this._diePx), n, this._area),
+      area: fitDieCapacity(toDieArea(clamped, stage, this._diePx), rect.strict ? 1 : n, this._area),
     };
   }
 
@@ -1433,7 +1437,7 @@ export class DiceBox {
       if (!shadows || die.shadow) continue;
       // The shadow follows the outer group's position and scales by the geometry's sphere.
       const follow = { position: die.outer.position, geometry: die.geometry };
-      roll.shadows.push((die.shadow = this._renderer.sceneApi.shadowFor(follow, { pool: die.ghost ? null : poolColor(die.appearance) })));
+      roll.shadows.push((die.shadow = this._renderer.sceneApi.shadowFor(follow, { pool: die.ghost || !this._lightPools() ? null : poolColor(die.appearance) })));
     }
     if (roll.pet && !roll.revealed) this.#petBegin(roll);
     roll.revealed = true;
@@ -1701,6 +1705,8 @@ export class DiceBox {
           if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey, die }), roll.hook);
           continue;
         }
+        // a die hitting the roll area's wall: a pet on the tray's rim beside it wobbles (pets.js wall)
+        if (other === -2 && this._petHook) this.#hookCall((h) => h.wall?.(position, speed), this._petHook);
         this.#effectsCall((e) => e.impact?.({ position, speed, surface, dieKey }));
         this._onImpact({
           material: d.soundMaterial,

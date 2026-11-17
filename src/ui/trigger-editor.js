@@ -4,7 +4,7 @@
  * Mine tab: the user's own `dicer.triggers` flag. All rule <-> form logic is in ./trigger-form.js.
  */
 import { EFFECTS } from '../effects/library/effects.js';
-import { DEFAULT_RULES, normalizeRule, MOMENT_KINDS } from '../effects/rules.js';
+import { DEFAULT_RULES, normalizeRule, MOMENT_KINDS, MOMENT_WHERES } from '../effects/rules.js';
 import { animaterMoments } from '../effects/fx-resolver.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
 
@@ -16,7 +16,33 @@ const MOMENT_LABELS = {
   grey: 'DICER.Triggers.Moments.grey',
   blur: 'DICER.Triggers.Moments.blur',
   split: 'DICER.Triggers.Moments.split',
+  roll: 'DICER.Triggers.Moments.roll',
+  smear: 'DICER.Triggers.Moments.smear',
+  vignette: 'DICER.Triggers.Moments.vignette',
+  grain: 'DICER.Triggers.Moments.grain',
+  streak: 'DICER.Triggers.Moments.streak',
+  glow: 'DICER.Triggers.Moments.glow',
+  shock: 'DICER.Triggers.Moments.shock',
+  dust: 'DICER.Triggers.Moments.dust',
+  sway: 'DICER.Triggers.Moments.sway',
+  bob: 'DICER.Triggers.Moments.bob',
 };
+const MOMENT_WHERE_LABELS = {
+  screen: 'DICER.Triggers.MomentWheres.screen',
+  dice: 'DICER.Triggers.MomentWheres.dice',
+  token: 'DICER.Triggers.MomentWheres.token',
+};
+// keys that are not whole numbers keep this order ('1' would sort first): '1.0' is full
+const MOMENT_STRENGTHS = {
+  '': 'DICER.Triggers.MomentStrengths.default',
+  '0.25': 'DICER.Triggers.MomentStrengths.gentle',
+  '0.5': 'DICER.Triggers.MomentStrengths.medium',
+  '0.8': 'DICER.Triggers.MomentStrengths.strong',
+  '1.0': 'DICER.Triggers.MomentStrengths.full',
+};
+/** The strength choice a stored strength shows ('' for Animater's own; one not listed, as itself). */
+const strengthChoice = (v) =>
+  v === '' ? '' : (Object.keys(MOMENT_STRENGTHS).find((k) => k !== '' && Number(k) === Number(v)) ?? String(v));
 import {
   blankEntry,
   entriesOf,
@@ -70,6 +96,24 @@ export function buildChoices(ctx) {
   for (const [id, name] of Object.entries(ctx.modes ?? {})) effects[`dsn:${id}`] = `${name} (DSN)`;
   const sounds = Object.fromEntries(USER_SOUNDS.map((s) => [s, humanize(s)]));
   return { dice, effects, sounds };
+}
+
+/**
+ * What a rule's Preview plays on its test die: its effect, sound and Animater moment (the moment
+ * plays from a GM's view, as in a real roll); never its macro. `effectOnly`: the effect alone.
+ */
+export function previewFx(rule, { type, value }, effectOnly = false) {
+  return {
+    ruleId: rule.id,
+    effect: rule.effect,
+    sound: effectOnly ? null : rule.sound,
+    moment: effectOnly ? null : (rule.moment ?? null),
+    macro: null,
+    slowMotion: false,
+    value,
+    type,
+    preview: true, // its moment plays on this GM's screen, active GM or not
+  };
 }
 
 /** The die type and face a preview should throw for a rule. */
@@ -266,6 +310,16 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         },
         soundChoices: options(choices.sounds, e.soundBuiltin),
         momentChoices: options(Object.fromEntries([['', loc('DICER.Triggers.NoMoment')], ...MOMENT_KINDS.map((k) => [k, loc(MOMENT_LABELS[k])])]), e.momentKind),
+        // where the chosen moment may happen (its own list, Animater's), and how strong
+        momentWhereChoices: options(
+          Object.fromEntries((MOMENT_WHERES[e.momentKind] ?? Object.keys(MOMENT_WHERE_LABELS)).map((w) => [w, loc(MOMENT_WHERE_LABELS[w])])),
+          e.momentWhere || MOMENT_WHERES[e.momentKind]?.[0] || 'screen',
+        ),
+        momentStrengthChoices: options(
+          Object.fromEntries(Object.entries(MOMENT_STRENGTHS).map(([v, k]) => [v, loc(k)])),
+          strengthChoice(e.momentStrength),
+        ),
+        momentStrengthPick: strengthChoice(e.momentStrength),
         showValue: e.resultKind === 'value',
         showRange: e.resultKind === 'range',
         showLabel: e.resultKind === 'label',
@@ -474,24 +528,13 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     return { rule, api };
   }
 
-  /** Plays the rule's effect and sound on a local test die. Nothing is broadcast. */
+  /** Plays the rule's effect, sound and moment on a local test die. Nothing is broadcast. */
   static async #onPreview(event, target) {
     const found = this.#previewRule(target);
     if (!found) return;
     const { rule, api } = found;
-    const { type, value } = previewTarget(rule);
-    await api._preview(
-      {
-        ruleId: rule.id,
-        effect: rule.effect,
-        sound: rule.sound,
-        macro: null,
-        slowMotion: false,
-        value,
-        type,
-      },
-      { type, value },
-    );
+    const die = previewTarget(rule);
+    await api._preview(previewFx(rule, die), die);
   }
 
   /** Plays only the rule's effect (no sound, no macro) on a local test die. */
@@ -499,11 +542,8 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const found = this.#previewRule(target);
     if (!found?.rule.effect) return;
     const { rule, api } = found;
-    const { type, value } = previewTarget(rule);
-    await api._preview(
-      { ruleId: rule.id, effect: rule.effect, sound: null, macro: null, slowMotion: false, value, type },
-      { type, value },
-    );
+    const die = previewTarget(rule);
+    await api._preview(previewFx(rule, die, true), die);
   }
 
   static async #onReset() {

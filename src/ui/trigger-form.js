@@ -42,6 +42,8 @@ export function blankEntry(id, source = 'user') {
     macro: '',
     momentKind: '',
     momentColour: '',
+    momentWhere: '',
+    momentStrength: '',
     rawJson: '',
   };
 }
@@ -82,6 +84,8 @@ export function entryFromRule(rule) {
   e.macro = rule.macro ?? '';
   e.momentKind = rule.moment?.kind ?? '';
   e.momentColour = rule.moment?.colour ?? '';
+  e.momentWhere = rule.moment?.where ?? '';
+  e.momentStrength = Number.isFinite(rule.moment?.strength) ? String(rule.moment.strength) : '';
   return e;
 }
 
@@ -198,6 +202,8 @@ export function rawRuleFromEntry(e) {
   const macro = str(e.macro).trim();
   const momentKind = str(e.momentKind).trim();
   const momentColour = str(e.momentColour).trim();
+  const momentWhere = str(e.momentWhere).trim();
+  const momentStrength = str(e.momentStrength).trim() === '' ? NaN : Number(e.momentStrength);
   return {
     id: str(e.id) || undefined,
     name: str(e.name).trim() || undefined,
@@ -209,7 +215,14 @@ export function rawRuleFromEntry(e) {
     effect,
     sound,
     macro: macro || null,
-    ...(momentKind && { moment: { kind: momentKind, ...(momentColour && { colour: momentColour }) } }),
+    ...(momentKind && {
+      moment: {
+        kind: momentKind,
+        ...(momentColour && { colour: momentColour }),
+        ...(momentWhere && { where: momentWhere }),
+        ...(Number.isFinite(momentStrength) && { strength: momentStrength }),
+      },
+    }),
   };
 }
 

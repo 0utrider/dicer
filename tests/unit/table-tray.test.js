@@ -14,6 +14,7 @@ import {
   trayArea,
   normalizeTrayPresets,
   MAX_TRAY_PRESETS,
+  perchRect,
   DEFAULT_TRAY,
 } from '../../src/tray/tray-model.js';
 import { createTray } from '../../src/tray/tray.js';
@@ -106,6 +107,19 @@ describe('tray model', () => {
     expect(((o.left - 50) / 50) ** 2 + ((o.top - 50) / 50) ** 2).toBeCloseTo(1, 1);
   });
 
+  test('the rim pets sit on: a strip along the middle of the top edge, as wide as the shape allows', () => {
+    const px = { left: 100, top: 50, width: 400, height: 300 };
+    expect(perchRect(px, { rim: { width: 20 } })).toEqual({
+      left: 140,
+      top: 50,
+      width: 320,
+      height: 20,
+    });
+    const hex = perchRect(px, { rim: { width: 4 }, shape: 'hex' });
+    expect(hex).toEqual({ left: 200, top: 50, width: 200, height: 12 }); // a thin rim: 12 px to sit on
+    expect(perchRect(px, { shape: 'round' }).width).toBe(160);
+  });
+
   test('saved trays: {id, name, look}, the look made safe; junk, repeats and extras dropped', () => {
     const list = normalizeTrayPresets([
       { id: 'crest', name: '  Party crest  ', look: { surface: 'wood', shape: 'hex' } },
@@ -162,7 +176,8 @@ describe('the tray on screen', () => {
     expect(document.getElementById('board').nextElementSibling).toBe(el);
     expect(el.dataset.surface).toBe('wood');
     expect(el.style.left).toBe('100px');
-    expect(t.area()).toEqual({ left: 116, top: 96, width: 468, height: 368 }); // rim 10 + 6 inset
+    // rim 10 + 6 inset; strict: a big roll piles up in the tray, never spills past it
+    expect(t.area()).toEqual({ left: 116, top: 96, width: 468, height: 368, strict: true });
     expect(t.sound()).toBe('wood');
     settings.trayMode = 'none';
     t.refresh();
@@ -171,11 +186,32 @@ describe('the tray on screen', () => {
     expect(t.sound()).toBeNull();
   });
 
+  test('the tray says when it slides in or out (a dicertray event; pets on its rim follow), once per change', () => {
+    settings.trayShow = 'rolls';
+    const heard = vi.fn();
+    document.addEventListener('dicertray', heard);
+    const t = make();
+    t.refresh(); // built hidden: one slide-out
+    expect(t.element.id).toBe('dicer-table-tray');
+    expect(heard).toHaveBeenCalledTimes(1);
+    t.refresh(); // still hidden: nothing
+    expect(heard).toHaveBeenCalledTimes(1);
+    t.rolling(); // slides in
+    expect(heard).toHaveBeenCalledTimes(2);
+    expect(t.element.classList.contains('is-hidden')).toBe(false);
+    document.removeEventListener('dicertray', heard);
+    settings.trayShow = 'always';
+  });
+
   test('shown only while rolling: the Dice tray window open shows it anyway, and closing hides it again', () => {
     settings.trayShow = 'rolls';
     const t = make();
     t.refresh();
     expect(t.element.classList.contains('is-hidden')).toBe(true);
+    expect(t.perch()).toBeNull(); // slid away: no rim for the pets
+    t.preview(true);
+    expect(t.perch()).not.toBeNull();
+    t.preview(false);
     t.preview(true);
     expect(t.element.classList.contains('is-hidden')).toBe(false);
     t.refresh(); // a save while the window is open

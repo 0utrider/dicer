@@ -11,7 +11,12 @@ import {
   trayStyle,
   traySound,
   trayArea,
+  perchRect,
 } from './tray-model.js';
+
+/** The table tray element's id, and the event the document gets when it slides in or out. */
+export const TRAY_ID = 'dicer-table-tray';
+export const TRAY_EVENT = 'dicertray';
 
 /** Dice keep this far inside the rim (px), so they never sit on it. */
 const INSET = 6;
@@ -101,6 +106,7 @@ export function createTray({
 
   function build() {
     el = doc.createElement('div');
+    el.id = TRAY_ID;
     el.className = 'dicer-tt';
     el.setAttribute('aria-hidden', 'true');
     // the hexagon and octagon draw their rim and floor here (clipped to the shape)
@@ -123,13 +129,23 @@ export function createTray({
     else doc.body.append(el);
   }
 
+  /**
+   * Slides the tray out (true) or back in, and says so: a TRAY_EVENT on the document (the pets on
+   * its rim leave with it, pets.js). Nothing when it already is.
+   */
+  function setHidden(on) {
+    if (!el || el.classList.contains('is-hidden') === on) return;
+    el.classList.toggle('is-hidden', on);
+    doc.dispatchEvent?.(new Event(TRAY_EVENT));
+  }
+
   function hideWhenClear() {
     clearInterval(poll);
     poll = setInterval(() => {
       if (activeRolls() > 0) return;
       clearInterval(poll);
       poll = null;
-      if (showMode() === 'rolls' && !previewing) el?.classList.add('is-hidden');
+      if (showMode() === 'rolls' && !previewing) setHidden(true);
     }, HIDE_POLL_MS);
   }
 
@@ -148,33 +164,35 @@ export function createTray({
       el.dataset.rim = look.rim.style;
       el.dataset.shape = look.shape;
       for (const [k, v] of Object.entries(trayStyle(look, route))) el.style.setProperty(k, v);
-      el.classList.toggle(
-        'is-hidden',
-        showMode() === 'rolls' && !previewing && !(activeRolls() > 0),
-      );
+      setHidden(showMode() === 'rolls' && !previewing && !(activeRolls() > 0));
       place();
     },
     /** The px rect dice land in (inside the rim), or null with no tray: the roll area decides. */
     area() {
       if (!el || !look || !px) return null;
-      return trayArea(px, look, INSET);
+      return { ...trayArea(px, look, INSET), strict: true }; // strict: never grown past the tray
     },
     /** Dice are coming: a tray that shows only during rolls slides in, and out once they clear. */
     rolling() {
       if (!el || showMode() !== 'rolls') return;
-      el.classList.remove('is-hidden');
+      setHidden(false);
       hideWhenClear();
     },
     /** The Dice tray window opened (true) or closed: while open the tray shows, so its look can be seen. */
     preview(on) {
       previewing = !!on;
       if (!el) return;
-      if (previewing) el.classList.remove('is-hidden');
-      else if (showMode() === 'rolls' && !(activeRolls() > 0)) el.classList.add('is-hidden');
+      if (previewing) setHidden(false);
+      else if (showMode() === 'rolls' && !(activeRolls() > 0)) setHidden(true);
     },
     /** Over windows with the dice (diceAboveWindows). */
     raise(on) {
       el?.classList.toggle('dicer-above', !!on);
+    },
+    /** The px strip along the tray's top rim the pets sit on, or null (no tray, or one slid away). */
+    perch() {
+      if (!el || !look || !px || el.classList.contains('is-hidden')) return null;
+      return perchRect(px, look);
     },
     /** The table sound of the tray's surface, or null with no tray. */
     sound: () => (look ? traySound(look) : null),

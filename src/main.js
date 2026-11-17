@@ -109,21 +109,37 @@ export function soundSurface(get) {
 }
 
 /**
- * A trigger rule's Animater moment (rules.js MOMENT_KINDS), on the whole screen of everyone.
- * Animater takes a moment from a GM only, so only the active GM's client calls it: once per roll.
+ * A trigger rule's Animater moment (rules.js MOMENT_WHERES) for everyone: on the whole screen, where
+ * the dice landed or on the roller's token. Animater takes a moment from a GM only, so only the
+ * active GM's client calls it for a roll: once per roll.
  */
 let momentNoted = false;
-function playAnimaterMoment(m) {
-  if (!game.user?.isGM || game.users?.activeGM?.id !== game.user.id) return;
+function playAnimaterMoment(m, preview, die, token) {
+  // a roll's from the active GM's view, once; a preview's from the GM who clicked it (Animater
+  // itself takes a moment from a GM only)
+  if (!preview && game.users?.activeGM?.id !== game.user.id) return;
+  // where: the map point under the die as this screen shows it, or the roller's token (a
+  // preview's: the token the GM has selected); neither found: the whole screen
+  let at = null;
+  if (m.where === 'dice')
+    try {
+      const v = die.outer.position.clone().project(diceRenderer.camera);
+      const r = diceRenderer.canvas.getBoundingClientRect();
+      const b = canvas.app.view.getBoundingClientRect();
+      at = canvas.stage.toLocal({ x: r.left - b.left + ((v.x + 1) / 2) * r.width, y: r.top - b.top + ((1 - v.y) / 2) * r.height });
+    } catch {
+      at = null;
+    }
+  const id = m.where === 'token' && (token || (preview && canvas.tokens?.controlled?.[0]?.id));
   const api = game.modules?.get('animater')?.active ? game.modules.get('animater').api : null;
   if (typeof api?.moment !== 'function') {
     // said once: a rule asked for a moment this Animater cannot play (off, or a version without moments)
-    if (!momentNoted) console.warn('dicer: Animater is off or too old for moments');
+    if (!momentNoted) console.warn('dicer: no Animater moments');
     momentNoted = true;
     return;
   }
-  const held = !['pulse', 'shake'].includes(m.kind);
-  api.moment({ kind: m.kind, where: 'screen', ...(m.colour && { colour: m.colour }), ...(m.strength !== undefined && { strength: m.strength }), ...(held && { ms: 1500, fade: 400 }) });
+  const held = !['pulse', 'shake', 'shock', 'dust'].includes(m.kind);
+  api.moment({ kind: m.kind, where: at ? 'point' : id ? 'tokens' : 'screen', ...(at && { x: at.x, y: at.y, radius: 2.5 * (canvas.grid?.size || 100) }), ...(id && { ids: [id] }), ...(m.colour && { colour: m.colour }), ...(m.strength !== undefined && { strength: m.strength }), ...(held && { ms: 1500, fade: 400 }) });
 }
 
 /** game.dice3d._debug.fxPlays / resultSounds: counted where effects start and sounds are requested. */
@@ -719,6 +735,7 @@ Hooks.once('ready', async () => {
         getAppearance,
         getFlags: () => quality.flags(),
         shadows: () => getSetting('shadows') !== false,
+        lightPools: () => getSetting('diceLight') === true,
         getArea: () => measureArea(),
         diceScale: () => Number(getSetting('diceScale')) || 1,
         timeBeforeHide: () => Number(getSetting('timeBeforeHide')) || 0,
@@ -808,9 +825,13 @@ Hooks.once('ready', async () => {
         return areas.rectFor(o);
       };
       // A user's area as their throws use it: the pet layer moves resting pets when areas change.
-      // (petInTray off: pets keep to the roll areas, out of the tray)
+      // petTray: 'rim' (pets sit on the tray's rim: perch), 'in' (in the tray), 'away' (roll areas)
       petDeps.areaOf = (id) =>
-        box.dieArea((getSetting('petInTray') !== false && tray?.area()) || areas.rectFor({ rollerId: id }));
+        box.dieArea((getSetting('petTray') !== 'away' && tray?.area()) || areas.rectFor({ rollerId: id }));
+      petDeps.perch = () => {
+        const r = getSetting('petTray') === 'rim' && tray?.perch();
+        return r ? box.dieArea(r) : null;
+      };
       // Task 8: hand throws from other users, buffered until their message; the chunk on demand.
       const hand = createHandGate({ importChunk: () => loadHand(box), chunkNow: handNow });
       gate = createMessageGate({

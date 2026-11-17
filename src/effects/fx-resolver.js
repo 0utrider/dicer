@@ -202,6 +202,7 @@ export function createFxResolver({
       const role = safe(() => roleOf(message), null);
       const formula = safe(() => roll?.formula, undefined);
       const speakerActor = safe(() => message?.speaker?.actor, undefined);
+      const speakerToken = safe(() => message?.speaker?.token, undefined); // a moment on the roller's token
       const damage = safe(() => damageTypesByTerm(roll, getKnownDamageTypes()), new WeakMap());
       const slow = setting('slowMotion') !== false;
 
@@ -281,6 +282,7 @@ export function createFxResolver({
             effect,
             sound: rule.sound ?? null,
             moment: rule.moment ?? null,
+            token: speakerToken,
             macro: macros ? (rule.macro ?? null) : null,
             slowMotion:
               slow &&
@@ -436,10 +438,11 @@ export function createLandedFx({ playSound, fromUuid, playMoment = () => {}, onS
         done.add(`${what}:${f.ruleId}`);
         return true;
       };
-      // An Animater moment: once per roll and rule, however many of its dice matched.
+      // An Animater moment: once per roll and rule, however many of its dice matched. A preview's
+      // (f.preview) plays on the GM who clicked it, not only the active GM: no one else sees it.
       if (isObj(f.moment) && once('moment')) {
         try {
-          playMoment(f.moment);
+          playMoment(f.moment, f.preview, die, f.token);
         } catch (err) {
           warnOnce(`moment:${f.ruleId}`, 'Dicer: Animater moment failed', err);
         }

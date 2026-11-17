@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED, PUDDLE_LEAVE_MS } from '../../src/pet/chunk/pets.js';
+import { createPetLayer, SPLAT_SPEED, WOBBLE_SPEED, PUDDLE_LEAVE_MS, WALL_FLINCH_SPEED, WALL_REACH } from '../../src/pet/chunk/pets.js';
 import { mulberry32 as mulberry } from '../../src/core/rng.js';
 import { REST_HOP_MS } from '../../src/pet/chunk/timeline.js';
 import { createMoods } from '../../src/pet/chunk/moods.js';
@@ -1931,5 +1931,156 @@ describe('pet size (petScale, independent of diceScale)', () => {
     m.layer.areaChanged(AREA); // same stage: settings changes come through resizeDice too
     expect(sizeOf(m.scene)).toBeCloseTo(1.5);
     expect(pets(m.scene)[0].children[0].children).toHaveLength(1); // wrapped once, not again
+  });
+});
+
+// ---- the dice tray's rim (petTray 'rim': deps.perch) ----
+describe('pets on the dice tray rim', () => {
+  const RIM = { cx: 0, cz: -8, halfWidth: 6, halfDepth: 0.3 };
+  const onRim = (settings = {}) => make({ petStay: 60, ...settings }, { perch: () => RIM });
+
+  test('a pet watches its roll from the rim and rests there, out of the dice area', () => {
+    const m = onRim();
+    m.layer.begin('k', bigInfo(spec('u1')));
+    // the physics sees it on the rim (outside the walls: no die reaches it)
+    const [o] = m.layer.obstaclesFor({ spec: spec('u2'), edge: 0, area: BIG }).filter((x) => x.id === 'u1');
+    expect(o.z).toBeCloseTo(RIM.cz, 6);
+    m.layer.end('k');
+    rollToRest(m, 'u1');
+    expect(at(m.scene).z).toBeCloseTo(RIM.cz, 6);
+    expect(Math.abs(at(m.scene).x - RIM.cx)).toBeLessThanOrEqual(RIM.halfWidth);
+  });
+
+  test('two pets sit apart along the rim', () => {
+    const m = onRim();
+    rollToRest(m, 'u1');
+    rollToRest(m, 'u2');
+    const xs = pets(m.scene).map((g) => g.position.x);
+    expect(Math.abs(xs[0] - xs[1])).toBeGreaterThan(2);
+    for (const g of pets(m.scene)) expect(g.position.z).toBeCloseTo(RIM.cz, 6);
+  });
+
+  test('a hard wall hit beside a pet on the rim wobbles it; a soft or far one does not', () => {
+    const m = onRim();
+    rollToRest(m, 'u1');
+    const p = { x: at(m.scene).x, z: at(m.scene).z };
+    m.layer.wall({ x: p.x, y: 0.5, z: p.z + WALL_REACH + 1 }, WALL_FLINCH_SPEED * 3); // too far
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    m.layer.wall({ x: p.x + 0.5, y: 0.5, z: p.z + 1 }, WALL_FLINCH_SPEED / 2); // too soft
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    m.layer.wall({ x: p.x + 0.5, y: 0.5, z: p.z + 1 }, WALL_FLINCH_SPEED * 3);
+    expect(m.layer.update((clockNow += 16))).toBe(true); // wobbling
+    runTo(m, clockNow + 600);
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
+    expect(at(m.scene).z).toBeCloseTo(RIM.cz, 6); // back on the rim
+  });
+
+  test("a pet resting on the rim reacts to someone's fire die landing anywhere in the tray, with its sound", () => {
+    const m = onRim();
+    rollToRest(m, 'u1');
+    m.playSound.mockClear();
+    // far from the rim (z -8): beyond the 2 die widths a pet on the floor needs
+    m.layer.landed(null, [{ type: 'd6', value: 3, x: 4, z: 6, damageType: 'fire' }]);
+    m.layer.update((clockNow += 16));
+    expect(phaseOf(m)).toBe('scorch');
+    expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petCough' });
+  });
+
+  test("its own pet, watching from the rim, reacts to its roll's element at once: no nod first", () => {
+    const m = onRim();
+    const key = 'own';
+    m.layer.begin(key, bigInfo(spec('u1')));
+    m.layer.update(clockNow);
+    runTo(m, clockNow + 700); // past its throw: watching
+    m.playSound.mockClear();
+    m.layer.landed(key, [{ type: 'd8', value: 5, x: 3, z: 4, damageType: 'fire' }]);
+    const seen = [];
+    for (let i = 0; i < 20; i++) {
+      m.layer.update((clockNow += 16));
+      seen.push(phaseOf(m));
+    }
+    expect(seen[0]).toBe('scorch'); // straight into it
+    expect(seen).not.toContain('react'); // never the plain nod
+    expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petCough' });
+    // the roll ends and the pet stays on the rim, resting
+    m.layer.leave(key, 0);
+    m.layer.end(key);
+    runTo(m, clockNow + 2500);
+    expect(pets(m.scene)).toHaveLength(1);
+    expect(at(m.scene).z).toBeCloseTo(RIM.cz, 6);
+  });
+
+  test('without a rim a far fire die leaves a resting pet be (it must land within reach)', () => {
+    const m = make({ petStay: 60 });
+    rollToRest(m, 'u1');
+    const p = at(m.scene);
+    m.layer.landed(null, [{ type: 'd6', value: 3, x: p.x + 10, z: p.z, damageType: 'fire' }]);
+    m.layer.update((clockNow += 16));
+    expect(phaseOf(m)).not.toBe('scorch');
+  });
+
+  /** A document with the table tray in it (shown), whose slide-outs the pets hear. */
+  const trayDoc = () => {
+    const classes = new Set();
+    const tray = { classList: { contains: (c) => classes.has(c) } };
+    const listeners = new Map();
+    return {
+      getElementById: (id) => (id === 'dicer-table-tray' ? tray : null),
+      querySelectorAll: () => [],
+      addEventListener: (t, fn) => listeners.set(t, fn),
+      removeEventListener: (t) => listeners.delete(t),
+      slide(hidden) {
+        if (hidden) classes.add('is-hidden');
+        else classes.delete('is-hidden');
+        listeners.get('dicertray')?.();
+      },
+    };
+  };
+
+  test('a tray that slides away takes its rim pets with it; the next roll brings them back onto the rim', () => {
+    const doc = trayDoc();
+    const m = make({ petStay: 60 }, { perch: () => RIM, doc });
+    rollToRest(m, 'u1');
+    expect(at(m.scene).z).toBeCloseTo(RIM.cz, 6);
+    doc.slide(true);
+    runTo(m, clockNow + 2000);
+    expect(pets(m.scene)).toHaveLength(0); // hopped off with the tray
+    doc.slide(false); // dice coming: the tray slides in
+    rollToRest(m, 'u1');
+    expect(pets(m.scene)).toHaveLength(1);
+    expect(at(m.scene).z).toBeCloseTo(RIM.cz, 6);
+  });
+
+  test('a pet whose routine ends after the tray slid away leaves too, rather than rest on the floor', () => {
+    const doc = trayDoc();
+    const m = make({ petStay: 60 }, { perch: () => RIM, doc });
+    const key = 'late';
+    m.layer.begin(key, bigInfo(spec('u1')));
+    m.layer.update(clockNow);
+    runTo(m, clockNow + 400);
+    m.layer.landed(key, [d20(5)]);
+    doc.slide(true); // the dice fade: the tray slides away before the pet is done
+    runTo(m, clockNow + 3000);
+    m.layer.leave(key, 0);
+    m.layer.end(key);
+    runTo(m, clockNow + 2000);
+    expect(pets(m.scene)).toHaveLength(0);
+  });
+
+  test('a slide-out with pets not on the rim (petTray in the tray) leaves them be', () => {
+    const doc = trayDoc();
+    const m = make({ petStay: 60, petTray: 'in' }, { doc });
+    rollToRest(m, 'u1');
+    doc.slide(true);
+    runTo(m, clockNow + 2000);
+    expect(pets(m.scene)).toHaveLength(1);
+  });
+
+  test('without a rim (no tray, or petTray not rim) wall hits do nothing and pets rest as before', () => {
+    const m = make({ petStay: 60 });
+    rollToRest(m, 'u1');
+    const p = { x: at(m.scene).x, z: at(m.scene).z };
+    m.layer.wall({ x: p.x, y: 0.5, z: p.z }, WALL_FLINCH_SPEED * 3);
+    expect(m.layer.update((clockNow += 16))).toBe('rest');
   });
 });
