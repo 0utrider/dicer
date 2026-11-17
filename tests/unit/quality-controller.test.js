@@ -259,7 +259,7 @@ test('a shader error before the probe resolves still ends at low', async () => {
   warn.mockRestore();
 });
 
-test('flags(): interiorSteps comes from the tier; interiors is the client setting (low keeps it on for the fake)', async () => {
+test('flags(): interiorSteps comes from the tier; interiors is the client setting', async () => {
   const { qc, values, renderer } = setup({ ms: 5 }); // high
   await qc.ready;
   expect(qc.flags()).toEqual({
@@ -292,7 +292,7 @@ test('flags(): interiorSteps comes from the tier; interiors is the client settin
   values.interiors = true;
   values.qualityCap = 'low';
   qc.refresh();
-  expect(qc.flags()).toMatchObject({ interiors: true, interiorSteps: 0 });
+  expect(qc.flags()).toMatchObject({ interiors: true, interiorSteps: 16 }); // low still marches the insides
   expect(renderer.applyTier).toHaveBeenLastCalledWith(TIERS.low);
 });
 
@@ -306,8 +306,9 @@ test('flags() equal flagsFor(tier, settings): the gallery and preview cannot dri
   }
 });
 
-test('production flags at low reach the interior fake: createDiceMaterial tints the resin body', async () => {
-  const { qc } = setup({ ms: 30 }); // low
+test('production flags at low march the inside; only a shader failure falls back to the body tint', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const { qc, renderer } = setup({ ms: 30 }); // low: a slow probe (it runs while the world loads)
   await qc.ready;
   expect(qc.tier).toBe('low');
   const atlas = {
@@ -316,10 +317,17 @@ test('production flags at low reach the interior fake: createDiceMaterial tints 
   };
   const shape = getShape('d20');
   const labels = shape.values.map((v) => labelFor('d20', v));
-  const m = createDiceMaterial(LOOKS.default.appearance, atlas, shape, labels, qc.flags());
-  expect(m.userData.uniforms.uResinTint.value.w).toBeGreaterThan(0);
-  expect(m.defines.DICER_INTERIOR).toBeUndefined(); // no march at low
-  expect(m.userData.programKey.split('|')[2]).toBe('none');
+  const make = () => createDiceMaterial(LOOKS.default.appearance, atlas, shape, labels, qc.flags());
+  const marched = make();
+  expect(marched.defines.DICER_INTERIOR).toBeDefined(); // the inside shows at low too
+  expect(marched.userData.programKey.split('|')[2]).not.toBe('none');
+  renderer.shaderError(); // an inside shader failed to compile: the fake, not a second try
+  await flushMicrotasks();
+  const faked = make();
+  expect(faked.userData.uniforms.uResinTint.value.w).toBeGreaterThan(0);
+  expect(faked.defines.DICER_INTERIOR).toBeUndefined();
+  expect(faked.userData.programKey.split('|')[2]).toBe('none');
+  warn.mockRestore();
 });
 
 describe('P2-R12: safe flags after a shader error at low or a second shader error', () => {
@@ -346,7 +354,7 @@ describe('P2-R12: safe flags after a shader error at low or a second shader erro
     warn.mockRestore();
   });
 
-  test('a shader error while already at low goes straight to safe', async () => {
+  test('a shader error at low drops the marched inside first (the tint); a second goes to safe', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { qc, renderer } = setup({ ms: 30 });
     await qc.ready;
@@ -354,9 +362,13 @@ describe('P2-R12: safe flags after a shader error at low or a second shader erro
     const cb = vi.fn();
     qc.onChange(cb);
     renderer.shaderError();
+    expect(qc.flags()).toMatchObject({ safe: false, interiorSteps: 0 });
+    await flushMicrotasks();
+    expect(cb).toHaveBeenCalledWith(expect.objectContaining({ reason: 'shader', safe: false }));
+    renderer.shaderError(); // the tint failed too
     expect(qc.flags().safe).toBe(true);
     await flushMicrotasks();
-    expect(cb).toHaveBeenCalledWith(expect.objectContaining({ reason: 'shader', safe: true }));
+    expect(cb).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'shader', safe: true }));
     warn.mockRestore();
   });
 
@@ -376,6 +388,8 @@ describe('P2-R12: safe flags after a shader error at low or a second shader erro
     const { qc, renderer, values } = setup({ ms: 30 });
     await qc.ready;
     renderer.shaderError();
+    await flushMicrotasks();
+    renderer.shaderError(); // a second incident: safe
     values.quality = 'ultra';
     qc.refresh('quality');
     expect(qc.tier).toBe('low');
@@ -388,6 +402,8 @@ describe('P2-R12: safe flags after a shader error at low or a second shader erro
     const { qc, renderer } = setup({ ms: 30 });
     await qc.ready;
     renderer.shaderError();
+    await flushMicrotasks();
+    renderer.shaderError(); // a second incident: safe
     const atlas = { ...parseAtlas(JSON.parse(readFileSync('assets/fonts/digits.json', 'utf8'))) };
     const shape = getShape('d20');
     const labels = shape.values.map((v) => labelFor('d20', v));

@@ -133,14 +133,15 @@ export function createQualityController({
     if (disposed || safe) return;
     if (shaderSwapPending) return; // same failing frame: the swap already queued covers it
     let changed;
-    if (shaderForcedLow || tier === 'low') {
-      // P2-R12: low itself failed (or a second incident): drop every Dicer shader feature
+    if (shaderForcedLow) {
+      // P2-R12: a second incident (low without its marched inside failed too): drop every Dicer
+      // shader feature
       safe = true;
       shaderForcedLow = true;
       if (!safeLogged) {
         safeLogged = true;
         console.warn(
-          'dicer: a dice shader failed to compile at the low tier; using plain dice materials for this session',
+          'dicer: dice shaders keep failing; plain dice for this session',
           info?.log,
         );
       }
@@ -150,12 +151,13 @@ export function createQualityController({
       if (!shaderLogged) {
         shaderLogged = true;
         console.warn(
-          'dicer: a dice shader failed to compile; falling back to the low tier',
+          'dicer: a dice shader failed to compile; low tier, no marched insides',
           info?.log,
         );
       }
       shaderForcedLow = true; // for the session, whatever the user picks
-      changed = apply();
+      apply();
+      changed = true; // the flags changed (no marched inside) even when the tier was low already
     }
     if (!changed) return;
     // The error fires inside renderer.render(): swap materials after this frame, before the next.
@@ -207,7 +209,8 @@ export function createQualityController({
         effects: getSetting('effects'),
         insideMotion: getSetting('insideMotion'),
       };
-      return flagsFor(TIERS[tier], settings, { safe });
+      // a shader failure: low without the marched inside (the body tint), before safe plain dice
+      return flagsFor(shaderForcedLow ? { ...TIERS[tier], interiorSteps: 0 } : TIERS[tier], settings, { safe });
     },
     onChange(cb) {
       listeners.add(cb);

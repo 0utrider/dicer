@@ -9,7 +9,9 @@ export const TIER_ORDER = Object.freeze(['low', 'medium', 'high', 'ultra']);
 export const TIERS = Object.freeze({
   low: Object.freeze({
     pixelRatio: 1,
-    interiorSteps: 0,
+    // insides still drawn (at the fewest steps they are built for): many looks are their inside,
+    // and a GPU the probe judged slow (it runs while the world loads, and is cached) lost them all
+    interiorSteps: 16,
     transmissionScale: 0.5,
     envResolution: 128,
     anisotropy: false,

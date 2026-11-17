@@ -7,10 +7,11 @@ import {
   flagsFor,
 } from '../../src/render/quality.js';
 
-test('tier table: exactly four tiers, interiorSteps 0 only at low', () => {
+test('tier table: exactly four tiers; every one marches the insides (low at the fewest steps, 16)', () => {
   expect(Object.keys(TIERS)).toEqual(['low', 'medium', 'high', 'ultra']);
   expect(TIER_ORDER).toEqual(['low', 'medium', 'high', 'ultra']);
-  for (const t of TIER_ORDER) expect(TIERS[t].interiorSteps === 0).toBe(t === 'low');
+  for (const t of TIER_ORDER) expect(TIERS[t].interiorSteps).toBeGreaterThanOrEqual(16);
+  expect(TIERS.low.interiorSteps).toBe(16);
   expect(TIERS.high).toEqual({
     pixelRatio: 1.5,
     interiorSteps: 32,
@@ -140,16 +141,17 @@ describe('AdaptiveQuality', () => {
 
 describe('flagsFor (one source for production, gallery and preview)', () => {
   const on = { interiors: true, engraving: true, glow: true };
-  test('low keeps interiors on (steps 0 selects the fake), other tiers march', () => {
+  test('low marches the insides too (16 steps); steps 0 (a shader failure) selects the fake', () => {
     expect(flagsFor(TIERS.low, on)).toEqual({
       interiors: true,
       engraving: true,
       glow: true,
       effects: true,
-      interiorSteps: 0,
+      interiorSteps: 16,
       safe: false,
       insideMotion: true,
     });
+    expect(flagsFor({ ...TIERS.low, interiorSteps: 0 }, on).interiorSteps).toBe(0);
     expect(flagsFor(TIERS.high, on)).toMatchObject({ interiors: true, interiorSteps: 32 });
   });
   test('client toggles pass through as booleans', () => {

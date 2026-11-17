@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: no insides at Low quality.** On **Low** quality, and on **Auto** when Dicer judged the computer slow at start-up (a judgment it keeps), thrown dice showed only a flat tint where their inside should be, while the theme browser's previews looked right. Low now draws insides too, at the fewest steps they are made for; it stays cheaper than the other tiers in every other way. Only if an inside shader fails to compile do dice fall back to the tint.
+
 ## 0.4.1
 
 - **Fixed: clear dice hid their insides when thrown.** Dice on the table are seen from straight above, so each top face mirrored the studio's overhead light, and that glare washed out what is inside a clear die (Eruption's lava barely showed, Nautilus's swirls were faint). The overhead light is dimmer now, so insides look as they do in the theme browser. Metal and solid dice look the same as before.
