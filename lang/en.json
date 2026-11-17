@@ -197,11 +197,12 @@
       },
       "handRolls": {
         "Name": "Roll by hand",
-        "Hint": "Grab, shake and throw your own dice: the face that lands up is the result. Ask lets you choose for each roll. To throw only some dice, set them to \"Dicer: roll by hand\" in Foundry's Dice settings (Core). Off removes only the dice Dicer set for you.",
+        "Hint": "Grab, shake and throw your own dice: the face that lands up is the result. Ask lets you choose for each roll. Physics decides throws every roll for you, and the faces the physics lands up are the result, the same throw for everyone at the table. To throw only some dice, set them to \"Dicer: roll by hand\" in Foundry's Dice settings (Core). Off removes only the dice Dicer set for you.",
         "Choices": {
           "off": "Off",
           "ask": "Ask each time",
-          "always": "Always"
+          "always": "Always",
+          "physics": "Physics decides (thrown for me)"
         }
       },
       "handRollTypes": {
@@ -1078,7 +1079,8 @@
       "Mark": "Rolled by hand",
       "MarkPartial": "Rolled by hand ({n} dice rolled automatically)",
       "MarkAuto": "Rolled automatically (no throw)",
-      "MarkFollow": "Thrown automatically after your hand throw"
+      "MarkFollow": "Thrown automatically after your hand throw",
+      "MarkPhysics": "The dice decided this roll: physics threw them and read the faces"
     },
     "Tray": {
       "Title": "Dice tray",

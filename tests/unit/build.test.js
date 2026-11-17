@@ -350,9 +350,13 @@ describe('build', () => {
     // chunks): owner approved +1,227 B (28,573 -> 29,800), 2026-11-17.
     // The GM's Dice So Nice migration report menu (its settings entry; the window and report data
     // are the lazy dsn-report chunk): owner approved +147 B (29,800 -> 29,947), 2026-11-17.
+    // A landing sound for every damage type (the 11 names in the damage table and the sound-only
+    // landing; the sounds are in the lazy synth chunk): owner approved +119 B (29,947 -> 30,066), 2026-11-17.
+    // "Physics decides" (the handRolls choice, the chat card's atom mark; the roll path is in the
+    // lazy hand chunk), with the v14 resolver getter fix: owner approved +139 B (30,066 -> 30,205), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(29_947);
+    expect(growth).toBeLessThanOrEqual(30_205);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

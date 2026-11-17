@@ -390,6 +390,108 @@ const RESULT = {
     yield* saturate(buf, 1.8);
     yield* reverb(buf, sr, { mix: 0.25, decay: 1.2 });
   },
+  // Damage landings (damage-themes.js): one per element, short so they sit under the dice.
+  *frost(sr, buf, rand) {
+    // Cold: ice cracking, glassy high pings over a cold breath of air.
+    yield* clicks(buf, sr, rand, { count: 26, from: 0, to: 0.35, gain: 1, fade: (t) => 1 - t / 0.4 });
+    for (let i = 0; i < 9; i++) {
+      const at = Math.pow(rand(), 1.6) * 0.45;
+      yield* voice(buf, sr, { freq: 2600 + rand() * 2800, start: at, dur: 0.4, gain: 0.25 + 0.4 * rand(), attack: 0.001, tau: 0.07 + rand() * 0.08, partials: BELL });
+    }
+    yield* noiseBand(buf, sr, rand, { dur: 0.85, fc: (t) => 7500 - 2500 * t, q: 1.2, amp: (t) => envAt(t, 0.03, 0.3, 0.85), gain: 0.14 });
+    yield* reverb(buf, sr, { mix: 0.28, decay: 0.8, damp: 0.2 });
+  },
+  *hiss(sr, buf, rand) {
+    // Acid: a corrosive sizzle that sputters, with small bubbles popping in it.
+    let gate = 1;
+    let next = 0;
+    const sputter = (t) => {
+      if (t >= next) {
+        gate = 0.45 + 0.55 * rand();
+        next = t + 0.012 + rand() * 0.03;
+      }
+      return gate * envAt(t, 0.02, 0.38, 0.9);
+    };
+    yield* noiseBand(buf, sr, rand, { dur: 0.9, fc: (t) => 6200 - 1800 * t, q: 0.9, amp: sputter, gain: 0.9 });
+    for (let i = 0; i < 7; i++) {
+      const at = 0.05 + rand() * 0.6;
+      const f = 380 + rand() * 420;
+      yield* voice(buf, sr, { freq: f, start: at, dur: 0.06, gain: 0.35, attack: 0.002, tau: 0.025, pitch: (t) => 1 + 1.4 * Math.min(1, t / 0.05) });
+    }
+    yield* reverb(buf, sr, { mix: 0.12, decay: 0.4 });
+  },
+  *ring(sr, buf, rand) {
+    // Sonic: a struck, ringing tone that beats and trembles, after a dull thump.
+    yield* noiseBand(buf, sr, rand, { dur: 0.08, fc: () => 220, q: 0.7, amp: (t) => Math.exp(-t / 0.02), gain: 0.8 });
+    yield* voice(buf, sr, { freq: 880, dur: 1.05, attack: 0.002, tau: 0.45, partials: [[1, 1, 1], [1.006, 0.85, 1], [2.76, 0.35, 0.5], [5.4, 0.16, 0.3]], vib: 0.004, vibRate: 13, vibDelay: 0.05 });
+    yield* reverb(buf, sr, { mix: 0.3, decay: 0.9 });
+  },
+  *hum(sr, buf, rand) {
+    // Force: a deep pulse of pressure, a "whomp" sweeping down over a low hum.
+    yield* voice(buf, sr, { freq: 72, dur: 0.85, attack: 0.012, tau: 0.32, partials: [[1, 1, 1], [2, 0.5, 0.7], [3, 0.18, 0.5]], vib: 0.03, vibRate: 7, vibDelay: 0 });
+    yield* noiseBand(buf, sr, rand, { dur: 0.5, fc: (t) => 1300 * Math.exp(-t / 0.12) + 160, q: 1.4, amp: (t) => envAt(t, 0.01, 0.16, 0.5), gain: 0.7 });
+    yield* saturate(buf, 1.7);
+    yield* reverb(buf, sr, { mix: 0.18, decay: 0.6 });
+  },
+  *shimmer(sr, buf, rand) {
+    // Vitality: a warm, rising major arpeggio of soft bells, lifted by a bright breath.
+    const soft3 = [[1, 1, 1], [2, 0.3, 0.6], [3, 0.08, 0.4]];
+    for (const [f, at] of [[1046.5, 0], [1318.5, 0.07], [1568, 0.14], [2093, 0.21]]) {
+      yield* voice(buf, sr, { freq: f, start: at, dur: 0.85 - at, gain: 0.55, attack: 0.012, tau: 0.35, partials: soft3, detune: [-4, 4] });
+    }
+    yield* noiseBand(buf, sr, rand, { dur: 0.9, fc: (t) => 5000 + 4000 * t, q: 1.1, amp: (t) => envAt(t, 0.12, 0.35, 0.9), gain: 0.06 });
+    yield* reverb(buf, sr, { mix: 0.38, decay: 1.0 });
+  },
+  *rift(sr, buf, rand) {
+    // Void: a reversed swoosh that swells and is swallowed, over a sinking sub-bass.
+    const d = 0.62;
+    const amp = (t) => (t < d ? Math.pow(t / d, 3) : Math.max(0, 1 - (t - d) / 0.03));
+    yield* noiseBand(buf, sr, rand, { dur: d + 0.03, fc: (t) => 3200 * Math.pow(250 / 3200, Math.min(1, t / d)), q: 1.6, amp, gain: 1 });
+    yield* voice(buf, sr, { freq: 110, dur: 0.95, attack: 0.25, tau: 0.6, partials: [[1, 1, 1], [1.5, 0.2, 0.6]], pitch: (t) => Math.pow(0.4, Math.min(1, t / 0.9)) });
+    yield* reverb(buf, sr, { mix: 0.3, decay: 1.1, damp: 0.6 });
+  },
+  *bubble(sr, buf, rand) {
+    // Poison: thick, queasy bubbling ("bloop") over a murky rumble.
+    for (let i = 0; i < 11; i++) {
+      const at = Math.pow(rand(), 0.9) * 0.7;
+      const f = 180 + rand() * 260;
+      yield* voice(buf, sr, { freq: f, start: at, dur: 0.09, gain: 0.45 + 0.4 * rand(), attack: 0.004, tau: 0.035, partials: [[1, 1, 1], [2, 0.15, 0.5]], pitch: (t) => 1 + 1.1 * Math.min(1, t / 0.07) });
+    }
+    yield* noiseBand(buf, sr, rand, { dur: 0.85, fc: () => 380, q: 0.9, amp: (t) => envAt(t, 0.05, 0.35, 0.85), gain: 0.18 });
+    yield* reverb(buf, sr, { mix: 0.12, decay: 0.45 });
+  },
+  *warble(sr, buf) {
+    // Mental: an eerie, wobbling tone bending out of tune, with a thin whine above it.
+    const wob = { attack: 0.06, tau: 0.55, partials: [[1, 1, 1], [2, 0.2, 0.6]], vib: 0.045, vibRate: 5.5, vibDelay: 0 };
+    yield* voice(buf, sr, { ...wob, freq: 520, dur: 0.95, detune: [-14, 12], pitch: (t) => 1 - 0.12 * Math.sin(Math.min(1, t / 0.9) * Math.PI) });
+    yield* voice(buf, sr, { freq: 2080, dur: 0.9, gain: 0.12, attack: 0.15, tau: 0.5, vib: 0.02, vibRate: 9, vibDelay: 0 });
+    yield* reverb(buf, sr, { mix: 0.35, decay: 0.9 });
+  },
+  *ethereal(sr, buf, rand) {
+    // Spirit: an airy, choir-like "aah" fading in and out, with breath in it.
+    const airy = { attack: 0.14, tau: 0.6, partials: [[1, 1, 1], [2, 0.25, 0.7], [3, 0.1, 0.5]], detune: [-6, 0, 7], vib: 0.01, vibRate: 4.5, vibDelay: 0.1 };
+    yield* voice(buf, sr, { ...airy, freq: 659.25, dur: 1.0, gain: 0.6 });
+    yield* voice(buf, sr, { ...airy, freq: 987.75, start: 0.06, dur: 0.94, gain: 0.4 });
+    yield* noiseBand(buf, sr, rand, { dur: 1.0, fc: () => 1300, q: 2.2, amp: (t) => envAt(t, 0.15, 0.55, 1.0), gain: 0.2 });
+    yield* reverb(buf, sr, { mix: 0.45, decay: 1.1 });
+  },
+  *squelch(sr, buf, rand) {
+    // Bleed: a wet hit, then a few drips.
+    yield* noiseBand(buf, sr, rand, { dur: 0.22, fc: (t) => 1600 * Math.exp(-t / 0.05) + 180, q: 1, amp: (t) => envAt(t, 0.004, 0.07, 0.22), gain: 0.9 });
+    yield* voice(buf, sr, { freq: 170, dur: 0.2, gain: 0.55, attack: 0.005, tau: 0.06, partials: [[1, 1, 1], [1.5, 0.3, 0.6]], pitch: (t) => Math.pow(0.45, Math.min(1, t / 0.16)) });
+    for (const at of [0.26, 0.41, 0.52]) {
+      yield* voice(buf, sr, { freq: 900 + rand() * 400, start: at, dur: 0.06, gain: 0.25, attack: 0.002, tau: 0.02, pitch: (t) => 1 + 0.8 * Math.min(1, t / 0.04) });
+    }
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.35 });
+  },
+  *knock(sr, buf, rand) {
+    // Physical: one solid, weighty knock.
+    yield* addModes(buf, sr, [[170, 0.06, 1], [410, 0.035, 0.5], [880, 0.016, 0.25]]);
+    yield* noiseBand(buf, sr, rand, { dur: 0.08, fc: () => 500, q: 0.8, amp: (t) => Math.exp(-t / 0.015), gain: 0.7 });
+    yield* voice(buf, sr, { freq: 95, dur: 0.3, gain: 0.6, attack: 0.002, tau: 0.08, pitch: (t) => Math.pow(0.7, Math.min(1, t / 0.15)) });
+    yield* saturate(buf, 1.5);
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.35 });
+  },
   // The dice pet's voice: small, soft-attacked and bright without being shrill.
   *petHappy(sr, buf) {
     // Three rising chirps, each with a little upward glide.
@@ -537,6 +639,17 @@ const RESULT_DUR = {
   crackle: 1.1,
   zap: 0.5,
   boom: 1.5,
+  frost: 0.95,
+  hiss: 0.95,
+  ring: 1.1,
+  hum: 0.9,
+  shimmer: 1.1,
+  rift: 1.05,
+  bubble: 0.9,
+  warble: 1.0,
+  ethereal: 1.1,
+  squelch: 0.65,
+  knock: 0.45,
   petHappy: 0.45,
   petSad: 0.6,
   petSplat: 0.35,
@@ -562,7 +675,18 @@ const RESULT_DUR = {
 
 /** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */
 const PET_PEAK = 0.55;
-const RESULT_PEAK = Object.fromEntries(RESULT_SOUNDS.filter((n) => n.startsWith('pet')).map((n) => [n, PET_PEAK]));
+const RESULT_PEAK = {
+  ...Object.fromEntries(RESULT_SOUNDS.filter((n) => n.startsWith('pet')).map((n) => [n, PET_PEAK])),
+  // the damage landings, levelled to about the zap's loudness (the dense ones peak lower)
+  rift: 0.4,
+  hum: 0.48,
+  warble: 0.52,
+  ethereal: 0.53,
+  bubble: 0.62,
+  knock: 0.7,
+  hiss: 0.72,
+  shimmer: 0.75,
+};
 
 function* resultGen(name, sampleRate) {
   const fn = RESULT[name];

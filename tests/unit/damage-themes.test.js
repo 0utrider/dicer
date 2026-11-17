@@ -37,13 +37,15 @@ describe('DAMAGE_THEMES', () => {
       expect(t.id).toBe(id);
       expect(t.appearance.body.type).toBeTruthy();
       expect(['plastic', 'metal', 'wood', 'glass', 'stone']).toContain(t.soundMaterial);
-      if (t.landing) {
-        expect(typeof t.landing.effect.id).toBe('string');
-        if (t.landing.sound) expect(RESULT_SOUNDS).toContain(t.landing.sound.builtin);
-      }
+      // every damage type lands with its own sound; most with an effect too
+      expect(RESULT_SOUNDS).toContain(t.landing.sound.builtin);
+      if (t.landing.effect) expect(typeof t.landing.effect.id).toBe('string');
     }
-    expect(DAMAGE_THEMES.bleed.landing).toBeNull();
-    expect(DAMAGE_THEMES.physical.landing).toBeNull();
+    const sounds = IDS.map((id) => DAMAGE_THEMES[id].landing.sound.builtin);
+    expect(new Set(sounds).size).toBe(IDS.length); // none shared
+    expect(DAMAGE_THEMES.bleed.landing).toEqual({ effect: null, sound: { builtin: 'squelch' } });
+    expect(DAMAGE_THEMES.physical.landing).toEqual({ effect: null, sound: { builtin: 'knock' } });
+    expect(DAMAGE_THEMES.cold.landing.sound.builtin).toBe('frost');
     expect(DAMAGE_THEMES.fire.landing).toMatchObject({
       effect: { id: 'embers' },
       sound: { builtin: 'crackle' },

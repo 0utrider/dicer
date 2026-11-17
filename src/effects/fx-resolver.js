@@ -252,7 +252,7 @@ export function createFxResolver({
         if (landing || custom) {
           fx.push({
             ruleId: `damage:${theme.id ?? damageType}`,
-            effect: landing ? { ...landing.effect } : null,
+            effect: landing?.effect ? { ...landing.effect } : null, // bleed and physical land with a sound only
             sound: custom ?? (landing?.sound ? { ...landing.sound } : null),
             macro: null,
             slowMotion: false,

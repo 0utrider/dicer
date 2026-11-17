@@ -33,13 +33,13 @@ export const markFor = (roll) => {
   const n = Math.trunc(h?.partial) || 0;
   return h
     ? {
-        icon: 'fa-hand',
+        icon: h.physics === true && !h.fallback ? 'fa-atom' : 'fa-hand',
         tip:
           h.fallback || !h.n
             ? i.localize('DICER.Hand.MarkAuto')
             : n
               ? i.format('DICER.Hand.MarkPartial', { n })
-              : i.localize(h.follow === true ? 'DICER.Hand.MarkFollow' : 'DICER.Hand.Mark'),
+              : i.localize(h.physics === true ? 'DICER.Hand.MarkPhysics' : h.follow === true ? 'DICER.Hand.MarkFollow' : 'DICER.Hand.Mark'),
       }
     : null;
 };
@@ -69,7 +69,8 @@ export function markCard(message, html) {
   try {
     const at = html.querySelector('.message-metadata');
     const tips = message.rolls.map(markFor).filter(Boolean);
-    addMark(at, 'hand', 'fa-hand', [...new Set(tips.map((m) => m.tip))].join('; '));
+    // the atom when every roll in the message was decided by physics, else the hand
+    addMark(at, 'hand', tips.length && tips.every((m) => m.icon === 'fa-atom') ? 'fa-atom' : 'fa-hand', [...new Set(tips.map((m) => m.tip))].join('; '));
     const names = [...new Set(message.rolls.flatMap(physicalOf))];
     if (!names.length || game.settings.get('dicer', 'physicalDice') === 'animate') return;
     const i = game.i18n;

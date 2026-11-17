@@ -1078,6 +1078,33 @@ describe('follow-up rolls', () => {
     expect(handThrows.get(h.id).recording).toEqual({ rec: 1 });
   });
 
+  test('physics decides: every roll is thrown for the roller, no screen, no prompt, the read faces are its result', async () => {
+    settings.handRolls = 'physics';
+    boxValues = [17];
+    const a = await rollD20();
+    await vi.advanceTimersByTimeAsync(10000); // long after: still thrown for the roller
+    boxValues = [4];
+    const b = await rollD20();
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(deps.ask).not.toHaveBeenCalled();
+    expect(deps.diceBox.roll.mock.calls.at(-1)[1]).toMatchObject({ free: true, area: RECT });
+    expect(a.terms[0].results).toEqual([{ result: 17, active: true }]);
+    expect(b.terms[0].results).toEqual([{ result: 4, active: true }]);
+    const h = b.options.dicerHand;
+    expect(h).toMatchObject({ physics: true, n: 1 });
+    expect(h.follow).toBeUndefined();
+    expect(handThrows.get(h.id).recording).toEqual({ rec: 1 }); // replayed for the others
+  });
+
+  test('physics decides, but hand rolls required: the throw screen still opens', async () => {
+    settings.handRolls = 'physics';
+    settings.handRollsRequired = true;
+    overlay.values = [9];
+    const r = await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(r.options.dicerHand.physics).toBeUndefined();
+  });
+
   test('a roll 3.5 s after the landing opens the throw screen', async () => {
     overlay.values = [12];
     await rollD20();

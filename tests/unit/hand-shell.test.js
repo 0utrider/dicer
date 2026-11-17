@@ -457,4 +457,26 @@ describe('patchResolverChoice: Dicer next to Pixels keeps its own resolver', () 
     core = { d6: 'dicer' };
     expect(Roll.resolverImplementation({})).toBe(Dicer);
   });
+
+  test("Foundry v14's static getter is wrapped, never assigned (assigning it threw and stopped the dice configuration sync)", () => {
+    class Roll {
+      static DICE_CONFIGURATION_SETTING = 'diceConfiguration';
+      static get resolverImplementation() {
+        const m = globalThis.CONFIG.Dice.fulfillment.methods;
+        const used = new Set(Object.values(core).filter((x) => x && x !== 'manual' && m[x]?.interactive));
+        return used.size === 1 ? (m[[...used][0]].resolver ?? Roll.generic) : Roll.generic;
+      }
+    }
+    Roll.generic = class Generic {};
+    class DamageRoll extends Roll {} // a system's subclass reads it through the class chain
+    expect(() => patchResolverChoice(Roll)).not.toThrow();
+    expect(() => patchResolverChoice(Roll)).not.toThrow(); // twice: wraps once
+    core = { d20: 'pixels', d6: 'dicer' };
+    expect(Roll.resolverImplementation).toBe(Dicer);
+    expect(DamageRoll.resolverImplementation).toBe(Dicer);
+    core = { d20: 'own', d6: 'dicer' };
+    expect(Roll.resolverImplementation).toBe(Roll.generic);
+    core = { d6: 'dicer' };
+    expect(Roll.resolverImplementation).toBe(Dicer);
+  });
 });

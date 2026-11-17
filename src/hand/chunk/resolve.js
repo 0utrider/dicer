@@ -457,14 +457,18 @@ async function throwByHand(resolver, terms) {
   // Live hand throws: the roll resolves when physics reads the values, seconds before this
   // screen's dice land, so its message (and the trajectory for the others) goes out at once.
   const early = d.getSetting('handLiveShare') !== false;
+  // "Physics decides": every roll is thrown for the roller, and the faces physics lands up are its
+  // result (a required hand throw is still a real one).
+  const physics = d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'physics';
   return queued(ms, async (hold) => {
     if (resolver._closed) return fallback('cancel');
-    if (isFollowUp(d.getSetting, startedAt)) {
+    if (physics || isFollowUp(d.getSetting, startedAt)) {
       // Bounded: dice that never settle must not hold the queue.
       const entry = await within(castFree(resolver, specs, true, early), HAND_GRACE_MS);
       if (entry?.landed) hold(entry.landed);
       if (!entry?.values || resolver._closed) return fallback(entry ? 'cancel' : 'timeout');
-      hand.follow = true;
+      if (physics) hand.physics = true;
+      else hand.follow = true;
       const n = push(specs, owners, entry.values);
       storeThrow(hand.id, { recording: entry.recording, handle: entry.handle, specs, extras: [], landed: entry.landed });
       return notePartial(resolver, dropped + owners.filter(Boolean).length - n);

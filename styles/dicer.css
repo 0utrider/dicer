@@ -2520,11 +2520,11 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
      rim texture, rim colour (under the rim). Textures are grey noise (assets/trays/tex) laid over
      the colour with overlay, so they take any colour. */
   /* each of these is one layer: a comma inside would shift the blend modes */
-  --tt-floor-light: radial-gradient(ellipse 85% 80% at 50% 40%, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.36));
+  --tt-floor-light: radial-gradient(ellipse 80% 75% at 50% 42%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 48%, rgba(0, 0, 0, 0.42));
   --tt-floor-tex: none;
   --tt-floor-size: auto;
   --tt-floor-blend: overlay;
-  --tt-rim-light: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.3));
+  --tt-rim-light: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.03) 38%, rgba(0, 0, 0, 0.38));
   --tt-rim-deco: none;
   --tt-rim-step: max(var(--dicer-tt-rim-width), 12px);
   --tt-rim-tex: none;
@@ -2544,8 +2544,14 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
     var(--tt-rim-tex) border-box,
     linear-gradient(var(--dicer-tt-rim), var(--dicer-tt-rim)) border-box;
   background-blend-mode: normal, var(--tt-floor-blend), normal, normal, normal, normal, overlay, normal;
-  /* outside: the tray's shadow on the table; inside: the wall's shadow on the floor */
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 10px 22px rgba(0, 0, 0, 0.55), inset 0 -2px 8px rgba(0, 0, 0, 0.3);
+  /* outside: a hairline, the contact shadow and a soft one on the table (lit from above, as the
+     dice). Inside: the floor sits below the walls: the top wall's deep shadow, the side walls'
+     softer ones, darker corners, and the bottom wall catching a little light. */
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6), 0 2px 2px rgba(0, 0, 0, 0.65), 0 10px 16px rgba(0, 0, 0, 0.55), 0 26px 50px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.75), inset 0 4px 4px rgba(0, 0, 0, 0.6), inset 0 30px 38px -8px rgba(0, 0, 0, 0.8),
+    inset 20px 0 26px -14px rgba(0, 0, 0, 0.6), inset -20px 0 26px -14px rgba(0, 0, 0, 0.6),
+    inset 0 0 110px rgba(0, 0, 0, 0.5), inset 0 -14px 16px -12px rgba(255, 255, 255, 0.1);
   transition: opacity 0.4s ease, transform 0.4s ease; /* the dice fade (DiceBox FADE_MS) */
 }
 /* the rim's bevel: a lit outer edge and a dark inner lip where it drops to the floor */
@@ -2555,7 +2561,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   inset: calc(-1 * var(--dicer-tt-rim-width));
   pointer-events: none;
   border-radius: var(--dicer-tt-radius);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.3), inset 1px 0 0 rgba(255, 255, 255, 0.1), inset -1px 0 0 rgba(0, 0, 0, 0.35), inset 0 -2px 0 rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 .dicer-tt.dicer-above {
   z-index: 8999;
@@ -2641,7 +2647,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   background: none;
   box-shadow: none;
   outline: none;
-  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.55)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+  filter: drop-shadow(0 22px 26px rgba(0, 0, 0, 0.55)) drop-shadow(0 3px 3px rgba(0, 0, 0, 0.65));
 }
 .dicer-tt[data-shape='octagon'] {
   --tt-poly: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
@@ -2674,11 +2680,15 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   content: '';
   z-index: 1;
   inset: var(--dicer-tt-rim-width);
+  /* the depth the rectangle gets from inset shadows, as gradients (they follow any outline): the
+     top wall's shadow, the bottom wall's light, darker edges */
   background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.25) 9%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 86%, rgba(255, 255, 255, 0.08)),
+    radial-gradient(closest-side, rgba(0, 0, 0, 0) 62%, rgba(0, 0, 0, 0.5)),
     var(--tt-floor-light),
     var(--tt-floor-tex) center / var(--tt-floor-size),
     linear-gradient(var(--dicer-tt-color), var(--dicer-tt-color));
-  background-blend-mode: normal, var(--tt-floor-blend), normal;
+  background-blend-mode: normal, normal, normal, var(--tt-floor-blend), normal;
 }
 /* the lip: a dark edge where the rim drops to the floor */
 .dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin::after {

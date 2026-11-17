@@ -1,5 +1,7 @@
 /** Built-in result sound names. Tiny and dependency-free: the editor lists them without pulling the synth chunk. */
-export const USER_SOUNDS = ['chime', 'fanfare', 'sparkle', 'fizzle', 'thud', 'whoosh', 'crackle', 'zap', 'boom'];
+export const USER_SOUNDS = ['chime', 'fanfare', 'sparkle', 'fizzle', 'thud', 'whoosh', 'crackle', 'zap', 'boom',
+  // the damage landings (damage-themes.js), one per element; anyone may pick them for a rule too
+  'frost', 'hiss', 'ring', 'hum', 'shimmer', 'rift', 'bubble', 'warble', 'ethereal', 'squelch', 'knock'];
 /** The dice pet's voice (synth.js): its crit chirp and fumble whimper, a splat, petting's purr, a huff, and its reactions. */
 export const PET_SOUNDS = [
   'petHappy',

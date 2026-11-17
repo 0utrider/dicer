@@ -23,47 +23,47 @@ const rows = [
   ['cold', { type: 'resin', color: '#cfeaf7', color2: '#8cc7e6', roughness: 0.02 },
     { type: 'glitter', colors: ['#ffffff', '#bfe6ff'], density: 0.5 },
     { fill: 'silver', color: '#17405c', depth: 0.5 }, null,
-    'glass', { id: 'frost' }],
+    'glass', { id: 'frost' }, 'frost'],
   ['acid', { type: 'resin', color: '#0f3d12', color2: '#04180a', roughness: 0.04 },
     { type: 'liquid', colors: ['#7dff2a', '#2fbf1e'], density: 0.7 },
     { fill: 'paint', color: '#eaffd0', depth: 0.5 }, null,
-    'glass', { id: 'smoke', color: '#7dff2a' }],
+    'glass', { id: 'smoke', color: '#7dff2a' }, 'hiss'],
   ['electricity', { type: 'resin', color: '#14125a', color2: '#05052a', roughness: 0.04 },
     { type: 'nebula', colors: ['#4d6bff', '#b066ff'], density: 0.7 },
     { fill: 'silver', color: '#e8ecff', depth: 0.5 }, { color: '#7aa2ff', intensity: 0.9 },
     'glass', { id: 'lightning' }, 'zap'],
   ['sonic', { type: 'pearl', color: '#f3e6b8', color2: '#d9c27a', roughness: 0.25 },
     null, { fill: 'enamel', color: '#3a2d0a', depth: 0.5 }, null,
-    'plastic', { id: 'shockwave' }],
+    'plastic', { id: 'shockwave' }, 'ring'],
   ['poison', { type: 'opaque', color: '#1b4d22', color2: '#0a2410', roughness: 0.3 },
     null, { fill: 'silver', color: '#d8e4ee', depth: 0.5 }, null,
-    'plastic', { id: 'smoke', color: '#6b8f1f' }],
+    'plastic', { id: 'smoke', color: '#6b8f1f' }, 'bubble'],
   ['force', { type: 'resin', color: '#2a0f5e', color2: '#0d0524', roughness: 0.04 },
     { type: 'swirl', colors: ['#b07aff', '#6a3df0'], density: 0.7 },
     { fill: 'silver', color: '#efe6ff', depth: 0.5 }, null,
-    'glass', { id: 'glow-pulse' }],
+    'glass', { id: 'glow-pulse' }, 'hum'],
   ['vitality', { type: 'pearl', color: '#fffaf0', color2: '#f3e3b0', roughness: 0.25 },
     null, { fill: 'gold', color: '#d9a93a', depth: 0.5 }, { color: '#ffd76a', intensity: 0.5 },
-    'plastic', { id: 'light-burst', color: '#ffe27a' }],
+    'plastic', { id: 'light-burst', color: '#ffe27a' }, 'shimmer'],
   ['void', { type: 'opaque', color: '#08040f', color2: '#000000', roughness: 0.35 },
     null, { fill: 'silver', color: '#c9a0ff', depth: 0.5 }, { color: '#8a3dff', intensity: 0.8 },
-    'stone', { id: 'smoke', color: '#15151c' }],
+    'stone', { id: 'smoke', color: '#15151c' }, 'rift'],
   ['mental', { type: 'resin', color: '#4a0f3e', color2: '#1d0518', roughness: 0.04 },
     { type: 'nebula', colors: ['#ff7ac8', '#b04dff'], density: 0.7 },
     { fill: 'silver', color: '#ffe6f4', depth: 0.5 }, null,
-    'glass', { id: 'glow-pulse', color: '#ff7ac8' }],
+    'glass', { id: 'glow-pulse', color: '#ff7ac8' }, 'warble'],
   ['bleed', { type: 'resin', color: '#3a0408', color2: '#140103', roughness: 0.04 },
     { type: 'liquid', colors: ['#b3121e', '#6b0710'], density: 0.75 },
-    { fill: 'silver', color: '#f0d8da', depth: 0.5 }, null, 'glass', null],
+    { fill: 'silver', color: '#f0d8da', depth: 0.5 }, null, 'glass', null, 'squelch'],
   ['spirit', { type: 'resin', color: '#0c3a4a', color2: '#04141c', roughness: 0.04 },
     { type: 'swirl', colors: ['#8ff0ff', '#4ec6e0'], density: 0.65 },
     { fill: 'silver', color: '#e6fbff', depth: 0.5 }, null,
-    'glass', { id: 'glow-pulse', color: '#8ff0ff' }],
+    'glass', { id: 'glow-pulse', color: '#8ff0ff' }, 'ethereal'],
   ['physical', { type: 'metal', color: '#9aa3ad', color2: '#4a5057', finish: 'antique', roughness: 0.4 },
-    null, { fill: 'enamel', color: '#101215', depth: 0.6 }, null, 'metal', null],
+    null, { fill: 'enamel', color: '#101215', depth: 0.6 }, null, 'metal', null, 'knock'],
 ];
 
-/** @type {Readonly<Record<string, {id: string, appearance: object, soundMaterial: string, landing: {effect: object, sound: object|null}|null}>>} */
+/** @type {Readonly<Record<string, {id: string, appearance: object, soundMaterial: string, landing: {effect: object|null, sound: object|null}|null}>>} */
 export const DAMAGE_THEMES = Object.freeze(
   Object.fromEntries(
     rows.map(([id, body, interior, numbers, glow, soundMaterial, effect, sound]) => [
@@ -72,9 +72,11 @@ export const DAMAGE_THEMES = Object.freeze(
         id,
         appearance: normalizeAppearance({ body, interior: interior ?? { type: 'none' }, numbers, glow: glow ?? undefined }),
         soundMaterial,
-        landing: effect
-          ? Object.freeze({ effect: Object.freeze(effect), sound: sound ? Object.freeze({ builtin: sound }) : null })
-          : null,
+        // a landing has an effect, a sound or both (bleed and physical only sound)
+        landing:
+          effect || sound
+            ? Object.freeze({ effect: effect ? Object.freeze(effect) : null, sound: sound ? Object.freeze({ builtin: sound }) : null })
+            : null,
       }),
     ]),
   ),

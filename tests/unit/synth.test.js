@@ -149,6 +149,18 @@ describe('renderSurface / renderResult', () => {
     }
   });
 
+  it('the damage landings are short, offered as choices, and levelled near the zap (within 4 dB)', () => {
+    const rms = (a) => 20 * Math.log10(Math.sqrt(a.reduce((s, v) => s + v * v, 0) / a.length));
+    const zap = rms(renderResult('zap', SR));
+    for (const n of ['frost', 'hiss', 'ring', 'hum', 'shimmer', 'rift', 'bubble', 'warble', 'ethereal', 'squelch', 'knock']) {
+      const a = renderResult(n, SR);
+      expect(USER_SOUNDS).toContain(n);
+      expect(a.length).toBeLessThanOrEqual(1.1 * SR);
+      // the squelch is a short hit: quieter on average, by design
+      if (n !== 'squelch') expect(Math.abs(rms(a) - zap)).toBeLessThan(4);
+    }
+  });
+
   it('pet sounds are never offered as user sound choices', () => {
     expect(RESULT_SOUNDS).toContain('petHappy');
     expect(USER_SOUNDS).not.toContain('petHappy');

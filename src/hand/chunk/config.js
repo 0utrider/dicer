@@ -19,18 +19,34 @@ let warnedOther = false;
  * matters.
  */
 export function patchResolverChoice(Roll = globalThis.foundry?.dice?.Roll) {
-  const base = Roll?.resolverImplementation;
-  if (typeof base !== 'function' || base.dicer) return;
-  const patched = function (roll) {
+  if (!Roll || Roll.dicerResolverChoice) return;
+  /** Dicer's resolver when `dicer` sits only beside methods with no resolver of their own, else null. */
+  const dicerOne = () => {
     const methods = CONFIG.Dice.fulfillment.methods;
     const config = game.settings.get('core', Roll.DICE_CONFIGURATION_SETTING) ?? {};
     const used = new Set(Object.values(config).filter((m) => m && m !== 'manual' && methods[m]?.interactive));
-    if (used.size > 1 && used.has('dicer') && [...used].every((m) => m === 'dicer' || !methods[m].resolver))
-      return methods.dicer.resolver;
-    return base.call(this, roll);
+    return used.size > 1 && used.has('dicer') && [...used].every((m) => m === 'dicer' || !methods[m].resolver)
+      ? methods.dicer.resolver
+      : null;
   };
-  patched.dicer = true;
-  Roll.resolverImplementation = patched;
+  // Foundry v14: a static getter (Roll#evaluate reads `this.constructor.resolverImplementation`);
+  // assigning it throws, which once aborted the whole dice configuration sync. Older: a method.
+  const own = Object.getOwnPropertyDescriptor(Roll, 'resolverImplementation');
+  if (own?.get) {
+    Object.defineProperty(Roll, 'resolverImplementation', {
+      configurable: true,
+      get() {
+        return dicerOne() ?? own.get.call(this);
+      },
+    });
+  } else {
+    const base = Roll.resolverImplementation;
+    if (typeof base !== 'function') return;
+    Roll.resolverImplementation = function (roll) {
+      return dicerOne() ?? base.call(this, roll);
+    };
+  }
+  Roll.dicerResolverChoice = true;
 }
 
 /**

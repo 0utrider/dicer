@@ -689,7 +689,7 @@ export function registerSettings({
   // core dice configuration re-sync it on change (handRollsAllowed and -Required fire on every client).
   const choices = (key, keys) => Object.fromEntries(keys.map((k) => [k, t(`${key}.Choices.${k}`)]));
   const hand = [
-    ['handRolls', 'client', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always']) }],
+    ['handRolls', 'client', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always', 'physics']) }],
     ['handRollTypes', 'client', Array, [], { config: false }], // Foundry denominations; empty: all
     ['handRollsAllowed', 'world', String, 'all', { choices: choices('handRollsAllowed', ['all', 'trusted', 'gm', 'none']) }],
     ['handRollsRequired', 'world', Boolean, false],
