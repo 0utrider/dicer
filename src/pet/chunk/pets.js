@@ -1288,7 +1288,8 @@ export function createPetLayer(deps) {
     try {
       if (!die || die.ghost || !(resting(pet) || watching(pet)) || disposed || !shown() || getSetting('petElemental') === false)
         return null;
-      const element = elementOf(die.appearance, die.damageType) ?? null;
+      // the damage type alone: a die that only looks fiery (a lava or fire inside) is no fire
+      const element = elementOf(null, die.damageType) ?? null;
       return PHYSICAL.includes(element) ? null : element;
     } catch {
       return null;

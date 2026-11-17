@@ -33,7 +33,8 @@ export function elementReactions(dice, pets, { dieWidth = 1 } = {}) {
   const hot = [];
   for (const d of dice || []) {
     if (!d || d.ghost || !Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
-    const element = elementOf(d.appearance, d.damageType);
+    // the damage type alone: a die that only looks fiery (a lava or fire inside) is no fire
+    const element = elementOf(null, d.damageType);
     if (element) hot.push({ d, element });
   }
   if (!hot.length) return out;

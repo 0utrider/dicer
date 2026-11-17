@@ -18,8 +18,6 @@ import {
 export const TRAY_ID = 'dicer-table-tray';
 export const TRAY_EVENT = 'dicertray';
 
-/** Dice keep this far inside the rim (px), so they never sit on it. */
-const INSET = 6;
 /** How often a tray that shows only during rolls checks that the dice have started fading. */
 const HIDE_POLL_MS = 100;
 
@@ -167,10 +165,13 @@ export function createTray({
       setHidden(showMode() === 'rolls' && !previewing && !(activeRolls() > 0));
       place();
     },
-    /** The px rect dice land in (inside the rim), or null with no tray: the roll area decides. */
+    /**
+     * The px rect dice land in, or null with no tray (the roll area decides): the floor, its edges
+     * at the rim's inner edge, so the dice's walls are the tray's own sides (no gap before them).
+     */
     area() {
       if (!el || !look || !px) return null;
-      return { ...trayArea(px, look, INSET), strict: true }; // strict: never grown past the tray
+      return { ...trayArea(px, look), strict: true }; // strict: never grown past the tray
     },
     /** Dice are coming: a tray that shows only during rolls slides in, and out once they clear. */
     rolling() {

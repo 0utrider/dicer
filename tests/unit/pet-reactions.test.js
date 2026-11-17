@@ -15,7 +15,8 @@ import { HUFF_HITS } from '../../src/pet/chunk/petting.js';
 import { buildScene } from '../../src/render/scene.js';
 import { createMoods } from '../../src/pet/chunk/moods.js';
 
-const FIRE = { appearance: { interior: { type: 'fire' } } };
+// a fire die is one with fire damage: pets react to the damage type alone, never to the look
+const FIRE = { damageType: 'fire' };
 
 // ---- reactions.js on its own ----
 describe('elementReactions', () => {
@@ -27,6 +28,17 @@ describe('elementReactions', () => {
     const r = elementReactions([{ x: W, z: 0, ...FIRE }], [pet], { dieWidth: W });
     expect(r).toEqual([{ pet, element: 'fire', from: { x: W, z: 0 } }]);
     expect(reactionOf(r[0].element)).toBe('scorch');
+  });
+
+  test("a die that only looks elemental (a lava or fire inside, Eruption's) sets no pet off", () => {
+    const pet = resting();
+    for (const type of ['lava', 'fire', 'frost', 'storm'])
+      expect(elementReactions([{ x: 0.5, z: 0, appearance: { interior: { type } } }], [pet], { dieWidth: 1 })).toEqual([]);
+    // its damage type still counts, whatever it looks like
+    expect(
+      elementReactions([{ x: 0.5, z: 0, appearance: { interior: { type: 'lava' } }, damageType: 'cold' }], [pet], { dieWidth: 1 })[0]
+        .element,
+    ).toBe('frost');
   });
 
   test('three die widths off: nothing (the reach is 2 die widths, scaled by dieWidth)', () => {
@@ -230,7 +242,7 @@ describe('an elemental die hitting a resting pet', () => {
     hitBy(m, { damageType: 'fire' });
     expect(phase(m)).toBe('scorch');
     expect(m.deps.playSound).not.toHaveBeenCalledWith({ builtin: 'petSplat' });
-    hitBy(m, { appearance: { interior: { type: 'frost' } } });
+    hitBy(m, { damageType: 'cold' });
     expect(phase(m)).toBe('shiver');
   });
 

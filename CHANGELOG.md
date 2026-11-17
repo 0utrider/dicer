@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: dice bounced off empty space before the tray's sides.** The dice's walls stood 6 px inside the rim, so dice turned back just short of it. They now hit the rim itself.
+- **Fixed: pets reacted to how dice look.** A pet now reacts only to a roll's damage type (fire damage, cold damage and so on). Dice that merely look elemental, like **Eruption**'s lava or a fire, frost or storm inside, no longer make it scorch or shiver. Dice trails and bursts still follow the look.
+
 ## 0.4.2
 
 - **Fixed: no insides at Low quality.** On **Low** quality, and on **Auto** when Dicer judged the computer slow at start-up (a judgment it keeps), thrown dice showed only a flat tint where their inside should be, while the theme browser's previews looked right. Low now draws insides too, at the fewest steps they are made for; it stays cheaper than the other tiers in every other way. Only if an inside shader fails to compile do dice fall back to the tint.

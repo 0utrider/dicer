@@ -176,8 +176,9 @@ describe('the tray on screen', () => {
     expect(document.getElementById('board').nextElementSibling).toBe(el);
     expect(el.dataset.surface).toBe('wood');
     expect(el.style.left).toBe('100px');
-    // rim 10 + 6 inset; strict: a big roll piles up in the tray, never spills past it
-    expect(t.area()).toEqual({ left: 116, top: 96, width: 468, height: 368, strict: true });
+    // the floor inside the 10 px rim, no gap: the dice hit the tray's sides; strict: a big roll
+    // piles up in the tray, never spills past it
+    expect(t.area()).toEqual({ left: 110, top: 90, width: 480, height: 380, strict: true });
     expect(t.sound()).toBe('wood');
     settings.trayMode = 'none';
     t.refresh();
