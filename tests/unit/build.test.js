@@ -107,6 +107,14 @@ describe('build', () => {
     expect(installedDice).toHaveLength(2);
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-installed-dice');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-edge');
+    // roll stats: the window, the pet moods it shares with the pet chunk, the recorder (first roll)
+    const rollStats = lazy.find((p) => /^dist\/roll-stats-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    const moods = lazy.find((p) => /^dist\/moods-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    const recorder = lazy.find((p) => /^dist\/recorder-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(rollStats && moods && recorder).toBeTruthy();
+    expect(readFileSync(rollStats, 'utf8')).toContain('dicer-roll-stats');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-roll-stats');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('cannot save roll stats');
     // lazy for real too: no world-start file names it
     for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
       expect(readFileSync(f, 'utf8')).not.toContain(elementOf.slice('dist/'.length));
@@ -201,6 +209,9 @@ describe('build', () => {
         jb2a,
         chatTray,
         trayDice,
+        rollStats,
+        moods,
+        recorder,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),
@@ -329,9 +340,12 @@ describe('build', () => {
     // into the lazy loader): owner approved +310 B (28,143 -> 28,453), 2026-11-17.
     // Readable numbers on the built-in themes (contrast.js counts resin darker and sparse insides
     // less; five themes' number colours): owner approved +120 B (28,453 -> 28,573), 2026-11-17.
+    // Roll stats (the rollStats, statsTool, rollStatsSession and rollStatsHidden settings, the menu,
+    // the token tool and main's loader for the lazy recorder; the window and recorder are lazy
+    // chunks): owner approved +1,227 B (28,573 -> 29,800), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(28_573);
+    expect(growth).toBeLessThanOrEqual(29_800);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

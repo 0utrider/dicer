@@ -418,6 +418,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       importModule: ThemeBrowser.#onImportModule,
       openPet: ThemeBrowser.#onOpenPet,
       openTray: ThemeBrowser.#onOpenTray,
+      openStats: ThemeBrowser.#onOpenStats,
       openInstalledDice: ThemeBrowser.#onOpenInstalledDice,
       openSettings: ThemeBrowser.#onOpenSettings,
     },
@@ -820,6 +821,12 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #onOpenPet() {
     const m = await import('./pet-window.js');
     return m.openPetWindow();
+  }
+
+  /** The Roll stats window (its own lazy chunk). */
+  static async #onOpenStats() {
+    const m = await import('./roll-stats.js');
+    return m.openRollStats();
   }
 
   /** The Dice tray window (its own lazy chunk). */

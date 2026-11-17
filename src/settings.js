@@ -599,6 +599,15 @@ export function registerSettings({
   registerEditorMenu(t, 'petWindow', 'fa-solid fa-dragon', () =>
     import('./ui/pet-window.js').then((m) => () => m.openPetWindow()),
   );
+  // Roll stats (stats/): each player's d20s in their user flag (dicer.stats), written by their own
+  // client; the GM's client keeps blind and private rolls in rollStatsHidden, never shared.
+  register('rollStats', { name: t('rollStats.Name'), hint: t('rollStats.Hint'), scope: 'world', config: true, type: Boolean, default: true });
+  register('statsTool', { name: t('statsTool.Name'), hint: t('statsTool.Hint'), scope: 'client', config: true, type: Boolean, default: true, onChange: resetControls });
+  register('rollStatsSession', { scope: 'world', config: false, type: Number, default: 0 });
+  register('rollStatsHidden', { scope: 'client', config: false, type: Object, default: {} });
+  registerEditorMenu(t, 'rollStatsWindow', 'fa-solid fa-chart-column', () =>
+    import('./ui/roll-stats.js').then((m) => () => m.openRollStats()),
+  );
   // Dice of installed modules that are not active (compat/installed-dice.js): the GM's picks, each
   // {id, title, scripts}, made in the theme browser; every client loads new picks as they are made.
   register('installedDice', { scope: 'world', config: false, type: Array, default: [], onChange: () => onInstalledDiceChange?.() });

@@ -2910,3 +2910,222 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-tt-editor-app .dicer-tt-swatch.dicer-tt::after {
   display: none;
 }
+/* The Roll stats window (ui/roll-stats.js). */
+.dicer-roll-stats-app {
+  max-height: calc(100vh - 24px);
+}
+.dicer-roll-stats-app .window-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+.dicer-roll-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px;
+}
+.dicer-stats-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.dicer-stats-bar-row > button {
+  flex: none;
+  width: auto;
+}
+.dicer-stats-spacer {
+  flex: 1;
+}
+.dicer-stats-scopes {
+  display: inline-flex;
+}
+.dicer-stats-scopes button {
+  width: auto;
+  border-radius: 0;
+}
+.dicer-stats-scopes button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.dicer-stats-scopes button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.dicer-stats-scopes button.active {
+  border-color: var(--color-warm-2, #ff6400);
+  color: var(--color-warm-1, #ff9d4d);
+}
+.dicer-stats-blind {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-12, 12px);
+}
+.dicer-stats-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.dicer-stats-metric {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.dicer-stats-metric span {
+  font-size: var(--font-size-12, 12px);
+  opacity: 0.75;
+}
+.dicer-stats-metric strong {
+  font-size: 1.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dicer-stats-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) 48px 58px 36px 36px 70px 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+.dicer-stats-row:hover,
+.dicer-stats-row:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+}
+.dicer-stats-row.active {
+  background: rgba(255, 157, 77, 0.12);
+}
+.dicer-stats-row.is-head {
+  cursor: default;
+  font-size: var(--font-size-12, 12px);
+  opacity: 0.75;
+  background: none;
+}
+.dicer-stats-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dicer-stats-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.dicer-stats-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dicer-stats-pet {
+  flex: none;
+  font-size: var(--font-size-12, 12px);
+  opacity: 0.6;
+}
+.dicer-stats-luck {
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-align: center;
+  font-size: var(--font-size-12, 12px);
+  background: rgba(255, 255, 255, 0.06);
+}
+.dicer-stats-luck.is-hot {
+  background: rgba(29, 158, 117, 0.25);
+  color: #7fe0bd;
+}
+.dicer-stats-luck.is-cursed {
+  background: rgba(226, 75, 74, 0.25);
+  color: #f5a3a2;
+}
+.dicer-stats-luck.is-few {
+  opacity: 0.6;
+}
+.dicer-roll-stats .dicer-stats-clear {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  line-height: 1;
+}
+.dicer-stats-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dicer-stats-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dicer-stats-detail-head span {
+  font-size: var(--font-size-12, 12px);
+  opacity: 0.7;
+}
+.dicer-stats-chart {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 110px;
+}
+.dicer-stats-bar {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: rgba(255, 255, 255, 0.28);
+}
+.dicer-stats-bar.is-twenty {
+  background: #1d9e75;
+  opacity: 1;
+}
+.dicer-stats-bar.is-one {
+  background: #e24b4a;
+  opacity: 1;
+}
+.dicer-stats-fair {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+.dicer-stats-axis {
+  display: flex;
+  gap: 3px;
+}
+.dicer-stats-axis span {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.55;
+}
+.dicer-stats-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.dicer-stats-facts span {
+  font-size: var(--font-size-12, 12px);
+  opacity: 0.7;
+}
+.dicer-stats-facts div div {
+  overflow-wrap: anywhere;
+}
+.dicer-stats-petline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.dicer-stats-empty {
+  padding: 24px 0;
+  text-align: center;
+  opacity: 0.7;
+}

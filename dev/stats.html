@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dicer roll stats review</title>
+    <link rel="stylesheet" href="../styles/dicer.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #23262c;
+        color: #e8e8e8;
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      #bar {
+        padding: 8px 12px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .window-app {
+        width: 600px;
+        margin: 8px 12px;
+        background: #0b0a13;
+        border: 1px solid #444;
+        border-radius: 6px;
+      }
+      .window-header {
+        padding: 6px 10px;
+        border-bottom: 1px solid #333;
+      }
+      .window-content {
+        padding: 10px;
+      }
+      button {
+        background: rgba(255, 255, 255, 0.06);
+        color: inherit;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font: inherit;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <label><input type="checkbox" id="gm" checked /> As GM</label>
+      <span id="status">loading...</span>
+    </div>
+    <div class="window-app dicer-roll-stats-app">
+      <div class="window-header"><i class="fa-solid fa-chart-column"></i> Roll stats</div>
+      <div class="window-content" id="content"></div>
+    </div>
+    <script type="module" src="./stats.js"></script>
+  </body>
+</html>

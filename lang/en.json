@@ -415,6 +415,19 @@
         "Label": "Your pet",
         "Hint": "Pick your dice pet and its colour. It is yours, not part of any dice theme, so it comes along whatever dice you roll."
       },
+      "rollStatsWindow": {
+        "Name": "Roll stats",
+        "Label": "Roll stats",
+        "Hint": "Everyone's d20 luck: how often each number came up tonight, in the last 30 days or ever, natural 20s and 1s, and who is on a hot streak."
+      },
+      "statsTool": {
+        "Name": "Roll stats in the token tools",
+        "Hint": "Show a Roll stats button with the token tools on the left, to open the window in one click. Your choice only."
+      },
+      "rollStats": {
+        "Name": "Keep roll stats",
+        "Hint": "Count every player's d20s for the Roll stats window. Only rolls everyone can see are shared; the GM's computer also keeps blind and private rolls, for the GM alone."
+      },
       "rollFilters": {
         "Name": "Roll filters",
         "Label": "Roll filters",
@@ -1227,6 +1240,66 @@
       "ButtonHint": "Pick your dice pet and its colour (yours, whatever dice you roll)",
       "Off": "The GM has turned dice pets off in this world.",
       "Settings": "Pet settings"
+    },
+    "Stats": {
+      "Title": "Roll stats",
+      "Button": "Stats",
+      "ButtonHint": "Everyone's d20 luck: tonight, the last 30 days or ever",
+      "Scope": {
+        "session": "Tonight",
+        "month": "Last 30 days",
+        "all": "All time"
+      },
+      "Blind": "Count private rolls",
+      "BlindHint": "Add the blind, GM, self and whispered rolls your computer saw. Only you see these.",
+      "NewSession": "New session",
+      "NewSessionHint": "Tonight starts counting from now (it otherwise covers the last 12 hours)",
+      "NewSessionDone": "A new session started: Tonight counts from now.",
+      "ClearAll": "Clear all",
+      "ClearAllHint": "Delete everyone's roll stats",
+      "ClearOne": "Clear {name}'s stats",
+      "ClearTitle": "Clear roll stats",
+      "ClearMineConfirm": "Delete all your roll stats? This cannot be undone.",
+      "ClearOneConfirm": "Delete all of {name}'s roll stats? This cannot be undone.",
+      "ClearAllConfirm": "Delete everyone's roll stats, private rolls included? This cannot be undone.",
+      "ClearFailed": "The roll stats could not be cleared.",
+      "Off": "The GM has turned roll stats off in this world.",
+      "Empty": {
+        "session": "No d20s rolled tonight yet.",
+        "month": "No d20s rolled in the last 30 days.",
+        "all": "No d20s counted yet. Roll one!"
+      },
+      "Rolled": "D20s rolled",
+      "Twenties": "Natural 20s",
+      "Ones": "Natural 1s",
+      "Luckiest": "Luckiest",
+      "Col": {
+        "Player": "Player",
+        "D20s": "D20s",
+        "Average": "Average",
+        "Twenties": "20s",
+        "Ones": "1s",
+        "Luck": "Luck"
+      },
+      "Luck": {
+        "hot": "Hot",
+        "cursed": "Cursed",
+        "fair": "Fair",
+        "few": "Too few",
+        "fewHint": "Roll at least 10 d20s to be judged"
+      },
+      "ChartHint": "How often each number came up; the dashed line is a fair die",
+      "Run": "Longest run of 15+",
+      "RunValue": "{n} in a row",
+      "Worst": "Latest 1",
+      "Best": "Latest 20",
+      "MomentOn": "{value} on {label}",
+      "MomentPlain": "A natural {value}",
+      "Mood": {
+        "proud": "{name}'s {pet} is strutting. The dice love them right now.",
+        "sulk": "{name}'s {pet} is sulking. Rough dice lately.",
+        "neutral": "{name}'s {pet} is content. Nothing to write home about."
+      }
     },
     "RollFilters": {
       "Title": "Roll filters",

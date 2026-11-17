@@ -338,7 +338,7 @@ describe('rolling by hand: the Dice tray scene control', () => {
       button: true,
     });
     expect(on.tokens.tools.dicerTray.onChange).toBeTypeOf('function');
-    expect(Object.keys(on.tokens.tools)).toEqual(['select', 'dicerTray']);
+    expect(Object.keys(on.tokens.tools)).toEqual(['select', 'dicerStats', 'dicerTray']);
     // the client switch off
     withSettings({ diceTray: false, handRollsAllowed: 'all' });
     const off = controls();
@@ -355,6 +355,20 @@ describe('rolling by hand: the Dice tray scene control', () => {
     const gm = controls();
     listener()(gm);
     expect(gm.tokens.tools.dicerTray).toBeDefined();
+  });
+
+  test('the Roll stats tool shows for everyone unless they turn statsTool off, whatever the tray', () => {
+    withSettings({ diceTray: false, handRollsAllowed: 'none' });
+    const on = controls();
+    listener()(on);
+    expect(on.tokens.tools.dicerStats).toMatchObject({ name: 'dicerStats', title: 'DICER.Stats.Title', icon: 'fa-solid fa-chart-column', button: true });
+    expect(on.tokens.tools.dicerStats.onChange).toBeTypeOf('function');
+    expect(on.tokens.tools.dicerTray).toBeUndefined();
+    withSettings({ statsTool: false, diceTray: true, handRollsAllowed: 'all' });
+    const off = controls();
+    listener()(off);
+    expect(off.tokens.tools.dicerStats).toBeUndefined();
+    expect(off.tokens.tools.dicerTray).toBeDefined();
   });
 
   test('no token controls, or unregistered settings (Dice So Nice active): nothing, never a throw', () => {

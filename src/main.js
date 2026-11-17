@@ -581,7 +581,18 @@ Hooks.on('renderChatMessageHTML', markCard);
 Hooks.on('getSceneControlButtons', (c) => {
   try {
     const get = (k) => game.settings.get('dicer', k);
-    if (dormant || !c.tokens || !get('diceTray') || !handAllowed(game.user, get)) return;
+    if (dormant || !c.tokens) return;
+    // Roll stats (the lazy window), unless this user hid the tool
+    if (get('statsTool') !== false)
+      c.tokens.tools.dicerStats = {
+        name: 'dicerStats',
+        order: 100,
+        title: 'DICER.Stats.Title',
+        icon: 'fa-solid fa-chart-column',
+        button: true,
+        onChange: () => import('./ui/roll-stats.js').then((m) => m.openRollStats()),
+      };
+    if (!get('diceTray') || !handAllowed(game.user, get)) return;
     c.tokens.tools.dicerTray = {
       name: 'dicerTray',
       order: 99,
@@ -635,10 +646,27 @@ Hooks.once('init', () => {
       coreSound: globalThis.CONFIG?.sounds?.dice,
     }),
   );
+  // Roll stats: counted from every roll message, whether or not its dice are shown here. The
+  // recorder is a lazy chunk, loaded at the first roll; messages wait for it in order.
+  let recorder = null;
+  const countRoll = (message) => {
+    if (getSetting('rollStats') === false || !message?.isRoll) return;
+    const ts = Date.now();
+    recorder ??= import('./stats/recorder.js').then((m) =>
+      m.createStatsRecorder({
+        getSetting,
+        setSetting: (k, v) => game.settings.set('dicer', k, v),
+        currentUser: () => game.user,
+        isActiveGM: () => game.users?.activeGM?.id === game.user?.id,
+      }),
+    );
+    recorder.then((r) => r.onCreate(message, ts)).catch((err) => console.warn('dicer: cannot load roll stats', err));
+  };
   Hooks.on('createChatMessage', (message) => {
     handlers().onCreate(message); // first: the hider reads gate.isAnimating
     initiative?.onCreateMessage(message);
     sendHand(message); // what the gate did not send from its RollStart (not animated here)
+    countRoll(message);
   });
   Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
   updateUserHook = Hooks.on('updateUser', (user, changes) =>
