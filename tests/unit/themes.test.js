@@ -92,7 +92,18 @@ describe('built-in themes', () => {
       id: 'dicer.nat1',
       effect: { id: 'shatter' },
     });
-    expect(findTheme('verdant').soundMaterial).toBe('wood');
+    expect(findTheme('verdant').soundMaterial).toBe('stone'); // malachite
+  });
+
+  it('no two built-ins show the same d20 in the gallery (the look-alike pairs a tester spotted)', () => {
+    const d20 = (id) => {
+      const t = findTheme(id);
+      return appearanceKey(t.perType?.d20 ?? t.appearance);
+    };
+    for (const [a, b] of [['verdant', 'jade-marble'], ['dragon-hoard', 'gold-polished'], ['celestial', 'starlit-glitter']])
+      expect(d20(a)).not.toBe(d20(b));
+    const keys = BUILTIN_THEMES.map((t) => d20(t.id));
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 

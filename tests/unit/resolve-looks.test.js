@@ -397,12 +397,12 @@ describe('themes in the look chain (Plan 5)', () => {
   });
 
   test('a global theme ref resolves per die type, with its id and sound material', () => {
-    const { resolver } = makeT({ users: { u: userT({ global: { theme: 'dragon-hoard' } }) } });
+    const { resolver } = makeT({ users: { u: userT({ global: { theme: 'celestial' } }) } });
     const d20 = look(resolver, term(20), 'u');
-    expect(d20.appearance).toBe(hoard.perType.d20);
-    expect(d20.themeId).toBe('dragon-hoard');
-    expect(d20.soundMaterial).toBe('metal');
-    expect(look(resolver, term(6), 'u').appearance).toBe(hoard.appearance);
+    expect(d20.appearance).toBe(findTheme('celestial').perType.d20);
+    expect(d20.themeId).toBe('celestial');
+    expect(d20.soundMaterial).toBe('glass');
+    expect(look(resolver, term(6), 'u').appearance).toBe(findTheme('celestial').appearance);
   });
   test('a role ref beats a type ref on an attack roll and is ignored on a damage roll', () => {
     const flag = { 'role:attack': { theme: 'obsidian' }, d20: { look: 'ruby-classic' } };
@@ -466,10 +466,10 @@ describe('actor theme assignment (the theme browser write)', () => {
   const t20 = { options: { dsnActorId: 'a1' } };
 
   test("{global: {theme}} as written by the browser's slotPatch resolves to the theme", () => {
-    const { resolver } = make({ actors: actorWith(slotPatch('global', 'dragon-hoard')) });
+    const { resolver } = make({ actors: actorWith(slotPatch('global', 'celestial')) });
     const out = look(resolver, term(20, t20), 'u');
-    expect(out.themeId).toBe('dragon-hoard');
-    expect(out.appearance).toBe(findTheme('dragon-hoard').perType.d20);
+    expect(out.themeId).toBe('celestial');
+    expect(out.appearance).toBe(findTheme('celestial').perType.d20);
   });
   test('assigning a theme via global beats an old flat look on the same actor; the flat form still works alone', () => {
     const merged = { look: 'ruby-classic', ...slotPatch('global', 'dragon-hoard') };

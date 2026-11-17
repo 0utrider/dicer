@@ -123,19 +123,7 @@ const D = [
         numbers: { fill: 'gold', color: '#ffd24a', depth: 0.5 },
       }),
       'metal',
-      {
-        d20: N({
-          body: {
-            type: 'metal',
-            color: '#e3b341',
-            color2: '#9a6d12',
-            finish: 'polished',
-            roughness: 0.15,
-          },
-          numbers: { fill: 'enamel', color: '#2a1a05', depth: 0.6 },
-          glow: { color: '#ff9a1f', intensity: 0.5 },
-        }),
-      },
+      null,
       [nat(20, 'embers', 'fanfare')],
     ),
     build(
@@ -171,7 +159,13 @@ const D = [
         numbers: { fill: 'gold', color: '#d9a93a', depth: 0.5 },
       }),
       'glass',
-      { d20: A('starlit-glitter') },
+      {
+        d20: N({
+          body: { color: '#0a1030' },
+          interior: { type: 'shape', colors: ['#ffd24a', '#fff3c4'], extra: 'glitter' },
+          numbers: { color: '#ffd24a' },
+        }),
+      },
       [nat(20, 'sparkles', 'chime')],
     ),
     build(
@@ -187,7 +181,16 @@ const D = [
       null,
       [nat(1, 'shatter', 'thud')],
     ),
-    build('verdant', 'Verdant', A('jade-marble'), 'wood', null, []),
+    build(
+      'verdant',
+      'Verdant',
+      N({
+        body: { type: 'gem', preset: 'malachite', color: '#1f8a5a', color2: '#0a3a24' },
+      }),
+      'stone',
+      null,
+      [],
+    ),
   ],
   [
     ['against-the-grain', 'Against the Grain', 'wood', { body: { type: 'wood', color: '#d59662', color2: '#6d4217', roughness: 1, preset: 'oak' }, interior: { type: 'none' }, numbers: { fill: 'outline', color: '#000000', depth: 1, size: 1.4, weight: 1 }, edges: { radius: 1, strip: { color: '#3d190a', strength: 0.4 } } }],

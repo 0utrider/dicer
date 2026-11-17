@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- **No more look-alike themes.** Three built-in themes looked like others in the theme browser. **Verdant** is now green malachite (it was Jade Marble's look with a wood sound) and sounds like stone. **Dragon Hoard**'s d20 is now amber resin full of gold, like the rest of the set, no longer a copy of Polished Gold. **Celestial**'s d20 is now midnight-blue resin with a gold star and sparkles inside, no longer a copy of Starlit Glitter.
+
 ## 0.3.0
 
 - **More module dice sets keep their faces.** Sets whose face pictures come with bump or glow maps (for example **Daggerdice** and some of **Nice More Dice**) now show their pictures in the theme browser and keep them in **Save to My themes**. Only the bump and glow are left out.

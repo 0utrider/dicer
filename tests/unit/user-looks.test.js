@@ -60,13 +60,13 @@ describe('lookRefToAppearance', () => {
 
 describe('lookRefToAppearance with themes', () => {
   const reg = createRegistry({ warn: () => {} });
-  const hoard = findTheme('dragon-hoard');
+  const celestial = findTheme('celestial');
   test('a theme ref gives the die type look, its sound material and its id', () => {
-    const d20 = lookRefToAppearance({ theme: 'dragon-hoard' }, reg, 0, { dieType: 'd20' });
-    expect(d20).toEqual({ appearance: hoard.perType.d20, themeId: 'dragon-hoard', soundMaterial: 'metal' });
-    const d6 = lookRefToAppearance({ theme: 'dragon-hoard' }, reg, 0, { dieType: 'd6' });
-    expect(d6.appearance).toBe(hoard.appearance);
-    expect(lookRefToAppearance({ theme: 'dragon-hoard' }, reg).appearance).toBe(hoard.appearance);
+    const d20 = lookRefToAppearance({ theme: 'celestial' }, reg, 0, { dieType: 'd20' });
+    expect(d20).toEqual({ appearance: celestial.perType.d20, themeId: 'celestial', soundMaterial: 'glass' });
+    const d6 = lookRefToAppearance({ theme: 'celestial' }, reg, 0, { dieType: 'd6' });
+    expect(d6.appearance).toBe(celestial.appearance);
+    expect(lookRefToAppearance({ theme: 'celestial' }, reg).appearance).toBe(celestial.appearance);
   });
   test('precedence: appearance > colorset > theme > look', () => {
     const fire = colorsetToAppearance(BUILTIN_COLORSETS.fire, { textures: reg.textures });

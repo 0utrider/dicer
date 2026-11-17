@@ -284,12 +284,12 @@ describe('PF2e damage roll through the resolvers', () => {
 });
 
 describe('a damage-map value naming a Plan 5 theme', () => {
-  const hoard = findTheme('dragon-hoard');
+  const celestial = findTheme('celestial');
   test('gives its look for the die type, its sound material, no landing and its id', () => {
-    const d20 = resolveDamageTheme('fire', ctx({ worldMap: { fire: 'dragon-hoard' }, dieType: 'd20' }));
-    expect(d20).toEqual({ appearance: hoard.perType.d20, soundMaterial: 'metal', landing: null, themeId: 'dragon-hoard' });
-    const d6 = resolveDamageTheme('fire', ctx({ userOverrides: { fire: 'dragon-hoard' }, dieType: 'd6' }));
-    expect(d6.appearance).toBe(hoard.appearance);
+    const d20 = resolveDamageTheme('fire', ctx({ worldMap: { fire: 'celestial' }, dieType: 'd20' }));
+    expect(d20).toEqual({ appearance: celestial.perType.d20, soundMaterial: 'glass', landing: null, themeId: 'celestial' });
+    const d6 = resolveDamageTheme('fire', ctx({ userOverrides: { fire: 'celestial' }, dieType: 'd6' }));
+    expect(d6.appearance).toBe(celestial.appearance);
   });
   test('a damage theme id still wins, and world themes are found', () => {
     expect(idOf('fire', ctx({ worldMap: { fire: 'cold' } }))).toBe('cold');
@@ -299,12 +299,12 @@ describe('a damage-map value naming a Plan 5 theme', () => {
     expect(out.themeId).toBe('world.w');
   });
   test('through the resolvers: the d20 of a fire roll takes the theme look, no landing fx', () => {
-    const { plan } = setup({ settings: { damageTypeMap: { fire: 'dragon-hoard' } } });
+    const { plan } = setup({ settings: { damageTypeMap: { fire: 'celestial' } } });
     const dice = plan(pf2e(new DamageInstance('fire', [die(20, [{ result: 7 }]), die(6, [{ result: 2 }])])));
-    expect(dice[0].appearance).toBe(hoard.perType.d20);
-    expect(dice[1].appearance).toBe(hoard.appearance);
-    expect(dice[0].soundMaterial).toBe('metal');
-    expect(dice[0].themeId).toBe('dragon-hoard');
+    expect(dice[0].appearance).toBe(celestial.perType.d20);
+    expect(dice[1].appearance).toBe(celestial.appearance);
+    expect(dice[0].soundMaterial).toBe('glass');
+    expect(dice[0].themeId).toBe('celestial');
     expect(dice[0].fx).toBeUndefined();
   });
   test("a user override may name the roller's own theme", () => {
