@@ -31,6 +31,31 @@ describe('number contrast against the die colour', () => {
     expect(visibleBodyColor(look({ body: { type: 'opaque', color: '#123456' } }))).toBe('#123456');
   });
 
+  test('flecks or a single shape lean the visible colour far less than a filling inside', () => {
+    const inside = (type) => visibleBodyColor(look({ body: { type: 'resin', color: '#000000' }, interior: { type, colors: ['#ffffff', '#ffffff'], density: 0.7 } }));
+    for (const sparse of ['glitter', 'shape', 'foil', 'frost'])
+      expect(lumOf(inside(sparse))).toBeLessThan(lumOf(inside('liquid')) / 2);
+  });
+
+  test('clear resin counts darker than its colour: the table shows through it', () => {
+    const clear = look({ body: { type: 'resin', color: '#58c0d6' }, interior: { type: 'none' } });
+    expect(lumOf(visibleBodyColor(clear))).toBeLessThan(lumOf('#58c0d6'));
+  });
+
+  test('gold numbers over gold glitter on dark resin stay gold (they were turned brown and sank into the body)', () => {
+    const hoard = look({
+      body: { type: 'resin', color: '#6b3a0a' },
+      interior: { type: 'glitter', colors: ['#ffd24a', '#ff9a1f'], density: 0.75 },
+      numbers: { fill: 'gold', color: '#ffd24a' },
+    });
+    expect(readableNumbers(hoard).fill).toBe('#ffd24a');
+  });
+
+  test('white numbers on clear light-blue resin stay white (they were turned teal on teal)', () => {
+    const crystal = look({ body: { type: 'resin', color: '#58c0d6' }, interior: { type: 'none' }, numbers: { fill: 'paint', color: '#f4f8fa' } });
+    expect(readableNumbers(crystal).fill).toBe('#f4f8fa');
+  });
+
   test('numbers that already read are left exactly as chosen', () => {
     const a = look({ body: { type: 'opaque', color: '#101010' }, numbers: { fill: 'paint', color: '#f5f5f5' } });
     expect(readableNumbers(a)).toEqual({ fill: '#f5f5f5', glow: a.glow.intensity });

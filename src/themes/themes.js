@@ -132,8 +132,9 @@ const D = [
       N({
         body: { type: 'resin', color: '#0b1030', color2: '#04061a', roughness: 0.04 },
         interior: { type: 'nebula', colors: ['#6cf0ff', '#7a5cff'], density: 0.7 },
-        numbers: { fill: 'silver', color: '#e8f8ff', depth: 0.5 },
-        glow: { color: '#6cf0ff', intensity: 0.5 },
+        // white paint, a faint glow: the cyan glow tinted the numbers into the cyan storm
+        numbers: { fill: 'paint', color: '#f4fbff', depth: 0.5 },
+        glow: { color: '#6cf0ff', intensity: 0.15 },
       }),
       'glass',
       null,
@@ -163,7 +164,7 @@ const D = [
         d20: N({
           body: { color: '#0a1030' },
           interior: { type: 'shape', colors: ['#ffd24a', '#fff3c4'], extra: 'glitter' },
-          numbers: { color: '#ffd24a' },
+          numbers: { fill: 'silver', color: '#f2f4f8' }, // gold numbers vanished over the gold shape
         }),
       },
       [nat(20, 'sparkles', 'chime')],

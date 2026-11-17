@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: unreadable numbers on several built-in themes.** Dicer recolours numbers that would not stand out, but it judged clear resin as brighter than it looks and glitter or a single shape inside as filling the whole die. So it turned good numbers into the die's own colour: Starlit Glitter's and Dragon Hoard's gold went brown over dark resin, Sharp Crystal's white went teal on teal, Stormcaller's went dark blue in a blue storm. Those numbers now keep the colours they were designed with. Five themes whose numbers matched their insides got new number colours: **Ember Core** (dark numbers over the glowing core), **Void Star** (silver over the gold star), **Smoke Swirl** (dark numbers over the white smoke), **Stormcaller** (white, with a fainter glow) and **Celestial**'s d20 (silver over the gold shape).
+
 ## 0.5.1
 
 - **Dice from installed modules, without activating them.** In the theme browser, the GM's **Installed dice** button lists the installed modules that add dice but are off in this world. Tick one and its dice load for everyone, under **Module dice**, while the module itself stays off. Only modules that do nothing but add dice can be loaded this way (dice sets like The Rollsmith's). Adventure and system modules that also do other things are listed greyed out: activate those to use their dice. Dice you untick go away at the next reload.

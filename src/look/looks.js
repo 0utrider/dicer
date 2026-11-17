@@ -76,8 +76,8 @@ const defs = {
   'ember-core': make('Ember Core', {
     body: { type: 'resin', color: '#3a0f06', color2: '#140402', roughness: 0.05 },
     interior: { type: 'liquid', colors: ['#ff7a1a', '#ffb347'], density: 0.7 },
-    numbers: { fill: 'gold', color: '#ffd9a0', depth: 0.5 },
-    glow: { color: '#ff7a1a', intensity: 0.6 },
+    // dark numbers: light ones vanished on the glowing core
+    numbers: { fill: 'enamel', color: '#240802', depth: 0.5 },
   }),
   'frost-crystal': make('Frost Crystal', {
     body: { type: 'resin', color: '#bfe3f5', color2: '#6fb2d4', roughness: 0.04 },
@@ -87,12 +87,14 @@ const defs = {
   'void-star': make('Void Star', {
     body: { type: 'resin', color: '#08080f', color2: '#000000', roughness: 0.04 },
     interior: { type: 'shape', colors: ['#ffe27a', '#ff9d2e'], density: 0.8, shape: 'star' },
-    numbers: { fill: 'gold', color: '#f3c969', depth: 0.5 },
+    // silver: gold numbers vanished over the gold star
+    numbers: { fill: 'silver', color: '#f2f4f8', depth: 0.5 },
   }),
   'smoke-swirl': make('Smoke Swirl', {
     body: { type: 'resin', color: '#5a5f6b', color2: '#20232a', roughness: 0.05 },
     interior: { type: 'swirl', colors: ['#e8eaf0', '#7a8090'], density: 0.6 },
-    numbers: { fill: 'silver', color: '#f2f4f8', depth: 0.5 },
+    // dark numbers: light ones vanished on the white smoke
+    numbers: { fill: 'enamel', color: '#1b2233', depth: 0.5 },
   }),
 };
 

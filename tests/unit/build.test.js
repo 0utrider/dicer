@@ -327,9 +327,11 @@ describe('build', () => {
     // hook; the window is the lazy popout chunk): owner approved +467 B (27,676 -> 28,143), 2026-11-17.
     // Dice from installed modules that are not active (the installedDice setting and main's call
     // into the lazy loader): owner approved +310 B (28,143 -> 28,453), 2026-11-17.
+    // Readable numbers on the built-in themes (contrast.js counts resin darker and sparse insides
+    // less; five themes' number colours): owner approved +120 B (28,453 -> 28,573), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(28_453);
+    expect(growth).toBeLessThanOrEqual(28_573);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

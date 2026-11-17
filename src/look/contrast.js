@@ -20,12 +20,23 @@ const ratioOf = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), 
 /** WCAG contrast ratio of two #rrggbb colours (1..21). */
 export const contrastRatio = (a, b) => ratioOf(rgb(a), rgb(b));
 
-/** The colour seen around the numbers: the body, or on resin with an inside, leaning to the inside. */
+/** How bright translucent resin looks next to its colour: the table shows through it. */
+const RESIN_SEEN = 0.7;
+// Insides that are flecks or one object: the body shows all around them, so they lean little.
+const SPARSE = new Set(['glitter', 'foil', 'frost', 'shape', 'eye', 'botanical']);
+
+/**
+ * The colour seen around the numbers: the body, or on resin, the darker colour resin looks,
+ * leaning towards a filling inside (a cloud, liquid or smoke) and only a little towards flecks
+ * or a single shape. Leaning too far made the numbers match the inside and vanish on the body
+ * (gold numbers turned brown for gold glitter on dark resin).
+ */
 export function visibleBodyColor(a) {
-  if (a.body.type !== 'resin' || a.interior.type === 'none') return a.body.color;
-  // Insides read as self-lit through resin: they dominate what is seen, more so when dense.
-  const k = 0.6 + 0.4 * a.interior.density;
-  const b = rgb(a.body.color);
+  if (a.body.type !== 'resin') return a.body.color;
+  const b = rgb(a.body.color).map((v) => v * RESIN_SEEN);
+  if (a.interior.type === 'none') return hex(b);
+  const d = a.interior.density;
+  const k = SPARSE.has(a.interior.type) ? 0.3 * d : 0.3 + 0.3 * d;
   const i = rgb(a.interior.colors[0]);
   return hex(b.map((v, n) => v + (i[n] - v) * k));
 }

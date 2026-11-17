@@ -308,7 +308,7 @@ const BASE_KEYS = {
   'look:marble-white': 'marble|-|none|eng1|glow0|fx1|safe0',
   'look:jade-marble': 'marble|-|none|eng1|glow0|fx1|safe0',
   'look:pearl-moon': 'pearl|-|none|eng1|glow0|fx1|safe0',
-  'look:ember-core': 'resin|-|liquid:32|eng1|glow1|fx1|safe0',
+  'look:ember-core': 'resin|-|liquid:32|eng1|glow0|fx1|safe0',
   'look:frost-crystal': 'resin|-|glitter:32|eng1|glow0|fx1|safe0',
   'look:void-star': 'resin|-|shape:star:32|eng1|glow0|fx1|safe0',
   'look:smoke-swirl': 'resin|-|swirl:32|eng1|glow0|fx1|safe0',
