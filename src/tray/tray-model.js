@@ -209,3 +209,13 @@ export function trayStyle(look, route = (p) => p) {
     '--dicer-tt-radius': `${t.radius}px`,
   };
 }
+
+/**
+ * A leather rim's stitches on the hexagon and octagon (styles show the one for the shape): the
+ * shape's outline, stretched to its box, the stroke kept in screen pixels.
+ */
+export const STITCH_SVG =
+  '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' +
+  '<polygon class="dicer-tt-stitch-hex" points="25,0 75,0 100,50 75,100 25,100 0,50" vector-effect="non-scaling-stroke"/>' +
+  '<polygon class="dicer-tt-stitch-oct" points="25,0 75,0 100,25 100,75 75,100 25,100 0,75 0,25" vector-effect="non-scaling-stroke"/>' +
+  '</svg>';

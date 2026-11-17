@@ -44,7 +44,7 @@ function dress(win, route) {
   const style = doc.createElement('style');
   style.textContent =
     'html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#141218}' +
-    '.dicer-tt-edge,.dicer-tt-grip{display:none}';
+    '.dicer-tt-edge,.dicer-tt-grip,.dicer-tt-popout{display:none}';
   doc.head.append(link, style);
 }
 

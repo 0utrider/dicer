@@ -47,7 +47,7 @@
         "Hint": "Clear dice pass light in their colour onto the table, and glowing dice light it in their glow colour. Applies to the next roll."
       },
       "trayMode": {
-        "Name": "Dice tray",
+        "Name": "Dice tray (where your dice land)",
         "Hint": "Where your dice land on this screen: in the GM's table tray, in your own tray (set its look in the Dice tray window), or on the scene's roll area with no tray. Drag the tray's rim to move it and its corner to resize it.",
         "Choices": {
           "table": "Table tray",
@@ -243,12 +243,12 @@
         "Hint": "Fire, cold and electricity damage dice get flame, frost and storm insides instead of resin ones. Off keeps the resin look. A damage type remapped to a colorset or your own theme is not affected."
       },
       "diceTray": {
-        "Name": "Dice tray",
-        "Hint": "A dice tray button for free rolls by hand."
+        "Name": "Throw by hand tool",
+        "Hint": "A button under the token controls that opens a dice picker, to throw dice by hand for a free roll."
       },
       "chatTray": {
-        "Name": "Chat dice tray",
-        "Hint": "A row of dice under the chat box: click a die to add it, right-click to remove it, hold for more, then Roll. Where you may roll by hand, drag dice onto the table to throw them. Hidden while the Dice Tray module is active."
+        "Name": "Chat dice bar",
+        "Hint": "A row of dice under the chat box for building a roll (not the dice tray your dice land in): click a die to add it, right-click to remove it, hold for more, then Roll. Where you may roll by hand, drag dice onto the table to throw them. Hidden while the Dice Tray module is active."
       },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
@@ -780,7 +780,7 @@
         "inside": "Inside",
         "numbers": "Numbers",
         "edges": "Edges",
-        "glow": "Glow",
+        "glow": "Number glow",
         "perType": "Per die type",
         "extras": "Sound and celebrations"
       },
@@ -919,7 +919,10 @@
         "File": "Font file (.ttf, .otf, .woff, .woff2)",
         "Browse": "Choose a font file",
         "FontInvalid": "That is not a usable font name or file path, so the serif is used. Font names use letters, digits, spaces and dashes; files end in .ttf, .otf, .woff or .woff2 and must be on this Foundry server (a path in its data folder, not a web address).",
-        "FontFailed": "This font could not be loaded, so the serif is shown instead. Check the name or the file."
+        "FontFailed": "This font could not be loaded, so the serif is shown instead. Check the name or the file.",
+        "InkGlow": "Glow ink brightness",
+        "Contrast": "Keep numbers readable",
+        "ContrastHint": "Lightens or darkens the number colour where it would be hard to read on the die. Picking a colour turns this off, so the numbers keep the colour you chose."
       },
       "Fill": {
         "paint": "Paint",
@@ -990,7 +993,8 @@
       "Glow": {
         "Color": "Colour",
         "Intensity": "Intensity",
-        "Off": "Off"
+        "Off": "Off",
+        "Hint": "A soft halo of light around the numbers (Glow ink makes the ink itself shine)."
       },
       "PerType": {
         "Hint": "Give a die type its own look. Every other die type uses the default look above.",
@@ -1086,7 +1090,7 @@
       "MarkPhysics": "The dice decided this roll: physics threw them and read the faces"
     },
     "Tray": {
-      "Title": "Dice tray",
+      "Title": "Throw by hand",
       "Hint": "Click a die to add it. Right-click (or −) removes one. Then throw them by hand.",
       "Empty": "No dice picked yet",
       "Add": "Add a {die}",
@@ -1107,8 +1111,8 @@
       "ThrowMany": "Throw {n} dice",
       "ThrowNone": "Pick dice to throw",
       "NoDice": "Pick at least one die to throw.",
-      "NoEngine": "3D dice are off on this client, so the dice tray cannot throw. Turn on Enable 3D dice (Dicer's settings) to use it.",
-      "Failed": "The dice tray could not post the roll."
+      "NoEngine": "3D dice are off on this client, so dice cannot be thrown by hand. Turn on Enable 3D dice (Dicer's settings) to use it.",
+      "Failed": "The throw could not post the roll."
     },
     "DiceTray": {
       "Title": "Dice tray",
@@ -1175,7 +1179,7 @@
       "WindowBlocked": "The dice tray window could not open: allow pop-ups for Foundry and try again."
     },
     "ChatTray": {
-      "Label": "Chat dice tray",
+      "Label": "Chat dice bar",
       "Die": "{die}: click adds one, right-click removes one, hold for more",
       "Adv": "Adv",
       "AdvHint": "Advantage (roll two d20, keep the highest)",

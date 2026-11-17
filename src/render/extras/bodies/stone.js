@@ -31,9 +31,6 @@ const PARAMS = { clearcoat: 0.08, clearcoatRoughness: 0.6 };
 
 const PARS = /* glsl */ `
 uniform vec4 uBodyPreset;
-#ifndef DICER_RESIN
-uniform mat4 modelMatrix; // three uploads it per object; the vertex stage declares it too
-#endif
 `;
 
 const COLOR = /* glsl */ `
@@ -48,9 +45,12 @@ const COLOR = /* glsl */ `
 		float dcSfine = 1.0 - smoothstep( 0.3, 1.0, dcSaa );
 		vec3 dcSc = dcSa;
 		if ( uBodyPreset.x > 3.5 ) {
-			// brick: the bond on the face's dominant die-local axis
-			vec3 dcSn = abs( normalize( transpose( mat3( viewMatrix ) * mat3( modelMatrix ) ) * normalize( vNormal ) ) );
-			vec2 dcSuv = dcSn.x > dcSn.y && dcSn.x > dcSn.z ? dcSp.zy : ( dcSn.y > dcSn.z ? dcSp.xz : dcSp.xy );
+			// brick: the bond on the face's dominant die-local axis. The flat face normal (from the
+			// position's screen derivatives, constant across a face) picks it, with a small bias so
+			// a face as near one axis as another (the d8's, half the d20's) always takes the same
+			// one: the smooth normal, per pixel, flipped between them and speckled those faces.
+			vec3 dcSn = abs( normalize( cross( dFdx( vLocalPos ), dFdy( vLocalPos ) ) ) );
+			vec2 dcSuv = dcSn.x > dcSn.y + 0.02 && dcSn.x > dcSn.z + 0.02 ? dcSp.zy : ( dcSn.y > dcSn.z + 0.02 ? dcSp.xz : dcSp.xy );
 			dcSuv.y *= 2.1; // bricks twice as long as tall
 			float dcSrow = floor( dcSuv.y );
 			dcSuv.x += 0.5 * mod( dcSrow, 2.0 );

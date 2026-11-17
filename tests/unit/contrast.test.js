@@ -31,6 +31,20 @@ describe('number contrast against the die colour', () => {
     expect(visibleBodyColor(look({ body: { type: 'opaque', color: '#123456' } }))).toBe('#123456');
   });
 
+  test('a look with numbers.contrast off draws its numbers in the colour picked, readable or not', () => {
+    const grey = { body: { type: 'opaque', color: '#777777' }, numbers: { fill: 'paint', color: '#7a7a7a' } };
+    expect(readableNumbers(look(grey)).fill).not.toBe('#7a7a7a');
+    expect(readableNumbers(look({ ...grey, numbers: { ...grey.numbers, contrast: false } })).fill).toBe('#7a7a7a');
+    expect(look({}).numbers.contrast).toBe(true);
+  });
+
+  test('a stone die is seen with its second colour mixed in (brick and its mortar)', () => {
+    const brick = look({ body: { type: 'stone', preset: 'brick', color: '#000000', color2: '#ffffff' } });
+    const seen = lumOf(visibleBodyColor(brick));
+    expect(seen).toBeGreaterThan(lumOf('#202020'));
+    expect(seen).toBeLessThan(lumOf('#808080'));
+  });
+
   test('flecks or a single shape lean the visible colour far less than a filling inside', () => {
     const inside = (type) => visibleBodyColor(look({ body: { type: 'resin', color: '#000000' }, interior: { type, colors: ['#ffffff', '#ffffff'], density: 0.7 } }));
     for (const sparse of ['glitter', 'shape', 'foil', 'frost'])

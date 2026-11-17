@@ -170,11 +170,12 @@ describe('new number fills', () => {
     expect(u.uFillGloss.value).toBe(0);
   });
 
-  test('glow: emissive fill colour x GLOW_INK x dcMask; paint PBR; body glow uniforms untouched', () => {
+  test('glow: emissive fill colour x GLOW_INK x its brightness x dcMask; paint PBR; body glow uniforms untouched', () => {
     const m = fillMat('glow');
     const fs = patched(m).fragmentShader;
-    expect(count(fs, `totalEmissiveRadiance += uFillColor * ${GLOW_INK.toFixed(2)} * dcMask;`)).toBe(1);
+    expect(count(fs, `totalEmissiveRadiance += uFillColor * ${GLOW_INK.toFixed(2)} * uInkGlow * dcMask;`)).toBe(1);
     const u = uniformsOf(m);
+    expect(u.uInkGlow.value).toBe(1);
     expect(u.uFillPBR.value.toArray()).toEqual([0, expect.closeTo(0.6)]);
     expect(u.uFillGloss.value).toBe(0);
     const base = uniformsOf(fillMat('paint'));

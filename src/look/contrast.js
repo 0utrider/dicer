@@ -24,6 +24,10 @@ export const contrastRatio = (a, b) => ratioOf(rgb(a), rgb(b));
 const RESIN_SEEN = 0.7;
 // Insides that are flecks or one object: the body shows all around them, so they lean little.
 const SPARSE = new Set(['glitter', 'foil', 'frost', 'shape', 'eye', 'botanical']);
+/** Share of a stone die's surface in its second colour. */
+const STONE_SECOND = 0.3;
+/** Colour `b` (rgb) moved a share `k` of the way to `i`, as #rrggbb. */
+const mix = (b, i, k) => hex(b.map((v, n) => v + (i[n] - v) * k));
 
 /**
  * The colour seen around the numbers: the body, or on resin, the darker colour resin looks,
@@ -32,13 +36,14 @@ const SPARSE = new Set(['glitter', 'foil', 'frost', 'shape', 'eye', 'botanical']
  * (gold numbers turned brown for gold glitter on dark resin).
  */
 export function visibleBodyColor(a) {
+  // Stone shows its second colour too (brick's mortar, granite's crystals, slate's strata).
+  if (a.body.type === 'stone') return mix(rgb(a.body.color), rgb(a.body.color2), STONE_SECOND);
   if (a.body.type !== 'resin') return a.body.color;
   const b = rgb(a.body.color).map((v) => v * RESIN_SEEN);
   if (a.interior.type === 'none') return hex(b);
   const d = a.interior.density;
   const k = SPARSE.has(a.interior.type) ? 0.3 * d : 0.3 + 0.3 * d;
-  const i = rgb(a.interior.colors[0]);
-  return hex(b.map((v, n) => v + (i[n] - v) * k));
+  return mix(b, rgb(a.interior.colors[0]), k);
 }
 
 function toHsl([r, g, b]) {
@@ -69,7 +74,7 @@ function fromHsl([h, s, l]) {
 /** How a number of fill `f` with glow `g` (intensity) of colour `gc` is seen. */
 const seen = (f, gc, g) => f.map((v, i) => Math.min(1, v + gc[i] * g * GLOW_SEEN));
 
-/** The number fill and glow intensity to draw with: unchanged when they already read. */
+/** The number fill and glow intensity to draw with: unchanged when they already read, or the look keeps its colour. */
 export function readableNumbers(a) {
   const glow = a.glow.intensity;
   const fill = rgb(a.numbers.color);
@@ -78,7 +83,8 @@ export function readableNumbers(a) {
   // A number must read on its fill alone and with its glow added: a glow the same hue as the
   // inside washes it out rather than helping, so it never counts as contrast by itself.
   const reads = (f, gl) => ratioOf(f, ref) >= MIN_CONTRAST && ratioOf(seen(f, gc, gl), ref) >= MIN_CONTRAST;
-  if (reads(fill, glow)) return { fill: a.numbers.color, glow };
+  // numbers.contrast off (a colour the player picked): drawn as chosen
+  if (a.numbers.contrast === false || reads(fill, glow)) return { fill: a.numbers.color, glow };
   const [h, s, l0] = toHsl(fill);
   // Keep the number's own side (a light number gets lighter, a dark one darker); flip only when
   // that side cannot reach the contrast at all.

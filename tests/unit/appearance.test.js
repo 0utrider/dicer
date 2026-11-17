@@ -286,7 +286,7 @@ test('needsLookExtras and fallbackLook', () => {
   expect(fallbackLook(plain)).toBe(plain);
   const fancy = normalizeAppearance({ numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' }, color: '#123456', depth: 0.7, font: 'sans' } });
   expect(needsLookExtras(fancy)).toBe(true);
-  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', depth: 0.7, font: 'sans', pips: false, coin: 'numbers', size: 1, weight: 0 });
+  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', contrast: true, inkGlow: 1, depth: 0.7, font: 'sans', pips: false, coin: 'numbers', size: 1, weight: 0 });
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'outline' } })).numbers.fill).toBe('paint');
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'glow' } })).numbers.fill).toBe('paint');
   expect(needsLookExtras(normalizeAppearance({ numbers: { icons: { fumble: 'skull' } } }))).toBe(true);

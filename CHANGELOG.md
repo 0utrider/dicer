@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: brick dice shimmered.** On some faces (every d8 face, half the d20's) the bricks broke into flickering speckles as the die turned, in the preview and in rolls. Those faces point as much along one direction as another, and the brick pattern kept flipping between the two pixel by pixel. Each face now settles on one.
+- **Fixed: the Dice tray window's buttons ran off its edge** in a narrow window; they now wrap onto another row. The GM's **Save for players** button no longer spills its label out of the window.
+- **Pop the tray out from the table.** A small button on the tray's top-right corner opens it in a window of its own for a second screen, without going through the settings.
+- **Stitched leather rims on hexagon and octagon trays.** The stitching only showed on rectangle and round trays.
+- **A taller tray preview** in the Dice tray window.
+- **Fixed: a tray sometimes sat under windows** although the dice are set to show over them (it lost that after switching tray modes until the next roll).
+- **Clearer names for the three dice trays in the settings.** The **Dice tray** is where your dice land; the row of dice under the chat is now the **Chat dice bar**, and the token-controls button that opens a dice picker to throw by hand is the **Throw by hand tool**.
+- **Metallic numbers in any colour.** Gold and silver are one metal finish tinted by the number colour, and the appearance editor now shows that colour for them too: pick gold or silver to start from, then tint it.
+- **Glow ink brightness.** A slider for how brightly the **Glow ink** numbers shine (0–200 %).
+- **The appearance editor's Glow is now Number glow**, with a note: it is a halo around the numbers, while Glow ink makes the ink itself shine.
+- **Fixed: number colours you picked changed by themselves.** Dicer lightens or darkens numbers that would be hard to read on the die, so a blue number on a grey die turned pale as the grey got darker. Now a colour you pick in the appearance editor is kept as picked: picking it turns off the new **Keep numbers readable** option for that look, and you can turn it back on. Built-in themes and your existing looks keep it on.
+- **Stone dice judge number contrast with their second colour** (brick's mortar, granite's crystals), so numbers are kept readable against what the die really looks like.
+
 ## 0.6.1
 
 - **Dice trays have more depth.** The floor now sits below the walls: the top wall casts a deep shadow on it, the side walls softer ones, the corners darken and the bottom wall catches a little light. The tray casts a fuller shadow on the table, and the rim's bevel is crisper. Hexagon and octagon trays get the same depth.

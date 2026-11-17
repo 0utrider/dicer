@@ -221,6 +221,32 @@ describe('the tray on screen', () => {
     settings.trayShow = 'always';
   });
 
+  test('over windows with the dice: a tray built again (mode switched back) stays raised', () => {
+    const t = make();
+    t.refresh();
+    t.raise(true);
+    settings.trayMode = 'none';
+    t.refresh();
+    settings.trayMode = 'table';
+    t.refresh();
+    expect(t.element.classList.contains('dicer-above')).toBe(true);
+    t.raise(false);
+    expect(t.element.classList.contains('dicer-above')).toBe(false);
+  });
+
+  test('the pop-out button on the rim opens the tray window (and never starts a drag)', () => {
+    const calls = [];
+    globalThis.Hooks = { callAll: (...a) => calls.push(a) };
+    const t = make();
+    t.refresh();
+    const pop = t.element.querySelector('.dicer-tt-popout');
+    pop.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    pop.click();
+    expect(calls).toEqual([['dicerTrayPopOut']]);
+    expect(t.element.classList.contains('is-dragging')).toBe(false);
+    delete globalThis.Hooks;
+  });
+
   test('dragging the rim moves it, the grip resizes it; the place is saved on release', () => {
     const t = make();
     t.refresh();

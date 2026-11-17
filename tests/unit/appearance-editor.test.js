@@ -95,8 +95,24 @@ describe('relief, icons, new fills and fonts in the form', () => {
     expect(ICON_CHOICES).toEqual(['none', ...ICON_IDS]);
     expect(FONT_KINDS).toEqual([...FONT_IDS_BUILTIN, 'css', 'file']);
   });
-  it('numberColor shows for paint, enamel, outline, holo and glow, not for gold or silver', () => {
-    for (const fill of FILL7) expect(visibleSections({ numbers: { fill } }).numberColor).toBe(!['gold', 'silver'].includes(fill));
+  it('the glow ink brightness shows only for the glow ink fill (the number colour shows for every fill, metals tinted by it)', () => {
+    for (const fill of FILL7) expect(visibleSections({ numbers: { fill } }).inkGlow).toBe(fill === 'glow');
+    expect(visibleSections({ numbers: { fill: 'gold' } })).not.toHaveProperty('numberColor');
+  });
+  it('picking a number colour keeps it as picked (readability off); the toggle round-trips', () => {
+    const f0 = formFromAppearance(normalizeAppearance({}));
+    expect(f0.numbers.contrast).toBe(true);
+    const picked = setField(f0, 'numbers.color', '#336699');
+    expect(appearanceFromForm(picked).numbers).toMatchObject({ color: '#336699', contrast: false });
+    expect(appearanceFromForm(setField(picked, 'numbers.contrast', true)).numbers.contrast).toBe(true);
+    // a metal fill's own colour is not a pick: readability stays on
+    expect(appearanceFromForm(setField(f0, 'numbers.fill', 'silver')).numbers.contrast).toBe(true);
+  });
+  it('the glow ink brightness round-trips through the form; outside 0..200 % it is 100 %', () => {
+    const f = setField(formFromAppearance(normalizeAppearance({ numbers: { fill: 'glow' } })), 'numbers.inkGlow', '1.5');
+    expect(appearanceFromForm(f).numbers.inkGlow).toBe(1.5);
+    expect(normalizeAppearance({ numbers: { inkGlow: 9 } }).numbers.inkGlow).toBe(1);
+    expect(normalizeAppearance({}).numbers.inkGlow).toBe(1);
   });
   it('a built-in font is a valid kind, not a computer font', () => {
     const f = setField(formFromAppearance({}), 'numbers.fontKind', 'norse');
@@ -332,11 +348,10 @@ describe('visibleSections', () => {
     expect(visibleSections(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'none' } })).insideDetails).toBe(false);
     expect(visibleSections(normalizeAppearance({ body: { type: 'resin' }, interior: { type: 'shape' } })).insideShape).toBe(true);
   });
-  it('the finish only for metal; the second colour for marble and pearl (not resin); number colour for paint and enamel', () => {
+  it('the finish only for metal; the second colour for marble and pearl (not resin); fonts by kind', () => {
     const v = (body, numbers) => visibleSections(normalizeAppearance({ body, numbers }));
     expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).finish)).toEqual([false, false, true, false, false]);
     expect(['opaque', 'resin', 'metal', 'marble', 'pearl'].map((type) => v({ type }).color2)).toEqual([false, false, false, true, true]);
-    expect(['paint', 'gold', 'silver', 'enamel'].map((fill) => v({}, { fill }).numberColor)).toEqual([true, false, false, true]);
     expect(visibleSections(formFromAppearance({ numbers: { font: 'css:Impact' } }))).toMatchObject({ fontFamily: true, fontFile: false });
     expect(visibleSections(normalizeAppearance({ numbers: { font: 'file:a/b.ttf' } }))).toMatchObject({ fontFamily: false, fontFile: true });
   });

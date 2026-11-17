@@ -3,7 +3,7 @@ import { RIM_WIDTH } from '../shaders/engrave.js';
 
 /** Outline fill: the width of the filled rim inside the glyph edge, in face units. */
 export const OUTLINE_WIDTH = 0.035;
-/** Glow-ink fill: emissive strength of the number colour (independent of the body glow). */
+/** Glow-ink fill: emissive strength of the number colour at 100 % (numbers.inkGlow scales it; apart from the number glow). */
 export const GLOW_INK = 1.6;
 /** [metalness, roughness, gloss] of each new fill (paint's values for outline and glow). */
 export const FILL_PBR = { outline: [0, 0.6, 0], holo: [1, 0.2, 0], glow: [0, 0.6, 0] };
@@ -35,7 +35,8 @@ vec3 dcHolo = 0.55 + 0.45 * cos( 6.2832 * ( dcHue + vec3( 0.0, 0.33, 0.67 ) ) );
 diffuseColor.rgb = mix( diffuseColor.rgb, dcHolo * mix( vec3( 1.0 ), uFillColor, 0.35 ), dcMask );
 `;
 
-const GLOW_EMISSIVE = `totalEmissiveRadiance += uFillColor * ${GLOW_INK.toFixed(2)} * dcMask;`;
+const GLOW_PARS = 'uniform float uInkGlow;';
+const GLOW_EMISSIVE = `totalEmissiveRadiance += uFillColor * ${GLOW_INK.toFixed(2)} * uInkGlow * dcMask;`;
 
 /** ExtrasPatch for the number fill: {} for the four old fills. */
 export function fillPatch(a) {
@@ -50,6 +51,9 @@ export function fillPatch(a) {
   };
   if (fill === 'outline') patch.replace = OUTLINE_REPLACE;
   else if (fill === 'holo') patch.chunks = { emissive: HOLO_EMISSIVE };
-  else patch.chunks = { emissive: GLOW_EMISSIVE };
+  else {
+    patch.uniforms.uInkGlow = { value: a.numbers.inkGlow ?? 1 };
+    patch.chunks = { pars: GLOW_PARS, emissive: GLOW_EMISSIVE };
+  }
   return patch;
 }

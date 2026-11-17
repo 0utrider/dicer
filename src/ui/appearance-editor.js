@@ -320,6 +320,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         size: pct(form.numbers.size),
         weight: pct(form.numbers.weight),
         intensity: pct(form.glow.intensity),
+        inkGlow: pct(form.numbers.inkGlow ?? 1),
         stripStrength: pct(form.edges.stripStrength),
         bodyBlend: pct(form.bodyImage?.blend ?? 1),
       },
@@ -510,6 +511,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     }
     if (!path) return;
     this.#form = setField(this.#form, path, value);
+    // a colour picked by hand turns its readability toggle off (setField): the box follows
+    const keep = path === 'numbers.color' && this.element.querySelector('input[name="numbers.contrast"]');
+    if (keep) keep.checked = false;
     const out = this.element.querySelector(`output[data-for="${path}"]`);
     if (out) out.textContent = pct(value);
     if (path.startsWith('numbers.font')) this.#paintFontMessage();

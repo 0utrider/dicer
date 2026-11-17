@@ -360,9 +360,13 @@ describe('build', () => {
     // physics worker): owner approved +819 B (30,233 -> 31,052), 2026-11-17.
     // A fresh collider frame and point order per throw (sim.js framedPoints: the d12 face bias
     // from Rapier's internal layout averages out): owner approved +477 B (31,052 -> 31,529), 2026-11-17.
+    // Glow ink brightness (numbers.inkGlow in the look) and stone dice's number contrast with their
+    // second colour: owner approved +152 B (31,529 -> 31,681), 2026-11-17.
+    // Keep numbers readable (numbers.contrast: a picked colour is drawn as picked): owner approved
+    // +62 B (31,681 -> 31,743), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(31_529);
+    expect(growth).toBeLessThanOrEqual(31_743);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

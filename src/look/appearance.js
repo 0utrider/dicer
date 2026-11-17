@@ -39,7 +39,7 @@ function deepFreeze(o) {
 export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false, motion: true, extra: 'none', extraColor: '#ffffff', extraDensity: 0.5 },
-  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', depth: 0.5, font: 'serif', pips: false, coin: 'numbers', size: 1, weight: 0 },
+  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', contrast: true, inkGlow: 1, depth: 0.5, font: 'serif', pips: false, coin: 'numbers', size: 1, weight: 0 },
   edges: { radius: 0.5, style: 'rounded', strip: { style: 'body', color: '#e2b04a', strength: 1 } },
   glow: { color: '#ffffff', intensity: 0 },
   shapes: { d4: 'classic' },
@@ -182,6 +182,8 @@ export function normalizeAppearance(input) {
         relief: pick(n.relief, RELIEFS, D.numbers.relief),
         icons: { crit: pick(ic.crit, ICON_IDS, null), fumble: pick(ic.fumble, ICON_IDS, null) },
         color: color(n.color, D.numbers.color),
+        contrast: n.contrast !== false, // kept readable on the die (contrast.js); off: the colour as picked
+        inkGlow: num(n.inkGlow, 0, 2, D.numbers.inkGlow), // glow ink's brightness (x GLOW_INK)
         depth: num(n.depth, 0, 1, D.numbers.depth),
         font: font(n.font, D.numbers.font),
         pips: n.pips === true,

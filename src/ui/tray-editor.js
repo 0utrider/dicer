@@ -13,6 +13,7 @@ import {
   TRAY_SHAPES,
   trayStyle,
   normalizeTrayPresets,
+  STITCH_SVG,
 } from '../tray/tray-model.js';
 
 const MODULE = 'dicer';
@@ -34,6 +35,10 @@ export function paintPreview(el, look) {
   if (!el.querySelector('.dicer-tt-skin')) {
     const skin = document.createElement('div');
     skin.className = 'dicer-tt-skin';
+    const stitch = document.createElement('div'); // a leather rim's stitches along the shape
+    stitch.className = 'dicer-tt-stitch';
+    stitch.innerHTML = STITCH_SVG;
+    skin.append(stitch);
     el.prepend(skin);
   }
   el.dataset.surface = look.surface;

@@ -12,6 +12,7 @@ import {
   traySound,
   trayArea,
   perchRect,
+  STITCH_SVG,
 } from './tray-model.js';
 
 /** The table tray element's id, and the event the document gets when it slides in or out. */
@@ -43,6 +44,7 @@ export function createTray({
   let px = null;
   let poll = null;
   let previewing = false; // the Dice tray window is open: shown whatever trayShow says
+  let raised = false; // over windows with the dice (kept for a tray built again)
 
   const lookNow = () =>
     trayLookFor({
@@ -105,11 +107,15 @@ export function createTray({
   function build() {
     el = doc.createElement('div');
     el.id = TRAY_ID;
-    el.className = 'dicer-tt';
+    el.className = raised ? 'dicer-tt dicer-above' : 'dicer-tt';
     el.setAttribute('aria-hidden', 'true');
     // the hexagon and octagon draw their rim and floor here (clipped to the shape)
     const skin = doc.createElement('div');
     skin.className = 'dicer-tt-skin';
+    const stitch = doc.createElement('div'); // a leather rim's stitches along the shape
+    stitch.className = 'dicer-tt-stitch';
+    stitch.innerHTML = STITCH_SVG;
+    skin.append(stitch);
     el.append(skin);
     for (const side of ['top', 'right', 'bottom', 'left']) {
       const edge = doc.createElement('div');
@@ -120,7 +126,17 @@ export function createTray({
     const grip = doc.createElement('div');
     grip.className = 'dicer-tt-grip';
     grip.addEventListener('pointerdown', (e) => drag(e, 'size'));
-    el.append(grip);
+    // the tray in a window of its own (another screen), one click away from the table
+    const pop = doc.createElement('button');
+    pop.type = 'button';
+    pop.className = 'dicer-tt-popout';
+    const tip = globalThis.game?.i18n?.localize?.('DICER.DiceTray.PopOut') ?? 'Pop out';
+    pop.dataset.tooltip = tip;
+    pop.setAttribute('aria-label', tip);
+    pop.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i>';
+    pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+    pop.addEventListener('click', () => globalThis.Hooks?.callAll('dicerTrayPopOut'));
+    el.append(grip, pop);
     // just under the dice canvas: after the board, as the canvas's layer is
     const board = doc.getElementById('board');
     if (board) board.after(el);
@@ -188,7 +204,8 @@ export function createTray({
     },
     /** Over windows with the dice (diceAboveWindows). */
     raise(on) {
-      el?.classList.toggle('dicer-above', !!on);
+      raised = !!on;
+      el?.classList.toggle('dicer-above', raised);
     },
     /** The px strip along the tray's top rim the pets sit on, or null (no tray, or one slid away). */
     perch() {

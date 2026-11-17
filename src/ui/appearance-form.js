@@ -91,6 +91,8 @@ export function formFromAppearance(raw) {
       critIcon: a.numbers.icons.crit ?? 'none',
       fumbleIcon: a.numbers.icons.fumble ?? 'none',
       color: a.numbers.color,
+      contrast: a.numbers.contrast,
+      inkGlow: a.numbers.inkGlow,
       depth: a.numbers.depth,
       pips: a.numbers.pips,
       coin: a.numbers.coin,
@@ -143,6 +145,8 @@ export function appearanceFromForm(form) {
       relief: num.relief,
       icons: { crit: num.critIcon, fumble: num.fumbleIcon },
       color: num.color,
+      contrast: num.contrast !== false,
+      inkGlow: n(num.inkGlow),
       depth: n(num.depth),
       font: fontIdOf(num),
       pips: num.pips === true,
@@ -197,21 +201,23 @@ export function visibleSections(look) {
     // edge strips need rounded edges (a sharp die has no edge to paint)
     strip: radius > 0,
     stripDetails: radius > 0 && stripStyle !== undefined && stripStyle !== 'body',
-    numberColor: fill !== 'gold' && fill !== 'silver',
+    inkGlow: fill === 'glow',
     fontFamily: kind === 'css',
     fontFile: kind === 'file',
   };
 }
 
 /**
- * The number colour a metal fill switches to. Gold and silver are the same metal finish tinted by
- * the number colour, and the editor hides that picker for metals, so picking a metal sets its colour.
+ * The number colour a metal fill starts from. Gold and silver are the same metal finish tinted by
+ * the number colour (its picker tints the metal any colour), so picking a metal sets its colour.
  */
 export const METAL_FILL_COLORS = Object.freeze({ gold: '#e2b04a', silver: '#d8dde6' });
 
 /** Sets one dotted path ('body.color') of a form copy; numeric fields become numbers. */
 export function setField(form, path, value) {
   const out = plain(form);
+  // A number colour picked by hand is kept as picked (its readability toggle turns off).
+  if (path === 'numbers.color') out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), contrast: false };
   // Only a change of fill sets the colour: re-picking the same metal keeps a saved look's tint.
   if (path === 'numbers.fill' && Object.hasOwn(METAL_FILL_COLORS, value) && out.numbers?.fill !== value) {
     out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), color: METAL_FILL_COLORS[value] };
@@ -231,7 +237,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'extraDensity', 'scale', 'rotation', 'blend'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'inkGlow', 'extraDensity', 'scale', 'rotation', 'blend'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};
