@@ -41,7 +41,8 @@ test('every panel normal faces the origin', () => {
 test('panels are emissive: colour is multiplied by intensity', () => {
   const byName = Object.fromEntries(panels(createStudioScene()).map((p) => [p.userData.panel, p]));
   expect(byName.key.material.color.r).toBeCloseTo(10);
-  expect(byName.overhead.material.color.r).toBeCloseTo(2.5);
+  // dim: a thrown die's top face mirrors it head-on, and brighter washes a clear die's inside out
+  expect(byName.overhead.material.color.r).toBeCloseTo(0.8);
   expect(byName.rim.material.color.r).toBeCloseTo(8);
   expect(byName.fill.material.color.r).toBeCloseTo(1.5);
   expect(byName.fill.material.color.b).toBeLessThan(byName.fill.material.color.r);

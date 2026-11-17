@@ -4,9 +4,12 @@ import * as THREE from 'three';
 // dimmer (a 6x6 panel at 6 drew a hard bar on every rounded bevel), and two large dim panels
 // were added so polished metal reflects a bright studio instead of the black backdrop: a sweep
 // behind and above (what a top face mirrors at the gallery's 52-degree view) and a table below
-// the horizon (what lower faces mirror).
+// the horizon (what lower faces mirror). The overhead panel is dim (0.8): thrown dice are seen
+// from straight above, so every top face mirrors it head-on, and at 2.5 that glare washed a
+// clear die's inside out (Eruption's lava, Nautilus's swirls); metal and opaque dice barely
+// change, lit by the key, rim and sweep.
 const PANELS = [
-  ['overhead', 2.5, '#ffffff', [10, 10], [0, 8, 0]],
+  ['overhead', 0.8, '#ffffff', [10, 10], [0, 8, 0]],
   ['key', 10, '#ffffff', [1, 5], [-6, 4, 2]],
   ['rim', 8, '#ffffff', [1, 5], [6, 3, -3]],
   ['fill', 1.5, '#ffe6c7', [5, 2], [0, 1, 7]],
