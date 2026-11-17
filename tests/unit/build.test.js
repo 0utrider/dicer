@@ -40,7 +40,7 @@ describe('build', () => {
     const fontWorker = lazy.find((p) => /font-worker-/.test(p));
     const benchAdapter = lazy.find((p) => /dicer-adapter-/.test(p)); // game.dice3d.benchmark(): adapter + runner
     const benchApp = lazy.find((p) => /benchmark-app-/.test(p));
-    const benchReport = lazy.find((p) => /report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
+    const benchReport = lazy.find((p) => /^dist\/report-/.test(p)); // the bench library (scenarios, stats, recorder, report)
     const lookExtras = lazy.find((p) => /look-extras-/.test(p)); // new look shader code (dice designs)
     const pets = lazy.find((p) => /^dist\/pet-[A-Za-z0-9_-]{8}\.js$/.test(p)); // the dice pet layer
     const threePoints = lazy.find((p) => /^dist\/Points-[A-Za-z0-9_-]{8}\.js$/.test(p)); // three's Points, shared by the pet chunk and the model loader
@@ -106,6 +106,10 @@ describe('build', () => {
     const installedDice = lazy.filter((p) => /^dist\/installed-dice-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(installedDice).toHaveLength(2);
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-installed-dice');
+    // the GM's Dice So Nice migration report window (with its report data)
+    const dsnReport = lazy.find((p) => /^dist\/dsn-report-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(dsnReport).toBeTruthy();
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-dsn-report');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-edge');
     // lazy for real too: no world-start file names it
     for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
@@ -193,6 +197,7 @@ describe('build', () => {
         trayModel,
         trayWindow,
         ...installedDice,
+        dsnReport,
         hand,
         grab,
         rollFilters,

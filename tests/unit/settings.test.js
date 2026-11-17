@@ -334,6 +334,30 @@ test('disabledModuleTriggers is a hidden world Array defaulting to empty (P4-R12
   expect(cfg.default).toEqual([]);
 });
 
+test('the dsn migration report menu is a GM-only lazy ApplicationV2 proxy', () => {
+  class FakeApp {}
+  const menus = {};
+  globalThis.foundry = { applications: { api: { ApplicationV2: FakeApp } } };
+  globalThis.game = {
+    settings: { register: () => {}, registerMenu: (ns, key, cfg) => (menus[key] = { ns, ...cfg }) },
+  };
+  try {
+    registerSettings();
+  } finally {
+    delete globalThis.game;
+    delete globalThis.foundry;
+  }
+  const menu = menus.dsnReport;
+  expect(menu).toMatchObject({ ns: 'dicer', restricted: true, icon: 'fa-solid fa-clipboard-list' });
+  expect(menu.name).toBe('DICER.Settings.dsnReport.Name');
+  expect(menu.label).toBe('DICER.Settings.dsnReport.Label');
+  expect(menu.hint).toBe('DICER.Settings.dsnReport.Hint');
+  expect(Object.getPrototypeOf(menu.type)).toBe(FakeApp);
+  expect(menus.triggerEditor.restricted).toBe(false);
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Settings.dsnReport;
+  expect(Object.keys(en).sort()).toEqual(['Hint', 'Label', 'Name']);
+});
+
 test('the trigger editor menu is a client-visible ApplicationV2 proxy that lazily opens the editor', () => {
   class FakeApp {}
   const menus = {};
