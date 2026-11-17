@@ -1078,8 +1078,9 @@ describe('follow-up rolls', () => {
     expect(handThrows.get(h.id).recording).toEqual({ rec: 1 });
   });
 
-  test('physics decides: every roll is thrown for the roller, no screen, no prompt, the read faces are its result', async () => {
-    settings.handRolls = 'physics';
+  test('physics decides (Roll by hand off): every roll is thrown for the roller, no screen, no prompt, the read faces are its result', async () => {
+    settings.handRolls = 'off';
+    settings.physicsResults = true;
     boxValues = [17];
     const a = await rollD20();
     await vi.advanceTimersByTimeAsync(10000); // long after: still thrown for the roller
@@ -1096,8 +1097,33 @@ describe('follow-up rolls', () => {
     expect(handThrows.get(h.id).recording).toEqual({ rec: 1 }); // replayed for the others
   });
 
+  test('physics decides with Ask: answered automatically, the physics decides; by hand, the throw screen', async () => {
+    settings.handRolls = 'ask';
+    settings.physicsResults = true;
+    deps.ask = vi.fn(async () => false);
+    boxValues = [11];
+    const auto = await rollD20();
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(auto.terms[0].results).toEqual([{ result: 11, active: true }]);
+    expect(auto.options.dicerHand).toMatchObject({ physics: true });
+    await vi.advanceTimersByTimeAsync(10000);
+    deps.ask = vi.fn(async () => true);
+    overlay.values = [8];
+    const byHand = await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(byHand.options.dicerHand.physics).toBeUndefined();
+  });
+
+  test('without physics decides, Ask answered automatically is the random of Foundry', async () => {
+    settings.handRolls = 'ask';
+    deps.ask = vi.fn(async () => false);
+    const r = await rollD20();
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(r.options.dicerHand.fallback).toBe('auto');
+  });
+
   test('physics decides, but hand rolls required: the throw screen still opens', async () => {
-    settings.handRolls = 'physics';
+    settings.physicsResults = true;
     settings.handRollsRequired = true;
     overlay.values = [9];
     const r = await rollD20();

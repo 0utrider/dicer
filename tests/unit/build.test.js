@@ -354,9 +354,11 @@ describe('build', () => {
     // landing; the sounds are in the lazy synth chunk): owner approved +119 B (29,947 -> 30,066), 2026-11-17.
     // "Physics decides" (the handRolls choice, the chat card's atom mark; the roll path is in the
     // lazy hand chunk), with the v14 resolver getter fix: owner approved +139 B (30,066 -> 30,205), 2026-11-17.
+    // Physics decides as its own setting (physicsResults), out of Roll by hand: owner approved +28 B
+    // (30,205 -> 30,233), 2026-11-17.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(30_205);
+    expect(growth).toBeLessThanOrEqual(30_233);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

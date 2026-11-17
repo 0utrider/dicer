@@ -26,15 +26,17 @@ export function handAllowed(user, getSetting) {
   return !!user && min !== undefined && (user.isGM === true || (user.role ?? 0) >= min);
 }
 
+/** Dicer fulfils this user's dice: hand rolls on or required, or physics decides the results. */
+export const diceOnDicer = (get) =>
+  get('handRollsRequired') === true || get('handRolls') !== 'off' || get('physicsResults') === true;
+
 /**
  * Could `user` throw by hand (M8: the idle prefetch)? Allowed, and hand rolls on (or required) or
  * a die on `dicer` in the core dice configuration `core`.
  */
 export const wantsHand = (user, get, core) =>
   handAllowed(user, get) &&
-  (get('handRollsRequired') === true ||
-    get('handRolls') !== 'off' ||
-    Object.values(core ?? {}).includes('dicer'));
+  (diceOnDicer(get) || Object.values(core ?? {}).includes('dicer'));
 
 /**
  * Brings the core diceConfiguration in line with the hand settings (the body is the hand chunk's
@@ -46,7 +48,7 @@ export function syncDiceConfiguration(o) {
   if (
     Object.values(o.getCore() ?? {}).includes('dicer') ||
     Object.keys(get('handRollStash') ?? {}).length ||
-    (handAllowed(user, get) && (get('handRollsRequired') === true || get('handRolls') !== 'off'))
+    (handAllowed(user, get) && diceOnDicer(get))
   ) {
     return loadHand().then((m) => m?.syncConfig(o));
   }

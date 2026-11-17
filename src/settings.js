@@ -110,8 +110,8 @@ export const resetControls = () => {
  * @param {(key: string, value: unknown) => void} [callbacks.onQualityChange] runs when quality
  *   or the world qualityCap changes (Foundry fires a world setting's onChange on every client)
  * @param {(key: string, value: unknown) => void} [callbacks.onSoundChange] runs when sounds changes
- * @param {() => void} [callbacks.onHandChange] runs when handRolls, handRollTypes, handRollsAllowed
- *   or handRollsRequired changes (the core dice configuration is re-synced)
+ * @param {() => void} [callbacks.onHandChange] runs when handRolls, physicsResults, handRollTypes,
+ *   handRollsAllowed or handRollsRequired changes (the core dice configuration is re-synced)
  * @param {() => void} [callbacks.onLayerChange] runs when diceAboveWindows changes
  * @param {() => void} [callbacks.onLightingChange] runs when diceLighting changes
  * @param {() => void} [callbacks.onTrayChange] runs when a dice tray setting changes
@@ -685,11 +685,13 @@ export function registerSettings({
     default: { preset: 'corner' },
     onChange: () => onRollAreasChange?.(),
   });
-  // Rolling by hand (G10, P6-D4: off by default; the GM allows everyone). The four that decide the
+  // Rolling by hand (G10, P6-D4: off by default; the GM allows everyone). The five that decide the
   // core dice configuration re-sync it on change (handRollsAllowed and -Required fire on every client).
   const choices = (key, keys) => Object.fromEntries(keys.map((k) => [k, t(`${key}.Choices.${k}`)]));
   const hand = [
-    ['handRolls', 'client', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always', 'physics']) }],
+    ['handRolls', 'client', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always']) }],
+    // the faces physics lands up are every roll's result (thrown for the roller when not by hand)
+    ['physicsResults', 'client', Boolean, false],
     ['handRollTypes', 'client', Array, [], { config: false }], // Foundry denominations; empty: all
     ['handRollsAllowed', 'world', String, 'all', { choices: choices('handRollsAllowed', ['all', 'trusted', 'gm', 'none']) }],
     ['handRollsRequired', 'world', Boolean, false],
@@ -710,7 +712,7 @@ export function registerSettings({
       type,
       default: def,
       ...more,
-      ...(i < 4 ? { onChange: () => onHandChange?.() } : {}),
+      ...(i < 5 ? { onChange: () => onHandChange?.() } : {}),
     }),
   );
   // The dice configuration entries handRollsRequired took from another method, restored when it ends.

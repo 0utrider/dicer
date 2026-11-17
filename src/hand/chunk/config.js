@@ -2,7 +2,7 @@
  * The core diceConfiguration sync's body (lazy hand chunk; the world-start gate is
  * ../shell.js syncDiceConfiguration, which loads this only when there is something to do).
  */
-import { HAND_DICE, handAllowed } from '../shell.js';
+import { HAND_DICE, handAllowed, diceOnDicer } from '../shell.js';
 
 const differ = (a, b) => {
   const keys = Object.keys(a);
@@ -96,7 +96,7 @@ export async function syncConfig({ getSetting, user, getCore, setCore, setSettin
   for (const k in stash) if (!out[k]) out[k] = stash[k];
   for (const k in stash) delete stash[k];
   const mapped = [];
-  if (usable && (req || getSetting('handRolls') !== 'off')) {
+  if (usable && diceOnDicer(getSetting)) {
     const chosen = getSetting('handRollTypes');
     const types = chosen?.length
       ? chosen

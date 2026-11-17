@@ -457,26 +457,35 @@ async function throwByHand(resolver, terms) {
   // Live hand throws: the roll resolves when physics reads the values, seconds before this
   // screen's dice land, so its message (and the trajectory for the others) goes out at once.
   const early = d.getSetting('handLiveShare') !== false;
-  // "Physics decides": every roll is thrown for the roller, and the faces physics lands up are its
-  // result (a required hand throw is still a real one).
-  const physics = d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'physics';
+  // physicsResults: a roll not thrown by hand is thrown for the roller, and the faces physics lands
+  // up are its result (a required hand throw is still a real one): with Roll by hand off, every
+  // roll; with Ask, the rolls answered "automatically".
+  const required = d.getSetting('handRollsRequired') === true;
+  const physics = !required && d.getSetting('physicsResults') === true;
+  const mode = d.getSetting('handRolls');
   return queued(ms, async (hold) => {
     if (resolver._closed) return fallback('cancel');
-    if (physics || isFollowUp(d.getSetting, startedAt)) {
+    // A free throw (no screen): a follow-up, or one physics decides. Its read faces are the result.
+    const thrownFor = async (kind) => {
       // Bounded: dice that never settle must not hold the queue.
       const entry = await within(castFree(resolver, specs, true, early), HAND_GRACE_MS);
       if (entry?.landed) hold(entry.landed);
       if (!entry?.values || resolver._closed) return fallback(entry ? 'cancel' : 'timeout');
-      if (physics) hand.physics = true;
+      if (kind === 'physics') hand.physics = true;
       else hand.follow = true;
       const n = push(specs, owners, entry.values);
       storeThrow(hand.id, { recording: entry.recording, handle: entry.handle, specs, extras: [], landed: entry.landed });
       return notePartial(resolver, dropped + owners.filter(Boolean).length - n);
-    }
-    if (d.getSetting('handRollsRequired') !== true && d.getSetting('handRolls') === 'ask') {
+    };
+    if (isFollowUp(d.getSetting, startedAt)) return thrownFor('follow');
+    // Physics decides and no hand throw is wanted: thrown for the roller.
+    if (physics && mode !== 'ask' && mode !== 'always') return thrownFor('physics');
+    // "automatically": physics decides when it is on, else Foundry's random
+    const auto = () => (physics ? thrownFor('physics') : fallback('auto'));
+    if (!required && mode === 'ask') {
       const burst = inBurst();
       if (!burst) resting = false; // a new burst asks again
-      if (resting) return fallback('auto');
+      if (resting) return auto();
       let a = null;
       try {
         a = await within((d.ask ?? askHand)(roll, ms, burst), ms);
@@ -484,8 +493,8 @@ async function throwByHand(resolver, terms) {
         /* no prompt: automatic */
       }
       if (a === 'rest') resting = true;
-      if (a !== true && a !== 'yes') return fallback('auto');
       if (resolver._closed) return fallback('cancel');
+      if (a !== true && a !== 'yes') return auto();
     }
     const rect = () => d.areas.rectFor({ rollerId: me.id });
     handFor(d.diceBox);

@@ -275,6 +275,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
   const r = capture({ onHandChange });
   const want = {
     handRolls: { scope: 'client', type: String, default: 'off', config: true },
+    physicsResults: { scope: 'client', type: Boolean, default: false, config: true },
     handRollTypes: { scope: 'client', type: Array, default: [], config: false },
     handRollsAllowed: { scope: 'world', type: String, default: 'all', config: true },
     handRollsRequired: { scope: 'world', type: Boolean, default: false, config: true },
@@ -290,16 +291,16 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
   expect(r.handRollStash).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Object, default: {} });
   // and the record of the dice configuration entries Dicer wrote itself (I2: only those are removed)
   expect(r.handRollMapped).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Array, default: [] });
-  expect(Object.keys(r.handRolls.choices)).toEqual(['off', 'ask', 'always', 'physics']);
+  expect(Object.keys(r.handRolls.choices)).toEqual(['off', 'ask', 'always']);
   expect(Object.keys(r.handRollsAllowed.choices)).toEqual(['all', 'trusted', 'gm', 'none']);
   expect(r.handRollTimeout.range).toMatchObject({ min: 10, max: 300 });
-  for (const key of ['handRolls', 'handRollTypes', 'handRollsAllowed', 'handRollsRequired']) r[key].onChange('x');
-  expect(onHandChange).toHaveBeenCalledTimes(4);
+  for (const key of ['handRolls', 'physicsResults', 'handRollTypes', 'handRollsAllowed', 'handRollsRequired']) r[key].onChange('x');
+  expect(onHandChange).toHaveBeenCalledTimes(5);
   // diceTray re-prepares the scene controls, so its tool comes and goes at once
   globalThis.ui = { controls: { render: vi.fn() } };
   try {
     for (const key of ['handRollTimeout', 'handReplay', 'diceTray']) r[key].onChange?.('x');
-    expect(onHandChange).toHaveBeenCalledTimes(4);
+    expect(onHandChange).toHaveBeenCalledTimes(5);
     expect(globalThis.ui.controls.render).toHaveBeenCalledWith({ reset: true });
     // no controls yet, or a throwing render: never thrown into Foundry's setting change
     globalThis.ui = {};
@@ -315,7 +316,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
     expect(typeof en.Settings[key]?.Name).toBe('string');
     expect(typeof en.Settings[key]?.Hint).toBe('string');
   }
-  for (const k of ['off', 'ask', 'always', 'physics']) expect(typeof en.Settings.handRolls.Choices[k]).toBe('string');
+  for (const k of ['off', 'ask', 'always']) expect(typeof en.Settings.handRolls.Choices[k]).toBe('string');
   for (const k of ['all', 'trusted', 'gm', 'none']) expect(typeof en.Settings.handRollsAllowed.Choices[k]).toBe('string');
   for (const k of ['Method', 'AskTitle', 'AskText', 'ThrowByHand', 'RollAuto']) expect(typeof en.Hand[k]).toBe('string');
 });
