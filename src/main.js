@@ -5,6 +5,7 @@ import { DiceRenderer } from './render/renderer.js';
 import { loadDigitAtlas } from './render/sdf-atlas.js';
 import { onLookExtrasReady } from './render/extras-loader.js';
 import { getPets, requestPets, releasePets } from './pet/pet-loader.js';
+import { petFor } from './pet/pet-for.js';
 import { loadHand, prefetchHand, handNow } from './hand/hand-loader.js';
 import { syncGrab } from './grab/grab-loader.js';
 import { createHandGate, markCard } from './hand/gate-hand.js';
@@ -168,8 +169,12 @@ const landedFx = createLandedFx({
   playMoment: playAnimaterMoment,
 });
 
-/** Runs `run` in an idle callback (a 200 ms timer where there is none). */
-const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run) : setTimeout(run, 200));
+/**
+ * Runs `run` in an idle callback (a 200 ms timer where there is none), within 2 s at the latest: a
+ * busy page (an animated scene, video calls) may never go idle, and the pets, sounds and effects
+ * it preloads would never come.
+ */
+const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 200));
 
 /** Renders the sounds in an idle callback (never on a roll's frames). */
 function preloadSounds() {
@@ -183,6 +188,11 @@ function preloadEffects() {
   if (!effectLayer || getSetting('effects') === false) return;
   const run = () => effectLayer?.prefetch();
   idle(run);
+}
+
+/** Fetches the pet chunk now, only when pets are allowed and shown (requestPets loads it once). */
+function preloadPetsNow() {
+  if (petDeps && getSetting('petsAllowed') !== false && getSetting('showPets') !== false) requestPets(petDeps);
 }
 
 /** Fetches the pet chunk in an idle callback, only when pets are allowed and shown. */
@@ -805,7 +815,8 @@ Hooks.once('ready', async () => {
         getSurface: () => onTray()?.sound() ?? soundSurface(getSetting),
         onLandedFx: (die, fx, rollKey) => landedFx(die, fx, rollKey),
         effects: effectLayer,
-        pet: () => getPets(),
+        // not loaded yet (the idle preload has not run): a roll with a pet asks for it now
+        pet: () => getPets() ?? (preloadPetsNow(), null),
         fonts: fontAtlases,
         onLayer: layerDice,
       });
@@ -935,6 +946,8 @@ Hooks.once('ready', async () => {
       // throw overlay ({specs, rect?, timeoutMs?, ...}: live checks until the resolver opens it).
       api._debug.hand = (o) =>
         loadHand(box).then((m) => (o ? m.openThrowOverlay({ diceBox: box, ...o }) : m));
+      // The pet layer's pets on this screen (live checks, support): null until the chunk is in.
+      api._debug.pets = () => getPets()?.debug?.() ?? null;
       // What the DicerResolver's body (the hand chunk) throws with.
       setHandDeps({
         diceBox: box,
@@ -946,6 +959,8 @@ Hooks.once('ready', async () => {
         getCore,
         hooks: Hooks,
         user: () => game.user,
+        // the roller's pet for a throw on this screen (physics decides, by hand, the dice tray)
+        petSpec: (ghost) => petFor({ user: game.user, view: ghost ? 'ghost' : 'real', getSetting }),
       });
       // The sidebar is observed directly: v14 fires collapseSidebar mid-transition.
       stopWatchingArea = watchArea(() => (resizeDice(), tray?.refresh()));

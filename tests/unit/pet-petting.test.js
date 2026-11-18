@@ -162,6 +162,7 @@ const rollToRest = (m, user = 'u1', kind = 'mimic') => {
   m.layer.leave(key, 0);
   m.layer.end(key);
   expect(runTo(m, clockNow + 1000)).toBe('rest');
+  m.deps.playSound.mockClear(); // the roll's own sounds (its oooh, its result): tests count what follows
 };
 const group = (m, i = 0) => m.scene.children.filter((c) => c.userData.dicerPet)[i];
 /** Where the real camera draws the point half the pet's height up over its spot, in page px. */
@@ -196,6 +197,23 @@ describe('pets made from a model (PET_MODELS)', () => {
     expect(skinned(group(m))).toBe(2); // Body and Eyes
     expect(group(m).children[0].getObjectByName('cat')).toBeTruthy();
     expect(loadPetModel).toHaveBeenCalledTimes(1);
+  });
+
+  test("the layer loads every connected player's pet model at once, and preloadModel loads a picked one", async () => {
+    PET_MODELS.cat = 'modules/dicer/assets/pets/cat.glb';
+    PET_MODELS.owl = 'modules/dicer/assets/pets/owl.glb';
+    const had = globalThis.game;
+    globalThis.game = { users: [{ active: true, getFlag: () => ({ kind: 'cat' }) }, { active: false, getFlag: () => ({ kind: 'owl' }) }] };
+    const loadPetModel = vi.fn(() => new Promise(() => {}));
+    const m = make({}, { loadPetModel });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(loadPetModel.mock.calls.map((c) => c[0])).toEqual(['modules/dicer/assets/pets/cat.glb']); // not the offline player's owl
+    m.layer.preloadModel('owl');
+    m.layer.preloadModel('owl');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(loadPetModel).toHaveBeenCalledTimes(2);
+    globalThis.game = had;
+    delete PET_MODELS.owl;
   });
 
   test('a model that fails to load leaves the code-built pet', async () => {
@@ -758,6 +776,34 @@ describe('dragging a pet in the layer', () => {
     track(clockNow + 1500);
     expect(far).toBeLessThan(0.05);
     expect(g.position.x).toBeCloseTo(home.x, 6);
+  });
+
+  test('after a reload, a placed pet watches its first roll from its spot, not the roll area', () => {
+    const at = { x: -0.6, z: 0.5 }; // saved earlier: petRestAt, in stage fractions
+    const m = make({ petRestSpot: 'placed', petRestAt: at });
+    const home = { x: at.x * STAGE.halfWidth, z: at.z * STAGE.halfDepth };
+    const key = 'first';
+    const area = { cx: 3, cz: -2, halfWidth: 2, halfDepth: 2 }; // a roll area (the tray) far from it
+    const own = m.layer.obstaclesFor({ spec: spec('u1'), edge: 0, area }).find((o) => o.id === 'u1');
+    m.layer.begin(key, { spec: spec('u1'), edge: 0, area, centre: () => ({ x: 3, z: -2 }) });
+    let inTray = false;
+    const track = (ms) => {
+      while (clockNow < ms) {
+        m.layer.update((clockNow += 16));
+        const g = group(m);
+        if (g && Math.abs(g.position.x - 3) < 2 && Math.abs(g.position.z + 2) < 2) inTray = true;
+      }
+    };
+    track(400);
+    m.layer.landed(key, [{ type: 'd20', value: 12 }]);
+    track(clockNow + 2500);
+    m.layer.leave(key, 0);
+    m.layer.end(key);
+    track(clockNow + 1500);
+    expect(inTray).toBe(false); // it hops in to its spot, never into the tray
+    expect(group(m).position.x).toBeCloseTo(home.x, 6);
+    expect(group(m).position.z).toBeCloseTo(home.z, 6);
+    if (own) expect(Math.hypot(own.x - home.x, own.z - home.z)).toBeLessThan(1e-6); // the physics knows too
   });
 
   test('a pet mid-hop, or any while a roll flies, is not picked up', () => {

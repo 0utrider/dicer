@@ -201,6 +201,7 @@ export function openThrowOverlay({
   getRect,
   onRelease,
   early = false,
+  pet = null,
 }) {
   if (active) return Promise.resolve({ cancelled: true });
   active = true;
@@ -480,6 +481,7 @@ export function openThrowOverlay({
         record: (rec) => gotRecording((recording = rec)),
         launch,
         edge: handEdge(launch, area),
+        ...(pet && { pet }), // the thrower's pet comes for the throw
       };
       let thrown;
       if (ghostOnRelease) {

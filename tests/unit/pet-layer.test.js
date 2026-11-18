@@ -91,6 +91,9 @@ test('a fourth roller gets no pet', () => {
   expect(pets(scene)).toHaveLength(3);
 });
 
+// the result sounds a pet voiced, leaving out its "oooh" while the dice fly
+const said = (x) => (x.mock ? x : x.playSound).mock.calls.map(([a]) => a.builtin).filter((n) => !n.startsWith('petOooh'));
+
 const reactAndRun = (settings, dice, ghost = false) => {
   const m = make(settings);
   m.layer.begin('k', info(0, spec('u1', ghost)));
@@ -101,12 +104,12 @@ const reactAndRun = (settings, dice, ghost = false) => {
   return m;
 };
 
-test('crit plays petHappy, fumble petSad, mixed/plain silent', () => {
+test('crit plays petHappy, fumble petSad, mixed petHuh, plain petHmm', () => {
   expect(reactAndRun({}, [d20(20)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
   expect(reactAndRun({}, [d20(1)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSad' }));
-  expect(reactAndRun({}, [d20(1), d20(20)]).playSound).not.toHaveBeenCalled();
-  expect(reactAndRun({}, [{ type: 'd6', value: 6 }]).playSound).not.toHaveBeenCalled();
-  expect(reactAndRun({}, [d20(20)]).playSound).toHaveBeenCalledTimes(1);
+  expect(said(reactAndRun({}, [d20(1), d20(20)]))).toEqual(['petHuh']);
+  expect(said(reactAndRun({}, [{ type: 'd6', value: 6 }]))).toEqual(['petHmm']);
+  expect(said(reactAndRun({}, [d20(20)]))).toEqual(['petHappy']);
 });
 
 test('petSounds or sounds off, or a ghost roll -> silent', () => {
@@ -267,15 +270,14 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('attack', [d20(20)]);
     run(m, 900, 1300);
     expect(phaseOf(m.scene)).toBe('watch'); // the damage dice still roll
-    expect(m.playSound).not.toHaveBeenCalled();
+    expect(said(m)).toEqual([]);
     clockNow = 1300;
     m.layer.landed('damage', [{ type: 'd8', value: 3 }]);
     run(m, 1300, 4000);
-    expect(m.playSound).toHaveBeenCalledTimes(1);
-    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
+    expect(said(m)).toEqual(['petHappy']);
   });
 
-  test('a multi-roll message: a 20 and a 1 in two rolls -> mixed (silent puzzlement)', () => {
+  test('a multi-roll message: a 20 and a 1 in two rolls -> mixed (a puzzled "huh?")', () => {
     const m = make();
     m.layer.begin('r1', info(0, spec('u1')));
     m.layer.begin('r2', info(0, spec('u1')));
@@ -284,7 +286,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('r2', [d20(1)]);
     run(m, 700, 1000);
     expect(phaseOf(m.scene)).toBe('react');
-    expect(m.playSound).not.toHaveBeenCalled();
+    expect(said(m)).toEqual(['petHuh']);
   });
 
   test('a ghost key and a real crit key -> crit, from the real key only', () => {
@@ -299,7 +301,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
   });
 
 
-  test("a ghost key's 20 never counts: ghost 20 + real plain -> plain, silent", () => {
+  test("a ghost key's 20 never counts: ghost 20 + real plain -> plain, an mm-hm", () => {
     const m = make();
     m.layer.begin('g', info(0, spec('u1', true)));
     m.layer.begin('r', info(0, spec('u1', false)));
@@ -308,7 +310,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('r', [d20(7)]);
     run(m, 700, 1000);
     expect(phaseOf(m.scene)).toBe('react');
-    expect(m.playSound).not.toHaveBeenCalled();
+    expect(said(m)).toEqual(['petHmm']);
   });
 
   test('ghost-only overlapping rolls -> plain, silent, and exactly as long as a crit', () => {
@@ -327,8 +329,8 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     const [ghost, ghostSound] = goneAfter(true, 20);
     expect(crit).toBeGreaterThan(0);
     expect(ghost).toBe(crit);
-    expect(critSound).toHaveBeenCalledTimes(1);
-    expect(ghostSound).not.toHaveBeenCalled();
+    expect(said(critSound)).toEqual(['petHappy']);
+    expect(ghostSound).not.toHaveBeenCalled(); // no "oooh" either: a blind roll has no suspense
   });
 
   test('a key that ends unlanded no longer holds the reaction back', () => {
@@ -516,14 +518,14 @@ describe('a reaction plays once per roll', () => {
   };
   const phaseOf = (scene) => pets(scene)[0]?.userData.dicerPet.phase;
 
-  test('A crit reacted, then B begins and lands plain (A still on screen): B is plain, no second cheer', () => {
+  test('A crit reacted, then B begins and lands plain (A still on screen): B is plain, an "mm-hm", no second cheer', () => {
     const m = make();
     m.layer.begin('A', info(0, spec('u1')));
     run(m, 0, 700);
     clockNow = 700;
     m.layer.landed('A', [d20(20)]);
     run(m, 700, 1000);
-    expect(m.playSound).toHaveBeenCalledTimes(1);
+    expect(said(m)).toEqual(['petHappy']);
     clockNow = 1000;
     m.layer.begin('B', info(0, spec('u1')));
     run(m, 1000, 1700);
@@ -531,7 +533,7 @@ describe('a reaction plays once per roll', () => {
     m.layer.landed('B', [d20(7)]);
     run(m, 1700, 2000);
     expect(phaseOf(m.scene)).toBe('react');
-    expect(m.playSound).toHaveBeenCalledTimes(1);
+    expect(said(m)).toEqual(['petHappy', 'petHmm']);
     expect(pets(m.scene)[0].children.find((c) => c.isPoints).visible).toBe(false);
   });
 
@@ -980,7 +982,7 @@ test('a splat mid-routine gives no reaction and no chirp', () => {
   m.layer.leave('k', 0);
   m.layer.end('k');
   runTo(m, clockNow + 1500);
-  expect(m.playSound.mock.calls.map(([a]) => a.builtin)).toEqual(['petSplat']);
+  expect(said(m)).toEqual(['petSplat']);
   expect(pets(m.scene)).toHaveLength(1);
   expect(phaseOf(m)).toBe('puddle');
 });
@@ -2083,4 +2085,41 @@ describe('pets on the dice tray rim', () => {
     m.layer.wall({ x: p.x, y: 0.5, z: p.z }, WALL_FLINCH_SPEED * 3);
     expect(m.layer.update((clockNow += 16))).toBe('rest');
   });
+});
+
+test('a pet watching its dice fly says "oooh" once per roll; a blind roll gets none', () => {
+  const oohs = (ghost) => {
+    const m = make();
+    m.layer.begin('k', info(0, spec('u1', ghost)));
+    for (let t = 0; t <= 900; t += 16) m.layer.update((clockNow = t));
+    m.layer.landed('k', [d20(ghost ? undefined : 9, ghost)]);
+    for (let t = 900; t <= 2000; t += 16) m.layer.update((clockNow = t));
+    return m.playSound.mock.calls.filter(([a]) => a.builtin.startsWith('petOooh')).length;
+  };
+  expect(oohs(false)).toBe(1);
+  expect(oohs(true)).toBe(0);
+});
+
+test('its "ooh?" is one of three, picked at random, never the same twice running', () => {
+  let r = 0;
+  const rolls = [0.1, 0.9, 0.1, 0.5, 0.99, 0.0];
+  const m = make({}, { random: () => rolls[r++ % rolls.length] });
+  const heard = [];
+  for (let i = 0; i < 6; i++) {
+    const key = 'k' + i;
+    m.layer.begin(key, info(0, spec('u1')));
+    const from = clockNow;
+    for (let t = from; t <= from + 900; t += 16) m.layer.update((clockNow = t));
+    m.layer.landed(key, [d20(9)]);
+    const to = clockNow + 1500;
+    for (let t = clockNow; t <= to; t += 16) m.layer.update((clockNow = t));
+    m.layer.leave(key, 0);
+    m.layer.end(key);
+    heard.push(...m.playSound.mock.calls.map(([a]) => a.builtin).filter((n) => n.startsWith('petOooh')));
+    m.playSound.mockClear();
+  }
+  expect(heard.length).toBeGreaterThanOrEqual(2);
+  for (const n of heard) expect(['petOooh', 'petOooh2', 'petOooh3']).toContain(n);
+  for (let i = 1; i < heard.length; i++) expect(heard[i]).not.toBe(heard[i - 1]);
+  expect(new Set(heard).size).toBeGreaterThan(1);
 });

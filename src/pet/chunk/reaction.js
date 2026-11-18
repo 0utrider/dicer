@@ -27,6 +27,17 @@ export function merge(summaries) {
   return crit ? 'crit' : fumble ? 'fumble' : 'plain';
 }
 
-/** The builtin sound name for a reaction, or null (mixed and plain are silent). */
-export const reactionSound = (reaction) =>
-  reaction === 'crit' ? 'petHappy' : reaction === 'fumble' ? 'petSad' : null;
+/**
+ * The builtin sound name for a reaction: a crit's cheer, a fumble's whimper, a mixed roll's puzzled
+ * "huh?", a plain roll's satisfied "mm-hm"; null for a ghost-only roll (a blind roll never hints).
+ */
+export const reactionSound = (reaction, ghostOnly = false) =>
+  ghostOnly
+    ? null
+    : reaction === 'crit'
+      ? 'petHappy'
+      : reaction === 'fumble'
+        ? 'petSad'
+        : reaction === 'mixed'
+          ? 'petHuh'
+          : 'petHmm';

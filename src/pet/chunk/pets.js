@@ -35,7 +35,7 @@ import { elementReactions, reactionOf, resting } from './reactions.js';
 import { elementOf } from '../../effects/element-of.js';
 import { ELEMENT_FX, PHYSICAL, writeMotes, writePuffs } from './element-fx.js';
 import { createMoods } from './moods.js';
-import { petFor } from '../pet-for.js';
+import { petFor, readPet } from '../pet-for.js';
 
 /** At most this many pets on screen at once. */
 export const MAX_PETS = 3;
@@ -87,6 +87,9 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 /** Each kind's voice, as a playback rate on the shared pet sounds (the player's pitch multiplies it). */
 const KIND_PITCH = { owl: 0.95, frog: 0.82, ghost: 1.1, mushroom: 1.2, eye: 1.12, golem: 0.7, cat: 1.15 };
+// its curious "ooh?"s as it watches its dice fly (synth.js): one at random each roll
+const OOHS = ['petOooh', 'petOooh2', 'petOooh3'];
+
 // The dice tray's rim (petTray 'rim', deps.perch): a die hitting the tray wall at this speed or more
 // within WALL_REACH of a pet sitting on the rim makes it wobble (it never reaches the pet itself).
 export const WALL_FLINCH_SPEED = 4;
@@ -639,6 +642,19 @@ export function createPetLayer(deps) {
     } else if (url && !t) loadModel(url);
     return CREATURES[spec.kind](specColor(spec));
   }
+  /** Starts loading `kind`'s model, so its first appearance is the model, not the code-built pet. */
+  function preloadModel(kind) {
+    const url = PET_MODELS[kind];
+    if (url && !models.has(url)) loadModel(url);
+  }
+  /** Every connected player's pet model, at once (the layer is made at idle, within 2 s of load). */
+  function preloadModels() {
+    try {
+      for (const u of globalThis.game?.users ?? []) if (u.active) preloadModel(readPet(u).kind);
+    } catch {
+      /* no users to read: models load on the first roll */
+    }
+  }
   function loadModel(url) {
     models.set(url, 'loading');
     Promise.resolve()
@@ -940,6 +956,19 @@ export function createPetLayer(deps) {
     pet.slot = slot ?? 0;
     return c === 'placed' ? placedSpot(placedAt(), pet.slot, stage, h) : chosenSpot(c, pet.slot, stage, h, uiRects());
   }
+  /**
+   * The placed spot (petRestSpot 'placed') a pet with no resting spot yet watches its roll from, at
+   * the slot cornerSpot would give it, or null with no placed spot in force. So the first roll after
+   * a reload, or after the pet left, is watched from where the player put it, not the roll area.
+   */
+  function placedWatch(pet, h) {
+    if (!stage || current() !== 'placed' || !placedAt()) return null;
+    const held = new Set();
+    for (const o of pets.values()) if (o !== pet && o.slot != null && standing(o)) held.add(o.slot);
+    let slot = pet?.slot != null && !held.has(pet.slot) ? pet.slot : null;
+    for (let k = 0; slot === null && k < MAX_PETS; k++) if (!held.has(k)) slot = k;
+    return placedSpot(placedAt(), slot ?? 0, stage, h);
+  }
   /** A move of a standing pet from `at` to `to` over `ms` (stepMove), facing `yawTo` at the end. */
   function goTo(pet, at, to, ms, yawTo, now) {
     pet.goFrom = at;
@@ -1110,7 +1139,9 @@ export function createPetLayer(deps) {
     // One resting at a placed spot watches from there; one at a 0.2 corner nothing could save as a
     // placed spot hops out to the roll area to watch, and back to its slot afterwards.
     const rest = perchSpot(spec.userId) ?? (stays()
-      ? (watchSpot(pet) ?? newSpot(spec.userId, area, pet.creature.height, null, false))
+      ? (watchSpot(pet) ??
+        (placedWatch(pet, pet.creature.height) && cornerSpot(pet)) ??
+        newSpot(spec.userId, area, pet.creature.height, null, false))
       : hand && pet.aligned
         ? restingSpot(pet)
         : null);
@@ -1153,6 +1184,7 @@ export function createPetLayer(deps) {
     }
     pet.reaction = 'plain';
     pet.soundDone = false;
+    pet.oohDone = false; // its "oooh" as it watches this roll's dice
     pet.exitFrom = null;
     pet.lastNow = now;
     // A re-used pet standing at its new spot restarts from the throw, with no re-enter; one that
@@ -1178,13 +1210,16 @@ export function createPetLayer(deps) {
   function settle(pet) {
     if (pet.track.landedAt != null) return;
     const summaries = [];
+    let ghostOnly = true;
     for (const r of pet.rolls.values()) {
       if (r.consumed) continue;
       if (!r.summary) return;
       summaries.push(r.summary);
+      ghostOnly &&= r.ghost;
     }
     for (const r of pet.rolls.values()) r.consumed = true;
     pet.reaction = merge(summaries);
+    pet.reactGhost = summaries.length > 0 && ghostOnly; // only blind rolls: nothing to voice
     pet.soundDone = false;
     pet.track.landedAt = clock();
   }
@@ -1444,11 +1479,20 @@ export function createPetLayer(deps) {
       pet.sparkle.material = sparkMat; // petting may have lent the points its hearts
       burst(pet.sparkle, s, h, hop, calmNow()); // reduced motion: a steady burst, no twinkle
     }
+    // watching its dice fly: a curious "oooh", once per roll (not a ghost roll's: no suspense to share)
+    if (phase === 'watch' && pet.oohDone === false && !pet.rolls.get(pet.current)?.ghost) {
+      pet.oohDone = true;
+      const pick = OOHS.filter((n) => n !== pet.lastOoh); // never the same one twice running
+      pet.lastOoh = pick[Math.min(pick.length - 1, Math.floor(rand() * pick.length))];
+      voice(pet, pet.lastOoh);
+    }
     if (phase === 'react' && !pet.soundDone) {
       pet.soundDone = true;
       // a pet that leaves after its roll never rests to react to its element: it voices it here
       const el = !stays() && pet.elementAfter;
-      const name = reactionSound(pet.reaction) ?? (el ? (ELEMENT_FX[el]?.sound ?? 'petYelp') : null);
+      // a plain roll that leaves an element on it voices the element, not the "mm-hm"
+      const name =
+        pet.reaction === 'plain' && el ? (ELEMENT_FX[el]?.sound ?? 'petYelp') : reactionSound(pet.reaction, !!pet.reactGhost);
       if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false)
         playSound({ builtin: name, rate: rateOf(pet) });
     }
@@ -2081,7 +2125,7 @@ export function createPetLayer(deps) {
       // with resting on the pet rolls from its resting spot (a first appearance: the one it will hop
       // to, kept pending for begin); otherwise from the edge spot
       const at = perchSpot(spec.userId) ?? (stays()
-        ? (watchSpot(mine) ?? newSpot(spec.userId, area, h, own.victim, true))
+        ? (watchSpot(mine) ?? placedWatch(mine, h) ?? newSpot(spec.userId, area, h, own.victim, true))
         : edgeSpot(edge, area, h).base);
       list.push(obstacle(at, h, spec.userId, mine?.creature.footprint ?? kindFootprint(spec.kind)));
     }
@@ -2426,7 +2470,45 @@ export function createPetLayer(deps) {
     shadowTex = shadowGeo = sparkTex = sparkMat = heartMat = puffMat = smokeMat = zapMat = null;
   }
 
+  preloadModels();
+
   return {
+    /** Starts loading a pet kind's model now (the pet window, as a kind is picked). */
+    preloadModel,
+    /** What each pet on this screen is doing (game.dice3d._debug.pets: live checks, support). */
+    debug() {
+      const shownNow = (() => {
+        try {
+          return shown();
+        } catch {
+          return 'err';
+        }
+      })();
+      return {
+        shown: shownNow,
+        stage: stage ? { cx: stage.cx, cz: stage.cz, halfWidth: stage.halfWidth, halfDepth: stage.halfDepth } : null,
+        perch: perch(),
+        models: Object.fromEntries([...models].map(([u, t]) => [u.split('/').pop(), typeof t === 'object' ? 'loaded' : t])),
+        pets: [...pets.values()].map((p) => {
+          let skinned = 0;
+          p.creature?.root?.traverse?.((o) => o.isSkinnedMesh && skinned++);
+          return {
+            userId: p.userId,
+            kind: p.kind,
+            state: p.state,
+            phase: p.group?.userData?.dicerPet?.phase,
+            at: [p.group?.position.x, p.group?.position.y, p.group?.position.z].map((v) => +(+v).toFixed(2)),
+            inScene: p.group?.parent === scene,
+            visible: !!p.group?.visible,
+            creatureVisible: !!p.creature?.root?.visible,
+            height: p.creature?.height,
+            model: skinned > 0,
+            tilt: p.tilt,
+            gone: !!p.gone,
+          };
+        }),
+      };
+    },
     begin,
     landed,
     leave,

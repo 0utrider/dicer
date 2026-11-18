@@ -386,9 +386,11 @@ describe('build', () => {
     // +114 B (36,404 -> 36,518), 2026-11-18.
     // Pets from artist-style models (a skinned model is copied with its own skeleton: one more
     // three.js class at world start): owner approved +15 B (36,518 -> 36,533), 2026-11-18.
+    // The pet on your own physics, hand and dice-bar throws, pet models preloaded at ready, and the
+    // pets' result and "ooh?" sound names: owner approved +267 B (36,533 -> 36,800), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(36_533);
+    expect(growth).toBeLessThanOrEqual(36_800);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

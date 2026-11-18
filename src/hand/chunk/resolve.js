@@ -376,9 +376,11 @@ async function castFree(resolver, specs, full = false, early = false) {
   try {
     let gotRecording;
     const recorded = new Promise((r) => (gotRecording = r));
+    const pet = d.petSpec?.(ghost);
     const thrown = d.diceBox.roll(ghost ? specs.map((s) => ({ ...s, ghost })) : specs, {
       area: d.areas.rectFor({ rollerId: me.id }),
       free: true,
+      ...(pet && { pet }), // the roller's own pet comes for its own throw
       record: (rec) => gotRecording((entry.recording = rec)),
     });
     entry.handle = thrown.handle;
@@ -516,6 +518,7 @@ async function throwByHand(resolver, terms) {
           ghostOnRelease: ghostFor(roll, me),
           label: roll.formula,
           early,
+          pet: d.petSpec?.(ghostFor(roll, me)),
         },
         ms,
       );

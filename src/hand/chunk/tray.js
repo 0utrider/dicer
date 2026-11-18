@@ -81,6 +81,7 @@ export async function throwTray(
             timeoutMs: ms,
             ghostOnRelease: mode === 'blind' && !me.isGM,
             label: roll.formula,
+            pet: deps.petSpec?.(mode === 'blind' && !me.isGM),
           },
           ms,
         );

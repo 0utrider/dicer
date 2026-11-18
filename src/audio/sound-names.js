@@ -25,6 +25,11 @@ export const PET_SOUNDS = [
   'petBleh',
   'petSpooked',
   'petWoo',
+  'petOooh',
+  'petOooh2',
+  'petOooh3',
+  'petHmm',
+  'petHuh',
 ];
 /** Every built-in result sound: the user's plus the pet's own, which no sound choice offers. */
 export const RESULT_SOUNDS = [...USER_SOUNDS, ...PET_SOUNDS];

@@ -622,6 +622,33 @@ const RESULT = {
     yield* voice(buf, sr, { freq: 440, dur: 0.6, gain: 0.65, attack: 0.06, tau: 0.5, partials: [[1, 1, 1], [1.5, 0.15, 0.6]], vib: 0.04, vibRate: 7, vibDelay: 0, pitch: (t) => 1 - 0.3 * Math.min(1, t / 0.6) });
     yield* reverb(buf, sr, { mix: 0.3, decay: 0.7 });
   },
+  *petHmm(sr, buf) {
+    // A plain result: a satisfied little "mm-hm", low then a touch higher, closed and soft.
+    const o = { gain: 0.65, attack: 0.025, partials: [[1, 1, 1], [2, 0.12, 0.5]] };
+    yield* voice(buf, sr, { ...o, freq: 400, start: 0, dur: 0.16, tau: 0.12, pitch: (t) => 1 - 0.04 * Math.min(1, t / 0.16) });
+    yield* voice(buf, sr, { ...o, freq: 500, start: 0.19, dur: 0.22, tau: 0.16, pitch: (t) => 0.96 + 0.06 * Math.min(1, t / 0.12) });
+    yield* reverb(buf, sr, { mix: 0.08, decay: 0.25 });
+  },
+  *petHuh(sr, buf) {
+    // A 20 and a 1 together: a puzzled "huh?", a short breath then a tone rising like a question.
+    yield* voice(buf, sr, { freq: 520, dur: 0.32, gain: 0.7, attack: 0.03, tau: 0.25, partials: [[1, 1, 1], [2, 0.3, 0.6], [3, 0.1, 0.4]], pitch: (t) => 0.85 + 0.4 * Math.min(1, t / 0.3) ** 1.5 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  // three curious "ooh?"s while dice fly; the pet layer picks one at random each roll
+  *petOooh(sr, buf) { // a rising "ooh?", dipping first
+    yield* voice(buf, sr, { freq: 540, dur: 0.42, gain: 0.7, attack: 0.04, tau: 0.34, partials: [[1, 1, 1], [2, 0.28, 0.6], [3, 0.1, 0.45]], pitch: (t) => 0.94 - 0.04 * Math.sin(Math.min(1, t / 0.12) * Math.PI) + 0.5 * Math.max(0, (t - 0.12) / 0.3) ** 2 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petOooh2(sr, buf) { // a two-note "oo-ooh?": a little note, then a higher one that lifts
+    const o = { gain: 0.65, attack: 0.025, partials: [[1, 1, 1], [2, 0.25, 0.6], [3, 0.08, 0.4]] };
+    yield* voice(buf, sr, { ...o, freq: 470, start: 0, dur: 0.13, tau: 0.1 });
+    yield* voice(buf, sr, { ...o, freq: 620, start: 0.15, dur: 0.3, tau: 0.24, pitch: (t) => 0.96 + 0.28 * Math.min(1, t / 0.28) ** 1.6 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petOooh3(sr, buf) { // a quick bright "hoo?" chirp
+    yield* voice(buf, sr, { freq: 600, dur: 0.3, gain: 0.7, attack: 0.02, tau: 0.22, partials: [[1, 1, 1], [2, 0.35, 0.55], [3, 0.12, 0.4]], vib: 0.015, vibRate: 9, vibDelay: 0.05, pitch: (t) => 0.88 + 0.45 * Math.min(1, t / 0.27) ** 1.3 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.28 });
+  },
   *petWoo(sr, buf) {
     // Spirit: an airy, ghostly "wooo" rising and falling.
     yield* voice(buf, sr, { freq: 600, dur: 0.6, gain: 0.55, attack: 0.08, tau: 0.5, partials: [[1, 1, 1], [3, 0.1, 0.5]], vib: 0.025, vibRate: 4, vibDelay: 0.1, pitch: (t) => 0.9 + 0.3 * Math.sin(Math.min(1, t / 0.6) * Math.PI) });
@@ -671,6 +698,11 @@ const RESULT_DUR = {
   petBleh: 0.42,
   petSpooked: 0.8,
   petWoo: 0.85,
+  petOooh: 0.5,
+  petOooh2: 0.52,
+  petOooh3: 0.38,
+  petHmm: 0.5,
+  petHuh: 0.42,
 };
 
 /** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */

@@ -5,6 +5,7 @@
  * Each change saves at once.
  */
 import { PET_KINDS, readPet } from '../pet/pet-for.js';
+import { getPets } from '../pet/pet-loader.js';
 
 const MODULE = 'dicer';
 const HEX6 = /^#[0-9a-f]{6}$/;
@@ -211,6 +212,7 @@ export function openPetWindow() {
     async #onClick(button) {
       const kind = button?.dataset.kind;
       if (!PET_KINDS.includes(kind) || kind === readPet(me()).kind) return;
+      getPets()?.preloadModel?.(kind); // its model loads now, ready for the next roll or preview
       if (await savePet({ kind })) this.render();
     }
     #mirror(el) {

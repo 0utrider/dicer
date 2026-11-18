@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.12
+
+- **Pets talk through the whole roll.** While your dice fly, your pet goes "ooh?" (one of three, a different one each time). When they land it has something to say every time: a satisfied "mm-hm" for an ordinary result and a puzzled "huh?" when a 20 and a 1 land together, on top of the cheer for a natural 20 and the sulk for a 1. Blind rolls stay silent.
+- **Your pet shows up for your own rolls again** when physics decides the results, when you throw by hand, and when you roll from the chat dice bar.
+- **No old pet flashes on screen.** Pet models now load at the start, so the first roll shows your pet's model straight away.
+- **A pet you placed stays put.** On the first roll after a reload, or after it left, it watches from the spot you dragged it to instead of hopping into the tray.
+
 ## 1.0.11
 
 - **All ten pets remade as real 3D models.** The mimic, slime, dragonling, owl, frog, ghost, mushroom, floating eye, pebble golem and cat are now smooth, sculpted creatures with painted textures (a tabby cat with a cream muzzle, a feathered owl, a spotted mushroom, a wooden mimic with iron bands and brass, a glossy jelly slime, a chipped stone golem with glowing runes...), real faces that blink, smile, frown and gasp, and bodies that bend. Your pet colour still applies (to the fur, scales, cap or wood, not the eyes or markings), and Natural colours shows each in its own.

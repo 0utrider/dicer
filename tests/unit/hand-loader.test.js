@@ -113,7 +113,7 @@ describe('H-20: the chunk is prefetched at idle after ready', () => {
     const ready = src.slice(src.indexOf("Hooks.once('ready'"));
     expect(ready).toContain('idle(() => prefetchHand(diceBox, () => wantsHand(game.user, getSetting, getCore())));');
     expect(src).toContain(
-      "const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run) : setTimeout(run, 200));",
+      "const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 200));",
     );
     expect(src).toContain('holding: () => box?.holding');
   });
