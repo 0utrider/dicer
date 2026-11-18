@@ -29,7 +29,7 @@ function setup({ getLooks, info } = {}) {
   };
   const onWarmed = vi.fn();
   const warn = vi.fn();
-  const warmUp = createWarmup({ getBox: () => box, getRenderer: () => renderer, onWarmed, warn, getLooks, info });
+  const warmUp = createWarmup({ getBox: () => box, getRenderer: () => renderer, onWarmed, warn, getLooks, info, breathe: async () => {} });
   const loseContext = () =>
     container.querySelector('canvas').dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
   return { fake, renderer, box, released, onWarmed, warn, warmUp, loseContext };
@@ -84,6 +84,15 @@ test('damage looks compile a few at a time, so the 10 s guard covers a few progr
   fake.compileAsync = vi.fn(async () => {});
   await warmUp();
   expect(box.acquireWarmup.mock.calls).toEqual([[], [undefined, looks.slice(0, LOOK_BATCH)], [undefined, looks.slice(LOOK_BATCH)]]);
+});
+
+test('without parallel shader compiling (compiles block the page) one look per compile, the page breathing between', async () => {
+  const looks = [{ a: 1 }, { b: 2 }];
+  const { fake, renderer, box, warmUp } = setup({ getLooks: () => looks });
+  fake.compileAsync = vi.fn(async () => {});
+  Object.defineProperty(renderer, 'parallelCompile', { get: () => false });
+  await warmUp();
+  expect(box.acquireWarmup.mock.calls).toEqual([[], [undefined, [looks[0]]], [undefined, [looks[1]]]]);
 });
 
 test('a timed-out batch is logged as info (three keeps compiling), not warned, and the rest wait for the next warm-up', async () => {

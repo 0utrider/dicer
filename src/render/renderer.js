@@ -145,6 +145,15 @@ export class DiceRenderer {
       programs: info?.programs?.length ?? 0,
     };
   }
+  /** False when shaders compile on the main thread (no KHR_parallel_shader_compile), else true. */
+  get parallelCompile() {
+    try {
+      return this.#renderer.extensions?.has?.('KHR_parallel_shader_compile') !== false;
+    } catch {
+      return true;
+    }
+  }
+
   /** The underlying THREE.WebGLRenderer (for the GPU probe). */
   get glRenderer() {
     return this.#renderer;

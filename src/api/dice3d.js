@@ -15,6 +15,7 @@ import { petFor } from '../pet/pet-for.js';
 import { isHandRoll, allPhysical } from '../hand/gate-hand.js';
 import { filtered } from '../foundry/roll-filters.js';
 import { loadHand, handNow } from '../hand/hand-loader.js';
+import { gpuName } from '../render/gpu-name.js';
 
 const STANDARD_SYSTEM = 'standard';
 /** The gate and showForRoll hooks enableDebugMode logs. */
@@ -126,9 +127,7 @@ export function recipientsOf(s, gms, selfId) {
 /** The GPU renderer string of the dice canvas (the unmasked one when the browser allows), or 'unknown'. */
 function readGpu(renderer) {
   try {
-    const gl = renderer?.glRenderer?.getContext?.();
-    const info = gl?.getExtension?.('WEBGL_debug_renderer_info');
-    return String((info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || gl?.getParameter?.(gl.RENDERER) || 'unknown');
+    return gpuName(renderer?.glRenderer?.getContext?.()) || 'unknown';
   } catch {
     return 'unknown';
   }

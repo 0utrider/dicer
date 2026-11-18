@@ -373,9 +373,12 @@ describe('build', () => {
     // owner approved +18 B (35,190 -> 35,208), 2026-11-18.
     // Damage looks warmed 3 at a time, a timeout logged as info (+158 B), measured with the dice
     // pets work then in progress (+67 B): owner approved +225 B (35,208 -> 35,433), 2026-11-18.
+    // One damage look per compile with a pause between where compiles block the page, the GPU
+    // name without Firefox's deprecated extension (+368 B), measured with the dice pets work then
+    // in progress (+82 B): owner approved +450 B (35,433 -> 35,883), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(35_433);
+    expect(growth).toBeLessThanOrEqual(35_883);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

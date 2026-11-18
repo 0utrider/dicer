@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+
+- **Fixed: loading into the world froze on some computers** (seen in Firefox on Windows). There the browser stops everything while it prepares each piece of dice graphics, and Dicer was preparing all the damage dice looks right after the world loaded. It now prepares them one at a time with a pause between, so the page stays responsive.
+- **No more "WEBGL_debug_renderer_info is deprecated" warning in Firefox.** Dicer reads the graphics card's name the way Firefox now asks.
+
 ## 1.0.3
 
 - **Fixed: "material warm-up failed" in the console on slower computers.** Since 1.0.1 Dicer prepares every damage dice look when the world loads, all in one go, and on a slow graphics card that could run past its 10-second limit. It now prepares them a few at a time, and a slow one is noted as still preparing in the background rather than as a failure (it never was one: the dice still worked).

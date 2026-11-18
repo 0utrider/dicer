@@ -5,6 +5,7 @@ import { getShape, labelFor } from '../core/dice-shapes.js';
 import { LOOKS } from '../look/looks.js';
 import { TIERS } from './quality.js';
 import { compileGuarded, COMPILE_TIMEOUT_MS } from './compile-guard.js';
+import { gpuName } from './gpu-name.js';
 
 const CACHE_KEY = 'dicer.probe.v1';
 const SIZE = 512;
@@ -78,8 +79,7 @@ export async function runProbe(
   try {
     prevTarget = renderer.getRenderTarget?.() ?? null;
     gl = renderer.getContext();
-    const info = gl.getExtension('WEBGL_debug_renderer_info');
-    const gpu = (info && String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL))) || 'unknown';
+    const gpu = gpuName(gl) || 'unknown';
     const cached = readCache(gpu);
     if (cached !== null) return { msPerFrame: cached, gpu };
 

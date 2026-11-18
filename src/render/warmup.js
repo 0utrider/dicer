@@ -26,6 +26,9 @@ export function createWarmup({
   getLooks = () => [],
   warn = (message, err) => console.warn(message, err),
   info = (message) => console.info(message),
+  // between damage-look batches: the page gets a turn (each compile blocks it without the
+  // parallel compile extension: Firefox on Windows)
+  breathe = () => new Promise((r) => (globalThis.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 1000 }) : setTimeout(r, 50))),
 }) {
   let warming = null;
   let again = false;
@@ -62,8 +65,12 @@ export function createWarmup({
         } catch (err) {
           warn('dicer: cannot list the damage looks to warm up', err);
         }
-        for (let i = 0; i < looks.length && !again; i += LOOK_BATCH)
-          if (!(await pass(renderer, box.acquireWarmup(undefined, looks.slice(i, i + LOOK_BATCH))))) break;
+        // one look at a time when compiling blocks the page, so it never stalls for long
+        const n = renderer.parallelCompile === false ? 1 : LOOK_BATCH;
+        for (let i = 0; i < looks.length && !again; i += n) {
+          await breathe();
+          if (again || !(await pass(renderer, box.acquireWarmup(undefined, looks.slice(i, i + n))))) break;
+        }
       } while (again);
     })().finally(() => {
       warming = null;
