@@ -93,7 +93,10 @@ describe('users', () => {
     });
     const [u] = report({ users: [user] }).users;
     expect(u.saves).toBe(2);
+    expect(u.savesImported).toBe(0);
     expect(u.otherKeys).toEqual(['settings', 'sfxList']);
+    const imported = makeUser({ dsn: { saves: { a: {}, b: {} } }, dicer: { dsnSavesImported: ['b', 'gone'] } });
+    expect(report({ users: [imported] }).users[0].savesImported).toBe(1);
   });
 
   test('garbage flags never throw and give none', () => {

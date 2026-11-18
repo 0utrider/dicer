@@ -105,6 +105,38 @@ test('Run reports a thrown benchmark instead of hanging', async () => {
   expect(app.lastContext.progress).toContain('boom');
 });
 
+test('Stop aborts the running benchmark; closing the window aborts it too', async () => {
+  let signal;
+  let resolveRun;
+  globalThis.game.dice3d.benchmark = vi.fn((o) => {
+    signal = o.signal;
+    return new Promise((r) => (resolveRun = r));
+  });
+  const app = new App();
+  const p = App.DEFAULT_OPTIONS.actions.run.call(app);
+  await new Promise((r) => setTimeout(r, 0));
+  expect(signal.aborted).toBe(false);
+  App.DEFAULT_OPTIONS.actions.stop.call(app);
+  expect(signal.aborted).toBe(true);
+  await new Promise((r) => setTimeout(r, 0));
+  expect(app.lastContext.progress).toBe('DICER.Bench.Stopping');
+  resolveRun({ suite, text: 'S', stopped: true });
+  await p;
+  expect(app.lastContext.running).toBe(false);
+  expect(app.lastContext.progress).toBe('DICER.Bench.Stopped');
+  expect(app.lastContext.rows).toHaveLength(2); // what was measured stays
+  // closing mid-run
+  const closing = new App();
+  closing.close = App.prototype.close;
+  FakeApplicationV2.prototype.close ??= async function () {};
+  const q = App.DEFAULT_OPTIONS.actions.run.call(closing);
+  await new Promise((r) => setTimeout(r, 0));
+  await closing.close();
+  expect(signal.aborted).toBe(true);
+  resolveRun(null);
+  await q;
+});
+
 test('Copy summary writes the summary text to the clipboard', async () => {
   const writeText = vi.fn(async () => {});
   Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true });
@@ -131,6 +163,7 @@ test('Copy that fails warns instead of throwing', async () => {
 test('the template has the controls, the table and the privacy note', () => {
   const html = readFileSync('templates/benchmark.hbs', 'utf8');
   expect(html).toContain('data-action="run"');
+  expect(html).toContain('data-action="stop"');
   expect(html).toContain('data-action="copy"');
   expect(html).toContain('DICER.Bench.Private');
   expect(html).toContain('role="status"');

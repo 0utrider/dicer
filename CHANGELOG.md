@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.15
+
+- **Saved Dice So Nice looks come over as themes.** Every look a player saved in Dice So Nice is added to their **My themes**, once, when they next load the world (a look that uses another module's dice set comes over once that module is active).
+- **The GM can import every player at once.** The Dice So Nice migration report (in Dicer's settings) has an **Import all players now** button: every player's dice colours and saved looks, and the world settings, without waiting for each player to log in. Choices already made in Dicer are kept.
+- **The benchmark can be stopped.** A Stop button while it runs, and closing its window stops it too; the scenarios measured so far stay in the table.
+- **The tray's gear panel tabs no longer spill their text** in systems with bigger button text, such as Pathfinder 2e.
+- The notice after importing Dice So Nice colours now shows its text instead of a raw key.
+
 ## 1.0.14
 
 - **Pet sound volume.** A new slider in **Your pet** sets how loud the pets are on your screen; at 0 they are silent.

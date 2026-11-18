@@ -2,7 +2,11 @@
 <p class="dicer-hint">{{localize "DICER.Bench.Intro"}}</p>
 
 <div class="dicer-toolbar">
-  <button type="button" class="bright" data-action="run" {{#if running}}disabled{{/if}}><i class="fa-solid fa-play"></i> {{localize "DICER.Bench.Run"}}</button>
+  {{#if running}}
+  <button type="button" class="bright" data-action="stop"><i class="fa-solid fa-stop"></i> {{localize "DICER.Bench.Stop"}}</button>
+  {{else}}
+  <button type="button" class="bright" data-action="run"><i class="fa-solid fa-play"></i> {{localize "DICER.Bench.Run"}}</button>
+  {{/if}}
   <button type="button" data-action="copy" {{#unless canCopy}}disabled{{/unless}}><i class="fa-solid fa-copy"></i> {{localize "DICER.Bench.Copy"}}</button>
 </div>
 

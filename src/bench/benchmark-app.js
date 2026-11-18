@@ -1,6 +1,7 @@
 /**
- * The benchmark window (lazy chunk, opened from the `dicer.benchmark` settings menu): a Run button,
- * a progress line, the result table, "Copy summary" and a note that nothing leaves this screen.
+ * The benchmark window (lazy chunk, opened from the `dicer.benchmark` settings menu): a Run button
+ * (Stop while it runs; closing the window stops it too), a progress line, the result table, "Copy
+ * summary" and a note that nothing leaves this screen.
  * The run itself is game.dice3d.benchmark(); this window only presents it.
  */
 import { checkTargets } from './dicer-adapter.js';
@@ -39,6 +40,7 @@ export class BenchmarkApp extends HandlebarsApplicationMixin(ApplicationV2) {
     position: { width: 720, height: 460 },
     actions: {
       run: BenchmarkApp.#onRun,
+      stop: BenchmarkApp.#onStop,
       copy: BenchmarkApp.#onCopy,
     },
   };
@@ -54,6 +56,8 @@ export class BenchmarkApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #text = '';
   #running = false;
   #progress = '';
+  /** The running benchmark's stop (an AbortController), null when idle. */
+  #abort = null;
 
   /** `suite` and `text` (a finished run) seed the window; the render harness uses them. */
   constructor(options = {}) {
@@ -84,11 +88,15 @@ export class BenchmarkApp extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
     this.#running = true;
+    this.#abort = new AbortController();
+    const signal = this.#abort.signal;
     this.#progress = loc('DICER.Bench.Running');
     await this.render();
     try {
       const out = await bench.call(globalThis.game.dice3d, {
+        signal,
         onProgress: ({ index, total, id }) => {
+          if (signal.aborted) return;
           this.#progress = `${loc('DICER.Bench.Progress')} ${index + 1}/${total}: ${id}`;
           void this.render().catch(() => {});
         },
@@ -98,13 +106,23 @@ export class BenchmarkApp extends HandlebarsApplicationMixin(ApplicationV2) {
       if (out) {
         this.#suite = out.suite;
         this.#text = out.text;
+        if (out.stopped) this.#progress = loc('DICER.Bench.Stopped');
       }
     } catch (err) {
       console.error('dicer: the benchmark failed', err);
       this.#progress = `${loc('DICER.Bench.Failed')}: ${err?.message ?? err}`;
     }
     this.#running = false;
-    await this.render();
+    this.#abort = null;
+    if (this.rendered !== false) await this.render(); // a closed window is not reopened
+  }
+
+  /** Stops the run before its next roll (the roll in the air lands first); the results so far stay. */
+  static #onStop() {
+    if (!this.#abort || this.#abort.signal.aborted) return;
+    this.#abort.abort();
+    this.#progress = loc('DICER.Bench.Stopping');
+    void this.render().catch(() => {});
   }
 
   static async #onCopy() {
@@ -119,6 +137,7 @@ export class BenchmarkApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async close(options) {
+    this.#abort?.abort(); // a closed window leaves nothing running
     if (instance === this) instance = null;
     return super.close(options);
   }

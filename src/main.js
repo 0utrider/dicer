@@ -439,6 +439,24 @@ function dsnPending() {
 }
 
 /**
+ * The user's Dice So Nice save profiles as their own themes (once each): after diceSoNiceReady,
+ * so a save naming a module's colorset finds it. The chunk loads only with saves left to import.
+ */
+async function importDsnSaves() {
+  try {
+    const saves = game.user?._source?.flags?.['dice-so-nice']?.saves;
+    if (getSetting('migrateFromDsn') === false || !saves || typeof saves !== 'object') return;
+    const done = game.user.getFlag('dicer', 'dsnSavesImported');
+    if (Object.keys(saves).every((k) => Array.isArray(done) && done.includes(k))) return;
+    const migration = await import('./compat/migration.js');
+    const n = await migration.migrateSaves(game.user, { registry });
+    if (n) ui.notifications?.info(game.i18n.format('DICER.Notice.SavesImported', { n }));
+  } catch (err) {
+    console.warn('dicer: cannot import the Dice So Nice saved looks', err);
+  }
+}
+
+/**
  * Copies Dice So Nice data into Dicer (once). The migration code is a lazy chunk, loaded only
  * when there is DSN data. Never rejects, never delays the engine; the look mirror waits for it
  * so a mirrored default does not pre-empt the user's imported global look.
@@ -1009,7 +1027,10 @@ Hooks.once('ready', async () => {
   }
   // After api.js has loaded, so game.dice3d.DiceSystem is set inside both hooks. Not awaited:
   // the engine is already up, and announceReady never rejects.
-  announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady }).then(loadInstalled);
+  announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady }).then(() => {
+    loadInstalled();
+    importDsnSaves();
+  });
   preloadSounds();
   preloadEffects();
   preloadPets();

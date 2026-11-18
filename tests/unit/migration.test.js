@@ -5,7 +5,13 @@ import {
   runMigration,
   loadSaveFile,
   worldSettingsReader,
+  saveToTheme,
+  migrateSaves,
+  migrateAll,
+  userThemeId,
 } from '../../src/compat/migration.js';
+import { userThemeId as formThemeId } from '../../src/ui/theme-form.js';
+import { normalizeTheme } from '../../src/themes/themes.js';
 
 /** A fake user: raw DSN source flags, live dicer flags, setFlag/update recording. */
 function makeUser({ dsn, dicer = {} } = {}) {
@@ -215,4 +221,88 @@ describe('loadSaveFile', () => {
     expect(user.update).not.toHaveBeenCalled();
     warn.mockRestore();
   });
+});
+
+// --- saved looks (save profiles) as themes ---------------------------------------------------
+const FIRE = { appearance: { global: { colorset: 'fire' }, d20: { colorset: 'ice' } } };
+const MINE = { appearance: { global: CUSTOM } };
+const ODD = { appearance: { global: { colorset: 'some-module-set' } } }; // not registered yet
+
+describe('saveToTheme', () => {
+  test('a save becomes a valid user theme: its global look, its die-type looks, marked with its name', () => {
+    const t = saveToTheme('Fire!', FIRE, { userId: 'u1' });
+    expect(t).toMatchObject({ id: 'user.u1.fire', name: 'Fire!', dsnSave: 'Fire!' });
+    expect(Object.keys(t.perType)).toEqual(['d20']);
+    const theme = normalizeTheme(t, 'user', () => {});
+    expect(theme).not.toBeNull();
+    expect(theme.perType.d20).toBeTruthy();
+    expect(saveToTheme('Mine', MINE, { userId: 'u1' }).appearance.body.color).toBe('#ff0000');
+  });
+  test('ids never clash with taken ones; a save with only die-type looks takes its first as the look', () => {
+    expect(saveToTheme('Fire', FIRE, { userId: 'u1', taken: ['user.u1.fire'] }).id).not.toBe('user.u1.fire');
+    const t = saveToTheme('D6 only', { appearance: { d6: CUSTOM } }, { userId: 'u1' });
+    expect(t.appearance.body.color).toBe('#ff0000');
+  });
+  test('a colorset found only in the registry (a module dice set) is drawn from it; unknown, it is null', () => {
+    expect(saveToTheme('Odd', ODD, { userId: 'u1' })).toBeNull();
+    const registry = { colorsets: new Map([['some-module-set', { name: 'some-module-set', foreground: '#00ff00', background: '#0000ff', outline: '#000', edge: '#000', material: 'plastic' }]]) };
+    expect(saveToTheme('Odd', ODD, { userId: 'u1', registry })?.appearance).toBeTruthy();
+    expect(saveToTheme('Bad', { appearance: 'x' }, { userId: 'u1' })).toBeNull();
+  });
+});
+
+describe('migrateSaves', () => {
+  const user = (saves, dicer = {}) => ({ ...makeUser({ dsn: { saves }, dicer }), id: 'u1' });
+
+  test('adds every save to My themes, after the themes already there, and lists them as imported', async () => {
+    const u = user({ Fire: FIRE, Mine: MINE }, { themes: [{ id: 'user.u1.old', name: 'Old', appearance: {} }] });
+    await expect(migrateSaves(u)).resolves.toBe(2);
+    expect(u.flags.themes.map((t) => t.name)).toEqual(['Old', 'Fire', 'Mine']);
+    expect(u.flags.dsnSavesImported).toEqual(['Fire', 'Mine']);
+  });
+  test('once: a second run adds nothing, and a theme the user deleted does not come back', async () => {
+    const u = user({ Fire: FIRE });
+    await migrateSaves(u);
+    u.flags.themes = [];
+    await expect(migrateSaves(u)).resolves.toBe(0);
+    expect(u.flags.themes).toEqual([]);
+  });
+  test('a save that cannot be drawn yet is left for a later load, the others go in', async () => {
+    const u = user({ Fire: FIRE, Odd: ODD });
+    await expect(migrateSaves(u)).resolves.toBe(1);
+    expect(u.flags.dsnSavesImported).toEqual(['Fire']);
+    const registry = { colorsets: new Map([['some-module-set', { name: 'some-module-set', foreground: '#00ff00', background: '#0000ff' }]]) };
+    await expect(migrateSaves(u, { registry })).resolves.toBe(1);
+    expect(u.flags.themes.map((t) => t.name)).toEqual(['Fire', 'Odd']);
+  });
+  test('no saves, or garbage: nothing is written', async () => {
+    for (const saves of [undefined, null, 'x', []]) {
+      const u = user(saves);
+      await expect(migrateSaves(u)).resolves.toBe(0);
+      expect(u.setFlag).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('migrateAll (the GM report)', () => {
+  test('every user: colours and saves; the world settings; one failing user does not stop the rest', async () => {
+    const a = { ...makeUser({ dsn: { appearance: { global: { colorset: 'fire' } }, saves: { Fire: FIRE } } }), id: 'a' };
+    const b = { ...makeUser({ dsn: { saves: { Mine: MINE } } }), id: 'b' };
+    const bad = { ...makeUser({ dsn: { saves: { Fire: FIRE } } }), id: 'x', name: 'Bad', setFlag: vi.fn(async () => { throw new Error('denied'); }) };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const stored = {};
+    const settings = { get: (s, k) => stored[k], set: vi.fn(async (s, k, v) => { stored[k] = v; }) };
+    const out = await migrateAll({ users: [a, bad, b], worldSettings: { get: (k) => (k === 'maxDiceNumber' ? 30 : undefined) }, settings });
+    expect(out).toEqual({ users: 1, themes: 2, world: true });
+    expect(a.flags.appearance.global).toEqual({ colorset: 'fire' });
+    expect(b.flags.themes[0].name).toBe('Mine');
+    expect(stored.maxDice).toBe(30);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});
+
+test("userThemeId here gives the theme browser's ids", () => {
+  for (const [name, taken] of [['Fire!', []], ['  ', []], ['Fire', ['user.u1.fire']], ['Fire', ['user.u1.fire', 'user.u1.fire-2']], ['Ünïcode Dice', []]])
+    expect(userThemeId('u1', name, taken)).toBe(formThemeId('u1', name, taken));
 });

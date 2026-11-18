@@ -393,9 +393,12 @@ describe('build', () => {
     // The pet sound volume setting, cocked dice nudged as they rest (tipped toward their nearest
     // face, in the physics worker) and a free roll's slow motion from its message: owner approved
     // +1,147 B (36,889 -> 38,036), 2026-11-18.
+    // A player's Dice So Nice saved looks imported as themes after diceSoNiceReady (the GM report's
+    // import-all reads the registry) and the benchmark's stop signal: owner approved +684 B
+    // (38,036 -> 38,720), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(38_036);
+    expect(growth).toBeLessThanOrEqual(38_720);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

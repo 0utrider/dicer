@@ -287,6 +287,7 @@ export async function runScenario(scenario, adapter, opts = {}) {
     doc?.addEventListener?.('visibilitychange', onVisibility);
     recorder.start();
     for (let i = 1; i <= scenario.rolls; i++) {
+      if (opts.signal?.aborted) break; // stopped: the rolls so far stand
       await oneRoll(i);
       completed = i;
       if (i === 1 && PERTURB[scenario.id] != null && !perturbFired) notes.push('perturb did not fire (the roll ended first)');

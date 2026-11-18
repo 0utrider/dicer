@@ -58,6 +58,23 @@ test('the not-migrated section only when there is something to list', () => {
   expect(renderReport(bare).querySelector('[data-section=unmigrated]')).toBeNull();
 });
 
+test('the import-all button heads the report, with its hint; the saves line counts what was imported', () => {
+  const root = renderReport(full({ users: [user('A', 'pending', { saves: 3, savesImported: 1 })] }));
+  expect(root.firstElementChild.nextElementSibling.matches('.dicer-report-import')).toBe(true);
+  expect(root.querySelector('[data-act="import-all"]').textContent).toContain('DICER.DsnReport.ImportAll');
+  expect(root.querySelector('.dicer-report-import .dicer-hint')).toBeTruthy();
+  expect(renderReport(full({ hasData: false })).querySelector('[data-act="import-all"]')).toBeNull();
+});
+
+test('every import string exists', async () => {
+  const { readFileSync } = await import('node:fs');
+  const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER;
+  for (const k of ['ImportAll', 'ImportAllHint', 'ImportAllDone', 'ImportAllFailed', 'Saves']) expect(en.DsnReport[k], k).toBeTruthy();
+  expect(en.DsnReport.Saves).toContain('{m}');
+  expect(en.Notice.Migrated).toBeTruthy();
+  expect(en.Notice.SavesImported).toContain('{n}');
+});
+
 test('a non-GM gets nothing', () => {
   globalThis.game = { user: { isGM: false } };
   expect(openDsnReport()).toBeNull();

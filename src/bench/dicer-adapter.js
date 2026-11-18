@@ -169,12 +169,14 @@ export function createDicerAdapter(api, { roll, gpu, version, fixture, win = glo
 }
 
 /**
- * Runs scenarios against `api` and returns `{suite, text}`. `onProgress({index, total, id})` is
- * called before each scenario. Used by `game.dice3d.benchmark()` and the benchmark window.
+ * Runs scenarios against `api` and returns `{suite, text, stopped}`. `onProgress({index, total, id})`
+ * is called before each scenario. `signal` (an AbortSignal) stops the run before its next roll:
+ * the scenarios measured so far are returned, `stopped` true. Used by `game.dice3d.benchmark()`
+ * and the benchmark window.
  */
 export async function runDicerBenchmark(
   api,
-  { scenarios = DEFAULT_SCENARIOS, onProgress, hooks, win = globalThis, maxDice, idleSampleMs = IDLE_SAMPLE_MS, ...adapterOpts } = {},
+  { scenarios = DEFAULT_SCENARIOS, onProgress, hooks, win = globalThis, maxDice, idleSampleMs = IDLE_SAMPLE_MS, signal, ...adapterOpts } = {},
 ) {
   const adapter = createDicerAdapter(api, { win, ...adapterOpts });
   const ids = [...scenarios];
@@ -190,12 +192,13 @@ export async function runDicerBenchmark(
     if (refreshLimited) notes.push(REFRESH_NOTE);
   }
   for (const [index, id] of ids.entries()) {
+    if (signal?.aborted) break;
     try {
       onProgress?.({ index, total: ids.length, id });
     } catch {
       /* a progress listener never stops the run */
     }
-    const part = await runSuite([id], adapter, { hooks, win, profile: 'in-game' });
+    const part = await runSuite([id], adapter, { hooks, win, profile: 'in-game', signal });
     const cap = Number(typeof maxDice === 'function' ? maxDice() : maxDice);
     const dice = diceIn(SCENARIOS.find((sc) => sc.id === id)?.formula);
     if (Number.isFinite(cap) && cap > 0 && dice > cap) {
@@ -214,5 +217,7 @@ export async function runDicerBenchmark(
     notes,
     results,
   };
-  return { suite, text: summaryText(suite) };
+  const stopped = Boolean(signal?.aborted);
+  if (stopped) notes.push('stopped before the end');
+  return { suite, text: summaryText(suite), stopped };
 }

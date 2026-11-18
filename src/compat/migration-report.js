@@ -7,6 +7,7 @@
 import {
   DSN_SCOPE,
   MIGRATED_FLAG,
+  SAVES_FLAG,
   WORLD_FLAG,
   SCOPE_KEY,
   WORLD_MAP,
@@ -64,11 +65,14 @@ function userRow(user, enabled) {
   const flags = isPlainObject(raw) ? raw : {};
   const appearance = isPlainObject(flags.appearance) ? flags.appearance : {};
   const dsnScopes = Object.keys(appearance).filter((s) => SCOPE_KEY.test(s));
-  const saves = isPlainObject(flags.saves) ? Object.keys(flags.saves).length : 0;
+  const saveNames = isPlainObject(flags.saves) ? Object.keys(flags.saves) : [];
+  const saves = saveNames.length;
+  const doneFlag = safe(() => user.getFlag(FLAG_SCOPE, SAVES_FLAG), null);
+  const savesImported = Array.isArray(doneFlag) ? saveNames.filter((n) => doneFlag.includes(n)).length : 0;
   const otherKeys = Object.keys(flags)
     .filter((k) => k !== 'appearance' && k !== 'saves')
     .sort();
-  const base = { id: user?.id, name: String(user?.name ?? ''), saves, otherKeys };
+  const base = { id: user?.id, name: String(user?.name ?? ''), saves, savesImported, otherKeys };
   const looks = dsnAppearanceToLooks(appearance);
   // As migrateUser: with no usable entry there is nothing to copy, and it never flags the user.
   if (!Object.keys(looks).length) return { ...base, status: 'none', scopes: [] };

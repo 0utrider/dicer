@@ -6,11 +6,13 @@
  * `import()`: it is a lazy chunk, never part of the world-start bundle.
  */
 import { colorsetToAppearance } from './colorset-map.js';
-import { FLAG_SCOPE, FLAG_KEY, isPlainObject } from './user-looks.js';
+import { FLAG_SCOPE, FLAG_KEY, isPlainObject, lookRefToAppearance } from './user-looks.js';
 
 export const DSN_SCOPE = 'dice-so-nice';
 export const MIGRATED_FLAG = 'migratedFromDsn';
 export const WORLD_FLAG = 'dsnWorldMigrated';
+/** The user flag listing the Dice So Nice save profiles already imported as themes (by name). */
+export const SAVES_FLAG = 'dsnSavesImported';
 
 export const SCOPE_KEY = /^(global|d[a-z0-9]+)$/i;
 
@@ -212,4 +214,102 @@ export async function loadSaveFile(
   // A forced replacement, not setFlag (which merges and would keep scopes the save lacks).
   await user.update({ flags: { [FLAG_SCOPE]: { [FLAG_KEY]: replace(looks) } } });
   return true;
+}
+
+/**
+ * A user theme id: theme-form.js userThemeId's rule, kept here so this chunk does not pull the
+ * theme browser's modules in with it (tests/unit/migration.test.js checks they agree).
+ */
+export function userThemeId(userId, name, taken = []) {
+  const slug = String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'theme';
+  const base = `user.${userId}.${slug}`;
+  const set = new Set(taken);
+  let id = base;
+  for (let n = 2; set.has(id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+/**
+ * One Dice So Nice save profile as a raw Dicer theme ({id, name, appearance, perType}), or null
+ * when none of its entries can be drawn (a colorset no module has registered yet, or garbage).
+ * Its global entry is the theme's look; die-type entries are its per-type looks (a save with only
+ * die-type entries takes its first as the look). Marked with `dsnSave` (its profile name).
+ */
+export function saveToTheme(name, profile, { userId, taken = [], registry } = {}) {
+  const looks = dsnAppearanceToLooks(profile?.appearance);
+  const drawn = {};
+  for (const [scope, ref] of Object.entries(looks)) {
+    try {
+      const look = lookRefToAppearance(ref, registry);
+      if (look?.appearance) drawn[scope] = look.appearance;
+    } catch {
+      /* an entry that cannot be drawn is skipped */
+    }
+  }
+  const { global, ...perType } = drawn;
+  const appearance = global ?? Object.values(perType)[0];
+  if (!appearance) return null;
+  const label = String(name).trim() || 'Dice So Nice';
+  return { id: userThemeId(userId, label, taken), name: label, appearance, perType, dsnSave: name };
+}
+
+/**
+ * Adds the user's Dice So Nice save profiles to their own themes (`dicer.themes`, "My themes"):
+ * each profile once (SAVES_FLAG lists the imported names, so a theme the user deletes is not
+ * brought back), and one that cannot be drawn yet (its module's colorset not registered) is tried
+ * again on a later load. Never throws for bad data; a write failure rejects.
+ * @returns {Promise<number>} the themes added
+ */
+export async function migrateSaves(user, { registry } = {}) {
+  const saves = dsnFlags(user)?.saves;
+  if (!isPlainObject(saves)) return 0;
+  const doneFlag = user.getFlag(FLAG_SCOPE, SAVES_FLAG);
+  const done = new Set(Array.isArray(doneFlag) ? doneFlag : []);
+  const ownFlag = user.getFlag(FLAG_SCOPE, 'themes');
+  const list = Array.isArray(ownFlag) ? [...ownFlag] : [];
+  const taken = list.map((t) => t?.id).filter(Boolean);
+  let added = 0;
+  for (const [name, profile] of Object.entries(saves)) {
+    if (done.has(name)) continue;
+    if (list.some((t) => t?.dsnSave === name)) {
+      done.add(name);
+      continue;
+    }
+    const theme = saveToTheme(name, profile, { userId: user.id, taken, registry });
+    if (!theme) continue;
+    list.push(theme);
+    taken.push(theme.id);
+    done.add(name);
+    added++;
+  }
+  if (added) await user.setFlag(FLAG_SCOPE, 'themes', list);
+  if (done.size !== (Array.isArray(doneFlag) ? doneFlag.length : 0)) await user.setFlag(FLAG_SCOPE, SAVES_FLAG, [...done]);
+  return added;
+}
+
+/**
+ * The GM's import for every user at once (the Dice So Nice report's button): each user's
+ * appearance (migrateUser) and save profiles (migrateSaves), and the world's settings. A user that
+ * fails is warned and skipped; the rest still run.
+ * @returns {Promise<{users: number, themes: number, world: boolean}>} users whose looks were
+ *   copied, themes added, whether world settings were copied
+ */
+export async function migrateAll({ users = [], registry, worldSettings, settings } = {}) {
+  const out = { users: 0, themes: 0, world: false };
+  for (const user of users) {
+    try {
+      if (await migrateUser(user)) out.users++;
+      out.themes += await migrateSaves(user, { registry });
+    } catch (err) {
+      console.warn(`dicer: cannot import Dice So Nice data for ${user?.name}`, err);
+    }
+  }
+  if (worldSettings) {
+    try {
+      out.world = Object.keys(await migrateWorld(worldSettings, { settings })).length > 0;
+    } catch (err) {
+      console.warn('dicer: cannot migrate the Dice So Nice world settings', err);
+    }
+  }
+  return out;
 }

@@ -2164,12 +2164,22 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 24px;
+  /* a system's bigger button text (PF2e) wraps the label: the tab grows with it, never spills */
+  height: auto;
+  min-height: 24px;
+  padding: 3px 6px;
   border-color: transparent;
   border-radius: 6px;
   background: none;
+  font-size: var(--font-size-12, 12px);
   font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
   opacity: 0.65;
+}
+.dicer-chat-tray .dicer-chat-tray-tab > i {
+  flex: none;
 }
 .dicer-chat-tray .dicer-chat-tray-tab:hover {
   opacity: 1;

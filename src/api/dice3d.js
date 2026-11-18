@@ -736,6 +736,10 @@ export function createDice3dApi({
     get exports() {
       return registry.exports;
     },
+    /** The registry, for Dicer's own Dice So Nice import (the GM report's import-all). */
+    get _registry() {
+      return registry;
+    },
     /** Box internals are declared unsupported (survey tier 3). */
     box: {},
     get canvas() {
@@ -975,7 +979,7 @@ export function createDice3dApi({
      * lazily, so it costs nothing at world start.
      */
     benchmark: {
-      async value({ scenarios, onProgress } = {}) {
+      async value({ scenarios, onProgress, signal } = {}) {
         const loc = (k) => globalThis.game?.i18n?.localize?.(k) ?? k;
         if (!getSetting('enabled')) {
           globalThis.ui?.notifications?.warn(loc('DICER.Bench.Disabled'));
@@ -991,6 +995,7 @@ export function createDice3dApi({
           return await bench.runDicerBenchmark(api, {
             scenarios: scenarios ?? bench.DEFAULT_SCENARIOS,
             onProgress,
+            signal,
             hooks,
             gpu: getGpu,
             maxDice: () => Number(getSetting('maxDice')) || 20,

@@ -4,7 +4,7 @@
  * render (compat/migration-report.js). Read-only.
  */
 import { buildReport } from '../compat/migration-report.js';
-import { worldSettingsReader, storedWorldValue } from '../compat/migration.js';
+import { worldSettingsReader, storedWorldValue, migrateAll } from '../compat/migration.js';
 
 const P = 'DICER.DsnReport';
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
@@ -74,7 +74,7 @@ function unmigratedSection(r) {
     .filter((u) => u.saves > 0 || u.otherKeys.length)
     .map((u) => {
       const parts = [];
-      if (u.saves > 0) parts.push(fmt(`${P}.Saves`, { n: u.saves }));
+      if (u.saves > 0) parts.push(fmt(`${P}.Saves`, { n: u.saves, m: u.savesImported ?? 0 }));
       if (u.otherKeys.length) parts.push(u.otherKeys.join(', '));
       return h('li', {}, [h('span', { class: 'dicer-report-name', text: u.name }), h('small', { text: parts.join(' · ') })]);
     });
@@ -88,7 +88,12 @@ export function renderReport(report) {
     root.append(h('p', { class: 'dicer-empty', text: loc(`${P}.None`) }));
     return root;
   }
-  root.append(statusSection(report), worldSection(report), usersSection(report));
+  // the GM imports every player at once, rather than waiting for each to log in
+  const all = h('div', { class: 'dicer-report-import' }, [
+    h('button', { type: 'button', 'data-act': 'import-all' }, [h('i', { class: 'fa-solid fa-file-import', 'aria-hidden': 'true' }), ` ${loc(`${P}.ImportAll`)}`]),
+    h('p', { class: 'dicer-hint', text: loc(`${P}.ImportAllHint`) }),
+  ]);
+  root.append(all, statusSection(report), worldSection(report), usersSection(report));
   const rest = unmigratedSection(report);
   if (rest) root.append(rest);
   return root;
@@ -97,6 +102,8 @@ export function renderReport(report) {
 // its own look, here in the lazy chunk (not in dicer.css, which every world start loads)
 const CSS =
   '.dicer-dsn-report section{margin-bottom:.8em}' +
+  '.dicer-report-import{margin-bottom:.8em}' +
+  '.dicer-report-import button{width:100%}' +
   '.dicer-dsn-report h3{margin:.4em 0}' +
   '.dicer-dsn-report dl{display:grid;grid-template-columns:auto 1fr;gap:.2em .8em;margin:0}' +
   '.dicer-dsn-report dd{margin:0}' +
@@ -139,6 +146,24 @@ export function openDsnReport() {
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
+      result.querySelector('[data-act="import-all"]')?.addEventListener('click', (event) => this.#importAll(event.currentTarget));
+    }
+    /** Every player's Dice So Nice data at once (GM): then the report shows what it did. */
+    async #importAll(button) {
+      button.disabled = true;
+      try {
+        const out = await migrateAll({
+          users: [...(game.users ?? [])],
+          registry: game.dice3d?._registry,
+          worldSettings: worldSettingsReader(game.settings.storage?.get('world') ?? null),
+          settings: game.settings,
+        });
+        globalThis.ui?.notifications?.info(fmt(`${P}.ImportAllDone`, { users: out.users, themes: out.themes }));
+      } catch (err) {
+        console.warn('dicer: the Dice So Nice import failed', err);
+        globalThis.ui?.notifications?.warn(loc(`${P}.ImportAllFailed`));
+      }
+      this.render();
     }
   }
   if (!app?.rendered) app = new DsnReport();

@@ -1,7 +1,9 @@
 {
   "DICER": {
     "Notice": {
-      "DsnActive": "Dicer is inactive while Dice So Nice is enabled. Disable one of them."
+      "DsnActive": "Dicer is inactive while Dice So Nice is enabled. Disable one of them.",
+      "Migrated": "Your Dice So Nice dice colours were imported into Dicer.",
+      "SavesImported": "{n} of your saved Dice So Nice looks are now in My themes."
     },
     "Settings": {
       "enabled": {
@@ -601,6 +603,9 @@
       "Title": "Dicer benchmark",
       "Intro": "Throws a few test rolls on this screen and measures how smoothly they animate. Wait for the dice to clear first. It takes under a minute.",
       "Run": "Run",
+      "Stop": "Stop",
+      "Stopping": "Stopping after this roll…",
+      "Stopped": "Stopped. The table shows the scenarios measured so far.",
       "Running": "Running",
       "Progress": "Scenario",
       "Idle": "Not run yet.",
@@ -1403,14 +1408,18 @@
       "None": "This world has no Dice So Nice data to migrate.",
       "NoWorld": "No Dice So Nice world settings are stored in this world.",
       "NoneUsers": "Users with no Dice So Nice dice colours",
-      "Saves": "{n} Dice So Nice save profiles (load one with game.dice3d.loadSaveFile)",
+      "Saves": "{n} saved Dice So Nice looks, {m} imported into My themes",
+      "ImportAll": "Import all players now",
+      "ImportAllHint": "Copies every player's Dice So Nice dice colours and saved looks (into their My themes), and the world settings, without waiting for each player to log in. Choices already made in Dicer are kept.",
+      "ImportAllDone": "Imported: dice colours for {users} players, {themes} saved looks as themes.",
+      "ImportAllFailed": "The import could not finish: see the console.",
       "Yes": "Yes",
       "No": "No",
       "Section": {
         "Status": "Status",
         "World": "World settings",
         "Users": "Players",
-        "Unmigrated": "Not migrated"
+        "Unmigrated": "Saved looks and other Dice So Nice data"
       },
       "Field": {
         "Enabled": "Import Dice So Nice settings",

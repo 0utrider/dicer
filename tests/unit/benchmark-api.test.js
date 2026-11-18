@@ -124,3 +124,16 @@ test('a pool above the maxDice setting is noted in the result and the text', asy
   expect(out.suite.results[0].notes).toContain('pool30 threw 20 of 30 dice (maxDice)');
   expect(out.text).toContain('(maxDice)');
 });
+
+test('a stop signal ends the run before its next scenario; the result says it stopped', async () => {
+  const ctl = new AbortController();
+  const progress = vi.fn(({ index }) => index === 0 && ctl.abort());
+  const out = await api.benchmark({ scenarios: ['d20', 'mixed10', 'pool30'], onProgress: progress, signal: ctl.signal });
+  expect(out.stopped).toBe(true);
+  expect(progress).toHaveBeenCalledTimes(1); // no second scenario
+  expect(out.suite.results.length).toBeLessThanOrEqual(1);
+  expect(out.suite.notes).toContain('stopped before the end');
+  // and the next run is allowed (nothing left running)
+  const next = await api.benchmark({ scenarios: ['d20'] });
+  expect(next.stopped).toBe(false);
+});
