@@ -26,8 +26,7 @@ export function createWarmup({
   getLooks = () => [],
   warn = (message, err) => console.warn(message, err),
   info = (message) => console.info(message),
-  // between damage-look batches: the page gets a turn (each compile blocks it without the
-  // parallel compile extension: Firefox on Windows)
+  // between damage-look batches: the page gets a turn
   breathe = () => new Promise((r) => (globalThis.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 1000 }) : setTimeout(r, 50))),
 }) {
   let warming = null;
@@ -65,11 +64,13 @@ export function createWarmup({
         } catch (err) {
           warn('dicer: cannot list the damage looks to warm up', err);
         }
-        // one look at a time when compiling blocks the page, so it never stalls for long
-        const n = renderer.parallelCompile === false ? 1 : LOOK_BATCH;
-        for (let i = 0; i < looks.length && !again; i += n) {
+        // Where compiling blocks the page (no parallel compile: Firefox on Windows) the damage looks
+        // are not warmed: each would freeze the loading page; a roll with one compiles it, fade
+        // included (DiceBox #compileFades), as its throw starts.
+        if (renderer.parallelCompile === false) looks = [];
+        for (let i = 0; i < looks.length && !again; i += LOOK_BATCH) {
           await breathe();
-          if (again || !(await pass(renderer, box.acquireWarmup(undefined, looks.slice(i, i + n))))) break;
+          if (again || !(await pass(renderer, box.acquireWarmup(undefined, looks.slice(i, i + LOOK_BATCH))))) break;
         }
       } while (again);
     })().finally(() => {

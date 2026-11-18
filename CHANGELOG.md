@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5
+
+- **Loading into the world no longer stutters on some computers** (seen in Firefox on Windows). Where the browser stops everything while it prepares dice graphics, Dicer now prepares only your own dice when the world loads, as it did before 1.0.1, instead of every damage dice look one after another.
+- **Fixed: the first roll of a new dice look froze as the dice faded out** (the first Electric Arc, say). The fade's graphics are now prepared as the throw starts, together with the rest of the dice, so on those computers a new look pauses once before the dice appear and then throws and fades smoothly.
+
 ## 1.0.4
 
 - **Fixed: loading into the world froze on some computers** (seen in Firefox on Windows). There the browser stops everything while it prepares each piece of dice graphics, and Dicer was preparing all the damage dice looks right after the world loaded. It now prepares them one at a time with a pause between, so the page stays responsive.

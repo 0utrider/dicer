@@ -86,13 +86,13 @@ test('damage looks compile a few at a time, so the 10 s guard covers a few progr
   expect(box.acquireWarmup.mock.calls).toEqual([[], [undefined, looks.slice(0, LOOK_BATCH)], [undefined, looks.slice(LOOK_BATCH)]]);
 });
 
-test('without parallel shader compiling (compiles block the page) one look per compile, the page breathing between', async () => {
+test('without parallel shader compiling (each compile blocks the page) the damage looks are left to their first roll', async () => {
   const looks = [{ a: 1 }, { b: 2 }];
   const { fake, renderer, box, warmUp } = setup({ getLooks: () => looks });
   fake.compileAsync = vi.fn(async () => {});
   Object.defineProperty(renderer, 'parallelCompile', { get: () => false });
   await warmUp();
-  expect(box.acquireWarmup.mock.calls).toEqual([[], [undefined, [looks[0]]], [undefined, [looks[1]]]]);
+  expect(box.acquireWarmup.mock.calls).toEqual([[]]);
 });
 
 test('a timed-out batch is logged as info (three keeps compiling), not warned, and the rest wait for the next warm-up', async () => {

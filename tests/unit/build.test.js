@@ -376,9 +376,11 @@ describe('build', () => {
     // One damage look per compile with a pause between where compiles block the page, the GPU
     // name without Firefox's deprecated extension (+368 B), measured with the dice pets work then
     // in progress (+82 B): owner approved +450 B (35,433 -> 35,883), 2026-11-18.
+    // Without parallel compiling only the own look warms at load, and a throw compiles its fade
+    // programs as it starts (DiceBox #compileFades): owner approved +415 B (35,883 -> 36,298), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(35_883);
+    expect(growth).toBeLessThanOrEqual(36_298);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

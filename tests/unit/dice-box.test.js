@@ -251,6 +251,27 @@ test("a material keeps one fade clone (three would drop the fade program with th
   expect(keptDispose).toHaveBeenCalledTimes(1);
 });
 
+test('a throw compiles its fade programs as it starts, once per material (a look the warm-up skipped froze mid-fade)', async () => {
+  const { renderer, physics, box } = setup();
+  renderer.warmup = vi.fn(async () => {});
+  const r1 = box.roll([{ type: 'd6', value: 3 }]);
+  physics.flush();
+  renderer.tick(16);
+  expect(renderer.warmup).toHaveBeenCalledTimes(1);
+  const [mats, geometry, fades] = renderer.warmup.mock.calls[0];
+  expect(mats).toHaveLength(1);
+  expect(geometry.isBufferGeometry).toBe(true);
+  expect(fades[0].transparent).toBe(true);
+  box.clear();
+  await r1.finished;
+  const r2 = box.roll([{ type: 'd6', value: 4 }]);
+  physics.flush();
+  renderer.tick(32);
+  expect(renderer.warmup).toHaveBeenCalledTimes(1); // already compiled
+  box.clear();
+  await r2.finished;
+});
+
 test('fade uses clones and never mutates the cached materials', async () => {
   const { renderer, physics, box } = setup();
   box.roll([{ type: 'd6', value: 3 }]);

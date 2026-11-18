@@ -780,7 +780,11 @@ export class DiceBox {
     return {
       materials,
       // each material's kept fade clone (#keptFade), so the compiled fade program stays alive
-      fades: materials.map((m) => this.#keptFade(m)),
+      fades: materials.map((m) => {
+        const entry = this._refs.get(m);
+        if (entry) entry.fadeCompiled = true;
+        return this.#keptFade(m);
+      }),
       geometry,
       release: () => {
         if (released) return;
@@ -802,6 +806,22 @@ export class DiceBox {
     if (!entry) return cloneForFade(material);
     entry.fade ??= cloneForFade(material);
     return entry.fade;
+  }
+
+  /**
+   * Compiles the kept fade clones a roll's materials have not compiled yet, as the throw starts
+   * (with the dice's own programs, which compile on this first frame anyway): a look the warm-up
+   * skipped otherwise compiled its fade program mid-roll, a freeze as the dice faded.
+   */
+  #compileFades(roll) {
+    const mats = [...roll.materials].filter((m) => {
+      const entry = this._refs.get(m);
+      if (!entry || entry.fadeCompiled) return false;
+      return (entry.fadeCompiled = true);
+    });
+    const geometry = roll.dice[0]?.geometry;
+    if (!mats.length || !geometry) return;
+    Promise.resolve(this._renderer.warmup?.(mats, geometry, mats.map((m) => this.#keptFade(m)))).catch(() => {});
   }
 
   /** Disposes a roll's fade clone, unless its material has none kept yet: then it is kept. */
@@ -1451,6 +1471,7 @@ export class DiceBox {
    * the pet begins at the first reveal of a thrown roll.
    */
   _reveal(roll) {
+    if (!roll.revealed) this.#compileFades(roll);
     const shadows = this._shadows() !== false;
     for (const die of roll.dice) {
       die.outer.visible = true;
