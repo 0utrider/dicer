@@ -11,10 +11,20 @@
 # Dicer
 
 Physics-simulated 3D dice for Foundry VTT v14, in sync for every player. Dicer is a lightweight
-replacement for Dice So Nice: dice that roll, bounce and land on the real result, themes you design
+alternative to Dice So Nice: dice that roll, bounce and land on the real result, themes you design
 yourself, damage dice in their element, effects for big moments, and dice pets that watch your rolls.
 
 **[Read the wiki](https://github.com/roileaf/dicer/wiki)** for guides to every feature.
+
+## Built on Dice So Nice
+
+Dicer would not exist without [Dice So Nice](https://gitlab.com/riccisi/foundryvtt-dice-so-nice),
+the module that brought 3D dice to Foundry and that its authors and contributors have refined
+since 2020. Dicer deliberately mirrors the Dice So Nice API, hooks and flags so existing worlds,
+modules and macros keep working when you switch. That compatibility only exists because Dice So
+Nice designed an API worth being compatible with. Huge thanks to everyone who built it.
+
+If you like 3D dice in Foundry, please consider supporting Dice So Nice too.
 
 ## Highlights
 
