@@ -103,7 +103,7 @@ const countCheers = (m, ms) => {
   }
   return counts;
 };
-const happy = (m) => m.deps.playSound.mock.calls.filter(([s]) => s?.builtin === 'petHappy').length;
+const happy = (m) => m.deps.playSound.mock.calls.filter(([s]) => /^petHappy\d*$/.test(s?.builtin ?? '')).length;
 
 describe('cheering in the layer', () => {
   test("another roller's visible crit: the two other resting pets cheer once, the roller's own does not", () => {

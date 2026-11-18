@@ -92,7 +92,7 @@ test('a fourth roller gets no pet', () => {
 });
 
 // the result sounds a pet voiced, leaving out its "oooh" while the dice fly
-const said = (x) => (x.mock ? x : x.playSound).mock.calls.map(([a]) => a.builtin).filter((n) => !n.startsWith('petOooh'));
+const said = (x) => (x.mock ? x : x.playSound).mock.calls.map(([a]) => a.builtin).filter((n) => !n.startsWith('petOooh')).map((n) => n.replace(/\d+$/, '')); // any take of a voice
 
 const reactAndRun = (settings, dice, ghost = false) => {
   const m = make(settings);
@@ -105,8 +105,8 @@ const reactAndRun = (settings, dice, ghost = false) => {
 };
 
 test('crit plays petHappy, fumble petSad, mixed petHuh, plain petHmm', () => {
-  expect(reactAndRun({}, [d20(20)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
-  expect(reactAndRun({}, [d20(1)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSad' }));
+  expect(reactAndRun({}, [d20(20)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: expect.stringMatching(/^petHappy\d*$/) }));
+  expect(reactAndRun({}, [d20(1)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: expect.stringMatching(/^petSad\d*$/) }));
   expect(said(reactAndRun({}, [d20(1), d20(20)]))).toEqual(['petHuh']);
   expect(said(reactAndRun({}, [{ type: 'd6', value: 6 }]))).toEqual(['petHmm']);
   expect(said(reactAndRun({}, [d20(20)]))).toEqual(['petHappy']);
@@ -297,7 +297,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('g', [d20(undefined, true)]);
     m.layer.landed('r', [d20(20)]);
     run(m, 700, 1000);
-    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: expect.stringMatching(/^petHappy\d*$/) }));
   });
 
 
@@ -341,7 +341,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('a', [d20(20)]);
     m.layer.end('b');
     run(m, 700, 1000);
-    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: expect.stringMatching(/^petHappy\d*$/) }));
   });
 });
 
@@ -1010,7 +1010,7 @@ test("the owner's next roll reforms the puddle in place and plays the routine", 
   expect(pets(m.scene)[0].children[0].visible).toBe(true);
   m.layer.landed('again', [d20(20)]);
   runTo(m, clockNow + 1400);
-  expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
+  expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: expect.stringMatching(/^petHappy\d*$/) }));
   m.layer.leave('again', 0);
   m.layer.end('again');
   expect(runTo(m, clockNow + 3000)).toBe('rest'); // rests again
@@ -2100,11 +2100,12 @@ test('a pet watching its dice fly says "oooh" once per roll; a blind roll gets n
   expect(oohs(true)).toBe(0);
 });
 
-test('its "ooh?" is one of three, picked at random, never the same twice running', () => {
+test('its "ooh?" and its result voice are takes picked at random, never the same twice running', () => {
   let r = 0;
   const rolls = [0.1, 0.9, 0.1, 0.5, 0.99, 0.0];
   const m = make({}, { random: () => rolls[r++ % rolls.length] });
   const heard = [];
+  const hmms = [];
   for (let i = 0; i < 6; i++) {
     const key = 'k' + i;
     m.layer.begin(key, info(0, spec('u1')));
@@ -2116,10 +2117,20 @@ test('its "ooh?" is one of three, picked at random, never the same twice running
     m.layer.leave(key, 0);
     m.layer.end(key);
     heard.push(...m.playSound.mock.calls.map(([a]) => a.builtin).filter((n) => n.startsWith('petOooh')));
+    hmms.push(...m.playSound.mock.calls.map(([a]) => a.builtin).filter((n) => n.startsWith('petHmm')));
     m.playSound.mockClear();
   }
   expect(heard.length).toBeGreaterThanOrEqual(2);
   for (const n of heard) expect(['petOooh', 'petOooh2', 'petOooh3']).toContain(n);
   for (let i = 1; i < heard.length; i++) expect(heard[i]).not.toBe(heard[i - 1]);
   expect(new Set(heard).size).toBeGreaterThan(1);
+  expect(hmms).toHaveLength(6); // a plain 9 each roll
+  for (const n of hmms) expect(['petHmm', 'petHmm2', 'petHmm3', 'petHmm4']).toContain(n);
+  for (let i = 1; i < hmms.length; i++) expect(hmms[i]).not.toBe(hmms[i - 1]);
+});
+
+test("the pet speaks in its kind's voice: every sound carries the kind's own take", () => {
+  const m = reactAndRun({}, [d20(20)]);
+  const [sound] = m.playSound.mock.calls.at(-1);
+  expect(typeof sound.voice).toBe('function');
 });

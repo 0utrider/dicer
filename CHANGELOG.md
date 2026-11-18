@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.13
+
+- **Every pet has its own voice.** The mimic knocks like hollow wood, the slime bubbles, the dragonling growls, the owl hoots, the frog croaks, the ghost whispers with an echo, the mushroom squeaks, the floating eye warbles, the golem grinds and the cat meows. Every sound a pet makes uses it: cheers and sulks, damage reactions, splats, purrs and huffs. Your voice pitch still applies.
+- **More things to say.** Natural 20s, natural 1s, ordinary results and mixed results each have four takes, picked at random and never the same one twice in a row.
+
 ## 1.0.12
 
 - **Pets talk through the whole roll.** While your dice fly, your pet goes "ooh?" (one of three, a different one each time). When they land it has something to say every time: a satisfied "mm-hm" for an ordinary result and a puzzled "huh?" when a 20 and a 1 land together, on top of the cheer for a natural 20 and the sulk for a 1. Blind rolls stay silent.

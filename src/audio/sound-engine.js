@@ -386,6 +386,13 @@ export function createSoundEngine({
     return p;
   }
 
+  const own = (sound, c) => {
+    try {
+      return typeof sound.voice === 'function' ? sound.voice(c) : null;
+    } catch {
+      return null; // the shared take
+    }
+  };
   async function result(sound) {
     try {
       if (disposed || !sound || !setting('sounds', true)) return;
@@ -397,7 +404,8 @@ export function createSoundEngine({
       if (disposed || !ensureContext() || !running()) return;
       let buf;
       if (sound.src !== undefined) buf = await customBuffer(String(sound.src));
-      else buf = rendered ? bufferFor(`result:${sound.builtin}`) : null;
+      // sound.voice(ctx): a pet's own take on the builtin, in its kind's voice (pet chunk voices.js)
+      else buf = own(sound, ctx) || (rendered ? bufferFor(`result:${sound.builtin}`) : null);
       if (!buf || disposed) return;
       if (ctx.state !== 'running') return;
       // sound.rate: a pet's voice pitch (playback rate, 0.5..2)

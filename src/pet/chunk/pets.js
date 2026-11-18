@@ -28,6 +28,7 @@ import {
   KIND_FOOTPRINT,
   FOOTPRINT,
 } from './resting.js';
+import { voiceFor } from './voices.js';
 import { spotFor as chosenSpot, atEdge, placedSpot, toPlaced, validAt, TAN_HALF_FOV } from './rest-spots.js';
 import { createPetting, petClickable, HUFF_IGNORE_MS } from './petting.js';
 import { maySplat } from '../../physics/protocol.js';
@@ -87,8 +88,12 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 /** Each kind's voice, as a playback rate on the shared pet sounds (the player's pitch multiplies it). */
 const KIND_PITCH = { owl: 0.95, frog: 0.82, ghost: 1.1, mushroom: 1.2, eye: 1.12, golem: 0.7, cat: 1.15 };
-// its curious "ooh?"s as it watches its dice fly (synth.js): one at random each roll
-const OOHS = ['petOooh', 'petOooh2', 'petOooh3'];
+// The pet's voices with takes (synth.js): voice() plays one at random, never the same one twice
+// running: its "ooh?" as its dice fly, its "mm-hm", "huh?", natural 20 cheer and natural 1 whimper.
+const takes = (name, n) => [name, ...Array.from({ length: n - 1 }, (_, i) => `${name}${i + 2}`)];
+const TAKES = Object.fromEntries(
+  [['petOooh', 3], ['petHmm', 4], ['petHuh', 4], ['petHappy', 4], ['petSad', 4]].map(([n, k]) => [n, takes(n, k)]),
+);
 
 // The dice tray's rim (petTray 'rim', deps.perch): a die hitting the tray wall at this speed or more
 // within WALL_REACH of a pet sitting on the rim makes it wobble (it never reaches the pet itself).
@@ -1482,9 +1487,7 @@ export function createPetLayer(deps) {
     // watching its dice fly: a curious "oooh", once per roll (not a ghost roll's: no suspense to share)
     if (phase === 'watch' && pet.oohDone === false && !pet.rolls.get(pet.current)?.ghost) {
       pet.oohDone = true;
-      const pick = OOHS.filter((n) => n !== pet.lastOoh); // never the same one twice running
-      pet.lastOoh = pick[Math.min(pick.length - 1, Math.floor(rand() * pick.length))];
-      voice(pet, pet.lastOoh);
+      voice(pet, 'petOooh');
     }
     if (phase === 'react' && !pet.soundDone) {
       pet.soundDone = true;
@@ -1493,8 +1496,7 @@ export function createPetLayer(deps) {
       // a plain roll that leaves an element on it voices the element, not the "mm-hm"
       const name =
         pet.reaction === 'plain' && el ? (ELEMENT_FX[el]?.sound ?? 'petYelp') : reactionSound(pet.reaction, !!pet.reactGhost);
-      if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false)
-        playSound({ builtin: name, rate: rateOf(pet) });
+      voice(pet, name);
     }
   }
 
@@ -1641,9 +1643,18 @@ export function createPetLayer(deps) {
     return p * (KIND_PITCH[pet?.kind] ?? 1);
   }
   /** `pet` says `name` (a builtin pet sound) in its pitch, unless pet sounds or sounds are off. Never throws. */
+  const said = new Map(); // userId -> the take each voice last played (voice)
   function voice(pet, name) {
     try {
-      if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: name, rate: rateOf(pet) });
+      if (!name || getSetting('petSounds') === false || getSetting('sounds') === false) return;
+      const all = TAKES[name];
+      if (all) {
+        if (!said.has(pet.userId)) said.set(pet.userId, {});
+        const last = said.get(pet.userId); // by owner: a pet that left and came back still remembers
+        const pick = all.filter((n) => n !== last[name]); // never the same take twice running
+        name = last[name] = pick[Math.min(pick.length - 1, Math.floor(rand() * pick.length))];
+      }
+      playSound({ builtin: name, rate: rateOf(pet), voice: voiceFor(pet.kind, name) });
     } catch {
       /* no sound */
     }
@@ -1769,11 +1780,7 @@ export function createPetLayer(deps) {
       pet.yaw = wrap(a.yaw + wrap(a.to - a.yaw) * (smooth(clamp01(e / 0.2)) - smooth(clamp01((e - 0.8) / 0.2))));
       if (a.chirp && now >= a.at) {
         a.chirp = false;
-        try {
-          if (getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: 'petHappy', rate: rateOf(pet) });
-        } catch {
-          /* no sound */
-        }
+        voice(pet, 'petHappy');
       }
     }
     show(pet, now, a.kind, e, pet.px, pet.pz, 0, shadows);
@@ -2249,8 +2256,7 @@ export function createPetLayer(deps) {
     pet.splatAt = now;
     pet.idleAt = now;
     ensureSplat(pet).root.visible = true;
-    if (getSetting('petSounds') !== false && getSetting('sounds') !== false)
-      playSound({ builtin: 'petSplat', rate: rateOf(pet) });
+    voice(pet, 'petSplat');
     wake();
   }
 

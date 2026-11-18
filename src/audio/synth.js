@@ -7,7 +7,8 @@
  * renderAll can resume it across idle callbacks and respect its time budget.
  */
 import { mulberry32 } from '../core/rng.js';
-import { RESULT_SOUNDS } from './sound-names.js';
+import { RESULT_SOUNDS, PET_SOUNDS } from './sound-names.js';
+import { PET_TIMBRES } from './pet-timbre.js';
 
 export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
 export const SURFACES = ['felt', 'wood', 'stone', 'metal'];
@@ -139,9 +140,15 @@ function envAt(t, a, tau, dur, r = 0.03) {
  * Additive voice summed into buf at `start` (s) for `dur` (s). partials: [ratio, gain, decayFactor]
  * (a partial decays with tau x decayFactor); detune: cents per copy; vib: vibrato depth (fraction
  * of the pitch) reached `vibDelay` s in; pitch(t): frequency multiplier over time (default: a
- * scoop from `scoop` x freq up to freq over 40 ms); swell: s for partials above the second to fade in.
+ * scoop from `scoop` x freq up to freq over 40 ms); swell: s for partials above the second to fade in;
+ * release: s of linear fade at the end; flutter: [Hz, depth], a loudness flutter (a purr's trill).
  */
+// The pet kind's timbre while renderPetSound renders (pet-timbre.js); voice() reads it.
+let timbre = null;
+let noise = 1; // its breath's noise state (xorshift)
+
 function* voice(buf, sr, o) {
+  const T = timbre;
   const {
     freq,
     start = 0,
@@ -157,7 +164,22 @@ function* voice(buf, sr, o) {
     scoop = 1,
     pitch = null,
     swell = 0,
+    release = 0.03,
+    flutter = null,
   } = o;
+  // a pet kind's voice: its own source for these notes (the sound keeps its pitch and envelope)
+  let parts = partials;
+  if (T) {
+    parts = T.inharm ?? T.harm.map((g, k) => [k + 1, g, 1]).filter(([, g]) => g > 0);
+    if (T.sub) parts = [[0.5, T.sub, 1], ...parts];
+    parts = parts.filter(([r]) => freq * r * 1.7 < 0.45 * sr); // no harmonic past Nyquist at the top of a glide
+  }
+  const tauK = T?.tauMul ?? 1;
+  const [fmR, fmI] = T?.fm ?? [0, 0];
+  const [amHz, amD] = T?.am ?? [0, 0];
+  const [vHz, vD] = T?.vib ?? [0, 0];
+  const breath = T?.breath ?? 0;
+  let br = 0;
   const s0 = Math.floor(start * sr);
   const n = Math.min(buf.length - s0, Math.floor(dur * sr));
   const mults = detune.map((c) => Math.pow(2, c / 1200));
@@ -165,20 +187,31 @@ function* voice(buf, sr, o) {
   const norm = gain / mults.length;
   for (let i = 0; i < n; i++) {
     const t = i / sr;
-    const env = envAt(t, attack, tau, dur);
+    const env = envAt(t, attack, tau, dur, release);
     let p = pitch ? pitch(t) : scoop + (1 - scoop) * Math.min(1, t / 0.04);
     if (vib) p *= 1 + vib * Math.min(1, Math.max(0, (t - vibDelay) / 0.12)) * Math.sin(TAU * vibRate * t);
+    if (vD) p *= 1 + vD * Math.sin(TAU * vHz * t);
     const bright = swell ? Math.min(1, t / swell) : 1;
     let s = 0;
     for (let c = 0; c < mults.length; c++) {
       phases[c] += (TAU * freq * p * mults[c]) / sr;
       const ph = phases[c];
-      for (let k = 0; k < partials.length; k++) {
-        const [ratio, g, df] = partials[k];
-        s += g * (k > 1 ? bright : 1) * Math.exp(-t / (tau * df)) * Math.sin(ph * ratio);
+      const mod = fmI ? fmI * Math.sin(ph * fmR) : 0;
+      for (let k = 0; k < parts.length; k++) {
+        const [ratio, g, df] = parts[k];
+        s += g * (k > 1 ? bright : 1) * Math.exp(-t / (tau * df * tauK)) * Math.sin(ph * ratio + mod);
       }
     }
-    buf[s0 + i] += norm * env * s;
+    if (breath) {
+      noise ^= noise << 13;
+      noise ^= noise >>> 17;
+      noise ^= noise << 5;
+      br += 0.35 * ((noise >>> 0) / 2147483648 - 1 - br); // a soft, low-passed hiss
+      s += breath * br * 6 * mults.length;
+    }
+    let am = amD ? 1 - amD / 2 + (amD / 2) * Math.sin(TAU * amHz * t) : 1;
+    if (flutter) am *= 1 - flutter[1] + flutter[1] * Math.sin(TAU * flutter[0] * t);
+    buf[s0 + i] += norm * env * am * s;
     if ((i & BLOCK_MASK) === BLOCK_MASK) yield;
   }
 }
@@ -509,6 +542,39 @@ const RESULT = {
     yield* voice(buf, sr, { ...o, freq: 660, start: 0.28, dur: 0.32, tau: 0.28, pitch: (t) => 1.02 - 0.14 * Math.min(1, t / 0.32) });
     yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
   },
+  // more voices for a natural 20 and a 1: the pet layer picks one at random each time
+  *petHappy2(sr, buf) { // a "yaaay!": one big upward swoop with a trill at the top
+    yield* voice(buf, sr, { freq: 760, dur: 0.38, gain: 0.8, attack: 0.015, tau: 0.3, partials: [[1, 1, 1], [2, 0.22, 0.6]], vib: 0.03, vibRate: 14, vibDelay: 0.22, pitch: (t) => 0.92 + 0.75 * Math.min(1, t / 0.24) ** 0.8 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petHappy3(sr, buf) { // a giggly trill: quick notes bouncing upward
+    const soft2 = [[1, 1, 1], [2, 0.2, 0.6]];
+    const notes = [[1000, 0], [1250, 0.07], [1060, 0.14], [1330, 0.21], [1500, 0.28]];
+    for (const [freq, start] of notes) yield* voice(buf, sr, { freq, start, dur: 0.08, gain: 0.72, attack: 0.008, tau: 0.05, partials: soft2 });
+    yield* reverb(buf, sr, { mix: 0.12, decay: 0.3 });
+  },
+  *petHappy4(sr, buf) { // a "woo-hoo!": a low note gliding up, then a high one
+    const o = { gain: 0.8, attack: 0.015, partials: [[1, 1, 1], [2, 0.22, 0.6]] };
+    yield* voice(buf, sr, { ...o, freq: 820, start: 0, dur: 0.17, tau: 0.12, pitch: (t) => 0.85 + 0.25 * Math.min(1, t / 0.15) });
+    yield* voice(buf, sr, { ...o, freq: 1320, start: 0.2, dur: 0.22, tau: 0.16, pitch: (t) => 1.05 - 0.1 * Math.min(1, t / 0.22) });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petSad2(sr, buf) { // a long falling "awww"
+    yield* voice(buf, sr, { freq: 820, dur: 0.55, gain: 0.8, attack: 0.04, tau: 0.45, partials: [[1, 1, 1], [2, 0.18, 0.6]], vib: 0.018, vibRate: 5.5, vibDelay: 0.15, pitch: (t) => 1.02 - 0.32 * Math.min(1, t / 0.5) ** 1.2 });
+    yield* reverb(buf, sr, { mix: 0.12, decay: 0.35 });
+  },
+  *petSad3(sr, buf) { // a three-note sigh stepping down
+    const o = { gain: 0.72, attack: 0.025, partials: [[1, 1, 1], [2, 0.16, 0.6]], vib: 0.01, vibRate: 6, vibDelay: 0.05 };
+    for (const [freq, start, dur] of [[760, 0, 0.15], [670, 0.16, 0.15], [540, 0.32, 0.28]])
+      yield* voice(buf, sr, { ...o, freq, start, dur, tau: dur * 0.8, pitch: (t) => 1 - 0.05 * Math.min(1, t / dur) });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petSad4(sr, buf) { // an "uh-oh"
+    const o = { gain: 0.78, attack: 0.02, partials: [[1, 1, 1], [2, 0.25, 0.6], [3, 0.08, 0.4]] };
+    yield* voice(buf, sr, { ...o, freq: 720, start: 0, dur: 0.14, tau: 0.1 });
+    yield* voice(buf, sr, { ...o, freq: 540, start: 0.18, dur: 0.3, tau: 0.24, pitch: (t) => 1 - 0.08 * Math.min(1, t / 0.3) });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
   *petSplat(sr, buf, rand) {
     // A wet "splorch": a noisy burst whose band falls fast, over a short falling blob of a tone.
     yield* noiseBand(buf, sr, rand, { dur: 0.3, fc: (t) => 2200 * Math.exp(-t / 0.07) + 220, q: 0.8, amp: (t) => envAt(t, 0.004, 0.09, 0.3), gain: 0.8 });
@@ -516,18 +582,7 @@ const RESULT = {
   },
   *petPurr(sr, buf) {
     // Petted: a rolling "brrrp" trill (a soft tone fluttering 28 times a second) that lifts at the end.
-    const d = 0.6;
-    const n = Math.min(buf.length, Math.floor(d * sr));
-    let ph = 0;
-    for (let i = 0; i < n; i++) {
-      const t = i / sr;
-      const f = 520 * (1 + 0.35 * Math.max(0, (t - 0.4) / 0.2) ** 2);
-      ph += (TAU * f) / sr;
-      const flutter = 0.55 + 0.45 * Math.sin(TAU * 28 * t);
-      const tone = Math.sin(ph) + 0.25 * Math.sin(2 * ph);
-      buf[i] += 0.7 * envAt(t, 0.04, 0.5, d, 0.08) * flutter * tone;
-      if ((i & BLOCK_MASK) === BLOCK_MASK) yield;
-    }
+    yield* voice(buf, sr, { freq: 520, dur: 0.6, gain: 0.7, attack: 0.04, tau: 0.5, release: 0.08, partials: [[1, 1, 1e9], [2, 0.25, 1e9]], flutter: [28, 0.45], pitch: (t) => 1 + 0.35 * Math.max(0, (t - 0.4) / 0.2) ** 2 });
     yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
   },
   *petHuff(sr, buf, rand) {
@@ -634,6 +689,35 @@ const RESULT = {
     yield* voice(buf, sr, { freq: 520, dur: 0.32, gain: 0.7, attack: 0.03, tau: 0.25, partials: [[1, 1, 1], [2, 0.3, 0.6], [3, 0.1, 0.4]], pitch: (t) => 0.85 + 0.4 * Math.min(1, t / 0.3) ** 1.5 });
     yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
   },
+  // more voices for an ordinary result and a mixed one (picked at random, like the "ooh?"s)
+  *petHmm2(sr, buf) { // a short contented "mm."
+    yield* voice(buf, sr, { freq: 380, dur: 0.24, gain: 0.65, attack: 0.03, tau: 0.18, partials: [[1, 1, 1], [2, 0.12, 0.5]], pitch: (t) => 1 + 0.05 * Math.sin(Math.min(1, t / 0.24) * Math.PI) });
+    yield* reverb(buf, sr, { mix: 0.08, decay: 0.25 });
+  },
+  *petHmm3(sr, buf) { // an "o-kay": up, then settling down
+    const o = { gain: 0.65, attack: 0.02, partials: [[1, 1, 1], [2, 0.2, 0.5]] };
+    yield* voice(buf, sr, { ...o, freq: 470, start: 0, dur: 0.12, tau: 0.09 });
+    yield* voice(buf, sr, { ...o, freq: 430, start: 0.14, dur: 0.2, tau: 0.15, pitch: (t) => 1.04 - 0.08 * Math.min(1, t / 0.2) });
+    yield* reverb(buf, sr, { mix: 0.08, decay: 0.25 });
+  },
+  *petHmm4(sr, buf) { // a nodding "hm-hm"
+    const o = { freq: 440, gain: 0.6, attack: 0.02, partials: [[1, 1, 1], [2, 0.14, 0.5]], dur: 0.11, tau: 0.08 };
+    yield* voice(buf, sr, { ...o, start: 0 });
+    yield* voice(buf, sr, { ...o, start: 0.15, pitch: () => 0.94 });
+    yield* reverb(buf, sr, { mix: 0.08, decay: 0.25 });
+  },
+  *petHuh2(sr, buf) { // a quick "eh?"
+    yield* voice(buf, sr, { freq: 600, dur: 0.2, gain: 0.7, attack: 0.015, tau: 0.15, partials: [[1, 1, 1], [2, 0.32, 0.6], [3, 0.12, 0.4]], pitch: (t) => 0.92 + 0.3 * Math.min(1, t / 0.18) ** 2 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.28 });
+  },
+  *petHuh3(sr, buf) { // a puzzled "hmm?": a low hum that rises at the end
+    yield* voice(buf, sr, { freq: 400, dur: 0.4, gain: 0.65, attack: 0.03, tau: 0.32, partials: [[1, 1, 1], [2, 0.16, 0.5]], pitch: (t) => 1 + 0.4 * Math.max(0, (t - 0.18) / 0.2) ** 1.5 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.3 });
+  },
+  *petHuh4(sr, buf) { // a "wha?": a dip, then up
+    yield* voice(buf, sr, { freq: 540, dur: 0.3, gain: 0.7, attack: 0.02, tau: 0.24, partials: [[1, 1, 1], [2, 0.3, 0.6], [3, 0.1, 0.4]], pitch: (t) => 1 - 0.12 * Math.sin(Math.min(1, t / 0.12) * Math.PI * 0.5) + 0.42 * Math.max(0, (t - 0.12) / 0.16) ** 1.4 });
+    yield* reverb(buf, sr, { mix: 0.1, decay: 0.28 });
+  },
   // three curious "ooh?"s while dice fly; the pet layer picks one at random each roll
   *petOooh(sr, buf) { // a rising "ooh?", dipping first
     yield* voice(buf, sr, { freq: 540, dur: 0.42, gain: 0.7, attack: 0.04, tau: 0.34, partials: [[1, 1, 1], [2, 0.28, 0.6], [3, 0.1, 0.45]], pitch: (t) => 0.94 - 0.04 * Math.sin(Math.min(1, t / 0.12) * Math.PI) + 0.5 * Math.max(0, (t - 0.12) / 0.3) ** 2 });
@@ -679,6 +763,12 @@ const RESULT_DUR = {
   knock: 0.45,
   petHappy: 0.45,
   petSad: 0.6,
+  petHappy2: 0.48,
+  petHappy3: 0.46,
+  petHappy4: 0.52,
+  petSad2: 0.65,
+  petSad3: 0.7,
+  petSad4: 0.58,
   petSplat: 0.35,
   petPurr: 0.7,
   petHuff: 0.42,
@@ -703,6 +793,12 @@ const RESULT_DUR = {
   petOooh3: 0.38,
   petHmm: 0.5,
   petHuh: 0.42,
+  petHmm2: 0.34,
+  petHmm3: 0.44,
+  petHmm4: 0.36,
+  petHuh2: 0.3,
+  petHuh3: 0.5,
+  petHuh4: 0.4,
 };
 
 /** Target peak per result sound (default 0.85): the little pet sits well below the fanfare. */
@@ -738,6 +834,68 @@ function finish(gen) {
 export const renderImpact = (material, variant, sampleRate) => finish(impactGen(material, variant, sampleRate));
 export const renderSurface = (surface, sampleRate) => finish(surfaceGen(surface, sampleRate));
 export const renderResult = (name, sampleRate) => finish(resultGen(name, sampleRate));
+
+/** A two-pole band-pass (RBJ, 0 dB peak) over `x` at `f` Hz, Q `q`: a new array. */
+function bandpass(x, sr, f, q) {
+  const w = (TAU * Math.min(f, 0.45 * sr)) / sr;
+  const al = Math.sin(w) / (2 * q);
+  const a0 = 1 + al;
+  const b0 = al / a0;
+  const a1 = (-2 * Math.cos(w)) / a0;
+  const a2 = (1 - al) / a0;
+  const y = new Float32Array(x.length);
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  for (let i = 0; i < x.length; i++) {
+    const v = b0 * x[i] - b0 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1;
+    x1 = x[i];
+    y2 = y1;
+    y1 = v;
+    y[i] = v;
+  }
+  return y;
+}
+
+/**
+ * Pet sound `name` in `kind`'s voice (pet-timbre.js): its notes from the kind's source, then the
+ * kind's vowel resonances, grit and echo; normalised like the shared sound. An unknown kind, or a
+ * sound that is not a pet's, renders as the shared sound.
+ */
+export function renderPetSound(name, kind, sampleRate) {
+  const T = PET_TIMBRES[kind];
+  if (!T || !PET_SOUNDS.includes(name)) return renderResult(name, sampleRate);
+  timbre = T;
+  noise = hash(`${kind}:${name}`) | 1;
+  let buf;
+  try {
+    const fn = RESULT[name];
+    buf = new Float32Array(Math.floor((RESULT_DUR[name] + (T.echo ? 0.25 : 0)) * sampleRate));
+    finish(fn(sampleRate, buf, mulberry32(hash(`result:${name}`))));
+  } finally {
+    timbre = null;
+  }
+  if (T.formants) {
+    const out = buf.map((v) => v * (T.dry ?? 0.5));
+    for (const [f, q, g] of T.formants) {
+      const y = bandpass(buf, sampleRate, f, q);
+      for (let i = 0; i < out.length; i++) out[i] += g * y[i];
+    }
+    buf = out;
+  }
+  if (T.grit) {
+    normalize(buf, 1);
+    for (let i = 0; i < buf.length; i++) buf[i] = soft(buf[i], T.grit);
+  }
+  if (T.echo) {
+    const [time, fb] = T.echo;
+    const d = Math.floor(time * sampleRate);
+    for (let i = d; i < buf.length; i++) buf[i] += fb * buf[i - d];
+  }
+  return fadeOut(normalize(buf, RESULT_PEAK[name] ?? 0.85), sampleRate, 10);
+}
 
 // ---- batch ----------------------------------------------------------------
 

@@ -471,6 +471,21 @@ describe('sound engine', () => {
       expect(ctx.sources.map((s) => s.playbackRate.value)).toEqual([1.4, 2, 1]);
     });
 
+    it("plays a pet's own take (sound.voice(ctx) -> its buffer); a failing or empty one plays the shared take", async () => {
+      const { engine } = await ready();
+      const own = { duration: 0.4 };
+      const voice = vi.fn(() => own);
+      await engine.result({ builtin: 'petHappy', voice });
+      expect(voice).toHaveBeenCalledWith(ctx);
+      expect(ctx.sources[0].buffer).toBe(own);
+      await engine.result({ builtin: 'petHappy', voice: () => { throw new Error('no render'); } });
+      await engine.result({ builtin: 'petHappy', voice: () => null });
+      await engine.result({ builtin: 'petHappy', voice: 'not a function' });
+      expect(ctx.sources.length).toBe(4);
+      for (const s of ctx.sources.slice(1)) expect(s.buffer).toBeTruthy();
+      expect(ctx.sources[1].buffer).not.toBe(own);
+    });
+
     it('fetches, decodes and caches a custom file', async () => {
       const fetchSound = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
       const { engine } = await ready({ fetchSound });
