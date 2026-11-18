@@ -69,7 +69,7 @@ test('the import-all button heads the report, with its hint; the saves line coun
 test('every import string exists', async () => {
   const { readFileSync } = await import('node:fs');
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER;
-  for (const k of ['ImportAll', 'ImportAllHint', 'ImportAllDone', 'ImportAllFailed', 'Saves']) expect(en.DsnReport[k], k).toBeTruthy();
+  for (const k of ['ImportAll', 'ImportAllHint', 'ImportAllDone', 'ImportAllNothing', 'ImportAllFailed', 'Saves']) expect(en.DsnReport[k], k).toBeTruthy();
   expect(en.DsnReport.Saves).toContain('{m}');
   expect(en.Notice.Migrated).toBeTruthy();
   expect(en.Notice.SavesImported).toContain('{n}');

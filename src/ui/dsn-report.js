@@ -195,7 +195,8 @@ export function openDsnReport() {
           worldSettings: worldSettingsReader(game.settings.storage?.get('world') ?? null),
           settings: game.settings,
         });
-        globalThis.ui?.notifications?.info(fmt(`${P}.ImportAllDone`, { users: out.users, themes: out.themes }));
+        const nothing = !out.users && !out.themes && !out.world; // everyone already up to date
+        globalThis.ui?.notifications?.info(nothing ? loc(`${P}.ImportAllNothing`) : fmt(`${P}.ImportAllDone`, { users: out.users, themes: out.themes }));
       } catch (err) {
         console.warn('dicer: the Dice So Nice import failed', err);
         globalThis.ui?.notifications?.warn(loc(`${P}.ImportAllFailed`));
