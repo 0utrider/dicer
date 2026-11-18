@@ -378,9 +378,11 @@ describe('build', () => {
     // in progress (+82 B): owner approved +450 B (35,433 -> 35,883), 2026-11-18.
     // Without parallel compiling only the own look warms at load, and a throw compiles its fade
     // programs as it starts (DiceBox #compileFades): owner approved +415 B (35,883 -> 36,298), 2026-11-18.
+    // The physics and font workers start from a same-origin blob when the module is served from
+    // another origin (The Forge's asset CDN): owner approved +103 B (36,298 -> 36,401), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(36_298);
+    expect(growth).toBeLessThanOrEqual(36_401);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

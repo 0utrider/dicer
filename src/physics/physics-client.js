@@ -1,11 +1,13 @@
 import { MSG, READY } from './protocol.js';
+import { spawnWorker } from '../core/spawn-worker.js';
+import physicsWorkerUrl from './physics.worker.js?worker&url';
 
 /**
- * Create the physics worker: a separate (non-inlined) module chunk. Vite rewrites this exact
- * `new Worker(new URL(...))` form into an emitted chunk next to dicer.js.
+ * Create the physics worker: a separate (non-inlined) module chunk next to dicer.js (Vite's
+ * `?worker&url`), started through spawnWorker so a CDN-served module (The Forge) works too.
  */
 export function createPhysicsWorker() {
-  return new Worker(new URL('./physics.worker.js', import.meta.url), { type: 'module' });
+  return spawnWorker(physicsWorkerUrl);
 }
 
 /** Main-thread handle to the single physics worker. */

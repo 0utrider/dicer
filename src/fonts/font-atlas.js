@@ -11,6 +11,8 @@
 import * as THREE from 'three';
 import { parseAtlas } from '../render/sdf-atlas.js';
 import { FONT_IDS_BUILTIN, normalizeAppearance } from '../look/appearance.js';
+import { spawnWorker } from '../core/spawn-worker.js';
+import fontWorkerUrl from './font-worker.js?worker&url';
 
 /** A font that is not ready this long after it was requested is given up on (null, one warning). */
 export const FONT_TIMEOUT_MS = 8000;
@@ -21,10 +23,11 @@ export const STORE_TIMEOUT_MS = 500;
 const CSS_FAMILY = /^[A-Za-z0-9 -]{1,64}$/;
 
 /**
- * The font worker: its own lazy chunk (Vite rewrites this exact `new Worker(new URL(...))` form).
+ * The font worker: its own lazy chunk (Vite's `?worker&url`), started through spawnWorker so a
+ * CDN-served module (The Forge) works too.
  */
 export function createFontWorker() {
-  return new Worker(new URL('./font-worker.js', import.meta.url), { type: 'module' });
+  return spawnWorker(fontWorkerUrl);
 }
 
 const validId = (id) => normalizeAppearance({ numbers: { font: id } }).numbers.font === id;

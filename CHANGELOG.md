@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- **Fixed: 3D dice didn't start on The Forge** ("3D dice are disabled (startup failed)", with a SecurityError about a physics worker). The Forge serves modules from its own asset server, and browsers won't start a background worker from another site's script. Dicer now starts its physics and font workers in a way that works there too.
+
 ## 1.0.7
 
 - **Seven new dice pets, ten in all:** an **Owl** that flies and spins its head on a crit, a **Frog** that croaks, leaps and flicks its tongue, a shy **Ghost** that floats, a **Mushroom** that puffs spores, a **Floating eye** on soft tendrils, a chunky **Pebble golem** with glowing runes, and a **Cat** that bats your dice off the table. Each has its own crit and fumble, reacts to fire, cold and lightning dice, gets squished by a d20 and pops back, and sulks, cheers and purrs like the others. Pick one in **Your pet**.
