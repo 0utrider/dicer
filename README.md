@@ -55,8 +55,8 @@ Dicer needs **Foundry VTT v14**.
    this manifest URL:
    `https://github.com/roileaf/dicer/releases/latest/download/module.json`
 2. Enable **Dicer** in your world's **Manage Modules**.
-3. **Disable Dice So Nice.** Dicer replaces it; while Dice So Nice is active, Dicer stays off and
-   tells the GM.
+3. **Disable Dice So Nice.** The two can't run at the same time; while Dice So Nice is active, Dicer
+   stays off and tells the GM.
 
 After an update, reload Foundry with **Ctrl+F5** so the browser drops its old copy of the module.
 See [Installation](https://github.com/roileaf/dicer/wiki/Installation) and
