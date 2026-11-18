@@ -398,7 +398,7 @@ export function createSoundEngine({
       if (disposed || !sound || !setting('sounds', true)) return;
       let vol = volume('effectsVolume') * volume('soundVolume') * focusFactor();
       if (sound.src === undefined && sound.builtin === undefined) return;
-      if (sound.src !== undefined) vol *= sound.volume ?? 1;
+      vol *= sound.volume ?? 1; // a file's own volume, or the pets' (petVolume)
       if (vol < MIN_GAIN / 10) return;
       if (sound.builtin !== undefined && !rendered && preloading) await preloading;
       if (disposed || !ensureContext() || !running()) return;

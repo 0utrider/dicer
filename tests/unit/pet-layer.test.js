@@ -2134,3 +2134,11 @@ test("the pet speaks in its kind's voice: every sound carries the kind's own tak
   const [sound] = m.playSound.mock.calls.at(-1);
   expect(typeof sound.voice).toBe('function');
 });
+
+test('petVolume: the pets play at its volume; at 0 they make no sound at all', () => {
+  const [sound] = reactAndRun({ petVolume: 0.4 }, [d20(20)]).playSound.mock.calls.at(-1);
+  expect(sound.volume).toBeCloseTo(0.4, 9);
+  expect(reactAndRun({}, [d20(20)]).playSound.mock.calls.at(-1)[0].volume).toBe(1); // unset: full
+  expect(reactAndRun({ petVolume: 0 }, [d20(20)]).playSound).not.toHaveBeenCalled();
+  expect(reactAndRun({ petVolume: 7 }, [d20(20)]).playSound.mock.calls.at(-1)[0].volume).toBe(1);
+});

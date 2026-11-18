@@ -4,7 +4,7 @@ import { beforeAll, expect, test, vi } from 'vitest';
 import { getShape } from '../../src/core/dice-shapes.js';
 import { faceNormals, readTopFace } from '../../src/core/face-reader.js';
 import { isCocked, topFaceClearance } from '../../src/core/physical-read.js';
-import { clearanceOf, createSim, framedPoints, initPhysics, prewarm, shapeEdges } from '../../src/physics/sim.js';
+import { clearanceOf, tipOf, createSim, framedPoints, initPhysics, prewarm, shapeEdges } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
 import { computeReaders } from '../../src/physics/readers.js';
 import { throwEdge } from '../../src/core/rng.js';
@@ -975,4 +975,39 @@ test('a die keeps its body-frame solid under the per-throw frame: it rests at th
     const q = { x: last[3], y: last[4], z: last[5], w: last[6] };
     expect(readTopFace(shape, q)).toBe(shape.values.indexOf(12)); // value 1 down, 12 up
   }
+});
+
+test('tipOf: the tip turns a leaning die back onto its nearest face (none for a flat die)', () => {
+  for (const type of ['d6', 'd20', 'd10', 'd4', 'd2']) {
+    const rd = readers[type];
+    const shape = getShape(type);
+    // lying flat: its read face straight up (down for a read-down die); no tip
+    const n = new THREE.Vector3(...Object.values(faceNormals(shape)[0])).multiplyScalar(rd.mode);
+    const flat = new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0, 1, 0));
+    expect(tipOf(rd, flat), type).toBeNull();
+    // leaning 20 degrees about a horizontal axis: the tip is that axis back, the angle 20 degrees
+    const lean = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 1).normalize(), 0.35).multiply(flat);
+    const tip = tipOf(rd, lean);
+    expect(tip.angle, type).toBeCloseTo(0.35, 3);
+    const back = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(tip.x, 0, tip.z), tip.angle).multiply(lean);
+    expect(back.angleTo(flat), type).toBeLessThan(1e-4);
+  }
+});
+
+test('a die resting cocked is nudged while another die still rolls, not after every die stops', () => {
+  // LEAN, plus a third die thrown fast across the far side: it is still rolling when die 1 leans
+  const launch = [...LEAN.launch, L([6, 3, 3], [0, 0, 0, 1], [-14, 0, 0], [0, 0, 25])];
+  const { res, chunks } = runHand(['d6', 'd6', 'd6'], 3, { free: true, launch });
+  expect(res.nudges[1]).toBeGreaterThanOrEqual(1);
+  const shape = getShape('d6');
+  const frames = posesOf(chunks, 3);
+  const still = (k, d) => k >= 10 && moved(frames[k][d].p, frames[k - 10][d].p) < 0.02;
+  const leaned = frames.findIndex((f, k) => isCocked(shape, f[1].q) && still(k, 1));
+  expect(leaned).toBeGreaterThan(0);
+  // the nudge: die 1 moves off its lean within a few frames of resting there ...
+  const moves = frames.findIndex((f, k) => k > leaned && moved(f[1].p, frames[leaned][1].p) > 0.05);
+  expect(moves - leaned).toBeLessThan(20);
+  // ... while die 2 is still rolling
+  expect(still(moves, 2)).toBe(false);
+  for (const d of frames.at(-1)) expect(isCocked(shape, d.q)).toBe(false);
 });

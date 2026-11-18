@@ -486,6 +486,13 @@ describe('sound engine', () => {
       expect(ctx.sources[1].buffer).not.toBe(own);
     });
 
+    it("a builtin's volume scales it too (the pets' petVolume)", async () => {
+      const { engine } = await ready();
+      await engine.result({ builtin: 'petHappy' });
+      await engine.result({ builtin: 'petHappy', volume: 0.5 });
+      expect(ctx.sources[1].totalGain).toBeCloseTo(ctx.sources[0].totalGain * 0.5, 5);
+    });
+
     it('fetches, decodes and caches a custom file', async () => {
       const fetchSound = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
       const { engine } = await ready({ fetchSound });

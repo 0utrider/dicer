@@ -45,8 +45,14 @@ const RELAX_PER_STEP = 1 / 30; // can pivot slowly for ever, and must not hold p
 const POOL_LIMIT = 8;
 const LAUNCH_MARGIN = 1; // a launched centre stays this far inside the area's walls
 const LIFT_CLEARANCE = 1.2; // a launch over a pet starts this far above its top
-const NUDGE_SPIN = 6; // a nudge spins a die by 6..12 rad/s about a seeded horizontal axis
-const NUDGE_POP = 2.5; // ... and pops a cocked die up (units/s) so it can tip off its support
+// A die is nudged the moment it rests cocked (not once every die has stopped, which read as a die
+// lying still, then spinning to another number), and tipped toward the face nearest flat: it
+// topples onto it, rather than spinning to some other number. One still cocked after a nudge gets
+// a firmer one (NUDGE_GROW per nudge).
+const NUDGE_TIP = 7; // rad/s of tip per radian its nearest face is off flat (a seeded 1..1.5 x)
+const NUDGE_SPIN = 6; // a die with no clear way to tip spins by 6..12 rad/s about a seeded axis
+const NUDGE_POP = 1.5; // ... and a cocked die pops up (units/s) so it can tip off its support
+const NUDGE_GROW = 0.75; // each further nudge is this much (of the first) stronger
 const NUDGE_HOP = 6; // an outside die hops (units/s) towards the area centre ...
 const NUDGE_REACH = 12; // ... at up to this speed
 
@@ -151,6 +157,30 @@ function randomQuaternion(u1, u2, u3) {
     z: b * Math.sin(2 * Math.PI * u3),
     w: b * Math.cos(2 * Math.PI * u3),
   };
+}
+
+/**
+ * The tip that lays a die at rotation q flat on its nearest face: the horizontal axis to turn it
+ * about and the angle (rad) its read face is off straight up (down for a read-down die), or null
+ * when it already lies flat. From INIT's reader data, like clearanceOf.
+ */
+export function tipOf({ normals: N, read, mode }, q) {
+  let b = null;
+  for (let i = 0; i < N.length / 3; i++) {
+    if (read && !read.includes(i)) continue;
+    const v = rotate(q, mode * N[3 * i], mode * N[3 * i + 1], mode * N[3 * i + 2]);
+    if (!b || v[1] > b[1]) b = v;
+  }
+  const h = b ? Math.hypot(b[0], b[2]) : 0;
+  // turning about (-z, 0, x)/h brings that face's normal up to +Y
+  return h > 1e-6 ? { x: -b[2] / h, z: b[0] / h, angle: Math.atan2(h, b[1]) } : null;
+}
+/** (x, y, z) rotated by the unit quaternion q. */
+function rotate(q, x, y, z) {
+  const tx = 2 * (q.y * z - q.z * y);
+  const ty = 2 * (q.z * x - q.x * z);
+  const tz = 2 * (q.x * y - q.y * x);
+  return [x + q.w * tx + q.y * tz - q.z * ty, y + q.w * ty + q.z * tx - q.x * tz, z + q.w * tz + q.x * ty - q.y * tx];
 }
 
 /**
@@ -554,6 +584,7 @@ export function createSim(initialArea, hulls, readers) {
         const maxSteps = free ? MAX_FREE_STEPS : MAX_STEPS;
         let settledStep = maxSteps;
         const nudges = Array(n).fill(0);
+        const dieRest = new Int32Array(n); // steps each die has been at rest
         const nudgeRand = seededRandom(deriveSeed(req.seed));
         let relaxFrom = 0; // the rest thresholds widen from here (the last nudge)
         /** Writes die d's pose into frame slot `slot` of buf; returns its position. */
@@ -577,10 +608,11 @@ export function createSim(initialArea, hulls, readers) {
           for (let d = 0; d < n; d++) put(0, d);
           inChunk = 1;
         }
-        /** Nudge every cocked or outside die that has nudges left; false when none needed one. */
+        /** Nudge every die at rest, cocked or outside, with nudges left; false when none needed one. */
         const nudge = () => {
           let any = false;
           bodies.forEach((b, d) => {
+            if (dieRest[d] < SETTLE_STEPS) return; // still moving: judged once it stops
             const p = b.translation();
             const dx = cx - p.x;
             const dz = cz - p.z;
@@ -591,20 +623,23 @@ export function createSim(initialArea, hulls, readers) {
             const cocked =
               rd && clearanceOf(rd, b.rotation(), isCoin(type)) < COCKED_FRACTION * rd.gap;
             if (nudges[d] >= MAX_NUDGES || !(out || cocked)) return;
+            const grow = 1 + NUDGE_GROW * nudges[d];
             nudges[d]++;
+            dieRest[d] = 0;
             any = true;
             // Spin about a seeded horizontal axis; a cocked die pops up off its support, an
             // outside one hops towards the area centre.
             const turn = nudgeRand() * 2 * Math.PI;
-            const w = NUDGE_SPIN * (1 + nudgeRand());
+            const r = nudgeRand();
+            const tip = cocked ? tipOf(rd, b.rotation()) : null;
+            const [tx, tz, w] = tip
+              ? [tip.x, tip.z, NUDGE_TIP * grow * Math.max(0.3, tip.angle) * (1 + r / 2)]
+              : [Math.cos(turn), Math.sin(turn), NUDGE_SPIN * grow * (1 + r)];
             const av = b.angvel();
-            b.setAngvel(
-              { x: av.x + Math.cos(turn) * w, y: av.y, z: av.z + Math.sin(turn) * w },
-              true,
-            );
+            b.setAngvel({ x: av.x + tx * w, y: av.y, z: av.z + tz * w }, true);
             const m = b.mass();
             const k = out ? (m * Math.min(NUDGE_REACH, 3 + 2 * dist)) / dist : 0;
-            b.applyImpulse({ x: k * dx, y: m * (out ? NUDGE_HOP : NUDGE_POP), z: k * dz }, true);
+            b.applyImpulse({ x: k * dx, y: m * (out ? NUDGE_HOP : NUDGE_POP * grow), z: k * dz }, true);
           });
           return any;
         };
@@ -668,16 +703,15 @@ export function createSim(initialArea, hulls, readers) {
                 );
               }
             }
-            if (allAtRest) {
-              const lv = b.linvel();
-              const av = b.angvel();
-              if (
-                Math.hypot(lv.x, lv.y, lv.z) > SETTLE_LINVEL * relax ||
-                Math.hypot(av.x, av.y, av.z) > SETTLE_ANGVEL * relax
-              ) {
-                allAtRest = false;
-              }
-            }
+            const lv = b.linvel();
+            const av = b.angvel();
+            if (
+              Math.hypot(lv.x, lv.y, lv.z) > SETTLE_LINVEL * relax ||
+              Math.hypot(av.x, av.y, av.z) > SETTLE_ANGVEL * relax
+            ) {
+              allAtRest = false;
+              dieRest[d] = 0;
+            } else dieRest[d]++;
           }
           inChunk++;
 
@@ -716,15 +750,12 @@ export function createSim(initialArea, hulls, readers) {
 
           restSteps = wallClosed && !shapeOpen && allAtRest ? restSteps + 1 : 0;
           let finished = step === maxSteps;
-          if (restSteps >= SETTLE_STEPS) {
-            // A free throw runs on after a nudge, while a nudge still has time to settle.
-            if (free && readers && step + NUDGE_STEPS <= maxSteps && nudge()) {
-              restSteps = 0;
-              relaxFrom = step;
-            } else {
-              finished = true;
-            }
-          }
+          // A free throw nudges each cocked or outside die as soon as it rests (while a nudge still
+          // has time to settle), and runs on after it.
+          if (free && readers && wallClosed && !shapeOpen && step + NUDGE_STEPS <= maxSteps && nudge()) {
+            restSteps = 0;
+            relaxFrom = step;
+          } else if (restSteps >= SETTLE_STEPS) finished = true;
           if (finished) settledStep = step;
           if (inChunk === CHUNK_STEPS || finished) {
             const data = new Float32Array(buf.buffer, 0, inChunk * floatsPerStep);

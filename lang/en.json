@@ -154,7 +154,11 @@
       },
       "petSounds": {
         "Name": "Pet sounds",
-        "Hint": "Your pet's happy and sad chirps."
+        "Hint": "The pets' voices: their oohs, cheers and sulks, and their reactions."
+      },
+      "petVolume": {
+        "Name": "Pet sound volume",
+        "Hint": "How loud the pets are on your screen, on top of the sound effects volume."
       },
       "petStay": {
         "Name": "How long pets stay",

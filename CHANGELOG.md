@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.14
+
+- **Pet sound volume.** A new slider in **Your pet** sets how loud the pets are on your screen; at 0 they are silent.
+- **No more dice turning after they stop** when physics decides the result. A die that lands leaning on another die, a wall or a pet now topples onto its nearest face the moment it stops, gently, instead of lying still until every die has stopped and then spinning to another number.
+- **Slow motion for natural 20s and 1s now works when physics decides the result** on the roller's own screen, not only for everyone else.
+
 ## 1.0.13
 
 - **Every pet has its own voice.** The mimic knocks like hollow wood, the slime bubbles, the dragonling growls, the owl hoots, the frog croaks, the ghost whispers with an echo, the mushroom squeaks, the floating eye warbles, the golem grinds and the cat meows. Every sound a pet makes uses it: cheers and sulks, damage reactions, splats, purrs and huffs. Your voice pitch still applies.

@@ -1654,7 +1654,9 @@ export function createPetLayer(deps) {
         const pick = all.filter((n) => n !== last[name]); // never the same take twice running
         name = last[name] = pick[Math.min(pick.length - 1, Math.floor(rand() * pick.length))];
       }
-      playSound({ builtin: name, rate: rateOf(pet), voice: voiceFor(pet.kind, name) });
+      const v = Number(getSetting('petVolume') ?? 1);
+      const volume = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+      if (volume > 0) playSound({ builtin: name, rate: rateOf(pet), voice: voiceFor(pet.kind, name), volume });
     } catch {
       /* no sound */
     }

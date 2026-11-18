@@ -517,6 +517,7 @@ export function createMessageGate({
           // A live hand throw resolves before its dice land here: the card waits for the landing.
           if (owned[k]) {
             const h = owned[k];
+            diceBox.slowLanded?.(h, specs); // still in the air: a natural 20 or 1 slows its landing
             return Promise.resolve(h.landed).then(() => {
               // Deleted or revealed (watchdog) meanwhile: no landed effects for a gone card.
               if (animating.get(id) === entry) diceBox.decorateLanded?.(h, specs);

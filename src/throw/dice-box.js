@@ -1593,6 +1593,24 @@ export class DiceBox {
     return !!this.hand?.decorate(roll, specs);
   }
 
+  /**
+   * The thrower's own free roll (physics decides) got its chat message while still in the air: a
+   * spec with a slow-motion effect (a natural 20 or 1) slows its landing down, as a roll thrown
+   * with its fx known does. This client only; its landing watchdog is re-armed for the ramp.
+   */
+  slowLanded(roll, specs) {
+    if (roll?.phase !== 'playing' || roll.slowMotion || !specs?.some((s) => s?.fx?.some((f) => f?.slowMotion === true)))
+      return false;
+    roll.slowMotion = true; // the done chunk ramps it, if it is still to come
+    const pb = roll.playback;
+    if (pb?.resultsApplied) {
+      pb.setSpeedRamp({ fromStep: pb.frames - 1 - RAMP_STEPS });
+      clearTimeout(roll.landingTimer);
+      this.#armLandingTimer(roll, pb.frames - 1);
+    }
+    return true;
+  }
+
   /** Tells the pet its roll is going away in `msLeft` ms (0: at once), once. */
   #petLeave(roll, msLeft) {
     const pet = roll.pet;

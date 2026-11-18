@@ -390,9 +390,12 @@ describe('build', () => {
     // pets' result and "ooh?" sound names: owner approved +267 B (36,533 -> 36,800), 2026-11-18.
     // Each pet kind's own voice (a sound may bring its own buffer: sound.voice(ctx)): owner approved
     // +89 B (36,800 -> 36,889), 2026-11-18.
+    // The pet sound volume setting, cocked dice nudged as they rest (tipped toward their nearest
+    // face, in the physics worker) and a free roll's slow motion from its message: owner approved
+    // +1,147 B (36,889 -> 38,036), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(36_889);
+    expect(growth).toBeLessThanOrEqual(38_036);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

@@ -1987,6 +1987,7 @@ describe('Task 8: hand rolls in the gate', () => {
       _area: { halfWidth: 15, halfDepth: 7.5 },
       dieArea: vi.fn(() => ({ cx: 1, cz: 1, halfWidth: 5, halfDepth: 4 })),
       decorateLanded: vi.fn(() => true),
+      slowLanded: vi.fn(() => false),
       roll: vi.fn((specs, opts) => {
         const landed = deferred();
         rolls.push({ specs, opts, landed });
@@ -2046,6 +2047,10 @@ describe('Task 8: hand rolls in the gate', () => {
     await tick(500);
     expect(box.roll).not.toHaveBeenCalled();
     expect(box.decorateLanded).not.toHaveBeenCalled();
+    // still in the air: its specs (a natural 20's slow motion) reach it before it lands
+    expect(box.slowLanded).toHaveBeenCalledTimes(1);
+    expect(box.slowLanded.mock.calls[0][0]).toBe(handle);
+    expect(Array.isArray(box.slowLanded.mock.calls[0][1])).toBe(true);
     expect(gateH.isAnimating('m1')).toBe(true);
     expect(el.classList.contains('dsn-hide')).toBe(true); // no spoiler before this screen's dice land
     landing.resolve();

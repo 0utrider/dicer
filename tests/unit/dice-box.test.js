@@ -3719,6 +3719,38 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     expect(dieGroups(renderer)).toHaveLength(0);
   });
 
+  test('slowLanded: a free roll whose message brings a slow-motion effect slows its landing, while in the air only', async () => {
+    const slow = [{ type: 'd20', value: 20, key: '0:0:0', fx: [{ ruleId: 'n', effect: { id: 'celebrate' }, slowMotion: true }] }];
+    // the message before the physics is done: the done chunk ramps it
+    let { renderer, physics, box } = handSetup();
+    let r = box.roll([{ type: 'd20', value: 1, key: '0:0:0' }], { free: true });
+    expect(box.slowLanded(r.handle, [{ ...slow[0], fx: [{ ruleId: 'n', slowMotion: false }] }])).toBe(false);
+    expect(box.slowLanded(r.handle, slow)).toBe(true);
+    expect(r.handle.slowMotion).toBe(true);
+    physics.flush();
+    expect(r.handle.playback._ramp).not.toBeNull();
+    // after the physics is done (the usual case: the values are read then): ramped at once
+    ({ renderer, physics, box } = handSetup());
+    r = box.roll([{ type: 'd20', value: 1, key: '0:0:0' }], { free: true });
+    physics.flush();
+    renderer.tick(0);
+    expect(r.handle.playback._ramp).toBeNull();
+    const before = r.handle.playback.durationMs(r.handle.playback.frames - 1);
+    expect(box.slowLanded(r.handle, slow)).toBe(true);
+    expect(r.handle.playback._ramp).not.toBeNull();
+    expect(r.handle.playback.durationMs(r.handle.playback.frames - 1)).toBeGreaterThan(before);
+    expect(box.slowLanded(r.handle, slow)).toBe(false); // once
+    // landed: nothing to slow
+    renderer.tick(30000);
+    await flushMicrotasks();
+    const r2 = box.roll([{ type: 'd20', value: 1 }], { free: true });
+    physics.flush();
+    renderer.tick(31000);
+    renderer.tick(60000);
+    await flushMicrotasks();
+    expect(box.slowLanded(r2.handle, slow)).toBe(false);
+  });
+
   test('decorateLanded plays fx once on lingering dice; false after the fade', async () => {
     const onLandedFx = vi.fn();
     const effects = {

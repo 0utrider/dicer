@@ -318,6 +318,15 @@ export function registerSettings({
     type: Boolean,
     default: true,
   });
+  register('petVolume', {
+    name: t('petVolume.Name'),
+    hint: t('petVolume.Hint'),
+    scope: 'client',
+    config: false,
+    type: Number,
+    range: { min: 0, max: 1, step: 0.05 },
+    default: 1,
+  });
   register('petStay', {
     name: t('petStay.Name'),
     hint: t('petStay.Hint'),
