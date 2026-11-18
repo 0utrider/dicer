@@ -1030,7 +1030,9 @@ export function dock(els, loadHand) {
         else tint();
       });
       // The chatTray setting docks or undocks at once (kept out of world start's settings.js).
-      globalThis.Hooks?.on?.('clientSettingChanged', (key) => key === 'dicer.chatTray' && dock());
+      // a user setting: its document is created on the first change, then updated
+      for (const hook of ['createSetting', 'updateSetting'])
+        globalThis.Hooks?.on?.(hook, (doc) => doc?.key === 'dicer.chatTray' && dock());
     }
     const ta = textareaOf(els);
     if (!chatTrayShown()) return (undock(), null);

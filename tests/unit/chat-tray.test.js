@@ -230,17 +230,18 @@ describe('dock', () => {
     dockTray(document.getElementById('chat-popout'), vi.fn()); // renderChatLog's element
     expect(textarea().nextElementSibling).toBe(dock());
     expect(document.querySelectorAll('.dicer-chat-tray')).toHaveLength(1);
-    // the setting off: Foundry's clientSettingChanged undocks it at once, and on docks it again
-    const changed = hooks.filter(([n]) => n === 'clientSettingChanged');
-    expect(changed).toHaveLength(1);
-    const [, onSetting] = changed[0];
+    // the setting off (a user setting: created on the first change, then updated) undocks it at
+    // once, and on docks it again
+    const onCreate = hooks.filter(([n]) => n === 'createSetting');
+    const onUpdate = hooks.filter(([n]) => n === 'updateSetting');
+    expect([onCreate.length, onUpdate.length]).toEqual([1, 1]);
     settings.chatTray = false;
-    onSetting('dicer.diceTray', false); // another setting: nothing
+    onUpdate[0][1]({ key: 'dicer.diceTray' }); // another setting: nothing
     expect(dock()).toBeTruthy();
-    onSetting('dicer.chatTray', false);
+    onCreate[0][1]({ key: 'dicer.chatTray' });
     expect(dock()).toBeNull();
     settings.chatTray = true;
-    onSetting('dicer.chatTray', true);
+    onUpdate[0][1]({ key: 'dicer.chatTray' });
     expect(textarea().nextElementSibling).toBe(dock());
     settings.chatTray = false;
     dockTray(undefined, vi.fn());

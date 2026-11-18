@@ -58,6 +58,8 @@ test('pet layer wiring: wake dep, userConnected disconnect -> userGone, settings
     /Hooks\.on\('userConnected', \(user, connected\) => \{\s*if \(!connected\) getPets\(\)\?\.userGone\?\.\(user\.id\);\s*\}\);/,
   );
   expect(src).toMatch(/onPetStayChange: \(\) => diceBox\?\.wake\(\)/);
+  // on ready, the browser's old values of the user settings are copied before anything reads them
+  expect(src).toMatch(/Hooks\.once\('ready'[\s\S]*?await moveToUserSettings\(game\.settings, game\.userId\)[\s\S]*?migrateLookSetting\(/);
   // the old petsStay=false moves to petStay 0 once, on ready
   expect(src).toMatch(/migratePetStay\(game\.settings\.storage\.get\('client'\), \(k, v\) => game\.settings\.set\('dicer', k, v\)\)/);
   // the area change reaches the hook from DiceBox.onResize, which main's resize path calls

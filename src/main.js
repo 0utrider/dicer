@@ -55,7 +55,7 @@ import { createEffectLayer } from './effects/effect-layer.js';
 import { createDsnSfx } from './effects/dsn-sfx.js';
 import { jb2aSource } from './jb2a/source.js';
 import { lightingFor } from './render/scene-light.js';
-import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay, resetControls } from './settings.js';
+import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay, moveToUserSettings, resetControls } from './settings.js';
 
 let dormant = false;
 let gate = null;
@@ -722,6 +722,13 @@ Hooks.once('ready', async () => {
       console.error('dicer: cannot show the Dice So Nice notice', err);
     }
     return;
+  }
+  // personal settings left the browser for the user settings (1.0.18): this browser's values are
+  // copied first, so everything below reads them
+  try {
+    await moveToUserSettings(game.settings, game.userId);
+  } catch (err) {
+    console.warn('dicer: cannot copy the browser settings to your user settings', err);
   }
   // The old client `look` setting moves to `theme` once (its onChange mirrors and refreshes).
   const lookMigrated = migrateLookSetting({

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.18
+
+- **Your Dicer settings follow you to any browser.** Personal settings (theme, dice look, tray look, pets and pet volume, sounds, effects, slow motion, screen shake, damage presets, roll filters, rolling by hand, the chat tray...) are now saved with your Foundry user instead of in the browser, so a new browser or computer no longer starts from scratch. On the first load after updating, each browser's old values are copied over (settings you already have as a user setting are kept).
+- **What your machine can draw stays per browser:** Enable 3D dice, Pixel ratio cap, Quality, Interiors, Inside motion, Engraving, Shadows and Glow, so a laptop and a gaming PC can each keep their own.
+
 ## 1.0.17
 
 - **Dice So Nice library dice come over.** The dice players designed in Dice So Nice's dice library become themes in their **My themes** (dice sharing a name make one theme, with a look per die type), and the world's library becomes world themes. A player's look that pointed at a library die now gets its colours. Players already imported get one more pass, on their next login or through **Import all players now**; choices made in Dicer are kept.

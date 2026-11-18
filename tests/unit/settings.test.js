@@ -1,4 +1,4 @@
-import { registerSettings, migrateLookSetting, migratePetStay, getSetting, clearSettingCache } from '../../src/settings.js';
+import { registerSettings, migrateLookSetting, migratePetStay, moveToUserSettings, DEVICE_SETTINGS, getSetting, clearSettingCache } from '../../src/settings.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { readFileSync } from 'node:fs';
 import { LOOKS } from '../../src/look/looks.js';
@@ -32,7 +32,7 @@ test('showGhostDice is a world Boolean, default off (ghost dice reveal that a hi
 
 test('showExtraDice is a client Boolean, default on', () => {
   const cfg = capture().showExtraDice;
-  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
   expect(cfg.name).toBe('DICER.Settings.showExtraDice.Name');
   expect(cfg.hint).toBe('DICER.Settings.showExtraDice.Hint');
 });
@@ -53,13 +53,13 @@ test('hideInitiative is a world Boolean, default on', () => {
 
 test('theme is a client String (default "default"), out of the form: the theme browser picks it', () => {
   const { theme } = capture();
-  expect(theme).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'default' });
+  expect(theme).toMatchObject({ ns: 'dicer', scope: 'user', config: false, type: String, default: 'default' });
   expect(theme.choices).toBeUndefined();
 });
 
 test('the old look setting stays registered, hidden, only so its value can migrate; every LOOKS id is a theme', () => {
   const { look } = capture();
-  expect(look).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'default' });
+  expect(look).toMatchObject({ ns: 'dicer', scope: 'user', config: false, type: String, default: 'default' });
   expect(() => look.onChange('default')).not.toThrow(); // only clears the read cache (P9-R17)
   for (const id of Object.keys(LOOKS)) expect(BUILTIN_THEMES.some((t) => t.id === id)).toBe(true);
 });
@@ -108,12 +108,12 @@ test('qualityCap is a world String low/medium/high/ultra (default ultra)', () =>
 });
 
 test.each(['interiors', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels'])(
-  '%s is a client Boolean toggle, default on',
+  '%s is a Boolean toggle, default on (the GPU-heavy ones per browser, the preset ones per user)',
   (key) => {
     const cfg = capture()[key];
     expect(cfg).toMatchObject({
       ns: 'dicer',
-      scope: 'client',
+      scope: key.startsWith('preset') ? 'user' : 'client',
       config: true,
       type: Boolean,
       default: true,
@@ -184,23 +184,23 @@ describe('sound settings', () => {
   test('sounds and quietWhenUnfocused are client Booleans, default on', () => {
     const r = capture();
     for (const key of ['sounds', 'quietWhenUnfocused']) {
-      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
       expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
       expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
     }
   });
   test('soundVolume (0.6) and effectsVolume (0.8) are client 0..1 ranges in steps of 0.05', () => {
     const r = capture();
-    expect(r.soundVolume).toMatchObject({ scope: 'client', type: Number, default: 0.6 });
+    expect(r.soundVolume).toMatchObject({ scope: 'user', type: Number, default: 0.6 });
     expect(r.soundVolume.range).toEqual({ min: 0, max: 1, step: 0.05 });
-    expect(r.effectsVolume).toMatchObject({ scope: 'client', type: Number, default: 0.8 });
+    expect(r.effectsVolume).toMatchObject({ scope: 'user', type: Number, default: 0.8 });
     expect(r.effectsVolume.range).toEqual({ min: 0, max: 1, step: 0.05 });
   });
   test('soundSurface is a world String (default felt); the override is a client String (default world)', () => {
     const r = capture();
     expect(r.soundSurface).toMatchObject({ scope: 'world', type: String, default: 'felt', config: true });
     expect(Object.keys(r.soundSurface.choices)).toEqual(surfaces);
-    expect(r.soundSurfaceOverride).toMatchObject({ scope: 'client', type: String, default: 'world', config: true });
+    expect(r.soundSurfaceOverride).toMatchObject({ scope: 'user', type: String, default: 'world', config: true });
     expect(Object.keys(r.soundSurfaceOverride.choices)).toEqual(['world', ...surfaces]);
   });
   test('turning sounds on or off reports it through onSoundChange', () => {
@@ -215,26 +215,26 @@ describe('effects settings', () => {
   test('effects, showOthersEffects and slowMotion are client Booleans, default on', () => {
     const r = capture();
     for (const key of ['effects', 'showOthersEffects', 'slowMotion']) {
-      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
       expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
       expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
     }
   });
   test('screenShake is a client Boolean, default on (Task 8)', () => {
     const r = capture();
-    expect(r.screenShake).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r.screenShake).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
     expect(r.screenShake.name).toBe('DICER.Settings.screenShake.Name');
   });
   test('impactEffects is a client Boolean, default on', () => {
     const r = capture();
-    expect(r.impactEffects).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r.impactEffects).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
     expect(r.impactEffects.name).toBe('DICER.Settings.impactEffects.Name');
     expect(r.impactEffects.hint).toBe('DICER.Settings.impactEffects.Hint');
   });
   test('elementalTrails and elementalCritBursts are client Booleans, default on', () => {
     const r = capture();
     for (const key of ['elementalTrails', 'elementalCritBursts']) {
-      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+      expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
       expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
       expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
     }
@@ -249,7 +249,7 @@ describe('effects settings', () => {
   });
   test('jb2aEffects is a client Boolean, default on', () => {
     const r = capture();
-    expect(r.jb2aEffects).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+    expect(r.jb2aEffects).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
     expect(r.jb2aEffects.name).toBe('DICER.Settings.jb2aEffects.Name');
     expect(r.jb2aEffects.hint).toBe('DICER.Settings.jb2aEffects.Hint');
   });
@@ -274,17 +274,17 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
   const onHandChange = vi.fn();
   const r = capture({ onHandChange });
   const want = {
-    handRolls: { scope: 'client', type: String, default: 'off', config: true },
-    physicsResults: { scope: 'client', type: Boolean, default: false, config: true },
-    handRollTypes: { scope: 'client', type: Array, default: [], config: false },
+    handRolls: { scope: 'user', type: String, default: 'off', config: true },
+    physicsResults: { scope: 'user', type: Boolean, default: false, config: true },
+    handRollTypes: { scope: 'user', type: Array, default: [], config: false },
     handRollsAllowed: { scope: 'world', type: String, default: 'all', config: true },
     handRollsRequired: { scope: 'world', type: Boolean, default: false, config: true },
     handRollTimeout: { scope: 'world', type: Number, default: 60, config: true },
-    handReplay: { scope: 'client', type: Boolean, default: true, config: true },
-    handFollowUps: { scope: 'client', type: Boolean, default: true, config: true },
+    handReplay: { scope: 'user', type: Boolean, default: true, config: true },
+    handFollowUps: { scope: 'user', type: Boolean, default: true, config: true },
     handLiveShare: { scope: 'world', type: Boolean, default: true, config: true },
-    diceTray: { scope: 'client', type: Boolean, default: true, config: true },
-    chatTray: { scope: 'client', type: Boolean, default: true, config: true },
+    diceTray: { scope: 'user', type: Boolean, default: true, config: true },
+    chatTray: { scope: 'user', type: Boolean, default: true, config: true },
   };
   for (const [key, cfg] of Object.entries(want)) expect(r[key]).toMatchObject({ ns: 'dicer', ...cfg });
   // plus the hidden stash of entries handRollsRequired took from another method
@@ -308,7 +308,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
   } finally {
     delete globalThis.ui;
   }
-  // chatTray's change is the chat-tray chunk's (clientSettingChanged): nothing to call here
+  // chatTray's change is the chat-tray chunk's (createSetting, updateSetting): nothing to call here
   expect(() => r.chatTray.onChange?.(false)).not.toThrow();
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER;
   for (const key of Object.keys(want).filter((k) => want[k].config)) {
@@ -417,7 +417,7 @@ describe('roll area settings (Plan 5 Task 3)', () => {
 
   test('areaScale is a client Number range 0.5..1.5 step 0.05, default 1', () => {
     const cfg = capture().areaScale;
-    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Number, default: 1 });
+    expect(cfg).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Number, default: 1 });
     expect(cfg.range).toEqual({ min: 0.5, max: 1.5, step: 0.05 });
   });
 
@@ -472,7 +472,7 @@ describe('roll area settings (Plan 5 Task 3)', () => {
 
 test('diceLookButton is a client Boolean, default on', () => {
   const registered = capture();
-  expect(registered.diceLookButton).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(registered.diceLookButton).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
   expect(registered.diceLookButton.name).toBe('DICER.Settings.diceLookButton.Name');
 });
 
@@ -486,7 +486,7 @@ describe('GM controls settings (P7-D4)', () => {
   test('worldDefaultTheme and theme are kept but out of the form: the theme browser picks both', () => {
     const c = capture();
     expect(c.worldDefaultTheme).toMatchObject({ ns: 'dicer', scope: 'world', config: false, type: String, default: '' });
-    expect(c.theme).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'default' });
+    expect(c.theme).toMatchObject({ ns: 'dicer', scope: 'user', config: false, type: String, default: 'default' });
     expect(c.worldDefaultTheme.choices).toBeUndefined();
   });
 });
@@ -555,8 +555,8 @@ test('petsAllowed (world, in the list), showPets and petSounds (client, in the Y
   const r = capture();
   for (const [key, scope, config] of [
     ['petsAllowed', 'world', true],
-    ['showPets', 'client', false],
-    ['petSounds', 'client', false],
+    ['showPets', 'user', false],
+    ['petSounds', 'user', false],
   ]) {
     expect(r[key]).toMatchObject({ ns: 'dicer', scope, config, type: Boolean, default: true });
     expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
@@ -567,7 +567,7 @@ test('petsAllowed (world, in the list), showPets and petSounds (client, in the Y
 test('grabDice (client) is a Boolean, default on, and tells grab and toss on change', () => {
   const onGrabChange = vi.fn();
   const r = capture({ onGrabChange });
-  expect(r.grabDice).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(r.grabDice).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
   expect(r.grabDice.name).toBe('DICER.Settings.grabDice.Name');
   expect(r.grabDice.hint).toBe('DICER.Settings.grabDice.Hint');
   r.grabDice.onChange(false);
@@ -577,7 +577,7 @@ test('grabDice (client) is a Boolean, default on, and tells grab and toss on cha
 test('petSplat (client) is a Boolean, default on, and wakes the layer on change', () => {
   const onPetStayChange = vi.fn();
   const r = capture({ onPetStayChange });
-  expect(r.petSplat).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Boolean, default: true });
+  expect(r.petSplat).toMatchObject({ ns: 'dicer', scope: 'user', config: false, type: Boolean, default: true });
   expect(r.petSplat.name).toBe('DICER.Settings.petSplat.Name');
   expect(r.petSplat.hint).toBe('DICER.Settings.petSplat.Hint');
   r.petSplat.onChange(false);
@@ -587,11 +587,11 @@ test('petSplat (client) is a Boolean, default on, and wakes the layer on change'
 test('the pet interaction settings are client settings with their defaults and strings', () => {
   const r = capture({});
   for (const key of ['petClick', 'petElemental', 'petMoods', 'petCheer']) {
-    expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Boolean, default: true });
+    expect(r[key]).toMatchObject({ ns: 'dicer', scope: 'user', config: false, type: Boolean, default: true });
     expect(r[key].name).toBe(`DICER.Settings.${key}.Name`);
     expect(r[key].hint).toBe(`DICER.Settings.${key}.Hint`);
   }
-  expect(r.petRestSpot).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: String, default: 'dice' });
+  expect(r.petRestSpot).toMatchObject({ ns: 'dicer', scope: 'user', config: false, type: String, default: 'dice' });
   expect(r.petRestSpot.name).toBe('DICER.Settings.petRestSpot.Name');
   expect(r.petRestSpot.hint).toBe('DICER.Settings.petRestSpot.Hint');
   expect(Object.keys(r.petRestSpot.choices)).toEqual(['dice', 'placed']);
@@ -611,7 +611,7 @@ test('petStay (client) is a Number with choices 0, 30, 60, 120, -1, default 60, 
   const onPetStayChange = vi.fn();
   const r = capture({ onPetStayChange });
   expect(r.petsStay).toBeUndefined();
-  expect(r.petStay).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Number, default: 60 });
+  expect(r.petStay).toMatchObject({ ns: 'dicer', scope: 'user', config: false, type: Number, default: 60 });
   expect(r.petStay.name).toBe('DICER.Settings.petStay.Name');
   expect(r.petStay.hint).toBe('DICER.Settings.petStay.Hint');
   expect(Object.keys(r.petStay.choices).sort()).toEqual(['-1', '0', '120', '30', '60']);
@@ -664,7 +664,7 @@ test('elementalDamageInsides is registered (world, true) and has strings', () =>
 
 test('insideFlare registered (client, true) with strings', () => {
   const cfg = capture().insideFlare;
-  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'client', config: true, type: Boolean, default: true });
+  expect(cfg).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });
   expect(cfg.name).toBe('DICER.Settings.insideFlare.Name');
   expect(cfg.hint).toBe('DICER.Settings.insideFlare.Hint');
   const onLookChange = vi.fn();
@@ -673,4 +673,74 @@ test('insideFlare registered (client, true) with strings', () => {
   const en = JSON.parse(readFileSync('lang/en.json', 'utf8'));
   expect(en.DICER.Settings.insideFlare.Name).toEqual(expect.any(String));
   expect(en.DICER.Settings.insideFlare.Hint).toEqual(expect.any(String));
+});
+
+describe('per-user and per-browser settings', () => {
+  test('the device settings stay in the browser; the personal ones are user settings', () => {
+    const r = capture();
+    for (const key of DEVICE_SETTINGS) expect(r[key]?.scope, key).toBe('client');
+    for (const key of ['theme', 'showPets', 'petVolume', 'sounds', 'effects', 'myTray', 'damagePresets', 'handRolls', 'chatTray'])
+      expect(r[key]?.scope, key).toBe('user');
+    // screen positions, this browser's core dice configuration and the GM's hidden rolls stay local
+    for (const key of ['trayRect', 'petRestAt', 'handRollStash', 'handRollMapped', 'rollStatsHidden'])
+      expect(r[key]?.scope, key).toBe('client');
+  });
+
+  const cfg = (namespace, key, scope) => [`${namespace}.${key}`, { id: `${namespace}.${key}`, namespace, key, scope }];
+
+  test("moveToUserSettings copies this browser's values into the user settings the player lacks, and keeps them", async () => {
+    const local = {
+      'dicer.theme': JSON.stringify('ember'),
+      'dicer.petVolume': '0.4',
+      'dicer.sounds': 'false',
+      'dicer.diceScale': '1.5',
+      'dicer.quality': JSON.stringify('low'), // a browser setting: not moved
+      'dicer.broken': '{nope', // not JSON: skipped
+      'other.theme': JSON.stringify('x'), // another module's
+    };
+    const set = vi.fn(async (ns, key) => {
+      if (key === 'sounds') throw new Error('offline');
+    });
+    const settings = {
+      settings: new Map([
+        cfg('dicer', 'theme', 'user'),
+        cfg('dicer', 'petVolume', 'user'),
+        cfg('dicer', 'sounds', 'user'),
+        cfg('dicer', 'showPets', 'user'), // nothing stored here
+        cfg('dicer', 'quality', 'client'),
+        cfg('dicer', 'broken', 'user'),
+        cfg('dicer', 'diceScale', 'user'),
+        cfg('other', 'theme', 'user'),
+      ]),
+      storage: new Map([
+        ['client', { getItem: (k) => local[k] ?? null }],
+        // the player already has a diceScale of their own: kept
+        ['world', { getSetting: (id, user) => (id === 'dicer.diceScale' && user === 'u1' ? { value: 2 } : null) }],
+      ]),
+      set,
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await moveToUserSettings(settings, 'u1')).toBe(2);
+    expect(set.mock.calls).toEqual([
+      ['dicer', 'theme', 'ember'],
+      ['dicer', 'petVolume', 0.4],
+      ['dicer', 'sounds', false],
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1); // the failed one
+    warn.mockRestore();
+    expect(local['dicer.theme']).toBe(JSON.stringify('ember')); // the browser copy stays
+  });
+
+  test('moveToUserSettings with the browser storage blocked copies nothing', async () => {
+    const blocked = () => {
+      throw new Error('blocked');
+    };
+    const settings = {
+      settings: new Map([cfg('dicer', 'theme', 'user')]),
+      storage: new Map([['client', { getItem: blocked }], ['world', { getSetting: () => null }]]),
+      set: vi.fn(),
+    };
+    expect(await moveToUserSettings(settings, 'u1')).toBe(0);
+    expect(settings.set).not.toHaveBeenCalled();
+  });
 });

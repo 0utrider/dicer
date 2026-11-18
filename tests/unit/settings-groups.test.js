@@ -24,7 +24,7 @@ test('every setting in Foundry’s list has a section; the pet settings are in t
   const grouped = GROUPS.flatMap(([, keys]) => keys);
   expect(shown.filter((k) => !grouped.includes(k))).toEqual([]);
   expect(grouped.filter((k) => !all[k])).toEqual([]); // no stale names
-  for (const k of PET_SETTINGS) expect(all[k], k).toMatchObject({ config: false, scope: 'client' });
+  for (const k of PET_SETTINGS) expect(all[k], k).toMatchObject({ config: false, scope: 'user' });
   // the theme dropdowns are gone: the theme browser picks both
   expect(all.theme.config).toBe(false);
   expect(all.worldDefaultTheme.config).toBe(false);

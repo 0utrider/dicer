@@ -10,6 +10,15 @@ export const MODULE_ID = 'dicer';
  * onChange forgets its value before anything else runs (Foundry fires a world setting's onChange
  * on every client). Object values are read fresh: a caller could change a shared copy.
  */
+/**
+ * The settings that stay in the browser (scope 'client'): what the machine can draw, since a laptop
+ * and a gaming PC need different values. Every other personal setting is a user setting, kept in the
+ * world database, so it follows the player to any browser.
+ */
+export const DEVICE_SETTINGS = new Set(['enabled', 'pixelRatioCap', 'quality', 'interiors', 'insideMotion', 'engraving', 'shadows', 'glow']);
+// Also kept in the browser: trayRect and petRestAt (screen positions), handRollStash and handRollMapped
+// (this browser's core dice configuration), rollStatsHidden (the GM's hidden rolls stay off the server).
+
 const cache = new Map();
 const cachable = new Set();
 
@@ -79,6 +88,38 @@ export async function migrateLookSetting({ get, set }) {
   return copy;
 }
 
+/**
+ * Dicer's personal settings were browser (client) settings before 1.0.18. Copies this browser's
+ * stored value of each one that is now a user setting into the player's user settings, when the
+ * player has none for it yet. The browser copy is kept, so an older Dicer still finds it.
+ * @param {object} settings game.settings
+ * @param {string} userId the player
+ * @returns {Promise<number>} the settings copied
+ */
+export async function moveToUserSettings(settings, userId) {
+  const local = settings.storage.get('client');
+  const world = settings.storage.get('world');
+  const moves = [];
+  for (const cfg of settings.settings.values()) {
+    if (cfg.namespace !== MODULE_ID || cfg.scope !== 'user') continue;
+    let value;
+    try {
+      const raw = local.getItem(cfg.id);
+      if (raw === null || raw === undefined || world.getSetting(cfg.id, userId)) continue;
+      value = JSON.parse(raw);
+    } catch {
+      continue; // storage blocked, or not JSON
+    }
+    moves.push(
+      settings.set(MODULE_ID, cfg.key, value).then(
+        () => 1,
+        (err) => (console.warn(`dicer: cannot copy the ${cfg.key} setting to your user settings`, err), 0),
+      ),
+    );
+  }
+  return (await Promise.all(moves)).reduce((a, b) => a + b, 0);
+}
+
 /** The old client `petsStay` (stored false) becomes petStay 0, once: `store` is the client storage. */
 export async function migratePetStay(store, set) {
   try {
@@ -145,7 +186,7 @@ export function registerSettings({
   register('diceLookButton', {
     name: t('diceLookButton.Name'),
     hint: t('diceLookButton.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Boolean,
     default: true,
@@ -166,7 +207,7 @@ export function registerSettings({
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
-      scope: 'client',
+      scope: 'user',
       config: key === 'diceScale',
       type: Number,
       range: { min: 0.5, max: 3, step: 0.1 },
@@ -177,7 +218,7 @@ export function registerSettings({
   register('diceAboveWindows', {
     name: t('diceAboveWindows.Name'),
     hint: t('diceAboveWindows.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: String,
     choices: Object.fromEntries(['none', 'mine', 'all'].map((k) => [k, t(`diceAboveWindows.Choices.${k}`)])),
@@ -187,7 +228,7 @@ export function registerSettings({
   register('diceLighting', {
     name: t('diceLighting.Name'),
     hint: t('diceLighting.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: String,
     choices: Object.fromEntries(['studio', 'scene', 'sun'].map((k) => [k, t(`diceLighting.Choices.${k}`)])),
@@ -198,7 +239,7 @@ export function registerSettings({
   register('diceLight', {
     name: t('diceLight.Name'),
     hint: t('diceLight.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Boolean,
     default: false,
@@ -207,7 +248,7 @@ export function registerSettings({
   register('trayMode', {
     name: t('trayMode.Name'),
     hint: t('trayMode.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: String,
     choices: Object.fromEntries(['table', 'mine', 'none'].map((k) => [k, t(`trayMode.Choices.${k}`)])),
@@ -217,7 +258,7 @@ export function registerSettings({
   register('trayShow', {
     name: t('trayShow.Name'),
     hint: t('trayShow.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: String,
     choices: Object.fromEntries(['always', 'rolls'].map((k) => [k, t(`trayShow.Choices.${k}`)])),
@@ -227,7 +268,7 @@ export function registerSettings({
   register('petTray', {
     name: t('petTray.Name'),
     hint: t('petTray.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: String,
     choices: Object.fromEntries(['rim', 'in', 'away'].map((k) => [k, t(`petTray.Choices.${k}`)])),
@@ -235,7 +276,7 @@ export function registerSettings({
   });
   // the GM's saved trays, each a look any player may take for their own (the Dice tray window)
   register('trayPresets', { scope: 'world', config: false, type: Array, default: [] });
-  for (const [key, scope] of [['tableTray', 'world'], ['myTray', 'client'], ['trayRect', 'client']])
+  for (const [key, scope] of [['tableTray', 'world'], ['myTray', 'user'], ['trayRect', 'client']])
     register(key, { scope, config: false, type: Object, default: null, onChange: () => onTrayChange?.() });
   registerEditorMenu(t, 'trayEditor', 'fa-solid fa-chess-board', () =>
     import('./ui/tray-editor.js').then((m) => m.openTrayEditor),
@@ -243,7 +284,7 @@ export function registerSettings({
   register('physicalDice', {
     name: t('physicalDice.Name'),
     hint: t('physicalDice.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: String,
     choices: Object.fromEntries(['animate', 'mark', 'skip'].map((k) => [k, t(`physicalDice.Choices.${k}`)])),
@@ -252,7 +293,7 @@ export function registerSettings({
   register('timeBeforeHide', {
     name: t('timeBeforeHide.Name'),
     hint: t('timeBeforeHide.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Number,
     default: 2000,
@@ -260,7 +301,7 @@ export function registerSettings({
   register('grabDice', {
     name: t('grabDice.Name'),
     hint: t('grabDice.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Boolean,
     default: true,
@@ -287,7 +328,7 @@ export function registerSettings({
   register('showExtraDice', {
     name: t('showExtraDice.Name'),
     hint: t('showExtraDice.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Boolean,
     default: true,
@@ -304,7 +345,7 @@ export function registerSettings({
   register('showPets', {
     name: t('showPets.Name'),
     hint: t('showPets.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: Boolean,
     default: true,
@@ -313,7 +354,7 @@ export function registerSettings({
   register('petSounds', {
     name: t('petSounds.Name'),
     hint: t('petSounds.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: Boolean,
     default: true,
@@ -321,7 +362,7 @@ export function registerSettings({
   register('petVolume', {
     name: t('petVolume.Name'),
     hint: t('petVolume.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: Number,
     range: { min: 0, max: 1, step: 0.05 },
@@ -330,7 +371,7 @@ export function registerSettings({
   register('petStay', {
     name: t('petStay.Name'),
     hint: t('petStay.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: Number,
     choices: Object.fromEntries([0, 30, 60, 120, -1].map((v) => [v, t(`petStay.Choices.${v}`)])),
@@ -340,7 +381,7 @@ export function registerSettings({
   register('petSplat', {
     name: t('petSplat.Name'),
     hint: t('petSplat.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: Boolean,
     default: true,
@@ -372,7 +413,7 @@ export function registerSettings({
     ['petMoods'],
     ['petCheer'],
   ]) {
-    register(k, { name: t(`${k}.Name`), hint: t(`${k}.Hint`), scope: 'client', config: false, type, default: def, ...more });
+    register(k, { name: t(`${k}.Name`), hint: t(`${k}.Hint`), scope: 'user', config: false, type, default: def, ...more });
   }
   register('immediatelyDisplayChatMessages', {
     name: t('immediatelyDisplayChatMessages.Name'),
@@ -416,7 +457,7 @@ export function registerSettings({
   // The player's theme and the GM's world default are picked in the theme browser (a dropdown
   // here duplicated it); both stay settings, out of Foundry's list.
   register('theme', {
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: String,
     default: 'default',
@@ -441,7 +482,7 @@ export function registerSettings({
   });
   // The pre-Plan-5 look choice: hidden, read once by migrateLookSetting.
   register('look', {
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: String,
     default: 'default',
@@ -479,7 +520,7 @@ export function registerSettings({
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
-      scope: 'client',
+      scope: DEVICE_SETTINGS.has(key) ? 'client' : 'user',
       config: true,
       type: Boolean,
       default: true,
@@ -491,7 +532,7 @@ export function registerSettings({
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
-      scope: 'client',
+      scope: 'user',
       config: true,
       type: Boolean,
       default: true,
@@ -505,7 +546,7 @@ export function registerSettings({
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
-      scope: 'client',
+      scope: 'user',
       config: true,
       type: Number,
       range: { min: 0, max: 1, step: 0.05 },
@@ -527,7 +568,7 @@ export function registerSettings({
   register('soundSurfaceOverride', {
     name: t('soundSurfaceOverride.Name'),
     hint: t('soundSurfaceOverride.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: String,
     choices: surfaceChoices(['world', ...surfaces]),
@@ -548,7 +589,7 @@ export function registerSettings({
     register(key, {
       name: t(`${key}.Name`),
       hint: t(`${key}.Hint`),
-      scope: 'client',
+      scope: 'user',
       config: true,
       type: Boolean,
       default: true,
@@ -568,7 +609,7 @@ export function registerSettings({
   register('damagePresets', {
     name: t('damagePresets.Name'),
     hint: t('damagePresets.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Boolean,
     default: true,
@@ -576,7 +617,7 @@ export function registerSettings({
   register('damageOverDiceSet', {
     name: t('damageOverDiceSet.Name'),
     hint: t('damageOverDiceSet.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Boolean,
     default: true,
@@ -599,7 +640,7 @@ export function registerSettings({
     import('./ui/damage-map-editor.js').then((m) => m.openDamageMapEditor),
   );
   register('damageThemeOverrides', {
-    scope: 'client',
+    scope: 'user',
     config: false,
     type: Object,
     default: {},
@@ -616,7 +657,7 @@ export function registerSettings({
   );
   // The theme gallery: everyone browses, assigns and edits their own; the GM also publishes.
   // Roll filters (foundry/roll-filters.js): the player's choices, and the GM's world default.
-  register('rollFilters', { scope: 'client', config: false, type: Object, default: {} });
+  register('rollFilters', { scope: 'user', config: false, type: Object, default: {} });
   register('rollFiltersDefault', { scope: 'world', config: false, type: Object, default: {} });
   registerEditorMenu(t, 'rollFilters', 'fa-solid fa-filter', () =>
     import('./ui/roll-filters.js').then((m) => () => m.openRollFilters()),
@@ -628,7 +669,7 @@ export function registerSettings({
   // Roll stats (stats/): each player's d20s in their user flag (dicer.stats), written by their own
   // client; the GM's client keeps blind and private rolls in rollStatsHidden, never shared.
   register('rollStats', { name: t('rollStats.Name'), hint: t('rollStats.Hint'), scope: 'world', config: true, type: Boolean, default: true });
-  register('statsTool', { name: t('statsTool.Name'), hint: t('statsTool.Hint'), scope: 'client', config: true, type: Boolean, default: true, onChange: resetControls });
+  register('statsTool', { name: t('statsTool.Name'), hint: t('statsTool.Hint'), scope: 'user', config: true, type: Boolean, default: true, onChange: resetControls });
   register('rollStatsSession', { scope: 'world', config: false, type: Number, default: 0 });
   register('rollStatsHidden', { scope: 'client', config: false, type: Object, default: {} });
   registerEditorMenu(t, 'rollStatsWindow', 'fa-solid fa-chart-column', () =>
@@ -681,7 +722,7 @@ export function registerSettings({
   register('areaScale', {
     name: t('areaScale.Name'),
     hint: t('areaScale.Hint'),
-    scope: 'client',
+    scope: 'user',
     config: true,
     type: Number,
     range: { min: 0.5, max: 1.5, step: 0.05 },
@@ -707,19 +748,19 @@ export function registerSettings({
   // core dice configuration re-sync it on change (handRollsAllowed and -Required fire on every client).
   const choices = (key, keys) => Object.fromEntries(keys.map((k) => [k, t(`${key}.Choices.${k}`)]));
   const hand = [
-    ['handRolls', 'client', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always']) }],
+    ['handRolls', 'user', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always']) }],
     // the faces physics lands up are every roll's result (thrown for the roller when not by hand)
-    ['physicsResults', 'client', Boolean, false],
-    ['handRollTypes', 'client', Array, [], { config: false }], // Foundry denominations; empty: all
+    ['physicsResults', 'user', Boolean, false],
+    ['handRollTypes', 'user', Array, [], { config: false }], // Foundry denominations; empty: all
     ['handRollsAllowed', 'world', String, 'all', { choices: choices('handRollsAllowed', ['all', 'trusted', 'gm', 'none']) }],
     ['handRollsRequired', 'world', Boolean, false],
     ['handRollTimeout', 'world', Number, 60, { range: { min: 10, max: 300, step: 5 } }],
-    ['handReplay', 'client', Boolean, true],
-    ['handFollowUps', 'client', Boolean, true], // a roll right after a hand throw throws itself
+    ['handReplay', 'user', Boolean, true],
+    ['handFollowUps', 'user', Boolean, true], // a roll right after a hand throw throws itself
     ['handLiveShare', 'world', Boolean, true], // a hand throw reaches the others as it flies
     ['elementalDamageInsides', 'world', Boolean, true], // fire, cold and electricity dice get elemental insides
-    ['diceTray', 'client', Boolean, true, { onChange: resetControls }], // its tool
-    ['chatTray', 'client', Boolean, true], // its chunk follows it (clientSettingChanged)
+    ['diceTray', 'user', Boolean, true, { onChange: resetControls }], // its tool
+    ['chatTray', 'user', Boolean, true], // its chunk follows it (createSetting, updateSetting)
   ];
   hand.forEach(([key, scope, type, def, more], i) =>
     register(key, {
