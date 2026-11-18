@@ -11,8 +11,9 @@
 # Dicer
 
 Physics-simulated 3D dice for Foundry VTT v14, in sync for every player. Dicer is a lightweight
-replacement for Dice So Nice: dice that roll, bounce and land on the real result, themes you design
-yourself, damage dice in their element, effects for big moments, and dice pets that watch your rolls.
+alternative to [Dice So Nice](https://foundryvtt.com/packages/dice-so-nice) that keeps its API working, so modules and systems made for Dice So Nice work
+with it too: dice that roll, bounce and land on the real result, themes you design yourself, damage
+dice in their element, effects for big moments, and dice pets that watch your rolls.
 
 **[Read the wiki](https://github.com/roileaf/dicer/wiki)** for guides to every feature.
 
@@ -45,8 +46,8 @@ Dicer needs **Foundry VTT v14**.
    this manifest URL:
    `https://github.com/roileaf/dicer/releases/latest/download/module.json`
 2. Enable **Dicer** in your world's **Manage Modules**.
-3. **Disable Dice So Nice.** Dicer replaces it; while Dice So Nice is active, Dicer stays off and
-   tells the GM.
+3. **Disable Dice So Nice.** The two can't run at the same time; while Dice So Nice is active, Dicer
+   stays off and tells the GM.
 
 After an update, reload Foundry with **Ctrl+F5** so the browser drops its old copy of the module.
 See [Installation](https://github.com/roileaf/dicer/wiki/Installation) and
@@ -60,6 +61,14 @@ See [Installation](https://github.com/roileaf/dicer/wiki/Installation) and
 - For module and macro authors: [Dice So Nice compatibility](https://github.com/roileaf/dicer/wiki/Dice-So-Nice-Compatibility)
   and [API](https://github.com/roileaf/dicer/wiki/API)
 - Building Dicer or contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## Thanks to Dice So Nice
+
+Dicer stands on the shoulders of [Dice So Nice](https://foundryvtt.com/packages/dice-so-nice), by JDW, Simone and its contributors, which has defined
+3D dice in Foundry for years. Dicer reimplements Dice So Nice's public API (its `game.dice3d` calls,
+hooks and flags, colour set names and dice presets) so that the many modules, systems and dice sets
+built for it keep working. If you prefer Dice So Nice, use it and support it: [Dice So Nice on Foundry](https://foundryvtt.com/packages/dice-so-nice)
+and [its source on GitLab](https://gitlab.com/riccisi/foundryvtt-dice-so-nice).
 
 ## License
 
