@@ -11,17 +11,21 @@
  * @param {() => void} [o.onWarmed] after a pass compiled (quality.warmedUp, P2-R10)
  * @param {() => object[]} [o.getLooks] other looks to compile once the current one is done
  *   (main: the damage themes), so the first fire or electricity roll does not freeze the canvas
- *   compiling them; a separate compile, so the current look is ready first and the 10 s guard
- *   covers each on its own
+ *   compiling them; compiled after the current look, LOOK_BATCH at a time, so the current look is
+ *   ready first and the 10 s guard covers a few programs, not all of them (a slow GPU timed out)
  * @param {(message: string, err: unknown) => void} [o.warn]
  * @returns {() => Promise<void>} warmUp(); resolves when no pass is left
  */
+/** Damage looks compiled together in one guarded compile (each also compiles its fade). */
+export const LOOK_BATCH = 3;
+
 export function createWarmup({
   getBox,
   getRenderer,
   onWarmed = () => {},
   getLooks = () => [],
   warn = (message, err) => console.warn(message, err),
+  info = (message) => console.info(message),
 }) {
   let warming = null;
   let again = false;
@@ -31,7 +35,9 @@ export function createWarmup({
       await renderer.warmup(warm.materials, warm.geometry, warm.fades);
       return true;
     } catch (err) {
-      warn('dicer: material warm-up failed', err);
+      // a timeout is not a failure: three keeps compiling, and the programs are ready a bit later
+      if (err?.reason === 'timeout') info('dicer: dice shaders are still compiling in the background');
+      else warn('dicer: material warm-up failed', err);
       return false;
     } finally {
       warm.release();
@@ -56,7 +62,8 @@ export function createWarmup({
         } catch (err) {
           warn('dicer: cannot list the damage looks to warm up', err);
         }
-        if (looks.length && !again) await pass(renderer, box.acquireWarmup(undefined, looks));
+        for (let i = 0; i < looks.length && !again; i += LOOK_BATCH)
+          if (!(await pass(renderer, box.acquireWarmup(undefined, looks.slice(i, i + LOOK_BATCH))))) break;
       } while (again);
     })().finally(() => {
       warming = null;

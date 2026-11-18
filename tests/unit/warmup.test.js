@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import * as THREE from 'three';
-import { createWarmup, createAppearanceRewarm } from '../../src/render/warmup.js';
+import { createWarmup, createAppearanceRewarm, LOOK_BATCH } from '../../src/render/warmup.js';
+import { CompileAbortedError } from '../../src/render/compile-guard.js';
 import { DiceRenderer } from '../../src/render/renderer.js';
 
-function setup({ getLooks } = {}) {
+function setup({ getLooks, info } = {}) {
   const container = document.createElement('div');
   const fake = {
     setSize() {},
@@ -28,7 +29,7 @@ function setup({ getLooks } = {}) {
   };
   const onWarmed = vi.fn();
   const warn = vi.fn();
-  const warmUp = createWarmup({ getBox: () => box, getRenderer: () => renderer, onWarmed, warn, getLooks });
+  const warmUp = createWarmup({ getBox: () => box, getRenderer: () => renderer, onWarmed, warn, getLooks, info });
   const loseContext = () =>
     container.querySelector('canvas').dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
   return { fake, renderer, box, released, onWarmed, warn, warmUp, loseContext };
@@ -75,6 +76,28 @@ test('other looks (the damage themes) compile in a second pass after the current
   expect(fake.compileAsync).toHaveBeenCalledTimes(2);
   expect(released).toEqual([0, 1]);
   expect(onWarmed).toHaveBeenCalledTimes(1);
+});
+
+test('damage looks compile a few at a time, so the 10 s guard covers a few programs, not all', async () => {
+  const looks = Array.from({ length: LOOK_BATCH + 2 }, (_, i) => ({ i }));
+  const { fake, box, warmUp } = setup({ getLooks: () => looks });
+  fake.compileAsync = vi.fn(async () => {});
+  await warmUp();
+  expect(box.acquireWarmup.mock.calls).toEqual([[], [undefined, looks.slice(0, LOOK_BATCH)], [undefined, looks.slice(LOOK_BATCH)]]);
+});
+
+test('a timed-out batch is logged as info (three keeps compiling), not warned, and the rest wait for the next warm-up', async () => {
+  const info = vi.fn();
+  const looks = Array.from({ length: LOOK_BATCH * 2 }, (_, i) => ({ i }));
+  const { renderer, box, warn, warmUp } = setup({ getLooks: () => looks, info });
+  let n = 0;
+  renderer.warmup = vi.fn(async () => {
+    if (n++ === 1) throw new CompileAbortedError('timeout');
+  });
+  await warmUp();
+  expect(box.acquireWarmup).toHaveBeenCalledTimes(2);
+  expect(info).toHaveBeenCalledTimes(1);
+  expect(warn).not.toHaveBeenCalled();
 });
 
 test('no second pass when the current look failed to compile or there are no other looks', async () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- **Fixed: "material warm-up failed" in the console on slower computers.** Since 1.0.1 Dicer prepares every damage dice look when the world loads, all in one go, and on a slow graphics card that could run past its 10-second limit. It now prepares them a few at a time, and a slow one is noted as still preparing in the background rather than as a failure (it never was one: the dice still worked).
+
 ## 1.0.2
 
 - **Picture trays: opacity and darkness.** A tray with your own picture as its surface now has a **Picture opacity** slider (the picture fades into the tray colour, which you can pick too) and a **Picture darkness** slider, so a busy or bright picture can sit back behind the dice.
