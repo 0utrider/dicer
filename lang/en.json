@@ -1415,6 +1415,13 @@
       "ImportAllFailed": "The import could not finish: see the console.",
       "Yes": "Yes",
       "No": "No",
+      "UnmigratedHint": "Saved looks are imported into each player's My themes. The other Dice So Nice data listed here has no use in Dicer.",
+      "Col": {
+        "Dsn": "Dice So Nice",
+        "Dicer": "Dicer",
+        "Value": "Value",
+        "Result": "Result"
+      },
       "Section": {
         "Status": "Status",
         "World": "World settings",

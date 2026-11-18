@@ -87,3 +87,10 @@ test('every verdict the report can give has a string', async () => {
     expect(en.Status[s], s).toBeTruthy();
   for (const s of ['pending', 'migrated', 'off']) expect(en.User[s], s).toBeTruthy();
 });
+
+test('the world table has column heads; the import switched off is flagged in its tile', () => {
+  const root = renderReport(full({ enabled: false }));
+  expect(root.querySelectorAll('[data-section=world] thead th')).toHaveLength(4);
+  expect(root.querySelector('.dicer-report-tile.is-warn')).toBeTruthy();
+  expect(renderReport(full()).querySelector('.dicer-report-tile.is-warn')).toBeNull();
+});

@@ -163,7 +163,7 @@ describe('migrateWorld', () => {
     const settings = makeSettings();
     await expect(migrateWorld(dsnWorld({}), { settings })).resolves.toEqual({});
     expect(settings.set).not.toHaveBeenCalled();
-    await expect(migrateWorld(dsnWorld({ maxDiceNumber: 'many', showGhostDice: 1 }), { settings })).resolves.toEqual({});
+    await expect(migrateWorld(dsnWorld({ maxDiceNumber: 'many', showGhostDice: 'yes' }), { settings })).resolves.toEqual({});
   });
 });
 
@@ -305,4 +305,13 @@ describe('migrateAll (the GM report)', () => {
 test("userThemeId here gives the theme browser's ids", () => {
   for (const [name, taken] of [['Fire!', []], ['  ', []], ['Fire', ['user.u1.fire']], ['Fire', ['user.u1.fire', 'user.u1.fire-2']], ['Ünïcode Dice', []]])
     expect(userThemeId('u1', name, taken)).toBe(formThemeId('u1', name, taken));
+});
+
+test("Dice So Nice 4.2+'s showGhostDice choice ('0'..'3') maps to Dicer's on/off; garbage is not copied", async () => {
+  const { WORLD_MAP } = await import('../../src/compat/migration.js');
+  const [key, check] = WORLD_MAP.showGhostDice;
+  expect(key).toBe('showGhostDice');
+  expect([check('0'), check('1'), check('2'), check('3'), check(0), check(true), check(false)]).toEqual([false, true, true, true, false, true, false]);
+  expect(check('9')).toBeUndefined();
+  expect(check(null)).toBeUndefined();
 });

@@ -23,17 +23,22 @@ function h(tag, attrs = {}, kids = []) {
 
 const verdict = (status) => h('span', { class: `dicer-verdict is-${status}`, text: loc(`${P}.Status.${status}`) });
 const section = (id, heading, kids) =>
-  h('section', { 'data-section': id }, [h('h3', { text: loc(`${P}.Section.${heading}`) }), ...kids]);
+  h('section', { 'data-section': id }, [h('h3', { class: 'dicer-report-h', text: loc(`${P}.Section.${heading}`) }), ...kids]);
 const yesNo = (v) => loc(`${P}.${v ? 'Yes' : 'No'}`);
 const show = (v) => (v === undefined ? '' : JSON.stringify(v));
 
 function statusSection(r) {
-  const pair = (field, value) => [h('dt', { text: loc(`${P}.Field.${field}`) }), h('dd', { text: value })];
+  // three tiles; the import switched off is flagged, since players then import nothing on their own
+  const tile = (field, value, tone) =>
+    h('div', { class: `dicer-report-tile${tone ? ` is-${tone}` : ''}` }, [
+      h('span', { class: 'dicer-report-label', text: loc(`${P}.Field.${field}`) }),
+      h('strong', { text: value }),
+    ]);
   return section('status', 'Status', [
-    h('dl', {}, [
-      ...pair('Enabled', yesNo(r.enabled)),
-      ...pair('WorldMigrated', yesNo(r.worldMigrated)),
-      ...pair('Dsn', loc(`${P}.Dsn.${r.dsn}`)),
+    h('div', { class: 'dicer-report-tiles' }, [
+      tile('Enabled', yesNo(r.enabled), r.enabled ? 'ok' : 'warn'),
+      tile('WorldMigrated', yesNo(r.worldMigrated), r.worldMigrated ? 'ok' : null),
+      tile('Dsn', loc(`${P}.Dsn.${r.dsn}`), null),
     ]),
   ]);
 }
@@ -43,14 +48,17 @@ function worldSection(r) {
     .filter((w) => w.status !== 'absent')
     .map((w) =>
       h('tr', { 'data-key': w.dsnKey }, [
-        h('td', { text: w.dsnKey }),
-        h('td', { text: w.key ?? '—' }),
-        h('td', { text: show(w.value) }),
-        h('td', {}, [verdict(w.status)]),
+        h('td', {}, [h('code', { text: w.dsnKey })]),
+        h('td', {}, w.key ? [h('code', { text: w.key })] : [h('span', { class: 'dicer-report-muted', text: '—' })]),
+        h('td', { class: 'dicer-report-value', text: show(w.value) }),
+        h('td', { class: 'dicer-report-result' }, [verdict(w.status)]),
       ]),
     );
+  const head = h('thead', {}, [
+    h('tr', {}, ['Dsn', 'Dicer', 'Value', 'Result'].map((c) => h('th', { scope: 'col', text: loc(`${P}.Col.${c}`) }))),
+  ]);
   return section('world', 'World', [
-    rows.length ? h('table', {}, [h('tbody', {}, rows)]) : h('p', { class: 'dicer-hint', text: loc(`${P}.NoWorld`) }),
+    rows.length ? h('table', { class: 'dicer-report-table' }, [head, h('tbody', {}, rows)]) : h('p', { class: 'dicer-hint', text: loc(`${P}.NoWorld`) }),
   ]);
 }
 
@@ -58,13 +66,13 @@ function usersSection(r) {
   const shown = r.users.filter((u) => u.status !== 'none');
   const none = r.users.length - shown.length;
   const rows = shown.map((u) =>
-    h('details', { 'data-user': u.id, open: u.status === 'pending' }, [
+    h('details', { class: 'dicer-report-row', 'data-user': u.id, open: u.status === 'pending' }, [
       h('summary', {}, [h('span', { class: 'dicer-report-name', text: u.name }), h('span', { class: `dicer-verdict is-${u.status}`, text: loc(`${P}.User.${u.status}`) })]),
-      h('ul', {}, u.scopes.map((s) => h('li', { 'data-scope': s.scope }, [h('span', { text: s.scope }), verdict(s.status)]))),
+      h('ul', {}, u.scopes.map((s) => h('li', { 'data-scope': s.scope }, [h('code', { text: s.scope }), verdict(s.status)]))),
     ]),
   );
   return section('users', 'Users', [
-    ...rows,
+    h('div', { class: 'dicer-report-list' }, rows),
     ...(none ? [h('p', { class: 'dicer-hint', text: `${loc(`${P}.NoneUsers`)}: ${none}` })] : []),
   ]);
 }
@@ -72,13 +80,18 @@ function usersSection(r) {
 function unmigratedSection(r) {
   const items = r.users
     .filter((u) => u.saves > 0 || u.otherKeys.length)
-    .map((u) => {
-      const parts = [];
-      if (u.saves > 0) parts.push(fmt(`${P}.Saves`, { n: u.saves, m: u.savesImported ?? 0 }));
-      if (u.otherKeys.length) parts.push(u.otherKeys.join(', '));
-      return h('li', {}, [h('span', { class: 'dicer-report-name', text: u.name }), h('small', { text: parts.join(' · ') })]);
-    });
-  return items.length ? section('unmigrated', 'Unmigrated', [h('ul', {}, items)]) : null;
+    .map((u) =>
+      h('li', { class: 'dicer-report-row' }, [
+        h('span', { class: 'dicer-report-name', text: u.name }),
+        h('span', { class: 'dicer-report-data' }, [
+          ...(u.saves > 0 ? [h('span', { class: 'dicer-verdict is-copied', text: fmt(`${P}.Saves`, { n: u.saves, m: u.savesImported ?? 0 }) })] : []),
+          ...u.otherKeys.map((k) => h('code', { text: k })),
+        ]),
+      ]),
+    );
+  return items.length
+    ? section('unmigrated', 'Unmigrated', [h('p', { class: 'dicer-hint', text: loc(`${P}.UnmigratedHint`) }), h('ul', { class: 'dicer-report-list' }, items)])
+    : null;
 }
 
 /** The report as DOM: the empty state, or the four sections (the last only when it lists something). */
@@ -99,25 +112,47 @@ export function renderReport(report) {
   return root;
 }
 
-// its own look, here in the lazy chunk (not in dicer.css, which every world start loads)
-const CSS =
-  '.dicer-dsn-report section{margin-bottom:.8em}' +
-  '.dicer-report-import{margin-bottom:.8em}' +
-  '.dicer-report-import button{width:100%}' +
-  '.dicer-dsn-report h3{margin:.4em 0}' +
-  '.dicer-dsn-report dl{display:grid;grid-template-columns:auto 1fr;gap:.2em .8em;margin:0}' +
-  '.dicer-dsn-report dd{margin:0}' +
-  '.dicer-dsn-report table{width:100%;border-collapse:collapse}' +
-  '.dicer-dsn-report td{padding:.2em .4em;border-bottom:1px solid var(--color-border-light-tertiary,rgba(127,127,127,.25))}' +
-  '.dicer-dsn-report ul{list-style:none;margin:.3em 0;padding:0 0 0 1em}' +
-  '.dicer-dsn-report li,.dicer-dsn-report summary{display:flex;gap:.6em;align-items:baseline}' +
-  '.dicer-dsn-report summary{cursor:pointer}' +
-  '.dicer-dsn-report li small{opacity:.8}' +
-  '.dicer-dsn-report .dicer-report-name{flex:1}' +
-  '.dicer-verdict{font-size:.85em;padding:0 .4em;border-radius:3px;background:rgba(127,127,127,.18)}' +
-  '.dicer-verdict.is-copied,.dicer-verdict.is-migrated{background:rgba(60,160,80,.25)}' +
-  '.dicer-verdict.is-pending,.dicer-verdict.is-would-copy{background:rgba(220,170,40,.25)}' +
-  '.dicer-verdict.is-invalid,.dicer-verdict.is-unusable,.dicer-verdict.is-no-counterpart{background:rgba(200,60,60,.22)}';
+// its own look, here in the lazy chunk (not in dicer.css, which every world start loads); sizes are
+// set here, so a system's big headings and body text (PF2e) do not blow the report up
+const CSS = `
+.dicer-dsn-report{font-size:var(--font-size-13,13px);line-height:1.4;display:flex;flex-direction:column;gap:14px}
+.dicer-dsn-report section{margin:0}
+.dicer-dsn-report .dicer-report-h{margin:0 0 6px;padding:0 0 4px;border:0;border-bottom:1px solid var(--color-border-light-tertiary,rgba(127,127,127,.3));font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
+.dicer-dsn-report .dicer-hint{margin:6px 0 0;font-size:12px;opacity:.7}
+.dicer-dsn-report code{font-size:11.5px;padding:0 4px;border-radius:3px;background:rgba(127,127,127,.15);border:0;white-space:nowrap}
+.dicer-report-import{padding:10px;border-radius:6px;background:rgba(127,127,127,.1);border:1px solid var(--color-border-light-tertiary,rgba(127,127,127,.25))}
+.dicer-report-import button{width:100%;height:auto;min-height:32px;font-size:13px;font-weight:600;line-height:1.2}
+.dicer-report-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px}
+.dicer-report-tile{display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:5px;background:rgba(127,127,127,.1);border-left:3px solid rgba(127,127,127,.35)}
+.dicer-report-tile.is-ok{border-left-color:rgba(70,170,90,.8)}
+.dicer-report-tile.is-warn{border-left-color:rgba(225,160,40,.9);background:rgba(225,160,40,.12)}
+.dicer-report-label{font-size:11px;opacity:.7}
+.dicer-report-tile strong{font-size:13px}
+.dicer-report-table{width:100%;margin:0;border-collapse:collapse;font-size:12px;background:none;border:0}
+.dicer-report-table th{padding:2px 6px;text-align:left;font-size:11px;font-weight:600;opacity:.65;background:none;border:0;border-bottom:1px solid var(--color-border-light-tertiary,rgba(127,127,127,.3))}
+.dicer-report-table td{padding:4px 6px;border:0;border-bottom:1px solid var(--color-border-light-tertiary,rgba(127,127,127,.18));vertical-align:middle}
+.dicer-report-table tr:nth-child(even) td{background:none}
+.dicer-report-table code{white-space:normal;overflow-wrap:anywhere}
+.dicer-report-value{font-family:var(--font-mono,monospace);font-size:11.5px}
+.dicer-report-result{text-align:right}
+.dicer-report-muted{opacity:.5}
+.dicer-report-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.dicer-report-row{padding:4px 8px;border-radius:4px;background:rgba(127,127,127,.08)}
+li.dicer-report-row,.dicer-report-row>summary{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.dicer-report-row>summary{cursor:pointer;list-style:none}
+.dicer-report-row>summary::-webkit-details-marker{display:none}
+.dicer-report-row>summary::before{content:'\\25B8';font-size:10px;opacity:.6;transition:transform .15s}
+.dicer-report-row[open]>summary::before{transform:rotate(90deg)}
+.dicer-report-row ul{list-style:none;margin:4px 0 2px 16px;padding:0;display:flex;flex-direction:column;gap:2px}
+.dicer-report-row li{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:12px}
+.dicer-report-name{flex:1;font-weight:600}
+.dicer-report-data{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.dicer-verdict{display:inline-block;font-size:11px;font-weight:600;line-height:1.5;padding:0 7px;border-radius:999px;white-space:nowrap;background:rgba(127,127,127,.2)}
+.dicer-verdict.is-copied,.dicer-verdict.is-migrated{background:rgba(70,170,90,.28)}
+.dicer-verdict.is-pending,.dicer-verdict.is-would-copy{background:rgba(225,170,40,.3)}
+.dicer-verdict.is-dicer,.dicer-verdict.is-would-keep{background:rgba(90,140,220,.28)}
+.dicer-verdict.is-invalid,.dicer-verdict.is-unusable,.dicer-verdict.is-no-counterpart,.dicer-verdict.is-off{background:rgba(200,70,70,.26)}
+`;
 
 let app = null;
 

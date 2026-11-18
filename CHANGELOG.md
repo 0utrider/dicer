@@ -7,6 +7,8 @@
 - **The benchmark can be stopped.** A Stop button while it runs, and closing its window stops it too; the scenarios measured so far stay in the table.
 - **The tray's gear panel tabs no longer spill their text** in systems with bigger button text, such as Pathfinder 2e.
 - The notice after importing Dice So Nice colours now shows its text instead of a raw key.
+- **A cleaner Dice So Nice migration report**: compact status tiles (with a warning when the import is switched off), a world settings table with headings, and tidy player rows, at a normal size in every system.
+- Dice So Nice's newer ghost dice choice (none, for all, roller, players) now imports into Dicer's ghost dice setting.
 
 ## 1.0.14
 

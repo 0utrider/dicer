@@ -20,7 +20,8 @@ export const SCOPE_KEY = /^(global|d[a-z0-9]+)$/i;
 export const WORLD_MAP = {
   maxDiceNumber: ['maxDice', (v) => (Number.isFinite(v) ? Math.min(100, Math.max(1, Math.round(v))) : undefined)],
   immediatelyDisplayChatMessages: ['immediatelyDisplayChatMessages', (v) => (typeof v === 'boolean' ? v : undefined)],
-  showGhostDice: ['showGhostDice', (v) => (typeof v === 'boolean' ? v : undefined)],
+  // Dice So Nice 4.2+ stores a choice: '0' none, '1' for all, '2' the roller, '3' players' rolls
+  showGhostDice: ['showGhostDice', (v) => (typeof v === 'boolean' ? v : ['0', '1', '2', '3'].includes(String(v)) ? String(v) !== '0' : undefined)],
 };
 /** DSN settings Dicer has no counterpart for yet. */
 export const UNMAPPED = ['hideNpcRolls', 'diceCanBeFlipped'];
