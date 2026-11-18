@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.16
+
+- **1.0.15 shipped without its module files** (its build failed on a slow test), so installs and updates from the manifest failed. 1.0.16 is the same release, rebuilt: everything listed under 1.0.15 is in it.
+- **The Dice So Nice migration report scrolls**, at a height that fits the screen.
+- **Import all players now** says when there is nothing new to import, instead of "Imported: 0 and 0".
+
 ## 1.0.15
 
 - **Saved Dice So Nice looks come over as themes.** Every look a player saved in Dice So Nice is added to their **My themes**, once, when they next load the world (a look that uses another module's dice set comes over once that module is active).
