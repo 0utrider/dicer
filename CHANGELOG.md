@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6
+
+- **Fixed: dice froze as they faded out in Firefox** (and the first roll of a new look froze as it was thrown). Firefox only finishes preparing dice graphics the first time they are drawn, so Dicer's preparation at load never really happened there. Dicer now finishes it while preparing.
+- **In browsers like that, the damage dice looks are prepared one at a time in quiet moments after loading**, never while dice are on screen, instead of all at once (or not at all, as in 1.0.5).
+- **Removed 1.0.5's pause at the start of a throw**, which added a second freeze instead of fixing the first.
+
 ## 1.0.5
 
 - **Loading into the world no longer stutters on some computers** (seen in Firefox on Windows). Where the browser stops everything while it prepares dice graphics, Dicer now prepares only your own dice when the world loads, as it did before 1.0.1, instead of every damage dice look one after another.

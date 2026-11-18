@@ -26,8 +26,9 @@ export function createWarmup({
   getLooks = () => [],
   warn = (message, err) => console.warn(message, err),
   info = (message) => console.info(message),
-  // between damage-look batches: the page gets a turn
-  breathe = () => new Promise((r) => (globalThis.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 1000 }) : setTimeout(r, 50))),
+  // between damage-look batches: the page gets a turn (`slow`: 2 s, then an idle moment)
+  breathe = (slow) =>
+    new Promise((r) => setTimeout(() => (globalThis.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 2000 }) : r()), slow ? 2000 : 0)),
 }) {
   let warming = null;
   let again = false;
@@ -64,13 +65,14 @@ export function createWarmup({
         } catch (err) {
           warn('dicer: cannot list the damage looks to warm up', err);
         }
-        // Where compiling blocks the page (no parallel compile: Firefox on Windows) the damage looks
-        // are not warmed: each would freeze the loading page; a roll with one compiles it, fade
-        // included (DiceBox #compileFades), as its throw starts.
-        if (renderer.parallelCompile === false) looks = [];
-        for (let i = 0; i < looks.length && !again; i += LOOK_BATCH) {
-          await breathe();
-          if (again || !(await pass(renderer, box.acquireWarmup(undefined, looks.slice(i, i + LOOK_BATCH))))) break;
+        // Where compiling blocks the page (no parallel compile: Firefox on Windows) each look is a
+        // short freeze: one at a time, in idle moments after loading, never with dice on screen.
+        const slow = renderer.parallelCompile === false;
+        const n = slow ? 1 : LOOK_BATCH;
+        for (let i = 0; i < looks.length && !again; i += n) {
+          await breathe(slow);
+          while (slow && box.activeRolls > 0 && !again) await breathe(slow);
+          if (again || !(await pass(renderer, box.acquireWarmup(undefined, looks.slice(i, i + n))))) break;
         }
       } while (again);
     })().finally(() => {

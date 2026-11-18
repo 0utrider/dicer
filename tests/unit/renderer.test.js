@@ -272,6 +272,23 @@ describe('quality hooks', () => {
     expect(r.isLooping).toBe(false);
   });
 
+  test('warmup uses each compiled program once (Firefox without parallel compiling compiles only at first use)', async () => {
+    const { r, fake } = setup();
+    fake.compileAsync = vi.fn(async () => {});
+    const used = [];
+    const programs = new Map();
+    fake.properties = {
+      get: (m) => {
+        if (!programs.has(m)) programs.set(m, { currentProgram: { getUniforms: () => used.push(m) } });
+        return programs.get(m);
+      },
+    };
+    const mat = new THREE.MeshBasicMaterial();
+    const fade = new THREE.MeshBasicMaterial({ transparent: true });
+    await r.warmup([mat], new THREE.BoxGeometry(), [fade]);
+    expect(used).toEqual([mat, fade]);
+  });
+
   test('warmup compiles kept fade clones it is given and leaves them undisposed', async () => {
     const { r, fake } = setup();
     fake.compileAsync = vi.fn(async (scene) => {

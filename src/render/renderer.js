@@ -239,7 +239,12 @@ export class DiceRenderer {
     return this.#compileApart(objects.map((o) => o.clone(false)));
   }
 
-  /** Compiles meshes from a private scene that is never rendered, targeting the real one. */
+  /**
+   * Compiles meshes from a private scene that is never rendered, targeting the real one, then
+   * uses each program once (getUniforms: three's first use, which asks the link status). Without
+   * KHR_parallel_shader_compile three counts a program ready at once, and Firefox only compiles
+   * it at that first use: a warmed fade program froze the page as the dice faded.
+   */
   async #compileApart(meshes) {
     if (!this.#renderer.compileAsync || !meshes.length) return;
     const tmp = new THREE.Scene();
@@ -252,6 +257,7 @@ export class DiceRenderer {
         canvas: this.#canvas,
         timeoutMs: this.#compileTimeoutMs,
       });
+      for (const m of meshes) this.#renderer.properties?.get(m.material)?.currentProgram?.getUniforms?.();
     } finally {
       tmp.clear();
     }
