@@ -136,6 +136,35 @@ describe('tray model', () => {
     expect(normalizeTrayPresets(many)).toHaveLength(MAX_TRAY_PRESETS);
   });
 
+  test("a picture's opacity and darkness: clamped, defaulting to fully shown and undimmed; one veil layer over it", () => {
+    expect(normalizeTray({}).imageOpacity).toBe(1);
+    expect(normalizeTray({}).imageDarkness).toBe(0);
+    const t = normalizeTray({ imageOpacity: 3, imageDarkness: -1 });
+    expect([t.imageOpacity, t.imageDarkness]).toEqual([1, 0]);
+    const pic = { surface: 'image', image: 'worlds/w/table.webp', color: '#204060' };
+    // fully shown, undimmed: a clear veil
+    expect(trayStyle(pic)['--dicer-tt-veil']).toBe('rgba(0, 0, 0, 0)');
+    // half opacity: the tray colour at half over the picture
+    expect(trayStyle({ ...pic, imageOpacity: 0.5 })['--dicer-tt-veil']).toBe('rgba(32, 64, 96, 0.5)');
+    // darkness only: black at that strength
+    expect(trayStyle({ ...pic, imageDarkness: 0.4 })['--dicer-tt-veil']).toBe('rgba(0, 0, 0, 0.4)');
+    // both: picture x 0.25, colour x 0.25, black the rest
+    expect(trayStyle({ ...pic, imageOpacity: 0.5, imageDarkness: 0.5 })['--dicer-tt-veil']).toBe('rgba(11, 21, 32, 0.75)');
+    // other surfaces: nothing over the floor
+    expect(trayStyle({ surface: 'felt', imageOpacity: 0.2 })['--dicer-tt-veil']).toBe('rgba(0, 0, 0, 0)');
+  });
+
+  test('the editor: a picture gets opacity, colour and darkness controls; sliders read as percent', () => {
+    globalThis.game = { i18n: { localize: (k) => k } };
+    const look = applyField(applyField(startingLook('mine', {}), 'image', 'worlds/w/table.webp'), 'surface', 'image');
+    const form = trayForm(look, 'mine');
+    for (const f of ['imageOpacity', 'imageDarkness', 'color']) expect(form.querySelector(`[data-field="${f}"]`)).toBeTruthy();
+    expect(form.querySelector('output[data-for="imageOpacity"]').textContent).toBe('100%');
+    expect(applyField(look, 'imageDarkness', '0.35').imageDarkness).toBe(0.35);
+    expect(trayForm(startingLook('mine', {}), 'mine').querySelector('[data-field="imageOpacity"]')).toBeNull();
+    delete globalThis.game;
+  });
+
   test('style: no design paints nothing (an unmasked design layer would cover the floor)', () => {
     const s = trayStyle({ design: { src: '', opacity: 0.7 } });
     expect(s['--dicer-tt-design-opacity']).toBe('0');

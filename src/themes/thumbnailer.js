@@ -12,7 +12,7 @@ import { restingQuaternion, minY } from '../core/resting.js';
 import { appearanceKey, normalizeAppearance, needsLookExtras } from '../look/appearance.js';
 import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import { createTurntable } from './turntable.js';
-import { lookFacesFor, FATE_FACES } from '../compat/faces.js';
+import { lookFacesFor, FATE_FACES, facesFor, atlasGlyphTest } from '../compat/faces.js';
 import { createFaceTextures } from '../render/face-textures.js';
 import { modelRotationFor } from '../compat/dsn-orientation.js';
 
@@ -95,6 +95,13 @@ export function createThumbnailer({
   reducedMotion = () => Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches),
   doc = globalThis.document,
   fonts = null,
+  showPresetFaces = () => {
+    try {
+      return globalThis.game?.settings?.get('dicer', 'presetFaces') !== false;
+    } catch {
+      return true;
+    }
+  },
 } = {}) {
   const make = createRenderer ?? (() => defaultCreateRenderer(size));
   const cache = new Map(); // key -> object URL
@@ -223,9 +230,20 @@ export function createThumbnailer({
   // The look's own face images (appearance.faces): this thumbnailer's face-layer cache, made on
   // first use. A relabelled die reads its own key (compat/faces.js lookFacesFor).
   let faceCache = null;
-  const faceSetOf = (dieType, appearance) => {
+  // A module set's own custom faces (symbols, words, pictures: theme.facePresets), drawn as a roll
+  // draws them while "Picture and symbol faces" is on; the look's face images go over them.
+  const presetSets = new WeakMap();
+  const glyphs = atlasGlyphTest(atlas);
+  const presetFacesOf = (theme, dieType) => {
+    const preset = theme?.facePresets?.[dieType];
+    if (!preset || !showPresetFaces()) return undefined;
+    if (!presetSets.has(preset)) presetSets.set(preset, facesFor(preset, glyphs));
+    return presetSets.get(preset);
+  };
+  const faceSetOf = (dieType, appearance, theme) => {
     const r = RELABELLED[dieType];
-    return r ? lookFacesFor(r[0], normalizeAppearance(appearance), r[2], r[1]) : lookFacesFor(dieType, normalizeAppearance(appearance));
+    const own = presetFacesOf(theme, dieType);
+    return r ? lookFacesFor(r[0], normalizeAppearance(appearance), own ?? r[2], r[1]) : lookFacesFor(dieType, normalizeAppearance(appearance), own);
   };
   const acquireFaces = (set) => (faceCache ??= createFaceTextures()).acquire(set);
   /** The labels with the faces drawn from layers left empty (as DiceBox does). */
@@ -269,7 +287,7 @@ export function createThumbnailer({
     const appearance = theme.perType?.[dieType] ?? theme.appearance;
     const model = await modelFor(theme, dieType, appearance);
     if (model) return renderLook(appearance, dieType, dieAtlas, null, null, model);
-    const set = faceSetOf(dieType, appearance);
+    const set = faceSetOf(dieType, appearance, theme);
     const tex = set ? await acquireFaces(set) : null;
     const src = bodySrcOf(appearance);
     const images = src ? (await requestLookExtras())?.bodyImages : null;
@@ -365,7 +383,7 @@ export function createThumbnailer({
     if (disposed || broken) return Promise.resolve(null);
     const appearance = theme?.perType?.[dieType] ?? theme?.appearance;
     if (!appearance) return Promise.resolve(null);
-    const key = `${appearanceKey(appearance)}|${dieType}|${size}|${theme?.models?.[dieType] ?? ''}`;
+    const key = `${appearanceKey(appearance)}|${dieType}|${size}|${theme?.models?.[dieType] ?? ''}|${presetFacesOf(theme, dieType)?.key ?? ''}`;
     if (cache.has(key)) return Promise.resolve(cache.get(key));
     if (inflight.has(key)) return inflight.get(key);
     const fontId = fontOf(appearance);
@@ -437,7 +455,7 @@ export function createThumbnailer({
 
     /** The face layers of the current look, or null; a set still loading rebuilds the die once in. */
     function facesNow() {
-      const set = faceSetOf(dieType, appearance);
+      const set = faceSetOf(dieType, appearance, theme);
       if (faces?.set.key === set?.key) return faces?.tex ?? null;
       dropFaces();
       if (!set) return null;

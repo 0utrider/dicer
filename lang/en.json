@@ -1154,6 +1154,8 @@
       },
       "Color": "Colour",
       "Image": "Picture",
+      "ImageOpacity": "Picture opacity (fades into the colour below)",
+      "ImageDarkness": "Picture darkness",
       "Browse": "Browse",
       "RimColor": "Rim colour",
       "RimWidth": "Rim width",

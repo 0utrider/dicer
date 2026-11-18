@@ -63,6 +63,8 @@ describe('module dice entries', () => {
     expect(marble.dropped).toEqual([{ kind: 'models', types: ['d6'] }]);
     expect(marble.faceImages).toEqual({ d20: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [i + 1, IMG(i + 1)])) });    expect(marble.models).toEqual({ d6: 'd6.glb' }); // the thumbnails draw them
     expect('models' in fire).toBe(false);
+    // the presets with faces of their own, for the thumbnails (plain-number presets are not)
+    expect(Object.keys(marble.facePresets)).toEqual(['d20']);
   });
 
   it('the registry view reads the textures (TEXTURELIST), so texture art reaches the looks', async () => {

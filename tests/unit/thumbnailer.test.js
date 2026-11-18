@@ -575,6 +575,26 @@ test('a look with face images draws them from face layers, and gives them back a
   t.dispose();
 });
 
+test("a module set's own symbol faces draw in its thumbnail, unless Picture and symbol faces is off", async () => {
+  const tex = { texture: new THREE.DataArrayTexture(new Uint8Array(16), 2, 2, 1), layers: null, tint: new Uint8Array(20) };
+  faceCache.acquire = vi.fn(async (set) => ({ ...tex, layers: Int16Array.from(set.labels.map((l) => (l.kind === 'glyph' ? -1 : 0))) }));
+  faceCache.release = vi.fn();
+  const labels = Array.from({ length: 20 }, (_, i) => (i === 19 ? '♞' : String(i + 1)));
+  const entry = { ...theme(), perType: {}, facePresets: { d20: { system: 'pony', type: 'd20', labels } } };
+  let on = true;
+  const { t } = make({ opts: { showPresetFaces: () => on } });
+  createDiceMaterial.mockClear();
+  await t.thumbnail(entry, 'd20');
+  expect(faceCache.acquire).toHaveBeenCalledTimes(1);
+  expect(faceCache.acquire.mock.calls[0][0].labels.map((l) => l.text)).toContain('♞');
+  expect(createDiceMaterial.mock.calls.at(-1)[5]?.texture).toBe(tex.texture);
+  on = false;
+  faceCache.acquire.mockClear();
+  await t.thumbnail(entry, 'd20');
+  expect(faceCache.acquire).not.toHaveBeenCalled();
+  t.dispose();
+});
+
 test('a module entry with a model draws the model, its shown face on top, and never frees its material', async () => {
   const model = { geometry: new THREE.BoxGeometry(1, 1, 1), material: new THREE.MeshStandardMaterial() };
   modelChunk.load = vi.fn(async () => model);

@@ -48,7 +48,7 @@ export function paintPreview(el, look) {
 }
 /** A slider's readout: percent for fractions, px otherwise. */
 export const rangeText = (field, value) =>
-  ['design.size', 'design.opacity'].includes(field)
+  ['design.size', 'design.opacity', 'imageOpacity', 'imageDarkness'].includes(field)
     ? `${Math.round(Number(value) * 100)}%`
     : `${Math.round(Number(value))} px`;
 
@@ -129,7 +129,7 @@ export const designChoice = (look) =>
 /** A look with one form field changed (`field` a dotted path, `value` as the control gives it). */
 export function applyField(look, field, value) {
   const next = structuredClone(look);
-  const numeric = ['rim.width', 'radius', 'design.size', 'design.opacity'];
+  const numeric = ['rim.width', 'radius', 'design.size', 'design.opacity', 'imageOpacity', 'imageDarkness'];
   const v = numeric.includes(field) ? Number(value) : value;
   if (field === 'design.choice')
     next.design.src =
@@ -305,9 +305,15 @@ export function trayForm(
     ]),
     section('DICER.DiceTray.SurfaceTitle', [
       chips('surface', TRAY_SURFACES, surface, SURFACE_LABELS, SURFACE_ICONS),
-      surface === 'image'
-        ? row('DICER.DiceTray.Image', path('image', look.image, 'image'))
-        : row('DICER.DiceTray.Color', colour('color', look.color)),
+      ...(surface === 'image'
+        ? [
+            row('DICER.DiceTray.Image', path('image', look.image, 'image')),
+            // the picture fades into the tray colour as its opacity goes down
+            row('DICER.DiceTray.ImageOpacity', range('imageOpacity', 0, 1, 0.05, look.imageOpacity)),
+            row('DICER.DiceTray.Color', colour('color', look.color)),
+            row('DICER.DiceTray.ImageDarkness', range('imageDarkness', 0, 1, 0.05, look.imageDarkness)),
+          ]
+        : [row('DICER.DiceTray.Color', colour('color', look.color))]),
     ]),
     section('DICER.DiceTray.RimTitle', [
       chips('rim.style', TRAY_RIMS, look.rim.style, RIM_LABELS),

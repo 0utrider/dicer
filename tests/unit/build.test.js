@@ -369,9 +369,11 @@ describe('build', () => {
     // is in the world-start bundle): owner approved +2,237 B (31,743 -> 33,980), 2026-11-17.
     // Damage dice looks compiled at world start and one fade clone kept per material (the freezes
     // on a first damage roll and as dice fade): owner approved +1,210 B (33,980 -> 35,190), 2026-11-18.
+    // Picture tray opacity and darkness (two tray look fields and the veil colour in trayStyle):
+    // owner approved +18 B (35,190 -> 35,208), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(35_190);
+    expect(growth).toBeLessThanOrEqual(35_208);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

@@ -2536,6 +2536,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   border-radius: var(--dicer-tt-radius);
   background:
     var(--tt-floor-light) padding-box,
+    linear-gradient(var(--dicer-tt-veil, transparent), var(--dicer-tt-veil, transparent)) padding-box,
     var(--tt-floor-tex) center / var(--tt-floor-size) padding-box,
     linear-gradient(var(--dicer-tt-color), var(--dicer-tt-color)) padding-box,
     var(--tt-rim-light) border-box,
@@ -2543,7 +2544,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
     var(--tt-rim-deco) 0 0 / var(--tt-rim-step) calc(4 * var(--tt-rim-step)) space border-box,
     var(--tt-rim-tex) border-box,
     linear-gradient(var(--dicer-tt-rim), var(--dicer-tt-rim)) border-box;
-  background-blend-mode: normal, var(--tt-floor-blend), normal, normal, normal, normal, overlay, normal;
+  background-blend-mode: normal, normal, var(--tt-floor-blend), normal, normal, normal, normal, overlay, normal;
   /* outside: a hairline, the contact shadow and a soft one on the table (lit from above, as the
      dice). Inside: the floor sits below the walls: the top wall's deep shadow, the side walls'
      softer ones, darker corners, and the bottom wall catching a little light. */
@@ -2686,9 +2687,10 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
     linear-gradient(180deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.25) 9%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 86%, rgba(255, 255, 255, 0.08)),
     radial-gradient(closest-side, rgba(0, 0, 0, 0) 62%, rgba(0, 0, 0, 0.5)),
     var(--tt-floor-light),
+    linear-gradient(var(--dicer-tt-veil, transparent), var(--dicer-tt-veil, transparent)),
     var(--tt-floor-tex) center / var(--tt-floor-size),
     linear-gradient(var(--dicer-tt-color), var(--dicer-tt-color));
-  background-blend-mode: normal, normal, normal, var(--tt-floor-blend), normal;
+  background-blend-mode: normal, normal, normal, normal, var(--tt-floor-blend), normal;
 }
 /* the lip: a dark edge where the rim drops to the floor */
 .dicer-tt:is([data-shape='hex'], [data-shape='octagon']) .dicer-tt-skin::after {

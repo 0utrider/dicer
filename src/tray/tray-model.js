@@ -32,6 +32,9 @@ export const DEFAULT_TRAY = Object.freeze({
   shape: 'rect',
   color: '#1f4d36',
   image: '',
+  // the Image surface's picture: how much of it shows over the tray colour, and how dark it is
+  imageOpacity: 1,
+  imageDarkness: 0,
   rim: Object.freeze({ style: 'wood', color: '#4a2f1b', width: 16 }),
   radius: 10,
   design: Object.freeze({ src: '', color: '#d8b25a', size: 0.55, opacity: 0.7 }),
@@ -67,6 +70,8 @@ export function normalizeTray(raw) {
     shape: TRAY_SHAPES.includes(t.shape) ? t.shape : DEFAULT_TRAY.shape,
     color: color(t.color, DEFAULT_TRAY.color),
     image,
+    imageOpacity: num(t.imageOpacity, 0, 1, DEFAULT_TRAY.imageOpacity),
+    imageDarkness: num(t.imageDarkness, 0, 1, DEFAULT_TRAY.imageDarkness),
     rim: {
       style: TRAY_RIMS.includes(rim.style) ? rim.style : DEFAULT_TRAY.rim.style,
       color: color(rim.color, DEFAULT_TRAY.rim.color),
@@ -204,10 +209,22 @@ export function trayStyle(look, route = (p) => p) {
     '--dicer-tt-design-opacity': design ? String(t.design.opacity) : '0',
     '--dicer-tt-color': t.color,
     '--dicer-tt-image': t.surface === 'image' ? `url("${route(t.image)}")` : 'none',
+    '--dicer-tt-veil': t.surface === 'image' ? veil(t) : 'rgba(0, 0, 0, 0)',
     '--dicer-tt-rim': t.rim.color,
     '--dicer-tt-rim-width': `${t.rim.width}px`,
     '--dicer-tt-radius': `${t.radius}px`,
   };
+}
+
+/**
+ * The one layer over the Image surface's picture: the tray colour at 1 - opacity, then black at
+ * the darkness, folded into one colour (alpha A, colour K): picture x o(1-d) + colour x (1-o)(1-d).
+ */
+function veil({ color: c, imageOpacity: o, imageDarkness: d }) {
+  const a = 1 - o * (1 - d);
+  const k = a > 0 ? ((1 - o) * (1 - d)) / a : 0;
+  const ch = [1, 3, 5].map((i) => Math.round(parseInt(c.slice(i, i + 2), 16) * k));
+  return `rgba(${ch.join(', ')}, ${+a.toFixed(3)})`;
 }
 
 /**

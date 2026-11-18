@@ -119,6 +119,7 @@ function systemEntry(id, sys, registry) {
   const looks = new Map();
   const faces = []; // custom faces a theme cannot hold
   const faceImages = {}; // image faces it can (die type -> {value: path})
+  const facePresets = {}; // die type -> preset with custom faces: the thumbnails draw them
   const models = [];
   const modelFiles = {}; // die type -> model url: the thumbnails draw the models
   const fonts = [];
@@ -128,6 +129,7 @@ function systemEntry(id, sys, registry) {
     const look = colorsetNameToAppearance(cs, registry);
     if (look) looks.set(type, look);
     if (hasCustomFaces(type, preset)) {
+      facePresets[type] = preset;
       const images = faceImagesOf(type, preset);
       if (images) faceImages[type] = images;
       else faces.push(type);
@@ -160,6 +162,7 @@ function systemEntry(id, sys, registry) {
     dropped,
     ...(models.length ? { models: modelFiles } : {}),
     ...(Object.keys(faceImages).length ? { faceImages } : {}),
+    ...(Object.keys(facePresets).length ? { facePresets } : {}),
     // all its look is in its models: an import takes its colours from them (themes/model-colours.js)
     ...(models.length && !looks.size ? { colourless: true } : {}),
   };

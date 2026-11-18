@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- **Picture trays: opacity and darkness.** A tray with your own picture as its surface now has a **Picture opacity** slider (the picture fades into the tray colour, which you can pick too) and a **Picture darkness** slider, so a busy or bright picture can sit back behind the dice.
+- **Fixed: theme previews left out the symbols on module dice sets.** A set from another module with symbols, words or pictures on its faces (Ponyfinder's pony on the 20) showed plain numbers in the Dicer themes cards and preview, though rolls drew the symbols. The previews now draw them too, unless **Picture and symbol faces** is off.
+
 ## 1.0.1
 
 - **Fixed: the canvas froze for a moment on the first roll of a damage type** (an Electric Arc, a fireball). Fire, cold, electricity and the other damage dice have their own looks, and the first roll of each had to prepare its graphics on the spot. Dicer now prepares them in the background when the world loads.
