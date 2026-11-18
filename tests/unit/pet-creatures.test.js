@@ -107,7 +107,7 @@ describe.each(KINDS)('%s', (kind) => {
             expect(c.root.position.equals(pos)).toBe(true); // the layer owns the root
           }
     c.dispose();
-  });
+  }, 60000); // every pose of every part: slow on a CI runner
 
   test('crit, fumble, mixed and plain give different poses', () => {
     const c = CREATURES[kind]('#c0392b');

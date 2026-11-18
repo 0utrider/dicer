@@ -115,6 +115,7 @@ export function renderReport(report) {
 // its own look, here in the lazy chunk (not in dicer.css, which every world start loads); sizes are
 // set here, so a system's big headings and body text (PF2e) do not blow the report up
 const CSS = `
+#dicer-dsn-report .window-content{overflow-y:auto}
 .dicer-dsn-report{font-size:var(--font-size-13,13px);line-height:1.4;display:flex;flex-direction:column;gap:14px}
 .dicer-dsn-report section{margin:0}
 .dicer-dsn-report .dicer-report-h{margin:0 0 6px;padding:0 0 4px;border:0;border-bottom:1px solid var(--color-border-light-tertiary,rgba(127,127,127,.3));font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
@@ -166,7 +167,8 @@ export function openDsnReport() {
       id: 'dicer-dsn-report',
       classes: ['dicer-dsn-report-app'],
       window: { title: `${P}.Title`, icon: 'fa-solid fa-clipboard-list', resizable: true },
-      position: { width: 560, height: 'auto' },
+      // a set height (it fits the screen, and resizes): the report scrolls inside it
+      position: { width: 560, height: Math.min(720, Math.round((globalThis.innerHeight || 800) * 0.85)) },
     };
     async _renderHTML() {
       return renderReport(

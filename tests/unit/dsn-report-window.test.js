@@ -94,3 +94,11 @@ test('the world table has column heads; the import switched off is flagged in it
   expect(root.querySelector('.dicer-report-tile.is-warn')).toBeTruthy();
   expect(renderReport(full()).querySelector('.dicer-report-tile.is-warn')).toBeNull();
 });
+
+test('the window scrolls: a set height that fits the screen, and a scrolling body', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('src/ui/dsn-report.js', 'utf8');
+  expect(src).toContain('#dicer-dsn-report .window-content{overflow-y:auto}');
+  expect(src).not.toMatch(/height: 'auto'/);
+  expect(renderReport(full()).querySelector('style').textContent).toContain('overflow-y:auto');
+});
