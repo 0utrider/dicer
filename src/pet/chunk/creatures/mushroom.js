@@ -33,12 +33,14 @@ import {
  */
 
 const HEIGHT = 1.5;
-const FOOT = 0.87; // top-down body radius in scene units (the cap, measured from the built geometry)
+const FOOT = 0.86; // top-down body radius in scene units (the cap, measured from the built geometry)
 // Design units (scaled to HEIGHT at build).
-const CAP_Y = 0.86; // the cap's pivot, on top of the stem
+const CAP_Y = 1.0; // the cap's pivot (its rim), up on the stem
 const CAP_Z = -0.02; // ...set back a hair: tipped back, the cap stays centred over the feet
-const CAP_R = 0.88; // cap radius
-const CAP_H = 0.56; // cap dome height above its rim
+const CAP_R = 0.92; // cap radius
+const CAP_H = 0.46; // cap dome height above its rim
+const RIM_IN = 0.84; // the curled rim's inner edge, where the gills meet it (fraction of CAP_R)
+const GILLS = 32; // gill ridges (lathe segments) under the cap
 const TILT = -0.22; // the cap's rest tilt: back, so the face on it looks up
 const EYE_R = 0.2;
 const EYE_A = 0.74; // the eyes' polar angle on the dome (0 the top)
@@ -48,21 +50,40 @@ const SPORES = 5;
 const MIN_SCALE = 1e-3;
 
 const CREAM = new THREE.Color('#f3e6c8');
-const GILL = new THREE.Color('#d8c29a');
+const GILL = new THREE.Color('#c9ad80'); // the gills' furrows
+const RIDGE = new THREE.Color('#ead9b4'); // ...and their ridges
+const SKIRT = new THREE.Color('#ecdcb8');
 const SHOE = new THREE.Color('#e4cfa4');
 const CHEEK = new THREE.Color('#ff8fa3');
 
-/** The stem's profile (radius, y), bottom to top: a stubby barrel, wider low down. */
+/** The stem's profile (radius, y), bottom to top: a sturdy barrel, wider low down, tapering a little
+ * up to the cap and running on up inside it (its top is hidden in the flare and the dome). */
 const STEM = [
   [0.001, 0.05],
-  [0.29, 0.07],
-  [0.39, 0.18],
-  [0.42, 0.36],
-  [0.41, 0.5],
-  [0.38, 0.64],
-  [0.32, 0.8],
-  [0.25, 0.9],
-  [0.001, 0.94],
+  [0.28, 0.07],
+  [0.37, 0.18],
+  [0.37, 0.34],
+  [0.32, 0.56],
+  [0.28, 0.76],
+  [0.26, 0.94],
+  [0.001, 1.04],
+];
+/** The stem's flare into the cap underside (cap space, radius, y), bottom to top: its narrow end is
+ * tucked inside the stem, so the stem reads as widening up into the cap whatever the cap does. */
+const FLARE = [
+  [0.14, -0.3],
+  [0.19, -0.17],
+  [0.28, -0.08],
+  [0.42, -0.02],
+];
+/** The ring (annulus) hanging round the stem just under the flare (relative to the cap's height):
+ * the top tucked into the stem where the flare comes out of it, a lip skirting out and down, its
+ * underside back in to the stem. */
+const ANNULUS = [
+  [0.16, -0.22],
+  [0.33, -0.285],
+  [0.36, -0.27],
+  [0.18, -0.12],
 ];
 
 /** A point on the cap dome (an ellipsoid) at polar angle a (0 the top) and azimuth phi (0 = +Z). */
@@ -76,13 +97,50 @@ function capPoint(a, phi, out, normal) {
 
 /** The cap: a dome whose rim curls under a little (a lathe, bottom to top so it faces out). */
 function capGeometry() {
-  const pts = [new THREE.Vector2(CAP_R * 0.84, -0.075), new THREE.Vector2(CAP_R * 0.97, -0.05)];
-  const N = 8;
+  const pts = [new THREE.Vector2(CAP_R * RIM_IN, -0.075), new THREE.Vector2(CAP_R * 0.97, -0.05)];
+  const N = 7;
   for (let i = 0; i <= N; i++) {
     const a = (Math.PI / 2) * (1 - i / N);
     pts.push(new THREE.Vector2(Math.max(0.001, CAP_R * Math.sin(a)), CAP_H * Math.cos(a)));
   }
   return new THREE.LatheGeometry(pts, 20);
+}
+
+/** The cap underside: a shallow cone from the stem's flare out to the rim, ridged with radial gills
+ * (alternate lathe columns pushed down / up at build) in two creams. Inner to outer, so it faces down. */
+function gillsGeometry() {
+  const pts = [
+    new THREE.Vector2(0.4, -0.02),
+    new THREE.Vector2(0.6, -0.05),
+    new THREE.Vector2(CAP_R * RIM_IN - 0.005, -0.072),
+  ];
+  const g = new THREE.LatheGeometry(pts, GILLS);
+  const pos = g.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  const np = pts.length;
+  for (let i = 0; i <= GILLS; i++) {
+    const ridge = i % 2 === 0;
+    for (let j = 0; j < np; j++) {
+      const k = i * np + j;
+      if (j === 1) pos.setY(k, pos.getY(k) + (ridge ? -0.025 : 0.02));
+      const c = ridge || j === 0 ? RIDGE : GILL;
+      col.set([c.r, c.g, c.b], k * 3);
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A lathe from a [radius, y] profile, painted. */
+function lathe(profile, segments, color) {
+  return paint(
+    new THREE.LatheGeometry(
+      profile.map(([r, y]) => new THREE.Vector2(r, y)),
+      segments,
+    ),
+    color,
+  );
 }
 
 /** The spots: flattened discs sat on the dome, merged into one geometry. */
@@ -200,24 +258,14 @@ export function mushroom(color) {
   }
 
   // The stem: the body, cream.
-  kit.mesh(
-    paint(
-      new THREE.LatheGeometry(
-        STEM.map(([r, y]) => new THREE.Vector2(r, y)),
-        16,
-      ),
-      CREAM,
-    ),
-    detail,
-    squash,
-  );
+  kit.mesh(lathe(STEM, 14, CREAM), detail, squash);
 
   // Stub arms, hinged at the shoulder, hanging a little down at rest.
   const armGeo = kit.geo(paint(new THREE.SphereGeometry(0.085, 6, 4), CREAM));
   const arms = [1, -1].map((side) => {
     const pivot = new THREE.Group();
     pivot.rotation.order = 'YXZ';
-    pivot.position.set(side * 0.34, 0.46, 0.04);
+    pivot.position.set(side * 0.33, 0.44, 0.04);
     const a = new THREE.Mesh(armGeo, detail);
     a.scale.set(1.5, 0.8, 0.85);
     a.position.x = side * 0.09;
@@ -227,8 +275,9 @@ export function mushroom(color) {
     return pivot;
   });
 
-  // The cap, on its own pivot on top of the stem: dome, spots, and the gills underneath (in a
-  // shape group that takes the cap's squash), and the face on its front slope.
+  // The cap, on its own pivot up on the stem: dome, spots, the gills underneath and the stem's flare
+  // up into them (in a shape group that takes the cap's squash), and the face on its
+  // front slope.
   const cap = new THREE.Group();
   cap.rotation.order = 'YXZ';
   rig.add(cap);
@@ -236,14 +285,13 @@ export function mushroom(color) {
   cap.add(capShape);
   kit.mesh(capGeometry(), body, capShape);
   kit.mesh(spotsGeometry(), accent, capShape);
-  kit.mesh(
-    paint(new THREE.CircleGeometry(CAP_R * 0.85, 20).rotateX(Math.PI / 2), GILL),
-    detail,
-    capShape,
-    0,
-    -0.07,
-    0,
-  );
+  kit.mesh(gillsGeometry(), detail, capShape);
+  kit.mesh(lathe(FLARE, 14, CREAM), detail, capShape);
+  // The ring rides the cap's height (so it stays just under the flare as the cap bobs and drops)
+  // but stays upright round the stem when the cap tips.
+  const ring = new THREE.Group();
+  rig.add(ring);
+  kit.mesh(lathe(ANNULUS, 14, SKIRT), detail, ring);
 
   // The face sits on the cap's front slope, facing out along the dome (so up at the table camera,
   // the cap tipped back): it rides the cap but keeps its own shape, placed from the cap's squash.
@@ -622,6 +670,7 @@ export function mushroom(color) {
     // The cap sits on the stem's top: it follows the squash but keeps its own shape.
     cap.position.set(0, CAP_Y * sy - o.capDrop, CAP_Z + o.capSlide);
     cap.rotation.set(o.capTilt, o.capSpin, o.capRoll);
+    ring.position.set(0, cap.position.y, CAP_Z);
     const cs = Math.max(0.4, 1 - o.capSquash);
     const cxz = cs ** -0.5;
     capShape.scale.set(cxz, cs, cxz);

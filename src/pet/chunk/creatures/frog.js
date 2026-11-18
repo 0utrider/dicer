@@ -15,7 +15,6 @@ import {
   palette,
   poseKit,
   createKit,
-  createEye,
   detailMaterial,
 } from './parts.js';
 
@@ -40,27 +39,74 @@ const TOPY = 0.58; // top of the back
 const PIVOT = new THREE.Vector3(0, 0.3, 0.05); // the face turns about this (head shrug, nod)
 const POUCH_R = 0.15;
 
-/** A frog body: flat base with a rounded skirt, a broad low dome, wider toward the front. */
+/**
+ * A point on the frog body (design units): direction a about the y axis (atan2 of z, x) and height
+ * s on the unit sphere it is shaped from (-1 the flat base .. 0 the rim of the dome .. 1 the top of
+ * the back). The body is a flat base with a rounded skirt and a broad low dome, wider toward the
+ * front, the snout dipping a little; details are placed on it analytically.
+ */
+function surf(a, s, out) {
+  const dx = Math.cos(a);
+  const dz = Math.sin(a);
+  const c = Math.sqrt(Math.max(0, 1 - s * s));
+  let rr;
+  let y;
+  if (s < 0) {
+    rr = c ** 0.3;
+    y = SKIRT * (1 + s) ** 1.6;
+  } else {
+    rr = c ** 0.7 * (1 - 0.1 * s);
+    y = SKIRT + (TOPY - SKIRT) * s ** 0.8 - 0.05 * Math.max(0, dz) * s;
+  }
+  return out.set(dx * rr * RX * (1 + 0.08 * dz), y, dz * rr * RZ);
+}
+
+/** The outward normal of the body at (a, s) (finite differences). */
+function surfNormal(a, s, out) {
+  const e = 1e-3;
+  const s0 = Math.max(-0.999, Math.min(0.999, s));
+  const pa = surf(a + e, s0, new THREE.Vector3()).sub(surf(a - e, s0, new THREE.Vector3()));
+  const ps = surf(a, s0 + e, new THREE.Vector3()).sub(surf(a, s0 - e, new THREE.Vector3()));
+  return out.crossVectors(ps, pa).normalize();
+}
+
+/** The top of the body above (x, z): its (a, s) on the dome. */
+function domeAt(x, z) {
+  let a = Math.atan2(z / RZ, x / RX);
+  for (let i = 0; i < 6; i++) a = Math.atan2(z / RZ, x / (RX * (1 + 0.08 * Math.sin(a))));
+  const rr = Math.hypot(x / (RX * (1 + 0.08 * Math.sin(a))), z / RZ);
+  let lo = 0; // rr falls from 1 at s 0 to 0 at s 1
+  let hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const m = (lo + hi) / 2;
+    if (Math.sqrt(1 - m * m) ** 0.7 * (1 - 0.1 * m) > rr) lo = m;
+    else hi = m;
+  }
+  return [a, (lo + hi) / 2];
+}
+
+/** The front of the body (x 0) at height y >= SKIRT: its z. */
+function frontZ(y) {
+  let lo = 0;
+  let hi = 1;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < 24; i++) {
+    const m = (lo + hi) / 2;
+    if (surf(Math.PI / 2, m, v).y < y) lo = m;
+    else hi = m;
+  }
+  return surf(Math.PI / 2, (lo + hi) / 2, v).z;
+}
+
+/** Shapes a unit sphere into the frog body. */
 function frogBody(geo) {
   const p = geo.attributes.position;
   const v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {
-    v.fromBufferAttribute(p, i); // unit sphere
+    v.fromBufferAttribute(p, i);
     const s = Math.max(-1, Math.min(1, v.y));
-    const c = Math.sqrt(1 - s * s);
-    const len = Math.hypot(v.x, v.z) || 1;
-    const dx = v.x / len;
-    const dz = v.z / len;
-    let rr;
-    let y;
-    if (s < 0) {
-      rr = c ** 0.3;
-      y = SKIRT * (1 + s) ** 1.6;
-    } else {
-      rr = c ** 0.7 * (1 - 0.1 * s);
-      y = SKIRT + (TOPY - SKIRT) * s ** 0.8 - 0.05 * Math.max(0, dz) * s; // the snout dips a little
-    }
-    p.setXYZ(i, dx * rr * RX * (1 + 0.08 * dz), y, dz * rr * RZ);
+    surf(Math.atan2(v.z, v.x), s, v);
+    p.setXYZ(i, v.x, v.y, v.z);
   }
   geo.computeVertexNormals();
   return geo;
@@ -71,6 +117,89 @@ function wrap(geo, k) {
   const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) p.setZ(i, p.getZ(i) - k * p.getX(i) ** 2);
   geo.computeVertexNormals();
+  return geo;
+}
+
+const EYE_X = 0.23; // where the eyes sit on the head (design units)
+const EYE_Z = 0.15;
+const EYE_UP = 0.09; // eye centre above the head
+// The socket's rings, from in under the ball out to the crest, down the flare and into the head:
+// -1 is inside the ball, 0..1 the crest to where it meets the head, 2 a skirt reaching down under
+// that, inside the body.
+const SOCKET_RINGS = [-1, 0, 0.35, 0.7, 1, 2];
+const SOCKET_W = 0.075; // how far the flare reaches out past the crest
+const SOCKET_F = 0.045; // how high above the head the crest sits on the ball
+
+/**
+ * The bump an eye sits in, in head space about the eye centre `home`: a fillet between the ball
+ * and the head. All round, its crest rides the ball (tucked under the lids) a little above where
+ * the ball meets the head, and a smooth concave flare runs from there down into the head at a
+ * shallow angle, so the eye rises out of a soft rounded swelling. Built on the analytic body
+ * surface `topY`, so it hugs the dome however steeply it falls away.
+ */
+function socketGeo(home, topY) {
+  const n = SOCKET_RINGS.length;
+  const geo = new THREE.LatheGeometry(
+    SOCKET_RINGS.map((_, j) => new THREE.Vector2(1, j)),
+    12,
+  );
+  const p = geo.attributes.position;
+  const head = (cx, cz, d) => topY(home.x + cx * d, home.z + cz * d) - home.y;
+  for (let i = 0; i < p.count; i++) {
+    const j = Math.round(p.getY(i));
+    const len = Math.hypot(p.getX(i), p.getZ(i)) || 1;
+    const cx = p.getX(i) / len;
+    const cz = p.getZ(i) / len;
+    // the crest: the point on the ball (polar angle b from the top) SOCKET_F above the head
+    let lo = Math.PI / 3;
+    let hi = Math.PI;
+    for (let it = 0; it < 20; it++) {
+      const b = (lo + hi) / 2;
+      if (EYE_R * Math.cos(b) - head(cx, cz, EYE_R * Math.sin(b)) > SOCKET_F) lo = b;
+      else hi = b;
+    }
+    const b = (lo + hi) / 2;
+    const cd = EYE_R * Math.sin(b) * 0.985;
+    const cy = EYE_R * Math.cos(b) * 0.985;
+    const fy = head(cx, cz, cd + SOCKET_W) - 0.07; // the foot, inside the skin
+    const k = SOCKET_RINGS[j];
+    let d;
+    let y;
+    if (k < 0) {
+      d = cd * 0.7;
+      y = cy;
+    } else if (k > 1) {
+      d = cd * 0.85; // deep enough to stay in the head when it shrugs
+      y = fy - 0.13;
+    } else {
+      d = cd + SOCKET_W * k;
+      y = head(cx, cz, d) - 0.07 * k + (cy - head(cx, cz, cd)) * (1 - k) ** 1.3;
+    }
+    p.setXYZ(i, cx * d, y, cz * d);
+  }
+  geo.computeVertexNormals();
+  // weld the lathe seam's normals
+  const nr = geo.attributes.normal;
+  const last = p.count - n;
+  const v = new THREE.Vector3();
+  for (let j = 0; j < n; j++) {
+    v.fromBufferAttribute(nr, j)
+      .add(new THREE.Vector3().fromBufferAttribute(nr, last + j))
+      .normalize();
+    nr.setXYZ(j, v.x, v.y, v.z);
+    nr.setXYZ(last + j, v.x, v.y, v.z);
+  }
+  return geo;
+}
+
+/** Sinks the ball a little under the pupil cap (around +Z), so no white pokes through its facets. */
+function underPupil(geo) {
+  const p = geo.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    if (v.z > EYE_R * Math.cos(0.72)) p.setXYZ(i, v.x * 0.95, v.y * 0.95, v.z * 0.95);
+  }
   return geo;
 }
 
@@ -110,15 +239,17 @@ const MOVE_SQUASH = [
   0, 0, 0.06, 0.28, 0.11, -0.2, 0.25, -0.05, 0.38, 0, 0.45, 0.3, 0.55, 0.26, 0.61, -0.2, 0.75,
   -0.05, 0.88, 0, 0.94, 0.28, 0.985, -0.04, 1, 0,
 ];
-const MOVE_KICK = [0, 0, 0.07, 0, 0.13, 1, 0.28, 0.75, 0.39, 0, 0.57, 0, 0.63, 1, 0.78, 0.75, 0.89, 0, 1, 0];
+const MOVE_KICK = [
+  0, 0, 0.07, 0, 0.13, 1, 0.28, 0.75, 0.39, 0, 0.57, 0, 0.63, 1, 0.78, 0.75, 0.89, 0, 1, 0,
+];
 const MOVE_PITCH = [
   0, 0, 0.06, 0.08, 0.13, -0.28, 0.28, 0.05, 0.4, 0.14, 0.5, 0.06, 0.63, -0.24, 0.78, 0.05, 0.9,
   0.12, 1, 0,
 ];
 const CRIT_POUCH = [0, 0, 0.09, 1.1, 0.17, 0.75, 0.26, 1.1, 0.36, 0];
 const CRIT_SQUASH = [
-  0, 0, 0.1, -0.06, 0.26, -0.06, 0.37, 0.3, 0.42, -0.26, 0.6, -0.08, 0.73, 0, 0.78, 0.32, 0.86, -0.08,
-  0.93, 0.04, 1, 0,
+  0, 0, 0.1, -0.06, 0.26, -0.06, 0.37, 0.3, 0.42, -0.26, 0.6, -0.08, 0.73, 0, 0.78, 0.32, 0.86,
+  -0.08, 0.93, 0.04, 1, 0,
 ];
 const CRIT_KICK = [0, 0, 0.38, 0, 0.43, 1, 0.62, 0.85, 0.74, 0];
 const CRIT_TONGUE = [0, 0, 0.46, 0, 0.51, 1, 0.56, 1, 0.62, 0];
@@ -137,7 +268,13 @@ export function frog(color) {
   const { body: bodyColor, accent: accentColor } = palette(color);
   const kit = createKit();
   const body = kit.mat(
-    new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.35, metalness: 0 }),
+    // double-sided: looking into an eyelid shell past the ball shows its green inside, not a gap
+    new THREE.MeshStandardMaterial({
+      color: bodyColor,
+      roughness: 0.35,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    }),
   );
   const accent = kit.mat(
     new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.4, metalness: 0 }),
@@ -154,43 +291,49 @@ export function frog(color) {
   const squash = new THREE.Group(); // squash/stretch about the floor
   rig.add(squash);
 
-  const blob = kit.mesh(frogBody(new THREE.SphereGeometry(1, 20, 12)), body, squash);
-  const belly = kit.mesh(new THREE.SphereGeometry(1, 10, 6), accent, squash, 0, 0.16, 0.13);
-  belly.scale.set(0.4, 0.15, 0.36);
+  kit.mesh(frogBody(new THREE.SphereGeometry(1, 20, 11)), body, squash);
 
-  // Surface probes (build time only): where the face, spots and nostrils sit on the body.
-  root.updateMatrixWorld(true);
-  const ray = new THREE.Raycaster();
-  const down = new THREE.Vector3(0, -1, 0);
-  const back = new THREE.Vector3(0, 0, -1);
-  const hit = (origin, dir) => {
-    ray.set(origin, dir);
-    return ray.intersectObject(blob, false)[0];
-  };
-  const topAt = (x, z) => hit(new THREE.Vector3(x, 2, z), down);
-  const frontAt = (x, y) => hit(new THREE.Vector3(x, y, 2), back).point.z;
+  // The light belly: a patch hugging the front of the skirt, a hair off the skin (a disc mapped
+  // onto the body surface, so it follows the curve with no edge poking out).
+  const bellyGeo = new THREE.RingGeometry(0.001, 1, 16, 2);
+  {
+    const bp = bellyGeo.attributes.position;
+    const v = new THREE.Vector3();
+    const n = new THREE.Vector3();
+    for (let i = 0; i < bp.count; i++) {
+      const a = Math.PI / 2 - 0.45 * bp.getX(i); // (mirrored: the ring's face turns outward)
+      const s = -0.24 + 0.32 * bp.getY(i);
+      surf(a, s, v).addScaledVector(surfNormal(a, s, n), 0.009);
+      bp.setXYZ(i, v.x, v.y, v.z);
+    }
+    bellyGeo.computeVertexNormals();
+  }
+  kit.mesh(bellyGeo, accent, squash);
 
   // Three light spots on the back, flat on the skin.
-  const spotGeo = kit.geo(new THREE.SphereGeometry(0.07, 7, 3));
+  const spotGeo = kit.geo(new THREE.SphereGeometry(0.07, 12, 2));
   const up = new THREE.Vector3(0, 1, 0);
+  const n = new THREE.Vector3();
   for (const [x, z, s] of [
     [0.13, -0.2, 1],
     [-0.17, -0.1, 0.8],
     [0.02, -0.02, 0.65],
   ]) {
-    const h = topAt(x, z);
+    const [a, h] = domeAt(x, z);
     const spot = new THREE.Mesh(spotGeo, accent);
-    spot.position.copy(h.point);
-    spot.quaternion.setFromUnitVectors(up, h.face.normal);
+    surf(a, h, spot.position);
+    spot.quaternion.setFromUnitVectors(up, surfNormal(a, h, n));
     spot.scale.set(s, 0.28, s * 0.9);
     squash.add(spot);
   }
+  const topY = (x, z) => surf(...domeAt(x, z), new THREE.Vector3()).y;
 
   // Hind legs: a fat folded thigh at each side and a long webbed foot pointing forward, toes on
   // round pads. kick swings the foot out behind (a jump).
-  const thighGeo = kit.geo(new THREE.SphereGeometry(1, 8, 6));
-  const footGeo = kit.geo(new THREE.SphereGeometry(1, 7, 4));
-  const padGeo = kit.geo(new THREE.SphereGeometry(0.035, 5, 3));
+  const thighGeo = kit.geo(new THREE.SphereGeometry(1, 10, 7).rotateX(Math.PI / 2));
+  const footGeo = kit.geo(new THREE.SphereGeometry(1, 10, 2));
+  const handGeo = kit.geo(new THREE.SphereGeometry(1, 7, 2));
+  const padGeo = kit.geo(new THREE.SphereGeometry(0.035, 6, 2));
   const hinds = []; // flat, per leg: thigh, foot group, side
   for (const sx of [1, -1]) {
     const hip = new THREE.Group();
@@ -208,7 +351,7 @@ export function frog(color) {
     foot.add(sole);
     for (const a of [-0.45, 0, 0.45]) {
       const pad = new THREE.Mesh(padGeo, accent);
-      pad.position.set(Math.sin(a + sx * 0.3) * 0.17, -0.004, Math.cos(a + sx * 0.3) * 0.17);
+      pad.position.set(Math.sin(a + sx * 0.3) * 0.17, -0.006, Math.cos(a + sx * 0.3) * 0.17);
       pad.scale.set(1, 0.6, 1);
       foot.add(pad);
     }
@@ -216,7 +359,9 @@ export function frog(color) {
   }
   // Front legs: short arms with a little foot and three round toe pads peeking out in front.
   const armGeo = kit.geo(
-    new THREE.CylinderGeometry(0.045, 0.05, 0.13, 6, 1).translate(0, -0.065, 0).rotateX(-0.25),
+    new THREE.CylinderGeometry(0.045, 0.05, 0.13, 6, 1, true)
+      .translate(0, -0.065, 0)
+      .rotateX(-0.25),
   );
   const arms = [];
   for (const sx of [1, -1]) {
@@ -224,13 +369,17 @@ export function frog(color) {
     arm.position.set(sx * 0.26, 0.15, 0.3);
     squash.add(arm);
     arm.add(new THREE.Mesh(armGeo, body));
-    const sole = new THREE.Mesh(footGeo, body);
+    const sole = new THREE.Mesh(handGeo, body);
     sole.position.set(0, -0.125, 0.06);
     sole.scale.set(0.07, 0.025, 0.08);
     arm.add(sole);
     for (const a of [-0.6, 0, 0.6]) {
       const pad = new THREE.Mesh(padGeo, accent);
-      pad.position.set(Math.sin(a + sx * 0.15) * 0.085, -0.126, 0.06 + Math.cos(a + sx * 0.15) * 0.085);
+      pad.position.set(
+        Math.sin(a + sx * 0.15) * 0.085,
+        -0.128,
+        0.06 + Math.cos(a + sx * 0.15) * 0.085,
+      );
       pad.scale.set(0.85, 0.55, 0.85);
       arm.add(pad);
     }
@@ -248,32 +397,78 @@ export function frog(color) {
     homes.push(o, x - PIVOT.x, y - PIVOT.y, z - PIVOT.z);
     return o;
   };
+  // The eyes: a white ball with a big pupil and a glint, two lid shells a hair outside it, and the
+  // socket: a smooth body-coloured swelling the ball rises out of, built in head space (it undoes
+  // the socket's tilt) on the analytic head.
+  const ballGeo = kit.geo(paint(underPupil(new THREE.SphereGeometry(EYE_R, 14, 8)), INK.white));
+  const pupilGeo = kit.geo(
+    paint(
+      new THREE.SphereGeometry(EYE_R * 1.015, 14, 2, 0, TAU, 0, 0.66).rotateX(Math.PI / 2),
+      INK.pupil,
+    ),
+  );
+  const glintGeo = kit.geo(paint(new THREE.SphereGeometry(EYE_R * 0.22, 8, 2), INK.glint));
+  const upLidGeo = kit.geo(new THREE.SphereGeometry(EYE_R * 1.065, 14, 4, 0, TAU, 0, Math.PI / 2));
+  const loLidGeo = kit.geo(
+    new THREE.SphereGeometry(EYE_R * 1.045, 14, 4, 0, TAU, Math.PI / 2, Math.PI / 2),
+  );
+  const glintDir = new THREE.Vector3(-0.3, 0.32, 0.9).normalize();
   const eyes = [1, -1].map((side) => {
-    const e = createEye(kit, { r: EYE_R, side, detail, lid: body, ring: false });
-    e.socket.rotation.order = 'YXZ';
-    e.socket.rotation.set(-0.6, side * 0.4, 0);
-    // The bulge the eye sits in: a body-coloured mound behind and below the ball.
-    const mound = kit.mesh(new THREE.SphereGeometry(EYE_R * 1.08, 9, 5), body, e.socket, 0, -0.07, -0.07);
-    mound.scale.set(1, 0.95, 1);
-    const top = topAt(side * 0.23, 0.15).point.y;
-    place(e.socket, side * 0.23, top + 0.09, 0.15);
-    return e;
+    const socket = new THREE.Group();
+    socket.rotation.order = 'YXZ';
+    socket.rotation.set(-0.6, side * 0.4, 0);
+    const ball = new THREE.Group();
+    ball.rotation.order = 'YXZ';
+    socket.add(ball);
+    ball.add(new THREE.Mesh(ballGeo, detail));
+    const pupil = new THREE.Mesh(pupilGeo, detail);
+    pupil.name = 'pupil';
+    ball.add(pupil);
+    const glint = new THREE.Mesh(glintGeo, detail);
+    glint.position.copy(glintDir).multiplyScalar(EYE_R * 0.955);
+    glint.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), glintDir);
+    glint.scale.set(1, 1, 0.35);
+    ball.add(glint);
+    const upPivot = new THREE.Group();
+    const loPivot = new THREE.Group();
+    socket.add(upPivot, loPivot);
+    const upLid = new THREE.Mesh(upLidGeo, body);
+    const loLid = new THREE.Mesh(loLidGeo, body);
+    upPivot.add(upLid);
+    loPivot.add(loLid);
+    const level = new THREE.Group(); // undoes the socket's tilt: head space
+    level.quaternion.copy(socket.quaternion).invert();
+    socket.add(level);
+    const home = new THREE.Vector3(side * EYE_X, topY(side * EYE_X, EYE_Z) + EYE_UP, EYE_Z);
+    level.add(new THREE.Mesh(kit.geo(socketGeo(home, topY)), body));
+    place(socket, home.x, home.y, home.z);
+    return {
+      socket,
+      set(yaw, pitch, upper, lower, sad) {
+        ball.rotation.y = yaw;
+        ball.rotation.x = -pitch;
+        upLid.rotation.x = -Math.PI / 2 + Math.min(1, Math.max(0, upper)) * Math.PI;
+        loLid.rotation.x = Math.PI / 2 - Math.min(1, Math.max(0, lower)) * Math.PI * 0.98;
+        upPivot.rotation.z = -side * sad;
+        loPivot.rotation.z = side * sad * 0.3;
+      },
+    };
   });
   // Nostrils: two dots on top of the snout.
-  const nostrilGeo = kit.geo(paint(new THREE.SphereGeometry(0.02, 5, 3), INK.pupil));
+  const nostrilGeo = kit.geo(paint(new THREE.SphereGeometry(0.02, 4, 2), INK.pupil));
   for (const sx of [1, -1]) {
-    const h = topAt(sx * 0.07, 0.36).point;
-    const n = new THREE.Mesh(nostrilGeo, detail);
-    n.scale.set(1, 0.5, 1);
-    place(n, h.x, h.y, h.z);
+    const h = surf(...domeAt(sx * 0.07, 0.36), new THREE.Vector3());
+    const nostril = new THREE.Mesh(nostrilGeo, detail);
+    nostril.scale.set(1, 0.5, 1);
+    place(nostril, h.x, h.y, h.z);
   }
   // Mouth: a wide smile arc wrapped round the snout, an open mouth (a dark half-disc) with a long
   // pink tongue that flicks out.
   const mouthG = new THREE.Group();
   mouthG.rotation.x = -0.35;
-  place(mouthG, 0, 0.33, frontAt(0, 0.33) + 0.004);
+  place(mouthG, 0, 0.33, frontZ(0.33) + 0.004);
   const smile = kit.mesh(
-    wrap(paint(new THREE.TorusGeometry(0.24, 0.02, 5, 12, Math.PI), INK.mouth), 1.0),
+    wrap(paint(new THREE.TorusGeometry(0.24, 0.02, 3, 12, Math.PI), INK.mouth), 1.0),
     detail,
     mouthG,
   );
@@ -288,18 +483,23 @@ export function frog(color) {
   tongueG.rotation.x = 0.3; // straight out forward
   mouthG.add(tongueG);
   const tongue = kit.mesh(
-    paint(new THREE.CylinderGeometry(0.035, 0.04, 1, 6, 1).translate(0, 0.5, 0).rotateX(Math.PI / 2), INK.tongue),
+    paint(
+      new THREE.CylinderGeometry(0.035, 0.04, 1, 6, 1, true)
+        .translate(0, 0.5, 0)
+        .rotateX(Math.PI / 2),
+      INK.tongue,
+    ),
     detail,
     tongueG,
   );
-  const tip = kit.mesh(paint(new THREE.SphereGeometry(0.06, 6, 4), INK.tongue), detail, tongueG);
+  const tip = kit.mesh(paint(new THREE.SphereGeometry(0.06, 6, 3), INK.tongue), detail, tongueG);
   tip.scale.set(1.2, 0.7, 1);
   // The throat pouch: a light bubble under the chin.
   const pouch = place(
-    kit.mesh(new THREE.SphereGeometry(POUCH_R, 10, 7), accent, face),
+    kit.mesh(new THREE.SphereGeometry(POUCH_R, 13, 8), accent, face),
     0,
     0.15,
-    frontAt(0, 0.15) - 0.075,
+    frontZ(0.15) - 0.075,
   );
 
   const p = PK.make();
@@ -407,7 +607,8 @@ export function frog(color) {
       p.kick = keys(t, MOVE_KICK);
       p.pitch = keys(t, MOVE_PITCH);
       p.reach = 0.6 * bump(t, 0.24, 0.44) + 0.6 * bump(t, 0.74, 0.94);
-      p.lift = 0.6 * Math.sin(Math.PI * span(t, 0.1, 0.4)) + 0.5 * Math.sin(Math.PI * span(t, 0.6, 0.9));
+      p.lift =
+        0.6 * Math.sin(Math.PI * span(t, 0.1, 0.4)) + 0.5 * Math.sin(Math.PI * span(t, 0.6, 0.9));
       p.upper = lerp(STAND_UPPER, 0.02, joy);
       p.lower = lerp(0.1, 0.3, joy);
       p.gazePitch = lerp(-0.3, -0.05, joy);
@@ -495,7 +696,8 @@ export function frog(color) {
       const wide = plateau(t, 0, 1, 0.1);
       p.lift = 0.7 * k * Math.sin(Math.PI * span(t, 0.1, 0.5));
       p.kick = k * bump(t, 0.1, 0.5);
-      p.squash = 0.22 * bump(t, 0, 0.12) - 0.2 * k * bump(t, 0.1, 0.5) + 0.22 * k * bump(t, 0.48, 0.66);
+      p.squash =
+        0.22 * bump(t, 0, 0.12) - 0.2 * k * bump(t, 0.1, 0.5) + 0.22 * k * bump(t, 0.48, 0.66);
       p.eyeUp = 0.05 * wide;
       p.upper = lerp(STAND_UPPER, 0, wide);
       p.lower = lerp(0.1, 0, wide);
@@ -514,7 +716,10 @@ export function frog(color) {
       const two = calm ? 0 : 1;
       const air1 = bump(t, 0.12, 0.42);
       const air2 = two * bump(t, 0.52, 0.82);
-      p.lift = 0.45 * k * (Math.sin(Math.PI * span(t, 0.12, 0.42)) + two * Math.sin(Math.PI * span(t, 0.52, 0.82)));
+      p.lift =
+        0.45 *
+        k *
+        (Math.sin(Math.PI * span(t, 0.12, 0.42)) + two * Math.sin(Math.PI * span(t, 0.52, 0.82)));
       p.squash =
         k * (0.18 * bump(t, 0.02, 0.14) - 0.15 * air1 + 0.18 * bump(t, 0.42, 0.54)) +
         two * (0.15 * bump(t, 0.82, 0.95) - 0.15 * air2);
@@ -601,14 +806,15 @@ export function frog(color) {
       foot.rotation.y = sx * 2.6 * k;
     }
     for (const a of arms) a.rotation.x = -1.1 * o.reach;
-    // The pouch balloons (wider than tall, forward and up) or sags (longer, lower).
+    // The pouch swells under the chin (a modest croak bubble, wider than tall, tucked in so it
+    // never covers the face) or sags (longer, lower).
     const pb = Math.max(0, o.pouch);
     const ps = Math.min(0, o.pouch);
-    const g = 1 + 0.95 * pb;
-    const psy = g * 0.9 * (1 - 0.3 * ps);
-    pouch.scale.set(g * 1.12 * (1 + 0.1 * ps), psy, g * (1 + 0.25 * ps));
-    pouch.position.z += 0.08 * pb;
-    pouch.position.y += 0.07 * pb + 0.05 * ps;
+    const g = 1 + 0.42 * pb;
+    const psy = g * 0.78 * (1 - 0.3 * ps);
+    pouch.scale.set(g * 1.08 * (1 + 0.1 * ps), psy, g * 0.9 * (1 + 0.25 * ps));
+    pouch.position.z += 0.025 * pb;
+    pouch.position.y += -0.03 * pb + 0.05 * ps;
     // never through the floor (face space is the rig's, offset by the pivot)
     const drop = pouch.position.z * Math.sin(o.headPitch); // a nod lowers it
     pouch.position.y = Math.max(pouch.position.y, POUCH_R * psy + 0.02 + drop - face.position.y);

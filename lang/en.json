@@ -171,6 +171,15 @@
         "Name": "Dice can splat pets",
         "Hint": "A d20 (a check or attack, never a damage die) that hits a pet hard enough splats it until its owner rolls again; other dice only knock it about."
       },
+      "petView": {
+        "Name": "Pet view",
+        "Hint": "How you see pets on the table: from above like the dice, or leaning toward you so you see their faces and bodies. Only on this screen; the dice don't change.",
+        "Choices": {
+          "top": "From above",
+          "angled": "Angled",
+          "front": "Facing you"
+        }
+      },
       "petRestSpot": {
         "Name": "Where pets rest",
         "Hint": "Where your pets wait after a roll: near the dice, or wherever you last dragged a resting pet (with Click to pet on, drag one anywhere and drop it).",

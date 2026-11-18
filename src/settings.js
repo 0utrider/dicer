@@ -349,6 +349,15 @@ export function registerSettings({
         onChange: onPetStayChange,
       },
     ],
+    [
+      'petView',
+      String,
+      'top',
+      {
+        choices: Object.fromEntries(['top', 'angled', 'front'].map((v) => [v, t(`petView.Choices.${v}`)])),
+        onChange: onPetStayChange,
+      },
+    ],
     ['petClick'],
     ['petElemental'],
     ['petMoods'],

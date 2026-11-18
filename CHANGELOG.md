@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.10
+
+- **Pet view.** A new choice in **Your pet**: see pets **from above** like the dice, **angled**, or **facing you**. The pet leans toward you so you see its face and body; the dice, its shadow and its splat stay on the table. Only on your screen.
+- **Pets grab at dice.** A die flying right past a pet makes it turn and grab at it: the frog flicks its tongue, the cat bats a paw, the mimic chomps, the floating eye flings a tendril, the golem swings a fist.
+- **Cleaner pet models.** The owl has one smooth face with its eyes open and snug feathered wings; the ghost is one smooth sheet with its arms coming out of it and blushing cheeks; the mushroom has a real stem with gills under its cap; the frog's eye sockets are smooth and its croak is a small throat swell instead of a big balloon; the floating eye has proper eyelids and smooth tendrils.
+
 ## 1.0.9
 
 - **Preview your pet.** A button in **Your pet** brings your pet out to throw a d20 on your screen only (no roll, no chat message), so you can see a new pet, colour or voice pitch without rolling.

@@ -56,7 +56,7 @@ function h(tag, attrs = {}, kids = []) {
 }
 
 /** This player's pet settings, in the window's order (each registered with config: false in settings.js). */
-export const PET_SETTINGS = ['showPets', 'petScale', 'petRestSpot', 'petStay', 'petSplat', 'petClick', 'petElemental', 'petMoods', 'petCheer', 'petSounds'];
+export const PET_SETTINGS = ['showPets', 'petScale', 'petView', 'petRestSpot', 'petStay', 'petSplat', 'petClick', 'petElemental', 'petMoods', 'petCheer', 'petSounds'];
 
 /**
  * One setting row from its registration (`cfg`: name, hint, type, choices, range) and value: a

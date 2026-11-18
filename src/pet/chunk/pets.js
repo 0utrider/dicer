@@ -75,6 +75,15 @@ const FLY_PEAK = 1.2; // the dragonling's flight arc on a move (alignFor), die u
 /** Pets that fly over on a move (an arc), and those that boing over in two hops (their pose springs). */
 const FLIERS = new Set(['dragonling', 'owl', 'ghost', 'eye']);
 const HOPPERS = new Set(['slime', 'frog']);
+/**
+ * The petView lean (rad): the pet tips back from its feet, away from the bottom of the screen, so
+ * the top-down camera sees its face and body. Its shadow and splat stay flat on the table.
+ */
+export const PET_VIEW_TILT = { top: 0, angled: 0.7, front: 1.15 };
+const TILT_Q = new THREE.Quaternion();
+const YAW_Q = new THREE.Quaternion();
+const AXIS_X = new THREE.Vector3(1, 0, 0);
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
 /** Each kind's voice, as a playback rate on the shared pet sounds (the player's pitch multiplies it). */
 const KIND_PITCH = { owl: 0.95, frog: 0.82, ghost: 1.1, mushroom: 1.2, eye: 1.12, golem: 0.7, cat: 1.15 };
 // The dice tray's rim (petTray 'rim', deps.perch): a die hitting the tray wall at this speed or more
@@ -151,9 +160,15 @@ const pageMoods = createMoods();
 export const CHEER_MS = 1300;
 const CHEERS = 6; // of the sparkle's SPARKS points (reduced motion: 3, dimmer)
 // A pet in the middle of one of these does not cheer: a huff, a reaction, a cheer already.
-const BUSY = new Set(['huff', 'scorch', 'shiver', 'bristle', 'startle', 'cheer']);
+const BUSY = new Set(['huff', 'scorch', 'shiver', 'bristle', 'startle', 'cheer', 'grab']);
+// Grabbing: a die flying past within reach of a resting or watching pet makes it turn and swipe at
+// it (its own throw move: the frog's tongue, the cat's paw, the mimic's chomp), once per cooldown.
+export const GRAB_MS = 800;
+export const GRAB_COOLDOWN_MS = 2200;
+const GRAB_REACH = 0.2; // beyond its footprint, x its height: a die passing right beside it
+const GRAB_SPEED = 1; // scene units / s: a die slower than this is resting, not flying past
 /** How long each of a resting pet's animations (pet.anim.kind) runs. */
-const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS, proud: MOOD_MS, sulk: MOOD_MS, cheer: CHEER_MS };
+const ANIM_MS = { pet: PET_MS, huff: HUFF_MS, scorch: SCORCH_MS, shiver: SHIVER_MS, bristle: BRISTLE_MS, startle: STARTLE_MS, proud: MOOD_MS, sulk: MOOD_MS, cheer: CHEER_MS, grab: GRAB_MS };
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -1360,6 +1375,7 @@ export function createPetLayer(deps) {
       pz + (wt >= 0 ? pet.wobble.dz * push : 0),
     );
     pet.group.rotation.y = pet.yaw;
+    tiltPet(pet);
     pet.group.userData.dicerPet.phase = phase;
     if (!MOODS.has(phase)) pet.mood = null; // posed out of its mood: the next rest settles back in
     pet.shadow.position.y = 0.01 - hop;
@@ -1371,7 +1387,10 @@ export function createPetLayer(deps) {
       WOBBLE_LOOK.leanX = pet.wobble.dx * cy - pet.wobble.dz * sy;
       WOBBLE_LOOK.leanZ = pet.wobble.dx * sy + pet.wobble.dz * cy;
       pet.creature.pose('wobble', wt, pet.reaction, WOBBLE_LOOK);
-    } else pet.creature.pose(phase, t, pet.reaction, { yaw: look, calm: pet.anim?.calm });
+    } else if (phase === 'grab') pet.creature.pose('throw', t, pet.reaction, { yaw: 0, calm: pet.anim?.calm });
+    else if (phase === 'watch' && pet.swipe && now - pet.swipe < GRAB_MS)
+      pet.creature.pose('throw', (now - pet.swipe) / GRAB_MS, pet.reaction, { yaw: look }); // a swipe at a die going past
+    else pet.creature.pose(phase, t, pet.reaction, { yaw: look, calm: pet.anim?.calm });
     // A ghost roll is never 'crit', so it never bursts.
     const s = phase === 'react' && pet.reaction === 'crit' ? (t * REACT_MS) / BURST_MS : 1;
     pet.sparkle.visible = s < 1;
@@ -1386,6 +1405,68 @@ export function createPetLayer(deps) {
       const name = reactionSound(pet.reaction) ?? (el ? (ELEMENT_FX[el]?.sound ?? 'petYelp') : null);
       if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false)
         playSound({ builtin: name, rate: rateOf(pet) });
+    }
+  }
+
+  /** The petView lean in force (0 when unreadable). */
+  const viewTilt = () => {
+    try {
+      return PET_VIEW_TILT[getSetting('petView')] ?? 0;
+    } catch {
+      return 0;
+    }
+  };
+  /**
+   * Leans the pet back by the petView tilt about the table's X axis, whatever way it faces: its
+   * creature and effects (the group turns by pet.yaw, so each gets yaw^-1 * tilt * yaw). The shadow
+   * and the splat stay flat.
+   */
+  function tiltPet(pet, a = viewTilt()) {
+    pet.tilt = a;
+    if (a) {
+      YAW_Q.setFromAxisAngle(AXIS_Y, pet.yaw);
+      TILT_Q.setFromAxisAngle(AXIS_X, -a).multiply(YAW_Q);
+      TILT_Q.premultiply(YAW_Q.invert());
+    } else TILT_Q.identity();
+    for (const o of pet.group.children) if (o !== pet.shadow && o !== pet.splat?.root) o.quaternion.copy(TILT_Q);
+  }
+
+  /**
+   * Dice flying past (the dice share the scene: groups marked userData.dicerDie): a resting pet
+   * within reach of one turns and grabs at it (anim 'grab'), a pet watching its own roll swipes
+   * (pet.swipe); each at most once per GRAB_COOLDOWN_MS. Never a ghost die, never while hidden.
+   */
+  const lastDie = new Map(); // die group -> {x, z, at}
+  function grabs(now) {
+    const dice = [];
+    for (const o of scene.children) {
+      if (!o.userData?.dicerDie || !o.visible) continue;
+      const was = lastDie.get(o);
+      const { x, z } = o.position;
+      lastDie.set(o, { x, z, at: now });
+      if (!was || now <= was.at || o.userData.ghost) continue;
+      if (Math.hypot(x - was.x, z - was.z) / ((now - was.at) / 1000) >= GRAB_SPEED) dice.push(o.position);
+    }
+    for (const o of lastDie.keys()) if (o.parent !== scene) lastDie.delete(o);
+    if (!dice.length || !shown()) return;
+    for (const pet of pets.values()) {
+      if (now < (pet.grabNext ?? 0)) continue;
+      const rest = resting(pet) && !BUSY.has(pet.anim?.kind) && !pet.held;
+      if (!rest && !watching(pet)) continue;
+      const h = pet.creature.height;
+      const px = pet.px ?? pet.base.x;
+      const pz = pet.pz ?? pet.base.z;
+      const reach = (pet.creature.footprint ?? FOOTPRINT * h) + GRAB_REACH * h;
+      const d = dice.find((p) => Math.hypot(p.x - px, p.z - pz) <= reach);
+      if (!d) continue;
+      pet.grabNext = now + GRAB_COOLDOWN_MS;
+      if (rest) {
+        dropAnim(pet);
+        pet.anim = { kind: 'grab', at: now, calm: calmNow(), yaw: pet.yaw ?? 0, to: Math.atan2(d.x - px, d.z - pz) };
+        pet.idleAt = now;
+        voice(pet, 'petYip');
+      } else pet.swipe = now;
+      wake();
     }
   }
 
@@ -1429,10 +1510,13 @@ export function createPetLayer(deps) {
     for (const pet of pets.values()) {
       if (pet.state !== 'rest' || pet.gone || pet.wobble || pet.huff) continue;
       const h = pet.creature.height;
-      const k = camH / Math.max(1e-6, camH - h / 2); // the camera's lean at half height
+      // its middle, half its height up; a pet leaning back (petView) has it further up the screen
+      const a = pet.tilt ?? 0;
+      const k = camH / Math.max(1e-6, camH - (h / 2) * Math.cos(a)); // the camera's lean there
       const foot = (KIND_FOOTPRINT[pet.kind] ?? FOOTPRINT * PET_HEIGHT) * (h / PET_HEIGHT);
       const r = (foot + PICK_MARGIN * h) * k * map.px;
-      const d = Math.hypot(map.ox + (pet.px ?? pet.base.x) * k * map.px - x, map.oz + (pet.pz ?? pet.base.z) * k * map.px - y);
+      const mz = (pet.pz ?? pet.base.z) - (h / 2) * Math.sin(a);
+      const d = Math.hypot(map.ox + (pet.px ?? pet.base.x) * k * map.px - x, map.oz + mz * k * map.px - y);
       if (d <= r && d < bestD) {
         best = pet;
         bestD = d;
@@ -1589,6 +1673,7 @@ export function createPetLayer(deps) {
     const huff = a.kind === 'huff';
     const e = clamp01((now - a.at) / (ANIM_MS[a.kind] ?? PET_MS));
     if (huff) pet.yaw = wrap(pet.huff.yaw + Math.PI * smooth(clamp01((e - 0.3) / 0.7))); // turns its back
+    if (a.kind === 'grab') pet.yaw = wrap(a.yaw + wrap(a.to - a.yaw) * (smooth(clamp01(e / 0.15)) - smooth(clamp01((e - 0.75) / 0.25))));
     if (a.kind === 'cheer') {
       // turns to the dice, cheers, and turns back to where it faced
       pet.yaw = wrap(a.yaw + wrap(a.to - a.yaw) * (smooth(clamp01(e / 0.2)) - smooth(clamp01((e - 0.8) / 0.2))));
@@ -1886,6 +1971,9 @@ export function createPetLayer(deps) {
     }
     let nextLeave = Infinity;
     let moving = false;
+    grabs(now);
+    const tilt = viewTilt(); // a petView change leans every pet at once, resting ones too
+    for (const pet of pets.values()) if (pet.tilt !== tilt) tiltPet(pet, tilt);
     for (const pet of [...pets.values()]) {
       let alive = false;
       try {

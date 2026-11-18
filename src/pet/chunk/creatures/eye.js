@@ -18,6 +18,7 @@ import {
   createKit,
   detailMaterial,
   bend,
+  mergeFlat,
 } from './parts.js';
 
 /**
@@ -36,18 +37,26 @@ const FOOT = 0.6; // top-down body radius in scene units, tendrils excluded (mea
 const R = 0.5; // the eyeball
 const CY = 0.82; // its centre over the tendrils' roots
 const BASE_PITCH = -1.05; // the ball tipped up toward the top-down camera
-const UP_R = R * 1.07; // upper lid
-const LO_R = R * 1.05; // lower lid
-const SHELL_R = R * 1.03;
+// Lids are lunes (slices between two half-great-circles through the eye's corners at +-X) that turn
+// about X. Each is full-size at its front edge (a soft half-round rim hugging the ball) and eases
+// down at its back edge to tuck under the fixed back shell, so from behind it all reads as one
+// smooth shell with no seam ring.
+const UP_R = R * 1.065; // upper lid at its front edge
+const LO_R = R * 1.05; // lower lid at its front edge
+const TUCK_R = R * 1.008; // both lids at their back edge (inside the shell)
+const SHELL_R = R * 1.035; // the back shell, a fixed lune behind the widest eye opening
+const SHELL_A = [1.78, 4.68]; // its span, rad round X from the front (+Z) toward the top (+Y)
+const LID_L = 2.62; // each lid's span (rad): its back edge stays under the shell in every pose
+const RIM_T = 0.026; // the lids' rim tube radius
 const TEND_N = 4;
 const TEND_AZ = [1.0, -1.0, 2.15, -2.15]; // front-right, front-left, back-right, back-left (rad from +Z)
 const TEND_BACK = [2.15, -2.15, 1.0, -1.0]; // the turn that points each one behind
-const SEG_N = 5;
-const SEG = 0.22;
-const SEG_R = [0.1, 0.09, 0.08, 0.07, 0.062];
+const SEG_N = 4;
+const SEG = 0.27;
+const SEG_R = [0.1, 0.084, 0.07, 0.058, 0.058]; // radius at each joint (the last: the round tip)
 // Joint bends (rad, + down): steeply out of the ball, levelling on the floor, the tip curling up.
 const J0 = 1.0;
-const JA = [0, -0.2, -0.3, -0.4, -0.6];
+const JA = [0, -0.3, -0.45, -0.75];
 const LO0 = 0.08; // the lower lid at rest: low, so the tipped-up eye shows from the side too
 const TEAR = new THREE.Color('#9fd8ff');
 
@@ -88,6 +97,51 @@ const THROW_PITCH = [0, 0, 0.3, -0.18, 0.52, 0.22, 0.8, 0.04, 1, 0];
 const THROW_REACH = [0, 0, 0.28, 0.75, 0.5, 1, 0.62, 0.3, 1, 0];
 const THROW_UPPER = [0, 0.15, 0.3, 0.32, 0.5, 0.02, 1, 0.15];
 
+/**
+ * A lune of the sphere: half-great-circles through the corners at -X..+X, swept round X from
+ * angle a0 to a1 (from +Z toward +Y), radius rad(f) at fraction f of the sweep. Outward normals.
+ */
+function lune(rad, a0, a1, aSeg, bSeg) {
+  const w = bSeg + 1;
+  const pos = new Float32Array((aSeg + 1) * w * 3);
+  const nor = new Float32Array(pos.length);
+  let k = 0;
+  for (let i = 0; i <= aSeg; i++) {
+    const f = i / aSeg;
+    const a = a0 + (a1 - a0) * f;
+    const r = rad(f);
+    for (let j = 0; j <= bSeg; j++) {
+      const b = (j / bSeg) * Math.PI;
+      const dx = -Math.cos(b);
+      const dy = Math.sin(b) * Math.sin(a);
+      const dz = Math.sin(b) * Math.cos(a);
+      nor[k] = dx;
+      nor[k + 1] = dy;
+      nor[k + 2] = dz;
+      pos[k++] = dx * r;
+      pos[k++] = dy * r;
+      pos[k++] = dz * r;
+    }
+  }
+  const idx = [];
+  const flip = a1 < a0;
+  for (let i = 0; i < aSeg; i++) {
+    for (let j = 0; j < bSeg; j++) {
+      const v = i * w + j;
+      if (flip) idx.push(v, v + w, v + 1, v + 1, v + w, v + w + 1);
+      else idx.push(v, v + 1, v + w, v + 1, v + w + 1, v + w);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return g;
+}
+
+/** A lid's radius along its sweep: full at the front edge, easing down to tuck under the shell. */
+const lidRadius = (front) => (f) => front - (front - TUCK_R) * smooth(span(f, 0.45, 1));
+
 export function eye(color) {
   const { body: bodyColor, accent: accentColor } = palette(color);
   const kit = createKit();
@@ -114,7 +168,7 @@ export function eye(color) {
   orb.rotation.order = 'YXZ';
   orb.position.y = CY;
   rig.add(orb);
-  kit.mesh(new THREE.SphereGeometry(SHELL_R, 20, 4, 0, TAU, 0, Math.PI * 0.4).rotateX(-Math.PI / 2), body, orb);
+  kit.mesh(lune(() => SHELL_R, SHELL_A[0], SHELL_A[1], 9, 12), body, orb);
 
   // The eyeball turns with the gaze: white, the accent iris, the pupil and its glints.
   const ball = new THREE.Group();
@@ -136,21 +190,20 @@ export function eye(color) {
     'pupil',
   );
   const glint = kit.mesh(paint(new THREE.SphereGeometry(R * 0.12, 6, 4), INK.glint), detail, ball);
-  glint.position.set(-0.24 * R, 0.24 * R, 0.97 * R);
+  glint.position.set(-0.23 * R, 0.23 * R, 0.94 * R); // on the surface (flattened in apply)
   const glint2 = kit.mesh(paint(new THREE.SphereGeometry(R * 0.06, 6, 4), INK.glint), detail, ball);
-  glint2.position.set(0.2 * R, -0.16 * R, 1.0 * R);
+  glint2.position.set(0.19 * R, -0.15 * R, 0.96 * R);
 
-  // Lids: shells of the body colour, each with a thick rim; long lashes on the upper one.
+  // Lids: lunes of the body colour, their front edge at local +Z (the upper sweeping back over +Y,
+  // the lower over -Y), each with a soft half-round rim along that edge only; long lashes on the
+  // upper one.
+  const rim = (r) => new THREE.TorusGeometry(r - RIM_T * 0.45, RIM_T, 5, 12, Math.PI).rotateX(Math.PI / 2);
   const upPivot = new THREE.Group();
   orb.add(upPivot);
-  const upLid = kit.mesh(new THREE.SphereGeometry(UP_R, 20, 5, 0, TAU, 0, Math.PI / 2), body, upPivot);
-  kit.mesh(new THREE.TorusGeometry(UP_R, 0.04, 4, 20).rotateX(Math.PI / 2), body, upLid);
-  const loLid = kit.mesh(
-    new THREE.SphereGeometry(LO_R, 20, 4, 0, TAU, Math.PI / 2, Math.PI / 2),
-    body,
-    orb,
-  );
-  kit.mesh(new THREE.TorusGeometry(LO_R, 0.035, 4, 20).rotateX(Math.PI / 2), body, loLid);
+  const upLid = kit.mesh(lune(lidRadius(UP_R), 0, LID_L, 10, 12), body, upPivot);
+  kit.mesh(rim(UP_R), body, upLid);
+  const loLid = kit.mesh(lune(lidRadius(LO_R), 0, -LID_L, 10, 12), body, orb);
+  kit.mesh(rim(LO_R), body, loLid);
   const up = new THREE.Vector3(0, 1, 0);
   for (const [phi, len] of [
     [-1.0, 0.17],
@@ -165,7 +218,7 @@ export function eye(color) {
     const x = new THREE.Vector3().crossVectors(d, z);
     const g = bend(new THREE.ConeGeometry(0.028, len, 4, 3).translate(0, len / 2, 0), len, 0.7);
     g.applyMatrix4(new THREE.Matrix4().makeBasis(x, d, z));
-    g.translate(radial.x * UP_R, 0, radial.z * UP_R);
+    g.translate(radial.x * (UP_R - RIM_T * 0.3), 0, radial.z * (UP_R - RIM_T * 0.3));
     kit.mesh(paint(g, INK.pupil), detail, upLid);
   }
   // Tears: two drops below the lower lid (fumble).
@@ -177,8 +230,24 @@ export function eye(color) {
     return m;
   });
 
-  // Tendrils: tapering chains out of the underside, curling at the tips; the tips accent.
-  const segGeo = kit.geo(new THREE.SphereGeometry(1, 6, 4));
+  // Tendrils: tapering chains out of the underside, curling at the tips; the tips accent. Each
+  // segment is a tapered tube ending in a ball of its end radius, which the next tube starts from,
+  // so a bent chain stays one smooth tapering tendril (no beads).
+  // The last tube tapers to the joint radius and ends in the accent tip pad (its own mesh).
+  const tubeGeo = (j) => {
+    const r1 = Math.min(SEG_R[j + 1], SEG_R[j]);
+    return new THREE.CylinderGeometry(r1, SEG_R[j], SEG, 6, 1, true).rotateX(Math.PI / 2).translate(0, 0, SEG / 2);
+  };
+  const segGeos = SEG_R.slice(0, SEG_N).map((r0, j) => {
+    if (j === SEG_N - 1) return kit.geo(tubeGeo(j));
+    const tube = tubeGeo(j);
+    const knob = new THREE.SphereGeometry(SEG_R[j + 1], 6, 3).translate(0, 0, SEG);
+    const g = mergeFlat([tube, knob]);
+    tube.dispose();
+    knob.dispose();
+    return kit.geo(g);
+  });
+  const tipGeo = kit.geo(new THREE.SphereGeometry(SEG_R[SEG_N], 6, 4).translate(0, 0, SEG));
   const tend = []; // flat: TEND_N x SEG_N joints
   for (let i = 0; i < TEND_N; i++) {
     const a = TEND_AZ[i];
@@ -189,10 +258,8 @@ export function eye(color) {
       if (j === 0) jt.position.set(Math.sin(a) * 0.18, CY - 0.3, Math.cos(a) * 0.18);
       else jt.position.z = SEG;
       parent.add(jt);
-      const s = new THREE.Mesh(segGeo, j === SEG_N - 1 ? accent : body);
-      s.scale.set(SEG_R[j], SEG_R[j], SEG * 0.66);
-      s.position.z = SEG / 2;
-      jt.add(s);
+      jt.add(new THREE.Mesh(segGeos[j], body));
+      if (j === SEG_N - 1) jt.add(new THREE.Mesh(tipGeo, accent));
       tend.push(jt);
       parent = jt;
     }
@@ -480,8 +547,8 @@ export function eye(color) {
     pupil.scale.set(pu, pu, 1);
     pupil.position.z = R + (pu < 1 ? R * 0.08 * (1 - pu) : 0); // keep a shrunk cap above the iris
     const gl = Math.max(0.1, o.glint);
-    glint.scale.setScalar(gl);
-    glint2.scale.setScalar(gl);
+    glint.scale.set(gl, gl, 0.25 * gl); // flat highlights: never poke through the shut lids
+    glint2.scale.set(gl, gl, 0.25 * gl);
     // Lid rotations as createEye's: the upper lid's front edge at 90 deg .. -90 deg over 0..1.
     const upper = Math.min(1, Math.max(-0.05, o.upper));
     upLid.rotation.x = -Math.PI / 2 + upper * Math.PI;

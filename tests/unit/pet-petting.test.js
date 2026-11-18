@@ -173,6 +173,86 @@ const screenOf = (g, up = 0.75) => {
   return { x: ((v.x + 1) / 2) * 1280, y: ((1 - v.y) / 2) * 800 };
 };
 
+describe('grabbing at dice flying past', () => {
+  const die = (m) => {
+    const d = new THREE.Group();
+    d.userData.dicerDie = true;
+    m.scene.add(d);
+    return d;
+  };
+  test('a die flying past within reach makes a resting pet turn and grab at it, then not again until the cooldown', () => {
+    const m = make();
+    rollToRest(m, 'u1', 'frog');
+    const g = group(m);
+    const d = die(m);
+    d.position.set(g.position.x + 1.9, 0.5, g.position.z); // a die-width away, not beside it: nothing
+    m.layer.update((clockNow += 16));
+    d.position.x -= 0.5;
+    m.layer.update((clockNow += 16));
+    expect(g.userData.dicerPet.phase).not.toBe('grab');
+    m.deps.playSound.mockClear();
+    d.position.set(g.position.x + 1.1, 0.5, g.position.z + 0.2); // right beside it, moving fast
+    m.layer.update((clockNow += 16));
+    d.position.x -= 0.4;
+    m.layer.update((clockNow += 16));
+    m.layer.update((clockNow += 16));
+    expect(g.userData.dicerPet.phase).toBe('grab');
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petYip' }));
+    runTo(m, clockNow + 900);
+    expect(g.userData.dicerPet.phase).toBe('exit'); // back on its standing pose
+    // still inside the cooldown: no second grab
+    d.position.x += 0.4;
+    m.layer.update((clockNow += 16));
+    d.position.x -= 0.4;
+    m.layer.update((clockNow += 16));
+    expect(g.userData.dicerPet.phase).not.toBe('grab');
+  });
+
+  test('a die sitting still next to it is not grabbed', () => {
+    const m = make();
+    rollToRest(m, 'u1', 'cat');
+    const g = group(m);
+    const d = die(m);
+    d.position.set(g.position.x + 1, 0.5, g.position.z);
+    for (let i = 0; i < 5; i++) m.layer.update((clockNow += 16));
+    expect(g.userData.dicerPet.phase).not.toBe('grab');
+  });
+});
+
+describe('pet view (petView)', () => {
+  const upOf = (o) => new THREE.Vector3(0, 1, 0).applyQuaternion(o.getWorldQuaternion(new THREE.Quaternion()));
+  test('angled and front lean the pet back toward the camera whatever way it faces; shadow stays flat', () => {
+    for (const [view, a] of [['top', 0], ['angled', 0.7], ['front', 1.15]]) {
+      const m = make({ petView: view });
+      rollToRest(m);
+      const g = group(m);
+      g.updateMatrixWorld(true);
+      const up = upOf(g.children[0]); // the creature
+      expect(up.y).toBeCloseTo(Math.cos(a), 4);
+      expect(up.z).toBeCloseTo(-Math.sin(a), 4); // its top tips up the screen (-Z)
+      const shadow = g.children.find((c) => c.name === 'petShadow') ?? g.children.find((c) => c !== g.children[0] && c.isMesh);
+      if (shadow) expect(upOf(shadow).y).toBeCloseTo(upOf(g).y, 4);
+    }
+  });
+
+  test('a view change leans resting pets at once, and a click on the leaning pet still pets it', () => {
+    const m = make({ petView: 'top' });
+    rollToRest(m);
+    m.settings.petView = 'front';
+    m.layer.update((clockNow += 16));
+    const g = group(m);
+    g.updateMatrixWorld(true);
+    expect(upOf(g.children[0]).z).toBeCloseTo(-Math.sin(1.15), 4);
+    // drawn leaning back: its middle is up the screen from its spot
+    const h = 1.5;
+    const mid = new THREE.Vector3(0, h / 2, 0).applyQuaternion(g.children[0].getWorldQuaternion(new THREE.Quaternion()));
+    const v = new THREE.Vector3(g.position.x + mid.x, mid.y, g.position.z + mid.z).project(camera);
+    m.deps.playSound.mockClear();
+    clickAt(m.win, ((v.x + 1) / 2) * 1280, ((1 - v.y) / 2) * 800);
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petPurr' }));
+  });
+});
+
 describe('pet voice pitch', () => {
   test("a pet speaks at its kind's pitch times its owner's pick", () => {
     const flags = { u1: { pitch: 1.5 }, u2: {} };
