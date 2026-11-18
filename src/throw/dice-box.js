@@ -765,16 +765,22 @@ export class DiceBox {
    * look's edge style: every die type shares one program per programKey, and the program does
    * not depend on the geometry (all dice have the same attributes).
    */
-  acquireWarmup(types = WARMUP_TYPES) {
+  acquireWarmup(types = WARMUP_TYPES, looks = null) {
     const appearance = normalizeAppearance(this._getAppearance());
     const flags = this.#flags();
-    const materials = [...new Set(types.map((t) => this.#material(appearance, flags, t)))];
+    // `looks` (other appearances, e.g. damage themes): one d6 material each, since every die
+    // type of a look shares one program.
+    const materials = looks
+      ? [...new Set(looks.map((l) => this.#material(normalizeAppearance(l), flags, 'd6')))]
+      : [...new Set(types.map((t) => this.#material(appearance, flags, t)))];
     for (const m of materials) this.#retain(m);
     const geometry = this.#geometry('d20', appearance.edges.radius);
     this.#retainGeometry(geometry);
     let released = false;
     return {
       materials,
+      // each material's kept fade clone (#keptFade), so the compiled fade program stays alive
+      fades: materials.map((m) => this.#keptFade(m)),
       geometry,
       release: () => {
         if (released) return;
@@ -783,6 +789,26 @@ export class DiceBox {
         this.#releaseGeometry(geometry);
       },
     };
+  }
+
+  /**
+   * The fade clone kept with a cached material, made on first ask. three deletes a program once
+   * no material uses it, so without a kept clone every roll's fade (whose clones are disposed when
+   * the roll ends) recompiled the transparent program as the dice faded: a visible freeze on
+   * resin dice with an inside. The kept clone is never drawn; it is disposed with its material.
+   */
+  #keptFade(material) {
+    const entry = this._refs.get(material);
+    if (!entry) return cloneForFade(material);
+    entry.fade ??= cloneForFade(material);
+    return entry.fade;
+  }
+
+  /** Disposes a roll's fade clone, unless its material has none kept yet: then it is kept. */
+  #endFade(base, fade) {
+    const entry = base && this._refs.get(base);
+    if (entry && !entry.fade) entry.fade = fade;
+    else fade.dispose();
   }
 
   #flags() {
@@ -830,6 +856,7 @@ export class DiceBox {
     }
     this._refs.delete(material);
     this._idle.delete(material);
+    entry?.fade?.dispose();
     material.userData.uniforms?.uLabels.value.dispose();
     material.dispose();
   }
@@ -862,6 +889,7 @@ export class DiceBox {
         const fade = cloneForFade(own);
         fade.opacity = prev.opacity;
         roll.fades[i] = fade;
+        if (roll.fadeBases) roll.fadeBases[i] = own;
         die.inner.material = fade;
         prev.dispose();
       } else {
@@ -1539,6 +1567,7 @@ export class DiceBox {
       roll.fadeStart = null;
       this.#unglow(roll);
       this.#petLeave(roll, FADE_MS);
+      roll.fadeBases = roll.dice.map((die) => die.inner.material);
       roll.fades = roll.dice.map((die) => {
         const original = die.inner.material;
         die.inner.material = cloneForFade(original);
@@ -1763,8 +1792,9 @@ export class DiceBox {
     // P9-R18: a roll removed while the loop holds (outside a frame) must not stay drawn: the next
     // frame redraws without it, or hides when nothing is left.
     this._renderer.requestFrame?.();
-    for (const m of roll.fades ?? []) m.dispose();
+    (roll.fades ?? []).forEach((m, i) => this.#endFade(roll.fadeBases?.[i], m));
     roll.fades = null;
+    roll.fadeBases = null;
     for (const m of roll.materials) this.#release(m);
     for (const g of roll.geometries) this.#releaseGeometry(g);
     roll.geometries.clear();

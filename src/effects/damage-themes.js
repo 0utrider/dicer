@@ -198,6 +198,29 @@ export function createDamageThemer({
 
   return {
     knownTypes,
+    /**
+     * The distinct looks damage dice can take on this screen (built-in damage themes, by the
+     * world map, this user's overrides and the elemental setting), so the warm-up compiles them
+     * before the first damage roll does. Themes and colorsets the map names are left to the roll.
+     * Empty with damagePresets off.
+     */
+    warmupLooks() {
+      if (get('damagePresets') === false) return [];
+      const worldMap = get('damageTypeMap');
+      const userOverrides = get('damageThemeOverrides');
+      const elemental = get('elementalDamageInsides') !== false;
+      const types = new Set([
+        ...Object.keys(DEFAULT_DAMAGE_MAP),
+        ...(isPlainObject(worldMap) ? Object.keys(worldMap) : []),
+        ...(isPlainObject(userOverrides) ? Object.keys(userOverrides) : []),
+      ]);
+      const looks = new Map();
+      for (const type of types) {
+        const t = safe(() => resolveDamageTheme(type, { userOverrides, worldMap, registry, warn: () => {}, elemental }), null);
+        if (t?.id && t.appearance && !looks.has(t.id)) looks.set(t.id, t.appearance);
+      }
+      return [...looks.values()];
+    },
     /** @param {string} [userId] the roller, whose own themes a map value may name */
     forRoll(roll, userId) {
       if (get('damagePresets') === false) return null;

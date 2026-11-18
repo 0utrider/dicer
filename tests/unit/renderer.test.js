@@ -272,6 +272,19 @@ describe('quality hooks', () => {
     expect(r.isLooping).toBe(false);
   });
 
+  test('warmup compiles kept fade clones it is given and leaves them undisposed', async () => {
+    const { r, fake } = setup();
+    fake.compileAsync = vi.fn(async (scene) => {
+      fake.seen = scene.children.filter((c) => c.isMesh).map((c) => c.material);
+    });
+    const mat = new THREE.MeshBasicMaterial();
+    const kept = new THREE.MeshBasicMaterial({ transparent: true });
+    const dispose = vi.spyOn(kept, 'dispose');
+    await r.warmup([mat], new THREE.BoxGeometry(), [kept]);
+    expect(fake.seen).toEqual([mat, kept]);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
   test('a frame rendered while the warmup compile is pending never contains a warm-up mesh', async () => {
     const { r, fake, step } = setup();
     let release;

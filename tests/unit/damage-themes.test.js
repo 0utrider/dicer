@@ -448,3 +448,20 @@ describe('elementalDamageInsides (living insides, round 2)', () => {
     expect(themer.forRoll(r)(term, 0).appearance.interior.type).toBe('liquid');
   });
 });
+
+describe('damage looks for the warm-up', () => {
+  const themer = (settings = {}) =>
+    createDamageThemer({ registry: createRegistry({ warn: () => {} }), getSetting: (k) => ({ damagePresets: true, ...settings })[k] });
+
+  test('one look per built-in damage theme the map reaches, elemental insides included', () => {
+    const looks = themer({ elementalDamageInsides: true }).warmupLooks();
+    const ids = new Set(Object.values(DEFAULT_DAMAGE_MAP));
+    expect(looks).toHaveLength(ids.size);
+    expect(looks.map((l) => l.interior.type)).toContain('storm');
+  });
+
+  test('a type switched off is left out; nothing with damage themes off', () => {
+    expect(themer({ damageTypeMap: { electricity: 'none', lightning: 'none' } }).warmupLooks()).toHaveLength(new Set(Object.values(DEFAULT_DAMAGE_MAP)).size - 1);
+    expect(themer({ damagePresets: false }).warmupLooks()).toEqual([]);
+  });
+});

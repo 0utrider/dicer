@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- **Fixed: the canvas froze for a moment on the first roll of a damage type** (an Electric Arc, a fireball). Fire, cold, electricity and the other damage dice have their own looks, and the first roll of each had to prepare its graphics on the spot. Dicer now prepares them in the background when the world loads.
+- **Fixed: a short freeze as the dice faded out**, on every roll, worst on resin dice with an inside. It could also stall an animation playing at the same time (Automated Animations, JB2A). The fade's graphics are now kept ready between rolls instead of being rebuilt each time.
+
 ## 1.0.0
 
 Dicer 1.0: the first official release. 3D dice that tumble and land on your real roll for everyone at once, with real physics (or let the physics decide), 39 themes, your own dice designs, damage dice, effects and trigger rules with JB2A, dice trays, rolling by hand, dice pets and roll stats, and Dice So Nice modules and dice sets kept working.

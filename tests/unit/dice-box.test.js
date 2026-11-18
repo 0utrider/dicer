@@ -222,6 +222,35 @@ test('landed resolves after playback lands; finished after timeBeforeHide + fade
   expect(dieGroups(renderer)).toHaveLength(0);
 });
 
+test("a material keeps one fade clone (three would drop the fade program with the last), later rolls' clones are disposed", async () => {
+  const { renderer, physics, box } = setup();
+  const fadeOnce = async (value) => {
+    const r = box.roll([{ type: 'd6', value }]);
+    physics.flush();
+    renderer.tick(0);
+    renderer.tick(2000);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(2100);
+    const mesh = dieGroups(renderer).at(-1).children[0];
+    const fade = mesh.material;
+    const dispose = vi.spyOn(fade, 'dispose');
+    renderer.tick(2200);
+    renderer.tick(2700);
+    await r.finished;
+    return dispose;
+  };
+  expect(await fadeOnce(3)).not.toHaveBeenCalled(); // kept
+  expect(await fadeOnce(4)).toHaveBeenCalledTimes(1);
+  // the warm-up compiles the kept clone, and the material's disposal takes it along
+  const warm = box.acquireWarmup(['d6']);
+  expect(warm.fades).toHaveLength(1);
+  expect(warm.fades[0].transparent).toBe(true);
+  const keptDispose = vi.spyOn(warm.fades[0], 'dispose');
+  warm.release();
+  box.invalidateMaterials();
+  expect(keptDispose).toHaveBeenCalledTimes(1);
+});
+
 test('fade uses clones and never mutates the cached materials', async () => {
   const { renderer, physics, box } = setup();
   box.roll([{ type: 'd6', value: 3 }]);
@@ -1003,6 +1032,17 @@ describe('per-roll appearance, flags and refcounted materials', () => {
     for (const d of disposes) expect(d).toHaveBeenCalledTimes(1);
     warm.release(); // idempotent
     for (const d of disposes) expect(d).toHaveBeenCalledTimes(1);
+  });
+
+  test('acquireWarmup(_, looks) holds one material per other look', () => {
+    const { box } = setup({ appearance: ruby });
+    const blue = { body: { type: 'opaque', color: '#2040c0' }, numbers: { fill: 'paint' } };
+    const warm = box.acquireWarmup(undefined, [blue, ruby, blue]);
+    expect(warm.materials).toHaveLength(2);
+    const own = box.acquireWarmup(['d6']);
+    expect(warm.materials).toContain(own.materials[0]);
+    own.release();
+    warm.release();
   });
 
   test('warm-up materials are the ones the next roll uses', () => {

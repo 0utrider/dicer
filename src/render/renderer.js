@@ -203,17 +203,19 @@ export class DiceRenderer {
    * No loop starts. Rejects (CompileAbortedError) when the context is lost mid-compile or the
    * compile outlasts compileTimeoutMs (10 s), so the caller's cleanup always runs.
    */
-  async warmup(materials, geometry) {
+  async warmup(materials, geometry, keptFades = null) {
     if (!this.#renderer.compileAsync) return;
     if (this.#renderer.isWebGLRenderer) {
       this.#sceneApi.setEnvironment(this.#renderer, { resolution: this.#envResolution });
     }
-    const fades = materials.map((m) => cloneForFade(m));
+    // The DiceBox's kept fade clones stay alive (and so their programs); clones made here would
+    // drop the fade programs again when disposed.
+    const fades = keptFades ?? materials.map((m) => cloneForFade(m));
     try {
       await this.#compileApart([...materials, ...fades].map((m) => new THREE.Mesh(geometry, m)));
     } finally {
       // dispose() on a clone only drops its own program refs; userData is shared and untouched.
-      for (const f of fades) f.dispose();
+      if (!keptFades) for (const f of fades) f.dispose();
     }
   }
 

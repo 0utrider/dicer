@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { createWarmup, createAppearanceRewarm } from '../../src/render/warmup.js';
 import { DiceRenderer } from '../../src/render/renderer.js';
 
-function setup() {
+function setup({ getLooks } = {}) {
   const container = document.createElement('div');
   const fake = {
     setSize() {},
@@ -28,7 +28,7 @@ function setup() {
   };
   const onWarmed = vi.fn();
   const warn = vi.fn();
-  const warmUp = createWarmup({ getBox: () => box, getRenderer: () => renderer, onWarmed, warn });
+  const warmUp = createWarmup({ getBox: () => box, getRenderer: () => renderer, onWarmed, warn, getLooks });
   const loseContext = () =>
     container.querySelector('canvas').dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
   return { fake, renderer, box, released, onWarmed, warn, warmUp, loseContext };
@@ -64,6 +64,32 @@ test('calls during a pass coalesce into one more pass', async () => {
   release();
   await a;
   expect(box.acquireWarmup).toHaveBeenCalledTimes(2);
+});
+
+test('other looks (the damage themes) compile in a second pass after the current look', async () => {
+  const looks = [{ a: 1 }, { b: 2 }];
+  const { fake, box, released, onWarmed, warmUp } = setup({ getLooks: () => looks });
+  fake.compileAsync = vi.fn(async () => {});
+  await warmUp();
+  expect(box.acquireWarmup.mock.calls).toEqual([[], [undefined, looks]]);
+  expect(fake.compileAsync).toHaveBeenCalledTimes(2);
+  expect(released).toEqual([0, 1]);
+  expect(onWarmed).toHaveBeenCalledTimes(1);
+});
+
+test('no second pass when the current look failed to compile or there are no other looks', async () => {
+  const getLooks = vi.fn(() => [{ a: 1 }]);
+  const { fake, box, warmUp } = setup({ getLooks });
+  fake.compileAsync = vi.fn(async () => {
+    throw new Error('boom');
+  });
+  await warmUp();
+  expect(box.acquireWarmup).toHaveBeenCalledTimes(1);
+  expect(getLooks).not.toHaveBeenCalled();
+  const empty = setup({ getLooks: () => [] });
+  empty.fake.compileAsync = vi.fn(async () => {});
+  await empty.warmUp();
+  expect(empty.box.acquireWarmup).toHaveBeenCalledTimes(1);
 });
 
 test('no box or renderer yet: nothing is acquired', async () => {

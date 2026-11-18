@@ -367,10 +367,14 @@ function resizeDice() {
  * render loop; calls made while one runs coalesce. A context loss or a 10 s timeout rejects
  * the compile, so the pass still releases its materials and later warm-ups still run.
  */
+/** The damage themes' looks, warmed after the own look (set once the damage themer exists). */
+let damageLooks = () => [];
+
 const warmUp = createWarmup({
   getBox: () => diceBox,
   getRenderer: () => diceRenderer,
   onWarmed: () => quality?.warmedUp(), // P2-R10: fresh adaptive window once the new programs exist
+  getLooks: () => damageLooks(),
 });
 
 /**
@@ -822,6 +826,7 @@ Hooks.once('ready', async () => {
         getUserThemes: userThemes,
         getViewerId: () => game.user?.id,
       });
+      damageLooks = () => damageThemer.warmupLooks();
       const resolver = createLookResolver({
         registry,
         getUser: (id) => game.users?.get(id),

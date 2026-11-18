@@ -9,6 +9,10 @@
  * @param {() => object|null} o.getBox the DiceBox (acquireWarmup), or null before activation
  * @param {() => object|null} o.getRenderer the DiceRenderer (warmup), or null
  * @param {() => void} [o.onWarmed] after a pass compiled (quality.warmedUp, P2-R10)
+ * @param {() => object[]} [o.getLooks] other looks to compile once the current one is done
+ *   (main: the damage themes), so the first fire or electricity roll does not freeze the canvas
+ *   compiling them; a separate compile, so the current look is ready first and the 10 s guard
+ *   covers each on its own
  * @param {(message: string, err: unknown) => void} [o.warn]
  * @returns {() => Promise<void>} warmUp(); resolves when no pass is left
  */
@@ -16,10 +20,23 @@ export function createWarmup({
   getBox,
   getRenderer,
   onWarmed = () => {},
+  getLooks = () => [],
   warn = (message, err) => console.warn(message, err),
 }) {
   let warming = null;
   let again = false;
+  /** Compiles one acquired set and releases it; false when the compile failed. */
+  const pass = async (renderer, warm) => {
+    try {
+      await renderer.warmup(warm.materials, warm.geometry, warm.fades);
+      return true;
+    } catch (err) {
+      warn('dicer: material warm-up failed', err);
+      return false;
+    } finally {
+      warm.release();
+    }
+  };
   return function warmUp() {
     if (warming) {
       again = true;
@@ -31,15 +48,15 @@ export function createWarmup({
         const box = getBox();
         const renderer = getRenderer();
         if (!box || !renderer) return;
-        const warm = box.acquireWarmup();
+        if (!(await pass(renderer, box.acquireWarmup()))) continue;
+        onWarmed();
+        let looks = [];
         try {
-          await renderer.warmup(warm.materials, warm.geometry);
-          onWarmed();
+          looks = getLooks() ?? [];
         } catch (err) {
-          warn('dicer: material warm-up failed', err);
-        } finally {
-          warm.release();
+          warn('dicer: cannot list the damage looks to warm up', err);
         }
+        if (looks.length && !again) await pass(renderer, box.acquireWarmup(undefined, looks));
       } while (again);
     })().finally(() => {
       warming = null;
