@@ -59,6 +59,18 @@ describe('the form', () => {
     expect(readPitch({ getFlag: () => undefined })).toBe(1);
   });
 
+  test('a Preview button (not for no pet) throws one local d20 with the pet', async () => {
+    const { previewPet } = await import('../../src/ui/pet-window.js');
+    expect(buildPetForm({ kind: 'cat', color: '#112233' }).querySelector('[data-act="preview"]')).not.toBeNull();
+    expect(buildPetForm({ kind: 'none', color: '#112233' }).querySelector('[data-act="preview"]')).toBeNull();
+    const throwLook = vi.fn();
+    const had = globalThis.game.dice3d;
+    globalThis.game.dice3d = { _throwLook: throwLook };
+    previewPet();
+    expect(throwLook).toHaveBeenCalledWith(null, ['d20']);
+    globalThis.game.dice3d = had;
+  });
+
   test('no pet: no colour; pets off by the GM or hidden here: a note', () => {
     expect(buildPetForm({ kind: 'none', color: '#112233' }).querySelector('[data-pet-color]')).toBeNull();
     expect(buildPetForm({ kind: 'mimic', color: '#112233' }, { allowed: false }).textContent).toContain('DICER.PetWindow.Off');
@@ -186,4 +198,16 @@ describe('the window', () => {
     await flush();
     expect(user.setFlag).toHaveBeenCalledTimes(1);
   });
+});
+
+test('every pet label the window uses is in lang/en.json under DICER.Appearance.Pet / PetWindow', async () => {
+  const { readFileSync } = await import('node:fs');
+  const lang = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER;
+  const src = readFileSync('src/ui/pet-window.js', 'utf8');
+  const used = [...src.matchAll(/DICER.(Appearance.Pet|PetWindow).([A-Za-z]+)/g)].map((m) => [m[1], m[2]]);
+  expect(used.length).toBeGreaterThan(5);
+  const at = (path) => path.split('.').reduce((o, k) => o?.[k], lang);
+  expect(used.filter(([sec, key]) => typeof at(sec)?.[key] !== 'string').map(([s2, k]) => `${s2}.${k}`)).toEqual([]);
+  // the kind labels come from LABELS
+  for (const label of ['Mimic', 'Slime', 'Dragonling', 'Owl', 'Frog', 'Ghost', 'Mushroom', 'Eye', 'Golem', 'Cat']) expect(typeof lang.Appearance.Pet[label]).toBe('string');
 });

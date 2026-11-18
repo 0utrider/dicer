@@ -1013,11 +1013,14 @@ export function createDice3dApi({
         }
       },
     },
-    /** Local only: throws one die of each type with a theme's look (the editor and browser Throw buttons). */
+    /**
+     * Local only: throws one die of each type (or of `types`) with a theme's look (the editor and
+     * browser Throw buttons; the pet window's Preview throws one d20 with the user's own look).
+     */
     _throwLook: {
-      value(theme) {
+      value(theme, types = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
         try {
-          const specs = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((type) => {
+          const specs = types.map((type) => {
             const values = getShape(type).values;
             const spec = { type, value: values[Math.floor(Math.random() * values.length)] };
             const appearance = theme?.perType?.[type] ?? theme?.appearance;

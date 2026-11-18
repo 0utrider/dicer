@@ -144,7 +144,17 @@ export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
   return h('form', { class: 'dicer-pet-window' }, [
     ...notes,
     chips,
-    ...(pet.kind === 'none' ? [] : [color, pitch]),
+    ...(pet.kind === 'none'
+      ? []
+      : [
+          color,
+          pitch,
+          // a local throw: the pet comes, throws one d20, reacts and settles, on this screen only
+          h('button', { type: 'button', class: 'dicer-pet-preview', 'data-act': 'preview' }, [
+            h('i', { class: 'fa-solid fa-play', 'aria-hidden': 'true' }),
+            ` ${loc('DICER.Appearance.Pet.Preview')}`,
+          ]),
+        ]),
     ...(rows.length ? [h('h3', { class: 'dicer-pet-heading', text: loc('DICER.PetWindow.Settings') }), ...rows] : []),
   ]);
 }
@@ -161,6 +171,15 @@ export async function savePet(change, user = me()) {
   } catch {
     globalThis.ui?.notifications?.warn(loc('DICER.Appearance.Pet.SaveFailed'));
     return false;
+  }
+}
+
+/** Throws one d20 on this screen only (no roll, no chat message): the pet comes and plays it out. */
+export function previewPet() {
+  try {
+    return globalThis.game?.dice3d?._throwLook?.(null, ['d20']);
+  } catch {
+    return undefined;
   }
 }
 
@@ -181,7 +200,10 @@ export function openPetWindow() {
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
-      result.addEventListener('click', (event) => this.#onClick(event.target.closest?.('[data-kind]')));
+      result.addEventListener('click', (event) => {
+        if (event.target.closest?.('[data-act="preview"]')) return previewPet();
+        this.#onClick(event.target.closest?.('[data-kind]'));
+      });
       // dragging the picker or typing only mirrors the value; the save is on change
       result.addEventListener('input', (event) => this.#mirror(event.target));
       result.addEventListener('change', (event) => this.#onColor(event.target));

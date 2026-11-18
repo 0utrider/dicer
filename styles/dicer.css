@@ -2445,6 +2445,11 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   text-align: right;
   font-family: monospace;
 }
+.dicer-pet-window .dicer-pet-preview {
+  align-self: flex-start;
+  width: auto;
+  padding: 0 12px;
+}
 .dicer-pet-natural {
   display: inline-flex;
   align-items: center;

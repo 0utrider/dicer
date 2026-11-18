@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.9
+
+- **Preview your pet.** A button in **Your pet** brings your pet out to throw a d20 on your screen only (no roll, no chat message), so you can see a new pet, colour or voice pitch without rolling.
+- **Fixed: the Natural colours and Voice pitch labels in Your pet showed their raw names** (since 1.0.7).
+
 ## 1.0.8
 
 - **Fixed: 3D dice didn't start on The Forge** ("3D dice are disabled (startup failed)", with a SecurityError about a physics worker). The Forge serves modules from its own asset server, and browsers won't start a background worker from another site's script. Dicer now starts its physics and font workers in a way that works there too.

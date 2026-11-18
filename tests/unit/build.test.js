@@ -380,9 +380,11 @@ describe('build', () => {
     // programs as it starts (DiceBox #compileFades): owner approved +415 B (35,883 -> 36,298), 2026-11-18.
     // The physics and font workers start from a same-origin blob when the module is served from
     // another origin (The Forge's asset CDN): owner approved +103 B (36,298 -> 36,401), 2026-11-18.
+    // The pet window's Preview (a local one-d20 throw: _throwLook takes the die types):
+    // owner approved +3 B (36,401 -> 36,404), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(36_401);
+    expect(growth).toBeLessThanOrEqual(36_404);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
