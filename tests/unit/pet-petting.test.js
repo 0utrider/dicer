@@ -173,6 +173,24 @@ const screenOf = (g, up = 0.75) => {
   return { x: ((v.x + 1) / 2) * 1280, y: ((1 - v.y) / 2) * 800 };
 };
 
+describe('pet voice pitch', () => {
+  test("a pet speaks at its kind's pitch times its owner's pick", () => {
+    const flags = { u1: { pitch: 1.5 }, u2: {} };
+    const m = make({}, { userOf: (id) => ({ getFlag: () => flags[id] }) });
+    rollToRest(m, 'u1', 'golem');
+    const at = screenOf(group(m));
+    m.deps.playSound.mockClear();
+    clickAt(m.win, at.x, at.y);
+    expect(m.deps.playSound.mock.calls[0][0].rate).toBeCloseTo(0.7 * 1.5, 5);
+    const n = make({}, { userOf: (id) => ({ getFlag: () => flags[id] }) });
+    rollToRest(n, 'u2', 'slime');
+    const at2 = screenOf(group(n));
+    n.deps.playSound.mockClear();
+    clickAt(n.win, at2.x, at2.y);
+    expect(n.deps.playSound.mock.calls[0][0].rate).toBe(1);
+  });
+});
+
 describe('petting a pet in the layer', () => {
   test('a left click on a resting pet pets it: stopped, the pet wiggles, a chirp, the loop runs only for it', () => {
     const m = make();
@@ -184,7 +202,7 @@ describe('petting a pet in the layer', () => {
     expect(got).toEqual([]);
     expect(es.every((e) => e.defaultPrevented)).toBe(true);
     expect(m.deps.wake).toHaveBeenCalled();
-    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petPurr' }); // a purring trill
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petPurr' })); // a purring trill
     expect(m.layer.update((clockNow += 16))).toBe(true);
     expect(group(m).userData.dicerPet.phase).toBe('pet');
     const hearts = group(m).children.find((c) => c.name === 'petSparkle');
@@ -387,7 +405,7 @@ describe('petting a pet in the layer', () => {
     }
     expect(got).toEqual([]);
     expect(g.userData.dicerPet.phase).toBe('huff');
-    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petHuff' }); // "hmph"
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHuff' })); // "hmph"
     runTo(m, clockNow + HUFF_MS + REST_HOP_MS + 100);
     expect(m.layer.update((clockNow += 16))).toBe('rest'); // it sits off, idle
     const away = Math.hypot(g.position.x - home.x, g.position.z - home.z);
@@ -441,7 +459,7 @@ describe('petting a pet in the layer', () => {
   });
 });
 
-describe.each(['mimic', 'slime', 'dragonling'])('%s poses pet and huff', (kind) => {
+describe.each(['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat'])('%s poses pet and huff', (kind) => {
   test('finite, and starting and ending on the standing pose', () => {
     const c = CREATURES[kind]('#3080ff');
     const snap = () => {
@@ -548,7 +566,7 @@ describe('dragging a pet in the layer', () => {
     const from = screenOf(group(m));
     const to = { x: 400, y: 300 };
     dragAlong(m.win, from, [{ x: from.x + 20, y: from.y }, to]);
-    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petWhoa' });
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petWhoa' }));
     await Promise.resolve();
     await Promise.resolve();
     expect(saved.petRestSpot).toBe('placed');

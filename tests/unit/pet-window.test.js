@@ -37,10 +37,26 @@ const kinds = (form) => [...form.querySelectorAll('[data-kind]')];
 describe('the form', () => {
   test('one button per kind, the current one active; the colour in both inputs', () => {
     const form = buildPetForm({ kind: 'dragonling', color: '#112233' });
-    expect(kinds(form).map((b) => b.dataset.kind)).toEqual(['none', 'mimic', 'slime', 'dragonling']);
+    expect(kinds(form).map((b) => b.dataset.kind)).toEqual(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat']);
     expect(kinds(form).filter((b) => b.classList.contains('active')).map((b) => b.dataset.kind)).toEqual(['dragonling']);
     expect([...form.querySelectorAll('[data-pet-color]')].map((i) => i.value)).toEqual(['#112233', '#112233']);
     expect(form.querySelector('.dicer-pet-off')).toBeNull();
+  });
+
+  test('a Natural colours box, ticked when the pet wears its own colours', () => {
+    const box = (pet) => buildPetForm(pet).querySelector('[data-pet-natural]');
+    expect(box({ kind: 'owl', color: '#112233' }).checked).toBe(false);
+    expect(box({ kind: 'owl', color: '#112233', natural: true }).checked).toBe(true);
+  });
+
+  test('a voice pitch slider with its value; readPitch clamps the stored one', async () => {
+    const { readPitch } = await import('../../src/ui/pet-window.js');
+    const form = buildPetForm({ kind: 'owl', color: '#112233', pitch: 1.5 });
+    expect(form.querySelector('[data-pet-pitch]').value).toBe('1.5');
+    expect(form.querySelector('.dicer-pet-pitch output').textContent).toBe('×1.50');
+    expect(buildPetForm({ kind: 'none', color: '#112233' }).querySelector('[data-pet-pitch]')).toBeNull();
+    expect(readPitch({ getFlag: () => ({ pitch: 7 }) })).toBe(2);
+    expect(readPitch({ getFlag: () => undefined })).toBe(1);
   });
 
   test('no pet: no colour; pets off by the GM or hidden here: a note', () => {
@@ -164,7 +180,7 @@ describe('the window', () => {
     expect(user.setFlag).not.toHaveBeenCalled();
     text.dispatchEvent(new Event('change', { bubbles: true }));
     await flush();
-    expect(user.setFlag).toHaveBeenCalledWith('dicer', 'pet', { kind: 'slime', color: '#abcdef' });
+    expect(user.setFlag).toHaveBeenCalledWith('dicer', 'pet', { kind: 'slime', color: '#abcdef', natural: false });
     text.value = '#12';
     text.dispatchEvent(new Event('change', { bubbles: true }));
     await flush();

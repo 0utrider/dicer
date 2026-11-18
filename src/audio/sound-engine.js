@@ -400,7 +400,8 @@ export function createSoundEngine({
       else buf = rendered ? bufferFor(`result:${sound.builtin}`) : null;
       if (!buf || disposed) return;
       if (ctx.state !== 'running') return;
-      start(buf, vol, 1);
+      // sound.rate: a pet's voice pitch (playback rate, 0.5..2)
+      start(buf, vol, sound.rate > 0 ? Math.min(2, Math.max(0.5, sound.rate)) : 1);
     } catch (e) {
       warn('Dicer: result sound failed', e);
     }

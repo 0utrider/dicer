@@ -102,8 +102,8 @@ const reactAndRun = (settings, dice, ghost = false) => {
 };
 
 test('crit plays petHappy, fumble petSad, mixed/plain silent', () => {
-  expect(reactAndRun({}, [d20(20)]).playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
-  expect(reactAndRun({}, [d20(1)]).playSound).toHaveBeenCalledWith({ builtin: 'petSad' });
+  expect(reactAndRun({}, [d20(20)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
+  expect(reactAndRun({}, [d20(1)]).playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSad' }));
   expect(reactAndRun({}, [d20(1), d20(20)]).playSound).not.toHaveBeenCalled();
   expect(reactAndRun({}, [{ type: 'd6', value: 6 }]).playSound).not.toHaveBeenCalled();
   expect(reactAndRun({}, [d20(20)]).playSound).toHaveBeenCalledTimes(1);
@@ -272,7 +272,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('damage', [{ type: 'd8', value: 3 }]);
     run(m, 1300, 4000);
     expect(m.playSound).toHaveBeenCalledTimes(1);
-    expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
   });
 
   test('a multi-roll message: a 20 and a 1 in two rolls -> mixed (silent puzzlement)', () => {
@@ -295,7 +295,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('g', [d20(undefined, true)]);
     m.layer.landed('r', [d20(20)]);
     run(m, 700, 1000);
-    expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
   });
 
 
@@ -339,7 +339,7 @@ describe('overlapping rolls by one roller (reaction per roll key)', () => {
     m.layer.landed('a', [d20(20)]);
     m.layer.end('b');
     run(m, 700, 1000);
-    expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
   });
 });
 
@@ -1008,7 +1008,7 @@ test("the owner's next roll reforms the puddle in place and plays the routine", 
   expect(pets(m.scene)[0].children[0].visible).toBe(true);
   m.layer.landed('again', [d20(20)]);
   runTo(m, clockNow + 1400);
-  expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petHappy' });
+  expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petHappy' }));
   m.layer.leave('again', 0);
   m.layer.end('again');
   expect(runTo(m, clockNow + 3000)).toBe('rest'); // rests again
@@ -1983,7 +1983,7 @@ describe('pets on the dice tray rim', () => {
     m.layer.landed(null, [{ type: 'd6', value: 3, x: 4, z: 6, damageType: 'fire' }]);
     m.layer.update((clockNow += 16));
     expect(phaseOf(m)).toBe('scorch');
-    expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petCough' });
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petCough' }));
   });
 
   test("its own pet, watching from the rim, reacts to its roll's element at once: no nod first", () => {
@@ -2001,7 +2001,7 @@ describe('pets on the dice tray rim', () => {
     }
     expect(seen[0]).toBe('scorch'); // straight into it
     expect(seen).not.toContain('react'); // never the plain nod
-    expect(m.playSound).toHaveBeenCalledWith({ builtin: 'petCough' });
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petCough' }));
     // the roll ends and the pet stays on the rim, resting
     m.layer.leave(key, 0);
     m.layer.end(key);

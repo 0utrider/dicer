@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
+import { CREATURES, NATURAL_COLORS, specColor } from '../../src/pet/chunk/creatures/index.js';
 
 // The chosen standing height (die units) and its tolerance: see the Task 4 report (the pet reads
 // as a creature beside a d20 from the top-down camera at 1.5; a d20 rests ~1.6 tall).
@@ -7,10 +7,12 @@ const HEIGHT = 1.5;
 const TOL = 0.15;
 const PHASES = ['enter', 'throw', 'watch', 'react', 'exit', 'wobble', 'reform'];
 const REACTIONS = ['crit', 'fumble', 'mixed', 'plain', null];
-const KINDS = ['mimic', 'slime', 'dragonling'];
+const KINDS = ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat'];
 // The watch pose's measured height. The mimic's height is its closed chest, and its open jaw
 // rises above it (see creatures/index.js), so its open pose may stand up to 2.5.
 const WATCH_MAX = { mimic: 2.5 };
+// Pupils per kind: two, but the floating eye has one big eye.
+const PUPILS = { eye: 1 };
 
 const meshes = (root) => {
   const out = [];
@@ -28,7 +30,7 @@ const materialsOf = (root) => {
   return [...set];
 };
 
-test('CREATURES has exactly the three kinds', () => {
+test('CREATURES has exactly the ten kinds', () => {
   expect(Object.keys(CREATURES).sort()).toEqual([...KINDS].sort());
 });
 
@@ -132,7 +134,7 @@ describe.each(KINDS)('%s', (kind) => {
     };
     const left = at(-0.6);
     const right = at(0.6);
-    expect(left.length).toBe(2);
+    expect(left.length).toBe(PUPILS[kind] ?? 2);
     for (let i = 0; i < left.length; i++) expect(right[i]).toBeGreaterThan(left[i]);
     c.dispose();
   });
@@ -338,4 +340,11 @@ test('the mimic scuttles low: alternating feet, the chest down, the lid bobbing'
   c.root.updateMatrixWorld(true);
   expect(new THREE.Box3().setFromObject(c.root).max.y).toBeLessThan(stand - 0.05);
   c.dispose();
+});
+
+test('every kind has a natural colour, used when the spec colour is null', () => {
+  expect(Object.keys(NATURAL_COLORS).sort()).toEqual([...KINDS].sort());
+  for (const c of Object.values(NATURAL_COLORS)) expect(c).toMatch(/^#[0-9a-f]{6}$/);
+  expect(specColor({ kind: 'frog', color: null })).toBe(NATURAL_COLORS.frog);
+  expect(specColor({ kind: 'frog', color: '#123456' })).toBe('#123456');
 });

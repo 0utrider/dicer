@@ -24,7 +24,18 @@ export const BODY = 0.65; // of the height: the drawn pet's half-width, kept off
 /** The standing height of every creature (creatures/*.js; a test keeps this in step). */
 export const PET_HEIGHT = 1.5;
 /** Each kind's `footprint` (creatures/*.js), for a pet not made yet; a test keeps these in step. */
-export const KIND_FOOTPRINT = { mimic: 0.95, slime: 1.0, dragonling: 0.85 };
+export const KIND_FOOTPRINT = {
+  mimic: 0.95,
+  slime: 1.0,
+  dragonling: 0.85,
+  owl: 0.62,
+  frog: 0.96,
+  ghost: 0.98,
+  mushroom: 0.87,
+  eye: 0.6,
+  golem: 1.0,
+  cat: 0.91,
+};
 
 /** The spot a pet stands on at `edge` of `area`, its outward direction and the yaw facing in. */
 export function edgeSpot(edge, area, height) {

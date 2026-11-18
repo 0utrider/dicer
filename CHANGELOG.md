@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.7
+
+- **Seven new dice pets, ten in all:** an **Owl** that flies and spins its head on a crit, a **Frog** that croaks, leaps and flicks its tongue, a shy **Ghost** that floats, a **Mushroom** that puffs spores, a **Floating eye** on soft tendrils, a chunky **Pebble golem** with glowing runes, and a **Cat** that bats your dice off the table. Each has its own crit and fumble, reacts to fire, cold and lightning dice, gets squished by a d20 and pops back, and sulks, cheers and purrs like the others. Pick one in **Your pet**.
+- **Natural colours.** A new box in **Your pet** gives every pet its own colours (a brown owl, a green frog, a ginger cat...) instead of the colour you pick. Picking a colour turns it off.
+- **Voice pitch.** A slider in **Your pet** makes your pet sound higher or lower. The new pets each have a voice of their own too: the golem is deep, the mushroom squeaky.
+
 ## 1.0.6
 
 - **Fixed: dice froze as they faded out in Firefox** (and the first roll of a new look froze as it was thrown). Firefox only finishes preparing dice graphics the first time they are drawn, so Dicer's preparation at load never really happened there. Dicer now finishes it while preparing.

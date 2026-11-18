@@ -8,8 +8,32 @@ import { PET_KINDS, readPet } from '../pet/pet-for.js';
 
 const MODULE = 'dicer';
 const HEX6 = /^#[0-9a-f]{6}$/;
-const ICONS = { none: 'fa-ban', mimic: 'fa-box-open', slime: 'fa-droplet', dragonling: 'fa-dragon' };
-const LABELS = { none: 'None', mimic: 'Mimic', slime: 'Slime', dragonling: 'Dragonling' };
+const ICONS = {
+  none: 'fa-ban',
+  mimic: 'fa-box-open',
+  slime: 'fa-droplet',
+  dragonling: 'fa-dragon',
+  owl: 'fa-crow',
+  frog: 'fa-frog',
+  ghost: 'fa-ghost',
+  mushroom: 'fa-seedling',
+  eye: 'fa-eye',
+  golem: 'fa-mountain',
+  cat: 'fa-cat',
+};
+const LABELS = {
+  none: 'None',
+  mimic: 'Mimic',
+  slime: 'Slime',
+  dragonling: 'Dragonling',
+  owl: 'Owl',
+  frog: 'Frog',
+  ghost: 'Ghost',
+  mushroom: 'Mushroom',
+  eye: 'Eye',
+  golem: 'Golem',
+  cat: 'Cat',
+};
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const me = () => globalThis.game?.user;
 const setting = (key) => {
@@ -68,7 +92,21 @@ export function controlValue(el, cfg) {
   return cfg?.type === Number ? Number(el.value) : el.value;
 }
 
-/** The window's content for `pet` ({kind, color}); `allowed`: the GM's petsAllowed; `hidden`: showPets off. */
+/** The voice pitch shown as text: 1 is the pet's own voice. */
+export const pitchText = (p) => `×${Number(p).toFixed(2)}`;
+
+/** The user's raw pet pitch (the dicer.pet flag's `pitch`, 0.5..2; 1 when unset). */
+export function readPitch(user) {
+  let p;
+  try {
+    p = user?.getFlag?.(MODULE, 'pet')?.pitch;
+  } catch {
+    /* unreadable: 1 */
+  }
+  return typeof p === 'number' && Number.isFinite(p) ? Math.min(2, Math.max(0.5, p)) : 1;
+}
+
+/** The window's content for `pet` ({kind, color, natural, pitch}); `allowed`: the GM's petsAllowed; `hidden`: showPets off. */
 export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
   const notes = [
     h('p', { class: 'dicer-hint', text: loc('DICER.Appearance.Pet.Hint') }),
@@ -85,17 +123,28 @@ export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
       ]),
     ),
   );
-  const color = h('label', { class: 'dicer-pet-color' }, [
+  // natural: the kind's own colours; the picker stays, and picking a colour turns natural off
+  const color = h('div', { class: 'dicer-pet-color' }, [
     h('span', { text: loc('DICER.Appearance.Pet.Color') }),
+    h('label', { class: 'dicer-pet-natural', 'data-tooltip': loc('DICER.Appearance.Pet.NaturalHint') }, [
+      h('input', { type: 'checkbox', 'data-pet-natural': '', checked: !!pet.natural }),
+      h('span', { text: loc('DICER.Appearance.Pet.Natural') }),
+    ]),
     h('input', { type: 'color', value: pet.color, 'data-pet-color': '', 'aria-label': loc('DICER.Appearance.Pet.Color') }),
     h('input', { type: 'text', value: pet.color, maxlength: '7', spellcheck: 'false', 'data-pet-color': '', 'aria-label': loc('DICER.Appearance.Pet.Color') }),
+  ]);
+  // the voice: a playback rate on the pet's sounds (its kind's own voice times this)
+  const pitch = h('label', { class: 'dicer-pet-pitch', 'data-tooltip': loc('DICER.Appearance.Pet.PitchHint') }, [
+    h('span', { text: loc('DICER.Appearance.Pet.Pitch') }),
+    h('input', { type: 'range', min: '0.5', max: '2', step: '0.05', value: String(pet.pitch ?? 1), 'data-pet-pitch': '' }),
+    h('output', { text: pitchText(pet.pitch ?? 1) }),
   ]);
   const registered = globalThis.game?.settings?.settings;
   const rows = PET_SETTINGS.map((key) => settingRow(key, registered?.get?.(`dicer.${key}`), setting(key))).filter(Boolean);
   return h('form', { class: 'dicer-pet-window' }, [
     ...notes,
     chips,
-    ...(pet.kind === 'none' ? [] : [color]),
+    ...(pet.kind === 'none' ? [] : [color, pitch]),
     ...(rows.length ? [h('h3', { class: 'dicer-pet-heading', text: loc('DICER.PetWindow.Settings') }), ...rows] : []),
   ]);
 }
@@ -128,7 +177,7 @@ export function openPetWindow() {
       position: { width: 460, height: 'auto' },
     };
     async _renderHTML() {
-      return buildPetForm(readPet(me()), { allowed: setting('petsAllowed') !== false, hidden: setting('showPets') === false });
+      return buildPetForm({ ...readPet(me()), pitch: readPitch(me()) }, { allowed: setting('petsAllowed') !== false, hidden: setting('showPets') === false });
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
@@ -144,7 +193,7 @@ export function openPetWindow() {
     }
     #mirror(el) {
       // a slider shows its value as it moves
-      if (el?.type === 'range') el.nextElementSibling.textContent = el.value;
+      if (el?.type === 'range') el.nextElementSibling.textContent = el.matches('[data-pet-pitch]') ? pitchText(el.value) : el.value;
       if (!el?.matches?.('[data-pet-color]')) return null;
       const v = String(el.value).trim().toLowerCase();
       if (!HEX6.test(v)) return null; // half typed: wait
@@ -154,8 +203,20 @@ export function openPetWindow() {
     async #onColor(el) {
       const key = el?.closest?.('[data-setting]')?.dataset.setting;
       if (key) return this.#onSetting(key, el);
+      if (el?.matches?.('[data-pet-pitch]')) {
+        if (!(await savePet({ pitch: Math.min(2, Math.max(0.5, Number(el.value) || 1)) }))) this.render();
+        return;
+      }
+      if (el?.matches?.('[data-pet-natural]')) {
+        if (!(await savePet({ natural: el.checked }))) this.render();
+        return;
+      }
       const v = this.#mirror(el);
-      if (v && !(await savePet({ color: v }))) this.render(); // show the stored colour again
+      if (!v) return;
+      // a colour picked: the pet wears it, natural colours off
+      const box = this.element.querySelector('[data-pet-natural]');
+      if (box) box.checked = false;
+      if (!(await savePet({ color: v, natural: false }))) this.render(); // show the stored colour again
     }
     /** A pet setting changed: saved at once (its own onChange wakes the pets); showPets redraws the notes. */
     async #onSetting(key, el) {

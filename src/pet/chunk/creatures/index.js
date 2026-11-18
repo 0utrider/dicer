@@ -1,6 +1,13 @@
 import { mimic } from './mimic.js';
 import { slime } from './slime.js';
 import { dragonling } from './dragonling.js';
+import { owl } from './owl.js';
+import { frog } from './frog.js';
+import { ghost } from './ghost.js';
+import { mushroom } from './mushroom.js';
+import { eye } from './eye.js';
+import { golem } from './golem.js';
+import { cat } from './cat.js';
 import { REFORM_IN, outBack, smooth, span } from './parts.js';
 
 /**
@@ -95,4 +102,31 @@ const safe = (make) => (color) => {
   return c;
 };
 
-export const CREATURES = { mimic: safe(mimic), slime: safe(slime), dragonling: safe(dragonling) };
+/** Each kind's own colour, for a pet set to natural colours (its PetSpec colour is null). */
+export const NATURAL_COLORS = {
+  mimic: '#9a6a32',
+  slime: '#2bb3a3',
+  dragonling: '#c0392b',
+  owl: '#8a5a2b',
+  frog: '#3f9b3a',
+  ghost: '#b9c4e8',
+  mushroom: '#c0392b',
+  eye: '#7b3fa8',
+  golem: '#7d7f86',
+  cat: '#e08a2c',
+};
+/** A PetSpec's colour: its own, or its kind's natural one. */
+export const specColor = (spec) => spec?.color ?? NATURAL_COLORS[spec?.kind] ?? '#c9a227';
+
+export const CREATURES = {
+  mimic: safe(mimic),
+  slime: safe(slime),
+  dragonling: safe(dragonling),
+  owl: safe(owl),
+  frog: safe(frog),
+  ghost: safe(ghost),
+  mushroom: safe(mushroom),
+  eye: safe(eye),
+  golem: safe(golem),
+  cat: safe(cat),
+};

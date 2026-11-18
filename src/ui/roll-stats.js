@@ -14,7 +14,18 @@ import { readPet } from '../pet/pet-for.js';
 
 const MODULE = 'dicer';
 const SCOPES = ['session', 'month', 'all'];
-const PETS = { mimic: 'Mimic', slime: 'Slime', dragonling: 'Dragonling' };
+const PETS = {
+  mimic: 'Mimic',
+  slime: 'Slime',
+  dragonling: 'Dragonling',
+  owl: 'Owl',
+  frog: 'Frog',
+  ghost: 'Ghost',
+  mushroom: 'Mushroom',
+  eye: 'Eye',
+  golem: 'Golem',
+  cat: 'Cat',
+};
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const fmt = (key, data) => globalThis.game?.i18n?.format?.(key, data) ?? key;
 const setting = (key) => {

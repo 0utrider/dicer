@@ -337,7 +337,7 @@ describe('mood poses', () => {
   });
 
   test("sulk: the mimic's lid shut (it stands lower) and the slime flattened; proud stands taller", () => {
-    for (const kind of ['mimic', 'slime', 'dragonling']) {
+    for (const kind of ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat']) {
       const c = CREATURES[kind]('#3080c0');
       c.pose('exit', 1, 'plain', { yaw: 0, now: 0 });
       const stand = box(c).max.y;

@@ -463,6 +463,14 @@ describe('sound engine', () => {
       expect(ctx.sources.length).toBe(2);
     });
 
+    it("plays a pet's voice at its pitch (rate, clamped 0.5..2)", async () => {
+      const { engine } = await ready();
+      await engine.result({ builtin: 'petHappy', rate: 1.4 });
+      await engine.result({ builtin: 'petHappy', rate: 9 });
+      await engine.result({ builtin: 'petHappy' });
+      expect(ctx.sources.map((s) => s.playbackRate.value)).toEqual([1.4, 2, 1]);
+    });
+
     it('fetches, decodes and caches a custom file', async () => {
       const fetchSound = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
       const { engine } = await ready({ fetchSound });

@@ -241,7 +241,7 @@ describe('an elemental die hitting a resting pet', () => {
     rollToRest(m);
     hitBy(m, { damageType: 'fire' });
     expect(phase(m)).toBe('scorch');
-    expect(m.deps.playSound).not.toHaveBeenCalledWith({ builtin: 'petSplat' });
+    expect(m.deps.playSound).not.toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSplat' }));
     hitBy(m, { damageType: 'cold' });
     expect(phase(m)).toBe('shiver');
   });
@@ -251,15 +251,15 @@ describe('an elemental die hitting a resting pet', () => {
     rollToRest(plain);
     hitBy(plain, { damageType: 'untyped' });
     expect(phase(plain)).not.toBe('scorch');
-    expect(plain.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+    expect(plain.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSplat' }));
     const ghost = make();
     rollToRest(ghost);
     hitBy(ghost, { damageType: 'fire', ghost: true });
-    expect(ghost.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+    expect(ghost.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSplat' }));
     const off = make({ petElemental: false });
     rollToRest(off);
     hitBy(off, { damageType: 'fire' });
-    expect(off.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+    expect(off.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSplat' }));
   });
 
   test('more hits of the same element (other dice, bounces) do not restart the reaction', () => {
@@ -323,7 +323,7 @@ describe('reactions in the layer', () => {
   });
 
   test('scorch smoke: grey puffs, normally blended (not a glow), rising above the top of the pet', () => {
-    for (const kind of ['mimic', 'slime', 'dragonling']) {
+    for (const kind of ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat']) {
       const m = make();
       rollToRest(m, 'u1', kind);
       const g = group(m);
@@ -429,7 +429,7 @@ describe('reactions in the layer', () => {
       rollToRest(m);
       m.deps.playSound.mockClear();
       landBeside(m, [{ dx: 1, damageType }]);
-      expect(m.deps.playSound, damageType).toHaveBeenCalledWith({ builtin: sound });
+      expect(m.deps.playSound, damageType).toHaveBeenCalledWith(expect.objectContaining({ builtin: sound }));
     }
     const quiet = make({ petSounds: false });
     rollToRest(quiet);
@@ -443,7 +443,7 @@ describe('reactions in the layer', () => {
     rollToRest(m);
     const g = group(m);
     m.layer.hit('u1', { speed: 50, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die: { damageType: 'slashing' } });
-    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSplat' }));
   });
 
   test("only a check's d20 splats: a damage die (a weapon d8, a damage d20) or a plain d6 wobbles it however hard", () => {
@@ -452,14 +452,14 @@ describe('reactions in the layer', () => {
       rollToRest(m);
       const g = group(m);
       m.layer.hit('u1', { speed: 50, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die });
-      expect(m.deps.playSound).not.toHaveBeenCalledWith({ builtin: 'petSplat' });
+      expect(m.deps.playSound).not.toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSplat' }));
       expect(m.layer.update((clockNow += 16))).toBe(true); // the wobble
     }
     const m = make();
     rollToRest(m);
     const g = group(m);
     m.layer.hit('u1', { speed: 50, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die: { type: 'd20' } });
-    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petSplat' });
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petSplat' }));
   });
 
   test("a die with an element hitting a pet that watches its owner's dice fly sets it off there and then", () => {
@@ -473,7 +473,7 @@ describe('reactions in the layer', () => {
     const g = group(m);
     m.layer.hit('u1', { speed: 3, position: { x: g.position.x + 1, y: 1, z: g.position.z }, dieKey: 'd0', die: { type: 'd6', damageType: 'fire' } });
     m.layer.update((clockNow += 16));
-    expect(m.deps.playSound).toHaveBeenCalledWith({ builtin: 'petCough' });
+    expect(m.deps.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petCough' }));
     expect(g.userData.dicerPet.phase).toBe('scorch');
     // the dice land: its own reaction takes over
     m.layer.landed(key, [{ type: 'd20', value: 20 }]);
@@ -619,7 +619,7 @@ describe('reactions in the layer', () => {
   });
 });
 
-describe.each(['mimic', 'slime', 'dragonling'])(
+describe.each(['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat'])(
   '%s poses scorch, shiver, bristle and startle',
   (kind) => {
     test('finite, moving, and starting and ending on the standing pose', () => {

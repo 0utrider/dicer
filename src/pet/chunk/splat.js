@@ -13,6 +13,7 @@ import {
   palette,
   paint,
   REFORM_IN, // the creatures' 'reform' pops out of the lump from here
+  mergeFlat,
 } from './creatures/parts.js';
 
 /**
@@ -137,27 +138,6 @@ function shineGeometry(color) {
   const g = mergeFlat(parts);
   for (const p of parts) p.dispose();
   return paint(g, color);
-}
-
-/** One non-indexed geometry from several (position, normal, and colour when all have it). */
-function mergeFlat(list) {
-  const flat = list.map((g) => (g.index ? g.toNonIndexed() : g));
-  const n = flat.reduce((k, g) => k + g.attributes.position.count, 0);
-  const out = new THREE.BufferGeometry();
-  const names = flat.every((g) => g.attributes.color)
-    ? ['position', 'normal', 'color']
-    : ['position', 'normal'];
-  for (const name of names) {
-    const a = new Float32Array(n * 3);
-    let o = 0;
-    for (const g of flat) {
-      a.set(g.attributes[name].array, o);
-      o += g.attributes[name].array.length;
-    }
-    out.setAttribute(name, new THREE.BufferAttribute(a, 3));
-  }
-  for (let i = 0; i < flat.length; i++) if (flat[i] !== list[i]) flat[i].dispose();
-  return out;
 }
 
 export function createSplat(kind, color) {

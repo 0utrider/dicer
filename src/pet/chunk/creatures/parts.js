@@ -238,3 +238,24 @@ export function bend(geo, length, angle) {
   geo.computeVertexNormals();
   return geo;
 }
+
+/** One non-indexed geometry from several (position, normal, and colour when all have it). */
+export function mergeFlat(list) {
+  const flat = list.map((g) => (g.index ? g.toNonIndexed() : g));
+  const n = flat.reduce((k, g) => k + g.attributes.position.count, 0);
+  const out = new THREE.BufferGeometry();
+  const names = flat.every((g) => g.attributes.color)
+    ? ['position', 'normal', 'color']
+    : ['position', 'normal'];
+  for (const name of names) {
+    const a = new Float32Array(n * 3);
+    let o = 0;
+    for (const g of flat) {
+      a.set(g.attributes[name].array, o);
+      o += g.attributes[name].array.length;
+    }
+    out.setAttribute(name, new THREE.BufferAttribute(a, 3));
+  }
+  for (let i = 0; i < flat.length; i++) if (flat[i] !== list[i]) flat[i].dispose();
+  return out;
+}

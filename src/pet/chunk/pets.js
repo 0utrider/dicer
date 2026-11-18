@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CREATURES } from './creatures/index.js';
+import { CREATURES, specColor } from './creatures/index.js';
 import {
   phaseAt,
   ENTER_MS,
@@ -72,6 +72,11 @@ const UI_BOXES = ['ui-left', 'ui-top'];
 const AREAS_HOOK = 'dicerRollAreasChanged';
 
 const FLY_PEAK = 1.2; // the dragonling's flight arc on a move (alignFor), die units
+/** Pets that fly over on a move (an arc), and those that boing over in two hops (their pose springs). */
+const FLIERS = new Set(['dragonling', 'owl', 'ghost', 'eye']);
+const HOPPERS = new Set(['slime', 'frog']);
+/** Each kind's voice, as a playback rate on the shared pet sounds (the player's pitch multiplies it). */
+const KIND_PITCH = { owl: 0.95, frog: 0.82, ghost: 1.1, mushroom: 1.2, eye: 1.12, golem: 0.7, cat: 1.15 };
 // The dice tray's rim (petTray 'rim', deps.perch): a die hitting the tray wall at this speed or more
 // within WALL_REACH of a pet sitting on the rim makes it wobble (it never reaches the pet itself).
 export const WALL_FLINCH_SPEED = 4;
@@ -608,7 +613,7 @@ export function createPetLayer(deps) {
     }
     pet.creature = creature;
     pet.kind = spec.kind;
-    pet.color = spec.color;
+    pet.color = specColor(spec);
     pet.group.add(creature.root);
     pet.group.children.unshift(pet.group.children.pop()); // the creature stays the first child
     pet.shadow.scale.setScalar(creature.height * 0.7);
@@ -1010,7 +1015,7 @@ export function createPetLayer(deps) {
     const sparkle = makeSparkle();
     group.add(shadow, sparkle);
     const pet = { userId: spec.userId, group, shadow, sparkle, creature: null, rolls: new Map(), state: 'routine' };
-    setCreature(pet, CREATURES[spec.kind](spec.color), spec);
+    setCreature(pet, CREATURES[spec.kind](specColor(spec)), spec);
     scene.add(group);
     pets.set(spec.userId, pet);
     return pet;
@@ -1034,8 +1039,8 @@ export function createPetLayer(deps) {
       if (slot.victim) sendOff(slot.victim, clock());
     }
     if (fresh) pet = makePet(spec);
-    else if (make && (pet.kind !== spec.kind || pet.color !== spec.color)) {
-      setCreature(pet, make(spec.color), spec); // the editor's Throw shows the new pick at once
+    else if (make && (pet.kind !== spec.kind || pet.color !== specColor(spec))) {
+      setCreature(pet, make(specColor(spec)), spec); // the editor's Throw shows the new pick at once
     }
     const now = clock();
     // resting is on: the pet watches from where it rests (a first appearance hops straight to a new
@@ -1277,7 +1282,7 @@ export function createPetLayer(deps) {
     const fx = ELEMENT_FX[element];
     if (fx?.smoke || fx?.puffs) pet.anim.top = new THREE.Box3().setFromObject(pet.creature.root).max.y - pet.group.position.y;
     pet.idleAt = now; // a startled pet does not wander off just then
-    voice(fx?.sound ?? 'petYelp');
+    voice(pet, fx?.sound ?? 'petYelp');
   }
 
   /**
@@ -1380,7 +1385,7 @@ export function createPetLayer(deps) {
       const el = !stays() && pet.elementAfter;
       const name = reactionSound(pet.reaction) ?? (el ? (ELEMENT_FX[el]?.sound ?? 'petYelp') : null);
       if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false)
-        playSound({ builtin: name });
+        playSound({ builtin: name, rate: rateOf(pet) });
     }
   }
 
@@ -1447,13 +1452,24 @@ export function createPetLayer(deps) {
     stopAnim(pet);
     pet.anim = { kind: 'pet', at: now, calm: calmNow() };
     pet.idleAt = now; // a pet being petted does not wander off
-    voice('petPurr'); // a rolling little trill
+    voice(pet, 'petPurr'); // a rolling little trill
     wake();
   }
-  /** The pet says `name` (a builtin pet sound), unless pet sounds or sounds are off. Never throws. */
-  function voice(name) {
+  /** A pet's voice pitch: its kind's, times the owner's pitch pick (dicer.pet flag `pitch`, 0.5..2). */
+  function rateOf(pet) {
+    let p;
     try {
-      if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: name });
+      p = userOf(pet?.userId)?.getFlag?.('dicer', 'pet')?.pitch;
+    } catch {
+      /* unreadable: the kind's own */
+    }
+    p = typeof p === 'number' && Number.isFinite(p) ? Math.min(2, Math.max(0.5, p)) : 1;
+    return p * (KIND_PITCH[pet?.kind] ?? 1);
+  }
+  /** `pet` says `name` (a builtin pet sound) in its pitch, unless pet sounds or sounds are off. Never throws. */
+  function voice(pet, name) {
+    try {
+      if (name && getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: name, rate: rateOf(pet) });
     } catch {
       /* no sound */
     }
@@ -1470,7 +1486,7 @@ export function createPetLayer(deps) {
     pet.anim = { kind: 'huff', at: now, calm: calmNow() };
     pet.huff = { home: { x: home.x, z: home.z }, yaw: pet.yaw, backAt: now + HUFF_IGNORE_MS };
     pet.idleAt = now;
-    voice('petHuff'); // "hmph"
+    voice(pet, 'petHuff'); // "hmph"
     wake();
   }
   /** Where a huffy pet hops: HUFF_HOP x height from its spot toward the stage's middle. */
@@ -1522,7 +1538,7 @@ export function createPetLayer(deps) {
     stopAnim(pet);
     pet.held = { x: pet.px ?? spotOf(pet).x, z: pet.pz ?? spotOf(pet).z };
     pet.idleAt = clock(); // a pet being carried does not wander off
-    voice('petWhoa');
+    voice(pet, 'petWhoa');
     wake();
     return true;
   }
@@ -1579,7 +1595,7 @@ export function createPetLayer(deps) {
       if (a.chirp && now >= a.at) {
         a.chirp = false;
         try {
-          if (getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: 'petHappy' });
+          if (getSetting('petSounds') !== false && getSetting('sounds') !== false) playSound({ builtin: 'petHappy', rate: rateOf(pet) });
         } catch {
           /* no sound */
         }
@@ -1658,10 +1674,10 @@ export function createPetLayer(deps) {
     const { goFrom: from, goTo: to } = pet;
     let s;
     let hop = 0;
-    if (pet.kind === 'dragonling') {
+    if (FLIERS.has(pet.kind)) {
       s = smooth(clamp01((e - 0.12) / 0.78)); // up first, then across, then down
       hop = FLY_PEAK * (smooth(clamp01(e / 0.35)) - smooth(clamp01((e - 0.65) / 0.35)));
-    } else if (pet.kind === 'slime') {
+    } else if (HOPPERS.has(pet.kind)) {
       const i = e < 0.5 ? 0 : 1; // it travels while it is in the air
       s = (i + smooth(clamp01((e * 2 - i - 0.2) / 0.6))) / 2;
     } else s = smooth(e);
@@ -2056,7 +2072,7 @@ export function createPetLayer(deps) {
     pet.idleAt = now;
     ensureSplat(pet).root.visible = true;
     if (getSetting('petSounds') !== false && getSetting('sounds') !== false)
-      playSound({ builtin: 'petSplat' });
+      playSound({ builtin: 'petSplat', rate: rateOf(pet) });
     wake();
   }
 

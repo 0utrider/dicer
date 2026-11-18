@@ -2426,8 +2426,34 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   align-items: center;
   gap: 8px;
 }
-.dicer-pet-color span {
+.dicer-pet-color > span {
   flex: 1;
+}
+.dicer-pet-pitch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dicer-pet-pitch > span {
+  flex: 1;
+}
+.dicer-pet-pitch input[type='range'] {
+  flex: 0 0 160px;
+}
+.dicer-pet-pitch output {
+  min-width: 3.2em;
+  text-align: right;
+  font-family: monospace;
+}
+.dicer-pet-natural {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+/* natural colours: the picker stays usable (picking turns natural off), dimmed */
+.dicer-pet-color:has([data-pet-natural]:checked) input[data-pet-color] {
+  opacity: 0.45;
 }
 .dicer-pet-color input[type='color'] {
   width: 36px;
