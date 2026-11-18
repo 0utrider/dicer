@@ -336,9 +336,21 @@ export function exportToFile(themes, filename) {
 export async function importFromText(text) {
   const existing = userList();
   if (!existing) return { themes: [], warnings: [] };
-  const { themes, warnings } = importThemes(text, me().id, {
-    existingIds: existing.map((t) => t?.id).filter(Boolean),
-  });
+  const existingIds = existing.map((t) => t?.id).filter(Boolean);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    /* importThemes reports it */
+  }
+  // a Dice So Nice export (its whole settings, or its dice library): its dice become themes
+  const migration = await import('../compat/migration.js');
+  const { themes, warnings } = migration.isDsnFile(parsed)
+    ? (() => {
+        const found = migration.dsnFileThemes(parsed, { userId: me().id, taken: existingIds, registry: globalThis.game?.dice3d?._registry });
+        return { themes: found, warnings: found.length ? [] : [loc('DICER.Themes.DsnFileEmpty')] };
+      })()
+    : importThemes(text, me().id, { existingIds });
   let list = existing;
   for (const t of themes) list = upsertTheme(list, t);
   if (themes.length) await saveUserList(list);

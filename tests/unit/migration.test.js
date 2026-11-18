@@ -62,7 +62,7 @@ describe('migrateUser', () => {
     const user = makeUser({ dsn: { appearance: { global: { colorset: 'fire' }, d20: { colorset: 'ice' } } } });
     await expect(migrateUser(user)).resolves.toBe(true);
     expect(user.flags.appearance).toEqual({ global: { colorset: 'fire' }, d20: { colorset: 'ice' } });
-    expect(user.flags.migratedFromDsn).toBe(1);
+    expect(user.flags.migratedFromDsn).toBe(2);
   });
   test('is idempotent: a second run writes nothing', async () => {
     const user = makeUser({ dsn: { appearance: { global: { colorset: 'fire' } } } });
@@ -112,7 +112,7 @@ describe('migrateUser', () => {
     });
     await expect(migrateUser(user)).resolves.toBe(false);
     expect(user.flags.appearance).toEqual({ global: { look: 'ember' } });
-    expect(user.flags.migratedFromDsn).toBe(1);
+    expect(user.flags.migratedFromDsn).toBe(2);
   });
 });
 
@@ -314,4 +314,87 @@ test("Dice So Nice 4.2+'s showGhostDice choice ('0'..'3') maps to Dicer's on/off
   expect([check('0'), check('1'), check('2'), check('3'), check(0), check(true), check(false)]).toEqual([false, true, true, true, false, true, false]);
   expect(check('9')).toBeUndefined();
   expect(check(null)).toBeUndefined();
+});
+
+// --- Dice So Nice 5+'s dice library ------------------------------------------------------------
+const LIB_FIRE = { id: 'L1', name: 'Ember', dieType: 'd20', baseAppearance: { diceColor: '#ff3300', labelColor: '#ffffff', outlineColor: '#000000', edgeColor: '#aa2200', material: 'metal', system: 'standard' } };
+const LIB_FIRE6 = { ...LIB_FIRE, id: 'L2', name: 'ember', dieType: 'd6', baseAppearance: { ...LIB_FIRE.baseAppearance, diceColor: '#cc2200' } };
+const LIB_ICE = { id: 'L3', name: 'Frost', dieType: 'd20', baseAppearance: { diceColor: '#88ccff', labelColor: '#002244' } };
+
+describe('library dice', () => {
+  test("a look pointing at a library die takes the die's colours (own, another user's, the world's)", async () => {
+    const { dsnAppearanceToLooks, libraryLookup } = await import('../../src/compat/migration.js');
+    const owner = { ...makeUser({ dsn: { diceLibrary: [LIB_ICE] } }), id: 'gm' };
+    const user = { ...makeUser({ dsn: { diceLibrary: [LIB_FIRE] } }), id: 'p1' };
+    const world = { get: (k) => (k === 'worldDiceLibrary' ? [{ ...LIB_ICE, id: 'W1', baseAppearance: { diceColor: '#00ff00', labelColor: '#000000' } }] : undefined) };
+    const find = libraryLookup(user, { users: [owner, user], worldSettings: world });
+    const looks = dsnAppearanceToLooks({ global: { libraryDieId: 'L1' }, d6: { libraryDieId: 'L3', libraryDieOwner: 'gm' }, d8: { libraryDieId: 'W1', libraryDieOwner: 'world' }, d4: { libraryDieId: 'gone' } }, find);
+    expect(looks.global.appearance.body.color).toBe('#ff3300');
+    expect(looks.global.system).toBe('standard');
+    expect(looks.d6.appearance.body.color).toBe('#88ccff');
+    expect(looks.d8.appearance.body.color).toBe('#00ff00');
+    expect(looks.d4).toBeUndefined();
+    expect(dsnAppearanceToLooks({ global: { libraryDieId: 'L1' } })).toEqual({}); // no lookup: nothing
+  });
+
+  test('a user migrated before library dice were read is migrated again once; their Dicer choices still win', async () => {
+    const user = { ...makeUser({ dsn: { appearance: { global: { libraryDieId: 'L1' }, d20: { colorset: 'fire' } }, diceLibrary: [LIB_FIRE] }, dicer: { migratedFromDsn: 1, appearance: { d20: { theme: 'mine' } } } }), id: 'p1' };
+    await expect(migrateUser(user)).resolves.toBe(true);
+    expect(user.flags.appearance.global.appearance.body.color).toBe('#ff3300');
+    expect(user.flags.appearance.d20).toEqual({ theme: 'mine' });
+    expect(user.flags.migratedFromDsn).toBe(2);
+    await expect(migrateUser(user)).resolves.toBe(false);
+  });
+
+  test('library dice become themes: same-name dice are one theme with a look per type; once each', async () => {
+    const { migrateLibrary } = await import('../../src/compat/migration.js');
+    const user = { ...makeUser({ dsn: { diceLibrary: [LIB_FIRE, LIB_FIRE6, LIB_ICE, { id: 'bad', name: 'x' }] } }), id: 'p1' };
+    await expect(migrateLibrary(user)).resolves.toBe(2);
+    const [ember, frost] = user.flags.themes;
+    expect(ember).toMatchObject({ id: 'user.p1.ember', name: 'Ember', dsnLibrary: ['L1', 'L2'] });
+    expect(Object.keys(ember.perType).sort()).toEqual(['d20', 'd6']);
+    expect(ember.perType.d6.body.color).toBe('#cc2200');
+    expect(normalizeTheme(ember, 'user', () => {})).not.toBeNull();
+    expect(frost.name).toBe('Frost');
+    user.flags.themes = [];
+    await expect(migrateLibrary(user)).resolves.toBe(0); // deleted: not brought back
+  });
+
+  test("the world's library becomes world themes, each die once", async () => {
+    const { migrateWorldLibrary } = await import('../../src/compat/migration.js');
+    const stored = { worldThemes: [] };
+    const settings = { get: (s, k) => stored[k], set: vi.fn(async (s, k, v) => { stored[k] = v; }) };
+    const world = { get: (k) => (k === 'worldDiceLibrary' ? [LIB_FIRE, LIB_ICE] : undefined) };
+    await expect(migrateWorldLibrary(world, { settings })).resolves.toBe(2);
+    expect(stored.worldThemes.map((t) => t.id)).toEqual(['world.ember', 'world.frost']);
+    await expect(migrateWorldLibrary(world, { settings })).resolves.toBe(0);
+  });
+
+  test('a Dice So Nice export file (settings or library) gives themes; a Dicer theme file is not one', async () => {
+    const { isDsnFile, dsnFileThemes } = await import('../../src/compat/migration.js');
+    const settingsFile = { appearance: { global: { libraryDieId: 'L1' } }, saves: { Mine: MINE }, diceLibrary: [LIB_FIRE], sfxList: [] };
+    expect(isDsnFile(settingsFile)).toBe(true);
+    expect(isDsnFile({ dsnLibraryExport: true, version: 1, dice: [LIB_ICE] })).toBe(true);
+    expect(isDsnFile({ kind: 'dicer-themes', themes: [] })).toBe(false);
+    expect(isDsnFile({ id: 'user.a.b', name: 'x', appearance: {} })).toBe(false);
+    const names = dsnFileThemes(settingsFile, { userId: 'p1' }).map((t) => t.name);
+    expect(names).toEqual(['Ember', 'Mine', 'Dice So Nice']);
+    const fromLib = dsnFileThemes({ dsnLibraryExport: true, dice: [LIB_ICE] }, { userId: 'p1', taken: ['user.p1.frost'] });
+    expect(fromLib.map((t) => t.id)).toEqual(['user.p1.frost-2']);
+    expect(dsnFileThemes({ appearance: 'x' }, { userId: 'p1' })).toEqual([]);
+  });
+});
+
+test("importLooks: a player's saves and library at load; a GM also the world's library", async () => {
+  const { importLooks } = await import('../../src/compat/migration.js');
+  const player = { ...makeUser({ dsn: { saves: { Mine: MINE }, diceLibrary: [LIB_ICE] } }), id: 'p1', isGM: false };
+  await expect(importLooks({ user: player, users: [player], storage: null })).resolves.toBe(2);
+  await expect(importLooks({ user: player, users: [player], storage: null })).resolves.toBe(0);
+  const stored = {};
+  globalThis.game = { settings: { get: (s, k) => stored[k], set: async (s, k, v) => { stored[k] = v; } } };
+  const gm = { ...makeUser({ dsn: {} }), id: 'gm', isGM: true };
+  const storage = { getItem: (k) => (k === 'dice-so-nice.worldDiceLibrary' ? JSON.stringify([LIB_FIRE]) : null) };
+  await expect(importLooks({ user: gm, users: [gm], storage })).resolves.toBe(1);
+  expect(stored.worldThemes[0].name).toBe('Ember');
+  delete globalThis.game;
 });

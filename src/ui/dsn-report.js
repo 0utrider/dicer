@@ -79,11 +79,12 @@ function usersSection(r) {
 
 function unmigratedSection(r) {
   const items = r.users
-    .filter((u) => u.saves > 0 || u.otherKeys.length)
+    .filter((u) => u.saves > 0 || u.library > 0 || u.otherKeys.length)
     .map((u) =>
       h('li', { class: 'dicer-report-row' }, [
         h('span', { class: 'dicer-report-name', text: u.name }),
         h('span', { class: 'dicer-report-data' }, [
+          ...(u.library > 0 ? [h('span', { class: 'dicer-verdict is-copied', text: fmt(`${P}.Library`, { n: u.library, m: u.libraryImported ?? 0 }) })] : []),
           ...(u.saves > 0 ? [h('span', { class: 'dicer-verdict is-copied', text: fmt(`${P}.Saves`, { n: u.saves, m: u.savesImported ?? 0 }) })] : []),
           ...u.otherKeys.map((k) => h('code', { text: k })),
         ]),

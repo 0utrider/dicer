@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.17
+
+- **Dice So Nice library dice come over.** The dice players designed in Dice So Nice's dice library become themes in their **My themes** (dice sharing a name make one theme, with a look per die type), and the world's library becomes world themes. A player's look that pointed at a library die now gets its colours. Players already imported get one more pass, on their next login or through **Import all players now**; choices made in Dicer are kept.
+- **Dicer's theme Import takes Dice So Nice export files** (its settings export or its dice library export): their dice and looks become themes.
+- The Dice So Nice migration report counts each player's library dice.
+- Not yet imported: a library die's per-face images and labels (its base colours, material and texture come over), and Dice So Nice's per-damage-type looks.
+
 ## 1.0.16
 
 - **1.0.15 shipped without its module files** (its build failed on a slow test), so installs and updates from the manifest failed. 1.0.16 is the same release, rebuilt: everything listed under 1.0.15 is in it.

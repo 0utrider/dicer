@@ -429,6 +429,15 @@ describe('the browser actions', () => {
     await mod.deleteMine('user.u1.ok');
     expect(flags.themes.map((t) => t.id)).toEqual(['user.u1.broken', 'user.u1.ok-2']);
   });
+  it('Import takes a Dice So Nice export (its library dice and current look) as My themes', async () => {
+    const file = { appearance: { global: { libraryDieId: 'L1' } }, diceLibrary: [{ id: 'L1', name: 'Ember', dieType: 'd20', baseAppearance: { diceColor: '#ff3300', labelColor: '#ffffff' } }], sfxList: [], settings: {} };
+    const res = await mod.importFromText(JSON.stringify(file));
+    expect(res.themes.map((t) => t.name)).toEqual(['Ember', 'Dice So Nice']);
+    expect(flags.themes.map((t) => t.name)).toEqual(expect.arrayContaining(['Ember', 'Dice So Nice']));
+    const empty = await mod.importFromText(JSON.stringify({ dsnLibraryExport: true, dice: [] }));
+    expect(empty.themes).toEqual([]);
+    expect(ui.notifications.warn).toHaveBeenCalled();
+  });
   it('an owned actor theme written by the browser is read by the look resolver (global slot)', async () => {
     const { createLookResolver } = await import('../../src/compat/resolve-looks.js');
     const { createRegistry } = await import('../../src/compat/registry.js');

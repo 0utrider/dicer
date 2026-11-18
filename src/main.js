@@ -425,7 +425,7 @@ function dsnPending() {
     typeof dsnAppearance === 'object' &&
     !Array.isArray(dsnAppearance) &&
     Object.keys(dsnAppearance).length > 0 &&
-    !game.user.getFlag('dicer', 'migratedFromDsn');
+    !(game.user.getFlag('dicer', 'migratedFromDsn') >= 2);
   let world = false;
   if (game.user?.isGM && !getSetting('dsnWorldMigrated')) {
     for (const setting of worldStorage() ?? []) {
@@ -444,12 +444,10 @@ function dsnPending() {
  */
 async function importDsnSaves() {
   try {
-    const saves = game.user?._source?.flags?.['dice-so-nice']?.saves;
-    if (getSetting('migrateFromDsn') === false || !saves || typeof saves !== 'object') return;
-    const done = game.user.getFlag('dicer', 'dsnSavesImported');
-    if (Object.keys(saves).every((k) => Array.isArray(done) && done.includes(k))) return;
+    const dsn = game.user?._source?.flags?.['dice-so-nice'];
+    if (getSetting('migrateFromDsn') === false || !(dsn?.saves || dsn?.diceLibrary || game.user.isGM)) return;
     const migration = await import('./compat/migration.js');
-    const n = await migration.migrateSaves(game.user, { registry });
+    const n = await migration.importLooks({ user: game.user, users: game.users, registry, storage: worldStorage() });
     if (n) ui.notifications?.info(game.i18n.format('DICER.Notice.SavesImported', { n }));
   } catch (err) {
     console.warn('dicer: cannot import the Dice So Nice saved looks', err);
@@ -471,6 +469,7 @@ async function migrateFromDsn() {
       isGM: pending.world,
       worldSettings: migration.worldSettingsReader(worldStorage()),
       settings: game.settings,
+      users: game.users,
     });
     if (done) ui.notifications?.info(game.i18n.localize('DICER.Notice.Migrated'));
   } catch (err) {

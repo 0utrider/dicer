@@ -8,6 +8,9 @@ import {
   DSN_SCOPE,
   MIGRATED_FLAG,
   SAVES_FLAG,
+  LIBRARY_FLAG,
+  libraryLookup,
+  libraryOf,
   WORLD_FLAG,
   SCOPE_KEY,
   WORLD_MAP,
@@ -60,7 +63,7 @@ function worldRows(world, getSetting, isCustomized, migrated, enabled) {
   return rows;
 }
 
-function userRow(user, enabled) {
+function userRow(user, enabled, lookup = {}) {
   const raw = user?._source?.flags?.[DSN_SCOPE];
   const flags = isPlainObject(raw) ? raw : {};
   const appearance = isPlainObject(flags.appearance) ? flags.appearance : {};
@@ -69,11 +72,15 @@ function userRow(user, enabled) {
   const saves = saveNames.length;
   const doneFlag = safe(() => user.getFlag(FLAG_SCOPE, SAVES_FLAG), null);
   const savesImported = Array.isArray(doneFlag) ? saveNames.filter((n) => doneFlag.includes(n)).length : 0;
+  // Dice So Nice 5+'s library dice: imported as themes, each die once
+  const libIds = safe(() => libraryOf(user), []).map((d) => d.id);
+  const libFlag = safe(() => user.getFlag(FLAG_SCOPE, LIBRARY_FLAG), null);
+  const libraryImported = Array.isArray(libFlag) ? libIds.filter((id) => libFlag.includes(id)).length : 0;
   const otherKeys = Object.keys(flags)
-    .filter((k) => k !== 'appearance' && k !== 'saves')
+    .filter((k) => k !== 'appearance' && k !== 'saves' && k !== 'diceLibrary')
     .sort();
-  const base = { id: user?.id, name: String(user?.name ?? ''), saves, savesImported, otherKeys };
-  const looks = dsnAppearanceToLooks(appearance);
+  const base = { id: user?.id, name: String(user?.name ?? ''), saves, savesImported, library: libIds.length, libraryImported, otherKeys };
+  const looks = dsnAppearanceToLooks(appearance, safe(() => libraryLookup(user, lookup), null));
   // As migrateUser: with no usable entry there is nothing to copy, and it never flags the user.
   if (!Object.keys(looks).length) return { ...base, status: 'none', scopes: [] };
 
@@ -106,7 +113,7 @@ export function buildReport({ users = [], world, getSetting, isCustomized = stor
   const worldMigrated = Boolean(safe(() => getSetting(WORLD_FLAG), false));
   const worldList = worldRows(world, getSetting, isCustomized, worldMigrated, enabled);
   const userList = [...(users ?? [])]
-    .map((u) => userRow(u, enabled))
+    .map((u) => userRow(u, enabled, { users, worldSettings: world }))
     .sort((a, b) => USER_ORDER[a.status] - USER_ORDER[b.status] || a.name.localeCompare(b.name));
   return {
     enabled,
@@ -114,7 +121,7 @@ export function buildReport({ users = [], world, getSetting, isCustomized = stor
     dsn: dsnModule ? (dsnModule.active ? 'active' : 'installed') : 'missing',
     hasData:
       worldList.some((w) => w.status !== 'absent') ||
-      userList.some((u) => u.status !== 'none' || u.saves > 0 || u.otherKeys.length > 0),
+      userList.some((u) => u.status !== 'none' || u.saves > 0 || u.library > 0 || u.otherKeys.length > 0),
     world: worldList,
     users: userList,
   };

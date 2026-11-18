@@ -13,6 +13,13 @@ export const MIGRATED_FLAG = 'migratedFromDsn';
 export const WORLD_FLAG = 'dsnWorldMigrated';
 /** The user flag listing the Dice So Nice save profiles already imported as themes (by name). */
 export const SAVES_FLAG = 'dsnSavesImported';
+/** The user flag listing the Dice So Nice library dice already imported as themes (by die id). */
+export const LIBRARY_FLAG = 'dsnLibraryImported';
+/**
+ * The migrated flag's version: 2 also reads looks that point at a Dice So Nice library die. A user
+ * migrated at 1 is looked at once more (their own Dicer choices still win).
+ */
+export const MIGRATION_VERSION = 2;
 
 export const SCOPE_KEY = /^(global|d[a-z0-9]+)$/i;
 
@@ -28,9 +35,17 @@ export const UNMAPPED = ['hideNpcRolls', 'diceCanBeFlipped'];
 
 const str = (v) => (typeof v === 'string' && v ? v : undefined);
 
-/** One DSN appearance entry as a LookRef, or null when it carries nothing usable. */
-function entryToLookRef(entry) {
+/**
+ * One DSN appearance entry as a LookRef, or null when it carries nothing usable. An entry that
+ * points at a library die (`libraryDieId`, Dice So Nice 5+) takes that die's base look, found by
+ * `findDie(id, owner)`; the entry's own system, if any, wins.
+ */
+function entryToLookRef(entry, findDie) {
   if (!isPlainObject(entry)) return null;
+  if (typeof entry.libraryDieId === 'string' && findDie) {
+    const die = findDie(entry.libraryDieId, entry.libraryDieOwner);
+    if (isPlainObject(die?.baseAppearance)) entry = { ...die.baseAppearance, ...(str(entry.system) && { system: entry.system }), colorset: str(die.baseAppearance.colorset) ?? 'custom' };
+  }
   const system = str(entry.system);
   const withSystem = (ref) => (system ? { ...ref, system } : ref);
   const colorset = str(entry.colorset);
@@ -52,16 +67,16 @@ function entryToLookRef(entry) {
 
 /**
  * DSN's `{ global | dN: {...} }` appearance as `{ [scope]: LookRef }`. Garbage entries are
- * skipped; never throws.
+ * skipped; never throws. `findDie(id, owner)` resolves entries that point at a library die.
  * @returns {Record<string, object>}
  */
-export function dsnAppearanceToLooks(dsnAppearance) {
+export function dsnAppearanceToLooks(dsnAppearance, findDie = null) {
   const out = {};
   if (!isPlainObject(dsnAppearance)) return out;
   for (const [scope, entry] of Object.entries(dsnAppearance)) {
     if (!SCOPE_KEY.test(scope)) continue;
     try {
-      const ref = entryToLookRef(entry);
+      const ref = entryToLookRef(entry, findDie);
       if (ref) out[scope] = ref;
     } catch {
       /* a malformed entry is skipped */
@@ -75,6 +90,35 @@ const dsnFlags = (user) => {
   const flags = user?._source?.flags?.[DSN_SCOPE];
   return isPlainObject(flags) ? flags : null;
 };
+
+/** A user's raw Dice So Nice library dice (`diceLibrary`), or []. */
+export const libraryOf = (user) => {
+  const list = dsnFlags(user)?.diceLibrary;
+  return Array.isArray(list) ? list.filter(isPlainObject) : [];
+};
+
+/** The world's Dice So Nice library dice (the `worldDiceLibrary` world setting), or []. */
+const worldLibrary = (worldSettings) => {
+  try {
+    const list = worldSettings?.get('worldDiceLibrary');
+    return Array.isArray(list) ? list.filter(isPlainObject) : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * `findDie(id, owner)` for `user`'s looks: a die in their own library (no owner), another user's
+ * (owner: a user id) or the world's (owner 'world').
+ */
+export function libraryLookup(user, { users = globalThis.game?.users, worldSettings } = {}) {
+  const userById = (id) => users?.get?.(id) ?? [...(users ?? [])].find((u) => u?.id === id);
+  return (id, owner) => {
+    const ownerId = isPlainObject(owner) ? owner.id : owner;
+    const list = !ownerId ? libraryOf(user) : ownerId === 'world' ? worldLibrary(worldSettings) : libraryOf(userById(ownerId));
+    return list.find((d) => d.id === id) ?? null;
+  };
+}
 
 /** The bare `{theme:'default'}` (before Plan 5 `{look:'default'}`) the ready-time mirror writes: not a choice the user made. */
 export const isMirroredDefault = (ref) =>
@@ -96,9 +140,9 @@ function ownLooks(user) {
  * is left alone and unflagged, so a later DSN install is not hidden. Idempotent.
  * @returns {Promise<boolean>} true if anything was written to `dicer.appearance`
  */
-export async function migrateUser(user) {
-  if (user.getFlag(FLAG_SCOPE, MIGRATED_FLAG)) return false;
-  const looks = dsnAppearanceToLooks(dsnFlags(user)?.appearance);
+export async function migrateUser(user, { findDie = libraryLookup(user) } = {}) {
+  if ((Number(user.getFlag(FLAG_SCOPE, MIGRATED_FLAG)) || 0) >= MIGRATION_VERSION) return false;
+  const looks = dsnAppearanceToLooks(dsnFlags(user)?.appearance, findDie);
   if (!Object.keys(looks).length) return false;
   const own = ownLooks(user);
   let wrote = false;
@@ -108,7 +152,7 @@ export async function migrateUser(user) {
     wrote = true;
   }
   if (wrote) await user.setFlag(FLAG_SCOPE, FLAG_KEY, own);
-  await user.setFlag(FLAG_SCOPE, MIGRATED_FLAG, 1);
+  await user.setFlag(FLAG_SCOPE, MIGRATED_FLAG, MIGRATION_VERSION);
   return wrote;
 }
 
@@ -177,10 +221,10 @@ export function worldSettingsReader(storage) {
  * a failure in one is warned and the other still runs.
  * @returns {Promise<boolean>} true if anything was migrated (the caller shows the notice)
  */
-export async function runMigration({ user, isGM, worldSettings, settings, isCustomized }) {
+export async function runMigration({ user, isGM, worldSettings, settings, isCustomized, users }) {
   let migrated = false;
   try {
-    migrated = (await migrateUser(user)) || migrated;
+    migrated = (await migrateUser(user, { findDie: libraryLookup(user, { users, worldSettings }) })) || migrated;
   } catch (err) {
     console.warn('dicer: cannot migrate the Dice So Nice appearance', err);
   }
@@ -236,8 +280,8 @@ export function userThemeId(userId, name, taken = []) {
  * Its global entry is the theme's look; die-type entries are its per-type looks (a save with only
  * die-type entries takes its first as the look). Marked with `dsnSave` (its profile name).
  */
-export function saveToTheme(name, profile, { userId, taken = [], registry } = {}) {
-  const looks = dsnAppearanceToLooks(profile?.appearance);
+export function saveToTheme(name, profile, { userId, taken = [], registry, findDie } = {}) {
+  const looks = dsnAppearanceToLooks(profile?.appearance, findDie);
   const drawn = {};
   for (const [scope, ref] of Object.entries(looks)) {
     try {
@@ -261,7 +305,7 @@ export function saveToTheme(name, profile, { userId, taken = [], registry } = {}
  * again on a later load. Never throws for bad data; a write failure rejects.
  * @returns {Promise<number>} the themes added
  */
-export async function migrateSaves(user, { registry } = {}) {
+export async function migrateSaves(user, { registry, findDie = libraryLookup(user) } = {}) {
   const saves = dsnFlags(user)?.saves;
   if (!isPlainObject(saves)) return 0;
   const doneFlag = user.getFlag(FLAG_SCOPE, SAVES_FLAG);
@@ -276,7 +320,7 @@ export async function migrateSaves(user, { registry } = {}) {
       done.add(name);
       continue;
     }
-    const theme = saveToTheme(name, profile, { userId: user.id, taken, registry });
+    const theme = saveToTheme(name, profile, { userId: user.id, taken, registry, findDie });
     if (!theme) continue;
     list.push(theme);
     taken.push(theme.id);
@@ -286,6 +330,121 @@ export async function migrateSaves(user, { registry } = {}) {
   if (added) await user.setFlag(FLAG_SCOPE, 'themes', list);
   if (done.size !== (Array.isArray(doneFlag) ? doneFlag.length : 0)) await user.setFlag(FLAG_SCOPE, SAVES_FLAG, [...done]);
   return added;
+}
+
+/**
+ * Library dice as raw themes: dice sharing a name (any case) make one theme, each die its type's
+ * look (the first die's look is the theme's base). `idOf(name, taken)` names them. A die whose
+ * look cannot be drawn is skipped. Each theme lists its dice in `dsnLibrary` (their ids).
+ */
+export function libraryToThemes(dice, { idOf, taken = [], registry } = {}) {
+  const groups = new Map();
+  for (const die of dice) {
+    if (!isPlainObject(die?.baseAppearance) || typeof die.dieType !== 'string') continue;
+    const ref = entryToLookRef({ ...die.baseAppearance, colorset: str(die.baseAppearance.colorset) ?? 'custom' });
+    let look = null;
+    try {
+      look = ref && lookRefToAppearance(ref, registry);
+    } catch {
+      look = null;
+    }
+    if (!look?.appearance) continue;
+    const name = String(die.name ?? '').trim() || die.dieType;
+    const key = name.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { name, perType: {}, ids: [] });
+    const g = groups.get(key);
+    g.perType[die.dieType] ??= look.appearance;
+    if (die.id) g.ids.push(die.id);
+  }
+  const ids = [...taken];
+  return [...groups.values()].map((g) => {
+    const id = idOf(g.name, ids);
+    ids.push(id);
+    return { id, name: g.name, appearance: Object.values(g.perType)[0], perType: g.perType, dsnLibrary: g.ids };
+  });
+}
+
+/**
+ * Adds the user's Dice So Nice library dice to their own themes, once per die (LIBRARY_FLAG lists
+ * the imported die ids; a theme the user deletes is not brought back).
+ * @returns {Promise<number>} the themes added
+ */
+export async function migrateLibrary(user, { registry } = {}) {
+  const doneFlag = user.getFlag(FLAG_SCOPE, LIBRARY_FLAG);
+  const done = new Set(Array.isArray(doneFlag) ? doneFlag : []);
+  const dice = libraryOf(user).filter((d) => !done.has(d.id));
+  if (!dice.length) return 0;
+  const ownFlag = user.getFlag(FLAG_SCOPE, 'themes');
+  const list = Array.isArray(ownFlag) ? [...ownFlag] : [];
+  const themes = libraryToThemes(dice, { idOf: (n, t) => userThemeId(user.id, n, t), taken: list.map((t) => t?.id).filter(Boolean), registry });
+  for (const t of themes) for (const id of t.dsnLibrary) done.add(id);
+  if (themes.length) await user.setFlag(FLAG_SCOPE, 'themes', [...list, ...themes]);
+  await user.setFlag(FLAG_SCOPE, LIBRARY_FLAG, [...done]);
+  return themes.length;
+}
+
+/**
+ * The world's Dice So Nice library as world themes (GM): each die once (a world theme already
+ * listing it in `dsnLibrary` holds it).
+ * @returns {Promise<number>} the themes added
+ */
+export async function migrateWorldLibrary(worldSettings, { settings = globalThis.game?.settings, registry } = {}) {
+  const current = settings.get(FLAG_SCOPE, 'worldThemes');
+  const list = Array.isArray(current) ? [...current] : [];
+  const held = new Set(list.flatMap((t) => (Array.isArray(t?.dsnLibrary) ? t.dsnLibrary : [])));
+  const dice = worldLibrary(worldSettings).filter((d) => !held.has(d.id));
+  if (!dice.length) return 0;
+  const idOf = (name, taken) => {
+    const base = `world.${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'theme'}`;
+    let id = base;
+    for (let n = 2; taken.includes(id); n++) id = `${base}-${n}`;
+    return id;
+  };
+  const themes = libraryToThemes(dice, { idOf, taken: list.map((t) => t?.id).filter(Boolean), registry });
+  if (themes.length) await settings.set(FLAG_SCOPE, 'worldThemes', [...list, ...themes]);
+  return themes.length;
+}
+
+/** A parsed Dice So Nice export file: a dice library export, or a whole settings export. */
+export const isDsnFile = (data) =>
+  isPlainObject(data) && !Array.isArray(data.themes) && typeof data.id !== 'string' && (data.dsnLibraryExport === true || isPlainObject(data.appearance) || isPlainObject(data.saves) || Array.isArray(data.diceLibrary));
+
+/**
+ * The themes a Dice So Nice export file holds, as raw user themes: its library dice (grouped by
+ * name), its saved looks, and its current look (named "Dice So Nice"). For the theme browser's
+ * Import; never throws for bad data.
+ */
+export function dsnFileThemes(data, { userId, taken = [], registry } = {}) {
+  const ids = [...taken];
+  const idOf = (n, t) => userThemeId(userId, n, t);
+  const library = (Array.isArray(data?.dice) ? data.dice : Array.isArray(data?.diceLibrary) ? data.diceLibrary : []).filter(isPlainObject);
+  const findDie = (id) => library.find((d) => d.id === id) ?? null;
+  const out = libraryToThemes(library, { idOf, taken: ids, registry });
+  for (const t of out) ids.push(t.id);
+  const add = (name, profile) => {
+    const t = saveToTheme(name, profile, { userId, taken: ids, registry, findDie });
+    if (t) {
+      out.push(t);
+      ids.push(t.id);
+    }
+  };
+  if (isPlainObject(data?.saves)) for (const [name, profile] of Object.entries(data.saves)) add(name, profile);
+  if (isPlainObject(data?.appearance)) add('Dice So Nice', { appearance: data.appearance });
+  return out;
+}
+
+/**
+ * The load-time import (main.js, after diceSoNiceReady): `user`'s saved looks and library dice as
+ * their themes, and for a GM the world's library as world themes. `storage` is the world settings
+ * storage. Each item once, so a load with nothing new writes nothing.
+ * @returns {Promise<number>} the themes added
+ */
+export async function importLooks({ user, users, registry, storage }) {
+  const worldSettings = worldSettingsReader(storage);
+  const findDie = libraryLookup(user, { users, worldSettings });
+  let n = (await migrateSaves(user, { registry, findDie })) + (await migrateLibrary(user, { registry }));
+  if (user.isGM) n += await migrateWorldLibrary(worldSettings, { registry });
+  return n;
 }
 
 /**
@@ -299,13 +458,20 @@ export async function migrateAll({ users = [], registry, worldSettings, settings
   const out = { users: 0, themes: 0, world: false };
   for (const user of users) {
     try {
-      if (await migrateUser(user)) out.users++;
-      out.themes += await migrateSaves(user, { registry });
+      const findDie = libraryLookup(user, { users, worldSettings });
+      if (await migrateUser(user, { findDie })) out.users++;
+      out.themes += await migrateSaves(user, { registry, findDie });
+      out.themes += await migrateLibrary(user, { registry });
     } catch (err) {
       console.warn(`dicer: cannot import Dice So Nice data for ${user?.name}`, err);
     }
   }
   if (worldSettings) {
+    try {
+      out.themes += await migrateWorldLibrary(worldSettings, { settings, registry });
+    } catch (err) {
+      console.warn('dicer: cannot import the Dice So Nice world dice library', err);
+    }
     try {
       out.world = Object.keys(await migrateWorld(worldSettings, { settings })).length > 0;
     } catch (err) {

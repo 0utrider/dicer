@@ -168,3 +168,10 @@ describe('status', () => {
     expect(report({ dsnModule: { active: true } }).dsn).toBe('active');
   });
 });
+
+test("a user's library dice are counted, with how many were imported", () => {
+  const user = makeUser({ dsn: { diceLibrary: [{ id: 'a' }, { id: 'b' }] }, dicer: { dsnLibraryImported: ['a'] } });
+  const [u] = report({ users: [user] }).users;
+  expect(u).toMatchObject({ library: 2, libraryImported: 1 });
+  expect(u.otherKeys).not.toContain('diceLibrary');
+});
