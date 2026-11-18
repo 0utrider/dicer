@@ -143,8 +143,28 @@ export function followFor(die) {
   return { rotation, follow };
 }
 
+const pets = new Map(); // url -> Promise<THREE.Object3D> (the parsed scene: a template, never shown)
+
+/**
+ * Loads a pet model (docs/reference/pet-model-spec.md): the glTF scene at `url`, parsed once and
+ * kept as a template; each pet shows its own skinned copy (src/pet/chunk/model-pet.js clones it).
+ * A failed load is not cached, so a later pet retries.
+ * @param {string} url
+ * @param {{ loader?: { loadAsync(url: string): Promise<object> }, decoderPath?: string }} [options]
+ * @returns {Promise<THREE.Object3D>}
+ */
+export function loadPetModel(url, { loader, decoderPath } = {}) {
+  return cached(pets, url, async () => {
+    if (typeof url !== 'string' || !url) throw new Error('dicer: a pet model needs a url');
+    const gltf = await (loader ?? (defaultLoader ??= createLoader(decoderPath))).loadAsync(url);
+    if (!gltf?.scene || !meshesOf(gltf.scene).length) throw new Error(`dicer: no mesh in ${url}`);
+    return gltf.scene;
+  });
+}
+
 /** Test seam: forgets every cached model (does not dispose them). */
 export function clearModelCache() {
   parsed.clear();
   sized.clear();
+  pets.clear();
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { CREATURES, specColor } from './creatures/index.js';
+import { CREATURES, specColor, safe, PET_MODELS, MODEL_FIT } from './creatures/index.js';
+import { createModelCreature } from './model-pet.js';
 import {
   phaseAt,
   ENTER_MS,
@@ -615,8 +616,53 @@ export function createPetLayer(deps) {
     return true;
   }
 
+  // ---- pets made from an artist's model (PET_MODELS: kind -> .glb) ----
+  const models = new Map(); // url -> the parsed scene (a template), or 'loading' / 'failed'
+  // a module path goes through Foundry's route (a prefixed or hosted server), as the sounds do
+  const routed = (url) => (/^([a-z][a-z0-9+.-]*:|\/)/i.test(url) ? url : (globalThis.foundry?.utils?.getRoute?.(url) ?? url));
+  const loadPetModel = deps.loadPetModel || ((url) => import('../../render/model-loader.js').then((m) => m.loadPetModel(routed(url))));
+  /**
+   * The creature for `spec`: its kind's model once loaded (natural colours: its fur, painted grey
+   * per the spec, tinted with the kind's natural colour), else the
+   * code-built creature, while the model loads (the pets of that kind swap to it when it is in).
+   */
+  function creatureFor(spec) {
+    const url = PET_MODELS[spec.kind];
+    const t = url ? models.get(url) : undefined;
+    if (t && typeof t === 'object') {
+      try {
+        return safe((c) => createModelCreature(t, c, { kind: spec.kind, drawHeight: MODEL_FIT[spec.kind] }))(specColor(spec));
+      } catch (err) {
+        console.warn(`Dicer | the ${spec.kind} pet model cannot be shown`, err);
+        models.set(url, 'failed');
+      }
+    } else if (url && !t) loadModel(url);
+    return CREATURES[spec.kind](specColor(spec));
+  }
+  function loadModel(url) {
+    models.set(url, 'loading');
+    Promise.resolve()
+      .then(() => loadPetModel(url))
+      .then((template) => {
+        if (disposed) return;
+        models.set(url, template);
+        for (const pet of pets.values()) {
+          if (PET_MODELS[pet.kind] !== url || !pet.spec) continue;
+          setCreature(pet, creatureFor(pet.spec), pet.spec);
+          tiltPet(pet);
+          if (pet.state === 'rest') show(pet, clock(), pet.mood ?? 'exit', 1, pet.px, pet.pz, 0, true);
+        }
+        wake();
+      })
+      .catch((err) => {
+        models.set(url, 'failed');
+        console.warn(`Dicer | the pet model ${url} could not be loaded; the built-in pet shows`, err);
+      });
+  }
+
   /** Puts a new creature in the pet (the first, or a new kind or colour); the old one is freed. */
   function setCreature(pet, creature, spec) {
+    pet.spec = spec;
     sizeCreature(creature, size);
     if (pet.creature) {
       pet.group.remove(pet.creature.root);
@@ -1030,7 +1076,7 @@ export function createPetLayer(deps) {
     const sparkle = makeSparkle();
     group.add(shadow, sparkle);
     const pet = { userId: spec.userId, group, shadow, sparkle, creature: null, rolls: new Map(), state: 'routine' };
-    setCreature(pet, CREATURES[spec.kind](specColor(spec)), spec);
+    setCreature(pet, creatureFor(spec), spec);
     scene.add(group);
     pets.set(spec.userId, pet);
     return pet;
@@ -1055,7 +1101,7 @@ export function createPetLayer(deps) {
     }
     if (fresh) pet = makePet(spec);
     else if (make && (pet.kind !== spec.kind || pet.color !== specColor(spec))) {
-      setCreature(pet, make(specColor(spec)), spec); // the editor's Throw shows the new pick at once
+      setCreature(pet, creatureFor(spec), spec); // the editor's Throw shows the new pick at once
     }
     const now = clock();
     // resting is on: the pet watches from where it rests (a first appearance hops straight to a new

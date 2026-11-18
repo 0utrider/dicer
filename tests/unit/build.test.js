@@ -384,9 +384,11 @@ describe('build', () => {
     // owner approved +3 B (36,401 -> 36,404), 2026-11-18.
     // Pet view (the petView client setting: from above, angled, facing you): owner approved
     // +114 B (36,404 -> 36,518), 2026-11-18.
+    // Pets from artist-style models (a skinned model is copied with its own skeleton: one more
+    // three.js class at world start): owner approved +15 B (36,518 -> 36,533), 2026-11-18.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(36_518);
+    expect(growth).toBeLessThanOrEqual(36_533);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

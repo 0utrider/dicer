@@ -20,8 +20,9 @@ test.each(['d4', 'd8', 'd10', 'd12', 'd20'])('%s: every value puts the model fac
     const q = new THREE.Quaternion(...r.rotation);
     expect(Math.hypot(...r.rotation)).toBeCloseTo(1, 9);
     expect(dsnFaceNormal(type, value).applyQuaternion(q).distanceTo(dicerNormal(type, value))).toBeLessThan(1e-6);
-    // the same solid: d8, d12, d20 are congruent; DsN's d10 is a hair flatter
-    expect(r.misfit).toBeLessThan(type === 'd10' ? 0.1 : 1e-6);
+    // the same solid: d8, d12, d20 are congruent (the measured corners are rounded to 6 decimals);
+    // the models' d10 is a hair flatter
+    expect(r.misfit).toBeLessThan(type === 'd10' ? 0.1 : 1e-4);
   }
 });
 

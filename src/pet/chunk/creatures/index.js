@@ -63,7 +63,7 @@ const WOBBLE_LEAN = 0.34; // rad at the peak
 const REFORM_POP = 0.72;
 const MIN_SCALE = 1e-3;
 
-const safe = (make) => (color) => {
+export const safe = (make) => (color) => {
   const c = make(color);
   const pose = c.pose;
   const r = c.root;
@@ -101,6 +101,19 @@ const safe = (make) => (color) => {
   };
   return c;
 };
+
+/**
+ * Pet kinds made from an artist's model (docs/reference/pet-model-spec.md): kind -> the url of its
+ * .glb. Such a kind shows its code-built creature until the model has loaded, then the model
+ * (model-pet.js); a model that fails to load leaves the code-built one.
+ */
+export const PET_MODELS = Object.fromEntries(
+  // built by scripts/pets/build-<kind>.js; shipped in the module's assets (the release zip has
+  // them), fetched through Foundry's route like the sounds and fonts
+  ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat'].map((k) => [k, `modules/dicer/assets/pets/${k}.glb`]),
+);
+/** The height a model kind is drawn at, when not the standing 1.5 (the mimic's open lid stands taller). */
+export const MODEL_FIT = { mimic: 2.0 };
 
 /** Each kind's own colour, for a pet set to natural colours (its PetSpec colour is null). */
 export const NATURAL_COLORS = {

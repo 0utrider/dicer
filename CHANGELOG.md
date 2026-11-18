@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.11
+
+- **All ten pets remade as real 3D models.** The mimic, slime, dragonling, owl, frog, ghost, mushroom, floating eye, pebble golem and cat are now smooth, sculpted creatures with painted textures (a tabby cat with a cream muzzle, a feathered owl, a spotted mushroom, a wooden mimic with iron bands and brass, a glossy jelly slime, a chipped stone golem with glowing runes...), real faces that blink, smile, frown and gasp, and bodies that bend. Your pet colour still applies (to the fur, scales, cap or wood, not the eyes or markings), and Natural colours shows each in its own.
+- **Winged pets flap when they fly over, front legs no longer dip into the table when a pet leans in to throw, and a huffy pet turns its whole body away.**
+- **Dice So Nice model dice sets:** the way Dicer orients them (which face carries which number) is now measured from the dice models themselves.
+
 ## 1.0.10
 
 - **Pet view.** A new choice in **Your pet**: see pets **from above** like the dice, **angled**, or **facing you**. The pet leans toward you so you see its face and body; the dice, its shadow and its splat stay on the table. Only on your screen.

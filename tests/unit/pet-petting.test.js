@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { PET_MODELS } from '../../src/pet/chunk/creatures/index.js';
+import { buildStandinPet } from '../helpers/standin-pet.js';
 import { createPetting, petClickable, HUFF_HITS, HUFF_WINDOW_MS, HUFF_IGNORE_MS } from '../../src/pet/chunk/petting.js';
 import { createPetLayer, PET_MS, HUFF_MS } from '../../src/pet/chunk/pets.js';
 import { CREATURES } from '../../src/pet/chunk/creatures/index.js';
@@ -172,6 +174,41 @@ const screenOf = (g, up = 0.75) => {
   const v = new THREE.Vector3(g.position.x, up, g.position.z).project(camera);
   return { x: ((v.x + 1) / 2) * 1280, y: ((1 - v.y) / 2) * 800 };
 };
+
+describe('pets made from a model (PET_MODELS)', () => {
+  const skinned = (g) => {
+    let n = 0;
+    g.traverse((o) => o.isSkinnedMesh && n++);
+    return n;
+  };
+  afterEach(() => delete PET_MODELS.cat);
+  test('a kind with a model shows its code-built pet while the model loads, then the model', async () => {
+    PET_MODELS.cat = 'modules/dicer/assets/pets/cat.glb';
+    let resolve;
+    const loadPetModel = vi.fn(() => new Promise((r) => (resolve = r)));
+    const m = make({}, { loadPetModel });
+    rollToRest(m, 'u1', 'cat');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(loadPetModel).toHaveBeenCalledWith('modules/dicer/assets/pets/cat.glb');
+    expect(skinned(group(m))).toBe(0); // the code-built cat meanwhile
+    resolve(buildStandinPet());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(skinned(group(m))).toBe(2); // Body and Eyes
+    expect(group(m).children[0].getObjectByName('cat')).toBeTruthy();
+    expect(loadPetModel).toHaveBeenCalledTimes(1);
+  });
+
+  test('a model that fails to load leaves the code-built pet', async () => {
+    PET_MODELS.cat = 'broken.glb';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = make({}, { loadPetModel: () => Promise.reject(new Error('404')) });
+    rollToRest(m, 'u1', 'cat');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(skinned(group(m))).toBe(0);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
 
 describe('grabbing at dice flying past', () => {
   const die = (m) => {
