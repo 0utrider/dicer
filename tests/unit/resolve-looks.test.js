@@ -390,6 +390,15 @@ describe('themes in the look chain (Plan 5)', () => {
   const msg = (pf2eType) => ({ flags: { pf2e: { context: { type: pf2eType } } } });
   const lookOn = (resolver, message, t, authorId) => resolver.decorate(message, {}, authorId)(t, RES, 0);
 
+  test("a theme imported from a module dice set rolls on the set's system, in the theme's colours", () => {
+    const elara = { id: 'user.u.elara', name: 'Elara', appearance: RUBY, system: 'grayce-raven' };
+    const { resolver } = makeT({ users: { u: userT({ global: { theme: elara.id } }, [elara]), v: userT({ global: { theme: 'mine' } }, [{ id: 'mine', name: 'Mine', appearance: RUBY }]) } });
+    const got = look(resolver, term(20), 'u');
+    expect(got.system).toBe('grayce-raven');
+    expect(got.appearance).toEqual(normalizeAppearance(RUBY));
+    expect(look(resolver, term(20), 'v').system).toBe('standard'); // a theme without one keeps the standard dice
+  });
+
   test('perType.d7 and perType.df looks apply', () => {
     const fate = Object.assign(Object.create({ constructor: { DENOMINATION: 'f' } }), term(3));
     const mine = {

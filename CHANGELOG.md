@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.4
+
+- **Import a module dice set as a theme and keep its look.** "Import as theme" now keeps the set's dice system: an imported IRL Dice Packs set (Elara, Essie...) keeps its frames, glass and moving insides while you change its colours in the editor. The editor preview, the theme card and your rolls all show it.
+- **Dice So Nice textures with bump maps have real relief.** An add-on texture that comes with a bump map (Lordu's dice and others) is now drawn the way Dice So Nice draws it: its bump map becomes a normal map, so the surface is rough and pitted and catches the light. Textured metal reflects as strongly as in Dice So Nice.
+- **Dice So Nice colour sets get bigger, bolder numbers**, closer to how Dice So Nice draws them.
+
 ## 1.3.3
 
 - **Lordu's dice work.** A d100 rolled with the Dark Deeds set no longer stops the whole roll from showing (Dice So Nice add-ons put their d100 on the d10 shape; Dicer still throws it as tens and ones dice). Its fonts (Metamorphous, Metal Mania, Eater...) now load, so its dice draw in them: fonts an add-on defines in Foundry's init step are loaded once Dicer has run it.

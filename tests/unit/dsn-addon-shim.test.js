@@ -488,3 +488,17 @@ test("a DSN-style effect (play sets up, render runs per frame until it destroys 
     globalThis.requestAnimationFrame = raf;
   }
 });
+
+test("an add-on's texture is noted with its bump map (Dicer builds a normal map from it)", async () => {
+  const { shimDsn } = await import('../../src/compat/installed-dice.js');
+  const { addonTextures } = await import('../../src/render/extras/addon-textures.js');
+  const added = [];
+  const dice3d = { addTexture: (id, t) => added.push(id) };
+  shimDsn(dice3d);
+  dice3d.addTexture('copper', { source: 'modules/l/rough.webp', bump: 'modules/l/rough-bump.webp' });
+  dice3d.addTexture('flat', { source: 'modules/l/flat.webp', bump: '' });
+  expect(added).toEqual(['copper', 'flat']);
+  expect(addonTextures.get('modules/l/rough.webp')).toEqual({ bump: 'modules/l/rough-bump.webp' });
+  expect(addonTextures.get('modules/l/flat.webp')).toEqual({ bump: null });
+  addonTextures.clear();
+});

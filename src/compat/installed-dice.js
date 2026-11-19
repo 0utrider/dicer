@@ -9,6 +9,7 @@
  */
 import { BufferAttribute, Quaternion } from 'three';
 import { normalizeRule, setRules } from '../effects/rules.js';
+import { addonTextures, loadNormal } from '../render/extras/addon-textures.js';
 
 const DSN_HOOKS = ['diceSoNiceInit', 'diceSoNiceReady'];
 const MENTIONS = /diceSoNice(?:Init|Ready)/;
@@ -444,7 +445,19 @@ export function shimDsn(dice3d) {
     set value(_) {}, // Dice So Nice sets it each frame; here it reads the clock
   };
   const instanceOf = (id) => dice3d.DiceFactory?.systems?.get?.(id)?.instance;
-  const { addSystem, addDicePreset, addSFXMode } = dice3d;
+  const { addSystem, addDicePreset, addSFXMode, addTexture } = dice3d;
+  // An add-on's texture is drawn the Dice So Nice way (body-image.js: its metal's reflections, its
+  // bump map as a normal map, built now so the dice rolled later have it).
+  if (typeof addTexture === 'function') {
+    dice3d.addTexture = function (id, texture, ...rest) {
+      if (typeof texture?.source === 'string') {
+        const bump = typeof texture.bump === 'string' && texture.bump ? texture.bump : null;
+        addonTextures.set(texture.source, { bump });
+        if (bump) void loadNormal(bump);
+      }
+      return addTexture.call(this, id, texture, ...rest);
+    };
+  }
   // A special effect built on Dice So Nice's own DiceSFX reads DSN's dice box and die mesh in its
   // constructor (the die's options.secret and shape, the box's volume, muteSoundSecretRolls and
   // dicefactory.baseScale): a subclass hands it Dicer's with those filled in (dsnEffectArgs).

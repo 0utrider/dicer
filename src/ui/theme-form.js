@@ -354,7 +354,16 @@ export function themeFromForm(form, base) {
   const damage = {};
   const wanted = isObj(f.damage) ? f.damage : src.damage;
   if (isObj(wanted)) for (const [type, v] of Object.entries(wanted)) if (typeof v === 'string' && v) damage[type] = v;
-  return { id: src.id, name, appearance, perType, soundMaterial, rules, ...(Object.keys(damage).length && { damage }) };
+  return {
+    id: src.id,
+    name,
+    appearance,
+    perType,
+    soundMaterial,
+    rules,
+    ...(Object.keys(damage).length && { damage }),
+    ...(typeof src.system === 'string' && src.system && { system: src.system }), // the module dice set it was imported from
+  };
 }
 
 /** The crit scenes a theme's natural 20 (critical-success) or natural 1 (critical-failure) may pick. */

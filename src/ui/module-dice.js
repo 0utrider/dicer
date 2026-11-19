@@ -247,6 +247,8 @@ export function moduleThemeRaw(entry, id) {
   // The set's image faces ride along: on the look and on every per-type look (each is whole).
   const withFaces = (look) => (entry.faceImages ? { ...plain(look), faces: plain(entry.faceImages) } : plain(look));
   const raw = { id, name: entry.name, appearance: withFaces(entry.appearance) };
+  // a dice set's system stays with the theme: its dice, faces and shaders, now in the theme's colours
+  if (entry.kind === 'system' && isStr(entry.key)) raw.system = entry.key;
   if (Object.keys(entry.perType ?? {}).length)
     raw.perType = Object.fromEntries(Object.entries(entry.perType).map(([t, look]) => [t, withFaces(look)]));
   return { raw, dropped: entry.dropped ?? [] };

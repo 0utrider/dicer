@@ -7,6 +7,8 @@ describe('colorsetToAppearance', () => {
     const a = colorsetToAppearance({ foreground: '#000', background: ['#f00', '#0f0'], material: 'metal' }, { index: 1 });
     expect(a.body.type).toBe('metal');
     expect(a.body.roughness).toBe(0.6); // Dice So Nice's metal is satin (roughness 0.6), not a mirror
+    // Dice So Nice's numbers: a third of the face (in points) and outlined, so bigger and bolder
+    expect(a.numbers).toMatchObject({ size: 1.35, weight: 0.3 });
     expect(a.body.finish).toBe('polished');
     expect(a.body.color).toBe('#00ff00');
     expect(a.numbers.color).toBe('#000000');

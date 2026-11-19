@@ -197,6 +197,20 @@ test("a module system's own material callbacks dress its thumbnail, as they do a
   t.dispose();
 });
 
+test("a theme imported from a module dice set (theme.system) is drawn on that set's system, apart from a plain theme", async () => {
+  const inst = { getCacheString: () => 'e', processMaterial: vi.fn((type, mat) => (mat.userData.dressed = type)), beforeShaderCompile() {} };
+  const seen = [];
+  const rig = fakeRig();
+  rig.renderer.render.mockImplementation((scene) => seen.push(scene.children.find((c) => c.isMesh && c.material.userData?.uniforms)?.material));
+  const { t } = make({ rig, opts: { systemFor: (id) => (id === 'grayce-raven' ? inst : null) } });
+  await t.thumbnail({ ...theme(), id: 'user.me.elara', system: 'grayce-raven', perType: {} }, 'd20');
+  expect(seen[0].userData.dressed).toBe('d20');
+  await t.thumbnail({ ...theme(), id: 'user.me.plain', perType: {} }, 'd20');
+  expect(rig.renderer.render).toHaveBeenCalledTimes(2); // not the imported theme's cached picture
+  expect(seen[1].userData.dressed).toBeUndefined();
+  t.dispose();
+});
+
 test('materials and geometry are disposed after each render', async () => {
   const mat = vi.spyOn(THREE.MeshPhysicalMaterial.prototype, 'dispose');
   const geo = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');

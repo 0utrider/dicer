@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { splitCrop, cropImage } from '../image-crop.js';
+import { addonTextures, normalFor } from './addon-textures.js';
 
 /**
  * Body image (look-extras chunk): a picture on the die's body (appearance.bodyImage), not on its
@@ -15,6 +16,7 @@ import { splitCrop, cropImage } from '../image-crop.js';
  */
 
 /** Most faces of any die (the d20): the per-face rotation array's length. */
+
 const MAX_FACES = 20;
 
 const PARS = /* glsl */ `
@@ -24,11 +26,33 @@ uniform float uBodyImageTint; // 1: multiplied by the body colour
 uniform vec3 uBodyImageFit; // each face: inradius in image units, face centre in the image (x right, y down)
 uniform float uBodyImageRot[ ${MAX_FACES} ]; // each face: the turn that puts its "up" (FACE_FIT) at the top
 // uv: centred image coordinates (y up); the user's rotation and scale turn and zoom about the centre
-vec4 dcBodyImageAt( vec2 uv ) {
+vec2 dcBodyUv( vec2 uv ) {
 	float c = cos( uBodyImageMap.z );
 	float s = sin( uBodyImageMap.z );
-	return texture2D( uBodyImage, mat2( c, - s, s, c ) * uv / uBodyImageMap.y + 0.5 );
+	return mat2( c, - s, s, c ) * uv / uBodyImageMap.y + 0.5;
 }
+vec4 dcBodyImageAt( vec2 uv ) {
+	return texture2D( uBodyImage, dcBodyUv( uv ) );
+}
+#ifdef DICER_BODY_RELIEF
+uniform sampler2D uBodyNormal; // the texture's bump map as a normal map (addon-textures.js)
+vec2 dcBodyNUv = vec2( 0.0 ); // where the image is read (each face); 0 coverage: no relief
+float dcBodyNOn = 0.0;
+// three's perturbNormal2Arb: the tangent frame from the screen slopes of position and uv
+vec3 dcBodyNormal( vec3 eye, vec3 n, vec2 uv, vec3 mapN, float faceDir ) {
+	vec3 q0 = dFdx( eye );
+	vec3 q1 = dFdy( eye );
+	vec2 st0 = dFdx( uv );
+	vec2 st1 = dFdy( uv );
+	vec3 q1p = cross( q1, n );
+	vec3 q0p = cross( n, q0 );
+	vec3 T = q1p * st0.x + q0p * st1.x;
+	vec3 B = q1p * st0.y + q0p * st1.y;
+	float det = max( dot( T, T ), dot( B, B ) );
+	float k = det == 0.0 ? 0.0 : faceDir * inversesqrt( det );
+	return normalize( T * ( mapN.x * k ) + B * ( mapN.y * k ) + mapN.z * n );
+}
+#endif
 `;
 
 const COLOR = /* glsl */ `
@@ -39,7 +63,12 @@ const COLOR = /* glsl */ `
 		if ( uBodyImageMap.x > 0.5 && vFaceId > - 0.5 ) {
 			float dcBr = uBodyImageRot[ clamp( int( floor( vFaceId + 0.5 ) ), 0, ${MAX_FACES - 1} ) ];
 			vec2 dcBq = mat2( cos( dcBr ), sin( dcBr ), - sin( dcBr ), cos( dcBr ) ) * vFaceUV;
-			dcBi = dcBodyImageAt( vec2( uBodyImageFit.y - 0.5, 0.5 - uBodyImageFit.z ) + uBodyImageFit.x * dcBq );
+			vec2 dcBu = vec2( uBodyImageFit.y - 0.5, 0.5 - uBodyImageFit.z ) + uBodyImageFit.x * dcBq;
+			dcBi = dcBodyImageAt( dcBu );
+			#ifdef DICER_BODY_RELIEF
+			dcBodyNUv = dcBodyUv( dcBu );
+			dcBodyNOn = 1.0;
+			#endif
 		} else {
 			vec3 dcBw = pow( abs( normalize( cross( dFdx( vLocalPos ), dFdy( vLocalPos ) ) ) ), vec3( 4.0 ) );
 			dcBw /= dcBw.x + dcBw.y + dcBw.z + 1e-5;
@@ -49,6 +78,24 @@ const COLOR = /* glsl */ `
 		vec3 dcBc = uBodyImageTint > 0.5 ? dcBi.rgb * diffuseColor.rgb : dcBi.rgb;
 		dcBodyPrint = uBodyImageMap.w * dcBi.a * ( 1.0 - dcMask );
 		diffuseColor.rgb = mix( diffuseColor.rgb, dcBc, dcBodyPrint );
+		#ifdef DICER_ADDON_METAL
+		// Dice So Nice lights its metal twice as strongly (envMapIntensity 2); Dicer's dice take
+		// the scene's environment, so the metal's colour (its reflectance) doubles instead
+		diffuseColor.rgb = mix( diffuseColor.rgb, min( diffuseColor.rgb * 2.0, vec3( 1.0 ) ), dcBodyPrint );
+		#endif
+		#ifdef DICER_BODY_RELIEF
+		dcBodyNOn *= dcBodyPrint; // never under the numbers
+		#endif
+	}
+#endif
+`;
+
+/** After the normal maps: the texture's bump map, as Dice So Nice lays it on each face. */
+const NORMAL = /* glsl */ `
+#ifdef DICER_BODY_RELIEF
+	{
+		vec3 dcBn = dcBodyNormal( - vViewPosition, normal, dcBodyNUv, texture2D( uBodyNormal, dcBodyNUv ).xyz * 2.0 - 1.0, faceDirection );
+		normal = normalize( mix( normal, dcBn, dcBodyNOn ) );
 	}
 #endif
 `;
@@ -121,9 +168,19 @@ export function bodyImagePatch(a, ctx) {
   const im = a.bodyImage;
   const texture = ctx?.bodyTex?.texture;
   if (!im || !texture) return {};
+  // A Dice So Nice add-on's texture: its bump map as a normal map, on each face (once built); on
+  // metal, Dice So Nice's stronger reflections (DICER_ADDON_METAL).
+  const addon = addonTextures.get(im.src);
+  const normal = im.mode === 'face' ? normalFor(im.src) : null;
+  const relief = !!normal;
   return {
-    defines: { DICER_BODY_IMAGE: '' },
+    defines: {
+      DICER_BODY_IMAGE: '',
+      ...(relief && { DICER_BODY_RELIEF: '' }),
+      ...(addon !== undefined && a.body.type === 'metal' && { DICER_ADDON_METAL: '' }),
+    },
     uniforms: {
+      ...(relief && { uBodyNormal: { value: normal } }),
       uBodyImage: { value: texture },
       uBodyImageMap: {
         value: new THREE.Vector4(im.mode === 'face' ? 1 : 0, im.scale, (im.rotation * Math.PI) / 180, im.blend),
@@ -131,7 +188,7 @@ export function bodyImagePatch(a, ctx) {
       uBodyImageTint: { value: im.tint ? 1 : 0 },
       ...(im.mode === 'face' ? faceUniforms(ctx.shape) : { uBodyImageFit: { value: new THREE.Vector3(0.5, 0.5, 0.5) }, uBodyImageRot: { value: new Float32Array(MAX_FACES) } }),
     },
-    chunks: { pars: PARS, colorPost: COLOR, lighting: LIGHTING },
+    chunks: { pars: PARS, colorPost: COLOR, lighting: LIGHTING, ...(relief && { normal: NORMAL }) },
   };
 }
 

@@ -148,13 +148,18 @@ export function createThumbnailer({
   }
   let flags = null;
   const systemWarned = new Set();
+  /** The dice system a preview draws: a module system entry's own, or the one a theme was imported from. */
+  const systemIdOf = (theme) => {
+    const id = theme?.kind === 'system' ? theme.key : theme?.system;
+    return typeof id === 'string' && id ? id : null;
+  };
   /**
    * A module system entry's own material callbacks on a preview material, as DiceBox applies them
    * to thrown dice (IRL Dice packs draw their surfaces there), so the preview matches the throw.
    * A throwing callback warns once per system; the material keeps what it had.
    */
   function withSystem(material, theme, dieType, appearance) {
-    const id = theme?.kind === 'system' && typeof theme.key === 'string' ? theme.key : null;
+    const id = systemIdOf(theme);
     const inst = id ? systemFor(id) : null;
     if (!inst || !SYSTEM_HOOKS.every((m) => typeof inst[m] === 'function')) return material;
     const failed = (err) => {
@@ -420,7 +425,7 @@ export function createThumbnailer({
     const appearance = theme?.perType?.[dieType] ?? theme?.appearance;
     if (!appearance) return Promise.resolve(null);
     // a module system draws its own surface (withSystem): its thumbnail is its own
-    const sys = theme?.kind === 'system' ? theme.key : '';
+    const sys = systemIdOf(theme) ?? '';
     const key = `${appearanceKey(appearance)}|${dieType}|${size}|${theme?.models?.[dieType] ?? ''}|${presetFacesOf(theme, dieType)?.key ?? ''}|${sys}`;
     if (cache.has(key)) return Promise.resolve(cache.get(key));
     if (inflight.has(key)) return inflight.get(key);

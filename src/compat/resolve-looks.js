@@ -190,6 +190,8 @@ export function createLookResolver({
       appearance = colorsetNameToAppearance(named, registry, index);
     }
     const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
+    // a ref's system, else its theme's (a theme imported from a module dice set keeps the set's system)
+    const sysOf = (r) => systemOf(r) ?? systemOf(findTheme(r?.theme, ctx.themes));
     if (!appearance && stored !== undefined) {
       const ref = actorRef;
       const got = lookRefToAppearance(ref, registry, index, refOpts);
@@ -198,14 +200,14 @@ export function createLookResolver({
         themed = got;
       }
       // a module dice set's system on its own (no look): the author's looks dress the dice it skips
-      system = systemOf(ref);
+      system = sysOf(ref);
     }
 
     // damageOverDiceSet: a damage-themed die keeps its damage look, so the player's dice set (a
     // module set's 3D models and faces, whose own material would hide it) is not taken from their
     // refs. A system the roll names itself (options.appearance) still applies.
     const damageWins = !!theme?.appearance && damageOverDiceSet() !== false;
-    if (system === null && !damageWins) system = refs.map(systemOf).find(Boolean) ?? null;
+    if (system === null && !damageWins) system = refs.map(sysOf).find(Boolean) ?? null;
 
     const preset = type ? registry.presetFor?.(system ?? STANDARD, type) : null;
     if (!appearance) {

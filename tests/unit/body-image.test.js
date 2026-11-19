@@ -56,6 +56,53 @@ describe('bodyImagePatch', () => {
     expect(p.chunks.colorPost).toContain('( 1.0 - dcMask )'); // never over the numbers
   });
 
+  test("a DSN add-on texture: its bump map as a normal map on each face (once built); on metal, Dice So Nice's reflections", async () => {
+    const { addonTextures, loadNormal, resetAddonTextures } = await import('../../src/render/extras/addon-textures.js');
+    const flat = bodyImagePatch(look({ src: 'a.png', mode: 'face' }), { bodyTex: { texture } });
+    expect(flat.defines.DICER_BODY_RELIEF).toBeUndefined();
+    expect(flat.chunks.normal).toBeUndefined();
+    addonTextures.set('b.webp', { bump: 'b-bump.webp' });
+    addonTextures.set('f.webp', { bump: null });
+    // not built yet: no relief (the build starts)
+    expect(bodyImagePatch(look({ src: 'b.webp', mode: 'face' }), { bodyTex: { texture } }).defines.DICER_BODY_RELIEF).toBeUndefined();
+    const img = { width: 4, height: 4 };
+    const ctx = { drawImage() {}, getImageData: () => ({ data: new Uint8ClampedArray(256 * 256 * 4) }), putImageData() {} };
+    globalThis.ImageData ??= class {
+      constructor(data, w, h) {
+        Object.assign(this, { data, width: w, height: h });
+      }
+    };
+    resetAddonTextures();
+    addonTextures.set('b.webp', { bump: 'b-bump.webp' });
+    addonTextures.set('f.webp', { bump: null });
+    await loadNormal('b-bump.webp', { load: async () => img, doc: { createElement: () => ({ getContext: () => ctx }) } });
+    const p = bodyImagePatch(look({ src: 'b.webp', mode: 'face' }), { bodyTex: { texture } });
+    expect(p.defines).toEqual({ DICER_BODY_IMAGE: '', DICER_BODY_RELIEF: '' });
+    expect(p.uniforms.uBodyNormal.value).toBeInstanceOf(THREE.Texture);
+    expect(p.chunks.normal).toContain('dcBodyNormal');
+    expect(bodyImagePatch(look({ src: 'b.webp', mode: 'wrap' }), { bodyTex: { texture } }).defines.DICER_BODY_RELIEF).toBeUndefined(); // each face only
+    expect(bodyImagePatch(look({ src: 'f.webp', mode: 'face' }), { bodyTex: { texture } }).defines.DICER_BODY_RELIEF).toBeUndefined(); // no bump map
+    // on metal an add-on texture gets Dice So Nice's reflections; Dicer's own images never do
+    const metal = (src) => bodyImagePatch(normalizeAppearance({ body: { type: 'metal' }, bodyImage: { src } }), { bodyTex: { texture } }).defines.DICER_ADDON_METAL;
+    expect(metal('f.webp')).toBe('');
+    expect(metal('a.png')).toBeUndefined();
+    expect(p.defines.DICER_ADDON_METAL).toBeUndefined(); // not metal
+    resetAddonTextures();
+  });
+
+  test("normalFromHeights: flat is straight up; a slope tilts the normal downhill, as Dice So Nice's Sobel does", async () => {
+    const { normalFromHeights } = await import('../../src/render/extras/addon-textures.js');
+    const flat = normalFromHeights(new Float32Array(16).fill(0.5), 4, 4);
+    expect([flat[0], flat[1], flat[2]]).toEqual([128, 128, 255]);
+    // brighter to the right: the normal leans left (x below the middle), as higher ground faces away
+    const ramp = Float32Array.from({ length: 64 }, (_, i) => (i % 8) / 8);
+    const n = normalFromHeights(ramp, 8, 8);
+    const o = (3 * 8 + 4) * 4;
+    expect(n[o]).toBeLessThan(120);
+    expect(n[o + 1]).toBeGreaterThanOrEqual(126);
+    expect(n[o + 1]).toBeLessThanOrEqual(128);
+  });
+
   test('look-extras merges it into the material patch after the body pattern', () => {
     const a = normalizeAppearance({ body: { type: 'wood' }, bodyImage: { src: 'a.png' } });
     const p = patchMaterial(a, FLAGS, { bodyTex: { texture } });

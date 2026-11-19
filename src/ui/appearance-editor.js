@@ -286,7 +286,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   /** The theme the preview draws (normalized looks; no id rules needed). */
   #previewTheme() {
     const { appearance, perType } = looksFromForms(this.#forms);
-    return { id: 'preview', name: this.#name, appearance, perType };
+    // a theme imported from a module dice set previews on that set's dice system, as it rolls
+    const system = this.#base?.system;
+    return { id: 'preview', name: this.#name, appearance, perType, ...(typeof system === 'string' && system && { system }) };
   }
 
   async _prepareContext() {

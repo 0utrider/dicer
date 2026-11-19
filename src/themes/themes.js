@@ -67,6 +67,8 @@ export function normalizeTheme(raw, source = 'user', warn = console.warn) {
     rules,
     source,
     ...(Object.keys(damage).length && { damage }),
+    // a module dice set's system it was made from (Import as theme): its dice and shaders, in these colours
+    ...(isStr(raw.system) && { system: raw.system }),
   });
 }
 

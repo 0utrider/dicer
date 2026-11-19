@@ -82,7 +82,8 @@ export function colorsetToAppearance(colorset, { textures, index = 0 } = {}) {
   const metallic = body.type === 'metal' && (material === 'metal' || material === 'chrome');
   const input = {
     body,
-    numbers: { fill: metallic && fg && isYellowish(fg) ? 'gold' : 'paint', color: fg },
+    // Dice So Nice's numbers are bigger (a third of the face, in points) and outlined: bolder
+    numbers: { fill: metallic && fg && isYellowish(fg) ? 'gold' : 'paint', color: fg, size: 1.35, weight: 0.3 },
   };
   // The colorset's font, as a page font (normalizeAppearance keeps a valid family; one the page
   // never loaded draws in the serif, as any missing css font does).

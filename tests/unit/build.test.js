@@ -106,6 +106,9 @@ describe('build', () => {
     const installedDice = lazy.filter((p) => /^dist\/installed-dice-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(installedDice).toHaveLength(2);
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-installed-dice');
+    // Dice So Nice add-on textures (their bump maps as normal maps), shared by the loader and the look extras
+    const addonTextures = lazy.find((p) => /^dist\/addon-textures-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(addonTextures).toBeTruthy();
     // the GM's Dice So Nice migration report window (with its report data)
     const dsnReport = lazy.find((p) => /^dist\/dsn-report-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(dsnReport).toBeTruthy();
@@ -218,6 +221,7 @@ describe('build', () => {
         trayModel,
         trayWindow,
         ...installedDice,
+        addonTextures,
         dsnReport,
         scenes,
         sceneCatalog,
@@ -433,9 +437,11 @@ describe('build', () => {
     // A module dice set's own natural 20 / natural 1 effects (rules.js setRules, IRL Dice Packs'
     // lists), dice staying while a Dice So Nice effect plays, and a DSN appearance's colorset:
     // owner approved +350 B (41,500 -> 41,850), 2026-11-19.
+    // A theme imported from a module dice set keeps its system (themes.js, resolve-looks) and Dice So
+    // Nice colour sets' bigger, bolder numbers: owner approved +50 B (41,850 -> 41,900), 2026-11-19.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(41_850);
+    expect(growth).toBeLessThanOrEqual(41_900);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
