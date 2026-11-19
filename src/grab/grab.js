@@ -36,8 +36,11 @@ const UI =
   '#sidebar, #chat, #chat-notifications, #ui-left, #players, #hotbar, #navigation, #ui-top, .app, .application, dialog, a, button, input, select, textarea';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-/** A roll whose dice may be grabbed: landed and lingering (not fading, not gone). */
-const grabbable = (roll) => roll?.phase === 'lingering' && !roll.removed && !roll.assetsPending;
+/**
+ * A roll whose dice may be grabbed: landed and lingering (not fading, not gone), and no crit scene
+ * playing with one of its dice (roll.scenes, effects/library/borrow.js: the scene owns the timer).
+ */
+const grabbable = (roll) => roll?.phase === 'lingering' && !roll.removed && !roll.assetsPending && !roll.scenes;
 
 /** Client px as die units on the table plane from the stage centre; `inside` the stage rect. Null with no stage. */
 export function groundAt(box, x, y) {
@@ -70,7 +73,7 @@ export function hitDie(box, x, y) {
     if (!grabbable(roll)) continue;
     roll.dice.forEach((die, index) => {
       const p = die.outer?.position;
-      if (!p || !die.outer.visible) return;
+      if (!p || !die.outer.visible || die.borrowed) return; // a pet spitting it back: hands off
       const s = h > p.y + 0.1 ? h / (h - p.y) : 1;
       const d = Math.hypot(g.x - p.x * s, g.z - p.z * s) / s;
       if (d <= bestD) [best, bestD] = [{ roll, die, index }, d];
@@ -244,7 +247,7 @@ function createGrab(
 
     const all = [];
     for (const r of box._rolls)
-      if (grabbable(r)) r.dice.forEach((die, index) => die.outer.visible && all.push({ die, roll: r, index }));
+      if (grabbable(r)) r.dice.forEach((die, index) => die.outer.visible && !die.borrowed && all.push({ die, roll: r, index }));
     const mine = all.find((e) => e.die === h.die);
     const entries = [mine, ...all.filter((e) => e !== mine)].slice(0, MAX_TOSS_DICE);
     const launch = entries.map(({ die }) => {

@@ -5,6 +5,7 @@ import { SHAPE } from './shapes.js';
 import { createRibbon } from './ribbon.js';
 import { withInsideFlare } from './inside-flare.js';
 import { elementOf } from './trails.js';
+import { expandScenes } from './scene-stubs.js';
 import {
   ALPHA_CAP,
   BURST_FRAGMENT,
@@ -77,10 +78,13 @@ const autoBurst = new WeakSet();
  */
 export function withBursts(die, fx, running, setting) {
   try {
-    const list = Array.isArray(fx) ? fx : [];
+    // a rule's scene picked beside its effect plays as an effect of its own (scene-stubs.js)
+    const list = expandScenes(Array.isArray(fx) ? fx : []);
     let n = (running || []).filter((r) => String(r?.id).startsWith('burst-')).length;
     const out = list.filter((f) => !isBurst(f) || n++ < BURST_CAP);
-    const auto = !list.some(isBurst) && !autoBurst.has(die) && burstFor(die, running, setting);
+    // a crit scene (scene-*) is the die's show: no automatic burst over it
+    const scene = list.some((f) => String(f?.effect?.id).startsWith('scene-'));
+    const auto = !scene && !list.some(isBurst) && !autoBurst.has(die) && burstFor(die, running, setting);
     if (auto) out.push(auto), autoBurst.add(die);
     return out;
   } catch {

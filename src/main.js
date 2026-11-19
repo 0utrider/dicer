@@ -799,6 +799,7 @@ Hooks.once('ready', async () => {
         onPlay: debugCounters.countFx,
         isSafe: () => quality.flags().safe === true,
         isolate: (die) => box?.isolate(die) ?? null,
+        box: () => box,
         // The particle pool's programs compile at prefetch (idle), not on the first impact.
         warm: (objects) => renderer.warmObjects(objects),
         // JB2A animations for mapped effects: its player is the lazy `jb2a` chunk.

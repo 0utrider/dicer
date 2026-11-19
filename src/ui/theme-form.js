@@ -7,6 +7,7 @@
 import { LOOKS } from '../look/looks.js';
 import { appearanceKey } from '../look/appearance.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
+import { SCENE_CATALOG } from '../effects/library/scene-catalog.js';
 import { themeRef } from '../compat/user-looks.js';
 import {
   DIE_TYPES,
@@ -261,7 +262,9 @@ export function formFromTheme(theme) {
     const rule = (theme.rules ?? []).find((r) => r?.id === id);
     const src = typeof rule?.sound?.src === 'string' ? rule.sound.src : '';
     form[key] = {
-      effect: rule?.effect ? (KNOWN_EFFECTS.includes(rule.effect.id) ? rule.effect.id : KEEP) : '',
+      // a crit scene has its own picker: the effect may be the scene, or carry one beside it
+      effect: rule?.effect && !isScene(rule.effect.id) ? (KNOWN_EFFECTS.includes(rule.effect.id) ? rule.effect.id : KEEP) : '',
+      scene: isScene(rule?.effect?.id) ? rule.effect.id : isScene(rule?.effect?.scene) ? rule.effect.scene : '',
       sound: src ? SOUND_FILE : rule?.sound ? (USER_SOUNDS.includes(rule.sound.builtin) ? rule.sound.builtin : KEEP) : '',
       soundSrc: src,
       jb2a: typeof rule?.effect?.jb2a === 'string' ? rule.effect.jb2a : '',
@@ -301,9 +304,15 @@ export function themeFromForm(form, base) {
       ? old?.effect?.id === want.effect
         ? old.effect
         : { id: want.effect }
-      : want.effect === KEEP
+      : want.effect === KEEP && !isScene(old?.effect?.id)
         ? (old?.effect ?? null)
         : null;
+    // the scene: beside the effect, or the effect itself when there is none (scene-stubs.js)
+    if (effect && 'scene' in effect) {
+      effect = { ...effect };
+      delete effect.scene;
+    }
+    if (isScene(want.scene)) effect = effect ? { ...effect, scene: want.scene } : { id: want.scene };
     // A chosen JB2A animation plays in place of the effect; with no effect, light burst is its stand-in.
     if (typeof want.jb2a === 'string') {
       const file = want.jb2a.trim();
@@ -333,3 +342,7 @@ export function themeFromForm(form, base) {
   }
   return { id: src.id, name, appearance, perType, soundMaterial, rules };
 }
+
+/** The crit scenes a theme's natural 20 (critical-success) or natural 1 (critical-failure) may pick. */
+export const scenesFor = (outcome) => SCENE_CATALOG.filter((s) => s.outcome === outcome).map((s) => s.id);
+const isScene = (id) => typeof id === 'string' && id.startsWith('scene-');

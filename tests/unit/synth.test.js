@@ -210,7 +210,7 @@ describe('renderAll', () => {
     same(map.get('impact:glass:2'), renderImpact('glass', 2, SR));
     same(map.get('surface:metal'), renderSurface('metal', SR));
     for (const n of RESULT_SOUNDS) same(map.get('result:' + n), renderResult(n, SR));
-  });
+  }, 30_000); // renders every sound twice: past 5 s when the whole suite runs in parallel
 });
 
 describe('petSplat', () => {

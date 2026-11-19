@@ -85,6 +85,13 @@ test('slowMotion is false when the slowMotion setting is off, and true for an ef
   expect(FX_SLOW_EFFECTS).toEqual(['celebrate', 'fumble']);
 });
 
+test('no slow motion with a crit scene: it starts as the die stops, not after a slowed still die', () => {
+  const world = [{ id: 'w', die: 'd20', result: { kind: 'max' }, effect: { id: 'celebrate', scene: 'scene-meteor' } }];
+  const [die] = plan(make({ getWorldRules: () => world }), d20(20), { author: { id: 'alice' } });
+  expect(die.fx[0].effect).toMatchObject({ id: 'celebrate', scene: 'scene-meteor' });
+  expect(die.fx[0].slowMotion).toBe(false);
+});
+
 test('a Fate +1 matches max, -1 matches min, 0 neither; d3, d5, d7 and d20 keep 1 and faces', () => {
   const world = [
     { id: 'hi', die: 'any', result: { kind: 'max' }, effect: { id: 'sparkles' } },

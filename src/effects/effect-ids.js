@@ -17,5 +17,6 @@ export const EFFECT_IDS = Object.freeze([
   'shake',
   'celebrate',
   'fumble',
+  // crit scenes are not listed: any `scene-*` id is accepted (effects/library/scene-catalog.js)
   ...BURST_IDS,
 ]);

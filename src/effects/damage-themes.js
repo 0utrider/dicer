@@ -14,7 +14,7 @@ import { findTheme, readThemeList } from '../themes/themes.js';
 import { damageTypesByTerm, KNOWN_DAMAGE_TYPES } from './roll-context.js';
 import { dsnTypeOf } from '../core/dice-shapes.js';
 
-// [id, body, interior, numbers, glow, soundMaterial, landing effect, landing sound]
+// [id, body, interior, numbers, glow, soundMaterial, landing effect, landing sound, more appearance (edges, shapes)]
 const rows = [
   ['fire', { type: 'resin', color: '#3a0f06', color2: '#140402', roughness: 0.05 },
     { type: 'liquid', colors: ['#ff4a12', '#ffb347'], density: 0.75 },
@@ -59,6 +59,10 @@ const rows = [
     { type: 'swirl', colors: ['#8ff0ff', '#4ec6e0'], density: 0.65 },
     { fill: 'silver', color: '#e6fbff', depth: 0.5 }, null,
     'glass', { id: 'glow-pulse', color: '#8ff0ff' }, 'ethereal'],
+  // PF2e precision (Sneak Attack): bloody black marble, sharp edges, a crystal d4
+  ['precision', { type: 'marble', color: '#000000', color2: '#e31c1c' },
+    null, { fill: 'glow', color: '#ffffff' }, { intensity: 0.1 },
+    'stone', null, 'thud', { edges: { radius: 0 }, shapes: { d4: 'crystal' } }],
   ['physical', { type: 'metal', color: '#9aa3ad', color2: '#4a5057', finish: 'antique', roughness: 0.4 },
     null, { fill: 'enamel', color: '#101215', depth: 0.6 }, null, 'metal', null, 'knock'],
 ];
@@ -66,13 +70,13 @@ const rows = [
 /** @type {Readonly<Record<string, {id: string, appearance: object, soundMaterial: string, landing: {effect: object|null, sound: object|null}|null}>>} */
 export const DAMAGE_THEMES = Object.freeze(
   Object.fromEntries(
-    rows.map(([id, body, interior, numbers, glow, soundMaterial, effect, sound]) => [
+    rows.map(([id, body, interior, numbers, glow, soundMaterial, effect, sound, more]) => [
       id,
       Object.freeze({
         id,
-        appearance: normalizeAppearance({ body, interior: interior ?? { type: 'none' }, numbers, glow: glow ?? undefined }),
+        appearance: normalizeAppearance({ ...more, body, interior: interior ?? { type: 'none' }, numbers, glow: glow ?? undefined }),
         soundMaterial,
-        // a landing has an effect, a sound or both (bleed and physical only sound)
+        // a landing has an effect, a sound or both (bleed, precision and physical only sound)
         landing:
           effect || sound
             ? Object.freeze({ effect: effect ? Object.freeze(effect) : null, sound: sound ? Object.freeze({ builtin: sound }) : null })
@@ -85,7 +89,7 @@ export const DAMAGE_THEMES = Object.freeze(
 /** PF2e and dnd5e damage type -> theme id. `untyped` is deliberately absent. */
 export const DEFAULT_DAMAGE_MAP = Object.freeze({
   ...Object.fromEntries(
-    ['acid', 'cold', 'electricity', 'fire', 'force', 'mental', 'poison', 'sonic', 'spirit', 'vitality', 'void', 'bleed'].map(
+    ['acid', 'cold', 'electricity', 'fire', 'force', 'mental', 'poison', 'sonic', 'spirit', 'vitality', 'void', 'bleed', 'precision'].map(
       (t) => [t, t],
     ),
   ),

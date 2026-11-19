@@ -2916,7 +2916,9 @@ describe('pet hook', () => {
       expect(info.edge).toBe(throwEdge(seed));
       expect(Object.keys(info.area).sort()).toEqual(['cx', 'cz', 'halfDepth', 'halfWidth']);
       expect(info.area).toEqual(physics.streams[0].req.area);
-      expect(Object.keys(info.centre())).toEqual(['x', 'z']);
+      // the live dice (the pet faces their centre, and may catch a natural 20 mid-roll)
+      expect(info.dice).toHaveLength(2);
+      expect(info.dice.every((d) => d.outer?.isGroup)).toBe(true);
       const landedDice = pet.calls[1][2];
       expect(landedDice.map(({ x, z, appearance, damageType, ...rest }) => rest)).toEqual([
         { type: 'd20', value: 17, ghost: false },

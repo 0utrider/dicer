@@ -285,10 +285,11 @@ export function createFxResolver({
             moment: rule.moment ?? null,
             token: speakerToken,
             macro: macros ? (rule.macro ?? null) : null,
+            // not with a crit scene: it starts as the die stops (slow motion would hold a still die)
             slowMotion:
               slow &&
               Boolean(
-                effect && (FX_SLOW_EFFECTS.includes(effect.id) || effect.slowMotion === true),
+                effect && !effect.scene && (FX_SLOW_EFFECTS.includes(effect.id) || effect.slowMotion === true),
               ),
             value,
             type: dsnType ?? type,

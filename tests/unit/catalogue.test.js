@@ -1446,8 +1446,8 @@ test('shader quads add colour and alpha with alpha = brightness, so no black box
   }
 });
 
-test('EFFECT_IDS lists exactly the library catalogue ids', () => {
-  expect([...EFFECT_IDS].sort()).toEqual(Object.keys(EFFECTS).sort());
+test('EFFECT_IDS lists exactly the library catalogue ids (crit scenes are accepted by their scene- prefix)', () => {
+  expect([...EFFECT_IDS].sort()).toEqual(Object.keys(EFFECTS).filter((id) => !id.startsWith('scene-')).sort());
 });
 
 test('floorGlow adds one floor mesh coloured and scaled by ctx and removes it at ms', async () => {

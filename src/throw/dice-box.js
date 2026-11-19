@@ -1484,16 +1484,6 @@ export class DiceBox {
     pet.key = `${roll.id}`;
     pet.begun = true;
     const area = roll.record?.area ?? { cx: 0, cz: 0, ...this._area };
-    const centre = () => {
-      let x = 0;
-      let z = 0;
-      for (const d of roll.dice) {
-        x += d.outer.position.x;
-        z += d.outer.position.z;
-      }
-      const n = roll.dice.length || 1;
-      return { x: x / n, z: z / n };
-    };
     this.#petCall(
       (h) =>
         h.begin(pet.key, {
@@ -1501,7 +1491,8 @@ export class DiceBox {
           edge: roll.edge,
           hand: roll.free,
           area: { ...area },
-          centre,
+          // the live dice: the pet faces their centre, and may catch a natural 20 mid-roll
+          dice: roll.dice,
         }),
       roll,
     );
@@ -1558,9 +1549,13 @@ export class DiceBox {
     this._linger(roll);
   }
 
-  /** (Re)arms a lingering roll's hide timer; grab and toss clears it while a die is held or tossed. */
+  /**
+   * (Re)arms a lingering roll's hide timer; grab and toss clears it while a die is held or tossed.
+   * A crit scene holding one of its dice (roll.scenes, effects/library/borrow.js) arms it when done.
+   */
   _linger(roll) {
     clearTimeout(roll.timer);
+    if (roll.scenes) return;
     roll.timer = setTimeout(() => {
       if (roll.removed) return;
       roll.phase = 'fading';

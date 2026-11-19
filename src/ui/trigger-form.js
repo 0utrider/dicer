@@ -31,6 +31,7 @@ export function blankEntry(id, source = 'user') {
     userId: '',
     outcome: 'any',
     effectId: '',
+    sceneId: '',
     effectColor: '',
     effectIntensity: '',
     effectDuration: '',
@@ -66,8 +67,11 @@ export function entryFromRule(rule) {
   for (const k of ['formula', 'role', 'damageType', 'actorId', 'userId']) e[k] = c[k] ?? '';
   e.outcome = rule.outcome ?? 'any';
   if (rule.effect) {
-    const { id, color, intensity, duration, ...extra } = rule.effect;
-    e.effectId = id;
+    const { id, color, intensity, duration, scene, ...extra } = rule.effect;
+    // a crit scene has its own picker: the rule's effect may be the scene, or carry one beside it
+    const isScene = typeof id === 'string' && id.startsWith('scene-');
+    e.sceneId = isScene ? id : typeof scene === 'string' && scene.startsWith('scene-') ? scene : '';
+    e.effectId = isScene ? '' : id;
     e.effectColor = color ?? '';
     e.effectIntensity = intensity ?? '';
     e.effectDuration = duration ?? '';
@@ -184,6 +188,12 @@ export function rawRuleFromEntry(e) {
     if (intensity !== undefined) effect.intensity = intensity;
     const duration = optNum(e.effectDuration);
     if (duration !== undefined) effect.duration = duration;
+  }
+  // the scene rides along with the effect (or is the effect, with none): effects/library/scene-stubs.js
+  const sceneId = str(e.sceneId).trim();
+  if (sceneId.startsWith('scene-')) {
+    if (effect) effect.scene = sceneId;
+    else effect = { id: sceneId };
   }
 
   let sound = null;

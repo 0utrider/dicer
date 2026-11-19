@@ -107,7 +107,16 @@ export function readPitch(user) {
   return typeof p === 'number' && Number.isFinite(p) ? Math.min(2, Math.max(0.5, p)) : 1;
 }
 
-/** The window's content for `pet` ({kind, color, natural, pitch}); `allowed`: the GM's petsAllowed; `hidden`: showPets off. */
+/** Whether the user's pet catches their natural 20s (dicer.pet flag `catch`, pet chunk catch.js; off by default). */
+export function readCatch(user) {
+  try {
+    return user?.getFlag?.(MODULE, 'pet')?.catch === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The window's content for `pet` ({kind, color, natural, pitch, catch}); `allowed`: the GM's petsAllowed; `hidden`: showPets off. */
 export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
   const notes = [
     h('p', { class: 'dicer-hint', text: loc('DICER.Appearance.Pet.Hint') }),
@@ -140,6 +149,11 @@ export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
     h('input', { type: 'range', min: '0.5', max: '2', step: '0.05', value: String(pet.pitch ?? 1), 'data-pet-pitch': '' }),
     h('output', { text: pitchText(pet.pitch ?? 1) }),
   ]);
+  // it swallows its owner's natural 20 mid-roll and spits it back out (everyone sees it)
+  const catches = h('label', { class: 'dicer-pet-natural dicer-pet-catch', 'data-tooltip': loc('DICER.Appearance.Pet.CatchHint') }, [
+    h('input', { type: 'checkbox', 'data-pet-catch': '', checked: !!pet.catch }),
+    h('span', { text: loc('DICER.Appearance.Pet.Catch') }),
+  ]);
   const registered = globalThis.game?.settings?.settings;
   const rows = PET_SETTINGS.map((key) => settingRow(key, registered?.get?.(`dicer.${key}`), setting(key))).filter(Boolean);
   return h('form', { class: 'dicer-pet-window' }, [
@@ -150,6 +164,7 @@ export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
       : [
           color,
           pitch,
+          catches,
           // a local throw: the pet comes, throws one d20, reacts and settles, on this screen only
           h('button', { type: 'button', class: 'dicer-pet-preview', 'data-act': 'preview' }, [
             h('i', { class: 'fa-solid fa-play', 'aria-hidden': 'true' }),
@@ -178,7 +193,8 @@ export async function savePet(change, user = me()) {
 /** Throws one d20 on this screen only (no roll, no chat message): the pet comes and plays it out. */
 export function previewPet() {
   try {
-    return globalThis.game?.dice3d?._throwLook?.(null, ['d20']);
+    // a pet that catches natural 20s shows it: the preview throws a 20
+    return globalThis.game?.dice3d?._throwLook?.(null, ['d20'], readCatch(me()) ? 20 : undefined);
   } catch {
     return undefined;
   }
@@ -197,7 +213,7 @@ export function openPetWindow() {
       position: { width: 460, height: 'auto' },
     };
     async _renderHTML() {
-      return buildPetForm({ ...readPet(me()), pitch: readPitch(me()) }, { allowed: setting('petsAllowed') !== false, hidden: setting('showPets') === false });
+      return buildPetForm({ ...readPet(me()), pitch: readPitch(me()), catch: readCatch(me()) }, { allowed: setting('petsAllowed') !== false, hidden: setting('showPets') === false });
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
@@ -233,6 +249,10 @@ export function openPetWindow() {
       }
       if (el?.matches?.('[data-pet-natural]')) {
         if (!(await savePet({ natural: el.checked }))) this.render();
+        return;
+      }
+      if (el?.matches?.('[data-pet-catch]')) {
+        if (!(await savePet({ catch: el.checked }))) this.render();
         return;
       }
       const v = this.#mirror(el);

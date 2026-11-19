@@ -16,7 +16,7 @@ import { findTheme } from '../../src/themes/themes.js';
 
 const IDS = [
   'fire', 'cold', 'acid', 'electricity', 'sonic', 'poison', 'force',
-  'vitality', 'void', 'mental', 'bleed', 'spirit', 'physical',
+  'vitality', 'void', 'mental', 'bleed', 'spirit', 'precision', 'physical',
 ];
 
 function ctx(extra = {}) {
@@ -29,7 +29,7 @@ const idOf = (type, c = ctx()) => {
 };
 
 describe('DAMAGE_THEMES', () => {
-  test('13 frozen themes with a full appearance, a sound material and a landing', () => {
+  test('14 frozen themes with a full appearance, a sound material and a landing', () => {
     expect(Object.keys(DAMAGE_THEMES).sort()).toEqual([...IDS].sort());
     expect(Object.isFrozen(DAMAGE_THEMES)).toBe(true);
     for (const id of IDS) {
@@ -59,7 +59,7 @@ describe('DAMAGE_THEMES', () => {
 
 describe('default mapping', () => {
   test('PF2e types', () => {
-    for (const t of ['acid', 'cold', 'electricity', 'fire', 'force', 'mental', 'poison', 'sonic', 'spirit', 'vitality', 'void', 'bleed'])
+    for (const t of ['acid', 'cold', 'electricity', 'fire', 'force', 'mental', 'poison', 'sonic', 'spirit', 'vitality', 'void', 'bleed', 'precision'])
       expect(DEFAULT_DAMAGE_MAP[t]).toBe(t);
     for (const t of ['bludgeoning', 'piercing', 'slashing']) expect(DEFAULT_DAMAGE_MAP[t]).toBe('physical');
   });

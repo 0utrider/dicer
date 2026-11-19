@@ -210,8 +210,24 @@ describe('hit-testing', () => {
     expect(hitDie(box, pxOf(box, b).clientX + 40, pxOf(box, b).clientY)?.die).toBe(b); // within a radius
     expect(hitDie(box, 100, 100)).toBeNull();
     expect(hitDie(box, -50, 240)).toBeNull(); // off the stage
+    roll.scenes = 1; // a crit scene is playing with one of its dice: hands off
+    expect(hitDie(box, pxOf(box, a).clientX, pxOf(box, a).clientY)).toBeNull();
+    roll.scenes = 0;
+    expect(hitDie(box, pxOf(box, a).clientX, pxOf(box, a).clientY)?.die).toBe(a);
     roll.phase = 'fading';
     expect(hitDie(box, pxOf(box, a).clientX, pxOf(box, a).clientY)).toBeNull();
+  });
+
+  test('a crit scene holding a die keeps its roll from fading until the scene lets it linger again', async () => {
+    const { box, roll } = await landed();
+    roll.scenes = 1; // as borrowDie does, before DiceBox's #land arms the timer
+    box._linger(roll);
+    vi.advanceTimersByTime(LINGER * 3);
+    expect(roll.phase).toBe('lingering');
+    roll.scenes = 0; // the scene ended (borrow.restore)
+    box._linger(roll);
+    vi.advanceTimersByTime(LINGER + 1);
+    expect(roll.phase).toBe('fading');
   });
 
   test("Foundry's UI is never the table", () => {

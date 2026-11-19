@@ -26,6 +26,7 @@ const DAMAGE_ELEMENTS = Object.freeze({
   psychic: 'mental',
   spirit: 'spirit',
   bleed: 'bleed',
+  precision: 'bleed', // Sneak Attack and kin: the bleed trail and burst
   slashing: 'slashing',
   piercing: 'piercing',
   bludgeoning: 'bludgeoning',

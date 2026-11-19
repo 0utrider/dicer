@@ -16,7 +16,10 @@ const OTHER_HOOK = /Hooks\s*\.\s*(?:on|once)\s*\(\s*(['"`])(?!diceSoNice(?:Init|
 // work beyond registering dice: settings, keybindings, wrappers, CONFIG writes, globals, more code
 const OTHER_WORK =
   /game\s*\.\s*(?:settings|keybindings)\s*\.\s*register|libWrapper|\bCONFIG\s*(?:\.\s*[\w$]+|\[[^\]]*\])+\s*=(?!=)|\bimport\s*\(|\bglobalThis\b|\bwindow\s*\.|\bdocument\s*\.|\bfetch\s*\(|\beval\s*\(/;
-const SKIP = new Set(['dicer', 'dice-so-nice']);
+const DSN_ID = 'dice-so-nice';
+const SKIP = new Set(['dicer', DSN_ID]);
+// an ES module that imports its own files (an add-on's dice may be added there, not in its entry)
+const IMPORTS_OWN = /(?:^|[;\n])\s*import\s[^;]*?from\s*(['"])\.{1,2}\//;
 const SAFE_PATH = /^modules\/[\w.-]+\/[^:?#]+\.m?js$/i;
 
 const loaded = new Set(); // module ids whose dice this page has loaded
@@ -88,7 +91,11 @@ export async function scanInstalled({ modules, fetchText }) {
       if (!scripts.length) return null;
       try {
         const texts = await Promise.all(scripts.map(fetchText));
-        const status = classify(texts);
+        let status = classify(texts);
+        // an add-on whose entry names the Dice So Nice hooks and imports its own files (which add
+        // the dice): Dicer cannot read it apart, but can run it in full (loadDsnAddons)
+        const all = texts.join('\n;\n');
+        if (status === 'none' && needsDsn(m) && MENTIONS.test(all) && IMPORTS_OWN.test(all)) status = 'bundle';
         if (status === 'none') return null;
         const found = { id: m.id, title: m.title || m.id, scripts, status };
         return needsDsn(m) ? { ...found, addon: true } : found;
@@ -165,14 +172,95 @@ export function addScript(url) {
 const importModule = (url) => import(/* @vite-ignore */ url);
 
 /**
+ * Runs `fn` (synchronously) while `modules.get('dice-so-nice')` reports the installed, inactive
+ * Dice So Nice as active: a view over the real module (its version and files stay its own), with
+ * `modules.get` restored right after. Nothing changes when Dice So Nice is missing or active.
+ * Returns what `fn` returns.
+ */
+export function withDsnActive(modules, fn) {
+  const real = modules?.get?.(DSN_ID);
+  if (!real || real.active) return fn();
+  const view = Object.create(real, { active: { value: true } });
+  const own = Object.hasOwn(modules, 'get');
+  const { get } = modules;
+  modules.get = function (id, ...rest) {
+    return id === DSN_ID ? view : get.call(this, id, ...rest);
+  };
+  try {
+    return fn();
+  } finally {
+    if (own) modules.get = get;
+    else delete modules.get;
+  }
+}
+
+const shimmed = new WeakSet();
+
+/**
+ * What Dice So Nice add-ons read from game.dice3d beyond Dicer's own surface, installed once the
+ * first add-on has loaded (so worlds without add-ons keep Dicer's stand-in as it is):
+ * - `uniforms.time`: Dice So Nice's shader clock ({value}: seconds, performance.now() / 1000),
+ *   which add-on shaders bind as a uniform;
+ * - a preset added for a system registered as a DiceSystem instance also goes into the
+ *   instance's own `dice` map, as Dice So Nice does (its DiceSystem runs its material callbacks
+ *   only for die types it holds);
+ * - an instance's processMaterial may replace the material's customProgramCacheKey: Dicer's key
+ *   is kept in front, so dice with different Dicer looks never share one compiled program.
+ */
+export function shimDsn(dice3d) {
+  if (!dice3d || typeof dice3d !== 'object' || shimmed.has(dice3d)) return;
+  shimmed.add(dice3d);
+  const uniforms = (dice3d.uniforms ??= {});
+  uniforms.time ??= {
+    get value() {
+      return performance.now() / 1000;
+    },
+    set value(_) {}, // Dice So Nice sets it each frame; here it reads the clock
+  };
+  const instanceOf = (id) => dice3d.DiceFactory?.systems?.get?.(id)?.instance;
+  const { addSystem, addDicePreset } = dice3d;
+  if (typeof addSystem === 'function') {
+    dice3d.addSystem = function (system, ...rest) {
+      const pm = system?.processMaterial;
+      if (typeof pm === 'function' && !Object.hasOwn(system, 'processMaterial')) {
+        system.processMaterial = function (type, mat, ...more) {
+          const key = mat?.customProgramCacheKey;
+          const out = pm.call(this, type, mat, ...more);
+          const theirs = mat?.customProgramCacheKey;
+          if (typeof key === 'function' && typeof theirs === 'function' && theirs !== key)
+            mat.customProgramCacheKey = () => `${key.call(mat)}|${theirs.call(mat)}`;
+          return out;
+        };
+      }
+      return addSystem.call(this, system, ...rest);
+    };
+  }
+  if (typeof addDicePreset === 'function') {
+    dice3d.addDicePreset = function (preset, ...rest) {
+      const out = addDicePreset.call(this, preset, ...rest);
+      try {
+        const dice = typeof preset?.system === 'string' ? instanceOf(preset.system)?.dice : null;
+        if (typeof preset.type === 'string' && dice?.has?.(preset.type) === false) dice.set(preset.type, { ...preset });
+      } catch {
+        // a third-party map that refuses it: its system keeps Dicer's material
+      }
+      return out;
+    };
+  }
+}
+
+/**
  * Runs the picked Dice So Nice add-ons (the `dsnAddons` setting: module ids) in full while they
  * stay inactive: such a module needs Dice So Nice, which must stay off, so Foundry will not
  * activate it; nothing else in it checks. Each pick's `scripts` then `esmodules` load from its
  * manifest (its own files only). Dicer runs this in its ready hook before announcing game.dice3d,
  * so the add-ons' diceSoNiceInit/diceSoNiceReady listeners are live for that; listeners for start
  * hooks that have already fired (init, i18nInit, setup, ready) are caught while the files load and
- * run right after. Active modules (they load themselves), Dicer and Dice So Nice are skipped, and
- * each module loads once per page. Returns the ids loaded now.
+ * run right after. While those listeners and the add-on's Dice So Nice listeners run, an installed
+ * Dice So Nice reads as active (withDsnActive: add-ons often check it before registering); once one
+ * add-on has loaded, game.dice3d gets what add-ons read from Dice So Nice (shimDsn). Active modules
+ * (they load themselves), Dicer and Dice So Nice are skipped, and each module loads once per page.
+ * Returns the ids loaded now.
  */
 export async function loadDsnAddons(
   ids,
@@ -182,6 +270,7 @@ export async function loadDsnAddons(
     route = (p) => globalThis.foundry?.utils?.getRoute?.(p) ?? `/${p}`,
     script = addScript,
     esmodule = importModule,
+    dice3d = globalThis.game?.dice3d,
     warn = (...a) => console.warn(...a),
   } = {},
 ) {
@@ -189,10 +278,17 @@ export async function loadDsnAddons(
   const done = [];
   let current = null;
   const { on, once } = hooks;
+  const asDsn = (fn) =>
+    function (...args) {
+      return withDsnActive(modules, () => fn.apply(this, args));
+    };
   const wrap = (orig) =>
     function (hook, fn, ...rest) {
-      if (!STARTED.has(hook) || typeof fn !== 'function') return orig.call(this, hook, fn, ...rest);
-      caught.push({ id: current, hook, fn });
+      if (typeof fn !== 'function') return orig.call(this, hook, fn, ...rest);
+      // an add-on's own Dice So Nice listeners see Dice So Nice as active (many check it first)
+      if (DSN_HOOKS.includes(hook)) return orig.call(this, hook, asDsn(fn), ...rest);
+      if (!STARTED.has(hook)) return orig.call(this, hook, fn, ...rest);
+      caught.push({ id: current, hook, fn: asDsn(fn) });
       return 0;
     };
   hooks.on = wrap(on);
@@ -218,6 +314,7 @@ export async function loadDsnAddons(
     hooks.on = on;
     hooks.once = once;
   }
+  if (done.length) shimDsn(dice3d);
   for (const { id, hook, fn } of caught) {
     try {
       await fn();

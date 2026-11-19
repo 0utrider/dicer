@@ -168,6 +168,35 @@ test('concurrent requests for the same key share one render', async () => {
   t.dispose();
 });
 
+test("a module system's own material callbacks dress its thumbnail, as they do a thrown die", async () => {
+  const inst = {
+    getCacheString: vi.fn(() => 'raz'),
+    processMaterial: vi.fn((type, mat) => (mat.userData.dressed = type)),
+    beforeShaderCompile: vi.fn(),
+  };
+  const seen = [];
+  const systemFor = vi.fn((id) => (id === 'irl-raz' ? inst : null));
+  const rig = fakeRig();
+  rig.renderer.render.mockImplementation((scene) => seen.push(scene.children.find((c) => c.isMesh && c.material.userData?.uniforms)?.material));
+  const { t, warn } = make({ rig, opts: { systemFor } });
+  const sys = { ...theme(), id: 'dsn-system:irl-raz', kind: 'system', key: 'irl-raz', perType: {} };
+  await t.thumbnail(sys, 'd20');
+  expect(inst.processMaterial).toHaveBeenCalledWith('d20', expect.anything(), sys.appearance);
+  expect(seen[0].userData.dressed).toBe('d20');
+  expect(seen[0].customProgramCacheKey()).toMatch(/^sys:irl-raz\|raz\|/);
+  // its own thumbnail: not shared with a theme of the same colours
+  await t.thumbnail({ ...theme(), id: 'plain', perType: {} }, 'd20');
+  expect(rig.renderer.render).toHaveBeenCalledTimes(2);
+  expect(seen[1].userData.dressed).toBeUndefined();
+  // a throwing callback warns once and the thumbnail still renders
+  inst.processMaterial.mockImplementation(() => {
+    throw new Error('boom');
+  });
+  expect(await t.thumbnail({ ...sys, appearance: LOOKS['dwarven-brass'].appearance }, 'd20')).toMatch(/^blob:/);
+  expect(warn).toHaveBeenCalledTimes(1);
+  t.dispose();
+});
+
 test('materials and geometry are disposed after each render', async () => {
   const mat = vi.spyOn(THREE.MeshPhysicalMaterial.prototype, 'dispose');
   const geo = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');

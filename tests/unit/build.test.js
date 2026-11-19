@@ -111,6 +111,19 @@ describe('build', () => {
     expect(dsnReport).toBeTruthy();
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-dsn-report');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-tt-edge');
+    // the crit scenes (the effects chunk imports them on a scene's first play), their catalog
+    // (shared with the theme editors), and the three geometries the lazy chunks share (named after
+    // one of them): never imported statically by dicer.js, or they would be world-start code
+    const scenes = lazy.find((p) => /^dist\/scenes-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    const sceneCatalog = lazy.find((p) => /^dist\/scene-catalog-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    const geometries = lazy.filter((p) => /^dist\/[A-Z][A-Za-z]*Geometry-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(scenes && sceneCatalog).toBeTruthy();
+    expect(geometries.length).toBeGreaterThan(0);
+    const mainSrc = readFileSync('dist/dicer.js', 'utf8');
+    for (const g of geometries) expect(mainSrc).not.toMatch(new RegExp(`from\\s*["']\\./${g.slice(5).replace(/[.]/g, '\\.')}["']`));
+    expect(readFileSync(scenes, 'utf8')).toContain('dicer-scenes-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-scenes-chunk');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Shadow Thief');
     // roll stats: the window, the pet moods it shares with the pet chunk, the recorder (first roll)
     const rollStats = lazy.find((p) => /^dist\/roll-stats-[A-Za-z0-9_-]{8}\.js$/.test(p));
     const moods = lazy.find((p) => /^dist\/moods-[A-Za-z0-9_-]{8}\.js$/.test(p));
@@ -206,6 +219,9 @@ describe('build', () => {
         trayWindow,
         ...installedDice,
         dsnReport,
+        scenes,
+        sceneCatalog,
+        ...geometries,
         hand,
         grab,
         rollFilters,
@@ -406,9 +422,11 @@ describe('build', () => {
     // (40,300 -> 40,700), 2026-11-19.
     // Dice So Nice add-ons run while they stay off (the dsnAddons setting and main's call into the
     // lazy loader before announceReady): owner approved +300 B (40,700 -> 41,000), 2026-11-19.
+    // PF2e precision damage (the type, its default map entry and the built-in Precision look with
+    // sharp edges and a crystal d4): owner approved +205 B (41,000 -> 41,205), 2026-11-19.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(41_000);
+    expect(growth).toBeLessThanOrEqual(41_205);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

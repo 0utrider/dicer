@@ -325,7 +325,11 @@ const BASE_KEYS = {
   'dmg:bleed': 'resin|-|liquid:32|eng1|glow0|fx1|safe0',
   'dmg:spirit': 'resin|-|swirl:32|eng1|glow0|fx1|safe0',
   'dmg:physical': 'metal|antique|none|eng1|glow0|fx1|safe0',
+  // PF2e precision (added later): glow-ink numbers, so it alone needs the look-extras chunk
+  'dmg:precision': 'marble|-|none|eng1|glow1|fx1|safe0|n:glow',
 };
+/** Built-in looks added after plan 2 that use a plan-2+ option on purpose. */
+const EXTRAS_OK = new Set(['dmg:precision']);
 const body = (b) => normalizeAppearance({ body: b });
 describe('dice designs plan 2: bodies', () => {
   test("new body types, finishes and presets normalise; a preset not of its type falls back to the type's first; types without presets store null", () => {
@@ -369,7 +373,7 @@ describe('dice designs plan 2: bodies', () => {
     }
     for (const [k, t] of Object.entries(DAMAGE_THEMES)) {
       keys[`dmg:${k}`] = programKey(t.appearance, F);
-      expect(needsLookExtras(t.appearance)).toBe(false);
+      expect(needsLookExtras(t.appearance)).toBe(EXTRAS_OK.has(`dmg:${k}`));
     }
     expect(keys).toEqual(BASE_KEYS);
   });

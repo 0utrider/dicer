@@ -346,6 +346,7 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-theme-browser .dicer-theme-card {
   display: flex;
   flex-direction: column;
+  min-width: 0; /* a grid item: long text never widens its column */
   gap: 4px;
   padding: 6px 6px 8px;
   border: 1px solid transparent;
@@ -456,6 +457,14 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-theme-browser .dicer-card-meta {
   display: flex;
   gap: 4px;
+  min-width: 0;
+}
+/* a long module category ("IRL - Outlaws of Alkenstar") stays inside the card */
+.dicer-theme-browser .dicer-card-meta .dicer-badge {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dicer-theme-browser .dicer-unreadable {
   grid-column: 1 / -1;

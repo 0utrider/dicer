@@ -49,7 +49,7 @@ export function normalizeTheme(raw, source = 'user', warn = console.warn) {
     const rule = normalizeRule(r, 'theme', warn);
     if (!rule) continue;
     const fx = rule.effect?.id;
-    if (fx && !KNOWN_EFFECTS.includes(fx) && !fx.startsWith('dsn:')) {
+    if (fx && !KNOWN_EFFECTS.includes(fx) && !fx.startsWith('dsn:') && !fx.startsWith('scene-')) {
       warn(`Dicer: theme${label}: ignoring rule "${rule.id}": unknown effect "${fx}"`);
       continue;
     }

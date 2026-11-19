@@ -270,27 +270,39 @@ export async function pushThemeToPlayers(themeId, { replaceAll = false } = {}) {
 }
 
 /**
- * Makes a module dice set (a colorset or system entry of module-dice.js) this user's default, in
- * the look flag's global slot. Refused under the GM's lock, like every "use".
+ * Uses a module dice set (a colorset or system entry of module-dice.js) for a target: this user's
+ * default (the look flag's global slot), a die type or roll role slot, or an owned actor. Damage
+ * targets hold theme ids only, so they are refused, as is everything under the GM's lock.
  */
-export async function useModuleDice(entry) {
+export async function useModuleDice(entry, target = 'default') {
   const user = me();
-  if (!user || !entry || isLocked()) return false;
+  const t = typeof target === 'string' ? parseTarget(target) : target;
+  if (!user || !entry || !t || isLocked()) return false;
+  if (t.kind === 'actor') {
+    const actor = globalThis.game?.actors?.get?.(t.key);
+    if (!actor || actor.isOwner !== true) return false;
+    // no fallback theme: dice the set has no preset for keep the player's own look
+    await actor.setFlag(MODULE, FLAG, useModulePatch(entry, actor.getFlag?.(MODULE, FLAG)?.global, null));
+    return true;
+  }
+  const slot = t.kind === 'default' ? 'global' : t.kind === 'die' && DIE_TYPES.includes(t.key) ? t.key : t.kind === 'role' && ROLL_ROLES.includes(t.key) ? roleSlot(t.key) : null;
+  if (!slot) return false;
   let theme = 'default';
   try {
     theme = settings()?.get(MODULE, 'theme') ?? 'default';
   } catch {
     /* settings not ready */
   }
-  await user.setFlag(MODULE, FLAG, useModulePatch(entry, readUserLooks(user, { fill: false }).global, theme));
+  const looks = readUserLooks(user, { fill: false });
+  await user.setFlag(MODULE, FLAG, useModulePatch(entry, looks[slot], slot === 'global' ? theme : null, slot));
   return true;
 }
 
 /** Stops using the module system of the global slot (its look stays). */
-export async function stopModuleSystem() {
+export async function stopModuleSystem(entry) {
   const user = me();
   if (!user || isLocked()) return false;
-  await user.setFlag(MODULE, FLAG, stopSystemPatch());
+  await user.setFlag(MODULE, FLAG, stopSystemPatch(entry));
   return true;
 }
 
@@ -491,13 +503,13 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     return all
       .filter((a) => a?.isOwner === true)
       .map((a) => {
-        let theme = null;
+        let global = null;
         try {
-          theme = a.getFlag?.(MODULE, FLAG)?.global?.theme ?? null;
+          global = a.getFlag?.(MODULE, FLAG)?.global ?? null;
         } catch {
-          theme = null;
+          global = null;
         }
-        return { id: a.id, name: String(a.name ?? a.id), theme };
+        return { id: a.id, name: String(a.name ?? a.id), theme: global?.theme ?? null, global };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -513,15 +525,26 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     } catch {
       /* settings not ready */
     }
+    const actors = this.#actors();
     const out = themeAssignments({
       defaultId: this.#defaultId(looks),
       looks,
-      actors: this.#actors(),
+      actors,
       damageOverrides: damage,
     });
+    const mods = this.#moduleEntries();
     // A module system is used on top of the look, so it is a second "Your default".
-    const { system } = currentModuleIds(looks?.global, this.#moduleEntries());
+    const { system } = currentModuleIds(looks?.global, mods);
     if (system) out.set(system, ['default']);
+    // module sets used for a die type, a roll role or an actor
+    const tag = (ref, target) => {
+      const ids = currentModuleIds(ref, mods);
+      for (const id of [ids.colorset, ids.system]) if (id) (out.get(id) ?? out.set(id, []).get(id)).push(target);
+    };
+    for (const [slot, ref] of isPlainObjectLike(looks) ? Object.entries(looks) : [])
+      if (DIE_TYPES.includes(slot)) tag(ref, `die:${slot}`);
+      else if (slot.startsWith('role:')) tag(ref, slot);
+    for (const a of actors) tag(a.global, `actor:${a.id}`);
     return out;
   }
 
@@ -617,6 +640,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
           count: id === 'all' ? themes.length : id === 'module' ? modules.length : themes.filter((t) => t.source === id).length,
         })),
       targetGroups: groups,
+      // a module set: not the damage maps, which hold theme ids
+      moduleTargetGroups: groups.filter((g) => !g.options.some((o) => /^(world)?damage:/.test(o.value))),
       cards,
       hasCards: cards.length > 0,
       detail: cards.find((c) => c.selected) ?? null,
@@ -787,7 +812,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static async #onApply(event, target) {
     if (this.#locked) return;
-    const ok = await assignTarget(ThemeBrowser.#targetOf(target), target.dataset.theme);
+    const entry = ThemeBrowser.#themeOf(this, target);
+    const to = ThemeBrowser.#targetOf(target);
+    const ok = entry?.source === 'module' ? await useModuleDice(entry, to) : await assignTarget(to, target.dataset.theme);
     notify(ok ? 'info' : 'warn', loc(ok ? 'DICER.Themes.Applied' : 'DICER.Themes.NotAllowed'));
     if (ok) await this.render();
   }
@@ -807,8 +834,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.render();
   }
 
-  static async #onStopModule() {
-    if (this.#locked || !(await stopModuleSystem())) return;
+  static async #onStopModule(event, target) {
+    if (this.#locked || !(await stopModuleSystem(ThemeBrowser.#themeOf(this, target)))) return;
     notify('info', loc('DICER.Themes.Cleared'));
     await this.render();
   }

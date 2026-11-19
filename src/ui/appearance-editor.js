@@ -15,7 +15,7 @@ import { LOOKS } from '../look/looks.js';
 import { stripActive } from '../look/appearance.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
-import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm } from './theme-form.js';
+import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm, scenesFor } from './theme-form.js';
 import { jb2aSource } from '../jb2a/source.js';
 import { pickJb2a, sequencerDatabase } from './jb2a-picker.js';
 import {
@@ -341,9 +341,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       materialChoices: withKeep(choiceMap(SOUND_MATERIALS, humanize, loc('DICER.Appearance.Extras.None')), extras.soundMaterial),
       effectChoices: choiceMap(KNOWN_EFFECTS, humanize, loc('DICER.Appearance.Extras.None'), keep),
       celebrations: [
-        ['nat20', 'DICER.Appearance.Extras.NatHigh', 'DICER.Appearance.Extras.PreviewNatHigh'],
-        ['nat1', 'DICER.Appearance.Extras.NatLow', 'DICER.Appearance.Extras.PreviewNatLow'],
-      ].map(([key, label, preview]) => {
+        ['nat20', 'DICER.Appearance.Extras.NatHigh', 'DICER.Appearance.Extras.PreviewNatHigh', 'critical-success'],
+        ['nat1', 'DICER.Appearance.Extras.NatLow', 'DICER.Appearance.Extras.PreviewNatLow', 'critical-failure'],
+      ].map(([key, label, preview, outcome]) => {
         const row = extras[key] ?? {};
         const file = row.sound === SOUND_FILE && row.soundSrc ? { [SOUND_FILE]: basename(row.soundSrc) } : {};
         return {
@@ -353,6 +353,8 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
           ...row,
           soundChoices: { ...choiceMap(USER_SOUNDS, humanize, loc('DICER.Appearance.Extras.None'), keep), ...file },
           jb2aName: row.jb2a ? basename(row.jb2a) : '',
+          // its crit scenes (natural 20s on the 20 row, natural 1s on the 1 row)
+          sceneChoices: choiceMap(scenesFor(outcome), (id) => humanize(id.slice(6)), loc('DICER.Appearance.Extras.None')),
         };
       }),
       jb2aActive: Boolean(jb2aSource({ modules: globalThis.game?.modules, settings: settings() })),

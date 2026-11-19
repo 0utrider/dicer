@@ -67,8 +67,25 @@ describe('the form', () => {
     const had = globalThis.game.dice3d;
     globalThis.game.dice3d = { _throwLook: throwLook };
     previewPet();
-    expect(throwLook).toHaveBeenCalledWith(null, ['d20']);
+    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], undefined); // any face
+    flags.pet = { catch: true };
+    previewPet();
+    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], 20); // a catching pet shows its catch
     globalThis.game.dice3d = had;
+  });
+
+  test('a "catches your natural 20s" box, ticked from the flag; ticking it saves catch over the raw flag', async () => {
+    const { readCatch } = await import('../../src/ui/pet-window.js');
+    const box = (pet) => buildPetForm(pet).querySelector('[data-pet-catch]');
+    expect(box({ kind: 'mimic', color: '#112233' }).checked).toBe(false);
+    expect(box({ kind: 'mimic', color: '#112233', catch: true }).checked).toBe(true);
+    expect(buildPetForm({ kind: 'none', color: '#112233' }).querySelector('[data-pet-catch]')).toBeNull();
+    expect(readCatch({ getFlag: () => ({ catch: true }) })).toBe(true);
+    expect(readCatch({ getFlag: () => ({ catch: 'yes' }) })).toBe(false);
+    expect(readCatch({ getFlag: () => undefined })).toBe(false);
+    flags.pet = { kind: 'slime', pitch: 1.2 };
+    expect(await savePet({ catch: true })).toBe(true);
+    expect(flags.pet).toEqual({ kind: 'slime', pitch: 1.2, catch: true });
   });
 
   test('no pet: no colour; pets off by the GM or hidden here: a note', () => {

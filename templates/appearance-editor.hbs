@@ -353,6 +353,10 @@
                 {{/if}}
               </div>
               <div class="dicer-field">
+                <span id="dicer-ae-{{key}}-scene-l">{{label}} · {{localize "DICER.Appearance.Extras.Scene"}}</span>
+                <select aria-labelledby="dicer-ae-{{key}}-scene-l" name="extras.{{key}}.scene" data-tooltip="DICER.Triggers.SceneHint">{{selectOptions sceneChoices selected=scene}}</select>
+              </div>
+              <div class="dicer-field">
                 <span id="dicer-ae-{{key}}-sound-l">{{label}} · {{localize "DICER.Appearance.Extras.Sound"}}</span>
                 <span class="dicer-ae-with-action">
                   <select aria-labelledby="dicer-ae-{{key}}-sound-l" name="extras.{{key}}.sound">{{selectOptions soundChoices selected=sound}}</select>

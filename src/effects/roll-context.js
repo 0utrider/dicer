@@ -37,6 +37,7 @@ export const PF2E_TYPES = [
   'vitality',
   'void',
   'bleed',
+  'precision',
 ];
 
 export const KNOWN_DAMAGE_TYPES = new Set([...DND5E_TYPES, ...PF2E_TYPES, 'healing']);

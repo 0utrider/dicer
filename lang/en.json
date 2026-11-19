@@ -496,6 +496,11 @@
       "UserId": "User id",
       "Effect": "Effect",
       "NoEffect": "No effect",
+      "NoScene": "No scene",
+      "Scene": "Scene",
+      "SceneHint": "A crit scene plays with the die itself (it may catch it mid-roll and bring it back), alongside the effect. One scene per die.",
+      "SceneHigh": "natural 20",
+      "SceneLow": "natural 1",
       "Color": "Colour",
       "Intensity": "Intensity",
       "Duration": "Duration (ms)",
@@ -823,6 +828,8 @@
         "NaturalHint": "Each pet in its own colours (a brown owl, a green frog...) instead of the colour you pick. Picking a colour turns this off.",
         "Pitch": "Voice pitch",
         "PitchHint": "How high or low your pet sounds, on top of its own voice (a golem is deep, a mushroom squeaky). Click your resting pet to hear it.",
+        "Catch": "Catches your natural 20s",
+        "CatchHint": "When your d20 is going to land on 20, your pet dashes over and swallows it while it is still rolling, then spits it back out showing the 20 and celebrates. Everyone who sees your pet sees it.",
         "Preview": "Preview your pet",
         "Hidden": "You have dice pets hidden (Dicer settings).",
         "SaveFailed": "Could not save your pet."
@@ -1038,6 +1045,7 @@
         "HasOwn": "Has its own look"
       },
       "Extras": {
+        "Scene": "scene",
         "SoundMaterial": "Impact sound",
         "Effect": "effect",
         "Sound": "sound",

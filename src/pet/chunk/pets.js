@@ -37,6 +37,7 @@ import { elementOf } from '../../effects/element-of.js';
 import { ELEMENT_FX, PHYSICAL, writeMotes, writePuffs } from './element-fx.js';
 import { createMoods } from './moods.js';
 import { petFor, readPet } from '../pet-for.js';
+import { eligible, slowing, dashMs, hideDie, restoreDie, spitPath, GULP_MS, SPIT_MS, MOUTH_SCALE, MIN_LINGER } from './catch.js';
 
 /** At most this many pets on screen at once. */
 export const MAX_PETS = 3;
@@ -545,6 +546,7 @@ export function createPetLayer(deps) {
   }
 
   function removePet(pet) {
+    releaseCatch(pet); // a die in its mouth goes back first
     pets.delete(pet.userId);
     pending.delete(pet.userId);
     for (const k of pet.rolls.keys()) keyOwner.delete(k);
@@ -1120,8 +1122,21 @@ export function createPetLayer(deps) {
    * A roll with a pet begins (PetHook.begin). `hand` (H-5): a hand throw, with no throw pose; its
    * edge is the hand edge. A pet alignFor put at the thrower's spot watches from there.
    */
-  function begin(key, { spec, edge, area, centre, hand }) {
+  function begin(key, { spec, edge, area, centre: given, dice, hand }) {
     if (disposed) return;
+    // where the roll's dice are now, on average (DiceBox sends its live dice)
+    const centre =
+      given ??
+      (() => {
+        let x = 0;
+        let z = 0;
+        for (const d of dice ?? []) {
+          x += d.outer.position.x;
+          z += d.outer.position.z;
+        }
+        const n = dice?.length || 1;
+        return { x: x / n, z: z / n };
+      });
     keyRoller.set(key, { userId: spec.userId, ghost: !!spec.ghost }); // moods: even with no room for its pet
     const make = CREATURES[spec.kind];
     let pet = pets.get(spec.userId);
@@ -1172,6 +1187,11 @@ export function createPetLayer(deps) {
     // own ghost flag and summary for the merged reaction.
     pet.current = key;
     pet.centre = centre;
+    // the live dice (it may catch its owner's natural 20); a hand throw or replay is never caught
+    releaseCatch(pet);
+    pet.dice = dice ?? null;
+    pet.noCatch = !!hand;
+    pet.catchSpot = null;
     const was = fresh ? null : { x: pet.px, z: pet.pz, y: pet.hop };
     if (rest) {
       pet.base = { x: rest.x, z: rest.z };
@@ -1249,6 +1269,7 @@ export function createPetLayer(deps) {
     roll.summary = summarize(dice, roll.ghost); // a ghost roll only ever says 'plain'
     const wasWatching = watching(pet); // before settle: its landing turns the watch into the reaction
     settle(pet);
+    landCatch(pet); // a caught natural 20 is spat out first; the reaction (and the cheer) waits
     // On the tray's rim no die reaches its own pet: one with nothing to cheer or mourn reacts to
     // the roll's element instead of its plain nod. Watching from its rim spot, it does at once (its
     // routine ends there: it rests where it sits); otherwise once back at rest (toRest), and a pet
@@ -1415,6 +1436,7 @@ export function createPetLayer(deps) {
     if (!disposed && activeRolls() === 0 && [...pets.values()].some((p) => p.aligned || stale(p, choice())))
       wake();
     const pet = petOf(key);
+    if (pet?.catch && key === pet.current) releaseCatch(pet); // its roll is over: the die goes back
     keyOwner.delete(key);
     keyRoller.delete(key);
     if (!pet) return;
@@ -1542,7 +1564,7 @@ export function createPetLayer(deps) {
     for (const o of lastDie.keys()) if (o.parent !== scene) lastDie.delete(o);
     if (!dice.length || !shown()) return;
     for (const pet of pets.values()) {
-      if (now < (pet.grabNext ?? 0)) continue;
+      if (pet.catch || now < (pet.grabNext ?? 0)) continue;
       const rest = resting(pet) && !BUSY.has(pet.anim?.kind) && !pet.held;
       if (!rest && !watching(pet)) continue;
       const h = pet.creature.height;
@@ -1946,6 +1968,161 @@ export function createPetLayer(deps) {
   }
 
   /** One pet, one frame: true if it moved, 'rest' if it sits still, false once it is gone. */
+  // --- catching a natural 20 (catch.js) ------------------------------------------------------
+  const CATCHING = new Set(['enter', 'throw', 'watch']); // routine phases before its reaction
+  const catchTracks = new WeakMap(); // die -> its speed track while a pet waits to catch it
+  const spitQ = new THREE.Quaternion();
+  const yawQ = new THREE.Quaternion();
+  const spitAt = new THREE.Vector3();
+  const mouthAt = new THREE.Vector3();
+  const UP_AXIS = new THREE.Vector3(0, 1, 0);
+
+  /**
+   * Whether `pet` may catch this roll's natural 20: its owner turned it on (dicer.pet flag `catch`,
+   * read from the roller's own user, so every screen decides alike), the roll is not blind or by
+   * hand, motion is not reduced, the tier is not the lowest, and the dice linger long enough.
+   */
+  function mayCatch(pet) {
+    try {
+      if (pet.noCatch || !pet.dice?.length || calmNow()) return false;
+      if (Number(deps.getTier?.()?.effectBudget) <= 2) return false;
+      if ((Number(getSetting('timeBeforeHide')) || 2000) < MIN_LINGER) return false;
+      if (pet.rolls.get(pet.current)?.ghost) return false;
+      return userOf(pet.userId)?.getFlag?.('dicer', 'pet')?.catch === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Follows the roll's eligible d20; once it slows, the pet dashes for it. true when it does. */
+  function startCatch(pet, now) {
+    if (!mayCatch(pet)) return false;
+    let tracks = catchTracks.get(pet);
+    if (!tracks) catchTracks.set(pet, (tracks = new Map()));
+    for (const die of pet.dice) {
+      if (!eligible(die) || !slowing(tracks, die, now)) continue;
+      const p = die.outer.position;
+      const from = { x: pet.px ?? pet.base.x, z: pet.pz ?? pet.base.z };
+      const len = Math.hypot(p.x - from.x, p.z - from.z);
+      const dir = len > 1e-6 ? [(p.x - from.x) / len, (p.z - from.z) / len] : [0, 1];
+      die.borrowed = true; // nothing else (a crit scene, grab and toss) takes it meanwhile
+      pet.catch = { die, phase: 'dash', at: now, from, dir, ms: dashMs(len), saved: null, rest: null };
+      voice(pet, 'petYip');
+      wake();
+      return true;
+    }
+    return false;
+  }
+
+  /** Puts a caught die back as it was (at its rest once it landed) and ends the catch. */
+  function releaseCatch(pet) {
+    const c = pet?.catch;
+    if (!c) return;
+    pet.catch = null;
+    try {
+      restoreDie(c.die, c.saved);
+      if (c.rest) {
+        c.die.outer.position.copy(c.rest.position);
+        c.die.outer.quaternion.copy(c.rest.quaternion);
+      }
+    } finally {
+      c.die.borrowed = false;
+    }
+  }
+
+  /** The routine 'watch' frame of a pet with a catch: dash, gulp, carry (die unseen), spit. */
+  function stepCatch(pet, now, t, shadows) {
+    const c = pet.catch;
+    const die = c.die;
+    if (!die.outer.parent) {
+      // the roll was cleared under it: nothing to give back
+      releaseCatch(pet);
+      show(pet, now, 'watch', t, pet.px, pet.pz, 0, shadows);
+      return true;
+    }
+    const h = pet.creature.height;
+    const r = die.geometry?.boundingSphere?.radius ?? 0.9;
+    const reach = r * 0.8 + (pet.creature.footprint ?? FOOTPRINT * h);
+    const dp = c.rest?.position ?? die.outer.position;
+    const tx = dp.x - c.dir[0] * reach;
+    const tz = dp.z - c.dir[1] * reach;
+    let px = pet.px ?? tx;
+    let pz = pet.pz ?? tz;
+    const face = () => (pet.yaw = Math.atan2(dp.x - px, dp.z - pz));
+    if (c.phase === 'dash') {
+      const k = clamp01((now - c.at) / c.ms);
+      const e = smooth(k);
+      px = c.from.x + (tx - c.from.x) * e;
+      pz = c.from.z + (tz - c.from.z) * e;
+      face();
+      show(pet, now, 'move', (k * 3) % 1, px, pz, Math.sin(k * Math.PI) * HOP * h * 0.5, shadows);
+      if (k >= 1) ((c.phase = 'gulp'), (c.at = now));
+      return true;
+    }
+    if (c.phase === 'gulp') {
+      const k = clamp01((now - c.at) / GULP_MS);
+      px = tx;
+      pz = tz;
+      face();
+      die.outer.scale.setScalar(1 - (1 - MOUTH_SCALE) * k); // into the mouth (Playback writes no scale)
+      show(pet, now, 'throw', k, px, pz, 0, shadows);
+      if (k >= 1) {
+        c.saved = hideDie(die);
+        c.phase = 'carry';
+        c.at = now;
+        voice(pet, 'petBleh');
+      }
+      return true;
+    }
+    if (c.phase === 'carry') {
+      // the die rolls on unseen; the pet keeps beside it, so it is there when it stops
+      const dt = Math.max(0, now - (c.last ?? now));
+      c.last = now;
+      const a = 1 - Math.exp(-dt / 120);
+      px += (tx - px) * a;
+      pz += (tz - pz) * a;
+      show(pet, now, 'watch', t, px, pz, 0, shadows);
+      return true;
+    }
+    // spit: lunge, the die out of the mouth in an arc, settled on its own rest
+    const k = clamp01((now - c.at) / SPIT_MS);
+    face();
+    show(pet, now, 'throw', Math.sin(Math.PI * k), px, pz, 0, shadows);
+    mouthAt.set(px + Math.sin(pet.yaw) * h * 0.45, h * 0.55, pz + Math.cos(pet.yaw) * h * 0.45);
+    const out = spitPath(k, mouthAt, c.rest.position, r, spitAt);
+    if (out) {
+      if (c.saved) {
+        restoreDie(die, c.saved); // shows again, full size
+        c.saved = null;
+      }
+      yawQ.setFromAxisAngle(UP_AXIS, out.turns * Math.PI * 2);
+      spitQ.copy(c.rest.quaternion).premultiply(yawQ);
+      die.outer.position.copy(out.position);
+      die.outer.quaternion.copy(spitQ);
+    }
+    if (k >= 1) {
+      pet.catchSpot = { x: px, z: pz }; // it celebrates where it stands
+      releaseCatch(pet);
+    }
+    return true;
+  }
+
+  /**
+   * The roll landed (landed(), after settle): a carried die is spat out, and the crit reaction (and
+   * the other pets' cheer, which keys off it) waits for the spit. A catch not yet in the mouth is
+   * dropped: the die simply stays where it landed.
+   */
+  function landCatch(pet) {
+    const c = pet.catch;
+    if (!c) return;
+    if (c.phase !== 'carry') return releaseCatch(pet);
+    c.rest = { position: c.die.outer.position.clone(), quaternion: c.die.outer.quaternion.clone() };
+    c.phase = 'spit';
+    c.at = clock();
+    if (pet.track.landedAt != null) pet.track.landedAt += SPIT_MS;
+    wake();
+  }
+
   function step(pet, now, shadows, stay) {
     if (DOWN.has(pet.state)) return stepDown(pet, now, shadows, stay);
     if (pet.state === 'rest') {
@@ -2004,11 +2181,20 @@ export function createPetLayer(deps) {
       dropAnim(pet); // the dice landed: its own reaction takes over
       pet.sparkle.visible = false;
     }
+    // a natural 20 to catch, or one in its mouth: the catch drives the routine until its reaction
+    // (followed from the throw on: a resting pet's hop in can last past the die's fast flight)
+    if (CATCHING.has(phase) && (pet.catch || startCatch(pet, now))) return stepCatch(pet, now, phase === 'watch' ? t : 0, shadows);
+    if (pet.catch) releaseCatch(pet); // past its watch with a catch still on: the die goes back
     const h = pet.creature.height;
     const { base, out } = pet;
     let px = base.x;
     let pz = base.z;
     let hop = 0;
+    if (phase === 'react' && pet.catchSpot) {
+      // it spat the die out over there: it celebrates there (and leaves from there)
+      px = pet.catchSpot.x;
+      pz = pet.catchSpot.z;
+    }
     if (phase === 'enter') {
       const e = smooth(t);
       const from = pet.from;
@@ -2275,6 +2461,7 @@ export function createPetLayer(deps) {
     if (disposed) return;
     const pet = pets.get(id);
     if (!pet || !['routine', 'hop', 'rest', 'move'].includes(pet.state)) return;
+    if (pet.catch) return; // away catching: the physics still has it at its spot, where nothing is now
     const speed = info?.speed;
     const now = clock();
     const element = hitElement(pet, info?.die);
@@ -2446,6 +2633,7 @@ export function createPetLayer(deps) {
 
   function dispose() {
     disposed = true;
+    for (const pet of pets.values()) releaseCatch(pet);
     arm(Infinity);
     syncPetting(); // the click listeners go
     try {

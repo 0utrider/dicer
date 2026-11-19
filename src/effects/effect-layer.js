@@ -15,7 +15,8 @@ export const SHAKE_PX = 6;
  *   start(ctx) -> { update(nowMs) -> boolean, stop() } }
  * ctx = { scene, camera, die, position, color, intensity, duration, options, particles,
  *   isolate(die) -> uniforms | null, shake(amount, ms), tier, reducedMotion,
- *   setting(key) -> value (never throws; insideFlare is read through it) }.
+ *   setting(key) -> value (never throws; insideFlare is read through it),
+ *   box (the DiceBox or null: a crit scene pauses its roll's hide timer and borrows the die) }.
  * An effect with bindsDie (or one that isolated its die) is stopped by releaseDie(die).
  *
  * Budget: the summed cost of the effects running at once never exceeds tier.effectBudget.
@@ -47,6 +48,7 @@ export function createEffectLayer({
   getSetting = () => undefined,
   loadLibrary = () => import('./library/effects.js'),
   isolate = () => null,
+  box: boxOf, // () => the DiceBox (a crit scene borrows its die)
   dsnSfx = null,
   jb2a = null,
   isSafe = () => false,
@@ -294,6 +296,7 @@ export function createEffectLayer({
       shake: startShake,
       reducedMotion: reducedMotion(),
       setting,
+      box: boxOf?.(),
     };
     let handle;
     try {

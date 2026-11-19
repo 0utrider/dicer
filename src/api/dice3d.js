@@ -836,7 +836,7 @@ export function createDice3dApi({
      */
     async previewEffect(id, opts = {}) {
       const { die = 'd20', value, ...effectOpts } = opts ?? {};
-      if (typeof id !== 'string' || !(EFFECT_IDS.includes(id) || id.startsWith('dsn:'))) {
+      if (typeof id !== 'string' || !(EFFECT_IDS.includes(id) || id.startsWith('dsn:') || id.startsWith('scene-'))) {
         warnOnce(`previewEffect:${id}`, id);
         return false;
       }
@@ -1033,13 +1033,14 @@ export function createDice3dApi({
     /**
      * Local only: throws one die of each type (or of `types`) with a theme's look (the editor and
      * browser Throw buttons; the pet window's Preview throws one d20 with the user's own look).
+     * `face`: every die shows it (the pet window's Preview throws a 20 for a pet that catches 20s).
      */
     _throwLook: {
-      value(theme, types = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+      value(theme, types = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'], face) {
         try {
           const specs = types.map((type) => {
             const values = getShape(type).values;
-            const spec = { type, value: values[Math.floor(Math.random() * values.length)] };
+            const spec = { type, value: face ?? values[Math.floor(Math.random() * values.length)] };
             const appearance = theme?.perType?.[type] ?? theme?.appearance;
             if (appearance) spec.appearance = appearance;
             // A module dice set (a theme browser system entry): its preset's faces and model, as

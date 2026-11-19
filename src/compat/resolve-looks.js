@@ -177,8 +177,9 @@ export function createLookResolver({
       if (got) {
         appearance = got.appearance;
         themed = got;
-        system = systemOf(ref);
       }
+      // a module dice set's system on its own (no look): the author's looks dress the dice it skips
+      system = systemOf(ref);
     }
 
     // The author's refs, most specific first. They feed rule 5 and, for every rule, the system.

@@ -159,6 +159,13 @@
                 {{#if hasEffect}}<button type="button" class="dicer-icon" data-action="previewEffect" data-index="{{index}}" data-tooltip="DICER.Triggers.PreviewEffect" aria-label="{{localize "DICER.Triggers.PreviewEffect"}}"><i class="fa-solid fa-play"></i></button>{{/if}}
               </span>
             </label>
+            <label class="dicer-field">
+              <span>{{localize "DICER.Triggers.Scene"}}</span>
+              <span class="dicer-with-action">
+                <select name="rules.{{index}}.sceneId" data-refresh {{#if readonly}}disabled{{/if}} data-tooltip="DICER.Triggers.SceneHint">{{selectOptions sceneChoices selected=sceneId}}</select>
+                {{#if hasScene}}<button type="button" class="dicer-icon" data-action="previewScene" data-index="{{index}}" data-tooltip="DICER.Triggers.PreviewEffect" aria-label="{{localize "DICER.Triggers.PreviewEffect"}}"><i class="fa-solid fa-play"></i></button>{{/if}}
+              </span>
+            </label>
             {{#if hasEffect}}
               <div class="dicer-field">
                 <span>{{localize "DICER.Triggers.Color"}}</span>

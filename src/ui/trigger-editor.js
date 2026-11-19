@@ -7,6 +7,7 @@ import { EFFECTS } from '../effects/library/effects.js';
 import { DEFAULT_RULES, normalizeRule, MOMENT_KINDS, MOMENT_WHERES } from '../effects/rules.js';
 import { animaterMoments } from '../effects/fx-resolver.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
+import { SCENE_CATALOG } from '../effects/library/scene-catalog.js';
 
 // Literal keys (the lang test scans them): Animater's moment kinds (rules.js MOMENT_KINDS).
 const MOMENT_LABELS = {
@@ -92,10 +93,14 @@ export function buildChoices(ctx) {
   for (const t of ctx.diceTypes ?? []) if (!(t in dice)) dice[t] = t;
   for (const t of ctx.triggers ?? []) dice[t.id] = `${t.name} (${t.id})`;
   const effects = { '': loc('DICER.Triggers.NoEffect') };
-  for (const id of Object.keys(EFFECTS)) effects[id] = humanize(id);
+  for (const id of Object.keys(EFFECTS)) if (!id.startsWith('scene-')) effects[id] = humanize(id); // scenes: their own picker
+  // crit scenes, natural 20s first: "Meteor (natural 20)"
+  const scenes = { '': loc('DICER.Triggers.NoScene') };
+  for (const s of SCENE_CATALOG)
+    scenes[s.id] = `${humanize(s.id.slice(6))} (${loc(s.outcome === 'critical-failure' ? 'DICER.Triggers.SceneLow' : 'DICER.Triggers.SceneHigh')})`;
   for (const [id, name] of Object.entries(ctx.modes ?? {})) effects[`dsn:${id}`] = `${name} (DSN)`;
   const sounds = Object.fromEntries(USER_SOUNDS.map((s) => [s, humanize(s)]));
-  return { dice, effects, sounds };
+  return { dice, effects, scenes, sounds };
 }
 
 /**
@@ -114,6 +119,12 @@ export function previewFx(rule, { type, value }, effectOnly = false) {
     type,
     preview: true, // its moment plays on this GM's screen, active GM or not
   };
+}
+
+/** The crit scene a rule's effect plays (the effect itself, or a scene beside it), or null. */
+export function sceneIdOf(effect) {
+  if (typeof effect?.id === 'string' && effect.id.startsWith('scene-')) return effect.id;
+  return typeof effect?.scene === 'string' && effect.scene.startsWith('scene-') ? effect.scene : null;
 }
 
 /** The die type and face a preview should throw for a rule. */
@@ -184,6 +195,7 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       down: TriggerEditor.#onDown,
       preview: TriggerEditor.#onPreview,
       previewEffect: TriggerEditor.#onPreviewEffect,
+      previewScene: TriggerEditor.#onPreviewScene,
       reset: TriggerEditor.#onReset,
       pickFile: TriggerEditor.#onPickFile,
     },
@@ -303,6 +315,8 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         labelChoices: labels.length ? options(Object.fromEntries(labels.map((l) => [l, l])), e.resultLabel) : null,
         outcomeChoices,
         effectChoices: options(choices.effects, e.effectId),
+        sceneChoices: options(choices.scenes ?? { '': '' }, e.sceneId),
+        hasScene: Boolean(e.sceneId),
         soundKindChoices: {
           none: loc('DICER.Triggers.Sound.none'),
           builtin: loc('DICER.Triggers.Sound.builtin'),
@@ -544,6 +558,15 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const { rule, api } = found;
     const die = previewTarget(rule);
     await api._preview(previewFx(rule, die, true), die);
+  }
+
+  /** The rule's crit scene alone, on a d20 showing the face it is written for (20 or 1). */
+  static async #onPreviewScene(event, target) {
+    const found = this.#previewRule(target);
+    const id = sceneIdOf(found?.rule.effect);
+    if (!id) return;
+    const die = { type: 'd20', value: SCENE_CATALOG.find((s) => s.id === id)?.outcome === 'critical-failure' ? 1 : 20 };
+    await found.api._preview({ ...previewFx(found.rule, die, true), effect: { id } }, die);
   }
 
   static async #onReset() {

@@ -32,7 +32,7 @@
             {{#if slotCount}}<span class="dicer-mark dicer-mark-slots" data-tooltip="{{slotTooltip}}" aria-label="{{slotTooltip}}"><i class="fa-solid fa-link"></i> {{slotCount}}</span>{{/if}}
           </div>
           <div class="dicer-card-name" title="{{name}}">{{name}}</div>
-          {{#if showBadge}}<div class="dicer-card-meta"><span class="dicer-badge dicer-badge-{{source}}">{{sourceLabel}}</span></div>{{/if}}
+          {{#if showBadge}}<div class="dicer-card-meta"><span class="dicer-badge dicer-badge-{{source}}" title="{{sourceLabel}}">{{sourceLabel}}</span></div>{{/if}}
         </div>
       {{/each}}
       {{#if unreadable.length}}
@@ -66,6 +66,35 @@
             {{#if detail.canStop}}<button type="button" data-action="stopModule" data-theme="{{detail.id}}"><i class="fa-solid fa-eraser"></i> {{localize "DICER.Themes.Module.Stop"}}</button>{{/if}}
           {{else}}
             <button type="button" class="bright dicer-primary" data-action="useModule" data-theme="{{detail.id}}"><i class="fa-solid fa-star"></i> {{localize "DICER.Themes.UseAsDefault"}}</button>
+          {{/if}}
+          <div class="dicer-detail-section">
+            <label class="dicer-field">
+              <span>{{localize "DICER.Themes.UseFor"}}</span>
+              <select class="dicer-target">
+                {{#each moduleTargetGroups}}
+                  <optgroup label="{{label}}">
+                    {{#each options}}<option value="{{value}}"{{#if selected}} selected{{/if}}>{{label}}</option>{{/each}}
+                  </optgroup>
+                {{/each}}
+              </select>
+            </label>
+            <div class="dicer-button-row">
+              <button type="button" data-action="apply" data-theme="{{detail.id}}"><i class="fa-solid fa-check"></i> {{localize "DICER.Themes.Apply"}}</button>
+              <button type="button" data-action="clear" data-theme="{{detail.id}}" data-tooltip="DICER.Themes.ClearHint"><i class="fa-solid fa-eraser"></i> {{localize "DICER.Themes.Clear"}}</button>
+            </div>
+          </div>
+          {{#if detail.assigned.length}}
+          <div class="dicer-detail-section">
+            <h4>{{localize "DICER.Themes.AssignedTo"}}</h4>
+            <ul class="dicer-chips">
+              {{#each detail.assigned}}
+                <li class="dicer-chip {{#if isDefault}}is-default{{/if}}">
+                  <span>{{label}}</span>
+                  {{#unless isDefault}}<button type="button" class="dicer-chip-x" data-action="clear" data-target="{{target}}" data-tooltip="DICER.Themes.ClearSlot" aria-label="{{localize "DICER.Themes.ClearSlot"}}"><i class="fa-solid fa-xmark"></i></button>{{/unless}}
+                </li>
+              {{/each}}
+            </ul>
+          </div>
           {{/if}}
         {{/if}}
         <div class="dicer-detail-section dicer-detail-actions">

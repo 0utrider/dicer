@@ -115,7 +115,7 @@ function faceImagesOf(type, preset) {
   return Object.keys(map).length ? map : null;
 }
 
-function systemEntry(id, sys, registry) {
+function systemEntry(id, sys, registry, pair = null) {
   const looks = new Map();
   const faces = []; // custom faces a theme cannot hold
   const faceImages = {}; // image faces it can (die type -> {value: path})
@@ -140,7 +140,8 @@ function systemEntry(id, sys, registry) {
     }
     if (isStr(preset.font)) fonts.push(type);
   }
-  const appearance = looks.get('d20') ?? looks.values().next().value ?? LOOKS.default.appearance;
+  // presets that name no colorset wear the system's same-named colorset (its pair), if any
+  const appearance = looks.get('d20') ?? looks.values().next().value ?? pair?.appearance ?? LOOKS.default.appearance;
   const baseKey = appearanceKey(appearance);
   const perType = {};
   for (const [type, look] of looks) if (appearanceKey(look) !== baseKey) perType[type] = look;
@@ -159,7 +160,8 @@ function systemEntry(id, sys, registry) {
     category: str(sys.group),
     appearance,
     perType,
-    dropped,
+    dropped: pair ? [...dropped, ...pair.dropped] : dropped,
+    ...(pair ? { pair: pair.key } : {}),
     ...(models.length ? { models: modelFiles } : {}),
     ...(Object.keys(faceImages).length ? { faceImages } : {}),
     ...(Object.keys(facePresets).length ? { facePresets } : {}),
@@ -185,34 +187,43 @@ export function moduleDiceEntries(registry) {
   } catch {
     /* a broken colorset map lists none */
   }
+  const paired = new Set();
   try {
     for (const [id, sys] of registry?.systems ?? []) {
       if (!isStr(id) || id === STANDARD || !isObj(sys) || !(sys.dice instanceof Map) || !sys.dice.size) continue;
-      systems.push(systemEntry(id, sys, registry));
+      // A system whose presets name no colorset, registered next to a colorset of the same id (IRL
+      // Dice packs): one set, the colorset's look on the system's dice, listed once.
+      const named = [...sys.dice.values()].some((p) => isObj(p) && (Array.isArray(p.colorset) ? p.colorset.length : isStr(p.colorset)));
+      const pair = named ? null : (colorsets.find((c) => c.key === id) ?? null);
+      if (pair) paired.add(pair.id);
+      systems.push(systemEntry(id, sys, registry, pair));
     }
   } catch {
     /* a broken systems map lists none */
   }
-  return [...colorsets.sort(byName), ...systems.sort(byName)].map((e) => ({ ...e, source: 'module' }));
+  return [...colorsets.filter((c) => !paired.has(c.id)).sort(byName), ...systems.sort(byName)].map((e) => ({ ...e, source: 'module' }));
 }
 
 const NAMED = ['theme', 'look', 'colorset', 'appearance'];
 
 /**
- * The look flag patch that makes the entry this user's default. A colorset replaces the slot's
- * look (and leaves its system); a system is merged in, keeping the slot's look for dice whose
- * preset names no colorset (`fallbackTheme`, the client theme setting, when the slot names none).
+ * The look flag patch that puts the entry in `slot` (the user's or an actor's 'global', a die type,
+ * 'role:attack'...). A colorset replaces the slot's look (and leaves its system); a system is
+ * merged in, keeping the slot's look for dice whose preset names no colorset (`fallbackTheme`, the
+ * client theme setting, when the slot names none; null: none, the looks behind the slot apply).
  */
-export function useModulePatch(entry, current, fallbackTheme = 'default') {
-  if (entry?.kind === 'colorset') return { global: { colorset: entry.key, appearance: null, theme: null, look: null, chosen: true } };
+export function useModulePatch(entry, current, fallbackTheme = 'default', slot = 'global') {
+  if (entry?.kind === 'colorset') return { [slot]: { colorset: entry.key, appearance: null, theme: null, look: null, chosen: true } };
+  // a paired system brings its colorset: both, as the set was made
+  if (isStr(entry?.pair)) return { [slot]: { system: entry.key, colorset: entry.pair, appearance: null, theme: null, look: null, chosen: true } };
   const ref = { system: entry.key, chosen: true };
   const names = isObj(current) && !isNeverChose(current) && NAMED.some((k) => current[k] !== undefined && current[k] !== null);
-  if (!names) ref.theme = isStr(fallbackTheme) ? fallbackTheme : 'default';
-  return { global: ref };
+  if (!names && fallbackTheme !== null) ref.theme = isStr(fallbackTheme) ? fallbackTheme : 'default';
+  return { [slot]: ref };
 }
 
 /** The patch "Stop using" writes for the current module system. */
-export const stopSystemPatch = () => ({ global: { system: null } });
+export const stopSystemPatch = (entry) => ({ global: isStr(entry?.pair) ? { system: null, colorset: null } : { system: null } });
 
 /**
  * The entry id the stored global slot makes "Your default" among the module entries, if any:

@@ -207,7 +207,7 @@ describe('readThemeList', () => {
 
 describe('KNOWN_EFFECTS', () => {
   // The library chunk is lazy, so themes.js keeps its own list; this keeps it honest.
-  test('lists the effects catalogue ids, no more', () => {
-    expect([...KNOWN_EFFECTS].sort()).toEqual(Object.keys(EFFECTS).sort());
+  test('lists the effects catalogue ids, no more (crit scenes are accepted by their scene- prefix)', () => {
+    expect([...KNOWN_EFFECTS].sort()).toEqual(Object.keys(EFFECTS).filter((id) => !id.startsWith('scene-')).sort());
   });
 });

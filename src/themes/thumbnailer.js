@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { buildScene } from '../render/scene.js';
 import { configureRenderer } from '../render/renderer.js';
-import { createDiceMaterial } from '../render/dice-material.js';
+import { createDiceMaterial, chainShaderHook } from '../render/dice-material.js';
 import { TIERS, flagsFor } from '../render/quality.js';
 import { buildDieGeometry, snapEdgeRadius } from '../core/chamfer.js';
 import { getShape, labelFor, shapeTypeFor } from '../core/dice-shapes.js';
@@ -17,6 +17,8 @@ import { createFaceTextures } from '../render/face-textures.js';
 import { modelRotationFor } from '../compat/dsn-orientation.js';
 
 const ENV_RESOLUTION = 128;
+// A DiceSystem's material callbacks (DiceBox MATERIAL_HOOKS): all three, or none apply.
+const SYSTEM_HOOKS = ['getCacheString', 'processMaterial', 'beforeShaderCompile'];
 /** The face shown on top per type (6 and 9 show the underline mark). */
 const SHOWN = { d4: 4, d6: 6, d8: 8, d10: 9, d12: 12, d14: 14, d16: 16, d20: 20, d2: 2, d4crystal: 4, d6bullet: 6, d8crystal: 8, d10crystal: 9 };
 const FOV = 26;
@@ -95,6 +97,14 @@ export function createThumbnailer({
   reducedMotion = () => Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches),
   doc = globalThis.document,
   fonts = null,
+  // a module system's registered DiceSystem instance (main.js gives DiceBox the same lookup)
+  systemFor = (id) => {
+    try {
+      return globalThis.game?.dice3d?.DiceFactory?.systems?.get?.(id)?.instance ?? null;
+    } catch {
+      return null;
+    }
+  },
   showPresetFaces = () => {
     try {
       return globalThis.game?.settings?.get('dicer', 'presetFaces') !== false;
@@ -137,6 +147,29 @@ export function createThumbnailer({
     if (geometries.get(key) === entry) geometries.delete(key);
   }
   let flags = null;
+  const systemWarned = new Set();
+  /**
+   * A module system entry's own material callbacks on a preview material, as DiceBox applies them
+   * to thrown dice (IRL Dice packs draw their surfaces there), so the preview matches the throw.
+   * A throwing callback warns once per system; the material keeps what it had.
+   */
+  function withSystem(material, theme, dieType, appearance) {
+    const id = theme?.kind === 'system' && typeof theme.key === 'string' ? theme.key : null;
+    const inst = id ? systemFor(id) : null;
+    if (!inst || !SYSTEM_HOOKS.every((m) => typeof inst[m] === 'function')) return material;
+    const failed = (err) => {
+      if (systemWarned.has(id)) return;
+      systemWarned.add(id);
+      warn(`dicer: dice system "${id}": its material callbacks failed in a preview`, err);
+    };
+    try {
+      if (!flags?.safe) chainShaderHook(material, id, String(inst.getCacheString(appearance)), (sh, m) => inst.beforeShaderCompile(sh, m), failed);
+      inst.processMaterial(dieType, material, appearance);
+    } catch (err) {
+      failed(err);
+    }
+    return material;
+  }
   const fontOf = (appearance) => appearance?.numbers?.font ?? 'serif';
   const isSerif = (id) => !id || id === 'serif' || !fonts;
   /** The ready atlas for a font id, else null (never throws). */
@@ -293,14 +326,14 @@ export function createThumbnailer({
     const images = src ? (await requestLookExtras())?.bodyImages : null;
     const body = images ? await images.acquire(src) : null;
     try {
-      return await renderLook(appearance, dieType, dieAtlas, tex, body);
+      return await renderLook(appearance, dieType, dieAtlas, tex, body, null, theme);
     } finally {
       if (set) faceCache.release(set);
       if (images) images.release(src);
     }
   }
 
-  async function renderLook(appearance, dieType, dieAtlas, tex, body = null, model = null) {
+  async function renderLook(appearance, dieType, dieAtlas, tex, body = null, model = null, theme = null) {
     const shapeType = model?.shapeType ?? shapeTypeOf(dieType, appearance);
     const shape = getShape(shapeType);
     const labels = layered(labelsOf(dieType, shapeType, shape), tex);
@@ -311,7 +344,7 @@ export function createThumbnailer({
     // A model brings its own (shared) material: nothing of ours to make or free.
     const material = model
       ? model.material
-      : createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null, body?.texture ? body : null);
+      : withSystem(createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null, body?.texture ? body : null), theme, dieType, appearance);
     const ours = !model;
     const freeMaterial = () => {
       if (!ours) return;
@@ -383,7 +416,9 @@ export function createThumbnailer({
     if (disposed || broken) return Promise.resolve(null);
     const appearance = theme?.perType?.[dieType] ?? theme?.appearance;
     if (!appearance) return Promise.resolve(null);
-    const key = `${appearanceKey(appearance)}|${dieType}|${size}|${theme?.models?.[dieType] ?? ''}|${presetFacesOf(theme, dieType)?.key ?? ''}`;
+    // a module system draws its own surface (withSystem): its thumbnail is its own
+    const sys = theme?.kind === 'system' ? theme.key : '';
+    const key = `${appearanceKey(appearance)}|${dieType}|${size}|${theme?.models?.[dieType] ?? ''}|${presetFacesOf(theme, dieType)?.key ?? ''}|${sys}`;
     if (cache.has(key)) return Promise.resolve(cache.get(key));
     if (inflight.has(key)) return inflight.get(key);
     const fontId = fontOf(appearance);
@@ -532,7 +567,7 @@ export function createThumbnailer({
       const dieAtlas = readyAtlas(fontId);
       const material = mdl
         ? mdl.material
-        : createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null, bt?.texture ? bt : null);
+        : withSystem(createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null, bt?.texture ? bt : null), theme, dieType, appearance);
       const releaseAtlas = holdAtlas(dieAtlas);
       if (!dieAtlas) {
         // the serif stands in: rebuild the die once the font is ready

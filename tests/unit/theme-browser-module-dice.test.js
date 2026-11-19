@@ -10,6 +10,7 @@ import {
   moduleDiceEntries,
   registryView,
   useModulePatch,
+  stopSystemPatch,
   currentModuleIds,
   moduleThemeRaw,
 } from '../../src/ui/module-dice.js';
@@ -115,6 +116,9 @@ describe('module dice entries', () => {
     expect(useModulePatch(sys, { theme: 'verdant', chosen: true }, 'ruby-classic')).toEqual({ global: { system: 'trs-marble', chosen: true } });
     expect(useModulePatch(sys, undefined, 'ruby-classic')).toEqual({ global: { system: 'trs-marble', chosen: true, theme: 'ruby-classic' } });
     expect(useModulePatch(sys, { theme: 'default', chosen: null }, 'ruby-classic').global.theme).toBe('ruby-classic'); // never chose
+    // another slot, and no fallback theme (an actor, a die type: the looks behind it apply)
+    expect(useModulePatch(sys, undefined, null, 'd20')).toEqual({ d20: { system: 'trs-marble', chosen: true } });
+    expect(useModulePatch({ kind: 'colorset', key: 'trs-black' }, undefined, null, 'role:attack')['role:attack']).toMatchObject({ colorset: 'trs-black' });
   });
 
   it('currentModuleIds names a listed colorset and system only', async () => {
@@ -346,6 +350,29 @@ describe('the theme browser with module dice', () => {
     expect(none.raw.appearance).toEqual(LOOKS.default.appearance);
   });
 
+  it('a system with no colorsets and a colorset of the same id (IRL Dice packs) is one set, in that look', async () => {
+    const reg = createRegistry({ warn: () => {} });
+    await reg.addColorset({ name: 'irl-pc-kev', description: 'Kev colours', category: 'IRL', foreground: '#ffeeaa', background: '#335522' });
+    await reg.addColorset({ name: 'irl-other', description: 'Other', category: 'IRL', foreground: '#ffffff', background: '#111111' });
+    const view = { ...registryView({ exports: reg.exports }) };
+    // Kev's system: plain d20, no colorset named; a second system names its own colorset (not paired)
+    view.systems = new Map([
+      ['irl-pc-kev', { name: 'Kev, Mycelium Forged', group: 'IRL - Otari 5', dice: new Map([['d20', { labels: [], values: { min: 1 } }]]) }],
+      ['irl-other', { name: 'Other set', dice: new Map([['d20', { labels: [], colorset: 'irl-pc-kev' }]]) }],
+    ]);
+    const entries = moduleDiceEntries(view);
+    expect(entries.map((e) => e.id)).toEqual(['dsn-colorset:irl-other', 'dsn-system:irl-pc-kev', 'dsn-system:irl-other']);
+    const kev = entries.find((e) => e.key === 'irl-pc-kev');
+    expect(kev).toMatchObject({ kind: 'system', pair: 'irl-pc-kev', name: 'Kev, Mycelium Forged' });
+    expect(kev.appearance).toEqual(colorsetNameToAppearance('irl-pc-kev', view));
+    expect(entries.find((e) => e.key === 'irl-other' && e.kind === 'system').pair).toBeUndefined();
+    // using it writes both; stopping it clears both
+    expect(useModulePatch(kev, { theme: 'verdant' })).toEqual({ global: { system: 'irl-pc-kev', colorset: 'irl-pc-kev', appearance: null, theme: null, look: null, chosen: true } });
+    expect(useModulePatch(kev, undefined, null, 'actor')).toHaveProperty('actor.colorset', 'irl-pc-kev');
+    expect(stopSystemPatch(kev)).toEqual({ global: { system: null, colorset: null } });
+    expect(stopSystemPatch()).toEqual({ global: { system: null } });
+  });
+
   it('systemEntry marks a set with models and no colours as colourless', () => {
     const systems = new Map([['m', { name: 'M', dice: new Map([['d20', { labels: '', modelFile: 'd20.gltf' }]]) }]]);
     expect(moduleDiceEntries({ colorsets: new Map(), systems })[0].colourless).toBe(true);
@@ -362,5 +389,80 @@ describe('the theme browser with module dice', () => {
     expect(d20).toMatchObject({ system: 'trs-marble', faces: { key: 'd20' } });
     expect(d20.appearance).toEqual(colorsetNameToAppearance('trs-black', registry));
     expect(roll(8).appearance).toEqual(BUILTIN_THEMES.find((t) => t.id === 'verdant').appearance); // no preset colorset: own theme
+  });
+
+  /** An owned actor with Foundry's merging setFlag, in a game.actors that has get(). */
+  function ownedActor(id = 'a1', name = 'Ryllara') {
+    const af = {};
+    const actor = {
+      id,
+      name,
+      isOwner: true,
+      flags: { dicer: af },
+      getFlag: (s, k) => af[k],
+      setFlag: vi.fn(async (s, k, v) => {
+        const cur = { ...(af[k] ?? {}) };
+        for (const [slot, ref] of Object.entries(v)) cur[slot] = ref === 'DELETE' ? undefined : { ...(cur[slot] ?? {}), ...ref };
+        af[k] = cur;
+      }),
+    };
+    const list = [actor];
+    list.get = (x) => list.find((a) => a.id === x);
+    game.actors = list;
+    return actor;
+  }
+  const applyTo = (app, id, to) => actions.apply.call(app, {}, { dataset: { theme: id, target: to } });
+
+  it('a module set can be used for an actor (its system alone, no fallback theme), shown on its card, and cleared', async () => {
+    const actor = ownedActor();
+    const app = make();
+    await showModules(app);
+    await applyTo(app, 'dsn-system:trs-marble', 'actor:a1');
+    expect(actor.getFlag('dicer', 'appearance').global).toEqual({ system: 'trs-marble', chosen: true });
+    expect(flags.appearance).toBeUndefined(); // the player's own looks untouched
+    await applyTo(app, 'dsn-colorset:trs-black', 'actor:a1');
+    expect(actor.getFlag('dicer', 'appearance').global).toMatchObject({ colorset: 'trs-black', system: 'trs-marble' });
+    await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: 'dsn-system:trs-marble' } }) });
+    let ctx = await app._prepareContext();
+    expect(ctx.detail.assigned.map((a) => a.target)).toContain('actor:a1');
+    // the module detail offers every target but the damage maps (they hold theme ids)
+    const values = ctx.moduleTargetGroups.flatMap((g) => g.options.map((o) => o.value));
+    expect(values).toEqual(expect.arrayContaining(['default', 'die:d20', 'role:attack', 'actor:a1']));
+    expect(values.some((v) => /damage:/.test(v))).toBe(false);
+    await actions.clear.call(app, {}, { dataset: { target: 'actor:a1' } });
+    expect(actor.getFlag('dicer', 'appearance').global).toBeUndefined();
+    ctx = await app._prepareContext();
+    expect(ctx.detail.assigned.map((a) => a.target)).not.toContain('actor:a1');
+    // an actor the user does not own is refused
+    actor.isOwner = false;
+    expect(await mod.useModuleDice({ kind: 'system', key: 'trs-marble', source: 'module' }, 'actor:a1')).toBe(false);
+  });
+
+  it('a module set can be used for a die type or a roll role; damage targets are refused', async () => {
+    const entry = { kind: 'system', key: 'trs-marble', source: 'module' };
+    expect(await mod.useModuleDice(entry, 'die:d6')).toBe(true);
+    expect(flags.appearance.d6).toEqual({ system: 'trs-marble', chosen: true });
+    expect(await mod.useModuleDice({ kind: 'colorset', key: 'trs-black', source: 'module' }, 'role:attack')).toBe(true);
+    expect(flags.appearance['role:attack']).toMatchObject({ colorset: 'trs-black' });
+    expect(await mod.useModuleDice(entry, 'damage:fire')).toBe(false);
+    expect(await mod.useModuleDice(entry, 'worlddamage:fire')).toBe(false);
+    expect(await mod.useModuleDice(entry, 'die:d7')).toBe(false);
+    const app = make();
+    await showModules(app);
+    await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: 'dsn-system:trs-marble' } }) });
+    expect((await app._prepareContext()).detail.assigned.map((a) => a.target)).toEqual(['die:d6']);
+  });
+
+  it("an actor's module system dresses its dice even with no look of its own (the player's look elsewhere)", async () => {
+    const actor = ownedActor();
+    flags.appearance = { global: chosenRef('verdant') };
+    await mod.useModuleDice({ kind: 'system', key: 'trs-marble', source: 'module' }, 'actor:a1');
+    const resolver = createLookResolver({ registry, getUser: () => user, getActor: (id) => (id === actor.id ? actor : undefined), facesFor: (p) => ({ key: p.type }), warn: () => {} });
+    const roll = (faces) => resolver.decorate(null, {}, 'u1', { actor: 'a1' })({ faces, options: {} }, {}, 0);
+    expect(roll(20)).toMatchObject({ system: 'trs-marble', faces: { key: 'd20' } });
+    expect(roll(20).appearance).toEqual(colorsetNameToAppearance('trs-black', registry));
+    expect(roll(8).appearance).toEqual(BUILTIN_THEMES.find((t) => t.id === 'verdant').appearance);
+    // without the speaker the player's own dice roll
+    expect(resolver.decorate(null, {}, 'u1')({ faces: 20, options: {} }, {}, 0).system).not.toBe('trs-marble');
   });
 });

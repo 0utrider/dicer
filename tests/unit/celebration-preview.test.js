@@ -25,6 +25,7 @@ describe('custom sound file and JB2A animation in the simple form', () => {
     });
     expect(formFromTheme(t).nat20).toEqual({
       effect: 'shockwave',
+      scene: '',
       sound: 'file',
       soundSrc: 'sounds/yay.ogg',
       jb2a: 'modules/jb2a_patreon/Library/Generic/Impact/A.webm',
