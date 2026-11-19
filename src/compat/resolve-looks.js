@@ -3,7 +3,7 @@
  *   1. term.options.appearance   2. term.options.colorset
  *   3. the damage theme of the term's damage type (P4-D3; also sets soundMaterial)
  *   3b. the term's flavor as a colorset name (only with no damage theme: a [fire] damage die is themed)
- *   4. the actor's dicer.appearance (options.dsnActorId)   5. the roller's dicer.appearance
+ *   4. the actor's dicer.appearance (options.dsnActorId, else the speaker's actor)   5. the roller's dicer.appearance
  *      (role:<role> when the message has one, die type, base shape, then global)
  *   6. DEFAULT_APPEARANCE.
  * Refs at steps 4-5 may name a theme (Plan 5): built-in, the world's (worldThemes) or the
@@ -135,9 +135,12 @@ export function createLookResolver({
     return colorsetNameToAppearance(cs, registry, index);
   }
 
-  function resolve(term, ctx, index, themeOf, role) {
+  function resolve(term, ctx, index, themeOf, role, speakerActorId) {
     const type = dsnTypeOf(term);
     const options = isPlainObject(term?.options) ? term.options : {};
+    // The term's own actor, else the speaker's (showForRoll / animateRoll, which have no message).
+    // A token-linked speaker names its base actor, whose flags getActor returns.
+    const actorId = typeof options.dsnActorId === 'string' ? options.dsnActorId : speakerActorId;
     let appearance = null;
     let system = null;
 
@@ -165,10 +168,10 @@ export function createLookResolver({
       appearance = colorsetNameToAppearance(named, registry, index);
     }
     const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
-    if (!appearance && !ctx.locked && typeof options.dsnActorId === 'string') {
+    if (!appearance && !ctx.locked && typeof actorId === 'string') {
       // The theme browser writes {global: {theme}}; DSN-migrated flags are a flat LookRef. A
       // global slot takes precedence over flat keys left on the same actor.
-      const stored = getActor(options.dsnActorId)?.flags?.dicer?.appearance;
+      const stored = getActor(actorId)?.flags?.dicer?.appearance;
       const ref = isPlainObject(stored) && isPlainObject(stored.global) ? stored.global : stored;
       const got = lookRefToAppearance(ref, registry, index, refOpts);
       if (got) {
@@ -245,8 +248,9 @@ export function createLookResolver({
 
   return {
     /** @returns {(term, result, termIndex) => object} a decorator for planThrow */
-    decorate(message, roll, authorId) {
+    decorate(message, roll, authorId, speaker = null) {
       const author = authorId ?? message?.author?.id;
+      const speakerActorId = typeof speaker?.actor === 'string' ? speaker.actor : undefined;
       let role = null;
       try {
         role = roleOf(message); // null on the showForRoll path (no message)
@@ -263,7 +267,7 @@ export function createLookResolver({
       return (term, result, termIndex = 0) => {
         try {
           ctx ??= themeContext(author);
-          return resolve(term, ctx, termIndex, themeOf, role);
+          return resolve(term, ctx, termIndex, themeOf, role, speakerActorId);
         } catch (err) {
           warnOnce(err);
           return { appearance: DEFAULT_APPEARANCE };

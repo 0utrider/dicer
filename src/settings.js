@@ -678,6 +678,9 @@ export function registerSettings({
   // Dice of installed modules that are not active (compat/installed-dice.js): the GM's picks, each
   // {id, title, scripts}, made in the theme browser; every client loads new picks as they are made.
   register('installedDice', { scope: 'world', config: false, type: Array, default: [], onChange: () => onInstalledDiceChange?.() });
+  // Dice So Nice add-ons Dicer runs in full while they stay off (compat/installed-dice.js
+  // loadDsnAddons): the GM's picked module ids, from the same window; read once, at ready.
+  register('dsnAddons', { scope: 'world', config: false, type: Array, default: [] });
   registerEditorMenu(t, 'themeBrowser', 'fa-solid fa-dice-d20', () =>
     import('./ui/theme-browser.js').then((m) => m.openThemeBrowser),
   );

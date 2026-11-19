@@ -263,11 +263,12 @@ export function createDice3dApi({
 
   /**
    * The real-view decorator: `authorId` picks the look; the verified sender is the roller whose
-   * trigger rules apply (P3-R18: the caller's `user` never chooses rules or runs macros).
+   * trigger rules apply (P3-R18: the caller's `user` never chooses rules or runs macros). The
+   * speaker's actor stands in for a term without its own dsnActorId (an actor's theme).
    */
-  function decoratorFor(roll, authorId, senderId) {
+  function decoratorFor(roll, authorId, senderId, speaker) {
     try {
-      return decorateFor(null, roll, authorId, senderId) || undefined;
+      return decorateFor(null, roll, authorId, senderId, speaker) || undefined;
     } catch (err) {
       console.error('dicer: cannot resolve the dice looks', err);
       return undefined;
@@ -403,7 +404,7 @@ export function createDice3dApi({
       const { dice } = planThrow(ghost ? ghostRoll(toThrow) : toThrow, {
         maxDice: Number(getSetting('maxDice')) || 20,
         showExtra: getSetting('showExtraDice') !== false,
-        decorate: ghost ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId, s.senderId),
+        decorate: ghost ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId, s.senderId, s.speaker),
       });
       if (!dice.length) return false;
       const area = areaHere(s, view);
@@ -811,9 +812,20 @@ export function createDice3dApi({
       });
     },
 
-    /** Local only: showForRoll without synchronize, users, blind or a message. */
-    animateRoll(roll, options = {}) {
-      return api.showForRoll(roll, me(), false, null, false, null, null, options);
+    /**
+     * Local only: showForRoll without synchronize, users or a message. Takes Dice So Nice's
+     * `(roll, { author|user, speaker }, { messageMode, ghost, secret })` (PF2e Toolbelt's
+     * Target Helper names each target's speaker, so the die wears that actor's theme) and the
+     * older `(roll, { ghost, secret, blind })`. `messageMode: 'blind'` or `blind: true` is blind.
+     */
+    animateRoll(roll, first, ...rest) {
+      const c = first && typeof first === 'object' ? first : {};
+      const isContext = rest.length > 0 || 'speaker' in c || 'author' in c || 'user' in c;
+      const o = (isContext ? rest[0] : c) ?? {};
+      let author = isContext ? (c.author ?? c.user) : null;
+      if (typeof author === 'string') author = getUser(author);
+      const blind = o.messageMode === 'blind' || Boolean(o.blind);
+      return api.showForRoll(roll, (author && typeof author === 'object' && author) || me(), false, null, blind, null, isContext ? c.speaker : null, o);
     },
 
     /**

@@ -2,6 +2,7 @@
   "DICER": {
     "Notice": {
       "DsnActive": "Dicer is inactive while Dice So Nice is enabled. Disable one of them.",
+      "Stale": "Your browser is still running an old copy of Dicer, so some of its windows may not open. Hard-reload this page (Ctrl+Shift+R, or Cmd+Shift+R on a Mac) or clear this site's cached files.",
       "Migrated": "Your Dice So Nice dice colours were imported into Dicer.",
       "SavesImported": "{n} of your saved Dice So Nice looks are now in My themes."
     },
@@ -1399,6 +1400,7 @@
       "Remove": "Dice you untick go away at the next reload.",
       "AfterReload": "Its dice stay until the next reload.",
       "SaveFailed": "Could not save the installed module dice.",
+      "Addon": "A Dice So Nice add-on: ticked, Dicer runs all of its code (not its styles or translations) while it and Dice So Nice stay off. Applies after a reload.",
       "Status": {
         "other": "Does more than add dice: activate the module to use them.",
         "bundle": "Its dice are part of a bundle: activate the module to use them."

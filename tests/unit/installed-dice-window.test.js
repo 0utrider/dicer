@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The GM's picker of installed modules' dice (src/ui/installed-dice.js): its list and its saves. */
 import { expect, test } from 'vitest';
-import { buildList, togglePick } from '../../src/ui/installed-dice.js';
+import { buildList, togglePick, toggleAddon } from '../../src/ui/installed-dice.js';
 
 const found = [
   { id: 'adventure', title: 'An Adventure', scripts: ['modules/adventure/index.js'], status: 'other' },
@@ -27,4 +27,27 @@ test('ticking keeps the module with its title and scripts; unticking drops it', 
   expect(on).toEqual([{ id: 'marble', title: 'Marble Dice', scripts: ['modules/marble/diceset.js'] }]);
   expect(togglePick(on, found[1], true)).toHaveLength(1); // no duplicates
   expect(togglePick(on, found[1], false)).toEqual([]);
+});
+
+test('a Dice So Nice add-on Dicer cannot sandbox gets a box to run it in full, ticked from dsnAddons', () => {
+  const list = [
+    ...found,
+    { id: 'lordudice', title: 'Lordu Dice', scripts: ['modules/lordudice/scripts/a.js'], status: 'other', addon: true },
+    { id: 'soup', title: 'Dice Soup', scripts: ['modules/soup/a.js'], status: 'ok', addon: true }, // dice only: sandboxed
+  ];
+  const [, , lordu, soup] = buildList(list, [], ['lordudice']).querySelectorAll('li');
+  const box = lordu.querySelector('input');
+  expect(box.disabled).toBe(false);
+  expect(box.checked).toBe(true);
+  expect(box.hasAttribute('data-addon')).toBe(true);
+  expect(lordu.classList.contains('is-off')).toBe(false);
+  expect(lordu.querySelector('small').textContent).toBe('DICER.InstalledDice.Addon');
+  expect(soup.querySelector('input').hasAttribute('data-addon')).toBe(false);
+  expect(buildList(list, [], []).querySelectorAll('li')[2].querySelector('input').checked).toBe(false);
+});
+
+test('ticking an add-on adds its id once; unticking drops it', () => {
+  expect(toggleAddon([], 'lordudice', true)).toEqual(['lordudice']);
+  expect(toggleAddon(['lordudice'], 'lordudice', true)).toEqual(['lordudice']);
+  expect(toggleAddon(['soup', 'lordudice'], 'lordudice', false)).toEqual(['soup']);
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+- **Dice So Nice add-ons without Dice So Nice.** Add-on modules that require Dice So Nice (so Foundry won't let you enable them), such as Dice Soup, Handyfon's Dice Addiction, Doomsong Dice and Lordu's dice, can stay off: the GM ticks them in the theme browser's **Installed dice** window and reloads, and Dicer runs their code so their dice show up in the theme browser. Their stylesheets and translations aren't loaded. Thanks to 0utrider for the design.
+- **Save rolls from PF2e Toolbelt use each target's dice theme.** `game.dice3d.animateRoll` now takes Dice So Nice's call shape (roll, author and speaker, message mode): the speaker's actor theme is used, the author's look is respected, and blind rolls (NPC or private saves) stay hidden from players. Thanks to 0utrider for finding and diagnosing it.
+- **A browser stuck on an old copy of Dicer repairs itself.** Some browsers (Brave) and proxies kept running an old cached Dicer after an update, and windows such as Roll stats and rolling by hand failed to open. Dicer now notices when its code is not the version Foundry serves, or when one of its files fails to load, fetches fresh copies and reloads the page once; if that doesn't help, it asks for a hard reload. This protects updates from this version on.
+
 ## 1.0.18
 
 - **Your Dicer settings follow you to any browser.** Personal settings (theme, dice look, tray look, pets and pet volume, sounds, effects, slow motion, screen shake, damage presets, roll filters, rolling by hand, the chat tray...) are now saved with your Foundry user instead of in the browser, so a new browser or computer no longer starts from scratch. On the first load after updating, each browser's old values are copied over (settings you already have as a user setting are kept).

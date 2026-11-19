@@ -467,7 +467,18 @@ describe('showForRoll over the socket', () => {
       expect(bob.diceBox.roll).toHaveBeenCalledWith([
         { type: 'd20', value: 5, appearance: { tag: 'look' } },
       ]);
-      expect(decorateFor).toHaveBeenCalledWith(null, expect.anything(), 'alice', 'gm');
+      expect(decorateFor).toHaveBeenCalledWith(null, expect.anything(), 'alice', 'gm', null);
+    });
+
+    test("a synchronized showForRoll's speaker reaches the receivers' looks", async () => {
+      const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'look' } }));
+      bus.length = 0;
+      gm = client({ id: 'gm', isGM: true }, bus);
+      bob = client({ id: 'bob', isGM: false }, bus, { decorateFor });
+      const speaker = { scene: 's1', token: 't1', actor: 'a1', alias: 'Ryllara' };
+      gm.api.showForRoll(roll([20, 5]), gm.user, true, null, false, null, speaker);
+      await flush();
+      expect(decorateFor).toHaveBeenCalledWith(null, expect.anything(), 'gm', 'gm', speaker);
     });
 
     test('a forged userId is still rejected, whatever authorId says', async () => {

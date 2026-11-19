@@ -73,6 +73,10 @@ If you like 3D dice in Foundry, please consider supporting Dice So Nice too.
 
 - **Dice So Nice compatible**: modules and systems that call the Dice So Nice API keep working,
   including module dice sets with their 3D models and textures.
+- **Dice So Nice add-ons without Dice So Nice**: add-on modules that require Dice So Nice (so
+  Foundry won't let you enable them) can stay off. The GM ticks them in the theme browser's
+  **Installed dice** window and reloads; Dicer then runs their code and their dice show up in
+  the theme browser. Their stylesheets and translations aren't loaded.
 
 ## Installation
 

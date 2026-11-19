@@ -1,16 +1,19 @@
 /**
  * The Dice from installed modules window (lazy chunk; GM; the theme browser's Installed dice): the inactive installed modules that add dice, a box each to load their dice without
  * activating them (compat/installed-dice.js). Saved as each box changes; the world setting's
- * onChange loads new picks on every client. Unpicked dice go away at the next reload.
+ * onChange loads new picks on every client. Unpicked dice go away at the next reload. A Dice So
+ * Nice add-on that does more than add dice (it needs Dice So Nice, so Foundry will not activate
+ * it) can be ticked too: Dicer then runs all of its code from the next load (loadDsnAddons).
  */
 import { scanInstalled, isLoaded, fetchText } from '../compat/installed-dice.js';
 
 const MODULE = 'dicer';
 const KEY = 'installedDice';
+const ADDONS = 'dsnAddons'; // Dice So Nice add-ons Dicer runs in full (module ids; applies at the next load)
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
-const read = () => {
+const read = (key = KEY) => {
   try {
-    const v = globalThis.game.settings.get(MODULE, KEY);
+    const v = globalThis.game.settings.get(MODULE, key);
     return Array.isArray(v) ? v : [];
   } catch {
     return [];
@@ -28,15 +31,25 @@ function h(tag, attrs = {}, kids = []) {
   return el;
 }
 
-/** The list: a box per module that only adds dice, the others greyed with why. */
-export function buildList(found, picked) {
+/** Whether a row is a Dice So Nice add-on to run in full: one Dicer cannot sandbox, or already picked as one. */
+const asAddon = (m, addons) => addons.includes(m.id) || (m.addon && m.status !== 'ok');
+
+/**
+ * The list: a box per module that only adds dice, and per Dice So Nice add-on (`addons`: the
+ * picked ids, run in full from the next load); the others greyed with why.
+ */
+export function buildList(found, picked, addons = []) {
   const ids = new Set(picked.map((p) => p.id));
   const rows = found.map((m) => {
-    const ok = m.status === 'ok';
-    const box = h('input', { type: 'checkbox', name: m.id, checked: ok && ids.has(m.id), disabled: !ok });
-    const note = ok
-      ? !ids.has(m.id) && isLoaded(m.id) ? loc('DICER.InstalledDice.AfterReload') : '' // unpicked, still here
-      : loc(`DICER.InstalledDice.Status.${m.status}`);
+    const addon = asAddon(m, addons);
+    const ok = addon || m.status === 'ok';
+    const checked = addon ? addons.includes(m.id) : ok && ids.has(m.id);
+    const box = h('input', { type: 'checkbox', name: m.id, checked, disabled: !ok, 'data-addon': addon });
+    const note = addon
+      ? loc('DICER.InstalledDice.Addon')
+      : ok
+        ? !ids.has(m.id) && isLoaded(m.id) ? loc('DICER.InstalledDice.AfterReload') : '' // unpicked, still here
+        : loc(`DICER.InstalledDice.Status.${m.status}`);
     return h('li', { class: ok ? '' : 'is-off' }, [
       h('label', {}, [box, h('span', { class: 'dicer-installed-title', text: m.title })]),
       ...(note ? [h('small', { class: 'dicer-hint', text: note })] : []),
@@ -49,6 +62,9 @@ export function buildList(found, picked) {
     h('p', { class: 'dicer-hint', text: loc('DICER.InstalledDice.Remove') }),
   ]);
 }
+
+/** The dsnAddons setting after an add-on's box changed: its id added or removed. */
+export const toggleAddon = (ids, id, on) => [...ids.filter((x) => x !== id), ...(on ? [id] : [])];
 
 /** The setting after a box changed: the module added (with its title and scripts) or removed. */
 export function togglePick(picked, mod, on) {
@@ -80,17 +96,22 @@ export function openInstalledDice() {
     #found = null;
     async _renderHTML() {
       this.#found ??= await scanInstalled({ modules: globalThis.game.modules, fetchText });
-      return buildList(this.#found, read());
+      return buildList(this.#found, read(), read(ADDONS));
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
       result.addEventListener('change', (event) => this.#onChange(event.target));
     }
     async #onChange(el) {
-      const mod = this.#found?.find((m) => m.id === el.name && m.status === 'ok');
+      const addon = el.hasAttribute('data-addon');
+      const mod = this.#found?.find((m) => m.id === el.name && (addon || m.status === 'ok'));
       if (!mod) return;
       try {
-        await globalThis.game.settings.set(MODULE, KEY, togglePick(read(), mod, el.checked));
+        if (addon) {
+          await globalThis.game.settings.set(MODULE, ADDONS, toggleAddon(read(ADDONS), mod.id, el.checked));
+          // an add-on runs (or stops running) at the next load, on every client
+          globalThis.foundry.applications.settings?.SettingsConfig?.reloadConfirm?.({ world: true });
+        } else await globalThis.game.settings.set(MODULE, KEY, togglePick(read(), mod, el.checked));
       } catch (err) {
         console.warn('dicer: cannot save the installed module dice', err);
         globalThis.ui?.notifications?.warn(loc('DICER.InstalledDice.SaveFailed'));

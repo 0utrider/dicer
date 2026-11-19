@@ -79,12 +79,12 @@ test('showForRoll decorates with the given user (or the local user) as author', 
     });
     const r = roll(20, 4);
     a.showForRoll(r, { id: 'remote' });
-    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'remote', 'me');
+    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'remote', 'me', null);
     expect(diceBox.roll).toHaveBeenLastCalledWith([
       { type: 'd20', value: 4, appearance: { tag: 'x' } },
     ]);
     a.showForRoll(r);
-    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'me', 'me');
+    expect(decorateFor).toHaveBeenLastCalledWith(null, r, 'me', 'me', null);
   } finally {
     delete globalThis.game;
   }
@@ -688,6 +688,72 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd8', value: 5 }]);
     diceBox.rolls[0].resolve();
     await expect(p).resolves.toBe(true);
+  });
+
+  describe('animateRoll: DSN call shape (roll, { author, speaker }, { messageMode })', () => {
+    const lookSpy = () => vi.fn(() => () => ({ appearance: { tag: 'real' } }));
+
+    test('the speaker reaches the look decorator', async () => {
+      const decorateFor = lookSpy();
+      a = make({ decorateFor });
+      const speaker = { scene: 's1', token: 't1', actor: 'a1', alias: 'Rhoswyn' };
+      a.animateRoll(roll(20, 7), { speaker }, { messageMode: 'public' });
+      await Promise.resolve();
+      expect(decorateFor).toHaveBeenCalledTimes(1);
+      expect(decorateFor.mock.calls[0][4]).toEqual(speaker);
+      expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 7, appearance: { tag: 'real' } }]);
+    });
+
+    test('author as a User object or a user id picks the look author', async () => {
+      const decorateFor = lookSpy();
+      const bob = { id: 'bob', isGM: false };
+      a = make({ decorateFor, getUser: (id) => (id === 'bob' ? bob : undefined) });
+      a.animateRoll(roll(20, 7), { author: bob, speaker: null });
+      a.animateRoll(roll(20, 8), { author: 'bob' }, {});
+      a.animateRoll(roll(20, 9), { user: 'bob' });
+      a.animateRoll(roll(20, 10), { author: 'nobody' });
+      await Promise.resolve();
+      expect(decorateFor.mock.calls.map((c) => c[2])).toEqual(['bob', 'bob', 'bob', 'p1']);
+      // The verified sender (rules, privacy) stays this client's user.
+      expect(decorateFor.mock.calls.map((c) => c[3])).toEqual(['p1', 'p1', 'p1', 'p1']);
+    });
+
+    test("messageMode 'blind' or blind: true hides the dice from a player", async () => {
+      await expect(a.animateRoll(roll(20, 7), { speaker: {} }, { messageMode: 'blind' })).resolves.toBe(false);
+      await expect(a.animateRoll(roll(20, 7), { author: me }, { blind: true })).resolves.toBe(false);
+      await expect(a.animateRoll(roll(20, 7), { blind: true })).resolves.toBe(false);
+      expect(diceBox.roll).not.toHaveBeenCalled();
+    });
+
+    test("a 'blind' animateRoll shows the real dice on the GM client", async () => {
+      me = { id: 'gm', isGM: true };
+      a.animateRoll(roll(20, 7), { speaker: { actor: 'npc' } }, { messageMode: 'blind' });
+      await Promise.resolve();
+      expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 7 }]);
+    });
+
+    test('the third argument carries ghost / secret too', async () => {
+      a.animateRoll(roll(6, 3), { speaker: {} }, { ghost: true });
+      await Promise.resolve();
+      expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd6', value: 1, ghost: true }]);
+      await expect(a.animateRoll(roll(6, 3), { author: me }, { secret: true })).resolves.toBe(false);
+    });
+
+    test('a plain-object roll ({ dice: [die] }) and no options still animate', async () => {
+      a.animateRoll(roll(20, 4), undefined, undefined);
+      a.animateRoll(roll(20, 5), null);
+      await Promise.resolve();
+      expect(diceBox.roll).toHaveBeenCalledTimes(2);
+    });
+
+    test('a two-argument call keeps a null speaker and the current user', async () => {
+      const decorateFor = lookSpy();
+      a = make({ decorateFor });
+      a.animateRoll(roll(8, 5), { ghost: false });
+      await Promise.resolve();
+      expect(decorateFor.mock.calls[0][2]).toBe('p1');
+      expect(decorateFor.mock.calls[0][4]).toBeNull();
+    });
   });
 
   test('show(legacy) throws 2 dice for a 2-die legacy payload', async () => {

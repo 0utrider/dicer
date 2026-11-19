@@ -29,12 +29,14 @@ export async function fetchText(path) {
 }
 const activeNow = (id) => globalThis.game?.modules?.get?.(id)?.active === true;
 
+/** A module's own files from one manifest list (`modules/<id>/…` scripts only, never another host). */
+const ownFiles = (id, list) =>
+  [...(list ?? [])]
+    .map((p) => String(p).replace(/^\/+/, ''))
+    .filter((p) => SAFE_PATH.test(p) && p.startsWith(`modules/${id}/`) && !p.includes('..'));
+
 /** A module's script paths Dicer will fetch: its own files only (`modules/<id>/…`), never another host. */
-export function scriptsOf(mod) {
-  const id = mod?.id;
-  const all = [...(mod?.esmodules ?? []), ...(mod?.scripts ?? [])].map((p) => String(p).replace(/^\/+/, ''));
-  return all.filter((p) => SAFE_PATH.test(p) && p.startsWith(`modules/${id}/`) && !p.includes('..'));
-}
+export const scriptsOf = (mod) => [...ownFiles(mod?.id, mod?.esmodules), ...ownFiles(mod?.id, mod?.scripts)];
 
 /** Whether `source` runs as a plain script (an ES module's import/export, or top-level await, does not). */
 function compiles(source) {
@@ -58,19 +60,23 @@ export function classify(texts) {
   return 'ok';
 }
 
+/** The module ids a module names in one of its relationships ('requires', 'recommends'). */
+function related(mod, kind) {
+  const v = mod.relationships?.[kind];
+  return v && typeof v[Symbol.iterator] === 'function' ? [...v].map((r) => r?.id) : [];
+}
+
+/** Whether a module needs Dice So Nice (a Dice So Nice add-on: Foundry will not activate it while Dice So Nice is off). */
+export const needsDsn = (mod) => related(mod, 'requires').includes('dice-so-nice');
+
 /** Whether a module may hold dice: it names Dice So Nice as needed or recommended, or "dice" is in its name. */
 function mayHoldDice(mod) {
-  const rel = mod.relationships ?? {};
-  const ids = ['requires', 'recommends'].flatMap((k) => {
-    const v = rel[k];
-    return v && typeof v[Symbol.iterator] === 'function' ? [...v].map((r) => r?.id) : [];
-  });
-  return ids.includes('dice-so-nice') || /dice/i.test(`${mod.id} ${mod.title ?? ''}`);
+  return needsDsn(mod) || related(mod, 'recommends').includes('dice-so-nice') || /dice/i.test(`${mod.id} ${mod.title ?? ''}`);
 }
 
 /**
  * The inactive installed modules that register dice, each `{id, title, scripts, status}` (status
- * as classify), sorted by title. `fetchText(path)` reads a script (a failed one skips the module).
+ * as classify; `addon: true` when it needs Dice So Nice, so loadDsnAddons can run it), sorted by title. `fetchText(path)` reads a script (a failed one skips the module).
  */
 export async function scanInstalled({ modules, fetchText }) {
   const mods = [...(modules?.values?.() ?? modules ?? [])].filter(
@@ -83,7 +89,9 @@ export async function scanInstalled({ modules, fetchText }) {
       try {
         const texts = await Promise.all(scripts.map(fetchText));
         const status = classify(texts);
-        return status === 'none' ? null : { id: m.id, title: m.title || m.id, scripts, status };
+        if (status === 'none') return null;
+        const found = { id: m.id, title: m.title || m.id, scripts, status };
+        return needsDsn(m) ? { ...found, addon: true } : found;
       } catch {
         return null;
       }
@@ -134,6 +142,87 @@ export async function loadInstalledDice(list, { api, fetchText: read = fetchText
       done.push(id);
     } catch (err) {
       warn(`dicer: cannot load the dice of "${pick.title ?? id}"`, err);
+    }
+  }
+  return done;
+}
+
+// Foundry's start hooks: all have fired by the time Dicer loads add-ons (in its ready hook)
+const STARTED = new Set(['init', 'i18nInit', 'setup', 'ready']);
+
+/** Runs a plain (non-module) script the way Foundry loads a module's `scripts`; resolves once it ran. */
+export function addScript(url) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = url;
+    el.async = false;
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error(`cannot load ${url}`));
+    document.head.append(el);
+  });
+}
+
+const importModule = (url) => import(/* @vite-ignore */ url);
+
+/**
+ * Runs the picked Dice So Nice add-ons (the `dsnAddons` setting: module ids) in full while they
+ * stay inactive: such a module needs Dice So Nice, which must stay off, so Foundry will not
+ * activate it; nothing else in it checks. Each pick's `scripts` then `esmodules` load from its
+ * manifest (its own files only). Dicer runs this in its ready hook before announcing game.dice3d,
+ * so the add-ons' diceSoNiceInit/diceSoNiceReady listeners are live for that; listeners for start
+ * hooks that have already fired (init, i18nInit, setup, ready) are caught while the files load and
+ * run right after. Active modules (they load themselves), Dicer and Dice So Nice are skipped, and
+ * each module loads once per page. Returns the ids loaded now.
+ */
+export async function loadDsnAddons(
+  ids,
+  {
+    hooks = globalThis.Hooks,
+    modules = globalThis.game?.modules,
+    route = (p) => globalThis.foundry?.utils?.getRoute?.(p) ?? `/${p}`,
+    script = addScript,
+    esmodule = importModule,
+    warn = (...a) => console.warn(...a),
+  } = {},
+) {
+  const caught = [];
+  const done = [];
+  let current = null;
+  const { on, once } = hooks;
+  const wrap = (orig) =>
+    function (hook, fn, ...rest) {
+      if (!STARTED.has(hook) || typeof fn !== 'function') return orig.call(this, hook, fn, ...rest);
+      caught.push({ id: current, hook, fn });
+      return 0;
+    };
+  hooks.on = wrap(on);
+  hooks.once = wrap(once);
+  try {
+    for (const id of new Set(Array.isArray(ids) ? ids : [])) {
+      const mod = typeof id === 'string' && !SKIP.has(id) && !loaded.has(id) ? modules?.get?.(id) : null;
+      if (!mod || mod.active) continue;
+      const files = [...ownFiles(id, mod.scripts).map((p) => [script, p]), ...ownFiles(id, mod.esmodules).map((p) => [esmodule, p])];
+      if (!files.length) continue;
+      loaded.add(id);
+      current = id;
+      for (const [load, path] of files) {
+        try {
+          await load(route(path));
+        } catch (err) {
+          warn(`dicer: the Dice So Nice add-on "${id}" could not load ${path}`, err);
+        }
+      }
+      done.push(id);
+    }
+  } finally {
+    hooks.on = on;
+    hooks.once = once;
+  }
+  for (const { id, hook, fn } of caught) {
+    try {
+      await fn();
+    } catch (err) {
+      warn(`dicer: the ${hook} hook of the Dice So Nice add-on "${id ?? '?'}" failed`, err);
     }
   }
   return done;

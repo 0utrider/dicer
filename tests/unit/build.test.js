@@ -398,9 +398,17 @@ describe('build', () => {
     // (38,036 -> 38,720), 2026-11-18.
     // Personal settings moved from the browser to user settings, with the one-time copy of this
     // browser's old values on ready: owner approved +580 B (38,720 -> 39,300), 2026-11-18.
+    // The stale-copy repair (an old cached dicer.js after an update is fetched again and the page
+    // reloads once; a chunk that fails to load does the same): owner approved +1,000 B
+    // (39,300 -> 40,300), 2026-11-19.
+    // animateRoll's Dice So Nice call shape (author, speaker -> the actor's theme, messageMode
+    // 'blind'), the speaker reaching the looks and trigger effects: owner approved +400 B
+    // (40,300 -> 40,700), 2026-11-19.
+    // Dice So Nice add-ons run while they stay off (the dsnAddons setting and main's call into the
+    // lazy loader before announceReady): owner approved +300 B (40,700 -> 41,000), 2026-11-19.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(39_300);
+    expect(growth).toBeLessThanOrEqual(41_000);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

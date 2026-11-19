@@ -173,8 +173,9 @@ export function createFxResolver({
      * `look` is the look resolver's partial for the same die (its faces give label rules).
      * `damageType` follows damagePresets only. The fx (rules and the theme's landing) are absent
      * when effects are off, or the roll is another user's and showOthersEffects is off.
+     * `speaker` stands in for the message's speaker on the showForRoll / animateRoll path.
      */
-    decorate(message, roll, authorId) {
+    decorate(message, roll, authorId, speaker = null) {
       const me = safe(currentUser, undefined)?.id ?? null;
       const rollerId = message?.author?.id ?? authorId ?? null;
       // P4-R7: the damage type is not an effect. It follows damagePresets alone; the effects and
@@ -201,8 +202,8 @@ export function createFxResolver({
       const outcome = safe(() => outcomeOf(roll, message), null);
       const role = safe(() => roleOf(message), null);
       const formula = safe(() => roll?.formula, undefined);
-      const speakerActor = safe(() => message?.speaker?.actor, undefined);
-      const speakerToken = safe(() => message?.speaker?.token, undefined); // a moment on the roller's token
+      const speakerActor = safe(() => message?.speaker?.actor ?? speaker?.actor, undefined);
+      const speakerToken = safe(() => message?.speaker?.token ?? speaker?.token, undefined); // a moment on the roller's token
       const damage = safe(() => damageTypesByTerm(roll, getKnownDamageTypes()), new WeakMap());
       const slow = setting('slowMotion') !== false;
 
@@ -361,11 +362,11 @@ export function moduleRulesOf(registry, warn = console.warn, { hasAnimater = ani
  */
 export function composeDecorateFor({ looks, fx, warn = console.warn }) {
   let warned = false;
-  return (message, roll, authorId, rollerId) => {
-    const lookDec = looks?.decorate(message, roll, authorId);
+  return (message, roll, authorId, rollerId, speaker = null) => {
+    const lookDec = looks?.decorate(message, roll, authorId, speaker);
     let fxDec;
     try {
-      fxDec = fx?.decorate(message, roll, rollerId ?? authorId);
+      fxDec = fx?.decorate(message, roll, rollerId ?? authorId, speaker);
     } catch (err) {
       fxDec = undefined;
       if (!warned) {

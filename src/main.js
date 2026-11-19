@@ -57,6 +57,8 @@ import { jb2aSource } from './jb2a/source.js';
 import { lightingFor } from './render/scene-light.js';
 import { registerNoticeSetting, registerSettings, getSetting, migrateLookSetting, migratePetStay, moveToUserSettings, resetControls } from './settings.js';
 
+import { watchStaleCopy } from './foundry/stale-copy.js';
+
 let dormant = false;
 let gate = null;
 let initiative = null; // hides rolled initiative in the combat tracker while its dice fly
@@ -642,6 +644,17 @@ const dockChat = (e) => dormant || import('./ui/chat-tray.js').then((m) => m.doc
 for (const h of ['renderChatInput', 'renderChatLog']) Hooks.on(h, (a, e) => dockChat(e));
 
 Hooks.once('init', () => {
+  // an old cached dicer.js after an update: fetch the new one and reload, once
+  const warnStale = () => ui.notifications.warn(game.i18n.localize('DICER.Notice.Stale'), { permanent: true });
+  watchStaleCopy({
+    served: game.modules.get('dicer')?.version,
+    route: (p) => foundry.utils.getRoute(p),
+    storage: () => globalThis.sessionStorage,
+    fetch: (...a) => globalThis.fetch(...a),
+    reload: () => location.reload(),
+    notify: () => (game.ready ? warnStale() : Hooks.on('ready', warnStale)),
+    win: globalThis,
+  });
   if (dsnIsActive(game)) {
     dormant = true;
     registerNoticeSetting();
@@ -1031,12 +1044,17 @@ Hooks.once('ready', async () => {
     if (api && game.dice3d === api) delete game.dice3d;
     return;
   }
+  // The GM's Dice So Nice add-ons (inactive modules that need Dice So Nice; a lazy chunk) run
+  // first, so their diceSoNice hooks hear the announcement.
+  const addons = getSetting('dsnAddons');
   // After api.js has loaded, so game.dice3d.DiceSystem is set inside both hooks. Not awaited:
   // the engine is already up, and announceReady never rejects.
-  announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady }).then(() => {
-    loadInstalled();
-    importDsnSaves();
-  });
+  Promise.resolve(addons?.length && import('./compat/installed-dice.js').then((m) => m.loadDsnAddons(addons)).catch(() => {}))
+    .then(() => announceReady({ hooks: Hooks, api, apiReady: globalThis.DicerAPIReady }))
+    .then(() => {
+      loadInstalled();
+      importDsnSaves();
+    });
   preloadSounds();
   preloadEffects();
   preloadPets();

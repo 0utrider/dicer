@@ -59,7 +59,8 @@ test('the scan offers inactive modules that may hold dice, with what each one is
   const fetchText = vi.fn(async (p) => files[p] ?? '');
   const found = await scanInstalled({ modules, fetchText });
   expect(found).toEqual([
-    { id: 'adventure', title: 'An Adventure', scripts: ['modules/adventure/index.js'], status: 'other' },
+    // it needs Dice So Nice: an add-on Dicer can run in full (loadDsnAddons)
+    { id: 'adventure', title: 'An Adventure', scripts: ['modules/adventure/index.js'], status: 'other', addon: true },
     { id: 'marble', title: 'Marble Dice', scripts: ['modules/marble/diceset.js'], status: 'ok' },
   ]);
   expect(fetchText).not.toHaveBeenCalledWith('modules/maps/x.js');

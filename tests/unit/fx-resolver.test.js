@@ -220,6 +220,18 @@ test("a rule's fx carries the roll's speaker token, for a moment on the roller's
   expect(die.fx[0]).toMatchObject({ ruleId: 'shock', moment: { kind: 'shock', where: 'token' }, token: 'T9' });
 });
 
+test('without a message (showForRoll / animateRoll), the speaker argument gives the actor and token', () => {
+  const world = [
+    { id: 'shock', die: 'd20', context: { actorId: 'A1' }, moment: { kind: 'shock', where: 'token' } },
+  ];
+  const r = make({ getWorldRules: () => world, currentUser: () => ({ id: 'alice' }) });
+  const roll = d20(14);
+  const [die] = planThrow(roll, { decorate: r.decorate(null, roll, 'alice', { actor: 'A1', token: 'T9' }) }).dice;
+  expect(die.fx[0]).toMatchObject({ ruleId: 'shock', token: 'T9' });
+  const [none] = planThrow(roll, { decorate: r.decorate(null, roll, 'alice') }).dice;
+  expect(none.fx ?? []).toHaveLength(0);
+});
+
 test("the actor id falls back to the term's dsnActorId", () => {
   const world = [{ id: 'a', context: { actorId: 'A2' }, sound: { builtin: 'x' } }];
   const roll = { dice: [{ faces: 20, options: { dsnActorId: 'A2' }, results: [{ result: 3 }] }] };
@@ -303,10 +315,20 @@ test('composeDecorateFor: the roller id (4th arg) wins for fx; looks get the aut
   const fx = { decorate: vi.fn(() => () => ({})) };
   const roll = {};
   composeDecorateFor({ looks, fx })(null, roll, 'author', 'sender');
-  expect(looks.decorate).toHaveBeenCalledWith(null, roll, 'author');
-  expect(fx.decorate).toHaveBeenCalledWith(null, roll, 'sender');
+  expect(looks.decorate).toHaveBeenCalledWith(null, roll, 'author', null);
+  expect(fx.decorate).toHaveBeenCalledWith(null, roll, 'sender', null);
   composeDecorateFor({ looks, fx })(null, roll, 'author');
-  expect(fx.decorate).toHaveBeenLastCalledWith(null, roll, 'author');
+  expect(fx.decorate).toHaveBeenLastCalledWith(null, roll, 'author', null);
+});
+
+test('composeDecorateFor forwards the speaker (5th arg) to looks and fx', () => {
+  const looks = { decorate: vi.fn(() => () => ({})) };
+  const fx = { decorate: vi.fn(() => () => ({})) };
+  const roll = {};
+  const speaker = { token: 't1', actor: 'a1' };
+  composeDecorateFor({ looks, fx })(null, roll, 'author', 'sender', speaker);
+  expect(looks.decorate).toHaveBeenCalledWith(null, roll, 'author', speaker);
+  expect(fx.decorate).toHaveBeenCalledWith(null, roll, 'sender', speaker);
 });
 
 describe('createLandedFx', () => {

@@ -59,6 +59,25 @@ describe('rule precedence', () => {
     const missing = term(20, { options: { dsnActorId: 'nobody' } });
     expect(look(resolver, missing, 'u').appearance).toEqual(DEFAULT_APPEARANCE);
   });
+  test("4b. a speaker's actor (showForRoll / animateRoll) stands in for a missing dsnActorId", () => {
+    const actors = {
+      a1: { flags: { dicer: { appearance: { global: { look: 'ruby-classic' } } } } },
+      a2: { flags: { dicer: { appearance: { look: 'jade-marble' } } } },
+    };
+    const flag = { global: { look: 'sharp-crystal' } };
+    const { resolver } = make({ actors, users: { u: user(flag) } });
+    // A token-linked speaker {token, actor}: the actor id is the base actor's, whose flags apply.
+    const speaker = { scene: 's', token: 't1', actor: 'a1' };
+    const viaSpeaker = (t) => resolver.decorate(null, {}, 'u', speaker)(t, RES, 0);
+    expect(viaSpeaker(term(20)).appearance).toBe(RUBY);
+    // The term's own dsnActorId still wins over the speaker.
+    expect(viaSpeaker(term(20, { options: { dsnActorId: 'a2' } })).appearance).toBe(LOOKS['jade-marble'].appearance);
+    // A speaker without an actor theme falls back to the author's look.
+    const noTheme = resolver.decorate(null, {}, 'u', { actor: 'nobody' })(term(20), RES, 0);
+    expect(noTheme.appearance).toBe(CRYSTAL);
+    // No speaker: the author's look, as before.
+    expect(look(resolver, term(20), 'u').appearance).toBe(CRYSTAL);
+  });
   test('5. the author: per-type entry, else global', () => {
     const flag = { d20: { look: 'sharp-crystal' }, global: { look: 'ruby-classic' } };
     const { resolver } = make({ users: { u: user(flag) } });
