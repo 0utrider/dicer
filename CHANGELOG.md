@@ -6,7 +6,7 @@
 - **Pets can catch a natural 20** (pet window, off by default): the pet dashes to a d20 heading for a 20, gulps it, carries it and spits it back out showing its 20, then celebrates. Like any pet move it is visible while the die rolls, so turn it on only if you don't mind that.
 - **Module dice on actors, roles and single dice.** A module's dice set in the theme browser now has a **Use this theme for** picker (your default, one die type, a role, an actor), like Dicer's own themes; assigned sets show their chips.
 - **IRL dice packs and other Dice So Nice add-ons work better.** Add-ons that add their dice from their own files load, add-ons that check for Dice So Nice see it, and their shaders get Dice So Nice's clock. A pack's dice system and its colour set of the same name show as one entry, and previews and thumbnails now look like the thrown dice (the system's own material is applied).
-- **PF2e precision damage** (Sneak Attack and the like) has its own look: bloody black marble with sharp edges and a crystal d4.
+- **PF2e precision damage** (Sneak Attack and the like) is its own damage type, so a rogue's sneak attack dice can look different from her shortbow's d6 even when they're the same size. Its built-in look is bloody black marble with sharp edges and a crystal d4, and you can map it to any theme in your damage presets. Thanks to 0utrider for the idea and the look.
 - An actor's module dice system applies even when the actor has no Dicer look of its own.
 - Long badges on module dice cards no longer overflow.
 
