@@ -146,7 +146,9 @@ export function createLookResolver({
     let system = null;
 
     if (isPlainObject(options.appearance)) {
-      appearance = normalizeAppearance(options.appearance);
+      // a Dice So Nice appearance naming a colorset wears it (an add-on's {system, colorset})
+      appearance =
+        colorsetNameToAppearance(options.appearance.colorset, registry, index) ?? normalizeAppearance(options.appearance);
       system = systemOf(options.appearance);
     }
     if (!appearance) {

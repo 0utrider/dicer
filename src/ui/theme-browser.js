@@ -15,6 +15,7 @@ import {
   moduleThemeRaw,
 } from './module-dice.js';
 import { DIE_TYPES, findTheme, readThemeList } from '../themes/themes.js';
+import { setRules } from '../effects/rules.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { lookFromModels as modelLookOf } from '../themes/model-colours.js';
 import { damageTypeList } from './damage-map-form.js';
@@ -298,6 +299,26 @@ export async function useModuleDice(entry, target = 'default') {
   return true;
 }
 
+/** The user flag listing the dice sets whose own natural 20 / natural 1 they turned off (compat/installed-dice.js). */
+const SET_FX_OFF = 'setFxOff';
+
+/** Whether this user plays a dice set's own natural 20 / natural 1 effects (on unless turned off). */
+export const setFxOn = (system) => {
+  const off = me()?.getFlag?.(MODULE, SET_FX_OFF);
+  return !(Array.isArray(off) && off.includes(system));
+};
+
+/** Turns a dice set's own natural 20 / natural 1 effects on or off for this user's rolls. */
+export async function setSetFx(system, on) {
+  const user = me();
+  if (!user || typeof system !== 'string') return false;
+  const off = user.getFlag?.(MODULE, SET_FX_OFF);
+  const list = (Array.isArray(off) ? off : []).filter((s) => s !== system);
+  if (!on) list.push(system);
+  await user.setFlag(MODULE, SET_FX_OFF, list);
+  return true;
+}
+
 /** Stops using the module system of the global slot (its look stays). */
 export async function stopModuleSystem(entry) {
   const user = me();
@@ -439,6 +460,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       remove: ThemeBrowser.#onRemove,
       useModule: ThemeBrowser.#onUseModule,
       stopModule: ThemeBrowser.#onStopModule,
+      setFx: ThemeBrowser.#onSetFx,
       importModule: ThemeBrowser.#onImportModule,
       openPet: ThemeBrowser.#onOpenPet,
       openTray: ThemeBrowser.#onOpenTray,
@@ -610,6 +632,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         kindLabel: isModule ? loc(t.kind === 'system' ? 'DICER.Themes.Module.System' : 'DICER.Themes.Module.Colorset') : '',
         dropNote: isModule && t.dropped.length ? `${loc('DICER.Themes.Module.Dropped')} ${droppedText(t.dropped)}` : '',
         canStop: isModule && t.kind === 'system' && targets.includes('default'),
+        // a set that brings its own natural 20 / natural 1 effects: this user may turn them off
+        setFx: isModule && t.kind === 'system' && setRules.has?.(t.key) === true,
+        setFxOn: isModule && setFxOn(t.key),
         swatch: t.appearance?.body?.color ?? '#444',
         selected: t.id === this.#selected,
         isDefault: targets.includes('default'),
@@ -837,6 +862,12 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #onStopModule(event, target) {
     if (this.#locked || !(await stopModuleSystem(ThemeBrowser.#themeOf(this, target)))) return;
     notify('info', loc('DICER.Themes.Cleared'));
+    await this.render();
+  }
+
+  static async #onSetFx(event, target) {
+    const entry = ThemeBrowser.#themeOf(this, target);
+    if (entry?.source !== 'module' || !(await setSetFx(entry.key, target.checked))) return;
     await this.render();
   }
 

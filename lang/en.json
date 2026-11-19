@@ -751,6 +751,8 @@
         "Colorset": "A colour set another module added (Dice So Nice API).",
         "System": "A dice set another module added (Dice So Nice API). Its faces and models are used on top of your look; dice it gives no colours keep yours.",
         "Stop": "Stop using",
+        "SetFx": "Play this set's own natural 20 / natural 1 effects",
+        "SetFxHint": "On: your d20s from this set play its own effects on a natural 20 and a natural 1, in place of the world's and your theme's. Off: they play those instead.",
         "Import": "Import as theme",
         "ImportHint": "Copy its colours and face images into a theme of your own, to edit",
         "Imported": "Imported as your theme:",

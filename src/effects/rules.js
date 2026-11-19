@@ -349,6 +349,13 @@ export function dsnDefaultsToRules(list, triggers, warn = console.warn) {
   return out;
 }
 
+/**
+ * `of(system, themeRules, rollerId)`: a die's theme rules with its module dice set's own natural 20 /
+ * natural 1 rules over them, or undefined; `has(system)`: whether the set has any (both set by
+ * compat/installed-dice.js once a DSN add-on lists them).
+ */
+export const setRules = {};
+
 /** Enabled rules in firing order: world, then the roller's own, then module rules. */
 export function effectiveRules({ world = [], roller = [], module = [], theme = [] } = {}) {
   return [...world, ...roller, ...theme, ...module].filter((r) => r.enabled);

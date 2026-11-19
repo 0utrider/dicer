@@ -7,7 +7,7 @@
  * is ever computed for a die the current user may not see. Keep it that way: never call
  * `decorate` from anywhere a ghost or none view could reach.
  */
-import { normalizeRules, matchRule, effectiveRules, dsnDefaultsToRules } from './rules.js';
+import { normalizeRules, matchRule, effectiveRules, dsnDefaultsToRules, setRules } from './rules.js';
 import { outcomeOf, roleOf, damageTypesByTerm, KNOWN_DAMAGE_TYPES } from './roll-context.js';
 import { getShape, dieTypeForFaces, dsnTypeOf } from '../core/dice-shapes.js';
 import { findTheme, readThemeList } from '../themes/themes.js';
@@ -188,15 +188,19 @@ export function createFxResolver({
       if (!presets && !fxOn && !macros) return undefined;
 
       const rules = fxOn || macros ? rulesFor(rollerId) : [];
-      /** themeId -> that theme's effective rules; a theme without rules shares `rules`. */
+      /** "themeId|system" -> its effective rules; one without rules shares `rules`. */
       const themed = new Map();
-      const rulesOf = (themeId) => {
-        if (!(fxOn || macros) || typeof themeId !== 'string') return rules;
-        if (!themed.has(themeId)) {
-          const themeRules = themeById(themeId, rollerId)?.rules;
-          themed.set(themeId, themeRules?.length ? rulesFor(rollerId, themeRules, macros) : rules);
+      // A module dice set's own natural 20 / natural 1 effects (rules.js setRules) count as its
+      // theme's rules, over the theme's own of the same id.
+      const rulesOf = (themeId, system) => {
+        if (!(fxOn || macros)) return rules;
+        const key = themeId + system;
+        if (!themed.has(key)) {
+          const own = themeById(themeId, rollerId)?.rules;
+          const all = setRules.of?.(system, own, rollerId) ?? own;
+          themed.set(key, all?.length ? rulesFor(rollerId, all, macros) : rules);
         }
-        return themed.get(themeId);
+        return themed.get(key);
       };
       const themeOf = presets ? safe(() => damageThemeFor(roll, rollerId ?? undefined), null) : null;
       const outcome = safe(() => outcomeOf(roll, message), null);
@@ -220,7 +224,7 @@ export function createFxResolver({
         if (fxOn) out.trail = dead ? 1 : 2;
         if (dead) return out;
         // A theme chosen by the viewer's own damage override never brings its rules (the roller's decide).
-        const dieRules = rulesOf(look?.themeSource === 'viewer' ? undefined : look?.themeId);
+        const dieRules = rulesOf(look?.themeSource === 'viewer' ? undefined : look?.themeId, look?.system);
         if (!dieRules.length && !landing && !custom) return out;
         const value = result?.result;
         const faces = term?.faces;
@@ -284,6 +288,7 @@ export function createFxResolver({
             sound: rule.sound ?? null,
             moment: rule.moment ?? null,
             token: speakerToken,
+            user: rollerId, // who rolled it (a crit scene's title card names them)
             macro: macros ? (rule.macro ?? null) : null,
             // not with a crit scene: it starts as the die stops (slow motion would hold a still die)
             slowMotion:

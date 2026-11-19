@@ -136,7 +136,93 @@ export function freeArea(doc, view) {
   return right - left > W / 3 ? { left, top: 0, width: right - left, height: H } : { left: 0, top: 0, width: W, height: H };
 }
 
-export function showCard(spec, { host, reduced = false, doc = globalThis.document, area } = {}) {
+// --- several crits at once: the screen split between their cards ----------------------------
+// A card drawn while others show takes a slice of the table: 2 side by side, 3 in thirds, 4 in a
+// 2 x 2 grid; the cards already up are drawn again in theirs, from where their animation was, so
+// every slice is laid out alike (lettering, the roller's name). A fifth waits for a free slice.
+// One finishing leaves the others where they are.
+
+/** The most cards on screen at once; more wait their turn. */
+export const MAX_CARDS = 4;
+const live = []; // the cards up, oldest first: { spec, opts, started, box, root, stop, ms }
+const waiting = []; // { spec, opts, stopped }
+const sameRect = (a, b) => a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+
+/** The slices of `box` for `n` cards: side by side up to 3, a 2 x 2 grid for 4. */
+export function slotRects(n, box) {
+  if (n <= 1) return [box];
+  const grid = n === 4;
+  const cols = grid ? 2 : n;
+  const w = box.width / cols;
+  const h = grid ? box.height / 2 : box.height;
+  return Array.from({ length: n }, (_, i) => ({ left: box.left + (i % cols) * w, top: box.top + Math.floor(i / cols) * h, width: w, height: h }));
+}
+
+/** Draws `card` in `rect`, `skip` ms into its animation. */
+function draw(card, rect, skip) {
+  card.box = rect;
+  const d = drawCard(card.spec, { ...card.opts, area: rect, skip, onEnd: () => leave(card) });
+  card.root = d.root;
+  card.stop = d.stop;
+  card.ms = d.ms;
+}
+
+/** A card left the screen (not one being drawn again): the next waiting one takes its place. */
+function leave(card) {
+  if (card.moving) return;
+  const i = live.indexOf(card);
+  if (i >= 0) live.splice(i, 1);
+  while (waiting.length && live.length < MAX_CARDS) {
+    const w = waiting.shift();
+    if (!w.stopped) showCard(w.spec, w.opts);
+  }
+}
+
+/** Tests: no card up or waiting. */
+export function _resetCards() {
+  for (const c of [...live]) c.stop();
+  live.length = 0;
+  waiting.length = 0;
+}
+
+/**
+ * Shows a card in its slice of the table (see above); options as drawCard's, plus `who`: the
+ * roller's name, shown small over the card. Returns { stop(), ms, root } (`waiting: true` and no
+ * root while it waits for a free slice; stop() then drops it).
+ */
+export function showCard(spec, opts = {}) {
+  const doc = opts.doc ?? globalThis.document;
+  if (!doc?.createElement || !spec?.lines?.length) return { stop() {}, ms: 0 };
+  if (live.length >= MAX_CARDS) {
+    const w = { spec, opts, stopped: false };
+    waiting.push(w);
+    return { stop: () => (w.stopped = true), ms: 0, root: null, waiting: true };
+  }
+  const box = opts.area ?? freeArea(doc, doc.defaultView ?? globalThis);
+  const rects = slotRects(live.length + 1, box);
+  const now = Date.now();
+  live.forEach((c, i) => {
+    if (sameRect(c.box, rects[i])) return;
+    c.moving = true;
+    c.stop();
+    c.moving = false;
+    draw(c, rects[i], Math.min(now - c.started, c.ms - 1));
+  });
+  const card = { spec, opts: { ...opts, doc }, started: now };
+  draw(card, rects[rects.length - 1], 0);
+  if (card.root) live.push(card);
+  // the scene's handle follows its card through redraws
+  return {
+    stop: () => card.stop(),
+    ms: card.ms,
+    get root() {
+      return card.root;
+    },
+  };
+}
+
+/** Draws one card in `area` (default: the free table); onEnd runs once it is gone. */
+function drawCard(spec, { host, reduced = false, doc = globalThis.document, area, who, onEnd, skip = 0 } = {}) {
   if (!doc?.createElement || !spec?.lines?.length) return { stop() {}, ms: 0 };
   const parent = host ?? doc.getElementById?.('dicer-layer') ?? doc.body;
   const view = doc.defaultView ?? globalThis;
@@ -314,7 +400,7 @@ export function showCard(spec, { host, reduced = false, doc = globalThis.documen
         parts.push({ kind: 'rain', t0: 600 + rand() * (ms - 1200), x: rand() * W * 1.2, y: -H * 0.1, vx: -short * 0.15, vy: short * (1.6 + rand() * 0.8), col: spec.rain.color ?? 'rgba(170,190,220,0.6)', life: 900, len: short * (0.03 + rand() * 0.03) });
       }
     }
-    const start = view.performance?.now?.() ?? Date.now();
+    const start = (view.performance?.now?.() ?? Date.now()) - skip;
     const draw = () => {
       if (gone || !g) return;
       const t = (view.performance?.now?.() ?? Date.now()) - start;
@@ -365,6 +451,31 @@ export function showCard(spec, { host, reduced = false, doc = globalThis.documen
     raf = view.requestAnimationFrame?.(draw) ?? 0;
   }
 
+  // whose crit it is: the roller's name, small, over the card
+  if (typeof who === 'string' && who.trim()) {
+    const name = doc.createElement('div');
+    name.className = 'dicer-crit-who';
+    name.textContent = who.trim().slice(0, 40);
+    Object.assign(name.style, {
+      position: 'absolute',
+      left: '0',
+      right: '0',
+      top: `${Math.round(H * 0.08)}px`,
+      textAlign: 'center',
+      fontFamily: FONTS[spec.font] ?? FONTS.display,
+      fontSize: `${Math.round(Math.max(14, short * 0.05))}px`,
+      fontWeight: '700',
+      letterSpacing: '0.08em',
+      textTransform: 'uppercase',
+      color: '#fff',
+      textShadow: `0 2px 6px rgba(0,0,0,0.85)${spec.glow ? `, 0 0 ${Math.round(short * 0.03)}px ${spec.glow}` : ''}`,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    });
+    root.appendChild(name);
+    anims.push(animate(name, [{ opacity: 0 }, { opacity: 1, offset: 0.1 }, { opacity: 1, offset: 0.9 }, { opacity: 0 }], { duration: ms }));
+  }
   parent.appendChild(root);
   // fitPx guesses glyph widths; now that it is laid out, a line still wider than 92% of the
   // screen (a wide font, a long word) is scaled down to fit (zoom keeps its extrusion in step)
@@ -379,7 +490,10 @@ export function showCard(spec, { host, reduced = false, doc = globalThis.documen
     if (raf) view.cancelAnimationFrame?.(raf);
     for (const a of anims) a?.cancel?.();
     root.remove();
+    onEnd?.();
   };
-  timers.push(setTimeout(stop, ms));
+  // drawn again mid-way (a slice of a split screen): every animation picks up where it was
+  if (skip > 0) for (const a of anims) if (a) a.currentTime = skip;
+  timers.push(setTimeout(stop, ms - skip));
   return { stop, ms, root };
 }

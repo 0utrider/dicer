@@ -1,3 +1,4 @@
+import { onTestFinished } from 'vitest';
 import {
   createFxResolver,
   composeDecorateFor,
@@ -780,6 +781,25 @@ describe('theme sounds and celebrations (P5-D4)', () => {
     const r = make({ getUserThemes: (id) => lists[id] });
     expect(decor(r, 'bob')(term(), res(20), 0, themed('user.same')).fx[0].effect.id).toBe('sparkles');
     expect(decor(r, 'carol')(term(), res(20), 0, themed('user.same')).fx[0].effect.id).toBe('celebrate');
+  });
+
+  test("a module set's own nat 20 / nat 1 effects replace the world's (and its theme's) for that set's dice only", async () => {
+    const { setRule } = await import('../../src/compat/installed-dice.js');
+    const { setRules } = await import('../../src/effects/rules.js');
+    const sets = { 'irl-pc-essie': [setRule(20, 'IRLEssiePerfectReaction'), setRule(1, 'IRLEssieOneDrop')] };
+    setRules.of = (s, own = []) => sets[s] && [...own.filter((o) => !sets[s].some((x) => x.id === o.id)), ...sets[s]];
+    onTestFinished(() => delete setRules.of);
+    const r = make();
+    const essie = { system: 'irl-pc-essie' };
+    const nat20 = decor(r)(term(), res(20), 0, essie).fx;
+    expect(nat20).toHaveLength(1);
+    expect(nat20[0]).toMatchObject({ ruleId: 'dicer.nat20', effect: { id: 'dsn:IRLEssiePerfectReaction' }, sound: null });
+    expect(decor(r, 'alice', d20(1))(term(), res(1), 0, essie).fx[0].effect.id).toBe('dsn:IRLEssieOneDrop');
+    // over a theme's own rule of the same id, too
+    expect(decor(r)(term(), res(20), 0, { ...essie, themeId: 'dragon-hoard' }).fx[0].effect.id).toBe('dsn:IRLEssiePerfectReaction');
+    // other dice keep the world's (and their theme's)
+    expect(decor(r)(term(), res(20), 0, { system: 'standard' }).fx[0].effect.id).toBe('celebrate');
+    expect(decor(r)(term(), res(20), 0, themed('dragon-hoard')).fx[0].effect.id).toBe('embers');
   });
 
   test("a theme that came from the viewer's own damage override never applies its rules to the roller's dice", () => {

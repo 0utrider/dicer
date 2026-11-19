@@ -300,3 +300,27 @@ describe('registry and module rules', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 });
+
+test("the die stays while its effect plays (as in Dice So Nice): the roll's hide timer waits, then starts again", async () => {
+  let end;
+  class Long {
+    static id = 'Long';
+    play() {
+      return new Promise((r) => (end = r));
+    }
+  }
+  const registry = { sfxModes: new Map([['Long', { id: 'Long', sfxClass: Long }]]) };
+  const dsnSfx = createDsnSfx({ registry, warn: () => {} });
+  const die = makeDie();
+  const roll = { dice: [die], phase: 'lingering' };
+  const box = { _rolls: [roll], _linger: vi.fn() };
+  const handle = dsnSfx.effectFor('dsn:Long').start({ die, box, options: {} });
+  expect(roll.scenes).toBe(1); // _linger arms no hide timer while it is held
+  await flush();
+  expect(box._linger).not.toHaveBeenCalled();
+  end();
+  await flush();
+  expect(handle.update()).toBe(false);
+  expect(roll.scenes).toBe(0);
+  expect(box._linger).toHaveBeenCalledWith(roll);
+});

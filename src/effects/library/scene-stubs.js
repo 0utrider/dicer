@@ -54,6 +54,12 @@ export function _setSceneImport(fn) {
 const reducedOf = (ctx) => !!ctx.reducedMotion || (ctx.tier?.effectBudget ?? Infinity) <= 2;
 
 /** What a scene's play() gets: the effect ctx plus the borrowed die and where it rests. */
+/** The name of the user who rolled `die` (its fx carry their id), or ''. */
+function whoOf(die) {
+  const id = Array.isArray(die?.fx) ? die.fx.find((f) => typeof f?.user === 'string')?.user : null;
+  return (id && globalThis.game?.users?.get?.(id)?.name) || '';
+}
+
 function sceneCtx(ctx, borrow) {
   const die = ctx.die;
   return {
@@ -74,6 +80,8 @@ function sceneCtx(ctx, borrow) {
     borrow,
     // the rule's own title card text (its effect's sceneText), else the scene's own
     cardText: sceneText(ctx.options?.sceneText),
+    // who rolled it (fx-resolver.js), named on the title card
+    who: whoOf(die),
     // a glint on the die (the die effects' own, no import across chunks)
     glint: () => {
       try {

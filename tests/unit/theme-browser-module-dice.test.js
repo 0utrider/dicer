@@ -295,6 +295,28 @@ describe('the theme browser with module dice', () => {
     expect(flags.appearance.global).toMatchObject({ theme: 'obsidian', system: null, colorset: null });
   });
 
+  it("a set with its own natural 20 / natural 1 effects shows a toggle; turning it off lists the set in the user's flag", async () => {
+    const { setRules } = await import('../../src/effects/rules.js');
+    setRules.has = (system) => system === 'trs-marble';
+    try {
+      const app = make();
+      await showModules(app);
+      await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: 'dsn-system:trs-marble' } }) });
+      expect((await app._prepareContext()).detail).toMatchObject({ setFx: true, setFxOn: true });
+      await actions.setFx.call(app, {}, { ...button('dsn-system:trs-marble'), checked: false });
+      expect(flags.setFxOff).toEqual(['trs-marble']);
+      expect((await app._prepareContext()).detail).toMatchObject({ setFx: true, setFxOn: false });
+      await actions.setFx.call(app, {}, { ...button('dsn-system:trs-marble'), checked: true });
+      expect(flags.setFxOff).toEqual([]);
+      // a set without its own effects (or a colour set) shows none
+      await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: 'dsn-colorset:trs-black' } }) });
+      expect((await app._prepareContext()).detail.setFx).toBe(false);
+      expect(readFileSync('templates/theme-browser.hbs', 'utf8')).toMatch(/\{\{#if detail\.setFx\}\}[\s\S]*data-action="setFx"/);
+    } finally {
+      delete setRules.has;
+    }
+  });
+
   it('a locked player cannot use a module set (buttons hidden, actions refused); import still works', async () => {
     store.worldDefaultTheme = 'verdant';
     store.lockPlayerLooks = true;

@@ -147,7 +147,7 @@ export function stage(ctx) {
      */
     card(spec) {
       if (cardShown) return cardShown;
-      cardShown = showCard(withText(spec, ctx.cardText), { reduced, host: ctx.cardHost });
+      cardShown = showCard(withText(spec, ctx.cardText), { reduced, host: ctx.cardHost, who: ctx.who });
       return cardShown;
     },
     reduced,

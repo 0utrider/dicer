@@ -58,6 +58,12 @@
 
         {{#if detail.isModule}}
         <p class="dicer-muted">{{detail.kindLabel}}</p>
+        {{#if detail.setFx}}
+          <label class="dicer-check dicer-set-fx" data-tooltip="DICER.Themes.Module.SetFxHint">
+            <input type="checkbox" data-action="setFx" data-theme="{{detail.id}}"{{#if detail.setFxOn}} checked{{/if}}>
+            {{localize "DICER.Themes.Module.SetFx"}}
+          </label>
+        {{/if}}
         {{#if locked}}
           <p class="dicer-muted dicer-locked"><i class="fa-solid fa-lock"></i> {{lockedNotice}}</p>
         {{else}}

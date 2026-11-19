@@ -7,7 +7,8 @@
  * while it is off). The GM picks them (ui/installed-dice.js); the world setting `installedDice`
  * holds each pick's id, title and script paths, so every client loads the same scripts.
  */
-import { BufferAttribute } from 'three';
+import { BufferAttribute, Quaternion } from 'three';
+import { normalizeRule, setRules } from '../effects/rules.js';
 
 const DSN_HOOKS = ['diceSoNiceInit', 'diceSoNiceReady'];
 const MENTIONS = /diceSoNice(?:Init|Ready)/;
@@ -196,6 +197,106 @@ export function withDsnActive(modules, fn) {
 }
 
 const shimmed = new WeakSet();
+const modes = new Set(); // the special effect ids add-ons registered through the shim
+const sets = new Map(); // DSN system id -> its own natural 20 / natural 1 rules (readSetRules)
+
+/** Add-on files that list each dice set's natural 20 and natural 1 effects. */
+const SET_LISTS = { 'irl-dice-packs': ['scripts/characters/catalog.js', 'scripts/gm-themes.js'] };
+
+/** The rule a set's own natural `v` (20 or 1) effect becomes: a theme rule (it replaces the world's). */
+export const setRule = (v, effect) =>
+  normalizeRule(
+    {
+      id: v === 20 ? 'dicer.nat20' : 'dicer.nat1',
+      name: v === 20 ? 'Natural 20' : 'Natural 1',
+      die: 'd20',
+      result: { kind: 'value', value: v },
+      effect: { id: `dsn:${effect}` },
+    },
+    'theme',
+  );
+
+/**
+ * Reads which effects a loaded add-on's dice sets play on a natural 20 and a natural 1, where its
+ * files list them (SET_LISTS): any exported array of `{systemId or id, effects: [{id, result}]}`
+ * (irl-dice-packs' characters and GM themes). Its Special Effects otherwise need adding by hand.
+ */
+export async function readSetRules(ids, { route, esmodule = importModule } = {}) {
+  for (const id of ids) {
+    for (const path of SET_LISTS[id] ?? []) {
+      let mod;
+      try {
+        mod = await esmodule(route(`modules/${id}/${path}`));
+      } catch {
+        continue;
+      }
+      for (const list of Object.values(mod ?? {})) {
+        if (!Array.isArray(list)) continue;
+        for (const set of list) {
+          const system = set?.systemId ?? set?.id;
+          if (typeof system !== 'string' || !Array.isArray(set.effects)) continue;
+          const rules = set.effects
+            .filter((e) => (e?.result === 20 || e?.result === 1) && typeof e.id === 'string')
+            .map((e) => setRule(e.result, e.id))
+            .filter(Boolean);
+          if (rules.length) {
+            sets.set(system, rules);
+            setRules.of = setRulesFor;
+            setRules.has = hasSetRules;
+          }
+        }
+      }
+    }
+  }
+}
+
+/** A set's own natural 20 / natural 1 rules whose effect is registered (none: an empty list). */
+const registeredOf = (system) => (typeof system === 'string' && sets.get(system)?.filter((r) => modes.has(r.effect.id.slice(4)))) || [];
+
+/** Whether a set brings its own natural 20 / natural 1 effects (the theme browser's toggle). */
+export const hasSetRules = (system) => registeredOf(system).length > 0;
+
+/** The flag listing the sets whose own natural 20 / natural 1 a user turned off (theme browser). */
+export const SET_FX_OFF = 'setFxOff';
+
+/**
+ * A die's theme rules (`own`) with its set's own natural 20 / natural 1 rules over them (those whose
+ * effect is registered), or undefined when the set has none or the roller turned them off for it
+ * (their `dicer.setFxOff` flag: rules.js setRules.of, which fx-resolver asks).
+ */
+export function setRulesFor(system, own, rollerId, users = globalThis.game?.users) {
+  const off = rollerId ? users?.get?.(rollerId)?.getFlag?.('dicer', SET_FX_OFF) : null;
+  if (Array.isArray(off) && off.includes(system)) return undefined;
+  const set = registeredOf(system);
+  if (!set?.length) return undefined;
+  const ids = set.map((r) => r.id);
+  return [...(own || []).filter((r) => !ids.includes(r.id)), ...set];
+}
+const animated = new Set(); // the DSN systems whose materials have been given a mixer (animated surfaces)
+
+/**
+ * Dicer's effect box and die (its outer group) as Dice So Nice's DiceSFX reads them: a box with a
+ * volume (Foundry's own levels then apply), secret rolls unmuted and DSN's base scale, and a die
+ * with options and a shape (its type, which Dicer lends it while the effect plays).
+ */
+export function dsnEffectArgs(box, group) {
+  const b = box && typeof box === 'object' ? box : {};
+  // DSN hands effects the die mesh itself (its material, geometry, options); Dicer's runner its
+  // outer group, whose die mesh is its first mesh child. The type it lends the group goes along.
+  const mesh = group?.isMesh ? group : (group?.children?.find?.((c) => c?.isMesh) ?? group);
+  if (mesh && mesh !== group && typeof group?.type === 'string') {
+    if (/^d\d+$/.test(group.type)) mesh.shape ??= group.type;
+    if (group.result !== undefined) mesh.result = group.result;
+  }
+  b.volume ??= 1;
+  b.muteSoundSecretRolls ??= false;
+  b.dicefactory ??= { baseScale: 100 };
+  if (mesh && typeof mesh === 'object') {
+    mesh.options ??= {};
+    mesh.shape ??= typeof mesh.type === 'string' && /^d\d+$/.test(mesh.type) ? mesh.type : undefined;
+  }
+  return [b, mesh];
+}
 
 /** Dicer body types as Dice So Nice material names (what add-on shaders branch on). */
 const DSN_MATERIAL = { opaque: 'plastic', resin: 'glass', metal: 'metal', marble: 'stone', pearl: 'pristine', iridescent: 'iridescent', gem: 'glass', wood: 'wood', stone: 'stone', bone: 'plastic', jelly: 'glass' };
@@ -221,6 +322,58 @@ export function dsnAppearance(a) {
     texture: 'none',
     font: numbers.font ?? 'serif',
     systemSettings: look.systemSettings ?? {},
+  };
+}
+
+/**
+ * The turn (a quaternion) that lays Dicer's die of a type out as Dice So Nice's: their face directions
+ * then match DSN's (measured from DSN's standard polyhedra; tests/unit/dsn-addon-shim.test.js checks
+ * them). Dicer's d4, d6, d8 and d12 already match; its d20 and d10 (so the d100) are turned.
+ */
+export const DSN_TURN = Object.freeze({
+  d20: Object.freeze([-0.2185084, 0.9256152, -0.2185076, 0.2185063]),
+  d10: Object.freeze([-0.5718817, -0.4155804, 0.4155813, 0.572308]),
+});
+const turned = new WeakMap(); // a source geometry -> its copy turned as DSN's
+
+/**
+ * Lays a die mesh out as Dice So Nice's, once: it draws a copy of its geometry turned by `turn`,
+ * and is turned back by the same amount, so it looks and lands exactly as before while its local
+ * positions (what add-on shaders read) are DSN's. Called from the material's per-frame hook: this
+ * frame still draws the old geometry with the old pose (both were fixed before the hook), the next
+ * the new pair. Dicer may set the mesh's pose again (the result's turn): the mesh's own per-frame
+ * hook, which runs before its matrices are taken, turns it back again.
+ */
+export function dsnPose(mesh, turn) {
+  if (!mesh?.isMesh || mesh.userData.dsnPose || !mesh.geometry?.attributes?.position) return;
+  const q = new Quaternion(...turn).normalize();
+  const back = q.clone().invert();
+  const src = mesh.geometry;
+  let geo = turned.get(src);
+  if (!geo) {
+    geo = src.clone();
+    geo.applyQuaternion(q);
+    turned.set(src, geo);
+  }
+  let posed = null; // the pose this hook last set
+  const fix = () => {
+    if (posed && mesh.quaternion.equals(posed)) return false;
+    mesh.quaternion.multiply(back);
+    posed = mesh.quaternion.clone();
+    return true;
+  };
+  mesh.userData.dsnPose = true;
+  mesh.geometry = geo;
+  fix();
+  const before = mesh.onBeforeRender;
+  mesh.onBeforeRender = function (...args) {
+    if (mesh.geometry === src) mesh.geometry = geo; // a fade or a swap put the old one back
+    if (fix()) {
+      mesh.updateMatrix();
+      if (mesh.parent) mesh.matrixWorld.multiplyMatrices(mesh.parent.matrixWorld, mesh.matrix);
+      else mesh.matrixWorld.copy(mesh.matrix);
+    }
+    return before.apply(this, args);
   };
 }
 
@@ -291,7 +444,52 @@ export function shimDsn(dice3d) {
     set value(_) {}, // Dice So Nice sets it each frame; here it reads the clock
   };
   const instanceOf = (id) => dice3d.DiceFactory?.systems?.get?.(id)?.instance;
-  const { addSystem, addDicePreset } = dice3d;
+  const { addSystem, addDicePreset, addSFXMode } = dice3d;
+  // A special effect built on Dice So Nice's own DiceSFX reads DSN's dice box and die mesh in its
+  // constructor (the die's options.secret and shape, the box's volume, muteSoundSecretRolls and
+  // dicefactory.baseScale): a subclass hands it Dicer's with those filled in (dsnEffectArgs).
+  if (typeof addSFXMode === 'function') {
+    dice3d.addSFXMode = function (cls, ...rest) {
+      if (typeof cls !== 'function') return addSFXMode.call(this, cls, ...rest);
+      if (typeof cls.id === 'string') modes.add(cls.id);
+      const Dsn = class extends cls {
+        constructor(box, mesh, options, ...more) {
+          super(...dsnEffectArgs(box, mesh), options, ...more);
+        }
+
+        /**
+         * Dice So Nice's way: play() only sets the effect up; DSN then calls render() every frame
+         * until the effect destroys itself. Dicer's runner keeps an effect while play() is pending,
+         * so this play() lasts until then, rendering it every frame.
+         */
+        async play(...args) {
+          const out = await super.play(...args);
+          if (out === false || this.destroyed || typeof this.render !== 'function') return out;
+          const frame = globalThis.requestAnimationFrame ?? ((fn) => setTimeout(fn, 16));
+          await new Promise((resolve) => {
+            const tick = () => {
+              if (this.destroyed) return resolve();
+              try {
+                this.render();
+              } catch (err) {
+                console.warn('dicer: a Dice So Nice special effect failed while rendering', err);
+                try {
+                  this.destroy?.();
+                } catch {
+                  /* nothing more to free */
+                }
+                return resolve();
+              }
+              frame(tick);
+            };
+            frame(tick);
+          });
+          return out;
+        }
+      };
+      return addSFXMode.call(this, Dsn, ...rest);
+    };
+  }
   if (typeof addSystem === 'function') {
     dice3d.addSystem = function (system, ...rest) {
       const pm = system?.processMaterial;
@@ -302,12 +500,19 @@ export function shimDsn(dice3d) {
           // what Dice So Nice hands the shader callbacks too (Dicer's own call has only the shader and material)
           if (mat?.userData) mat.userData.dsnCall = { type, appearance: dsn };
           const out = pm.call(this, type, mat, dsn, ...more);
-          // a per-frame hook of theirs may read the die's texture coordinates (DSN dice have them)
+          // an animated system's material (a mixer: Dicer keeps such dice drawing, as DSN does);
+          // some systems add it only when their shader compiles, which three skips for a reused program
+          if (mat && !mat.mixer && animated.has(system.id ?? this?.id)) mat.mixer = { animated: true };
+          // Each frame, before their own per-frame hook (if any): the die laid out as Dice So Nice's
+          // (dsnPose: their shaders find faces and edges by DSN's face directions) and its texture
+          // coordinates (DSN dice have them).
           const obr = mat?.onBeforeRender;
-          if (typeof obr === 'function' && Object.hasOwn(mat, 'onBeforeRender')) {
-            mat.onBeforeRender = function (renderer, scene, camera, geometry, ...rest) {
-              faceUvs(geometry);
-              return obr.call(this, renderer, scene, camera, geometry, ...rest);
+          const turn = DSN_TURN[type === 'd100' ? 'd10' : type];
+          if (mat && typeof obr === 'function') {
+            mat.onBeforeRender = function (renderer, scene, camera, geometry, object, ...rest) {
+              if (turn) dsnPose(object, turn);
+              faceUvs(object?.geometry ?? geometry);
+              return obr.call(this, renderer, scene, camera, geometry, object, ...rest);
             };
           }
           const theirs = mat?.customProgramCacheKey;
@@ -321,7 +526,9 @@ export function shimDsn(dice3d) {
         system.beforeShaderCompile = function (shader, material, type, appearance, ...more) {
           const call = material?.userData?.dsnCall;
           if (typeof shader?.fragmentShader === 'string') shader.fragmentShader = baseColourFirst(shader.fragmentShader);
-          return bsc.call(this, shader, material, type ?? call?.type, appearance ?? call?.appearance ?? dsnAppearance(null), ...more);
+          const out = bsc.call(this, shader, material, type ?? call?.type, appearance ?? call?.appearance ?? dsnAppearance(null), ...more);
+          if (material?.mixer) animated.add(system.id ?? this?.id);
+          return out;
         };
       }
       return addSystem.call(this, system, ...rest);
@@ -406,7 +613,10 @@ export async function loadDsnAddons(
     hooks.on = on;
     hooks.once = once;
   }
-  if (done.length) shimDsn(dice3d);
+  if (done.length) {
+    shimDsn(dice3d);
+    await readSetRules(done, { route, esmodule });
+  }
   for (const { id, hook, fn } of caught) {
     try {
       await fn();
@@ -421,4 +631,10 @@ export async function loadDsnAddons(
 export const isLoaded = (id) => loaded.has(id);
 
 /** Forgets what was loaded (tests). */
-export const resetLoaded = () => loaded.clear();
+export const resetLoaded = () => {
+  loaded.clear();
+  delete setRules.of;
+  delete setRules.has;
+  sets.clear();
+  modes.clear();
+};

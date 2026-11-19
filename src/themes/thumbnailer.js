@@ -379,6 +379,9 @@ export function createThumbnailer({
         rnd.setSize(size, size, false);
         curSize = size;
       }
+      // a module dice set's per-frame hooks (installed-dice.js dsnPose) set the die up on its first
+      // draw: that one is thrown away, the image is the second
+      if (Object.hasOwn(material, 'onBeforeRender')) rnd.render(api.scene, cam);
       rnd.render(api.scene, cam);
       return await canvasToBlob(cvs);
     } finally {

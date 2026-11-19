@@ -427,9 +427,15 @@ describe('build', () => {
     // A theme's own damage dice looks (theme.damage: the look resolver finds the die's own theme
     // and hands its map to the damage themer, ranked under the viewer's override): owner approved
     // +255 B (41,205 -> 41,460), 2026-11-19.
+    // A module dice set's animated material keeps its dice drawing (its mixer, as Dice So Nice does:
+    // IRL Dice Packs' moving insides) and crit title cards name their roller: owner approved
+    // +40 B (41,460 -> 41,500), 2026-11-19.
+    // A module dice set's own natural 20 / natural 1 effects (rules.js setRules, IRL Dice Packs'
+    // lists), dice staying while a Dice So Nice effect plays, and a DSN appearance's colorset:
+    // owner approved +350 B (41,500 -> 41,850), 2026-11-19.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(41_460);
+    expect(growth).toBeLessThanOrEqual(41_850);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

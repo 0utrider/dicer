@@ -1709,7 +1709,8 @@ export class DiceBox {
       if (roll.assetsPending) continue;
       shown = true;
       // Living insides (the look-extras chunk): stepped every frame, moving until they rest.
-      if (getLookExtras()?.insideMotion.frame(this, roll, now) || roll.phase !== 'lingering' || roll.glows) moving = true;
+      // A module dice set's animated material (its mixer: Dice So Nice keeps such dice drawing) too.
+      if (getLookExtras()?.insideMotion.frame(this, roll, now) || roll.phase !== 'lingering' || roll.glows || roll.dice.some((d) => d.inner.material.mixer)) moving = true;
     }
     // Grab and toss (lazy chunk, this.grab): a landed die held or tossed keeps the loop running.
     if (this.grab?.frame(now)) moving = true;

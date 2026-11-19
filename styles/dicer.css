@@ -516,6 +516,13 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   width: 100%;
   flex: none;
 }
+.dicer-theme-browser .dicer-set-fx {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  cursor: pointer;
+}
 .dicer-theme-browser .dicer-is-default {
   margin: 0;
   display: flex;

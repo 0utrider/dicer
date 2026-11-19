@@ -40,6 +40,11 @@ describe('rule precedence', () => {
     const t = term(20, { options, flavor: 'ice' });
     expect(look(resolver, t, 'u').appearance.body.color).toBe('#123456');
   });
+  test("1b. a Dice So Nice appearance naming a colorset ({system, colorset}, as add-ons pass) wears that colorset", () => {
+    const { resolver } = make();
+    const t = term(20, { options: { appearance: { system: 'standard', colorset: 'fire' } } });
+    expect(look(resolver, t, 'u').appearance).toEqual(fire);
+  });
   test('2. options.colorset beats a matching flavor', () => {
     const { resolver } = make();
     const t = term(20, { options: { colorset: 'fire' }, flavor: 'ice' });

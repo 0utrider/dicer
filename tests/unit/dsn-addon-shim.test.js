@@ -8,7 +8,7 @@
  */
 import { afterEach, expect, test, vi } from 'vitest';
 import * as THREE from 'three';
-import { baseColourFirst, dsnAppearance, faceUvs, loadDsnAddons, resetLoaded, scanInstalled, shimDsn, withDsnActive } from '../../src/compat/installed-dice.js';
+import { baseColourFirst, dsnAppearance, dsnEffectArgs, dsnPose, DSN_TURN, faceUvs, loadDsnAddons, resetLoaded, scanInstalled, shimDsn, withDsnActive } from '../../src/compat/installed-dice.js';
 import { createRegistry } from '../../src/compat/registry.js';
 
 afterEach(() => resetLoaded());
@@ -332,4 +332,159 @@ test('shimDsn: an add-on per-frame hook on its material sees texture coordinates
   g.deleteAttribute('uv');
   material.onBeforeRender({}, {}, {}, g, {}, null);
   expect(read).toBeGreaterThan(0);
+});
+
+/** True face directions of a geometry (one per flat face, outward), from its triangles. */
+function faceDirections(geometry) {
+  const pos = geometry.attributes.position;
+  const out = [];
+  for (let i = 0; i < pos.count; i += 3) {
+    const [a, b, c] = [i, i + 1, i + 2].map((k) => new THREE.Vector3().fromBufferAttribute(pos, k));
+    const n = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
+    if (n.dot(a) < 0) n.negate();
+    if (!out.some((m) => m.dot(n) > 0.999)) out.push(n);
+  }
+  return out;
+}
+
+test("DSN_TURN lays Dicer's d20 and d10 out as Dice So Nice's: every face direction matches IRL's DSN table", async () => {
+  const { FACE_NORMALS } = await import('../../../irl-dice-packs/scripts/face-normals.js').catch(() => ({}));
+  if (!FACE_NORMALS) return; // the pack is not installed beside Dicer
+  const { getShape } = await import('../../src/core/dice-shapes.js');
+  for (const type of ['d20', 'd10']) {
+    const s = getShape(type);
+    const V = s.vertices.map((v) => new THREE.Vector3(...(Array.isArray(v) ? v : [v.x, v.y, v.z])));
+    const q = new THREE.Quaternion(...DSN_TURN[type]);
+    const dirs = s.faces.map((f) => {
+      const n = new THREE.Vector3();
+      f.forEach((i, k) => {
+        const a = V[i];
+        const b = V[f[(k + 1) % f.length]];
+        n.x += (a.y - b.y) * (a.z + b.z);
+        n.y += (a.z - b.z) * (a.x + b.x);
+        n.z += (a.x - b.x) * (a.y + b.y);
+      });
+      n.normalize();
+      if (n.dot(f.reduce((c, i) => c.add(V[i]), new THREE.Vector3())) < 0) n.negate();
+      return n.applyQuaternion(q);
+    });
+    for (const d of FACE_NORMALS[type]) expect(Math.max(...dirs.map((n) => n.dot(new THREE.Vector3(...d).normalize()))), type).toBeGreaterThan(0.999);
+  }
+});
+
+test("dsnPose: the mesh draws a turned copy and is turned back: the die looks the same, its local positions are DSN's", () => {
+  const g = new THREE.IcosahedronGeometry(1);
+  const parent = new THREE.Group();
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial());
+  parent.add(mesh);
+  mesh.quaternion.setFromEuler(new THREE.Euler(0.3, 1.2, -0.4));
+  const before = faceDirections(g).map((n) => n.clone().applyQuaternion(mesh.quaternion));
+  dsnPose(mesh, DSN_TURN.d20);
+  expect(mesh.geometry).not.toBe(g);
+  const after = faceDirections(mesh.geometry).map((n) => n.clone().applyQuaternion(mesh.quaternion));
+  for (const n of before) expect(Math.max(...after.map((m) => m.dot(n)))).toBeGreaterThan(0.9999); // looks the same
+  // Dicer sets the pose again (the result's turn): the mesh's own hook turns it back before drawing
+  mesh.quaternion.setFromEuler(new THREE.Euler(1, 0, 0));
+  const want = mesh.quaternion.clone().multiply(new THREE.Quaternion(...DSN_TURN.d20).normalize().invert());
+  mesh.onBeforeRender();
+  expect(mesh.quaternion.angleTo(want)).toBeLessThan(1e-6);
+  mesh.onBeforeRender(); // and leaves it alone once it is right
+  expect(mesh.quaternion.angleTo(want)).toBeLessThan(1e-6);
+  const kept = mesh.geometry;
+  dsnPose(mesh, DSN_TURN.d20); // once per mesh
+  expect(mesh.geometry).toBe(kept);
+});
+
+test('an animated system whose shader adds the mixer: its later materials get one too (three reuses the compiled program)', () => {
+  const { registry, dice3d } = dicerStandIn();
+  shimDsn(dice3d);
+  const system = new DsnSystem('irl-torin-x', 'Torin');
+  system.dice.set('d20', {});
+  // irl-dice-packs' applyTorinShader: if (settings.animate !== false && !material.mixer) material.mixer = ...
+  system.registerBeforeShaderCompileCallback((_s, m) => {
+    if (!m.mixer) m.mixer = { real: true };
+  });
+  dice3d.addSystem(system);
+  const instance = registry.diceFactory.systems.get('irl-torin-x').instance;
+  const first = { userData: {}, customProgramCacheKey: () => 'k' };
+  instance.processMaterial('d20', first, {});
+  expect(first.mixer).toBeUndefined(); // not known yet
+  instance.beforeShaderCompile({ fragmentShader: '' }, first); // its program compiles once
+  const second = { userData: {}, customProgramCacheKey: () => 'k' };
+  instance.processMaterial('d20', second, {}); // three will reuse the program: no compile, no hook
+  expect(second.mixer).toBeTruthy();
+  const quiet = new DsnSystem('irl-still', 'Still');
+  quiet.dice.set('d20', {});
+  dice3d.addSystem(quiet);
+  const still = { userData: {}, customProgramCacheKey: () => 'k' };
+  registry.diceFactory.systems.get('irl-still').instance.processMaterial('d20', still, {});
+  expect(still.mixer).toBeUndefined(); // a system that never animates stays still
+});
+
+test("a special effect on Dice So Nice's DiceSFX gets the box and die fields DSN's constructor reads", () => {
+  let added = null;
+  const dice3d = { addSFXMode: (cls) => (added = cls) };
+  shimDsn(dice3d);
+  // Dice So Nice's DiceSFX constructor (its api.js), as irl-dice-packs' character effects extend it
+  class DiceSFX {
+    static id = 'IRLEssiePerfectReaction';
+    static PLAY_ONLY_ONCE_PER_MESH = true;
+    constructor(box, mesh, options) {
+      this.volume = mesh.options.secret && box.muteSoundSecretRolls ? 0 : box.volume;
+      this.scale = box.dicefactory.baseScale / 100;
+      this.shape = mesh.shape;
+      this.options = options;
+    }
+  }
+  dice3d.addSFXMode(DiceSFX);
+  expect(added.id).toBe('IRLEssiePerfectReaction'); // statics carry over
+  expect(added.PLAY_ONLY_ONCE_PER_MESH).toBe(true);
+  // what Dicer's effect runner hands it: a bare box and the die's outer group (type lent as 'd20')
+  const fx = new added({ scene: {} }, { type: 'd20' }, { muteSound: false });
+  expect(fx).toBeInstanceOf(DiceSFX);
+  expect(fx).toMatchObject({ volume: 1, scale: 1, shape: 'd20', options: { muteSound: false } });
+  expect(dsnEffectArgs(null, { type: 'Group' })[1].shape).toBeUndefined();
+});
+
+test("a DSN-style effect (play sets up, render runs per frame until it destroys itself) lives until it is done, on the die mesh", async () => {
+  let added = null;
+  const dice3d = { addSFXMode: (cls) => (added = cls) };
+  shimDsn(dice3d);
+  // irl-dice-packs' CharacterEffect: play() returns at once; DSN then calls render() every frame
+  class DiceSFX {
+    static id = 'IRLEssieOneDrop';
+    constructor(box, mesh) {
+      this.box = box;
+      this.dicemesh = mesh;
+      this.destroyed = false;
+      this.frames = 0;
+    }
+    async play() {
+      this.material = this.dicemesh.material;
+      return true;
+    }
+    render() {
+      if (++this.frames >= 5) this.destroy();
+    }
+    destroy() {
+      this.destroyed = true;
+    }
+  }
+  dice3d.addSFXMode(DiceSFX);
+  const outer = new THREE.Group();
+  outer.type = 'd20'; // what Dicer's runner lends the group
+  const inner = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+  outer.add(inner);
+  const fx = new added({ scene: new THREE.Scene() }, outer, {});
+  expect(fx.dicemesh).toBe(inner); // the die mesh, as DSN hands it
+  expect(fx.dicemesh.shape).toBe('d20');
+  const raf = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+  try {
+    await expect(fx.play()).resolves.toBe(true); // resolves only once the effect destroyed itself
+    expect(fx.frames).toBe(5);
+    expect(fx.material).toBe(inner.material);
+  } finally {
+    globalThis.requestAnimationFrame = raf;
+  }
 });

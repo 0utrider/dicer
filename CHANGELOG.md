@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.2
+
+- **IRL dice sets bring their own natural 20 and natural 1.** Use a character's or GM theme's set from IRL Dice Packs (Essie, Torin, Aelar, The Unbroken Vow...) and its d20s play that set's own crit effects, with their sounds, in place of the world's celebrate / fumble and your theme's own. Nothing to set up in Special Effects. Each set in the theme browser has a **Play this set's own natural 20 / natural 1 effects** checkbox (on by default, per player) to go back to the usual ones. Thanks to Camrun for the report.
+- **Several crits at once share the screen.** When two to four players roll a crit scene at the same moment, the screen splits so each gets a part (side by side, or a 2 x 2 grid); a fifth waits for a free part. Each title card names the player who rolled it.
+- **Dice So Nice effects play to the end.** Dice stay on the table until a special effect finishes, as in Dice So Nice; long ones (Essie's mouse and bottle) were cut off when the dice faded. Effects built on Dice So Nice's own effect class now play at all (they failed or showed nothing).
+- **IRL Dice Packs look right.** Their moving insides move, the lines run along every face edge, d20 and d10 faces line up with the pack's art, and theme browser thumbnails match the thrown dice.
+- A roll that names a Dice So Nice colorset in its appearance (as add-ons' preview buttons do) wears that colorset.
+
 ## 1.3.1
 
 - **Random crit scene.** The Scene picker (on a trigger, or a theme's natural 20 / natural 1 row) has a **Random scene** choice: each crit plays one of the ten scenes for its result, a natural 1 one of the natural 1 scenes and anything else one of the natural 20s. Every player sees the same scene, and your own card text goes on whichever one plays.
