@@ -280,6 +280,33 @@ const animated = new Set(); // the DSN systems whose materials have been given a
  * volume (Foundry's own levels then apply), secret rolls unmuted and DSN's base scale, and a die
  * with options and a shape (its type, which Dicer lends it while the effect plays).
  */
+/**
+ * A Dicer die material that keeps drawing as Dicer's when an effect clones it. three's clone()
+ * resets a material's defines to its own and copies only its standard fields, so a copy an add-on
+ * effect makes of a die's material (irl-dice-packs' Aelar isolates them, so its glow stays on that
+ * die) lost Dicer's numbers, for good: the effect keeps its copy. Its own clone keeps the defines,
+ * the compile patch, the program key and the uniforms (as dice-box.js cloneForFade does).
+ */
+export function keepDicerOnClone(mat) {
+  if (!mat || typeof mat.userData?.programKey !== 'string' || Object.hasOwn(mat, 'clone')) return;
+  mat.clone = function () {
+    const userData = this.userData;
+    this.userData = {}; // three copies userData through JSON, which its uniforms (textures) do not survive
+    let copy;
+    try {
+      copy = Object.getPrototypeOf(this).clone.call(this);
+    } finally {
+      this.userData = userData;
+    }
+    copy.userData = { ...userData };
+    copy.defines = { ...this.defines };
+    copy.onBeforeCompile = this.onBeforeCompile;
+    copy.customProgramCacheKey = this.customProgramCacheKey;
+    keepDicerOnClone(copy); // a copy of the copy too
+    return copy;
+  };
+}
+
 export function dsnEffectArgs(box, group) {
   const b = box && typeof box === 'object' ? box : {};
   // DSN hands effects the die mesh itself (its material, geometry, options); Dicer's runner its
@@ -468,6 +495,7 @@ export function shimDsn(dice3d) {
       const Dsn = class extends cls {
         constructor(box, mesh, options, ...more) {
           super(...dsnEffectArgs(box, mesh), options, ...more);
+          mesh?.traverse?.((o) => o.isMesh && [o.material].flat().forEach(keepDicerOnClone));
         }
 
         /**

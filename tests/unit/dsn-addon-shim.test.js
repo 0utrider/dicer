@@ -502,3 +502,30 @@ test("an add-on's texture is noted with its bump map (Dicer builds a normal map 
   expect(addonTextures.get('modules/l/flat.webp')).toEqual({ bump: null });
   addonTextures.clear();
 });
+
+test("an effect's copy of a Dicer die material keeps Dicer's defines and shader (Aelar's numbers stayed gone)", async () => {
+  const THREE = await import('three');
+  const { keepDicerOnClone } = await import('../../src/compat/installed-dice.js');
+  const tex = new THREE.Texture();
+  const mat = new THREE.MeshPhysicalMaterial();
+  mat.defines = { STANDARD: '', PHYSICAL: '', DICER_ENGRAVE: '' };
+  const patch = function () {};
+  mat.onBeforeCompile = patch;
+  mat.customProgramCacheKey = () => 'dicer-k';
+  mat.userData = { programKey: 'k', uniforms: { uLabels: { value: tex } } };
+  // three's own clone drops what Dicer needs
+  expect(new THREE.MeshPhysicalMaterial().copy(mat).defines.DICER_ENGRAVE).toBeUndefined();
+  keepDicerOnClone(mat);
+  const copy = mat.clone();
+  expect(copy).not.toBe(mat);
+  expect(copy.defines.DICER_ENGRAVE).toBe('');
+  expect(copy.onBeforeCompile).toBe(patch);
+  expect(copy.customProgramCacheKey()).toBe('dicer-k');
+  expect(copy.userData.uniforms.uLabels.value).toBe(tex); // the same textures, not JSON copies
+  expect(mat.userData.programKey).toBe('k'); // the original keeps its own
+  expect(copy.clone().defines.DICER_ENGRAVE).toBe(''); // and a copy's copy
+  // a material that is not Dicer's is left alone
+  const other = new THREE.MeshBasicMaterial();
+  keepDicerOnClone(other);
+  expect(Object.hasOwn(other, 'clone')).toBe(false);
+});

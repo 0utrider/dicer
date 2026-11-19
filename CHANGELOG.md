@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.5
+
+- **Aelar's natural 20 keeps its numbers.** Some Dice So Nice add-on effects (IRL Dice Packs' Aelar) copy the die's material while they play; the copy lost Dicer's numbers, and they never came back. A copied die material now keeps drawing as Dicer's.
+
 ## 1.3.4
 
 - **Import a module dice set as a theme and keep its look.** "Import as theme" now keeps the set's dice system: an imported IRL Dice Packs set (Elara, Essie...) keeps its frames, glass and moving insides while you change its colours in the editor. The editor preview, the theme card and your rolls all show it.
