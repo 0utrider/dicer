@@ -7,7 +7,7 @@ import { EFFECTS } from '../effects/library/effects.js';
 import { DEFAULT_RULES, normalizeRule, MOMENT_KINDS, MOMENT_WHERES } from '../effects/rules.js';
 import { animaterMoments } from '../effects/fx-resolver.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
-import { SCENE_CATALOG, SCENE_TEXT_MAX } from '../effects/library/scene-catalog.js';
+import { SCENE_CATALOG, SCENE_TEXT_MAX, RANDOM_SCENE } from '../effects/library/scene-catalog.js';
 
 // Literal keys (the lang test scans them): Animater's moment kinds (rules.js MOMENT_KINDS).
 const MOMENT_LABELS = {
@@ -95,7 +95,7 @@ export function buildChoices(ctx) {
   const effects = { '': loc('DICER.Triggers.NoEffect') };
   for (const id of Object.keys(EFFECTS)) if (!id.startsWith('scene-')) effects[id] = humanize(id); // scenes: their own picker
   // crit scenes, natural 20s first: "Meteor (natural 20)"
-  const scenes = { '': loc('DICER.Triggers.NoScene') };
+  const scenes = { '': loc('DICER.Triggers.NoScene'), [RANDOM_SCENE]: loc('DICER.Triggers.SceneRandom') };
   for (const s of SCENE_CATALOG)
     scenes[s.id] = `${humanize(s.id.slice(6))} (${loc(s.outcome === 'critical-failure' ? 'DICER.Triggers.SceneLow' : 'DICER.Triggers.SceneHigh')})`;
   for (const [id, name] of Object.entries(ctx.modes ?? {})) effects[`dsn:${id}`] = `${name} (DSN)`;
@@ -568,7 +568,9 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const found = this.#previewRule(target);
     const id = sceneIdOf(found?.rule.effect);
     if (!id) return;
-    const die = { type: 'd20', value: SCENE_CATALOG.find((s) => s.id === id)?.outcome === 'critical-failure' ? 1 : 20 };
+    // a random scene previews for the rule's own outcome (a natural 1 rule on a 1)
+    const outcome = SCENE_CATALOG.find((s) => s.id === id)?.outcome ?? found.rule.outcome;
+    const die = { type: 'd20', value: outcome === 'critical-failure' || found.rule.result?.value === 1 ? 1 : 20 };
     const text = found.rule.effect?.sceneText; // the rule's own card text plays in the preview too
     await found.api._preview({ ...previewFx(found.rule, die, true), effect: text ? { id, sceneText: text } : { id } }, die);
   }

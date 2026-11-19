@@ -14,7 +14,8 @@ describe('the theme editor', () => {
     expect(scenesFor('critical-success')).toContain('scene-meteor');
     expect(scenesFor('critical-success')).not.toContain('scene-anvil');
     expect(scenesFor('critical-failure')).toContain('scene-anvil');
-    expect(scenesFor('critical-success')).toHaveLength(10);
+    expect(scenesFor('critical-success')).toHaveLength(11); // the random one first, then the ten
+    expect(scenesFor('critical-failure')[0]).toBe('scene-random');
   });
 
   it('an effect and a scene: one rule with both; read back as the two pickers', () => {

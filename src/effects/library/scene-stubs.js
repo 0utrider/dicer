@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { borrowDie } from './borrow.js';
 import { glint } from './die-effects.js';
 import { unswallow } from './scene-flight.js';
-import { SCENE_CATALOG, sceneText } from './scene-catalog.js';
+import { SCENE_CATALOG, RANDOM_SCENE, pickScene, restSeed, sceneText } from './scene-catalog.js';
 
 /**
  * Crit scenes as library effects: each id here is a small stand-in that borrows its landed die
@@ -200,8 +200,27 @@ function stub(id, duration) {
   });
 }
 
-/** One stand-in effect per catalogued scene (scene-catalog.js). */
-export const SCENE_STUBS = Object.freeze(Object.fromEntries(SCENE_CATALOG.map((s) => [s.id, stub(s.id, s.duration)])));
+const STUBS = Object.fromEntries(SCENE_CATALOG.map((s) => [s.id, stub(s.id, s.duration)]));
+
+/**
+ * The random scene: a natural 1 plays one of the natural 1 scenes, anything else one of the
+ * natural 20s, picked by where the die rests (the same on every screen); the rule's card text and
+ * everything else play as that scene's own.
+ */
+const random = Object.freeze({
+  id: RANDOM_SCENE,
+  cost: 2,
+  bindsDie: true,
+  defaults: Object.freeze({ color: '#8a5cff', intensity: 1, duration: Math.max(...SCENE_CATALOG.map((s) => s.duration)) }),
+  start(ctx) {
+    const outcome = Number(ctx.die?.value) === 1 ? 'critical-failure' : 'critical-success';
+    const id = pickScene(outcome, restSeed(ctx.die?.outer?.position ?? ctx.position));
+    return STUBS[id].start(ctx);
+  },
+});
+
+/** One stand-in effect per catalogued scene (scene-catalog.js), and the random one. */
+export const SCENE_STUBS = Object.freeze({ ...STUBS, [RANDOM_SCENE]: random });
 
 /** A crit scene effect id (withBursts leaves the automatic burst out: the scene is the show). */
 export const isSceneId = (id) => typeof id === 'string' && id.startsWith('scene-');

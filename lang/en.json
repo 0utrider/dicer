@@ -497,6 +497,7 @@
       "Effect": "Effect",
       "NoEffect": "No effect",
       "NoScene": "No scene",
+      "SceneRandom": "Random scene",
       "Scene": "Scene",
       "SceneHint": "A crit scene plays with the die itself as soon as it stops, alongside the effect, and ends in its title card. One scene per die.",
       "SceneText": "Card text",

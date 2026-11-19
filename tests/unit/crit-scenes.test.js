@@ -113,7 +113,7 @@ describe('the scene stand-ins', () => {
   });
 
   it('are library effects with an id in EFFECT_IDS; the automatic crit burst stands aside for them', () => {
-    expect(Object.keys(SCENE_STUBS)).toEqual([...SCENE_IDS]); // one per catalogued scene
+    expect(Object.keys(SCENE_STUBS)).toEqual([...SCENE_IDS, 'scene-random']); // one per catalogued scene, and the random one
     expect(EFFECTS['scene-shadow-thief']).toBe(SCENE_STUBS['scene-shadow-thief']);
     expect(EFFECT_IDS.some((id) => id.startsWith('scene-'))).toBe(false); // accepted by prefix, not listed
     expect(SCENE_STUBS['scene-shadow-thief']).toMatchObject({ cost: 2, bindsDie: true });

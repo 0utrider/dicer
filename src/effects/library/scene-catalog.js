@@ -33,6 +33,28 @@ export const SCENE_CATALOG = Object.freeze([
 /** The scene ids, in catalog order. */
 export const SCENE_IDS = Object.freeze(SCENE_CATALOG.map((s) => s.id));
 
+/** The "random scene" choice: one of the outcome's scenes, picked per die (pickScene). */
+export const RANDOM_SCENE = 'scene-random';
+
+/**
+ * The scene a random pick lands on: one of `outcome`'s ('critical-success' / 'critical-failure'),
+ * by `seed`, an integer every screen computes the same (the die's rest spot: the throw is
+ * simulated alike for everyone), so every player sees the same scene.
+ */
+export function pickScene(outcome, seed) {
+  const list = SCENE_CATALOG.filter((s) => s.outcome === outcome);
+  if (!list.length) return null;
+  const n = Math.abs(Math.trunc(Number(seed) || 0));
+  return list[n % list.length].id;
+}
+
+/** A die's rest spot as pickScene's seed: its table position to the hundredth, hashed (well spread). */
+export function restSeed(p) {
+  let h = Math.imul(Math.round((p?.x ?? 0) * 100), 0x9e3779b1) ^ Math.imul(Math.round((p?.z ?? 0) * 100), 0x85ebca77);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  return (h ^ (h >>> 12)) >>> 0;
+}
+
 /** The most characters a line of a rule's own card text keeps. */
 export const SCENE_TEXT_MAX = 24;
 

@@ -7,7 +7,7 @@
 import { LOOKS } from '../look/looks.js';
 import { appearanceKey } from '../look/appearance.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
-import { SCENE_CATALOG, sceneText } from '../effects/library/scene-catalog.js';
+import { SCENE_CATALOG, RANDOM_SCENE, sceneText } from '../effects/library/scene-catalog.js';
 import { themeRef } from '../compat/user-looks.js';
 import {
   DIE_TYPES,
@@ -358,5 +358,5 @@ export function themeFromForm(form, base) {
 }
 
 /** The crit scenes a theme's natural 20 (critical-success) or natural 1 (critical-failure) may pick. */
-export const scenesFor = (outcome) => SCENE_CATALOG.filter((s) => s.outcome === outcome).map((s) => s.id);
+export const scenesFor = (outcome) => [RANDOM_SCENE, ...SCENE_CATALOG.filter((s) => s.outcome === outcome).map((s) => s.id)];
 const isScene = (id) => typeof id === 'string' && id.startsWith('scene-');

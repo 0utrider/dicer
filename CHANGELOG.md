@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- **Random crit scene.** The Scene picker (on a trigger, or a theme's natural 20 / natural 1 row) has a **Random scene** choice: each crit plays one of the ten scenes for its result, a natural 1 one of the natural 1 scenes and anything else one of the natural 20s. Every player sees the same scene, and your own card text goes on whichever one plays.
+
 ## 1.3.0
 
 - **Themes can give damage dice their own look, per damage type.** The theme editor has a new **Damage dice** section: for each damage type, pick a damage theme, a colorset or the theme's own look, and preview it with the play button. Wherever the theme is used (a player's default, a die type or role, an actor, the world default), its damage dice follow it, so a rogue theme can make sneak attack (precision) dice stand out from the shortbow's d6. A player's own damage overrides still win on their screen; the world's choice fills the rest. Thanks to 0utrider for the idea.

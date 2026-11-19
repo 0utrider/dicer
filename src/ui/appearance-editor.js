@@ -16,7 +16,7 @@ import { stripActive } from '../look/appearance.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm, scenesFor } from './theme-form.js';
-import { SCENE_CATALOG, SCENE_TEXT_MAX } from '../effects/library/scene-catalog.js';
+import { SCENE_CATALOG, SCENE_TEXT_MAX, RANDOM_SCENE } from '../effects/library/scene-catalog.js';
 import { DAMAGE_THEMES } from '../effects/damage-themes.js';
 import { BUILTIN_COLORSETS } from '../compat/colorset-map.js';
 import { damageTypeList, previewSpec } from './damage-map-form.js';
@@ -389,7 +389,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
           soundChoices: { ...choiceMap(USER_SOUNDS, humanize, loc('DICER.Appearance.Extras.None'), keep), ...file },
           jb2aName: row.jb2a ? basename(row.jb2a) : '',
           // its crit scenes (natural 20s on the 20 row, natural 1s on the 1 row)
-          sceneChoices: choiceMap(scenesFor(outcome), (id) => humanize(id.slice(6)), loc('DICER.Appearance.Extras.None')),
+          sceneChoices: choiceMap(scenesFor(outcome), (id) => (id === RANDOM_SCENE ? loc('DICER.Triggers.SceneRandom') : humanize(id.slice(6))), loc('DICER.Appearance.Extras.None')),
           // the chosen scene's own card lines: the placeholders of the theme's own words
           sceneCard: sceneCardOf(row.scene),
           sceneTextMax: SCENE_TEXT_MAX,
