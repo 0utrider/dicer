@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- The "old copy of Dicer" notice no longer sticks: after one reload that didn't help, Dicer could keep showing it for the rest of the browser tab even once the files were fine. It now tries again a minute later, and the console says why it fired (the versions, or the file that failed to load).
+
 ## 1.1.0
 
 - **Dice So Nice add-ons without Dice So Nice.** Add-on modules that require Dice So Nice (so Foundry won't let you enable them), such as Dice Soup, Handyfon's Dice Addiction, Doomsong Dice and Lordu's dice, can stay off: the GM ticks them in the theme browser's **Installed dice** window and reloads, and Dicer runs their code so their dice show up in the theme browser. Their stylesheets and translations aren't loaded. Thanks to 0utrider for the design.

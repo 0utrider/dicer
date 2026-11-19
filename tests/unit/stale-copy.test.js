@@ -20,7 +20,11 @@ function deps(over = {}) {
   return { d, store, listeners };
 }
 
-beforeEach(() => resetStaleCopy());
+beforeEach(() => {
+  resetStaleCopy();
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+afterEach(() => vi.restoreAllMocks());
 
 test('module.json and package.json carry the same version (the code compares them)', () => {
   expect(JSON.parse(readFileSync('module.json', 'utf8')).version).toBe(pkg.version);
@@ -43,14 +47,26 @@ test("an old cached copy: Dicer's files are fetched past the cache, then the pag
     ['/base/modules/dicer/styles/dicer.css', { cache: 'reload' }],
   ]);
   expect(d.reload).toHaveBeenCalledTimes(1);
-  expect(store.get('dicer.staleReload')).toBe('99.0.0');
-  // still stale after that reload: no loop, the player is asked to hard-reload
+  expect(store.get('dicer.staleReload')).toMatch(/^99\.0\.0\|\d+$/);
+  expect(console.warn).toHaveBeenCalledWith(`dicer: old cached copy (running ${pkg.version}, served 99.0.0)`);
+  // still stale right after that reload: no loop, the player is asked to hard-reload
   resetStaleCopy();
-  const again = deps({ served: '99.0.0', storage: () => ({ getItem: () => '99.0.0', setItem() {} }) }).d;
+  const again = deps({ served: '99.0.0', storage: () => ({ getItem: () => `99.0.0|${Date.now() - 5000}`, setItem() {} }) }).d;
   watchStaleCopy(again);
   await flush();
   expect(again.reload).not.toHaveBeenCalled();
   expect(again.notify).toHaveBeenCalledTimes(1);
+});
+
+test('a reload over a minute ago, or for another version, may try again (the files may be fixed since)', async () => {
+  for (const mark of [`99.0.0|${Date.now() - 120000}`, `98.0.0|${Date.now()}`]) {
+    resetStaleCopy();
+    const { d } = deps({ served: '99.0.0', storage: () => ({ getItem: () => mark, setItem() {} }) });
+    watchStaleCopy(d);
+    await flush();
+    expect(d.reload, mark).toHaveBeenCalledTimes(1);
+    expect(d.notify).not.toHaveBeenCalled();
+  }
 });
 
 test('a failed fetch still reloads; blocked storage only asks', async () => {

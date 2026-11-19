@@ -14,14 +14,18 @@ const CHUNK_FAILED = /dynamically imported module/i; // Chrome's and Firefox's w
 
 let busy = false;
 
-async function refresh({ served, route, storage, fetch, reload, notify }) {
+async function refresh({ served, route, storage, fetch, reload, notify }, why) {
   if (busy) return;
   busy = true;
-  let tried = true; // storage blocked: never reload in a loop, just ask
+  console.warn(`dicer: old cached copy (${why})`);
+  // a reload in the last minute that did not help: ask instead of looping; a later stale copy
+  // (the files fixed since) may try again. Storage blocked: never reload, just ask.
+  let tried = true;
   try {
     const s = storage();
-    tried = s.getItem(KEY) === served;
-    if (!tried) s.setItem(KEY, served);
+    const [v, t] = String(s.getItem(KEY)).split('|');
+    tried = v === served && Date.now() - t < 6e4;
+    if (!tried) s.setItem(KEY, `${served}|${Date.now()}`);
   } catch {
     /* blocked */
   }
@@ -36,13 +40,12 @@ async function refresh({ served, route, storage, fetch, reload, notify }) {
  * @returns {boolean} true when the running code is already known to be stale
  */
 export function watchStaleCopy(deps) {
-  const fix = () => refresh(deps);
   deps.win.addEventListener('unhandledrejection', (e) => {
     const m = String(e.reason?.message);
-    if (CHUNK_FAILED.test(m) && m.includes('/modules/dicer/')) fix();
+    if (CHUNK_FAILED.test(m) && m.includes('/modules/dicer/')) refresh(deps, m);
   });
   const stale = deps.served !== BUILT;
-  if (stale) fix();
+  if (stale) refresh(deps, `running ${BUILT}, served ${deps.served}`);
   return stale;
 }
 
