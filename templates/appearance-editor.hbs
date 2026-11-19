@@ -328,6 +328,24 @@
         </div>
       </details>
 
+      <details class="dicer-ae-section" data-section="damage" {{#if open.damage}}open{{/if}}>
+        <summary><i class="fa-solid fa-fire"></i> <span>{{localize "DICER.Appearance.Section.damage"}}</span><em>{{summary.damage}}</em></summary>
+        <div class="dicer-ae-fields">
+          <p class="dicer-hint">{{localize "DICER.Appearance.Damage.Hint"}}</p>
+          <div class="dicer-ae-damage">
+            {{#each damageRows}}
+              <div class="dicer-field">
+                <span id="dicer-ae-dmg-{{type}}-l">{{label}}</span>
+                <span class="dicer-ae-with-action">
+                  <select aria-labelledby="dicer-ae-dmg-{{type}}-l" name="extras.damage.{{type}}">{{selectOptions choices selected=value}}</select>
+                  <button type="button" class="dicer-icon" data-action="previewDamage" data-type="{{type}}" data-tooltip="DICER.Appearance.Damage.Preview" aria-label="{{localize "DICER.Appearance.Damage.Preview"}}"><i class="fa-solid fa-play"></i></button>
+                </span>
+              </div>
+            {{/each}}
+          </div>
+        </div>
+      </details>
+
       <details class="dicer-ae-section" data-section="extras" {{#if open.extras}}open{{/if}}>
         <summary><i class="fa-solid fa-music"></i> <span>{{localize "DICER.Appearance.Section.extras"}}</span><em>{{summary.extras}}</em></summary>
         <div class="dicer-ae-fields">
@@ -355,6 +373,13 @@
               <div class="dicer-field">
                 <span id="dicer-ae-{{key}}-scene-l">{{label}} · {{localize "DICER.Appearance.Extras.Scene"}}</span>
                 <select aria-labelledby="dicer-ae-{{key}}-scene-l" name="extras.{{key}}.scene" data-tooltip="DICER.Triggers.SceneHint">{{selectOptions sceneChoices selected=scene}}</select>
+              </div>
+              <div class="dicer-field dicer-scene-text">
+                <span id="dicer-ae-{{key}}-scenetext-l">{{label}} · {{localize "DICER.Appearance.Extras.SceneText"}}</span>
+                <span class="dicer-scene-lines">
+                  <input type="text" name="extras.{{key}}.sceneLine1" value="{{sceneLine1}}" placeholder="{{lookup sceneCard 0}}" maxlength="{{sceneTextMax}}" aria-label="{{localize "DICER.Triggers.SceneFirst"}}" data-tooltip="DICER.Triggers.SceneTextHint">
+                  <input type="text" name="extras.{{key}}.sceneLine2" value="{{sceneLine2}}" placeholder="{{lookup sceneCard 1}}" maxlength="{{sceneTextMax}}" aria-label="{{localize "DICER.Triggers.SceneSecond"}}" data-tooltip="DICER.Triggers.SceneTextHint">
+                </span>
               </div>
               <div class="dicer-field">
                 <span id="dicer-ae-{{key}}-sound-l">{{label}} · {{localize "DICER.Appearance.Extras.Sound"}}</span>

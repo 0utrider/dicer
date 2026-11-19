@@ -424,9 +424,12 @@ describe('build', () => {
     // lazy loader before announceReady): owner approved +300 B (40,700 -> 41,000), 2026-11-19.
     // PF2e precision damage (the type, its default map entry and the built-in Precision look with
     // sharp edges and a crystal d4): owner approved +205 B (41,000 -> 41,205), 2026-11-19.
+    // A theme's own damage dice looks (theme.damage: the look resolver finds the die's own theme
+    // and hands its map to the damage themer, ranked under the viewer's override): owner approved
+    // +255 B (41,205 -> 41,460), 2026-11-19.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(41_205);
+    expect(growth).toBeLessThanOrEqual(41_460);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

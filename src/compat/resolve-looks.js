@@ -1,7 +1,8 @@
 /**
  * Decides what each die looks like. The first matching rule wins, per term:
  *   1. term.options.appearance   2. term.options.colorset
- *   3. the damage theme of the term's damage type (P4-D3; also sets soundMaterial)
+ *   3. the damage theme of the term's damage type (P4-D3; also sets soundMaterial): the viewer's own
+ *      override, else the damage looks of the theme the die would wear (its own `damage` map), else the world's
  *   3b. the term's flavor as a colorset name (only with no damage theme: a [fire] damage die is themed)
  *   4. the actor's dicer.appearance (options.dsnActorId, else the speaker's actor)   5. the roller's dicer.appearance
  *      (role:<role> when the message has one, die type, base shape, then global)
@@ -23,7 +24,7 @@ import {
   lookRefToAppearance,
   colorsetNameToAppearance,
 } from './user-looks.js';
-import { readThemeList } from '../themes/themes.js';
+import { readThemeList, findTheme } from '../themes/themes.js';
 import { roleOf } from '../effects/roll-context.js';
 import { dsnTypeOf } from '../core/dice-shapes.js';
 
@@ -154,34 +155,6 @@ export function createLookResolver({
     // The damage theme (P4-D3): after explicit colorsets, before actor/user looks. It also beats a
     // flavor colorset: PF2e and 5e flavor each damage die with its type ([fire]), which would
     // otherwise match the flat built-in colorset of that name.
-    let soundMaterial;
-    let themed = null; // the Plan 5 theme the die resolved to: {themeId, soundMaterial?, ...}
-    const theme = appearance ? null : themeOf?.(term, index);
-    if (theme?.appearance) {
-      appearance = theme.appearance;
-      soundMaterial = theme.soundMaterial;
-      if (theme.themeId) themed = { themeId: theme.themeId, ...(theme.themeSource ? { themeSource: theme.themeSource } : {}) };
-    }
-    if (!appearance && typeof term?.flavor === 'string') {
-      const flavor = term.flavor.trim();
-      const named = flavor.toLowerCase().startsWith('die:') ? flavor.slice(4).trim() : flavor;
-      appearance = colorsetNameToAppearance(named, registry, index);
-    }
-    const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
-    if (!appearance && !ctx.locked && typeof actorId === 'string') {
-      // The theme browser writes {global: {theme}}; DSN-migrated flags are a flat LookRef. A
-      // global slot takes precedence over flat keys left on the same actor.
-      const stored = getActor(actorId)?.flags?.dicer?.appearance;
-      const ref = isPlainObject(stored) && isPlainObject(stored.global) ? stored.global : stored;
-      const got = lookRefToAppearance(ref, registry, index, refOpts);
-      if (got) {
-        appearance = got.appearance;
-        themed = got;
-      }
-      // a module dice set's system on its own (no look): the author's looks dress the dice it skips
-      system = systemOf(ref);
-    }
-
     // The author's refs, most specific first. They feed rule 5 and, for every rule, the system.
     // Under the lock the world default replaces every ref of the author's; otherwise it follows
     // them, ahead of the built-in default that readUserLooks supplies for a user with no global.
@@ -193,6 +166,38 @@ export function createLookResolver({
     const refs = keys.map((key) => (key && Object.hasOwn(looks, key) ? looks[key] : null)).filter(Boolean);
     if (ctx.worldDefault) refs.push(ctx.worldDefault);
     if (!ctx.locked && !Object.hasOwn(looks, 'global')) refs.push(FALLBACK_REF);
+    // The theme browser writes {global: {theme}}; DSN-migrated flags are a flat LookRef. A
+    // global slot takes precedence over flat keys left on the same actor.
+    const stored = !ctx.locked && typeof actorId === 'string' ? getActor(actorId)?.flags?.dicer?.appearance : undefined;
+    const actorRef = isPlainObject(stored) && isPlainObject(stored.global) ? stored.global : stored;
+    // the theme the die would wear (the actor's, else the author's first ref): its own damage looks
+    const ownRef = [actorRef, ...refs].find(isPlainObject);
+    const themeMap = typeof ownRef?.theme === 'string' ? findTheme(ownRef.theme, ctx.themes)?.damage : undefined;
+
+    let soundMaterial;
+    let themed = null; // the Plan 5 theme the die resolved to: {themeId, soundMaterial?, ...}
+    const theme = appearance ? null : themeOf?.(term, index, themeMap);
+    if (theme?.appearance) {
+      appearance = theme.appearance;
+      soundMaterial = theme.soundMaterial;
+      if (theme.themeId) themed = { themeId: theme.themeId, ...(theme.themeSource ? { themeSource: theme.themeSource } : {}) };
+    }
+    if (!appearance && typeof term?.flavor === 'string') {
+      const flavor = term.flavor.trim();
+      const named = flavor.toLowerCase().startsWith('die:') ? flavor.slice(4).trim() : flavor;
+      appearance = colorsetNameToAppearance(named, registry, index);
+    }
+    const refOpts = { dieType: type, themes: ctx.themes, onMissingTheme: ctx.onMissingTheme };
+    if (!appearance && stored !== undefined) {
+      const ref = actorRef;
+      const got = lookRefToAppearance(ref, registry, index, refOpts);
+      if (got) {
+        appearance = got.appearance;
+        themed = got;
+      }
+      // a module dice set's system on its own (no look): the author's looks dress the dice it skips
+      system = systemOf(ref);
+    }
 
     // damageOverDiceSet: a damage-themed die keeps its damage look, so the player's dice set (a
     // module set's 3D models and faces, whose own material would hide it) is not taken from their

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+- **Themes can give damage dice their own look, per damage type.** The theme editor has a new **Damage dice** section: for each damage type, pick a damage theme, a colorset or the theme's own look, and preview it with the play button. Wherever the theme is used (a player's default, a die type or role, an actor, the world default), its damage dice follow it, so a rogue theme can make sneak attack (precision) dice stand out from the shortbow's d6. A player's own damage overrides still win on their screen; the world's choice fills the rest. Thanks to 0utrider for the idea.
+- **Write your own crit scene text.** Next to the Scene picker (on a trigger, or a theme's natural 20 / natural 1 row) there are two **Card text** boxes: your words replace the title card's lines, keeping the scene's lettering and animation. The scene's own lines show as placeholders; a box left empty keeps its line.
+- **IRL Dice Packs' Secrets of Grayce - The Unbroken Vow works.** Its dice drew as a see-through outline and its theme browser card showed only an icon: the pack reads texture coordinates Dicer's dice did not have. Dice So Nice add-on systems now also get the die type and a Dice So Nice style appearance in their shader callbacks, so their own surfaces (The Unbroken Vow, The Hollow Queen, The Borrowed Second) are drawn as their authors made them.
+
 ## 1.2.0
 
 - **Crit scenes: a bowling-alley "STRIKE!" moment for natural 20s and natural 1s.** Twenty short shows, ten for each, told in light, fire and smoke: Meteor, Shadow Thief, Portal Hop, Lightning Verdict, Golden Ascension, Dragon Coil, Fireworks, Crown Drop, Phoenix and Rune Circle for a natural 20; Anvil, Banana Peel, Rain Cloud, Ghost Out, Black Hole, Crack and Tape, Wilted Flower, Tumbleweed, Crows and Pratfall for a natural 1. Each plays as soon as the die stops and ends in its own big title card ("NATURAL 20!", "CRITICAL FAIL", "WHOOPS! NAT 1"...). Nothing shows while the die rolls, so nobody can tell a crit is coming. Pick one in the new **Scene** dropdown beside Effect, on a trigger or on a theme's celebration rows. The die's result never changes, and reduced motion gets a calm version.

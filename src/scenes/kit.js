@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { createKit, clamp01, span, smooth, easeOut, easeIn, outBack, bump, lerp } from './ease.js';
 import { makeGlow, makeRibbon } from './vfx.js';
-import { showCard } from './card.js';
+import { showCard, withText } from './card.js';
 
 export { createKit, clamp01, span, smooth, easeOut, easeIn, outBack, bump, lerp };
 export const TAU = Math.PI * 2;
@@ -72,6 +72,7 @@ function shapes(kit, root) {
  * - s.die: pose(pos, turns = 0) draws the die at pos, its rest turned `turns` times about the vertical;
  *   hide(on); home() puts it back exactly at rest and shown; s.die.shown
  * - s.glint() (a die glint), s.shake(amount, ms)
+ * - s.card(spec): the title card (ctx.cardText, a rule's own two lines, replaces its lines' text)
  * - s.reduced: the calm form must play (reduced motion, low tier, or the die cannot be moved)
  * - s.swallowed: the die arrives hidden (caught mid-roll by this scene's swallow): show it when it returns
  * - s.introduced: the scene's intro already played mid-roll (runScene then starts at def.introSkip)
@@ -146,7 +147,7 @@ export function stage(ctx) {
      */
     card(spec) {
       if (cardShown) return cardShown;
-      cardShown = showCard(spec, { reduced, host: ctx.cardHost });
+      cardShown = showCard(withText(spec, ctx.cardText), { reduced, host: ctx.cardHost });
       return cardShown;
     },
     reduced,

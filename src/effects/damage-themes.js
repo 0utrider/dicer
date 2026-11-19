@@ -129,10 +129,11 @@ const withElemental = (theme) => {
  */
 export function resolveDamageTheme(
   type,
-  { userOverrides, worldMap, moduleDefaults, registry, index = 0, warn = console.warn, warned, dieType, themes, elemental = false } = {},
+  { userOverrides, themeMap, worldMap, moduleDefaults, registry, index = 0, warn = console.warn, warned, dieType, themes, elemental = false } = {},
 ) {
   if (typeof type !== 'string' || !type) return null;
-  const levels = [userOverrides, worldMap, moduleDefaults ?? registry?.damageTypeDefaults, DEFAULT_DAMAGE_MAP];
+  // the viewer's own, then the die's theme's own damage looks (themeMap), then the world's, the modules', the built-in
+  const levels = [userOverrides, themeMap, worldMap, moduleDefaults ?? registry?.damageTypeDefaults, DEFAULT_DAMAGE_MAP];
   const level = levels.find((m) => own(m, type));
   if (!level) return null;
   const fromViewer = isPlainObject(userOverrides) && level === userOverrides;
@@ -239,12 +240,13 @@ export function createDamageThemer({
         // The viewer's own themes (P5-R8): their override may name one, on anyone's roll.
         viewerThemes: viewerId ? safe(() => readThemeList(getUserThemes(viewerId), 'user', warn), []) : [],
       };
-      return (term, index = 0) => {
+      // themeMap: the damage looks of the theme the die would wear (resolve-looks.js)
+      return (term, index = 0, themeMap) => {
         const type = term !== null && typeof term === 'object' ? types.get(term) : undefined;
         if (typeof type !== 'string') return null;
         const dieType = dsnTypeOf(term) ?? undefined;
         return safe(
-          () => resolveDamageTheme(type, { userOverrides, worldMap, registry, index, warn, warned, dieType, themes, elemental }),
+          () => resolveDamageTheme(type, { userOverrides, themeMap, worldMap, registry, index, warn, warned, dieType, themes, elemental }),
           null,
         );
       };

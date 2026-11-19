@@ -16,6 +16,36 @@ import { stripActive } from '../look/appearance.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm, scenesFor } from './theme-form.js';
+import { SCENE_CATALOG, SCENE_TEXT_MAX } from '../effects/library/scene-catalog.js';
+import { DAMAGE_THEMES } from '../effects/damage-themes.js';
+import { BUILTIN_COLORSETS } from '../compat/colorset-map.js';
+import { damageTypeList, previewSpec } from './damage-map-form.js';
+
+/**
+ * The theme's damage dice rows: the active system's types first (damage-map-form.js order), each
+ * with what it may wear: the world's choice (''), the theme's own look ('none'), a damage theme or a colorset.
+ */
+function damageRows(chosen = {}) {
+  const ctx = (() => {
+    try {
+      return globalThis.game?.dice3d?._damageContext?.() ?? {};
+    } catch {
+      return {};
+    }
+  })();
+  const choices = { '': loc('DICER.Appearance.Damage.World'), none: loc('DICER.Appearance.Damage.Keep') };
+  for (const id of Object.keys(DAMAGE_THEMES)) choices[id] = `${loc('DICER.DamageMap.Theme')}: ${humanize(id)}`;
+  for (const name of [...Object.keys(BUILTIN_COLORSETS), ...(ctx.colorsets ?? [])])
+    if (!(name in choices)) choices[name] = `${loc('DICER.DamageMap.Colorset')}: ${name}`;
+  const types = damageTypeList({ systemId: globalThis.game?.system?.id, extra: Object.keys(chosen) });
+  return types.map((type) => {
+    const value = typeof chosen[type] === 'string' ? chosen[type] : '';
+    return { type, label: humanize(type), value, choices: value && !(value in choices) ? { ...choices, [value]: value } : choices };
+  });
+}
+
+/** A scene's own title card lines (['', ''] for none). */
+const sceneCardOf = (id) => SCENE_CATALOG.find((s) => s.id === id)?.card ?? ['', ''];
 import { jb2aSource } from '../jb2a/source.js';
 import { pickJb2a, sequencerDatabase } from './jb2a-picker.js';
 import {
@@ -85,7 +115,7 @@ const EDGE_NAMES = ['sharp', 'crisp', 'soft', 'round', 'veryRound'];
 /** px radius of the one rounded corner each edge-step icon draws (22 px box): clearly apart. */
 const EDGE_ICON_RADIUS = [0, 5, 10, 15, 22];
 // (the pet has its own window: ui/pet-window.js)
-const SECTIONS = ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras'];
+const SECTIONS = ['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras', 'damage'];
 
 // Stored data of the wrong shape is never written: refused and warned once per kind.
 const warned = new Set();
@@ -149,6 +179,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       previewDie: AppearanceEditor.#onPreviewDie,
       throwLook: AppearanceEditor.#onThrowLook,
       previewExtra: AppearanceEditor.#onPreviewExtra,
+      previewDamage: AppearanceEditor.#onPreviewDamage,
       pickSoundFile: AppearanceEditor.#onPickSoundFile,
       pickJb2a: AppearanceEditor.#onPickJb2a,
       clearJb2a: AppearanceEditor.#onClearJb2a,
@@ -213,7 +244,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     }
     this.#forms = formsFromTheme(start);
     const simple = formFromTheme(start);
-    this.#extras = { soundMaterial: simple.soundMaterial, nat20: simple.nat20, nat1: simple.nat1 };
+    this.#extras = { soundMaterial: simple.soundMaterial, nat20: simple.nat20, nat1: simple.nat1, damage: simple.damage ?? {} };
     this.#onSave = typeof onSave === 'function' ? onSave : null;
     this.#scheduler = createPreviewScheduler((theme) => this.#renderPreview(theme), { delay: 80 });
     this.#clean = this.#snapshot();
@@ -333,6 +364,10 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         glow: look.glow.intensity > 0 ? pct(look.glow.intensity) : loc('DICER.Appearance.Glow.Off'),
         perType: overrideCount ? String(overrideCount) : '',
         extras: '',
+        damage: (() => {
+          const n = Object.values(extras.damage ?? {}).filter(Boolean).length;
+          return n ? loc('DICER.Appearance.Damage.Count').replace('{n}', n) : '';
+        })(),
       },
       overrides: DIE_TYPES.filter(overridden).map((type) => ({ type, editing: type === this.#editing })),
       available: DIE_TYPES.filter((t) => !overridden(t)),
@@ -355,8 +390,12 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
           jb2aName: row.jb2a ? basename(row.jb2a) : '',
           // its crit scenes (natural 20s on the 20 row, natural 1s on the 1 row)
           sceneChoices: choiceMap(scenesFor(outcome), (id) => humanize(id.slice(6)), loc('DICER.Appearance.Extras.None')),
+          // the chosen scene's own card lines: the placeholders of the theme's own words
+          sceneCard: sceneCardOf(row.scene),
+          sceneTextMax: SCENE_TEXT_MAX,
         };
       }),
+      damageRows: damageRows(extras.damage),
       jb2aActive: Boolean(jb2aSource({ modules: globalThis.game?.modules, settings: settings() })),
       isGM: this.#isGM,
       canUpdate: Boolean(this.#originalId),
@@ -561,6 +600,35 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       return;
     }
     const { fx, options } = celebrationPreview(this.theme(), target.dataset.key);
+    await api._preview(fx, options);
+  }
+
+  /**
+   * Throws a d6 as a damage die of the row's type would look with this theme: its choice (a damage
+   * theme or colorset, with the theme's landing effect and sound), the theme's own look ('none'),
+   * or the world's choice ('') as the stored world map gives it (damage-map-form.js previewSpec).
+   */
+  static async #onPreviewDamage(event, target) {
+    const api = globalThis.game?.dice3d;
+    const resolve = api?._damageContext?.()?.resolveTheme;
+    if (typeof api?._preview !== 'function' || typeof resolve !== 'function') {
+      globalThis.ui?.notifications?.warn(loc('DICER.Appearance.PreviewUnavailable'));
+      return;
+    }
+    const type = target.dataset.type;
+    const value = this.#extras.damage?.[type] ?? '';
+    const theme = this.theme();
+    const own = { appearance: theme.perType?.d6 ?? theme.appearance, soundMaterial: theme.soundMaterial };
+    let worldMap = { [type]: value };
+    if (!value) {
+      try {
+        worldMap = globalThis.game.settings.get('dicer', 'damageTypeMap') ?? {};
+      } catch {
+        worldMap = {};
+      }
+    }
+    const look = value === 'none' ? own : (resolve(type, { worldMap }) ?? own);
+    const { fx, options } = previewSpec(type, look, null);
     await api._preview(fx, options);
   }
 

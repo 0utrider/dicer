@@ -7,7 +7,8 @@
  * listener, imports Dice So Nice's own api.js and binds dice3d.uniforms.time in its shaders.
  */
 import { afterEach, expect, test, vi } from 'vitest';
-import { loadDsnAddons, resetLoaded, scanInstalled, shimDsn, withDsnActive } from '../../src/compat/installed-dice.js';
+import * as THREE from 'three';
+import { baseColourFirst, dsnAppearance, faceUvs, loadDsnAddons, resetLoaded, scanInstalled, shimDsn, withDsnActive } from '../../src/compat/installed-dice.js';
 import { createRegistry } from '../../src/compat/registry.js';
 
 afterEach(() => resetLoaded());
@@ -134,7 +135,12 @@ class DsnSystem {
     if (this.dice.has(type)) for (const fn of this.callbacks) fn(type, material, appearance);
     return material;
   }
-  beforeShaderCompile() {}
+  registerBeforeShaderCompileCallback(fn) {
+    (this.shaderCallbacks ??= []).push(fn);
+  }
+  beforeShaderCompile(shader, material, type, appearance) {
+    for (const fn of this.shaderCallbacks ?? []) fn(shader, material, type, appearance);
+  }
 }
 
 function dicerStandIn() {
@@ -243,4 +249,87 @@ Hooks.once('diceSoNiceReady', dice3d => { void initialize(dice3d); });`;
   expect(found).toEqual([
     { id: 'irl-dice-packs', title: 'IRL Dice packs', scripts: ['modules/irl-dice-packs/scripts/module.js'], status: 'bundle', addon: true },
   ]);
+});
+
+test('dsnAppearance: a Dicer look reads as a Dice So Nice appearance (colours, material, settings); a DSN one is kept', () => {
+  const look = { body: { type: 'marble', color: '#3b0d19', color2: '#140405' }, numbers: { fill: 'paint', color: '#e8dfca', font: 'serif' }, edges: { radius: 0.5, strip: { style: 'body', color: '#aaaaaa', strength: 1 } } };
+  expect(dsnAppearance(look)).toMatchObject({ body: look.body, background: '#3b0d19', foreground: '#e8dfca', outline: '#3b0d19', edge: '#140405', material: 'stone', systemSettings: {} });
+  expect(dsnAppearance({ ...look, edges: { strip: { style: 'metal', color: '#a9a6a0' } } }).edge).toBe('#a9a6a0');
+  const dsn = { background: '#000000', foreground: '#ffffff' };
+  expect(dsnAppearance(dsn)).toBe(dsn);
+  expect(dsnAppearance(undefined)).toMatchObject({ background: '#000000', foreground: '#ffffff', systemSettings: {} });
+});
+
+test('baseColourFirst: Dicer\'s colour pass moves before map_fragment, where add-ons recolour the die; nothing else changes', () => {
+  const fs = 'void main() {\n\tvec4 diffuseColor = vec4( diffuse, opacity );\n\t#include <map_fragment>\n\t#include <color_fragment>\nDICER_BODY;\nDICER_NUMBERS;\n\t#include <alphamap_fragment>\n}';
+  const out = baseColourFirst(fs);
+  expect(out.indexOf('DICER_NUMBERS')).toBeLessThan(out.indexOf('#include <map_fragment>'));
+  expect(out.indexOf('DICER_BODY')).toBeGreaterThan(out.indexOf('vec4 diffuseColor'));
+  expect(out).toContain('#include <color_fragment>\n\t#include <alphamap_fragment>');
+  expect(out.match(/DICER_BODY/g)).toHaveLength(1);
+  const plain = 'void main() {\n\t#include <map_fragment>\n\t#include <color_fragment>\n\t#include <alphamap_fragment>\n}';
+  expect(baseColourFirst(plain)).toBe(plain);
+});
+
+test('shimDsn: shader callbacks get the die type and the Dice So Nice appearance, as Dice So Nice calls them', () => {
+  const { registry, dice3d } = dicerStandIn();
+  shimDsn(dice3d);
+  const system = new DsnSystem('irl-unbroken-vow', 'Vow');
+  system.dice.set('d20', {});
+  const seen = {};
+  // irl-dice-packs' GM themes: (shader, material, type, appearance) => applyGmShader(... appearance.systemSettings ...)
+  system.registerProcessMaterialCallback((type, _m, appearance) => (seen.process = { type, bg: appearance.background }));
+  system.registerBeforeShaderCompileCallback((shader, _m, type, appearance) => {
+    seen.shader = { type, bg: appearance.background, settings: appearance.systemSettings };
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\nGM;');
+  });
+  dice3d.addSystem(system);
+  const instance = registry.diceFactory.systems.get('irl-unbroken-vow').instance;
+  const material = { userData: {}, customProgramCacheKey: () => 'dicer-k' };
+  const look = { body: { type: 'opaque', color: '#3b0d19' }, numbers: { color: '#e8dfca' } };
+  instance.processMaterial('d20', material, look);
+  // what DiceBox's chained hook does at compile time: only the shader and the material
+  const shader = { fragmentShader: '\t#include <map_fragment>\n\t#include <color_fragment>\nDICER;\n\t#include <alphamap_fragment>' };
+  instance.beforeShaderCompile(shader, material);
+  expect(seen.process).toEqual({ type: 'd20', bg: '#3b0d19' });
+  expect(seen.shader).toEqual({ type: 'd20', bg: '#3b0d19', settings: {} });
+  expect(shader.fragmentShader.indexOf('DICER')).toBeLessThan(shader.fragmentShader.indexOf('GM;')); // their recolour wins
+});
+
+test('faceUvs: a uv-less die gets one tile per flat face (5 wide, 1/8 cells), as add-ons read Dice So Nice dice', () => {
+  const g = new THREE.IcosahedronGeometry(1); // non-indexed, 20 flat faces
+  expect(g.attributes.uv).toBeDefined(); // three's own has uvs: drop them, as Dicer's dice have none
+  g.deleteAttribute('uv');
+  faceUvs(g);
+  const uv = g.attributes.uv;
+  const tiles = new Set();
+  for (let i = 0; i < uv.count; i += 3) {
+    const t = Math.floor(uv.getX(i) * 8) + Math.floor(uv.getY(i) * 8) * 5;
+    expect(Math.floor(uv.getX(i + 1) * 8) + Math.floor(uv.getY(i + 1) * 8) * 5).toBe(t); // one tile per triangle
+    tiles.add(t);
+  }
+  expect([...tiles].sort((a, b) => a - b)).toEqual(Array.from({ length: 20 }, (_, i) => i)); // tile 15 exists
+  const kept = g.attributes.uv;
+  faceUvs(g); // already has one: left alone
+  expect(g.attributes.uv).toBe(kept);
+  expect(() => faceUvs(null)).not.toThrow();
+});
+
+test('shimDsn: an add-on per-frame hook on its material sees texture coordinates on the die geometry', () => {
+  const { registry, dice3d } = dicerStandIn();
+  shimDsn(dice3d);
+  const system = new DsnSystem('irl-unbroken-vow-2', 'Vow');
+  system.dice.set('d20', {});
+  let read = null;
+  // irl-dice-packs' finishGmMaterial: onBeforeRender -> attachGmIdle -> geometry.attributes.uv.getX(...)
+  system.registerProcessMaterialCallback((_t, m) => {
+    m.onBeforeRender = (_r, _s, _c, geometry) => (read = geometry.attributes.uv.getX(0));
+  });
+  dice3d.addSystem(system);
+  const material = { userData: {}, customProgramCacheKey: () => 'k' };
+  registry.diceFactory.systems.get('irl-unbroken-vow-2').instance.processMaterial('d20', material, {});
+  const g = new THREE.IcosahedronGeometry(1);
+  g.deleteAttribute('uv');
+  material.onBeforeRender({}, {}, {}, g, {}, null);
+  expect(read).toBeGreaterThan(0);
 });

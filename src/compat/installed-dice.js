@@ -7,6 +7,7 @@
  * while it is off). The GM picks them (ui/installed-dice.js); the world setting `installedDice`
  * holds each pick's id, title and script paths, so every client loads the same scripts.
  */
+import { BufferAttribute } from 'three';
 
 const DSN_HOOKS = ['diceSoNiceInit', 'diceSoNiceReady'];
 const MENTIONS = /diceSoNice(?:Init|Ready)/;
@@ -196,6 +197,78 @@ export function withDsnActive(modules, fn) {
 
 const shimmed = new WeakSet();
 
+/** Dicer body types as Dice So Nice material names (what add-on shaders branch on). */
+const DSN_MATERIAL = { opaque: 'plastic', resin: 'glass', metal: 'metal', marble: 'stone', pearl: 'pristine', iridescent: 'iridescent', gem: 'glass', wood: 'wood', stone: 'stone', bone: 'plastic', jelly: 'glass' };
+
+/**
+ * A Dicer look as Dice So Nice's appearance (colorset colours, material, system settings) over
+ * Dicer's own fields: add-on material and shader callbacks read `background`, `foreground`,
+ * `outline`, `edge`, `material` and `systemSettings` from it. A Dice So Nice-shaped one is kept.
+ */
+export function dsnAppearance(a) {
+  if (a && typeof a === 'object' && typeof a.background === 'string') return a;
+  const look = a && typeof a === 'object' ? a : {};
+  const body = look.body ?? {};
+  const numbers = look.numbers ?? {};
+  return {
+    ...look,
+    background: body.color ?? '#000000',
+    foreground: numbers.color ?? '#ffffff',
+    // no outline drawn: the body colour (a colour every add-on can parse; 'none' is not one)
+    outline: numbers.fill === 'outline' ? (numbers.color ?? body.color ?? '#000000') : (body.color ?? '#000000'),
+    edge: look.edges?.strip?.style && look.edges.strip.style !== 'body' ? look.edges.strip.color : (body.color2 ?? body.color ?? '#000000'),
+    material: DSN_MATERIAL[body.type] ?? 'plastic',
+    texture: 'none',
+    font: numbers.font ?? 'serif',
+    systemSettings: look.systemSettings ?? {},
+  };
+}
+
+/**
+ * Gives a die geometry without texture coordinates a `uv` attribute as Dice So Nice's dice have
+ * one: each flat face its own tile of a 5-wide grid of 1/8 cells, in the order faces first appear.
+ * Add-ons find a face by its tile (irl-dice-packs' Unbroken Vow puts its butterfly on tile 15 of a
+ * d20 and threw on Dicer's uv-less dice, leaving the die undrawn). Dicer's shaders never read it.
+ */
+export function faceUvs(geometry) {
+  const pos = geometry?.attributes?.position;
+  if (!pos || geometry.attributes.uv || typeof geometry.setAttribute !== 'function') return;
+  const index = geometry.index;
+  const corners = index ? index.count : pos.count;
+  const uv = new Float32Array(pos.count * 2);
+  const faces = []; // face normals, in the order faces first appear
+  const p = (id) => [pos.getX(id), pos.getY(id), pos.getZ(id)];
+  for (let i = 0; i + 2 < corners; i += 3) {
+    const ids = [i, i + 1, i + 2].map((c) => (index ? index.getX(c) : c));
+    const [a, b, c] = ids.map(p);
+    const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const len = Math.hypot(...n) || 1;
+    // a face: the triangles in its plane (normals within ~8 degrees)
+    let face = faces.findIndex((f) => (f[0] * n[0] + f[1] * n[1] + f[2] * n[2]) / len > 0.99);
+    if (face < 0) face = faces.push(n.map((x) => x / len)) - 1;
+    for (const id of ids) {
+      uv[id * 2] = ((face % 5) + 0.5) / 8;
+      uv[id * 2 + 1] = (Math.floor(face / 5) + 0.5) / 8;
+    }
+  }
+  geometry.setAttribute('uv', new BufferAttribute(uv, 2));
+}
+
+/**
+ * Dicer's base colour (its body, inside and numbers: after `#include <color_fragment>`) moved to
+ * before `#include <map_fragment>`. Dice So Nice add-ons recolour the die at map_fragment, where
+ * Dice So Nice's colour is final; after Dicer's colour pass their surface would be painted over.
+ * Dicer's dice carry no map and no vertex colours, so the two chunks change nothing for its own.
+ */
+export function baseColourFirst(fs) {
+  const m = /#include <color_fragment>\n([\s\S]*?)(\n[ \t]*#include <alphamap_fragment>)/.exec(fs);
+  if (!m || !m[1].trim() || !fs.includes('#include <map_fragment>')) return fs;
+  const without = fs.slice(0, m.index) + '#include <color_fragment>' + m[2] + fs.slice(m.index + m[0].length);
+  return without.replace('#include <map_fragment>', `${m[1]}\n#include <map_fragment>`);
+}
+
 /**
  * What Dice So Nice add-ons read from game.dice3d beyond Dicer's own surface, installed once the
  * first add-on has loaded (so worlds without add-ons keep Dicer's stand-in as it is):
@@ -223,13 +296,32 @@ export function shimDsn(dice3d) {
     dice3d.addSystem = function (system, ...rest) {
       const pm = system?.processMaterial;
       if (typeof pm === 'function' && !Object.hasOwn(system, 'processMaterial')) {
-        system.processMaterial = function (type, mat, ...more) {
+        system.processMaterial = function (type, mat, appearance, ...more) {
           const key = mat?.customProgramCacheKey;
-          const out = pm.call(this, type, mat, ...more);
+          const dsn = dsnAppearance(appearance);
+          // what Dice So Nice hands the shader callbacks too (Dicer's own call has only the shader and material)
+          if (mat?.userData) mat.userData.dsnCall = { type, appearance: dsn };
+          const out = pm.call(this, type, mat, dsn, ...more);
+          // a per-frame hook of theirs may read the die's texture coordinates (DSN dice have them)
+          const obr = mat?.onBeforeRender;
+          if (typeof obr === 'function' && Object.hasOwn(mat, 'onBeforeRender')) {
+            mat.onBeforeRender = function (renderer, scene, camera, geometry, ...rest) {
+              faceUvs(geometry);
+              return obr.call(this, renderer, scene, camera, geometry, ...rest);
+            };
+          }
           const theirs = mat?.customProgramCacheKey;
           if (typeof key === 'function' && typeof theirs === 'function' && theirs !== key)
             mat.customProgramCacheKey = () => `${key.call(mat)}|${theirs.call(mat)}`;
           return out;
+        };
+      }
+      const bsc = system?.beforeShaderCompile;
+      if (typeof bsc === 'function' && !Object.hasOwn(system, 'beforeShaderCompile')) {
+        system.beforeShaderCompile = function (shader, material, type, appearance, ...more) {
+          const call = material?.userData?.dsnCall;
+          if (typeof shader?.fragmentShader === 'string') shader.fragmentShader = baseColourFirst(shader.fragmentShader);
+          return bsc.call(this, shader, material, type ?? call?.type, appearance ?? call?.appearance ?? dsnAppearance(null), ...more);
         };
       }
       return addSystem.call(this, system, ...rest);

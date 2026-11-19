@@ -114,8 +114,8 @@ describe('the simple edit form', () => {
     expect(f.perType.d20).toBe(BUILTIN_THEMES[3].id);
     expect(f.perType.d6).toBe('');
     expect(f.soundMaterial).toBe('metal');
-    expect(f.nat20).toEqual({ effect: 'sparkles', scene: '', sound: 'chime', soundSrc: '', jb2a: '' });
-    expect(f.nat1).toEqual({ effect: '', scene: '', sound: '', soundSrc: '', jb2a: '' });
+    expect(f.nat20).toEqual({ effect: 'sparkles', scene: '', sceneLine1: '', sceneLine2: '', sound: 'chime', soundSrc: '', jb2a: '' });
+    expect(f.nat1).toEqual({ effect: '', scene: '', sceneLine1: '', sceneLine2: '', sound: '', soundSrc: '', jb2a: '' });
   });
   it('per-type looks of dice the form has no field for pass through unchanged', () => {
     const d7 = { body: { type: 'metal' }, extra: 1 };

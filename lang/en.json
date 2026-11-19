@@ -498,7 +498,11 @@
       "NoEffect": "No effect",
       "NoScene": "No scene",
       "Scene": "Scene",
-      "SceneHint": "A crit scene plays with the die itself (it may catch it mid-roll and bring it back), alongside the effect. One scene per die.",
+      "SceneHint": "A crit scene plays with the die itself as soon as it stops, alongside the effect, and ends in its title card. One scene per die.",
+      "SceneText": "Card text",
+      "SceneTextHint": "Your own words for the scene's title card, one line in each box (up to 24 characters). Leave a box empty to keep the scene's own line.",
+      "SceneFirst": "Card text, first line",
+      "SceneSecond": "Card text, second line",
       "SceneHigh": "natural 20",
       "SceneLow": "natural 1",
       "Color": "Colour",
@@ -807,7 +811,15 @@
         "edges": "Edges",
         "glow": "Number glow",
         "perType": "Per die type",
-        "extras": "Sound and celebrations"
+        "extras": "Sound and celebrations",
+        "damage": "Damage dice"
+      },
+      "Damage": {
+        "Hint": "How this theme's damage dice look, per damage type: a rogue theme can give its sneak attack (precision) dice their own look. A player's own damage overrides still win on their screen; the world's choice fills the rest.",
+        "World": "World choice",
+        "Keep": "This theme's own look",
+        "Preview": "Throw a die of this damage type as this theme makes it look",
+        "Count": "{n} set"
       },
       "Pet": {
         "Title": "Pet",
@@ -1046,6 +1058,7 @@
       },
       "Extras": {
         "Scene": "scene",
+        "SceneText": "card text",
         "SoundMaterial": "Impact sound",
         "Effect": "effect",
         "Sound": "sound",

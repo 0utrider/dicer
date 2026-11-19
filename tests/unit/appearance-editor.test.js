@@ -912,7 +912,7 @@ describe('the appearance editor', () => {
     const root = q(app, '.window-content');
     expect(root.children).toHaveLength(1);
     const sections = [...app.element.querySelectorAll('details[data-section]')].map((d) => d.dataset.section);
-    expect(sections).toEqual(['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'extras']);
+    expect(sections).toEqual(['body', 'inside', 'numbers', 'edges', 'glow', 'perType', 'damage', 'extras']);
     expect(q(app, '[data-section="inside"] .dicer-ae-note')).toBeTruthy();
     expect(q(app, '[data-field="interior.type"]')).toBeNull();
     expect(q(app, '[data-field="body.finish"]')).toBeTruthy(); // metal shows the finish

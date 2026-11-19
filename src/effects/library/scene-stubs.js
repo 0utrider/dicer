@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { borrowDie } from './borrow.js';
 import { glint } from './die-effects.js';
 import { unswallow } from './scene-flight.js';
-import { SCENE_CATALOG } from './scene-catalog.js';
+import { SCENE_CATALOG, sceneText } from './scene-catalog.js';
 
 /**
  * Crit scenes as library effects: each id here is a small stand-in that borrows its landed die
@@ -72,6 +72,8 @@ function sceneCtx(ctx, borrow) {
     },
     shake: ctx.shake,
     borrow,
+    // the rule's own title card text (its effect's sceneText), else the scene's own
+    cardText: sceneText(ctx.options?.sceneText),
     // a glint on the die (the die effects' own, no import across chunks)
     glint: () => {
       try {
@@ -228,7 +230,8 @@ export function expandScenes(list) {
     const id = f?.effect?.scene;
     if (!scene && !isSceneId(f?.effect?.id) && isSceneId(id)) {
       scene = true;
-      out.push({ ruleId: f.ruleId, effect: { id }, sound: null, macro: null, value: f.value, type: f.type });
+      const text = f.effect.sceneText;
+      out.push({ ruleId: f.ruleId, effect: text ? { id, sceneText: text } : { id }, sound: null, macro: null, value: f.value, type: f.type });
     }
   }
   return out;

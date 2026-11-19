@@ -4,6 +4,7 @@
  * HTML form submits); `rulesFromForm` runs every entry through `normalizeRule`.
  */
 import { normalizeRule } from '../effects/rules.js';
+import { sceneText } from '../effects/library/scene-catalog.js';
 
 const silent = () => {};
 
@@ -32,6 +33,8 @@ export function blankEntry(id, source = 'user') {
     outcome: 'any',
     effectId: '',
     sceneId: '',
+    sceneLine1: '',
+    sceneLine2: '',
     effectColor: '',
     effectIntensity: '',
     effectDuration: '',
@@ -67,11 +70,15 @@ export function entryFromRule(rule) {
   for (const k of ['formula', 'role', 'damageType', 'actorId', 'userId']) e[k] = c[k] ?? '';
   e.outcome = rule.outcome ?? 'any';
   if (rule.effect) {
-    const { id, color, intensity, duration, scene, ...extra } = rule.effect;
+    const { id, color, intensity, duration, scene, sceneText: text, ...extra } = rule.effect;
     // a crit scene has its own picker: the rule's effect may be the scene, or carry one beside it
     const isScene = typeof id === 'string' && id.startsWith('scene-');
     e.sceneId = isScene ? id : typeof scene === 'string' && scene.startsWith('scene-') ? scene : '';
     e.effectId = isScene ? '' : id;
+    // the scene's title card in the rule's own words (blank: the scene's own)
+    const lines = sceneText(text);
+    e.sceneLine1 = lines?.[0] ?? '';
+    e.sceneLine2 = lines?.[1] ?? '';
     e.effectColor = color ?? '';
     e.effectIntensity = intensity ?? '';
     e.effectDuration = duration ?? '';
@@ -194,6 +201,8 @@ export function rawRuleFromEntry(e) {
   if (sceneId.startsWith('scene-')) {
     if (effect) effect.scene = sceneId;
     else effect = { id: sceneId };
+    const text = sceneText([str(e.sceneLine1), str(e.sceneLine2)]);
+    if (text) effect.sceneText = text;
   }
 
   let sound = null;

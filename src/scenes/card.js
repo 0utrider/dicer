@@ -21,6 +21,15 @@ const FONTS = {
   tech: "'Bruno Ace', 'Signika', system-ui, sans-serif",
 };
 
+/**
+ * A card spec with its lines' text replaced by `text` (a rule's own sceneText, cleaned by
+ * scene-catalog.js sceneText), line by line: a blank line keeps the scene's own, the style stays.
+ */
+export function withText(spec, text) {
+  if (!Array.isArray(text) || !Array.isArray(spec?.lines)) return spec;
+  return { ...spec, lines: spec.lines.map((l, i) => (typeof text[i] === 'string' && text[i].trim() ? { ...l, text: text[i].trim() } : l)) };
+}
+
 /** A seeded random 0..1 stream (mulberry32). */
 export function seeded(seed = 1) {
   let a = seed >>> 0 || 1;

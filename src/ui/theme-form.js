@@ -7,7 +7,7 @@
 import { LOOKS } from '../look/looks.js';
 import { appearanceKey } from '../look/appearance.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
-import { SCENE_CATALOG } from '../effects/library/scene-catalog.js';
+import { SCENE_CATALOG, sceneText } from '../effects/library/scene-catalog.js';
 import { themeRef } from '../compat/user-looks.js';
 import {
   DIE_TYPES,
@@ -257,6 +257,8 @@ export function formFromTheme(theme) {
     base: lookIdOf(theme.appearance) ?? KEEP,
     perType,
     soundMaterial: theme.soundMaterial ?? '',
+    // its own damage dice looks (damage type -> theme id, colorset or 'none'); '' / absent: the world's
+    damage: { ...(theme.damage ?? {}) },
   };
   for (const [key, id] of NATS) {
     const rule = (theme.rules ?? []).find((r) => r?.id === id);
@@ -265,6 +267,9 @@ export function formFromTheme(theme) {
       // a crit scene has its own picker: the effect may be the scene, or carry one beside it
       effect: rule?.effect && !isScene(rule.effect.id) ? (KNOWN_EFFECTS.includes(rule.effect.id) ? rule.effect.id : KEEP) : '',
       scene: isScene(rule?.effect?.id) ? rule.effect.id : isScene(rule?.effect?.scene) ? rule.effect.scene : '',
+      // the scene's title card in the theme's own words (blank: the scene's own)
+      sceneLine1: sceneText(rule?.effect?.sceneText)?.[0] ?? '',
+      sceneLine2: sceneText(rule?.effect?.sceneText)?.[1] ?? '',
       sound: src ? SOUND_FILE : rule?.sound ? (USER_SOUNDS.includes(rule.sound.builtin) ? rule.sound.builtin : KEEP) : '',
       soundSrc: src,
       jb2a: typeof rule?.effect?.jb2a === 'string' ? rule.effect.jb2a : '',
@@ -308,11 +313,16 @@ export function themeFromForm(form, base) {
         ? (old?.effect ?? null)
         : null;
     // the scene: beside the effect, or the effect itself when there is none (scene-stubs.js)
-    if (effect && 'scene' in effect) {
+    if (effect && ('scene' in effect || 'sceneText' in effect)) {
       effect = { ...effect };
       delete effect.scene;
+      delete effect.sceneText;
     }
-    if (isScene(want.scene)) effect = effect ? { ...effect, scene: want.scene } : { id: want.scene };
+    if (isScene(want.scene)) {
+      effect = effect ? { ...effect, scene: want.scene } : { id: want.scene };
+      const text = sceneText([want.sceneLine1, want.sceneLine2]);
+      if (text) effect.sceneText = text;
+    }
     // A chosen JB2A animation plays in place of the effect; with no effect, light burst is its stand-in.
     if (typeof want.jb2a === 'string') {
       const file = want.jb2a.trim();
@@ -340,7 +350,11 @@ export function themeFromForm(form, base) {
       sound,
     });
   }
-  return { id: src.id, name, appearance, perType, soundMaterial, rules };
+  // its own damage dice looks: the form's when it has them, else the theme's as they were
+  const damage = {};
+  const wanted = isObj(f.damage) ? f.damage : src.damage;
+  if (isObj(wanted)) for (const [type, v] of Object.entries(wanted)) if (typeof v === 'string' && v) damage[type] = v;
+  return { id: src.id, name, appearance, perType, soundMaterial, rules, ...(Object.keys(damage).length && { damage }) };
 }
 
 /** The crit scenes a theme's natural 20 (critical-success) or natural 1 (critical-failure) may pick. */

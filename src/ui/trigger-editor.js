@@ -7,7 +7,7 @@ import { EFFECTS } from '../effects/library/effects.js';
 import { DEFAULT_RULES, normalizeRule, MOMENT_KINDS, MOMENT_WHERES } from '../effects/rules.js';
 import { animaterMoments } from '../effects/fx-resolver.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
-import { SCENE_CATALOG } from '../effects/library/scene-catalog.js';
+import { SCENE_CATALOG, SCENE_TEXT_MAX } from '../effects/library/scene-catalog.js';
 
 // Literal keys (the lang test scans them): Animater's moment kinds (rules.js MOMENT_KINDS).
 const MOMENT_LABELS = {
@@ -317,6 +317,9 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         effectChoices: options(choices.effects, e.effectId),
         sceneChoices: options(choices.scenes ?? { '': '' }, e.sceneId),
         hasScene: Boolean(e.sceneId),
+        // its card's own lines, shown as the placeholders of the rule's own words
+        sceneCard: SCENE_CATALOG.find((s) => s.id === e.sceneId)?.card ?? ['', ''],
+        sceneTextMax: SCENE_TEXT_MAX,
         soundKindChoices: {
           none: loc('DICER.Triggers.Sound.none'),
           builtin: loc('DICER.Triggers.Sound.builtin'),
@@ -566,7 +569,8 @@ export class TriggerEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     const id = sceneIdOf(found?.rule.effect);
     if (!id) return;
     const die = { type: 'd20', value: SCENE_CATALOG.find((s) => s.id === id)?.outcome === 'critical-failure' ? 1 : 20 };
-    await found.api._preview({ ...previewFx(found.rule, die, true), effect: { id } }, die);
+    const text = found.rule.effect?.sceneText; // the rule's own card text plays in the preview too
+    await found.api._preview({ ...previewFx(found.rule, die, true), effect: text ? { id, sceneText: text } : { id } }, die);
   }
 
   static async #onReset() {

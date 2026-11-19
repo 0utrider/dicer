@@ -166,6 +166,15 @@
                 {{#if hasScene}}<button type="button" class="dicer-icon" data-action="previewScene" data-index="{{index}}" data-tooltip="DICER.Triggers.PreviewEffect" aria-label="{{localize "DICER.Triggers.PreviewEffect"}}"><i class="fa-solid fa-play"></i></button>{{/if}}
               </span>
             </label>
+            {{#if hasScene}}
+              <div class="dicer-field dicer-scene-text">
+                <span>{{localize "DICER.Triggers.SceneText"}}</span>
+                <span class="dicer-scene-lines">
+                  <input type="text" name="rules.{{index}}.sceneLine1" value="{{sceneLine1}}" placeholder="{{lookup sceneCard 0}}" maxlength="{{sceneTextMax}}" aria-label="{{localize "DICER.Triggers.SceneFirst"}}" data-tooltip="DICER.Triggers.SceneTextHint" {{#if readonly}}disabled{{/if}}>
+                  <input type="text" name="rules.{{index}}.sceneLine2" value="{{sceneLine2}}" placeholder="{{lookup sceneCard 1}}" maxlength="{{sceneTextMax}}" aria-label="{{localize "DICER.Triggers.SceneSecond"}}" data-tooltip="DICER.Triggers.SceneTextHint" {{#if readonly}}disabled{{/if}}>
+                </span>
+              </div>
+            {{/if}}
             {{#if hasEffect}}
               <div class="dicer-field">
                 <span>{{localize "DICER.Triggers.Color"}}</span>

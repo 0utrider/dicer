@@ -55,6 +55,9 @@ export function normalizeTheme(raw, source = 'user', warn = console.warn) {
     }
     rules.push(rule);
   }
+  // its own damage dice looks: damage type -> a theme id, colorset name or 'none' (damage-themes.js)
+  const damage = {};
+  if (isObj(raw.damage)) for (const k in raw.damage) if (isStr(raw.damage[k])) damage[k] = raw.damage[k];
   return deepFreeze({
     id: raw.id,
     name: raw.name,
@@ -63,6 +66,7 @@ export function normalizeTheme(raw, source = 'user', warn = console.warn) {
     soundMaterial,
     rules,
     source,
+    ...(Object.keys(damage).length && { damage }),
   });
 }
 
