@@ -42,7 +42,7 @@ A commit fails when lint or any unit test fails. The unit tests include the buil
 | `npm run test:watch` | Vitest in watch mode. |
 | `npm run lint` | ESLint. `npm run lint:fix` fixes what it can. |
 | `npm run format:check` | Prettier check. `npm run format` rewrites files. |
-| `npm run test:fairness` | Throws 10,000 dice per shape through the real physics and runs a chi-square test on the face counts (see below). |
+| `npm run test:fairness` | Throws 100,000 dice per shape through the real physics and runs a chi-square test on the face counts (see below). |
 
 CI (`.github/workflows/main.yml`) runs on every push and pull request to `main`: it validates `module.json`, lints, runs the unit tests and builds.
 
@@ -191,7 +191,7 @@ Some behaviour cannot be scripted and is checked by hand in a real world. For ex
 npm run test:fairness
 ```
 
-Throws 10,000 free one-die throws per shape through the real Rapier simulation, reads each settled face and runs a chi-square test on the face counts. It exits non-zero when any shape has p <= 0.01. A fast regression version runs in the unit tests (`tests/unit/fairness.test.js`).
+Throws 100,000 free one-die throws per shape through the real Rapier simulation, reads each settled face and runs a chi-square test on the face counts. It exits non-zero when any shape has p <= 0.01. A fast regression version runs in the unit tests (`tests/unit/fairness.test.js`).
 
 ## Performance and benchmark
 

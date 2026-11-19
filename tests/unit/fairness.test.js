@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { chiSquare, FAIR_TYPES, runFairness } from '../../scripts/fairness.mjs';
 import { HAND_UNFAIR } from '../../src/hand/unfair.js';
 
-// The full 10,000-throw run is `npm run test:fairness` (P6-D6: the fairness script stays
+// The full 100,000-throw run is `npm run test:fairness` (P6-D6: the fairness script stays
 // separate from the suite). These are its fast, fixed-seed regression checks.
 
 test('chiSquare matches known values (df 5, stat 11.07 -> p ~0.05)', () => {
@@ -48,6 +48,19 @@ test('smoke: d16 1,600 throws p > 0.001', async () => {
   expect(r.d16.counts).toHaveLength(16);
   expect(r.d16.p).toBeGreaterThan(0.001);
 }, 60000);
+
+test('smoke: long dice (bullet d6, crystal d8 and d10) 1,000 throws each, p > 0.001', async () => {
+  const r = await runFairness({ types: ['d6bullet', 'd8crystal', 'd10crystal'], throws: 1000, seed0: 4 });
+  expect(r.d6bullet.counts).toHaveLength(6);
+  expect(r.d8crystal.counts).toHaveLength(8);
+  expect(r.d10crystal.counts).toHaveLength(10);
+  for (const t of ['d6bullet', 'd8crystal', 'd10crystal']) expect(r[t].p).toBeGreaterThan(0.001);
+}, 120000);
+
+test('every physics hull is in the fairness run', async () => {
+  const { HULL_TYPES } = await import('../../src/physics/hulls.js');
+  for (const t of HULL_TYPES) expect(FAIR_TYPES).toContain(t);
+});
 
 test('the same seeds give the same counts', async () => {
   const a = await runFairness({ types: ['d2'], throws: 40, seed0: 9 });

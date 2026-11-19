@@ -15,7 +15,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const FAIR_TYPES = ['d2', 'd4', 'd4crystal', 'd6', 'd8', 'd10', 'd12', 'd14', 'd16', 'd20'];
+export const FAIR_TYPES = [
+  'd2', 'd4', 'd4crystal', 'd6', 'd6bullet', 'd8', 'd8crystal', 'd10', 'd10crystal', 'd12', 'd14', 'd16', 'd20',
+];
 /** A shape fails at p <= FAIR_P (G10). */
 export const FAIR_P = 0.01;
 export const FAIR_THROWS = 100000;
