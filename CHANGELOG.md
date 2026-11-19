@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- **No more "old copy of Dicer" notice on every load.** Foundry can keep reporting an older Dicer version than the files it serves (it reads the module's manifest when the server starts), and Dicer took that for a stale browser cache. Dicer now only reacts when Foundry serves a *newer* version than the code running, the real stale-cache case.
+
 ## 1.1.1
 
 - The "old copy of Dicer" notice no longer sticks: after one reload that didn't help, Dicer could keep showing it for the rest of the browser tab even once the files were fine. It now tries again a minute later, and the console says why it fired (the versions, or the file that failed to load).

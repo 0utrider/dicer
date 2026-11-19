@@ -647,7 +647,7 @@ Hooks.once('init', () => {
   // an old cached dicer.js after an update: fetch the new one and reload, once
   const warnStale = () => ui.notifications.warn(game.i18n.localize('DICER.Notice.Stale'), { permanent: true });
   watchStaleCopy({
-    served: game.modules.get('dicer')?.version,
+    served: game.modules.get('dicer').version,
     route: (p) => foundry.utils.getRoute(p),
     storage: () => globalThis.sessionStorage,
     fetch: (...a) => globalThis.fetch(...a),

@@ -23,19 +23,36 @@ function deps(over = {}) {
 beforeEach(() => {
   resetStaleCopy();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
+  // Foundry's isNewerVersion, for plain x.y.z
+  globalThis.foundry = {
+    utils: {
+      isNewerVersion: (a, b) => {
+        const [x, y] = [a, b].map((v) => v.split('.').map(Number));
+        for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
+        return false;
+      },
+    },
+  };
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  delete globalThis.foundry;
+});
 
 test('module.json and package.json carry the same version (the code compares them)', () => {
   expect(JSON.parse(readFileSync('module.json', 'utf8')).version).toBe(pkg.version);
 });
 
-test('the version Foundry serves matches the code: nothing happens', async () => {
-  const { d } = deps();
-  expect(watchStaleCopy(d)).toBe(false);
-  await flush();
-  expect(d.fetch).not.toHaveBeenCalled();
-  expect(d.reload).not.toHaveBeenCalled();
+test('the version Foundry serves matches the code, or is older (files changed since the world launched): nothing happens', async () => {
+  for (const served of [pkg.version, '0.0.1']) {
+    resetStaleCopy();
+    const { d } = deps({ served });
+    expect(watchStaleCopy(d), String(served)).toBe(false);
+    await flush();
+    expect(d.fetch).not.toHaveBeenCalled();
+    expect(d.reload).not.toHaveBeenCalled();
+    expect(d.notify).not.toHaveBeenCalled();
+  }
 });
 
 test("an old cached copy: Dicer's files are fetched past the cache, then the page reloads once", async () => {
@@ -48,7 +65,7 @@ test("an old cached copy: Dicer's files are fetched past the cache, then the pag
   ]);
   expect(d.reload).toHaveBeenCalledTimes(1);
   expect(store.get('dicer.staleReload')).toMatch(/^99\.0\.0\|\d+$/);
-  expect(console.warn).toHaveBeenCalledWith(`dicer: old cached copy (running ${pkg.version}, served 99.0.0)`);
+  expect(console.warn).toHaveBeenCalledWith(`dicer: stale copy, ${pkg.version} < 99.0.0`);
   // still stale right after that reload: no loop, the player is asked to hard-reload
   resetStaleCopy();
   const again = deps({ served: '99.0.0', storage: () => ({ getItem: () => `99.0.0|${Date.now() - 5000}`, setItem() {} }) }).d;
@@ -102,6 +119,6 @@ test("a Dicer chunk that fails to load triggers the refresh; another module's or
 
 test('main starts the check first thing in init, with the version Foundry serves', () => {
   const src = readFileSync('src/main.js', 'utf8').replace(/\r\n/g, '\n');
-  expect(src).toMatch(/Hooks\.once\('init', \(\) => \{[\s\S]{0,200}?watchStaleCopy\(\{\s*served: game\.modules\.get\('dicer'\)\?\.version,/);
+  expect(src).toMatch(/Hooks\.once\('init', \(\) => \{[\s\S]{0,200}?watchStaleCopy\(\{\s*served: game\.modules\.get\('dicer'\)\.version,/);
   expect(JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Notice.Stale).toMatch(/Hard-reload/);
 });
