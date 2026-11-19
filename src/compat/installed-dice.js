@@ -571,9 +571,12 @@ export async function loadDsnAddons(
     esmodule = importModule,
     dice3d = globalThis.game?.dice3d,
     warn = (...a) => console.warn(...a),
+    fonts = globalThis.CONFIG?.fontDefinitions,
+    loadFont = (family, def) => globalThis.foundry?.applications?.settings?.menus?.FontConfig?.loadFont?.(family, def),
   } = {},
 ) {
   const caught = [];
+  const knownFonts = new Set(Object.keys(fonts ?? {}));
   const done = [];
   let current = null;
   const { on, once } = hooks;
@@ -624,6 +627,10 @@ export async function loadDsnAddons(
       warn(`dicer: the ${hook} hook of the Dice So Nice add-on "${id ?? '?'}" failed`, err);
     }
   }
+  // Fonts an add-on defined in its init hook (CONFIG.fontDefinitions, as Lordu's dice do) came after
+  // Foundry loaded the page's fonts: load them now, so their dice draw in them.
+  const added = Object.entries(fonts ?? {}).filter(([family]) => !knownFonts.has(family));
+  await Promise.all(added.map(([family, def]) => Promise.resolve().then(() => loadFont(family, def)).catch(() => {})));
   return done;
 }
 

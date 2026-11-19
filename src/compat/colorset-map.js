@@ -29,7 +29,7 @@ function isYellowish(hex) {
 const MATERIALS = {
   pristine: { type: 'opaque', roughness: 0.1 },
   wood: { type: 'opaque', roughness: 0.75 }, // Dicer has no wood body
-  metal: { type: 'metal', finish: 'polished' },
+  metal: { type: 'metal', finish: 'polished', roughness: 0.6 }, // Dice So Nice's metal is satin, not a mirror
   chrome: { type: 'metal', finish: 'polished', roughness: 0.05 },
   glass: { type: 'resin', interior: 'none' },
   stone: { type: 'marble' },

@@ -151,3 +151,23 @@ test('a dice-only pick loaded as an add-on is not run again by the sandboxed loa
   expect(await loadInstalledDice(picks, { api: {}, fetchText, isActive: () => false })).toEqual([]);
   expect(fetchText).not.toHaveBeenCalled();
 });
+
+test("fonts an add-on defines in its init hook (CONFIG.fontDefinitions, as Lordu's dice do) are loaded; the page's own are not again", async () => {
+  const { hooks } = fakeHooks();
+  const fonts = { Signika: { fonts: [] } };
+  const loadFont = vi.fn(async () => {});
+  const loaders = files({
+    '/modules/lordu/a.js': () =>
+      globalThis.Hooks.on('init', () => {
+        fonts.Metamorphous = { fonts: [{ urls: ['modules/lordu/fonts/m.woff2'] }] };
+      }),
+  });
+  globalThis.Hooks = hooks;
+  try {
+    await loadDsnAddons(['lordu'], { hooks, modules: mods({ id: 'lordu', scripts: new Set(['modules/lordu/a.js']) }), route, ...loaders, dice3d: {}, fonts, loadFont });
+  } finally {
+    delete globalThis.Hooks;
+  }
+  expect(loadFont).toHaveBeenCalledTimes(1);
+  expect(loadFont).toHaveBeenCalledWith('Metamorphous', fonts.Metamorphous);
+});

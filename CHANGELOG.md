@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.3
+
+- **Lordu's dice work.** A d100 rolled with the Dark Deeds set no longer stops the whole roll from showing (Dice So Nice add-ons put their d100 on the d10 shape; Dicer still throws it as tens and ones dice). Its fonts (Metamorphous, Metal Mania, Eater...) now load, so its dice draw in them: fonts an add-on defines in Foundry's init step are loaded once Dicer has run it.
+- **Dice So Nice metal looks like Dice So Nice metal.** Colour sets with the metal material were drawn as a near mirror that reflected the dark room and looked almost black; they are now satin, as in Dice So Nice. This also softens the built-in gold, silver and bronze colour sets.
+
 ## 1.3.2
 
 - **IRL dice sets bring their own natural 20 and natural 1.** Use a character's or GM theme's set from IRL Dice Packs (Essie, Torin, Aelar, The Unbroken Vow...) and its d20s play that set's own crit effects, with their sounds, in place of the world's celebrate / fumble and your theme's own. Nothing to set up in Special Effects. Each set in the theme browser has a **Play this set's own natural 20 / natural 1 effects** checkbox (on by default, per player) to go back to the usual ones. Thanks to Camrun for the report.

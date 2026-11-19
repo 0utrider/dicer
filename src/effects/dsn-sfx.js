@@ -106,8 +106,8 @@ export function createDsnSfx({ registry, getBox = () => ({}), warn = (...a) => c
     // As in Dice So Nice, the die stays while its effect plays: the roll's hide timer waits (as for
     // a crit scene, roll.scenes) and starts again once the last one is done.
     const diceBox = ctx.box;
-    const roll = diceBox?._rolls?.find?.((r) => r.dice?.includes(die));
-    if (roll) roll.scenes = (roll.scenes ?? 0) + 1;
+    const roll = diceBox?._rolls?.find((r) => r.dice.includes(die));
+    if (roll) roll.scenes = ~~roll.scenes + 1;
 
     const finish = () => {
       if (done) return;

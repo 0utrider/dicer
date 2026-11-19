@@ -152,6 +152,9 @@ export function createRegistry({
    * built-in type name is never re-aliased (it would reshape every standard die of that type).
    */
   function setAlias(member, type, shape) {
+    // Dice So Nice's d100 preset sits on the d10 shape (its tens die): Dicer throws a d100 as tens
+    // and ones d10s, so the d100 never becomes a single d10 (it would have no face for 97).
+    if (type === 'd100') return false;
     if (BUILTIN_TYPES.includes(type)) {
       bad(member, `"${type}" is a built-in die type and keeps its own shape`);
       return false;

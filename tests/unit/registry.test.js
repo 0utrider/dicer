@@ -417,4 +417,19 @@ describe('Dice So Nice atlases', () => {
     expect(reg.presetFor('s', 'd100').labels).toHaveLength(10);
     expect(warn).not.toHaveBeenCalled();
   });
+
+  test("a d100 preset on the d10 shape (Dice So Nice's way, as Lordu's dice add it) keeps the d100 two dice", async () => {
+    const { planThrow } = await import('../../src/throw/throw-planner.js');
+    const { reg, warn } = make();
+    const tens = ['10', '20', '30', '40', '50', '60', '70', '80', '90', '00'];
+    await reg.addDicePreset({ type: 'd100', system: 's', labels: tens }, 'd10');
+    expect(reg.baseShape('d100')).toBeNull();
+    expect(reg.presetFor('s', 'd100').labels).toEqual(tens);
+    expect(warn).not.toHaveBeenCalled();
+    const dice = planThrow({ dice: [{ faces: 100, results: [{ result: 97, active: true }] }] }, { shapeFor: (t) => reg.baseShape(`d${t.faces}`) }).dice;
+    expect(dice.map((d) => [d.type, d.value])).toEqual([
+      ['d10', 90],
+      ['d10', 7],
+    ]);
+  });
 });
