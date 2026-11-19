@@ -113,7 +113,7 @@ export function createDsnSfx({ registry, getBox = () => ({}), warn = (...a) => c
       if (done) return;
       done = true;
       globalThis.clearTimeout(timer);
-      if (roll && !--roll.scenes && !roll.removed && roll.phase === 'lingering') diceBox._linger(roll);
+      if (roll && !--roll.scenes && roll.phase === 'lingering') diceBox._linger(roll); // its timer skips a removed roll
       if (lent) unlend(outer);
       if (instance) {
         try {

@@ -529,3 +529,25 @@ test("an effect's copy of a Dicer die material keeps Dicer's defines and shader 
   keepDicerOnClone(other);
   expect(Object.hasOwn(other, 'clone')).toBe(false);
 });
+
+test("an add-on system's SPAWN listeners see the die's materials made clone-safe first (smoked glass keeps the numbers)", async () => {
+  const THREE = await import('three');
+  const { shimDsn } = await import('../../src/compat/installed-dice.js');
+  const dice3d = { addSystem: () => {} };
+  shimDsn(dice3d);
+  const seen = [];
+  // a DSN DiceSystem: fire is its class's method
+  const system = new (class {
+    id = 'glassy';
+    fire(type, e) {
+      seen.push([type, Object.hasOwn(e.dice.mesh.children[0].material, 'clone')]);
+    }
+  })();
+  dice3d.addSystem(system);
+  const mat = new THREE.MeshPhysicalMaterial();
+  mat.userData = { programKey: 'k' };
+  const outer = new THREE.Group();
+  outer.add(new THREE.Mesh(new THREE.BufferGeometry(), mat));
+  system.fire(0, { dice: Object.assign([{ type: 'd20' }], { mesh: outer }) });
+  expect(seen).toEqual([[0, true]]);
+});

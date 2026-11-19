@@ -1456,9 +1456,10 @@ export class DiceBox {
       die.outer.visible = true;
       if (die.systemInstance && !die.spawned) {
         die.spawned = true;
-        // No value yet: a die shows its result only once it has landed.
+        // No value yet: a die shows its result only once it has landed. Dice So Nice hands the die
+        // itself (its add-ons dress it: irl-dice-packs' smoked glass): dice.mesh.
         this.#fireEvent(die, DICE_EVENT.SPAWN, {
-          dice: [{ type: die.dsnType ?? die.type }],
+          dice: Object.assign([{ type: die.dsnType ?? die.type }], { mesh: die.outer }),
           system: die.system,
         });
       }

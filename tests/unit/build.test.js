@@ -439,9 +439,11 @@ describe('build', () => {
     // owner approved +350 B (41,500 -> 41,850), 2026-11-19.
     // A theme imported from a module dice set keeps its system (themes.js, resolve-looks) and Dice So
     // Nice colour sets' bigger, bolder numbers: owner approved +50 B (41,850 -> 41,900), 2026-11-19.
+    // Dice So Nice's SPAWN event hands the die (dice.mesh: IRL's smoked glass) and a chat message's
+    // speaker brings its actor's theme: owner approved +60 B (41,900 -> 41,960), 2026-11-19.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(41_900);
+    expect(growth).toBeLessThanOrEqual(41_960);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

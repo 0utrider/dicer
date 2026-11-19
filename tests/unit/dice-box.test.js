@@ -3793,6 +3793,9 @@ describe('rolling by hand: free rolls, record, source, hold', () => {
     expect(effects.play).toHaveBeenCalledTimes(1);
     expect(fire.mock.calls.map((c) => c[0])).toEqual([0, 2]); // SPAWN, then RESULT
     expect(fire.mock.calls[1][1]).toEqual({ dice: [{ type: 'd6', value: 4 }], system: 'sys' });
+    // SPAWN hands the die itself too, as Dice So Nice does (dice.mesh: its outer group)
+    expect([...fire.mock.calls[0][1].dice]).toEqual([{ type: 'd6' }]);
+    expect(fire.mock.calls[0][1].dice.mesh.isObject3D).toBe(true);
     expect(box.decorateLanded(r.handle, specs)).toBe(false); // once
     expect(onLandedFx).toHaveBeenCalledTimes(1);
 

@@ -260,7 +260,9 @@ export function createLookResolver({
     /** @returns {(term, result, termIndex) => object} a decorator for planThrow */
     decorate(message, roll, authorId, speaker = null) {
       const author = authorId ?? message?.author?.id;
-      const speakerActorId = typeof speaker?.actor === 'string' ? speaker.actor : undefined;
+      // the speaker showForRoll / animateRoll hand over, else the chat message's own (a sheet roll)
+      const who = speaker?.actor ?? message?.speaker?.actor;
+      const speakerActorId = typeof who === 'string' ? who : undefined;
       let role = null;
       try {
         role = roleOf(message); // null on the showForRoll path (no message)

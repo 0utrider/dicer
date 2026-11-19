@@ -390,6 +390,18 @@ describe('themes in the look chain (Plan 5)', () => {
   const msg = (pf2eType) => ({ flags: { pf2e: { context: { type: pf2eType } } } });
   const lookOn = (resolver, message, t, authorId) => resolver.decorate(message, {}, authorId)(t, RES, 0);
 
+  test("a chat message's speaker brings its actor's theme (a roll from the character sheet)", () => {
+    const users = { u: userT({ global: { appearance: null, chosen: true, colorset: null, look: null, system: null, theme: 'default' } }, []) };
+    const actors = { A: { flags: { dicer: { appearance: { global: { appearance: null, colorset: null, look: null, system: null, theme: 'verdant' } } } } } };
+    const { resolver } = makeT({ users, actors });
+    const t = term(20);
+    expect(lookOn(resolver, { speaker: { actor: 'A' }, author: { id: 'u' } }, t, 'u').themeId).toBe('verdant');
+    expect(lookOn(resolver, { speaker: { actor: null }, author: { id: 'u' } }, t, 'u').themeId).toBe('default');
+    // a die's own dsnActorId still wins over the speaker
+    const other = { faces: 20, options: { dsnActorId: 'B' }, results: [{ result: 1 }] };
+    expect(lookOn(resolver, { speaker: { actor: 'A' } }, other, 'u').themeId).toBe('default');
+  });
+
   test("a theme imported from a module dice set rolls on the set's system, in the theme's colours", () => {
     const elara = { id: 'user.u.elara', name: 'Elara', appearance: RUBY, system: 'grayce-raven' };
     const { resolver } = makeT({ users: { u: userT({ global: { theme: elara.id } }, [elara]), v: userT({ global: { theme: 'mine' } }, [{ id: 'mine', name: 'Mine', appearance: RUBY }]) } });

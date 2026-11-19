@@ -504,7 +504,9 @@ describe('DiceBox applies a registered DiceSystem', () => {
     renderer.tick(16);
     expect(events.filter(([n]) => n === 'SPAWN')).toHaveLength(1);
     // No value before landing.
-    expect(events[0][1]).toEqual({ system: 'mine', dice: [{ type: 'd20' }] });
+    expect(events[0][1].system).toBe('mine');
+    expect([...events[0][1].dice]).toEqual([{ type: 'd20' }]);
+    expect(events[0][1].dice.mesh.isObject3D).toBe(true); // the die itself, as Dice So Nice hands it
     expect(events.some(([n]) => n === 'RESULT')).toBe(false);
     renderer.tick(500); // still rolling
     expect(events.some(([n]) => n === 'RESULT')).toBe(false);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.6
+
+- **An actor's dice theme works for its sheet rolls.** A theme set for an actor in the theme browser was saved but ignored when the actor rolled from its sheet (or a player spoke as it): Dicer only read the actor on Dice So Nice style calls. Rolls in chat now use the speaking actor's theme.
+- **Aelar's dice have their moving insides.** IRL Dice Packs' smoked glass dice (void smoke drifting inside) now show in Dicer: Dicer hands Dice So Nice add-ons the die itself when it appears, as Dice So Nice does, and the glass keeps Dicer's numbers.
+
 ## 1.3.5
 
 - **Aelar's natural 20 keeps its numbers.** Some Dice So Nice add-on effects (IRL Dice Packs' Aelar) copy the die's material while they play; the copy lost Dicer's numbers, and they never came back. A copied die material now keeps drawing as Dicer's.

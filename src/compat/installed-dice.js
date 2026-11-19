@@ -533,6 +533,15 @@ export function shimDsn(dice3d) {
   }
   if (typeof addSystem === 'function') {
     dice3d.addSystem = function (system, ...rest) {
+      // A die an add-on dresses as it appears (SPAWN, dice.mesh) keeps Dicer's numbers when its
+      // materials are copied (irl-dice-packs' smoked glass copies them).
+      const fire = system?.fire;
+      if (typeof fire === 'function' && !Object.hasOwn(system, 'fire')) {
+        system.fire = function (type, event, ...more) {
+          if (type === 0) event?.dice?.mesh?.traverse?.((o) => o.isMesh && [o.material].flat().forEach(keepDicerOnClone));
+          return fire.call(this, type, event, ...more);
+        };
+      }
       const pm = system?.processMaterial;
       if (typeof pm === 'function' && !Object.hasOwn(system, 'processMaterial')) {
         system.processMaterial = function (type, mat, appearance, ...more) {
