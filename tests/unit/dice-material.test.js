@@ -761,6 +761,14 @@ describe('face layers (image and text faces)', () => {
     expect(v[0].x).toBe(-1);
     expect(v[19].x).toBe(-1); // unused slots draw nothing
   });
+
+  test("uFaceHalf: the layer square of the face set (a module set's Dice So Nice tile), else 0.6", () => {
+    const own = createDiceMaterial(opaque(), atlas, d6, d6Labels, FLAGS, faceTex());
+    expect(own.userData.uniforms.uFaceHalf.value).toBe(0.6);
+    const tile = createDiceMaterial(opaque(), atlas, d6, d6Labels, FLAGS, { ...faceTex(), half: 1.02 });
+    expect(tile.userData.uniforms.uFaceHalf.value).toBe(1.02);
+    expect(patched(tile).fragmentShader).toContain('0.5 / uFaceHalf');
+  });
 });
 
 describe('fx uniform block (Plan 4 Task 8)', () => {

@@ -14,6 +14,7 @@ import {
   FACE_LAYER_PARS,
   FACE_LAYER_COLOR,
   MAX_FACE_LAYERS,
+  FACE_LAYER_HALF,
   DECAL_OPAQUE,
   WEIGHT_SHIFT,
 } from './shaders/engrave.js';
@@ -375,6 +376,7 @@ ${FX_COLOR}`;
     material.defines.DICER_FACE_LAYERS = '';
     uniforms.uFaceTex = { value: faceTex.texture };
     uniforms.uFaceLayer = { value: faceLayerUniform(faceTex) };
+    uniforms.uFaceHalf = { value: faceTex.half ?? FACE_LAYER_HALF };
     chunks.facePars = FACE_LAYER_PARS;
     chunks.faceColor = FACE_LAYER_COLOR;
     for (const [k, code] of Object.entries(chunks)) {

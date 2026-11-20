@@ -62,6 +62,14 @@ describe('jb2a player', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
 
+    it('every video loads with CORS, a relative path too (a hosted server may redirect it to a CDN)', () => {
+        const { player, videos, ctx, builtin } = setup();
+        player.moduleFor('frost', builtin()).start(ctx());
+        expect(videos.length).toBeGreaterThan(0);
+        expect(videos[0].src).not.toMatch(/^([a-z]+:)?\/\//i); // a relative Foundry path
+        for (const v of videos) expect(v.crossOrigin).toBe('anonymous');
+    });
+
     it('moduleFor mirrors builtin cost, and is null without mapping or source', () => {
         const { player, builtin } = setup();
         const b = builtin();

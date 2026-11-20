@@ -8,6 +8,13 @@ import { getShape, labelFor, resultOf } from '../core/dice-shapes.js';
 const IMAGE_EXT = /\.(png|jpe?g|webp|svg|gif)$/i;
 /** layoutLabel draws at most two glyph slots per face. */
 const MAX_GLYPHS = 2;
+/**
+ * Half the edge of the texture tile Dice So Nice stretches a face image over, in face inradii,
+ * per shape (measured from its dice models' UVs: tile 256 px of the atlas against each flat face).
+ * A module set's images are drawn over that square, not Dicer's own 0.6 one, so they are as big
+ * as Dice So Nice shows them. The d4 (images at its corners) and other shapes keep Dicer's square.
+ */
+export const DSN_TILE_HALF = { d2: 1.03, d6: 1.02, d8: 1.86, d10: 1.86, d12: 1.2, d20: 1.74 };
 
 /** FNV-1a 32-bit hash of a string, as 8 hex digits. */
 function hash(text) {
@@ -129,5 +136,6 @@ export function facesFor(preset, atlasHasGlyphs) {
   );
   if (plain) return undefined;
   const key = `${preset.system ?? ''}|${preset.type ?? ''}|${hash(ordered.join('\u0000'))}`;
-  return { key, labels };
+  const half = labels.some((l) => l.kind === 'image') ? DSN_TILE_HALF[preset.shape ?? (tens ? 'd10' : preset.type)] : undefined;
+  return half ? { key, labels, half } : { key, labels };
 }

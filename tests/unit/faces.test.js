@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { facesFor, atlasGlyphTest, FATE_FACES, lookFacesFor } from '../../src/compat/faces.js';
+import { facesFor, atlasGlyphTest, FATE_FACES, lookFacesFor, DSN_TILE_HALF } from '../../src/compat/faces.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 
@@ -132,4 +132,17 @@ test("a d100 preset's ten labels sit on the tens die's d10 faces by value; its p
   const d10 = getShape('d10').values;
   expect(set.labels.map((l) => l.url)).toEqual(d10.map((v) => tensLabels[v - 1]));
   expect(facesFor({ system: 's', type: 'd100', labels: ['10', '20', '30', '40', '50', '60', '70', '80', '90', '00'] }, digits)).toBeUndefined();
+});
+
+test('a module set with face images draws them over its Dice So Nice texture tile (DSN_TILE_HALF)', () => {
+  const d20 = Array.from({ length: 20 }, (_, i) => (i === 19 ? 'icons/p.webp' : String(i + 1)));
+  const faces = facesFor({ system: 'pf', type: 'd20', labels: d20 }, digitsOnly);
+  expect(faces.half).toBe(DSN_TILE_HALF.d20);
+  expect(DSN_TILE_HALF.d20).toBeGreaterThan(1.5); // far past Dicer's own 0.6 square: the image was tiny
+  // a d100 set dresses the tens die, a d10
+  const tens = Array.from({ length: 10 }, (_, i) => (i ? String(i * 10) : 'icons/z.webp'));
+  expect(facesFor({ system: 'pf', type: 'd100', labels: tens }, digitsOnly).half).toBe(DSN_TILE_HALF.d10);
+  // text only, or a shape not measured: Dicer's own square
+  expect(facesFor({ system: 's', type: 'df', labels: ['-', '', '+'] }, digitsOnly).half).toBeUndefined();
+  expect(facesFor({ system: 's', type: 'd4', labels: ['icons/a.webp', '2', '3', '4'] }, digitsOnly).half).toBeUndefined();
 });

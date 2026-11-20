@@ -17,6 +17,11 @@ export const FACE_FONT_FAMILY = 'DM Serif Display';
  */
 const TEXT_HEIGHT = 0.55;
 const TEXT_WIDTH = 0.9;
+/**
+ * Half the layer square's edge in face units: Dicer's own (shaders/engrave.js FACE_LAYER_HALF), or
+ * a face set's `half` (a module set's Dice So Nice tile, compat/faces.js), then the uFaceHalf uniform.
+ */
+const LAYER_HALF = 0.6;
 
 function defaultLoadImage(url) {
   return new Promise((resolve, reject) => {
@@ -72,15 +77,16 @@ function inkBox(ctx, text, px) {
   return { left: -left, ascent, w: Math.max(1e-3, left + right), h: Math.max(1e-3, ascent + descent) };
 }
 
-function drawText(text, size, family) {
+/** `k`: the share of Dicer's own layer square this one is (a bigger square keeps the text's size). */
+function drawText(text, size, family, k = 1) {
   const ctx = newContext(size);
   const font = (px) => `${px}px "${family}", serif`;
   // Fit the ink box: a single symbol by its larger side, longer text by height then width.
   const ref = size;
   ctx.font = font(ref);
   const box = inkBox(ctx, text, ref);
-  const h = TEXT_HEIGHT * size;
-  const w = [...text].length > 1 ? TEXT_WIDTH * size : h;
+  const h = TEXT_HEIGHT * size * k;
+  const w = [...text].length > 1 ? TEXT_WIDTH * size * k : h;
   const px = Math.max(1, ref * Math.min(h / box.h, w / box.w));
   ctx.font = font(px);
   const ink = inkBox(ctx, text, px);
@@ -140,7 +146,7 @@ export function createFaceTextures({
     return p;
   };
 
-  async function rasterize(label) {
+  async function rasterize(label, half) {
     if (label.kind === 'image') {
       const url = String(label.url ?? '');
       const { src, crop } = splitCrop(url);
@@ -154,7 +160,7 @@ export function createFaceTextures({
     }
     try {
       await ensureFont();
-      return drawText(String(label.text ?? ''), size, FACE_FONT_FAMILY);
+      return drawText(String(label.text ?? ''), size, FACE_FONT_FAMILY, LAYER_HALF / half);
     } catch (err) {
       warnOnce(`text`, 'dicer: cannot draw a text face; the die shows its number', err);
       return null;
@@ -165,8 +171,9 @@ export function createFaceTextures({
     const labels = Array.isArray(faceSet?.labels) ? faceSet.labels : [];
     const layers = new Int16Array(labels.length).fill(-1);
     const tint = new Uint8Array(labels.length);
+    const half = faceSet?.half > 0 ? faceSet.half : LAYER_HALF;
     const raster = labels.map((l) =>
-      l?.kind === 'image' || l?.kind === 'text' ? rasterize(l) : Promise.resolve(null),
+      l?.kind === 'image' || l?.kind === 'text' ? rasterize(l, half) : Promise.resolve(null),
     );
     const pixels = await Promise.all(raster);
     const used = [];
@@ -176,7 +183,7 @@ export function createFaceTextures({
       tint[i] = labels[i].kind === 'text' || labels[i].tint === true ? 1 : 0; // a tinted image: a mask too
       used.push(px);
     });
-    if (!used.length) return { texture: null, layers, tint };
+    if (!used.length) return { texture: null, layers, tint, half };
     const layerBytes = size * size * 4;
     const data = new Uint8Array(layerBytes * used.length);
     used.forEach((px, i) => data.set(px.subarray ? px.subarray(0, layerBytes) : px, i * layerBytes));
@@ -188,7 +195,7 @@ export function createFaceTextures({
     texture.magFilter = THREE.LinearFilter;
     texture.generateMipmaps = true;
     texture.needsUpdate = true;
-    return { texture, layers, tint };
+    return { texture, layers, tint, half };
   }
 
   return {

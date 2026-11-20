@@ -40,7 +40,6 @@ export function placeText({ size, x, z, y, camera, diceScale }) {
 }
 
 const costOf = (builtin) => (Number.isFinite(builtin?.cost) && builtin.cost > 0 ? builtin.cost : 0);
-const isAbsolute = (url) => /^([a-z][a-z0-9+.-]*:)?\/\//i.test(url);
 const DEAD = Object.freeze({ update: () => false, stop() {} });
 
 /**
@@ -68,7 +67,10 @@ export function createJb2aPlayer({
         video.muted = true;
         video.playsInline = true;
         video.preload = 'auto';
-        if (isAbsolute(url)) video.crossOrigin = 'anonymous';
+        // Always CORS: a relative path can still be served from another origin (a hosted Foundry or
+        // S3 storage redirects to its CDN), and a video loaded without it taints WebGL: every frame
+        // then throws SecurityError in texImage2D. With it, such a file errors and the builtin plays.
+        video.crossOrigin = 'anonymous';
         video.src = url;
         return video;
     }

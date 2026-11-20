@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.10
+
+- **Module dice show their face images at full size.** An image on a face of a module dice set (the Pathfinder P on Dicefinder's 20) was drawn about a third of the size Dice So Nice shows it. Such images now cover the same area of the face as in Dice So Nice; text on those faces and images in Dicer's own themes keep their size.
+- **JB2A effects no longer flood the console on hosted servers.** On a server that sends module files from another address (a hosting service, S3 storage), a JB2A effect video broke drawing and logged a security error on every frame. Effect videos now load the way the browser allows for such files; one the server will not share plays Dicer's built-in effect instead.
+
 ## 1.3.9
 
 - **No flash of the old pet.** A pet whose 3D model was still loading (a kind just picked in the pet window, a player who joined late) showed the old built-in look for a moment, then swapped. It now stays hidden until its model is in; if the model cannot load, the built-in pet shows as before.

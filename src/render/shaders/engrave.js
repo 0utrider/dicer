@@ -171,7 +171,10 @@ export const FILL_GLOSS = /* glsl */ `
 
 /** Most faces of any die (the d20). */
 export const MAX_FACE_LAYERS = 20;
-/** Half the edge of the face-centred square the layer covers, in face units (inradius 1). */
+/**
+ * Half the edge of the face-centred square the layer covers, in face units (inradius 1): Dicer's
+ * own; a module set's face images cover its Dice So Nice tile instead (uFaceHalf, compat/faces.js).
+ */
 export const FACE_LAYER_HALF = 0.6;
 
 /** Fragment shader: after ENGRAVE_PARS, only in programs with face layers. */
@@ -179,6 +182,7 @@ export const FACE_LAYER_PARS = /* glsl */ `
 #ifdef DICER_FACE_LAYERS
 uniform highp sampler2DArray uFaceTex;
 uniform vec2 uFaceLayer[ ${MAX_FACE_LAYERS} ];
+uniform float uFaceHalf;
 #endif
 `;
 
@@ -190,7 +194,7 @@ export const FACE_LAYER_COLOR = /* glsl */ `
 #ifdef DICER_FACE_LAYERS
 	vec2 dcFL = uFaceLayer[ clamp( dcFace, 0, ${MAX_FACE_LAYERS - 1} ) ];
 	if ( dcFace < 0 || dcFace >= ${MAX_FACE_LAYERS} ) dcFL = vec2( - 1.0, 0.0 );
-	vec2 dcST = vFaceUV * ${(0.5 / FACE_LAYER_HALF).toFixed(4)} + 0.5;
+	vec2 dcST = vFaceUV * ( 0.5 / uFaceHalf ) + 0.5;
 	// Canvas rows run top-down; face V points up.
 	vec4 dcLayer = texture( uFaceTex, vec3( dcST.x, 1.0 - dcST.y, max( dcFL.x, 0.0 ) ) );
 	float dcIn = step( 0.0, dcFL.x ) * step( abs( dcST.x - 0.5 ), 0.5 ) * step( abs( dcST.y - 0.5 ), 0.5 );

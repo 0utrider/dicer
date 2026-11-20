@@ -149,3 +149,22 @@ test('atlas frames: one load per sheet, each face drawn from its rectangle', asy
   expect(ctx.drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 64, 64, 0, 0, 8, 8);
   expect(ctx.drawImage).toHaveBeenCalledWith(expect.anything(), 64, 0, 64, 32, 0, 2, 8, 4);
 });
+
+test('a face set with its own layer half: the result carries it, and text keeps its size', async () => {
+  const set = { key: 'sys|d20|h', half: 1.8, labels: [{ kind: 'text', text: '+' }] };
+  const fonts = [];
+  Object.defineProperty(ctx, 'font', {
+    set: (v) => {
+      fonts.push(v);
+    },
+    get: () => fonts.at(-1) ?? '',
+    configurable: true,
+  });
+  const big = await createFaceTextures({ size: SIZE }).acquire(set);
+  expect(big.half).toBe(1.8);
+  const bigPx = parseFloat(fonts.at(-1));
+  fonts.length = 0;
+  const own = await createFaceTextures({ size: SIZE }).acquire({ ...set, key: 'sys|d20|o', half: undefined });
+  expect(own.half).toBe(0.6);
+  expect(bigPx).toBeCloseTo(parseFloat(fonts.at(-1)) * (0.6 / 1.8), 5); // a third: the same size on the die
+});

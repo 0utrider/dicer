@@ -443,9 +443,11 @@ describe('build', () => {
     // speaker brings its actor's theme: owner approved +60 B (41,900 -> 41,960), 2026-11-19.
     // A preview's last frame lowers the dice and tray from above windows (dice-box _finish):
     // owner approved +20 B (41,960 -> 41,980), 2026-11-20.
+    // A module set's face images cover its Dice So Nice texture tile (compat/faces.js DSN_TILE_HALF,
+    // the uFaceHalf uniform): owner approved +280 B (41,980 -> 42,260), 2026-11-20.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(41_980);
+    expect(growth).toBeLessThanOrEqual(42_260);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
