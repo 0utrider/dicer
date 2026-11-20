@@ -19,6 +19,7 @@ import { handAllowed } from '../shell.js';
 import { normalizeAppearance } from '../../look/appearance.js';
 import { shapeTypeFor } from '../../core/dice-shapes.js';
 import { modelRotationFor } from '../../compat/dsn-orientation.js';
+import { workbenchCancels } from '../../compat/workbench.js';
 
 /** id (roll.options.dicerHand.id) -> {recording, handle, specs} of the thrower's hand throw (Task 8). */
 export const handThrows = new Map();
@@ -452,6 +453,8 @@ async function throwByHand(resolver, terms) {
   const ms = Number(d.getSetting('handRollTimeout')) * 1000 || 60000;
   const fallback = (why) => void (st.fallback = hand.fallback = why);
   if (!handAllowed(me, d.getSetting)) return fallback('auto');
+  // An untargeted attack PF2e Workbench is about to cancel: no throw, Foundry's random, no message.
+  if (workbenchCancels(roll, globalThis.game?.user)) return fallback('auto');
   if (!specs.length) return notePartial(resolver, dropped);
   // Queued behind any throw in progress (another roll's prompt or overlay, a tray throw); its
   // timeout starts when shown.

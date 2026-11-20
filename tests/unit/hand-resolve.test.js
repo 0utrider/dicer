@@ -1114,6 +1114,24 @@ describe('follow-up rolls', () => {
     expect(byHand.options.dicerHand.physics).toBeUndefined();
   });
 
+  test('physics decides, but PF2e Workbench cancels the untargeted attack: nothing thrown, Foundry rolls', async () => {
+    settings.handRolls = 'off';
+    settings.physicsResults = true;
+    globalThis.game = {
+      user: { targets: new Set() },
+      modules: { get: (id) => (id === 'xdy-pf2e-workbench' ? { active: true } : undefined) },
+      settings: { get: (ns, k) => (ns === 'xdy-pf2e-workbench' && k === 'reminderTargeting' ? 'mustTarget' : undefined) },
+    };
+    const attack = await rollD20((r) => (r.options = { type: 'attack-roll' }));
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(attack.options.dicerHand.fallback).toBe('auto');
+    // a skill check is not cancelled: physics throws it
+    boxValues = [6];
+    const skill = await rollD20((r) => (r.options = { type: 'skill-check' }));
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(skill.terms[0].results).toEqual([{ result: 6, active: true }]);
+  });
+
   test('without physics decides, Ask answered automatically is the random of Foundry', async () => {
     settings.handRolls = 'ask';
     deps.ask = vi.fn(async () => false);

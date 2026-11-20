@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.14
+
+- **PF2e Workbench's "Cancel untargeted attack" now also stops the dice.** With "Physics decides the result" on, Dicer threw the dice for an attack that Workbench then cancelled because nothing was targeted. Now an attack or spell attack Workbench is going to cancel isn't thrown at all: you see Workbench's error and no dice. The same goes for rolling by hand.
+
 ## 1.3.13
 
 - **A GM can pick each player's pet.** The pet window now has a Player list at the top for the GM. Pick a player to set their pet's kind, colour, voice pitch, natural look and natural-20 catch. Every change saves on that player straight away. Preview throws the d20 with that player's pet. Display settings such as size, view and sounds belong to each player, so they stay hidden while you edit someone else's pet.
