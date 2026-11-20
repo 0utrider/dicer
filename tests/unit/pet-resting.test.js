@@ -132,3 +132,22 @@ test('restSpot honours clear over 200 seeded tries (R7: the `clear` predicate, 6
   const none = restSpot(AREA, H, [], mulberry32(5), [], () => false);
   expect(Number.isFinite(none.x) && Number.isFinite(none.z)).toBe(true);
 });
+
+// ---- a leaning pet (petView) drawn up the screen: its body kept off UI above it ----
+test('restSpot keeps a leaning pet\'s drawn body (up the screen) off UI above it', () => {
+  const lean = 1.15; // petView 'front'
+  const up = (H / 2) * Math.sin(lean); // its drawn middle is this far up the screen from its feet
+  // a band of UI across the top of the ring
+  const avoid = [{ x0: AREA.cx - 100, x1: AREA.cx + 100, z0: AREA.cz - 100, z1: AREA.cz - 3.2 }];
+  let moved = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const spot = restSpot(AREA, H, [], mulberry32(seed), avoid, null, lean);
+    expect(overlaps({ x: spot.x, z: spot.z - up }, avoid[0], BODY * H - 1e-9), `seed ${seed}`).toBe(false);
+    const flat = restSpot(AREA, H, [], mulberry32(seed), avoid);
+    if (flat.z - up < avoid[0].z1 + BODY * H) moved++;
+  }
+  expect(moved).toBeGreaterThan(0); // upright spots that a leaning pet would push into the UI
+  // no lean: as before
+  for (const seed of [1, 2, 3])
+    expect(restSpot(AREA, H, [], mulberry32(seed), avoid, null, 0)).toEqual(restSpot(AREA, H, [], mulberry32(seed), avoid));
+});

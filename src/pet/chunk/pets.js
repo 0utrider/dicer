@@ -827,7 +827,7 @@ export function createPetLayer(deps) {
     const taken = [];
     for (const o of pets.values())
       if (o.userId !== userId && o !== skip && standing(o)) taken.push(spotOf(o));
-    return restSpot(area, height, taken, rand, uiRects(), clear);
+    return restSpot(area, height, taken, rand, uiRects(), clear, viewTilt());
   }
 
   // ---- the dice tray's rim (petTray 'rim') ----

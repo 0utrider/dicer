@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.8
+
+- **Pets facing you are no longer hidden behind Foundry's interface.** With Pet view set to Facing you (or Angled), a pet leans back so you see its face, which draws it further up the screen than where it stands. Pets resting near the dice now keep that leaning body clear of the interface above them, not just their feet.
+
 ## 1.3.7
 
 - **A preview no longer leaves the dice tray stuck on top.** Previewing a trigger rule (or a theme) lifts the dice and tray over the open windows; when the preview die was gone the tray stayed over everything until the next roll. It now drops back under the windows as soon as the die goes.

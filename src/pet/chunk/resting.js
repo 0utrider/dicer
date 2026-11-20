@@ -57,7 +57,7 @@ export const obstacle = (at, height, id, footprint) => ({ x: at.x, z: at.z, r: f
  * How well a spot honours the rules, as the smallest slack over them: >= 0 is valid, negative is
  * how far the worst rule is broken. Edges, the 35-60% ring, spacing, Foundry's UI.
  */
-function slack(area, height, taken, x, z, avoid) {
+function slack(area, height, taken, x, z, avoid, up) {
   const dx = Math.abs(x - area.cx);
   const dz = Math.abs(z - area.cz);
   const m = EDGE_GAP * height;
@@ -65,10 +65,11 @@ function slack(area, height, taken, x, z, avoid) {
   s = Math.min(s, Math.max(dx - RING_IN * area.halfWidth, dz - RING_IN * area.halfDepth)); // outside the inner part
   s = Math.min(s, Math.min(RING_OUT * area.halfWidth - dx, RING_OUT * area.halfDepth - dz)); // inside the outer
   for (const o of taken) s = Math.min(s, Math.hypot(x - o.x, z - o.z) - SPACING * height);
+  const bz = z - up; // its drawn middle: a pet leaning back (petView) is drawn up the screen
   for (const r of avoid) {
     // the signed distance from the spot to the rectangle (negative inside), less the pet's body
     const ox = Math.max(r.x0 - x, x - r.x1);
-    const oz = Math.max(r.z0 - z, z - r.z1);
+    const oz = Math.max(r.z0 - bz, bz - r.z1);
     const d = ox > 0 || oz > 0 ? Math.hypot(Math.max(ox, 0), Math.max(oz, 0)) : Math.max(ox, oz);
     s = Math.min(s, d - BODY * height - 1e-9);
   }
@@ -83,9 +84,11 @@ function slack(area, height, taken, x, z, avoid) {
  * Foundry's UI in die units), and, given `clear` ((p: {x, z}) => boolean: off a hand replay's die
  * paths, R7), where it is true. Seeded rejection sampling with `rand`: the first of 24 valid tries;
  * if none is, (a crowded or tiny area) the candidate farthest from breaking a rule (one `clear`
- * refuses counts as worse than any other), never a throw.
+ * refuses counts as worse than any other), never a throw. `lean`: the petView tilt (rad, pets.js
+ * PET_VIEW_TILT): the body kept off the UI is the drawn one, half the height up the screen as it leans.
  */
-export function restSpot(area, height, taken, rand, avoid = [], clear = null) {
+export function restSpot(area, height, taken, rand, avoid = [], clear = null, lean = 0) {
+  const up = (height / 2) * Math.sin(lean || 0);
   const ex = Math.max(0, Math.min(area.halfWidth - EDGE_GAP * height, RING_OUT * area.halfWidth));
   const ez = Math.max(0, Math.min(area.halfDepth - EDGE_GAP * height, RING_OUT * area.halfDepth));
   let best = null;
@@ -93,7 +96,7 @@ export function restSpot(area, height, taken, rand, avoid = [], clear = null) {
   for (let i = 0; i < TRIES; i++) {
     const x = area.cx + (rand() * 2 - 1) * ex;
     const z = area.cz + (rand() * 2 - 1) * ez;
-    let s = slack(area, height, taken, x, z, avoid);
+    let s = slack(area, height, taken, x, z, avoid, up);
     if (clear && !clear({ x, z })) s = Math.min(s, 0) - 1e6;
     if (s >= 0) return { x, z };
     if (s > bestSlack) {
