@@ -441,9 +441,11 @@ describe('build', () => {
     // Nice colour sets' bigger, bolder numbers: owner approved +50 B (41,850 -> 41,900), 2026-11-19.
     // Dice So Nice's SPAWN event hands the die (dice.mesh: IRL's smoked glass) and a chat message's
     // speaker brings its actor's theme: owner approved +60 B (41,900 -> 41,960), 2026-11-19.
+    // A preview's last frame lowers the dice and tray from above windows (dice-box _finish):
+    // owner approved +20 B (41,960 -> 41,980), 2026-11-20.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(41_960);
+    expect(growth).toBeLessThanOrEqual(41_980);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

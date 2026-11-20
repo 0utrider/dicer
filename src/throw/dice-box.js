@@ -1778,6 +1778,7 @@ export class DiceBox {
     roll.removed = true;
     this._rolls.delete(roll);
     if (this._hold === roll) this._hold = null;
+    this.#layer(); // the loop may stop on this frame: no later tick would lower the dice and tray
     this.#unglow(roll);
     clearTimeout(roll.timer);
     clearTimeout(roll.firstChunkTimer);

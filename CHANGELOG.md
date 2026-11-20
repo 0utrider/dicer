@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.7
+
+- **A preview no longer leaves the dice tray stuck on top.** Previewing a trigger rule (or a theme) lifts the dice and tray over the open windows; when the preview die was gone the tray stayed over everything until the next roll. It now drops back under the windows as soon as the die goes.
+
 ## 1.3.6
 
 - **An actor's dice theme works for its sheet rolls.** A theme set for an actor in the theme browser was saved but ignored when the actor rolled from its sheet (or a player spoke as it): Dicer only read the actor on Dice So Nice style calls. Rolls in chat now use the speaking actor's theme.

@@ -4161,6 +4161,19 @@ describe('mineShown / onLayer (diceAboveWindows)', () => {
     expect(box.mineShown).toBe(false);
   });
 
+  test('the last roll ending lowers the layer at once (the loop stops on that frame, no later tick)', async () => {
+    const onLayer = vi.fn();
+    const { renderer, physics, box } = setup({ onLayer });
+    const preview = box.roll([{ type: 'd20', value: 20 }], { mine: 'always' });
+    physics.flush();
+    renderer.tick(16);
+    expect(onLayer).toHaveBeenLastCalledWith('always');
+    box.clear(); // no roll after it, no frame after it
+    await flushMicrotasks();
+    await preview.finished;
+    expect(onLayer).toHaveBeenLastCalledWith(false);
+  });
+
   test('a throwing onLayer warns and never breaks the frame', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { renderer, physics, box } = setup({
