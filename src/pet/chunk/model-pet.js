@@ -28,6 +28,8 @@ const REST = {
   pitch: 0, // body lean forward (rad)
   roll: 0,
   turn: 0,
+  flip: 0, // a somersault about the body (rad, + forward), on top of pitch
+  spin: 0, // a pirouette (rad), on top of turn
   headYaw: 0,
   headPitch: 0, // > 0 nods down
   headRoll: 0,
@@ -59,6 +61,70 @@ const THROW_PITCH = [0, 0, 0.35, -0.3, 0.55, 0.4, 0.8, 0.05, 1, 0];
 const THROW_ARM = [0, 0, 0.35, 0.9, 0.55, -0.2, 1, 0];
 const MOVE_HOP = [0, 0, 0.1, 0, 0.3, 0.22, 0.48, 0, 0.6, 0, 0.8, 0.22, 0.97, 0, 1, 0];
 const CHEER_HOP = [0, 0, 0.15, 0.3, 0.35, 0, 0.55, 0.3, 0.75, 0, 1, 0];
+
+/**
+ * Each kind's idle on top of the shared one (breathing, a look round, tail, ears, arms, blinks), as
+ * its code-built creature idles: `flap` beats the wings (ms per beat: a hoverer on bat wings),
+ * `settle` lets folded wings breathe, `hover` bobs it up (x height, never below its rest) and
+ * `steps` turns the head in snaps (a clockwork robot).
+ */
+const IDLE_KINDS = {
+  imp: { flap: 420, hover: 0.012 },
+  dragonling: { settle: 0.08 },
+  owl: { settle: 0.05 },
+  ghost: { hover: 0.017 },
+  eye: { hover: 0.017 },
+  lantern: { hover: 0.015 },
+  robot: { steps: 10 },
+};
+const NO_IDLE = {};
+
+/**
+ * Each kind's own natural 20 and natural 1, as its code-built creature does them (a kind not listed
+ * does the shared hop and sag). crit: 'pounce' (a crouch and a long leap, paws out), 'flip' (a
+ * back-flip high in the air), 'spin' (a pirouette up off the floor), 'whir' (arms pumping, little
+ * hops, a spin), 'boing' (squashed flat, then a tall stretched bounce), 'leap' (one huge jump),
+ * 'flap' (wings beating fast up into the air), 'chomp' (snapping its mouth on little hops), 'stomp'
+ * (fists up, stamping). fumble: 'hide' (curled up, face down, tail round), 'flop' (keels over on its
+ * side, limp), 'sag' (drooping down, deflated), 'puddle' (spreading out flat), 'winddown' (twitches
+ * slower and slumps forward, eyes shut).
+ */
+const REACT_KINDS = {
+  mimic: { crit: 'chomp' },
+  slime: { crit: 'boing', fumble: 'puddle' },
+  dragonling: { crit: 'flap' },
+  owl: { crit: 'flap', fumble: 'hide' },
+  frog: { crit: 'leap', fumble: 'flop' },
+  ghost: { crit: 'spin', fumble: 'sag' },
+  mushroom: { crit: 'spin', fumble: 'sag' },
+  eye: { crit: 'spin', fumble: 'sag' },
+  golem: { crit: 'stomp', fumble: 'winddown' },
+  cat: { crit: 'pounce', fumble: 'hide' },
+  fox: { crit: 'pounce', fumble: 'hide' },
+  lantern: { crit: 'spin', fumble: 'sag' },
+  imp: { crit: 'flip', fumble: 'flop' },
+  robot: { crit: 'whir', fumble: 'winddown' },
+  jester: { crit: 'flip', fumble: 'flop' },
+};
+const NO_REACT = {};
+// Their keyframes ([t, v, ...]).
+const POUNCE_HOP = [0, 0, 0.18, -0.04, 0.42, 0.5, 0.62, 0, 0.7, -0.03, 0.8, 0, 1, 0];
+const POUNCE_SQUASH = [0, 0, 0.18, 0.24, 0.28, -0.16, 0.6, 0.18, 0.72, 0, 1, 0];
+const POUNCE_PITCH = [0, 0, 0.18, -0.15, 0.32, -0.25, 0.5, 0.45, 0.62, 0.3, 0.8, 0, 1, 0];
+const FLIP_HOP = [0, 0, 0.12, -0.05, 0.3, 0.7, 0.55, 0.72, 0.72, 0, 0.8, -0.04, 0.9, 0, 1, 0];
+const FLIP_SQUASH = [0, 0, 0.12, 0.22, 0.22, -0.12, 0.66, -0.06, 0.74, 0.18, 0.88, 0, 1, 0];
+const SPIN_HOP = [0, 0, 0.1, -0.03, 0.3, 0.35, 0.62, 0.35, 0.8, 0, 1, 0];
+const BOING_SQUASH = [0, 0, 0.18, 0.4, 0.3, -0.3, 0.52, -0.12, 0.62, 0.32, 0.74, -0.1, 0.86, 0.06, 1, 0];
+const BOING_HOP = [0, 0, 0.2, 0, 0.38, 0.55, 0.58, 0, 0.66, 0, 0.74, 0.12, 0.86, 0, 1, 0];
+const LEAP_HOP = [0, 0, 0.2, -0.05, 0.45, 0.9, 0.7, 0, 0.78, -0.04, 0.88, 0, 1, 0];
+const LEAP_SQUASH = [0, 0, 0.2, 0.28, 0.3, -0.25, 0.6, -0.1, 0.72, 0.22, 0.86, 0, 1, 0];
+const FLAP_HOP = [0, 0, 0.12, -0.03, 0.4, 0.6, 0.7, 0.55, 0.88, 0, 1, 0];
+const STOMP_HOP = [0, 0, 0.15, 0.12, 0.25, 0, 0.4, 0.12, 0.5, 0, 0.65, 0.12, 0.75, 0, 1, 0];
+const STOMP_SQUASH = [0, 0, 0.15, -0.06, 0.27, 0.16, 0.4, -0.06, 0.52, 0.16, 0.65, -0.06, 0.77, 0.16, 0.9, 0, 1, 0];
+// The elements' shared reactions.
+const STARTLE_HOP = [0, 0, 0.06, 0.05, 0.22, 0.3, 0.42, 0, 0.5, -0.03, 0.6, 0, 1, 0];
+const STARTLE_PITCH = [0, 0, 0.08, -0.1, 0.25, -0.4, 0.5, -0.25, 0.75, -0.1, 1, 0];
+const SCORCH_HOP = [0, 0, 0.05, 0.2, 0.18, 0, 1, 0];
 
 /**
  * A copy of a skinned scene with its own bones: Object3D.clone() copies the bones but leaves each
@@ -130,8 +196,12 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
   const model = cloneSkinned(template);
   const root = new THREE.Group();
   root.name = kind;
+  // turns the whole model for a flip or a spin, about its middle (HEIGHT / 2 up), feet and all
+  const whirl = new THREE.Group();
+  whirl.rotation.order = 'YXZ';
+  root.add(whirl);
   const fit = new THREE.Group(); // scales the model to HEIGHT, its feet on y = 0
-  root.add(fit);
+  whirl.add(fit);
   fit.add(model);
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model);
@@ -196,6 +266,7 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
   const Q = new THREE.Quaternion();
   const D = new THREE.Quaternion();
   const E = new THREE.Euler(0, 0, 0, 'YXZ');
+  const MID = new THREE.Vector3();
   /** Turns bone `b` by (x, y, z) in the model's space, about its own pivot. */
   const turn = (b, x, y, z) => {
     if (!b) return;
@@ -214,15 +285,223 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
   const p = { ...REST };
   const reset = () => Object.assign(p, REST);
 
-  /** Breathing, a tail sway, an ear twitch and blinks, on the creature's own clock. */
+  // Keeping it on the table: a sample of Body's vertices (its lowest at rest and a spread of the
+  // rest) skinned on the CPU each posed frame, so a lean, flop, flip or crouch that would push any
+  // part through the floor lifts the whole pet just enough instead. Allocation-free per frame.
+  let skin = null;
+  model.traverse((o) => {
+    if (o.isSkinnedMesh && o.geometry.attributes.skinIndex && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count)) skin = o;
+  });
+  const floor = (() => {
+    if (!skin) return null;
+    const pos = skin.geometry.attributes.position;
+    const si = skin.geometry.attributes.skinIndex;
+    const sw = skin.geometry.attributes.skinWeight;
+    const n = pos.count;
+    const byY = Array.from({ length: n }, (_, i) => i).sort((a, b) => pos.getY(a) - pos.getY(b));
+    const pick = new Set(byY.slice(0, 128));
+    const stride = Math.max(1, Math.floor(n / 640));
+    for (let i = 0; i < n; i += stride) pick.add(i);
+    const ids = [...pick];
+    const m = ids.length;
+    const base = new Float32Array(m * 3);
+    const bi = new Uint16Array(m * 4);
+    const bw = new Float32Array(m * 4);
+    const v = new THREE.Vector3();
+    ids.forEach((id, j) => {
+      v.fromBufferAttribute(pos, id).applyMatrix4(skin.bindMatrix);
+      base.set([v.x, v.y, v.z], j * 3);
+      for (let c = 0; c < 4; c++) {
+        bi[j * 4 + c] = si.getComponent(id, c);
+        bw[j * 4 + c] = sw.getComponent(id, c);
+      }
+    });
+    const bones = skin.skeleton.bones;
+    return { m, base, bi, bw, bones, inv: skin.skeleton.boneInverses, bm: bones.map(() => new THREE.Matrix4()), c: new THREE.Matrix4(), rest: 0 };
+  })();
+  /** The lowest sampled point of the posed Body, in the creature's own space (root's). */
+  function lowest() {
+    const f = floor;
+    root.updateMatrixWorld(true);
+    for (let b = 0; b < f.bones.length; b++) f.bm[b].multiplyMatrices(f.bones[b].matrixWorld, f.inv[b]);
+    f.c.copy(root.matrixWorld).invert().multiply(skin.matrixWorld).multiply(skin.bindMatrixInverse);
+    const ce = f.c.elements;
+    let lo = Infinity;
+    for (let j = 0; j < f.m; j++) {
+      const x0 = f.base[j * 3];
+      const y0 = f.base[j * 3 + 1];
+      const z0 = f.base[j * 3 + 2];
+      let x = 0;
+      let y = 0;
+      let z = 0;
+      for (let c = 0; c < 4; c++) {
+        const w = f.bw[j * 4 + c];
+        if (!w) continue;
+        const e = f.bm[f.bi[j * 4 + c]].elements;
+        x += w * (e[0] * x0 + e[4] * y0 + e[8] * z0 + e[12]);
+        y += w * (e[1] * x0 + e[5] * y0 + e[9] * z0 + e[13]);
+        z += w * (e[2] * x0 + e[6] * y0 + e[10] * z0 + e[14]);
+      }
+      const ly = ce[1] * x + ce[5] * y + ce[9] * z + ce[13];
+      if (ly < lo) lo = ly;
+    }
+    return lo;
+  }
+
+  const own = IDLE_KINDS[kind] ?? NO_IDLE;
+  /**
+   * Breathing, a slow look round with a head tilt, a body sway, a tail sway, an ear twitch, arms
+   * swinging a little and blinks, on the creature's own clock; plus the kind's own (IDLE_KINDS).
+   */
   function idle(ms, k1 = 1) {
     const s = ms / 1000;
     p.squash += 0.02 * Math.sin(s * TAU * 0.35) * k1;
     p.tail += 0.25 * Math.sin(s * TAU * 0.5) * k1;
     p.ear += 0.25 * bump((s % 4.3) / 4.3, 0.9, 0.97) * k1;
+    // every term below is 0 at ms 0, so that moment is the standing pose plus breathing
+    let look = 0.14 * Math.sin(s * TAU * 0.13) + 0.06 * Math.sin(s * TAU * 0.31);
+    if (own.steps) look = Math.round(look * own.steps) / own.steps;
+    p.headYaw += look * k1;
+    p.headRoll += 0.05 * Math.sin(s * TAU * 0.21) * k1;
+    p.roll += 0.02 * Math.sin(s * TAU * 0.27) * k1;
+    p.armL += 0.06 * Math.sin(s * TAU * 0.35) * k1;
+    p.armR -= 0.06 * Math.sin(s * TAU * 0.35) * k1;
+    if (own.flap) p.wing += 0.4 * Math.sin((ms / own.flap) * TAU) * k1;
+    if (own.settle) p.wing += own.settle * Math.sin(s * TAU * 0.4) * k1;
+    if (own.hover) p.hop += own.hover * (1 - Math.cos(s * TAU * 0.6)) * k1;
     const b = blink(ms);
     p.blinkL = Math.max(p.blinkL, b);
     p.blinkR = Math.max(p.blinkR, b);
+  }
+
+  const moves = REACT_KINDS[kind] ?? NO_REACT;
+  /** A kind's own natural 20 (REACT_KINDS), t 0..1: starts and ends on the standing pose. */
+  function crit(style, t) {
+    const joy = plateau(t, 0.08, 0.95, 0.12);
+    p.happy = joy;
+    p.surprised = 0.6 * bump(t, 0, 0.25);
+    p.ear = 0.6 * joy;
+    p.tailUp = joy;
+    if (style === 'pounce') {
+      p.hop = keys(t, POUNCE_HOP);
+      p.squash = keys(t, POUNCE_SQUASH);
+      p.pitch = keys(t, POUNCE_PITCH);
+      p.armL = p.armR = 1.3 * plateau(t, 0.28, 0.7, 0.08);
+      p.headPitch = 0.3 * bump(t, 0.4, 0.7) - 0.15 * bump(t, 0.1, 0.35);
+      p.mouth = 0.5 * bump(t, 0.6, 0.95);
+    } else if (style === 'flip') {
+      p.hop = keys(t, FLIP_HOP);
+      p.squash = keys(t, FLIP_SQUASH);
+      p.flip = -TAU * smooth(span(t, 0.26, 0.7)); // backwards, all the way round
+      p.armL = p.armR = 1.3 * plateau(t, 0.2, 0.8, 0.1);
+      p.wing = plateau(t, 0.2, 0.8, 0.1);
+      p.mouth = bump(t, 0.2, 0.95);
+    } else if (style === 'spin') {
+      p.hop = keys(t, SPIN_HOP);
+      p.squash = -0.1 * plateau(t, 0.2, 0.75, 0.1) + 0.12 * bump(t, 0.78, 0.92);
+      p.spin = TAU * smooth(span(t, 0.18, 0.75));
+      p.headRoll = 0.25 * bump(t, 0.2, 0.75);
+      p.armL = p.armR = 1.0 * plateau(t, 0.15, 0.8, 0.1);
+      p.mouth = 0.8 * bump(t, 0.15, 0.9);
+      p.tongue = bump(t, 0.25, 0.75);
+    } else if (style === 'whir') {
+      p.hop = 0.08 * Math.abs(Math.sin(t * TAU * 5)) * plateau(t, 0.1, 0.9, 0.08);
+      p.spin = TAU * smooth(span(t, 0.35, 0.8));
+      p.armL = (0.7 + 0.6 * Math.sin(t * TAU * 6)) * joy;
+      p.armR = (0.7 - 0.6 * Math.sin(t * TAU * 6)) * joy;
+      p.headYaw = 0.25 * Math.round(Math.sin(t * TAU * 3) * 3) / 3 * joy; // in snaps
+      p.surprised = 0.7 * joy;
+      p.mouth = 0.6 * joy;
+    } else if (style === 'boing') {
+      p.squash = keys(t, BOING_SQUASH);
+      p.hop = keys(t, BOING_HOP);
+      p.mouth = bump(t, 0.25, 0.7);
+      p.armL = p.armR = 1.0 * bump(t, 0.25, 0.65);
+    } else if (style === 'leap') {
+      p.hop = keys(t, LEAP_HOP);
+      p.squash = keys(t, LEAP_SQUASH);
+      p.pitch = -0.2 * bump(t, 0.25, 0.65);
+      p.armL = p.armR = 1.2 * bump(t, 0.25, 0.7);
+      p.mouth = bump(t, 0.3, 0.9);
+      p.puff = 0.6 * bump(t, 0.7, 1);
+    } else if (style === 'flap') {
+      p.hop = keys(t, FLAP_HOP);
+      p.wing = (0.7 + 0.5 * Math.sin(t * TAU * 9)) * plateau(t, 0.08, 0.92, 0.08);
+      p.pitch = -0.1 * plateau(t, 0.2, 0.8, 0.1);
+      p.squash = 0.12 * bump(t, 0.02, 0.14) + 0.1 * bump(t, 0.86, 1);
+      p.mouth = bump(t, 0.15, 0.85);
+      p.puff = 0.4 * joy;
+    } else if (style === 'chomp') {
+      const snap = Math.max(0, Math.sin(t * TAU * 4));
+      p.hop = 0.12 * snap * plateau(t, 0.1, 0.9, 0.1);
+      p.mouth = (0.3 + 0.7 * snap) * joy;
+      p.tongue = 0.6 * bump(t, 0.6, 0.95);
+      p.pitch = -0.15 * snap * joy;
+      p.squash = 0.08 * (1 - snap) * joy;
+    } else {
+      // stomp: fists up, stamping left, right, left
+      p.hop = keys(t, STOMP_HOP);
+      p.squash = keys(t, STOMP_SQUASH);
+      p.roll = 0.12 * Math.sin(t * TAU * 1.5) * plateau(t, 0.1, 0.9, 0.1);
+      p.armL = p.armR = 1.4 * plateau(t, 0.08, 0.9, 0.1);
+      p.mouth = 0.8 * joy;
+      p.headPitch = -0.2 * joy;
+    }
+  }
+  /** A kind's own natural 1 (REACT_KINDS), t 0..1: settles and holds (the pet rests after it). */
+  function fumble(style, t) {
+    const down = smooth(span(t, 0, 0.35));
+    p.sad = down;
+    p.ear = -0.8 * down;
+    p.tailUp = -0.6 * down;
+    if (style === 'hide') {
+      // curled up, face down into its paws, the tail round in front; one peek out
+      p.squash = 0.3 * down;
+      p.pitch = 0.25 * down;
+      p.headPitch = 0.75 * down - 0.35 * bump(t, 0.55, 0.8);
+      p.tail = 1.0 * down;
+      p.armL = p.armR = 0.3 * down;
+      p.wing = -0.3 * down;
+      const peek = bump(t, 0.55, 0.8);
+      p.blinkL = p.blinkR = down * (1 - peek);
+    } else if (style === 'flop') {
+      // keels over onto its side, limp, then lies there with a little twitch
+      const fall = smooth(span(t, 0.1, 0.4));
+      p.roll = 1.15 * fall;
+      p.hop = 0.12 * bump(t, 0, 0.15);
+      p.squash = 0.15 * fall;
+      p.headRoll = 0.4 * fall;
+      p.headPitch = 0.3 * fall;
+      p.armL = p.armR = -0.2 * fall;
+      p.wing = -0.5 * fall;
+      p.blinkL = p.blinkR = 0.85 * fall;
+      p.mouth = 0.3 * fall;
+      p.tongue = 0.7 * fall;
+      p.armR += 0.25 * bump(t, 0.75, 0.85);
+    } else if (style === 'sag') {
+      // drooping, deflated: sinking down, leaning forward, the tongue out
+      p.squash = 0.35 * down;
+      p.pitch = 0.18 * down;
+      p.headPitch = 0.4 * down;
+      p.squintL = p.squintR = 0.6 * down;
+      p.tongue = 0.8 * down;
+      p.mouth = 0.25 * down;
+      p.roll = 0.05 * Math.sin(t * TAU * 1.2) * span(t, 0.4, 1);
+    } else if (style === 'puddle') {
+      // spreading out flat in a sad puddle, a slow wobble
+      p.squash = 0.48 * down;
+      p.squash += 0.04 * Math.sin(t * TAU * 2) * span(t, 0.35, 1);
+      p.blinkL = p.blinkR = 0.4 * down;
+    } else {
+      // winddown: jerky nods that slow down, then slumping forward with its eyes shut
+      const slow = 1 - span(t, 0, 0.6);
+      p.headPitch = 0.25 * Math.round(Math.max(0, Math.sin(t * t * TAU * 6)) * 2) / 2 * slow + 0.55 * span(t, 0.55, 0.8);
+      p.pitch = 0.3 * smooth(span(t, 0.55, 0.8));
+      p.squash = 0.12 * smooth(span(t, 0.55, 0.8));
+      p.armL = p.armR = -0.3 * smooth(span(t, 0.5, 0.8));
+      p.blinkL = p.blinkR = smooth(span(t, 0.6, 0.85));
+      p.roll = 0.04 * bump(t, 0.85, 0.95);
+    }
   }
 
   function setPose(phase, t, reaction, look) {
@@ -246,7 +525,9 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
         idle(ms);
         break;
       case 'react':
-        if (reaction === 'crit') {
+        if (reaction === 'crit' && moves.crit) crit(moves.crit, t);
+        else if (reaction === 'fumble' && moves.fumble) fumble(moves.fumble, t);
+        else if (reaction === 'crit') {
           p.hop = keys(t, CRIT_HOP);
           p.squash = keys(t, CRIT_SQUASH);
           p.happy = smooth(span(t, 0.15, 0.3));
@@ -272,9 +553,17 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
           p.squintL = 0.7 * plateau(t, 0.15, 0.85, 0.2);
           p.ear = 0.3 * Math.sin(t * TAU * 4) * bump(t, 0.2, 0.8);
         } else {
+          // Pleased: a little bounce, two nods with a head tilt, a smile, the tail wagging.
+          const glad = plateau(t, 0.1, 0.95, 0.2);
+          p.hop = 0.06 * bump(t, 0.12, 0.32) + 0.04 * bump(t, 0.45, 0.62);
+          p.squash = 0.08 * bump(t, 0.05, 0.15) - 0.04 * bump(t, 0.12, 0.32) + 0.06 * bump(t, 0.3, 0.42);
           p.headPitch = 0.25 * bump(t, 0.15, 0.45) + 0.2 * bump(t, 0.5, 0.8);
-          p.happy = 0.6 * plateau(t, 0.1, 0.95, 0.2);
-          p.squash = 0.05 * bump(t, 0.1, 0.3);
+          p.headRoll = 0.18 * glad;
+          p.happy = 0.85 * glad;
+          p.ear = 0.3 * glad;
+          p.tail = 0.45 * Math.sin(t * TAU * 3) * glad;
+          p.wing = 0.25 * bump(t, 0.1, 0.4);
+          p.blinkL = p.blinkR = 0.55 * bump(t, 0.35, 0.75); // a contented slow blink
         }
         break;
       case 'exit':
@@ -301,28 +590,73 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
         p.headYaw = -0.25 * plateau(t, 0.3, 1, 0.2);
         p.ear = -0.5 * plateau(t, 0.05, 0.95, 0.15);
         break;
-      case 'scorch':
-        p.hop = 0.2 * bump(t, 0, 0.25);
-        p.mouth = 0.6 * plateau(t, 0.2, 0.95, 0.1);
-        p.squintL = p.squintR = 0.5 * plateau(t, 0.2, 0.95, 0.1);
-        p.armR = (0.6 + 0.3 * Math.sin(t * TAU * 6)) * plateau(t, 0.25, 0.95, 0.1);
+      case 'scorch': {
+        // Hot! A hop back off the heat, then leaning away, panting with its mouth open and cheeks
+        // puffed, squinting, fanning itself (an arm, its wings) and the tail lashing.
+        const hot = plateau(t, 0.12, 0.95, 0.1);
+        const fan = Math.sin(t * TAU * (look?.calm ? 3 : 6));
+        p.hop = keys(t, SCORCH_HOP) * calm;
+        p.pitch = -0.28 * bump(t, 0, 0.3) - 0.12 * hot;
+        p.headPitch = -0.15 * hot;
+        p.mouth = (0.45 + 0.25 * Math.sin(t * TAU * 8)) * hot;
+        p.puff = 0.5 * hot;
+        p.squintL = p.squintR = 0.6 * hot;
+        p.armR = (0.9 + 0.35 * fan) * hot;
+        p.armL = 0.3 * hot;
+        p.wing = (0.5 + 0.4 * fan) * hot;
+        p.tail = 0.5 * Math.sin(t * TAU * 5) * hot * calm;
+        p.ear = -0.4 * hot;
         break;
-      case 'shiver':
-        p.roll = 0.06 * Math.sin(t * TAU * (look?.calm ? 6 : 14)) * bump(t, 0, 1) * calm;
-        p.squash = 0.08 * bump(t, 0, 1);
-        p.sad = 0.5 * bump(t, 0, 1);
-        p.ear = -0.6 * bump(t, 0, 1);
+      }
+      case 'shiver': {
+        // Frozen: hunched small with its head tucked, arms and wings hugged in, ears flat, teeth
+        // chattering (the mouth) and a fast tremble that rattles it side to side.
+        const cold = plateau(t, 0, 1, 0.12);
+        const f = look?.calm ? 6 : 16;
+        p.squash = 0.14 * cold;
+        p.pitch = 0.12 * cold;
+        p.headPitch = 0.35 * cold;
+        p.roll = 0.07 * Math.sin(t * TAU * f) * cold * calm;
+        p.turn = 0.05 * Math.sin(t * TAU * f * 1.3 + 1) * cold * calm;
+        p.armL = p.armR = -0.35 * cold;
+        p.wing = -0.35 * cold;
+        p.ear = -0.8 * cold;
+        p.tailUp = -0.5 * cold;
+        p.sad = 0.7 * cold;
+        p.squintL = p.squintR = 0.5 * cold;
+        p.mouth = 0.12 * Math.max(0, Math.sin(t * TAU * f * 0.7)) * cold;
         break;
-      case 'bristle':
-        p.squash = -0.15 * bump(t, 0, 1);
-        p.surprised = bump(t, 0, 1);
-        p.ear = 0.8 * bump(t, 0, 1);
-        p.tailUp = bump(t, 0, 1);
+      }
+      case 'bristle': {
+        // Zapped: stretched tall and stiff, everything sticking out (ears, tail, wings, arms), eyes
+        // and mouth wide, buzzing with a jitter.
+        const zap = plateau(t, 0, 1, 0.08);
+        const jit = look?.calm ? 0 : 1;
+        p.squash = -0.2 * zap;
+        p.hop = (0.03 + 0.015 * Math.abs(Math.sin(t * TAU * 11)) * jit) * zap;
+        p.surprised = zap;
+        p.mouth = 0.5 * zap;
+        p.ear = 0.9 * zap;
+        p.tailUp = zap;
+        p.wing = 1.1 * zap;
+        p.armL = p.armR = 0.55 * zap;
+        p.headRoll = 0.08 * Math.sin(t * TAU * 13) * zap * jit;
+        p.roll = 0.03 * Math.sin(t * TAU * 17) * zap * jit;
         break;
+      }
       case 'startle':
-        p.hop = 0.35 * bump(t, 0, 0.45) * calm;
+        // Startled: a quick jump BACK, leaning away with a gasp (eyes wide, mouth open), arms
+        // up in front of it, then a wary settle; no smile (the natural 20 is a happy jump).
+        p.hop = keys(t, STARTLE_HOP) * calm;
+        p.pitch = keys(t, STARTLE_PITCH);
+        p.squash = 0.12 * bump(t, 0, 0.08) + 0.1 * bump(t, 0.4, 0.55);
         p.surprised = bump(t, 0, 0.9);
-        p.armL = p.armR = 0.8 * bump(t, 0, 0.6);
+        p.mouth = 0.8 * bump(t, 0.03, 0.5);
+        p.headPitch = -0.2 * bump(t, 0.05, 0.6);
+        p.armL = p.armR = 0.9 * bump(t, 0.04, 0.55);
+        p.ear = 0.7 * bump(t, 0, 0.7);
+        p.tailUp = 0.6 * bump(t, 0, 0.6);
+        p.wing = 0.8 * bump(t, 0.02, 0.4);
         break;
       case 'proud': {
         const k1 = smooth(span(t, 0, 1));
@@ -335,8 +669,8 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
       }
       case 'sulk': {
         const k1 = smooth(span(t, 0, 1));
-        p.squash = 0.2 * k1;
-        p.headPitch = 0.5 * k1;
+        p.squash = 0.26 * k1;
+        p.headPitch = 0.4 * k1;
         p.sad = 0.8 * k1;
         p.ear = -0.8 * k1;
         p.tailUp = -0.6 * k1;
@@ -353,6 +687,11 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
         break; // wobble and reform are the wrapper's (creatures/index.js), on the standing pose
     }
     apply(look?.yaw ?? 0);
+    // watch only breathes and bobs up: nothing there can reach the floor, so it skips the check
+    if (floor && phase !== 'watch') {
+      const lo = lowest();
+      if (lo < floor.rest) whirl.position.y += floor.rest - lo;
+    }
   }
 
   function apply(lookYaw) {
@@ -368,6 +707,11 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
       model.scale.set(1 + p.squash * 0.5, 1 - p.squash, 1 + p.squash * 0.5);
     }
     turn(B.body, p.pitch, p.turn, p.roll);
+    // flip and spin: whirl turns about the model's middle where the hop has lifted it,
+    // M = (0, HEIGHT * (1/2 + hop), 0), so its origin moves by M - R*M
+    whirl.rotation.set(p.flip, p.spin, 0);
+    MID.set(0, HEIGHT * (0.5 + p.hop), 0);
+    whirl.position.copy(MID).sub(MID.applyEuler(whirl.rotation));
     turn(B.neck, p.headPitch * 0.4, (p.headYaw + ly * LOOK_HEAD) * 0.4, p.headRoll * 0.4);
     const hk = B.neck ? 0.6 : 1;
     turn(B.head, p.headPitch * hk, (p.headYaw + ly * LOOK_HEAD) * hk, p.headRoll * hk);
@@ -399,6 +743,8 @@ export function createModelCreature(template, color, { kind = 'pet', clock = now
   }
 
   setPose('exit', 1, 'plain', { yaw: 0 });
+  // the floor it keeps above: the table, or where a hoverer's lowest point rests if that is lower
+  if (floor) floor.rest = Math.min(0, lowest());
   return {
     root,
     height: HEIGHT,

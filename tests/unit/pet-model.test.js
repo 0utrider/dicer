@@ -126,3 +126,88 @@ test('dispose frees the tinted copies, not the shared template', () => {
   expect(spy).toHaveBeenCalled();
   expect(tmpl).not.toHaveBeenCalled();
 });
+
+describe('idle (watch) keeps every model pet moving', () => {
+  const at = (c, ms, bone) => {
+    c.pose('watch', 0, null, { yaw: 0, now: ms });
+    return c.root.getObjectByName(bone).quaternion.clone();
+  };
+  const kindOf = (kind, template) => createModelCreature(template, '#c0392b', { kind, clock: () => 0 });
+  test('the head looks round on its own, for any kind', () => {
+    const c = kindOf('mushroom', buildStandinPet());
+    expect(at(c, 0, 'head').angleTo(at(c, 2500, 'head'))).toBeGreaterThan(0.02);
+    c.dispose();
+  });
+  test('a hoverer bobs up from its rest, never below it', () => {
+    const c = kindOf('ghost', buildStandinPet());
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let ms = 0; ms < 2000; ms += 100) {
+      c.pose('watch', 0, null, { yaw: 0, now: ms });
+      const y = c.root.getObjectByName('root').position.y;
+      lo = Math.min(lo, y);
+      hi = Math.max(hi, y);
+    }
+    const rest = kindOf('ghost', buildStandinPet());
+    rest.pose('exit', 1, 'plain', { yaw: 0 });
+    const y0 = rest.root.getObjectByName('root').position.y;
+    expect(lo).toBeGreaterThanOrEqual(y0 - 1e-9);
+    expect(hi).toBeGreaterThan(y0 + 1e-3);
+    c.dispose();
+    rest.dispose();
+  });
+});
+
+describe('reactions: each kind its own natural 20 and 1, the elements each their own look', () => {
+  const kindOf = (kind) => safe((c) => createModelCreature(buildStandinPet(), c, { kind, clock: () => 0 }))('#c0392b');
+  const pose = (c, phase, t, reaction) => {
+    c.pose(phase, t, reaction, { yaw: 0, now: 0 });
+    c.root.updateMatrixWorld(true);
+    return new THREE.Box3().setFromObject(c.root, true);
+  };
+  test('a flipper turns all the way over on a natural 20; a spinner turns round; a pouncer does neither', () => {
+    const imp = kindOf('imp');
+    const lantern = kindOf('lantern');
+    const cat = kindOf('cat');
+    let flip = 0;
+    let spin = 0;
+    let catTurn = 0;
+    for (let t = 0; t <= 1; t += 0.02) {
+      imp.pose('react', t, 'crit', { yaw: 0, now: 0 });
+      lantern.pose('react', t, 'crit', { yaw: 0, now: 0 });
+      cat.pose('react', t, 'crit', { yaw: 0, now: 0 });
+      const w = (c) => c.root.children[0]; // the whirl group: flips and spins
+      flip = Math.max(flip, Math.abs(w(imp).rotation.x));
+      spin = Math.max(spin, Math.abs(w(lantern).rotation.y));
+      catTurn = Math.max(catTurn, Math.abs(w(cat).rotation.x), Math.abs(w(cat).rotation.y));
+    }
+    expect(flip).toBeGreaterThan(Math.PI);
+    expect(spin).toBeGreaterThan(Math.PI);
+    expect(catTurn).toBe(0);
+    for (const c of [imp, lantern, cat]) c.dispose();
+  });
+  test('no reaction of any style pushes the pet through the table', () => {
+    for (const kind of ['imp', 'cat', 'lantern', 'robot', 'slime', 'frog', 'mimic', 'golem', 'owl']) {
+      const c = kindOf(kind);
+      for (const [phase, reaction] of [['react', 'crit'], ['react', 'fumble'], ['react', 'plain'], ['scorch'], ['shiver'], ['bristle'], ['startle']]) {
+        for (let t = 0; t <= 1; t += 0.05) expect(pose(c, phase, t, reaction ?? null).min.y, `${kind} ${reaction ?? phase} ${t}`).toBeGreaterThan(-0.03);
+      }
+      c.dispose();
+    }
+  }, 60000);
+  test('startle, scorch, shiver and bristle each look different, and startle is not the natural 20', () => {
+    const c = kindOf('mushroom');
+    const look = (phase, t, reaction) => {
+      pose(c, phase, t, reaction);
+      const out = [];
+      c.root.traverse((o) => o.isBone && out.push(o.quaternion.x, o.quaternion.y, o.quaternion.z, o.position.y));
+      c.root.traverse((o) => o.morphTargetInfluences && out.push(...o.morphTargetInfluences));
+      return out;
+    };
+    const far = (a, b) => a.reduce((s, v, i) => s + Math.abs(v - b[i]), 0);
+    const shots = { startle: look('startle', 0.25), scorch: look('scorch', 0.5), shiver: look('shiver', 0.5), bristle: look('bristle', 0.5), crit: look('react', 0.25, 'crit') };
+    const names = Object.keys(shots);
+    for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) expect(far(shots[names[i]], shots[names[j]]), `${names[i]} vs ${names[j]}`).toBeGreaterThan(0.5);
+    c.dispose();
+  });
+});

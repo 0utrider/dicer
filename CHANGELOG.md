@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.12
+
+- **Every pet has its own natural 20 and natural 1.** Pets used to celebrate and sulk the same way. Now:
+  - **On a 20:** the cat and fox pounce, the imp and jester back-flip, the lantern, ghost, mushroom and floating eye spin, the robot whirs round, the slime boings, the frog leaps, the owl and dragonling flap up into the air, the mimic snaps its jaws and the golem stomps.
+  - **On a 1:** the cat, fox and owl curl up and hide, the imp, jester and frog keel over, the lantern, ghost, mushroom and eye sag, the robot and golem wind down, and the slime spreads into a puddle.
+- **Damage reactions look like what hit them.** Fire makes a pet hop back from the heat, pant and fan itself; frost hunches it up, trembling with chattering teeth; lightning stands it tall and stiff, buzzing; anything else makes it jump back with a gasp. A plain result gets a pleased bounce, a nod and a slow blink.
+- **Pets move while they wait.** They look around, sway and swing their arms. The imp flaps its wings, the owl and dragonling settle theirs, floating pets bob, and the robot turns its head in little snaps.
+- **Pets stay on the table.** A flip, a flop or a lean no longer pushes any part of a pet through the table.
+
 ## 1.3.11
 
 - **Five new pets.** Pick them in **Your pet**:

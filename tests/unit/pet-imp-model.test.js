@@ -14,3 +14,15 @@ petModelChecks('imp', build, {
 test('buildImp is the build alias', () => {
   expect(buildImp).toBe(build);
 });
+
+test('the imp flaps its wings while it hovers idle', async () => {
+  const { createModelCreature } = await import('../../src/pet/chunk/model-pet.js');
+  const c = createModelCreature(build(), '#b8322f', { kind: 'imp', clock: () => 0 });
+  const wing = (ms) => {
+    c.pose('watch', 0, null, { yaw: 0, now: ms });
+    return c.root.getObjectByName('wing_L').quaternion.clone();
+  };
+  // a quarter beat apart (420 ms per beat): the wing has swung well away
+  expect(wing(0).angleTo(wing(105))).toBeGreaterThan(0.25);
+  c.dispose();
+}, 120000);
