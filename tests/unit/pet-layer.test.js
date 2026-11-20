@@ -2021,6 +2021,39 @@ describe('pets on the dice tray rim', () => {
     expect(phaseOf(m)).not.toBe('scorch');
   });
 
+  test("without a rim, its own pet reacts to its roll's element however far the die lands: no nod", () => {
+    const m = make({ petStay: 60 });
+    const key = 'own';
+    m.layer.begin(key, bigInfo(spec('u1')));
+    m.layer.update(clockNow);
+    runTo(m, clockNow + 700); // past its throw: watching
+    m.playSound.mockClear();
+    m.layer.landed(key, [{ type: 'd8', value: 5, x: 30, z: 30, damageType: 'fire' }]); // far from it
+    const seen = [];
+    for (let i = 0; i < 20; i++) {
+      m.layer.update((clockNow += 16));
+      seen.push(phaseOf(m));
+    }
+    expect(seen).toContain('scorch');
+    expect(seen).not.toContain('react'); // never only the plain nod
+    expect(m.playSound).toHaveBeenCalledWith(expect.objectContaining({ builtin: 'petCough' }));
+  });
+
+  test('its own pet still nods at a plain roll with no element', () => {
+    const m = make({ petStay: 60 });
+    const key = 'own';
+    m.layer.begin(key, bigInfo(spec('u1')));
+    m.layer.update(clockNow);
+    runTo(m, clockNow + 700);
+    m.layer.landed(key, [{ type: 'd8', value: 5, x: 30, z: 30 }]);
+    const seen = [];
+    for (let i = 0; i < 20; i++) {
+      m.layer.update((clockNow += 16));
+      seen.push(phaseOf(m));
+    }
+    expect(seen).toContain('react');
+  });
+
   /** A document with the table tray in it (shown), whose slide-outs the pets hear. */
   const trayDoc = () => {
     const classes = new Set();

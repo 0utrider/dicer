@@ -1277,11 +1277,12 @@ export function createPetLayer(deps) {
     const wasWatching = watching(pet); // before settle: its landing turns the watch into the reaction
     settle(pet);
     landCatch(pet); // a caught natural 20 is spat out first; the reaction (and the cheer) waits
-    // On the tray's rim no die reaches its own pet: one with nothing to cheer or mourn reacts to
-    // the roll's element instead of its plain nod. Watching from its rim spot, it does at once (its
-    // routine ends there: it rests where it sits); otherwise once back at rest (toRest), and a pet
-    // that leaves after its roll voices it at its reaction (show).
-    if (perch() && pet.track.landedAt != null && pet.reaction === 'plain' && !roll.ghost) {
+    // Its own dice seldom land by its spot: a pet with nothing to cheer or mourn reacts to the
+    // roll's element (the nearest die anywhere) instead of only its plain nod. Watching from its
+    // rest spot (the tray's rim), it does at once (its routine ends there: it rests where it sits);
+    // otherwise once back at rest (toRest), and a pet that leaves after its roll voices it at its
+    // reaction (show).
+    if (pet.track.landedAt != null && pet.reaction === 'plain' && !roll.ghost) {
       const at = { state: 'rest', px: pet.base?.x, pz: pet.base?.z };
       const element = elementReactions(dice, [at], { dieWidth: Infinity })[0]?.element ?? null;
       const now = clock();
@@ -1596,8 +1597,8 @@ export function createPetLayer(deps) {
     pet.state = 'rest';
     const element = pet.elementAfter;
     pet.elementAfter = null;
-    if (element && perch() && getSetting('petElemental') !== false) {
-      react(pet, element, clock()); // its roll's element, now it sits on the rim again
+    if (element && getSetting('petElemental') !== false) {
+      react(pet, element, clock()); // its roll's element, now it is back at its spot
       wake();
     }
   }

@@ -1141,6 +1141,19 @@ describe('_throwLook', () => {
     expect(diceBox.roll.mock.calls[0][1]).toMatchObject({ mine: 'always' });
   });
 
+  test("previews land where this user's rolls do (the table tray or their area), else on the whole stage", () => {
+    const AREA = { cx: 1, cz: 2, halfWidth: 3, halfDepth: 4 };
+    const areaFor = vi.fn(() => AREA);
+    const a = createDice3dApi({ diceBox, gate, planThrow, getSetting: (k) => settings[k], areaFor, currentUser: () => ({ id: 'p1' }) });
+    a._throwLook(theme);
+    a._preview({ ruleId: 'damage:fire' }, { type: 'd6' });
+    expect(areaFor).toHaveBeenCalledWith({ rollerId: 'p1' });
+    for (const [, opts] of diceBox.roll.mock.calls) expect(opts).toMatchObject({ mine: 'always', area: AREA });
+    diceBox.roll.mockClear();
+    api._throwLook(theme); // no area: the whole stage
+    expect(diceBox.roll.mock.calls[0][1].area).toBeUndefined();
+  });
+
   test('omits appearance when the theme has none', () => {
     api._throwLook({ id: 'x' });
     for (const s of diceBox.roll.mock.calls[0][0]) expect('appearance' in s).toBe(false);

@@ -212,8 +212,14 @@ export function createDice3dApi({
     if (fx) spec.fx = [fx];
     if (appearance) spec.appearance = appearance;
     if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
-    return diceBox.roll([spec], { mine: 'always' }); // a preview: above the window it came from
+    return diceBox.roll([spec], previewOpts()); // a preview: above the window it came from
   }
+
+  /**
+   * A preview's throw options: above the window it came from (mine 'always'), and where this
+   * user's own rolls land (the table tray, shown for it, or their area), else the whole stage.
+   */
+  const previewOpts = (extra) => ({ ...extra, mine: 'always', area: areaFor({ rollerId: me()?.id }) ?? undefined });
 
   const me = () => {
     try {
@@ -1053,7 +1059,7 @@ export function createDice3dApi({
           });
           const pet = petFor({ user, view: 'real', getSetting });
           // A preview: above the editor or browser window it came from, whatever diceAboveWindows says.
-          return diceBox.roll(specs, pet ? { pet, mine: 'always' } : { mine: 'always' }).landed;
+          return diceBox.roll(specs, previewOpts(pet ? { pet } : undefined)).landed;
         } catch (err) {
           warnOnce('_throwLook', err);
           return Promise.resolve();

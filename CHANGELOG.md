@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.15
+
+- **Your pet reacts to your damage dice.** On a roll with a damage type, your own pet used to just nod, unless it sat on the tray's rim. Now it reacts to the damage type wherever it stands: a scorch for fire, a shiver for cold, and so on. Rolls with no damage type still get the nod, and crits and fumbles keep their own reactions.
+- **Previews land in the dice tray.** The Throw and Preview buttons (damage types, trigger rules, the look editor, the theme browser and the pet window) now throw where your real rolls land: into the table tray, which slides out for it, or your roll area. Before, they flew across the whole screen.
+
 ## 1.3.14
 
 - **PF2e Workbench's "Cancel untargeted attack" now also stops the dice.** With "Physics decides the result" on, Dicer threw the dice for an attack that Workbench then cancelled because nothing was targeted. Now an attack or spell attack Workbench is going to cancel isn't thrown at all: you see Workbench's error and no dice. The same goes for rolling by hand.
