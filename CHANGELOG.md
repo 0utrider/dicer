@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.13
+
+- **A GM can pick each player's pet.** The pet window now has a Player list at the top for the GM. Pick a player to set their pet's kind, colour, voice pitch, natural look and natural-20 catch. Every change saves on that player straight away. Preview throws the d20 with that player's pet. Display settings such as size, view and sounds belong to each player, so they stay hidden while you edit someone else's pet.
+
 ## 1.3.12
 
 - **Every pet has its own natural 20 and natural 1.** Pets used to celebrate and sulk the same way. Now:

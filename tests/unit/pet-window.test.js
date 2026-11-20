@@ -67,10 +67,13 @@ describe('the form', () => {
     const had = globalThis.game.dice3d;
     globalThis.game.dice3d = { _throwLook: throwLook };
     previewPet();
-    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], undefined); // any face
+    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], undefined, user); // any face, this user's pet
     flags.pet = { catch: true };
     previewPet();
-    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], 20); // a catching pet shows its catch
+    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], 20, user); // a catching pet shows its catch
+    const other = { id: 'u2', getFlag: () => undefined };
+    previewPet(other);
+    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], undefined, other); // a GM previews a player's pet
     globalThis.game.dice3d = had;
   });
 
@@ -214,6 +217,123 @@ describe('the window', () => {
     text.dispatchEvent(new Event('change', { bubbles: true }));
     await flush();
     expect(user.setFlag).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a GM sets pets for players', () => {
+  class FakeApp {
+    constructor() {
+      this.element = document.createElement('div');
+      this.rendered = false;
+    }
+    async render() {
+      this._replaceHTML(await this._renderHTML(), this.element);
+      this.rendered = true;
+      return this;
+    }
+  }
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  let bob;
+  let alice;
+  const mkUser = (id, name, pet) => {
+    const f = { pet };
+    return {
+      id,
+      name,
+      color: '#334455',
+      getFlag: (scope, key) => f[key],
+      setFlag: vi.fn(async (scope, key, value) => {
+        f[key] = value;
+      }),
+      flags: f,
+    };
+  };
+  beforeEach(() => {
+    globalThis.foundry = { applications: { api: { ApplicationV2: FakeApp } } };
+    user.isGM = true;
+    user.name = 'Gamemaster';
+    bob = mkUser('u3', 'Bob', { kind: 'owl', color: '#010203', pitch: 1.5, catch: true });
+    alice = mkUser('u2', 'alice', undefined);
+    const all = [bob, user, alice];
+    globalThis.game.users = Object.assign(all, { get: (id) => all.find((u) => u.id === id) });
+  });
+
+  test('petPlayers: the GM first, then the others by name; nothing for a player', async () => {
+    const { petPlayers } = await import('../../src/ui/pet-window.js');
+    expect(petPlayers()).toEqual([
+      { id: 'u1', name: 'Gamemaster' },
+      { id: 'u2', name: 'alice' },
+      { id: 'u3', name: 'Bob' },
+    ]);
+    user.isGM = false;
+    expect(petPlayers()).toEqual([]);
+  });
+
+  test('the form: a Player select only with players; another player loses the settings rows and gets a note', () => {
+    globalThis.game.settings.settings = new Map([['dicer.petClick', { name: 'Click', hint: 'h', type: Boolean }]]);
+    const players = [
+      { id: 'u1', name: 'GM' },
+      { id: 'u3', name: 'Bob' },
+    ];
+    const pet = { kind: 'owl', color: '#010203' };
+    expect(buildPetForm(pet).querySelector('[data-pet-player]')).toBeNull();
+    const own = buildPetForm(pet, { players, target: 'u1', hidden: true });
+    expect([...own.querySelectorAll('[data-pet-player] option')].map((o) => [o.value, o.textContent, o.selected])).toEqual([
+      ['u1', 'GM', true],
+      ['u3', 'Bob', false],
+    ]);
+    expect(own.querySelector('[data-setting="petClick"]')).not.toBeNull();
+    expect(own.textContent).not.toContain('DICER.PetWindow.OtherSettings');
+    const theirs = buildPetForm(pet, { players, target: 'u3', hidden: true });
+    expect(theirs.querySelector('[data-pet-player]').value).toBe('u3');
+    expect(theirs.querySelector('[data-setting]')).toBeNull();
+    expect(theirs.textContent).toContain('DICER.PetWindow.OtherSettings');
+    expect(theirs.textContent).not.toContain('DICER.Appearance.Pet.Hidden'); // the GM's own showPets is not theirs
+  });
+
+  test('picking a player loads their pet, pitch and catch; every change saves on them, not the GM', async () => {
+    flags.pet = { kind: 'mimic', color: '#445566' };
+    const app = await openPetWindow();
+    const select = app.element.querySelector('[data-pet-player]');
+    expect(select.value).toBe('u1');
+    select.value = 'u3';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    const el = app.element;
+    expect(el.querySelector('[data-pet-player]').value).toBe('u3');
+    expect(el.querySelector('[data-kind="owl"]').classList.contains('active')).toBe(true);
+    expect(el.querySelector('[data-pet-color]').value).toBe('#010203');
+    expect(el.querySelector('[data-pet-pitch]').value).toBe('1.5');
+    expect(el.querySelector('[data-pet-catch]').checked).toBe(true);
+
+    el.querySelector('[data-kind="cat"]').click();
+    await flush();
+    expect(bob.flags.pet).toEqual({ kind: 'cat', color: '#010203', pitch: 1.5, catch: true });
+    const pitch = app.element.querySelector('[data-pet-pitch]');
+    pitch.value = '0.75';
+    pitch.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    const box = app.element.querySelector('[data-pet-catch]');
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    const [, text] = app.element.querySelectorAll('[data-pet-color]');
+    text.value = '#abcdef';
+    text.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(bob.flags.pet).toEqual({ kind: 'cat', color: '#abcdef', natural: false, pitch: 0.75, catch: false });
+    expect(user.setFlag).not.toHaveBeenCalled();
+
+    const throwLook = vi.fn();
+    globalThis.game.dice3d = { _throwLook: throwLook };
+    app.element.querySelector('[data-act="preview"]').click();
+    expect(throwLook).toHaveBeenLastCalledWith(null, ['d20'], undefined, bob); // the preview throws with Bob's pet
+  });
+
+  test('a player sees no Player select', async () => {
+    user.isGM = false;
+    const app = await openPetWindow();
+    expect(app.element.querySelector('[data-pet-player]')).toBeNull();
   });
 });
 

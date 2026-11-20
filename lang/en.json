@@ -1316,7 +1316,10 @@
       "Button": "My pet",
       "ButtonHint": "Pick your dice pet and its colour (yours, whatever dice you roll)",
       "Off": "The GM has turned dice pets off in this world.",
-      "Settings": "Pet settings"
+      "Settings": "Pet settings",
+      "Player": "Player",
+      "PlayerHint": "GM only: set the pet for another player; every change saves on them",
+      "OtherSettings": "This player's pet display settings (size, view, sounds and so on) are their own: only they can change them."
     },
     "Stats": {
       "Title": "Roll stats",

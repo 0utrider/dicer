@@ -1034,9 +1034,10 @@ export function createDice3dApi({
      * Local only: throws one die of each type (or of `types`) with a theme's look (the editor and
      * browser Throw buttons; the pet window's Preview throws one d20 with the user's own look).
      * `face`: every die shows it (the pet window's Preview throws a 20 for a pet that catches 20s).
+     * `user`: whose pet comes (the pet window's Preview: the player a GM is setting the pet for).
      */
     _throwLook: {
-      value(theme, types = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'], face) {
+      value(theme, types = ['d2', 'd4', 'd6', 'd8', 'd10', 'd12', 'd20'], face, user = me()) {
         try {
           const specs = types.map((type) => {
             const values = getShape(type).values;
@@ -1050,7 +1051,7 @@ export function createDice3dApi({
               Object.assign(spec, { system: theme.key, dsnType: type, faces: facesFor(preset), model: preset.modelUrl ?? preset.modelFile });
             return spec;
           });
-          const pet = petFor({ user: me(), view: 'real', getSetting });
+          const pet = petFor({ user, view: 'real', getSetting });
           // A preview: above the editor or browser window it came from, whatever diceAboveWindows says.
           return diceBox.roll(specs, pet ? { pet, mine: 'always' } : { mine: 'always' }).landed;
         } catch (err) {

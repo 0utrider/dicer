@@ -2455,6 +2455,17 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
 .dicer-pet-color > span {
   flex: 1;
 }
+.dicer-pet-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dicer-pet-player > span {
+  flex: 1;
+}
+.dicer-pet-player select {
+  flex: 0 0 200px;
+}
 .dicer-pet-pitch {
   display: flex;
   align-items: center;

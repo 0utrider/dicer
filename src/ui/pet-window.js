@@ -126,12 +126,38 @@ export function readCatch(user) {
   }
 }
 
-/** The window's content for `pet` ({kind, color, natural, pitch, catch}); `allowed`: the GM's petsAllowed; `hidden`: showPets off. */
-export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
+/**
+ * The users a GM can set pets for: the GM themself first, then everyone else by name ({id, name}).
+ * Empty for a player: the window edits only their own pet.
+ */
+export function petPlayers(self = me(), users = globalThis.game?.users) {
+  if (!self?.isGM) return [];
+  const others = [...(users ?? [])].filter((u) => u && u.id !== self.id).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return [self, ...others].map((u) => ({ id: u.id, name: String(u.name ?? u.id) }));
+}
+
+/**
+ * The window's content for `pet` ({kind, color, natural, pitch, catch}); `allowed`: the GM's petsAllowed; `hidden`: showPets off.
+ * `players` (a GM's petPlayers): a Player select at the top, `target` selected; for another player
+ * the pet settings rows go (their own client/user settings, which a GM cannot write) and a note says so.
+ */
+export function buildPetForm(pet, { allowed = true, hidden = false, players = [], target } = {}) {
+  const other = players.length > 0 && target !== undefined && target !== players[0].id;
+  const player = players.length
+    ? h('label', { class: 'dicer-pet-player', 'data-tooltip': loc('DICER.PetWindow.PlayerHint') }, [
+        h('span', { text: loc('DICER.PetWindow.Player') }),
+        h(
+          'select',
+          { 'data-pet-player': '' },
+          players.map((u) => h('option', { value: u.id, selected: u.id === (target ?? players[0].id), text: u.name })),
+        ),
+      ])
+    : null;
   const notes = [
+    ...(player ? [player] : []),
     h('p', { class: 'dicer-hint', text: loc('DICER.Appearance.Pet.Hint') }),
     ...(allowed ? [] : [h('p', { class: 'dicer-hint dicer-pet-off', text: loc('DICER.PetWindow.Off') })]),
-    ...(hidden ? [h('p', { class: 'dicer-hint dicer-pet-off' }, [h('i', { class: 'fa-solid fa-eye-slash' }), ` ${loc('DICER.Appearance.Pet.Hidden')}`])] : []),
+    ...(hidden && !other ? [h('p', { class: 'dicer-hint dicer-pet-off' }, [h('i', { class: 'fa-solid fa-eye-slash' }), ` ${loc('DICER.Appearance.Pet.Hidden')}`])] : []),
   ];
   const chips = h(
     'div',
@@ -165,7 +191,7 @@ export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
     h('span', { text: loc('DICER.Appearance.Pet.Catch') }),
   ]);
   const registered = globalThis.game?.settings?.settings;
-  const rows = PET_SETTINGS.map((key) => settingRow(key, registered?.get?.(`dicer.${key}`), setting(key))).filter(Boolean);
+  const rows = other ? [] : PET_SETTINGS.map((key) => settingRow(key, registered?.get?.(`dicer.${key}`), setting(key))).filter(Boolean);
   return h('form', { class: 'dicer-pet-window' }, [
     ...notes,
     chips,
@@ -182,6 +208,7 @@ export function buildPetForm(pet, { allowed = true, hidden = false } = {}) {
           ]),
         ]),
     ...(rows.length ? [h('h3', { class: 'dicer-pet-heading', text: loc('DICER.PetWindow.Settings') }), ...rows] : []),
+    ...(other ? [h('p', { class: 'dicer-hint', text: loc('DICER.PetWindow.OtherSettings') })] : []),
   ]);
 }
 
@@ -200,11 +227,11 @@ export async function savePet(change, user = me()) {
   }
 }
 
-/** Throws one d20 on this screen only (no roll, no chat message): the pet comes and plays it out. */
-export function previewPet() {
+/** Throws one d20 on this screen only (no roll, no chat message): `user`'s pet comes and plays it out. */
+export function previewPet(user = me()) {
   try {
     // a pet that catches natural 20s shows it: the preview throws a 20
-    return globalThis.game?.dice3d?._throwLook?.(null, ['d20'], readCatch(me()) ? 20 : undefined);
+    return globalThis.game?.dice3d?._throwLook?.(null, ['d20'], readCatch(user) ? 20 : undefined, user);
   } catch {
     return undefined;
   }
@@ -222,13 +249,23 @@ export function openPetWindow() {
       window: { title: 'DICER.PetWindow.Title', icon: 'fa-solid fa-dragon', resizable: true },
       position: { width: 460, height: 'auto' },
     };
+    /** The user whose pet the window edits: a GM's pick from the Player select, else this user. */
+    #targetId = null;
+    get target() {
+      return (this.#targetId && globalThis.game?.users?.get?.(this.#targetId)) || me();
+    }
     async _renderHTML() {
-      return buildPetForm({ ...readPet(me()), pitch: readPitch(me()), catch: readCatch(me()) }, { allowed: setting('petsAllowed') !== false, hidden: setting('showPets') === false });
+      const u = this.target;
+      const players = petPlayers();
+      return buildPetForm(
+        { ...readPet(u), pitch: readPitch(u), catch: readCatch(u) },
+        { allowed: setting('petsAllowed') !== false, hidden: setting('showPets') === false, players, target: u?.id },
+      );
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
       result.addEventListener('click', (event) => {
-        if (event.target.closest?.('[data-act="preview"]')) return previewPet();
+        if (event.target.closest?.('[data-act="preview"]')) return previewPet(this.target);
         this.#onClick(event.target.closest?.('[data-kind]'));
       });
       // dragging the picker or typing only mirrors the value; the save is on change
@@ -237,9 +274,9 @@ export function openPetWindow() {
     }
     async #onClick(button) {
       const kind = button?.dataset.kind;
-      if (!PET_KINDS.includes(kind) || kind === readPet(me()).kind) return;
+      if (!PET_KINDS.includes(kind) || kind === readPet(this.target).kind) return;
       getPets()?.preloadModel?.(kind); // its model loads now, ready for the next roll or preview
-      if (await savePet({ kind })) this.render();
+      if (await savePet({ kind }, this.target)) this.render();
     }
     #mirror(el) {
       // a slider shows its value as it moves
@@ -251,18 +288,22 @@ export function openPetWindow() {
       return v;
     }
     async #onColor(el) {
+      if (el?.matches?.('[data-pet-player]')) {
+        this.#targetId = el.value; // a GM picked a player: the form shows and saves their pet
+        return this.render();
+      }
       const key = el?.closest?.('[data-setting]')?.dataset.setting;
       if (key) return this.#onSetting(key, el);
       if (el?.matches?.('[data-pet-pitch]')) {
-        if (!(await savePet({ pitch: Math.min(2, Math.max(0.5, Number(el.value) || 1)) }))) this.render();
+        if (!(await savePet({ pitch: Math.min(2, Math.max(0.5, Number(el.value) || 1)) }, this.target))) this.render();
         return;
       }
       if (el?.matches?.('[data-pet-natural]')) {
-        if (!(await savePet({ natural: el.checked }))) this.render();
+        if (!(await savePet({ natural: el.checked }, this.target))) this.render();
         return;
       }
       if (el?.matches?.('[data-pet-catch]')) {
-        if (!(await savePet({ catch: el.checked }))) this.render();
+        if (!(await savePet({ catch: el.checked }, this.target))) this.render();
         return;
       }
       const v = this.#mirror(el);
@@ -270,7 +311,7 @@ export function openPetWindow() {
       // a colour picked: the pet wears it, natural colours off
       const box = this.element.querySelector('[data-pet-natural]');
       if (box) box.checked = false;
-      if (!(await savePet({ color: v, natural: false }))) this.render(); // show the stored colour again
+      if (!(await savePet({ color: v, natural: false }, this.target))) this.render(); // show the stored colour again
     }
     /** A pet setting changed: saved at once (its own onChange wakes the pets); showPets redraws the notes. */
     async #onSetting(key, el) {
