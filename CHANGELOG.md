@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.9
+
+- **No flash of the old pet.** A pet whose 3D model was still loading (a kind just picked in the pet window, a player who joined late) showed the old built-in look for a moment, then swapped. It now stays hidden until its model is in; if the model cannot load, the built-in pet shows as before.
+
 ## 1.3.8
 
 - **Pets facing you are no longer hidden behind Foundry's interface.** With Pet view set to Facing you (or Angled), a pet leans back so you see its face, which draws it further up the screen than where it stands. Pets resting near the dice now keep that leaning body clear of the interface above them, not just their feet.

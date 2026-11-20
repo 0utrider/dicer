@@ -183,7 +183,7 @@ describe('pets made from a model (PET_MODELS)', () => {
     return n;
   };
   afterEach(() => delete PET_MODELS.cat);
-  test('a kind with a model shows its code-built pet while the model loads, then the model', async () => {
+  test('a kind with a model is hidden while the model loads (never the code-built pet), then shows the model', async () => {
     PET_MODELS.cat = 'modules/dicer/assets/pets/cat.glb';
     let resolve;
     const loadPetModel = vi.fn(() => new Promise((r) => (resolve = r)));
@@ -191,9 +191,10 @@ describe('pets made from a model (PET_MODELS)', () => {
     rollToRest(m, 'u1', 'cat');
     await new Promise((r) => setTimeout(r, 0));
     expect(loadPetModel).toHaveBeenCalledWith('modules/dicer/assets/pets/cat.glb');
-    expect(skinned(group(m))).toBe(0); // the code-built cat meanwhile
+    expect(group(m).visible).toBe(false); // no flash of the code-built cat meanwhile
     resolve(buildStandinPet());
     await new Promise((r) => setTimeout(r, 0));
+    expect(group(m).visible).toBe(true);
     expect(skinned(group(m))).toBe(2); // Body and Eyes
     expect(group(m).children[0].getObjectByName('cat')).toBeTruthy();
     expect(loadPetModel).toHaveBeenCalledTimes(1);
@@ -223,6 +224,7 @@ describe('pets made from a model (PET_MODELS)', () => {
     rollToRest(m, 'u1', 'cat');
     await new Promise((r) => setTimeout(r, 0));
     expect(skinned(group(m))).toBe(0);
+    expect(group(m).visible).toBe(true); // the code-built pet shows after all
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });

@@ -633,8 +633,9 @@ export function createPetLayer(deps) {
   const loadPetModel = deps.loadPetModel || ((url) => import('../../render/model-loader.js').then((m) => m.loadPetModel(routed(url))));
   /**
    * The creature for `spec`: its kind's model once loaded (natural colours: its fur, painted grey
-   * per the spec, tinted with the kind's natural colour), else the
-   * code-built creature, while the model loads (the pets of that kind swap to it when it is in).
+   * per the spec, tinted with the kind's natural colour), else the code-built creature. While the
+   * model loads that creature is marked `waiting`: the pet stays hidden (no flash of the old look)
+   * until the model is in, or shows the code-built one if it fails.
    */
   function creatureFor(spec) {
     const url = PET_MODELS[spec.kind];
@@ -647,7 +648,9 @@ export function createPetLayer(deps) {
         models.set(url, 'failed');
       }
     } else if (url && !t) loadModel(url);
-    return CREATURES[spec.kind](specColor(spec));
+    const creature = CREATURES[spec.kind](specColor(spec));
+    if (url && models.get(url) === 'loading') creature.waiting = true;
+    return creature;
   }
   /** Starts loading `kind`'s model, so its first appearance is the model, not the code-built pet. */
   function preloadModel(kind) {
@@ -680,6 +683,9 @@ export function createPetLayer(deps) {
       .catch((err) => {
         models.set(url, 'failed');
         console.warn(`Dicer | the pet model ${url} could not be loaded; the built-in pet shows`, err);
+        if (disposed) return;
+        for (const pet of pets.values()) if (PET_MODELS[pet.kind] === url) pet.group.visible = true;
+        wake();
       });
   }
 
@@ -696,6 +702,7 @@ export function createPetLayer(deps) {
       }
     }
     pet.creature = creature;
+    pet.group.visible = !creature.waiting; // hidden until its model is in (creatureFor)
     pet.kind = spec.kind;
     pet.color = specColor(spec);
     pet.group.add(creature.root);
