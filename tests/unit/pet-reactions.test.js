@@ -323,7 +323,7 @@ describe('reactions in the layer', () => {
   });
 
   test('scorch smoke: grey puffs, normally blended (not a glow), rising above the top of the pet', () => {
-    for (const kind of ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat']) {
+    for (const kind of ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester']) {
       const m = make();
       rollToRest(m, 'u1', kind);
       const g = group(m);
@@ -619,7 +619,7 @@ describe('reactions in the layer', () => {
   });
 });
 
-describe.each(['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat'])(
+describe.each(['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester'])(
   '%s poses scorch, shiver, bristle and startle',
   (kind) => {
     test('finite, moving, and starting and ending on the standing pose', () => {

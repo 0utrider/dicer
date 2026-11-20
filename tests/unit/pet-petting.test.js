@@ -596,7 +596,7 @@ describe('petting a pet in the layer', () => {
   });
 });
 
-describe.each(['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat'])('%s poses pet and huff', (kind) => {
+describe.each(['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester'])('%s poses pet and huff', (kind) => {
   test('finite, and starting and ending on the standing pose', () => {
     const c = CREATURES[kind]('#3080ff');
     const snap = () => {

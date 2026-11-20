@@ -1,5 +1,5 @@
 /** Whose pet a roll shows. World-start code: keep it byte-lean. */
-export const PET_KINDS = Object.freeze(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat']);
+export const PET_KINDS = Object.freeze(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester']);
 const HEX = /^#[0-9a-f]{6}$/i;
 const ok = (c) => (HEX.test(String(c)) ? String(c) : null);
 

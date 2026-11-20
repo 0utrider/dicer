@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.11
+
+- **Five new pets.** Pick them in **Your pet**:
+  - **Fox:** ears that twitch and a big bushy tail; it pounces on a natural 20 and ducks behind its tail on a 1.
+  - **Paper lantern** (a chōchin-obake): a one-eyed, glowing lantern that floats, with its tongue out; it flares and spins on a 20 and sags on a 1.
+  - **Imp:** a little red devil on bat wings; it flips in the air on a 20 and flops on its belly to pout on a 1.
+  - **Clockwork robot:** a brass wind-up robot whose key ticks round; it whirs on a 20 and winds down on a 1.
+  - **Jester doll:** bounces on a spring, with bells on its hat; it back-flips on a 20 and collapses like a rag doll on a 1.
+- Each has its own voice and natural colour, and does everything the other pets do: throwing, cheering, sulking, damage reactions and petting.
+
 ## 1.3.10
 
 - **Module dice show their face images at full size.** An image on a face of a module dice set (the Pathfinder P on Dicefinder's 20) was drawn about a third of the size Dice So Nice shows it. Such images now cover the same area of the face as in Dice So Nice; text on those faces and images in Dicer's own themes keep their size.

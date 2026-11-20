@@ -76,8 +76,8 @@ const AREAS_HOOK = 'dicerRollAreasChanged';
 
 const FLY_PEAK = 1.2; // the dragonling's flight arc on a move (alignFor), die units
 /** Pets that fly over on a move (an arc), and those that boing over in two hops (their pose springs). */
-const FLIERS = new Set(['dragonling', 'owl', 'ghost', 'eye']);
-const HOPPERS = new Set(['slime', 'frog']);
+const FLIERS = new Set(['dragonling', 'owl', 'ghost', 'eye', 'lantern', 'imp']);
+const HOPPERS = new Set(['slime', 'frog', 'jester']);
 /**
  * The petView lean (rad): the pet tips back from its feet, away from the bottom of the screen, so
  * the top-down camera sees its face and body. Its shadow and splat stay flat on the table.
@@ -88,7 +88,7 @@ const YAW_Q = new THREE.Quaternion();
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 /** Each kind's voice, as a playback rate on the shared pet sounds (the player's pitch multiplies it). */
-const KIND_PITCH = { owl: 0.95, frog: 0.82, ghost: 1.1, mushroom: 1.2, eye: 1.12, golem: 0.7, cat: 1.15 };
+const KIND_PITCH = { owl: 0.95, frog: 0.82, ghost: 1.1, mushroom: 1.2, eye: 1.12, golem: 0.7, cat: 1.15, fox: 1.1, lantern: 1.0, imp: 1.3, robot: 0.85, jester: 1.25 };
 // The pet's voices with takes (synth.js): voice() plays one at random, never the same one twice
 // running: its "ooh?" as its dice fly, its "mm-hm", "huh?", natural 20 cheer and natural 1 whimper.
 const takes = (name, n) => [name, ...Array.from({ length: n - 1 }, (_, i) => `${name}${i + 2}`)];

@@ -25,6 +25,11 @@ const PETS = {
   eye: 'Eye',
   golem: 'Golem',
   cat: 'Cat',
+  fox: 'Fox',
+  lantern: 'Lantern',
+  imp: 'Imp',
+  robot: 'Robot',
+  jester: 'Jester',
 };
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const fmt = (key, data) => globalThis.game?.i18n?.format?.(key, data) ?? key;

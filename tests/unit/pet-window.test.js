@@ -37,7 +37,7 @@ const kinds = (form) => [...form.querySelectorAll('[data-kind]')];
 describe('the form', () => {
   test('one button per kind, the current one active; the colour in both inputs', () => {
     const form = buildPetForm({ kind: 'dragonling', color: '#112233' });
-    expect(kinds(form).map((b) => b.dataset.kind)).toEqual(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat']);
+    expect(kinds(form).map((b) => b.dataset.kind)).toEqual(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester']);
     expect(kinds(form).filter((b) => b.classList.contains('active')).map((b) => b.dataset.kind)).toEqual(['dragonling']);
     expect([...form.querySelectorAll('[data-pet-color]')].map((i) => i.value)).toEqual(['#112233', '#112233']);
     expect(form.querySelector('.dicer-pet-off')).toBeNull();

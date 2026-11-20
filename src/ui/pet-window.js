@@ -21,6 +21,11 @@ const ICONS = {
   eye: 'fa-eye',
   golem: 'fa-mountain',
   cat: 'fa-cat',
+  fox: 'fa-paw',
+  lantern: 'fa-lightbulb',
+  imp: 'fa-fire',
+  robot: 'fa-robot',
+  jester: 'fa-masks-theater',
 };
 const LABELS = {
   none: 'None',
@@ -34,6 +39,11 @@ const LABELS = {
   eye: 'Eye',
   golem: 'Golem',
   cat: 'Cat',
+  fox: 'Fox',
+  lantern: 'Lantern',
+  imp: 'Imp',
+  robot: 'Robot',
+  jester: 'Jester',
 };
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const me = () => globalThis.game?.user;

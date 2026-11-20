@@ -9,7 +9,7 @@ import { createSim, initPhysics, prewarm } from '../../src/physics/sim.js';
 import { computeHulls } from '../../src/physics/hulls.js';
 import { IMPACT_FLOATS } from '../../src/physics/protocol.js';
 
-const KINDS = ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat'];
+const KINDS = ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester'];
 const PHASES = ['burst', 'puddle', 'reform'];
 const TS = [0, 0.5, 1, -1, 2, NaN];
 

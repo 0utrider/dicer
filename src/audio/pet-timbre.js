@@ -99,4 +99,45 @@ export const PET_TIMBRES = {
     formants: [[850, 5, 1.3], [1700, 6, 1.0], [2800, 6, 0.6]],
     dry: 0.2,
   },
+  // a fox's yip: bright, breathy, a little hoarse
+  fox: {
+    harm: saw(9, 1.1),
+    breath: 0.14,
+    vib: [7, 0.02],
+    formants: [[1000, 5, 1.3], [2200, 6, 0.8]],
+    dry: 0.3,
+    grit: 1.3,
+  },
+  // a paper lantern: papery rustle round a warm, hollow hum
+  lantern: {
+    harm: odd(7, 1.2),
+    breath: 0.35,
+    vib: [4.5, 0.025],
+    formants: [[520, 3, 1.4], [1500, 4, 0.7]],
+    dry: 0.45,
+    echo: [0.09, 0.3],
+  },
+  // an imp: a nasal, cackling little rasp
+  imp: {
+    harm: saw(12, 0.8),
+    am: [24, 0.35],
+    formants: [[1100, 6, 1.4], [2600, 6, 0.8]],
+    dry: 0.25,
+    grit: 2,
+  },
+  // clockwork: a buzzy square tone with a metallic ring
+  robot: {
+    harm: odd(13, 0.9),
+    fm: [3, 0.9],
+    am: [55, 0.3],
+    formants: [[900, 7, 1.2]],
+    dry: 0.5,
+  },
+  // a jester doll: a bright, chiming toy voice
+  jester: {
+    inharm: [[1, 0.6, 0.6], [3.98, 0.35, 0.3], [6.2, 0.2, 0.2]],
+    vib: [8, 0.025],
+    formants: [[1800, 4, 1.2]],
+    dry: 0.55,
+  },
 };

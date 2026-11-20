@@ -445,9 +445,11 @@ describe('build', () => {
     // owner approved +20 B (41,960 -> 41,980), 2026-11-20.
     // A module set's face images cover its Dice So Nice texture tile (compat/faces.js DSN_TILE_HALF,
     // the uFaceHalf uniform): owner approved +280 B (41,980 -> 42,260), 2026-11-20.
+    // Five new pet kinds (fox, lantern, imp, robot, jester: their names in pet-for.js PET_KINDS; the
+    // creatures, models and sounds are lazy): owner approved +64 B (42,260 -> 42,324), 2026-11-20.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(42_260);
+    expect(growth).toBeLessThanOrEqual(42_324);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

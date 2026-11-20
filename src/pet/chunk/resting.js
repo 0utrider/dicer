@@ -35,6 +35,11 @@ export const KIND_FOOTPRINT = {
   eye: 0.6,
   golem: 1.0,
   cat: 0.91,
+  fox: 0.8,
+  lantern: 0.73,
+  imp: 0.59,
+  robot: 0.82,
+  jester: 0.85,
 };
 
 /** The spot a pet stands on at `edge` of `area`, its outward direction and the yaw facing in. */
