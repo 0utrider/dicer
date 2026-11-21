@@ -40,7 +40,7 @@ describe.each(KINDS)('%s', (kind) => {
     expect(c.root).toBeInstanceOf(THREE.Object3D);
     expect(c.height).toBeGreaterThanOrEqual(HEIGHT - TOL);
     expect(c.height).toBeLessThanOrEqual(HEIGHT + TOL);
-    c.pose('watch', 0, null, { yaw: 0 });
+    c.pose('watch', 0, null, { yaw: 0, now: 0 }); // a fixed clock: a hovering idle (the imp's) is not random
     c.root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(c.root);
     const size = box.getSize(new THREE.Vector3());

@@ -154,9 +154,10 @@ export function createRegistry({
   function setAlias(member, type, shape) {
     // Dice So Nice's d100 preset sits on the d10 shape (its tens die): Dicer throws a d100 as tens
     // and ones d10s, so the d100 never becomes a single d10 (it would have no face for 97).
-    if (type === 'd100') return false;
+    // A die set naming a die's own shape (addDicePreset({ type: 'd20' }, 'd20')): nothing to alias.
+    if (type === 'd100' || type === shape) return false;
     if (BUILTIN_TYPES.includes(type)) {
-      bad(member, `"${type}" is a built-in die type and keeps its own shape`);
+      bad(member, `"${type}" is a built-in die: its shape stays`);
       return false;
     }
     if (!BUILTIN_TYPES.includes(shape)) {

@@ -357,6 +357,14 @@ describe('hardening (Task 12)', () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  test("a preset naming its built-in die's own shape is taken without a warning", async () => {
+    const { reg, warn } = make();
+    await reg.addDicePreset({ type: 'd20', labels: labels(20), system: 'set' }, 'd20');
+    expect(reg.baseShape('d20')).toBe('d20');
+    expect(reg.presetFor('set', 'd20')).toBeTruthy();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   test('d14 and d16 are built-in shapes', async () => {
     const { reg } = make();
     expect(reg.baseShape('d14')).toBe('d14');

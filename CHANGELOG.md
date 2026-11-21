@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.16
+
+- **No false warning from dice sets.** A Dice So Nice dice set that registers a die on its own shape, such as a d20 on the d20 shape, made the console warn that "d20" is a built-in die type. Nothing was wrong, and the warning no longer shows. A set that really tries to turn a built-in die into another shape still warns.
+
 ## 1.3.15
 
 - **Your pet reacts to your damage dice.** On a roll with a damage type, your own pet used to just nod, unless it sat on the tray's rim. Now it reacts to the damage type wherever it stands: a scorch for fire, a shiver for cold, and so on. Rolls with no damage type still get the nod, and crits and fumbles keep their own reactions.
