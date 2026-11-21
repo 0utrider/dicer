@@ -395,6 +395,19 @@ describe('the theme browser with module dice', () => {
     expect(stopSystemPatch()).toEqual({ global: { system: null } });
   });
 
+  it('a set that names no colours imports in the player’s own look (as it shows in use), not Clear Resin', async () => {
+    const systems = new Map([['fs', { name: 'Flame Stalker', dice: new Map([['d20', { labels: ['a.webp', '2'], values: { min: 1 } }]]) }]]);
+    const [entry] = moduleDiceEntries({ colorsets: new Map(), systems });
+    expect(entry.noColours).toBe(true);
+    const res = await mod.importModuleDice(entry);
+    expect(res.raw.appearance).toMatchObject(LOOKS['ruby-classic'].appearance); // store.theme
+    expect(res.raw.appearance.faces).toEqual({ d20: { 1: 'a.webp' } });
+    expect(res.raw.system).toBe('fs');
+    // a set with its own colours keeps them
+    const named = moduleDiceEntries({ colorsets: registry.exports.COLORSETS ? new Map(Object.entries(registry.exports.COLORSETS)) : new Map(), systems: new Map([['n', { name: 'N', dice: new Map([['d20', { labels: [], colorset: 'pf2e-fire-red' }]]) }]]) }).find((e) => e.key === 'n');
+    expect(named.noColours).toBeUndefined();
+  });
+
   it('systemEntry marks a set with models and no colours as colourless', () => {
     const systems = new Map([['m', { name: 'M', dice: new Map([['d20', { labels: '', modelFile: 'd20.gltf' }]]) }]]);
     expect(moduleDiceEntries({ colorsets: new Map(), systems })[0].colourless).toBe(true);

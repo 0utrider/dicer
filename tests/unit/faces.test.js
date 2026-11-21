@@ -102,6 +102,15 @@ describe('lookFacesFor: the face images of a look', () => {
     expect(lookFacesFor('d6', look({ d6: { 1: 'b.png' } }), base).key).not.toBe(a.key);
   });
 
+  test("the module set's own images (a theme imported from it) keep its tile size; other images Dicer's", () => {
+    const vals = getShape('d20').values;
+    const base = { key: 'sys|d20', half: 1.74, labels: vals.map((v) => (v === 20 ? { kind: 'image', url: 'set/20.webp' } : { kind: 'glyph', text: String(v) })) };
+    expect(lookFacesFor('d20', look({ d20: { 20: 'set/20.webp' } }), base).half).toBe(1.74);
+    expect(lookFacesFor('d20', look({ d20: { 20: 'mine/20.webp' } }), base).half).toBeUndefined();
+    expect(lookFacesFor('d20', look({ d20: { 20: 'set/20.webp' } }), { ...base, half: undefined }).half).toBeUndefined();
+    expect(lookFacesFor('d20', look({ d20: { 20: 'set/20.webp' } })).half).toBeUndefined();
+  });
+
   test('a coin, a Fate die and a d100 tens die read their own keys by what each face shows', () => {
     // coin on the d2: face 1 is heads (1), face 2 tails (0)
     const coin = lookFacesFor('d2', look({ dc: { 1: 'h.webp', 0: 't.webp' }, d2: { 1: 'no.webp' } }), undefined, 'dc');

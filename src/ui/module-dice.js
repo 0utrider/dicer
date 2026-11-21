@@ -167,6 +167,9 @@ function systemEntry(id, sys, registry, pair = null) {
     ...(Object.keys(facePresets).length ? { facePresets } : {}),
     // all its look is in its models: an import takes its colours from them (themes/model-colours.js)
     ...(models.length && !looks.size ? { colourless: true } : {}),
+    // it names no colours at all (no colorset, no pair): in use it keeps the player's look, and an
+    // import starts from that look too, not Dicer's default (theme-browser importModuleDice)
+    ...(!looks.size && !pair ? { noColours: true } : {}),
   };
 }
 
@@ -244,7 +247,8 @@ export function currentModuleIds(global, entries) {
  * system has them).
  */
 export function moduleThemeRaw(entry, id) {
-  // The set's image faces ride along: on the look and on every per-type look (each is whole).
+  // The set's image faces ride along: on the look and on every per-type look (each is whole). With
+  // the set's system kept, they draw over its tile, as big as the set shows them (faces.js lookFacesFor).
   const withFaces = (look) => (entry.faceImages ? { ...plain(look), faces: plain(entry.faceImages) } : plain(look));
   const raw = { id, name: entry.name, appearance: withFaces(entry.appearance) };
   // a dice set's system stays with the theme: its dice, faces and shaders, now in the theme's colours

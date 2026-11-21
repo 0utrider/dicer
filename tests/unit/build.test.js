@@ -451,9 +451,11 @@ describe('build', () => {
     // approved +45 B (42,324 -> 42,369), 2026-11-20.
     // Another user's user-scope setting change is ignored (settings.js register): owner approved
     // +49 B (42,369 -> 42,418), 2026-11-21.
+    // An imported module set's own face images keep its tile size (faces.js lookFacesFor): owner
+    // approved +84 B (42,418 -> 42,502), 2026-11-21.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(42_418);
+    expect(growth).toBeLessThanOrEqual(42_502);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

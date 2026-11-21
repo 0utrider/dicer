@@ -62,7 +62,12 @@ export function lookFacesFor(type, appearance, base, variant) {
       ? { kind: 'image', url, ...(tint ? { tint } : {}) }
       : (base?.labels?.[i] ?? { kind: 'glyph', text: labelFor(type, variant === 'd100tens' ? v * 10 : v, variant) });
   });
-  return { key: `look|${key}|${tint ? 1 : 0}|${hash(JSON.stringify(map))}|${base?.key ?? ''}`, labels };
+  // The very images of the module set the die uses (a theme imported from it keeps both): Dice So
+  // Nice tile art, drawn over its tile (base.half) as big as the set itself shows them.
+  // (the key needs no half: the images and base.key, both in it, decide it)
+  const set = { key: `look|${key}|${tint ? 1 : 0}|${hash(JSON.stringify(map))}|${base?.key ?? ''}`, labels };
+  if (base?.half && labels.some((l) => l.url && base.labels.some((b) => b.url === l.url))) set.half = base.half;
+  return set;
 }
 
 /** The Fate die's faces on Dicer's d6 (text faces drawn from face layers): 1, 2 +; 3, 4 blank; 5, 6 −. */

@@ -327,6 +327,17 @@ export async function stopModuleSystem(entry) {
   return true;
 }
 
+/** The look of this user's default theme (the `theme` setting), or null when it cannot be read. */
+function myLook() {
+  try {
+    const id = settings()?.get(MODULE, 'theme');
+    const t = findTheme(id, { worldThemes: readThemeList(settings()?.get(MODULE, 'worldThemes'), 'world', () => {}), userThemes: readThemeList(me()?.getFlag?.(MODULE, 'themes'), 'user', () => {}) });
+    return t?.appearance ? JSON.parse(JSON.stringify(t.appearance)) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Copies a module dice set into My themes; `{raw, dropped}`, or null when refused. A set whose
  * look is all in its 3D models (no colours) takes its colours from them (`lookFromModels`), so
@@ -340,6 +351,11 @@ export async function importModuleDice(entry, { lookFromModels = modelLookOf } =
     const look = await Promise.resolve()
       .then(() => lookFromModels(entry.models))
       .catch(() => null);
+    if (look) entry = { ...entry, appearance: look, perType: {} };
+  } else if (entry.noColours) {
+    // a set that names no colours shows on the player's own look (as the Module dice tab shows it):
+    // the theme starts from that look, not Dicer's default (Clear Resin)
+    const look = myLook();
     if (look) entry = { ...entry, appearance: look, perType: {} };
   }
   const res = moduleThemeRaw(entry, userThemeId(me().id, entry.name, ids));

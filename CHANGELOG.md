@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.23
+
+- **Imported module dice keep their full-size face images.** Importing a module dice set as a theme shrank its picture faces to Dicer's own label size. They now stay as big as the set shows them on the Module dice tab, and themes you already imported get the bigger faces back.
+- **Imported module dice start from your own look.** A set that names no colours of its own used to import on Clear Resin. It now starts from your current default look, the same look the Module dice tab shows it on.
+
 ## 1.3.22
 
 - **Crit scene title cards show over the dice tray.** The big "NAT 1" / "NAT 20" card a crit scene shows was drawn under the table tray, so the tray hid part of it. The card now sits above the tray and the dice, including while the dice are raised above windows.
