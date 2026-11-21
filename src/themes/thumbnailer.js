@@ -272,8 +272,18 @@ export function createThumbnailer({
   // draws them while "Picture and symbol faces" is on; the look's face images go over them.
   const presetSets = new WeakMap();
   const glyphs = atlasGlyphTest(atlas);
+  // A theme imported from a set (theme.system) has no facePresets: its set's own preset, as a roll
+  // finds it (resolve-looks), so the editor and thumbnails show the set's faces, at its tile size.
+  const systemPreset = (theme, dieType) => {
+    try {
+      const id = theme?.kind === 'system' ? null : systemIdOf(theme);
+      return id ? (globalThis.game?.dice3d?.DiceFactory?.systems?.get?.(id)?.dice?.get?.(dieType) ?? null) : null;
+    } catch {
+      return null;
+    }
+  };
   const presetFacesOf = (theme, dieType) => {
-    const preset = theme?.facePresets?.[dieType];
+    const preset = theme?.facePresets?.[dieType] ?? systemPreset(theme, dieType);
     if (!preset || !showPresetFaces()) return undefined;
     if (!presetSets.has(preset)) presetSets.set(preset, facesFor(preset, glyphs));
     return presetSets.get(preset);

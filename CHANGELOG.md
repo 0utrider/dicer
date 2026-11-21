@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.24
+
+- **Imported module dice show their faces in the editor and thumbnails.** A theme imported from a module dice set rolled with the set's faces, but the appearance editor's preview and the theme thumbnails showed plain numbers or shrunken pictures. They now show the set's own faces at full size, as a roll does.
+
 ## 1.3.23
 
 - **Imported module dice keep their full-size face images.** Importing a module dice set as a theme shrank its picture faces to Dicer's own label size. They now stay as big as the set shows them on the Module dice tab, and themes you already imported get the bigger faces back.

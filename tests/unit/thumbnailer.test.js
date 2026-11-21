@@ -638,6 +638,26 @@ test("a module set's own symbol faces draw in its thumbnail, unless Picture and 
   t.dispose();
 });
 
+test("a theme imported from a set draws that set's own faces (its system's preset), as a roll does", async () => {
+  const tex = { texture: new THREE.DataArrayTexture(new Uint8Array(16), 2, 2, 1), layers: null, tint: new Uint8Array(20) };
+  faceCache.acquire = vi.fn(async (set) => ({ ...tex, layers: Int16Array.from(set.labels.map((l) => (l.kind === 'glyph' ? -1 : 0))) }));
+  faceCache.release = vi.fn();
+  const labels = Array.from({ length: 20 }, (_, i) => (i === 19 ? 'modules/set/dragon.webp' : String(i + 1)));
+  const preset = { system: 'drag', type: 'd20', labels };
+  const prev = globalThis.game;
+  globalThis.game = { ...prev, dice3d: { DiceFactory: { systems: new Map([['drag', { dice: new Map([['d20', preset]]) }]]) } } };
+  try {
+    const { t } = make();
+    await t.thumbnail({ ...theme(), perType: {}, system: 'drag' }, 'd20');
+    const set = faceCache.acquire.mock.calls[0][0];
+    expect(set.labels.some((l) => l.url === 'modules/set/dragon.webp')).toBe(true);
+    expect(set.half).toBeGreaterThan(1); // the set's tile size (compat/faces.js DSN_TILE_HALF)
+    t.dispose();
+  } finally {
+    globalThis.game = prev;
+  }
+});
+
 test('a module entry with a model draws the model, its shown face on top, and never frees its material', async () => {
   const model = { geometry: new THREE.BoxGeometry(1, 1, 1), material: new THREE.MeshStandardMaterial() };
   modelChunk.load = vi.fn(async () => model);
