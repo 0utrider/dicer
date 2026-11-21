@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.19
+
+- **Search the theme browser.** A search box in the Dicer themes window filters the open tab as you type, and the tab counts show how many match. Handy on the Module dice tab, which can list hundreds of dice sets.
+- **Pets no longer stand inside each other.** A pet dropped on another lands beside it, and a pet coming back to its spot or lining up steps aside if another pet is there. Pets already saved on top of each other spread apart the next time they rest.
+
 ## 1.3.18
 
 - **Players no longer change each other's dice.** When one player picked a theme, other connected players could end up with that theme too. Foundry tells every screen about each player's own setting changes, and Dicer took another player's theme pick as its own. Now each screen only acts on its own player's settings. If your theme was changed this way, pick it again once.

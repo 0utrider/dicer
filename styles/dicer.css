@@ -235,6 +235,36 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   font-weight: normal;
   color: var(--dicer-muted);
 }
+/* the theme browser's search box: sized and framed like the filter tabs beside it */
+.dicer-theme-browser .dicer-theme-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 220px;
+  min-width: 140px;
+  margin: 0;
+}
+.dicer-theme-browser .dicer-theme-search > i {
+  position: absolute;
+  left: 10px;
+  font-size: var(--font-size-12, 12px);
+  color: var(--dicer-muted);
+  pointer-events: none;
+}
+.dicer-theme-browser .dicer-theme-search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px 0 28px;
+  border: 1px solid var(--dicer-line);
+  border-radius: calc(var(--dicer-radius) + 2px);
+  background: var(--dicer-surface);
+  color: var(--color-text-primary);
+}
+.dicer-theme-browser .dicer-theme-search input:focus {
+  border-color: var(--dicer-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dicer-accent) 40%, transparent);
+  outline: none;
+}
 :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-map-editor, .dicer-appearance-editor, .dicer-benchmark, .dicer-tt-editor-app) .dicer-field {
   display: flex;
   flex-direction: column;

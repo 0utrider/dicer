@@ -776,6 +776,29 @@ describe('dragging a pet in the layer', () => {
     expect(saved.petRestAt.pets.u2.x).toBeCloseTo(two.x / STAGE.halfWidth, 6);
   });
 
+  test('a pet dropped on another lands beside it, never inside it', () => {
+    const m = make({}, { setSetting: () => Promise.resolve() });
+    rollToRest(m, 'u1');
+    rollToRest(m, 'u2');
+    const g1 = group(m, 0);
+    const g2 = group(m, 1);
+    const onto = screenOf(g2);
+    dragAlong(m.win, screenOf(g1), [{ x: screenOf(g1).x + 20, y: screenOf(g1).y }, onto]);
+    expect(runTo(m, clockNow + 1500)).toBe('rest');
+    const d = Math.hypot(g1.position.x - g2.position.x, g1.position.z - g2.position.z);
+    expect(d).toBeGreaterThanOrEqual(2 * 1.5 - 1e-6); // SPACING x height apart
+  });
+
+  test('two saved spots on top of each other (from before): the pets still stand apart', () => {
+    const at = { x: 0, z: 0, pets: { u1: { x: 0.1, z: 0.1 }, u2: { x: 0.1, z: 0.1 } } };
+    const m = make({ petRestSpot: 'placed', petRestAt: at });
+    rollToRest(m, 'u1');
+    rollToRest(m, 'u2');
+    const a = group(m, 0).position;
+    const b = group(m, 1).position;
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(2 * 1.5 - 1e-6);
+  });
+
   test('after a reload, each pet rests at its own saved spot', () => {
     const at = { x: -0.6, z: 0.5, pets: { u1: { x: -0.6, z: 0.5 }, u2: { x: 0.5, z: -0.4 } } };
     const m = make({ petRestSpot: 'placed', petRestAt: at });

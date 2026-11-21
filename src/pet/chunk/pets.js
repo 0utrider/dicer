@@ -988,6 +988,34 @@ export function createPetLayer(deps) {
    * back to the same place after its owner's roll); otherwise it takes the lowest free one: slots
    * go in the order pets arrive. Sets pet.slot (null for 'dice').
    */
+  /**
+   * `spot` moved clear of the other standing pets (SPACING x height from each): the nearest of a few
+   * steps around it that is free and on the stage, or `spot` itself when none is. Placed spots are
+   * the player's own, so two pets could otherwise be put (or line up) one inside the other.
+   */
+  function apart(pet, spot, h) {
+    if (!spot || !stage) return spot;
+    const others = [];
+    for (const o of pets.values()) {
+      if (o === pet || !standing(o) || o.held) continue;
+      const at = o.spot ?? (o.px != null ? { x: o.px, z: o.pz } : o.base);
+      if (at) others.push(at);
+    }
+    const gap = SPACING * h;
+    const cx = stage.cx ?? 0;
+    const cz = stage.cz ?? 0;
+    const hw = stage.halfWidth - EDGE_GAP * h;
+    const hd = stage.halfDepth - EDGE_GAP * h;
+    const steps = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]];
+    for (const [i, j] of steps) {
+      const x = spot.x + i * gap;
+      const z = spot.z + j * gap;
+      if (Math.abs(x - cx) > hw + 1e-9 || Math.abs(z - cz) > hd + 1e-9) continue;
+      if (others.every((o) => Math.hypot(o.x - x, o.z - z) >= gap - 1e-9)) return { x, z };
+    }
+    return spot;
+  }
+
   function cornerSpot(pet) {
     let c = current();
     const h = pet.creature.height;
@@ -1007,13 +1035,13 @@ export function createPetLayer(deps) {
     const mine = c === 'placed' ? ownAt(pet) : null;
     if (mine) {
       pet.slot = null; // its own spot: no slot of the shared one
-      return placedSpot(mine, 0, stage, h);
+      return apart(pet, placedSpot(mine, 0, stage, h), h);
     }
     const held = heldSlots(pet);
     let slot = pet.slot != null && !held.has(pet.slot) ? pet.slot : null;
     for (let k = 0; slot === null && k < MAX_PETS; k++) if (!held.has(k)) slot = k;
     pet.slot = slot ?? 0;
-    return c === 'placed' ? placedSpot(placedAt(), pet.slot, stage, h) : chosenSpot(c, pet.slot, stage, h, uiRects());
+    return c === 'placed' ? apart(pet, placedSpot(placedAt(), pet.slot, stage, h), h) : chosenSpot(c, pet.slot, stage, h, uiRects());
   }
   /**
    * The placed spot (petRestSpot 'placed') a pet with no resting spot yet watches its roll from, at
@@ -1023,11 +1051,11 @@ export function createPetLayer(deps) {
   function placedWatch(pet, h) {
     if (!stage || current() !== 'placed' || !placedAt()) return null;
     const mine = pet && ownAt(pet);
-    if (mine) return placedSpot(mine, 0, stage, h);
+    if (mine) return apart(pet, placedSpot(mine, 0, stage, h), h);
     const held = heldSlots(pet);
     let slot = pet?.slot != null && !held.has(pet.slot) ? pet.slot : null;
     for (let k = 0; slot === null && k < MAX_PETS; k++) if (!held.has(k)) slot = k;
-    return placedSpot(placedAt(), slot ?? 0, stage, h);
+    return apart(pet, placedSpot(placedAt(), slot ?? 0, stage, h), h);
   }
   /** A move of a standing pet from `at` to `to` over `ms` (stepMove), facing `yawTo` at the end. */
   function goTo(pet, at, to, ms, yawTo, now) {
@@ -1842,7 +1870,9 @@ export function createPetLayer(deps) {
         own.set(o.userId, toPlaced({ x: o.px ?? spotOf(o).x, z: o.pz ?? spotOf(o).z }, stage));
         kept.push(o);
       }
-    savePlaced(toPlaced({ x: pin(at.x, cx, stage.halfWidth - m), z: pin(at.z, cz, stage.halfDepth - m) }, stage), pet.userId);
+    // dropped on another pet: beside it
+    const put = apart(pet, { x: pin(at.x, cx, stage.halfWidth - m), z: pin(at.z, cz, stage.halfDepth - m) }, h);
+    savePlaced(toPlaced(put, stage), pet.userId);
     for (const o of kept) {
       o.restChoice = restKey('placed'); // already where it rests: not moved by the new choice
       o.slot = null;

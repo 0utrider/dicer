@@ -432,6 +432,23 @@ export function pickSelected(visible, current, defaultId) {
   return visible[0]?.id ?? null;
 }
 
+/**
+ * Whether a card matches the search box: every word of `query` (case-insensitive) is in its name,
+ * or for a module dice set also in its group (often the module's name) or its system id. An empty
+ * query matches everything.
+ */
+export function matchesQuery(entry, query) {
+  const words = String(query ?? '').toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const parts = [entry?.name];
+  if (entry?.source === 'module') parts.push(entry.category, entry.key);
+  const text = parts.filter((p) => typeof p === 'string').join(' ').toLocaleLowerCase();
+  return words.every((w) => text.includes(w));
+}
+
+/** How long typing pauses before the gallery filters (ms): 300 cards are not drawn per key. */
+const SEARCH_DELAY = 150;
+
 let instance = null;
 
 export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
@@ -475,6 +492,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   #filter = 'all';
+  #query = ''; // the search box's text, kept while the window is open (every tab filters by it)
+  #searchTimer = null;
+  #searchCaret = null; // [start, end] of the search box's selection while it has focus, restored after a render
   #selected = null; // the theme id shown in the detail panel
   #target = null; // the "Use this theme for" value the select starts on (an actor's Dice look button sets it)
   #urls = new Map(); // theme id -> thumbnail URL already made (re-renders show it at once)
@@ -507,6 +527,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const actor = parsed?.kind === 'actor' ? this.#actors().find((a) => a.id === parsed.key) : null;
     if (actor?.theme && this.#find(actor.theme)) {
       this.#filter = 'all';
+      this.#query = ''; // a search would hide it too
       this.#selected = actor.theme;
     }
   }
@@ -613,7 +634,10 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const assignments = this.#assignments();
     for (const g of groups) for (const o of g.options) if (o.value === this.#target) o.selected = true;
     const labelOf = targetLabeller(groups);
-    const visible = filter === 'module' ? modules : themes.filter((t) => filter === 'all' || t.source === filter);
+    const query = this.#query;
+    const found = themes.filter((t) => matchesQuery(t, query));
+    const foundModules = modules.filter((t) => matchesQuery(t, query));
+    const visible = filter === 'module' ? foundModules : found.filter((t) => filter === 'all' || t.source === filter);
     const defaultId = [...assignments].find(([, list]) => list.includes('default'))?.[0] ?? 'default';
     this.#selected = pickSelected(visible, this.#selected, defaultId);
     const view = (t) => {
@@ -656,19 +680,22 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       isGM: globalThis.game?.user?.isGM === true,
       lockedNotice: loc('DICER.Themes.Locked'),
       filter,
+      query,
+      // the counts are of what the search matches on each tab
       filters: Object.entries(FILTER_KEYS)
         .filter(([id]) => id !== 'module' || modules.length || filter === 'module') // only when a module registered any
         .map(([id, key]) => ({
           id,
           label: loc(key),
           active: id === filter,
-          count: id === 'all' ? themes.length : id === 'module' ? modules.length : themes.filter((t) => t.source === id).length,
+          count: id === 'all' ? found.length : id === 'module' ? foundModules.length : found.filter((t) => t.source === id).length,
         })),
       targetGroups: groups,
       // a module set: not the damage maps, which hold theme ids
       moduleTargetGroups: groups.filter((g) => !g.options.some((o) => /^(world)?damage:/.test(o.value))),
       cards,
       hasCards: cards.length > 0,
+      noMatch: cards.length === 0 && query.trim() !== '',
       detail: cards.find((c) => c.selected) ?? null,
       unreadable: unreadable.map((u) => ({ label: label(u.raw), sourceLabel: loc(SOURCE_LABEL[u.source]) })),
     };
@@ -691,8 +718,69 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     // The select resets on every render; remember its value so a re-render keeps the chosen place.
     const target = this.element.querySelector('.dicer-target');
     target?.addEventListener('change', () => this.focusTarget(target.value, { select: false }));
+    this.#bindSearch();
     this.#loadThumbnails();
     this.#startPreview();
+  }
+
+  /**
+   * The search box filters as the user types (after a short pause). A render rebuilds the box, so
+   * while it had focus the new one gets the focus and the caret back.
+   */
+  #bindSearch() {
+    const box = this.element?.querySelector?.('.dicer-theme-search input');
+    if (!box) return;
+    box.value = this.#query;
+    if (this.#searchCaret) {
+      const [start, end] = this.#searchCaret;
+      box.focus();
+      try {
+        box.setSelectionRange(Math.min(start, box.value.length), Math.min(end, box.value.length));
+      } catch {
+        /* an input type without a selection */
+      }
+    }
+    this.#searchCaret = null;
+    box.addEventListener('input', () => this.setQuery(box.value));
+    box.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !box.value) return;
+      event.preventDefault();
+      event.stopPropagation(); // Escape empties the box instead of closing the window
+      box.value = '';
+      this.setQuery('', { now: true });
+    });
+  }
+
+  /**
+   * Before a render replaces the box: its selection when it has the focus (read here, not on blur,
+   * since a browser may blur an element as it is removed).
+   */
+  async _preRender(...args) {
+    await super._preRender?.(...args);
+    const box = this.element?.querySelector?.('.dicer-theme-search input');
+    const focused = box && box.ownerDocument?.activeElement === box;
+    this.#searchCaret = focused ? [box.selectionStart ?? box.value.length, box.selectionEnd ?? box.value.length] : null;
+  }
+
+  /** Filters the cards by `text` (see matchesQuery); renders after SEARCH_DELAY, or at once with `now`. */
+  setQuery(text, { now = false } = {}) {
+    const next = String(text ?? '');
+    clearTimeout(this.#searchTimer);
+    this.#searchTimer = null;
+    if (next === this.#query) return Promise.resolve();
+    this.#query = next;
+    if (now) return this.render();
+    return new Promise((done) => {
+      this.#searchTimer = setTimeout(() => {
+        this.#searchTimer = null;
+        done(this.render());
+      }, SEARCH_DELAY);
+    });
+  }
+
+  /** The search box's text. */
+  get query() {
+    return this.#query;
   }
 
   /** The offscreen renderer (made on first use); null when the dice atlas is not available. */
@@ -882,6 +970,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       notify('warn', `${done}. ${loc('DICER.Themes.Module.Dropped')} ${droppedText(res.dropped)}. ${loc('DICER.Themes.Module.KeepHint')}`);
     else notify('info', done);
     this.#filter = 'user';
+    this.#query = ''; // the new theme is shown even when the search would hide it
     this.#selected = res.raw.id;
     await this.render();
     return this.#openEditor({ themeId: res.raw.id });
@@ -1007,6 +1096,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   async close(options) {
     if (instance === this) instance = null;
     this.#token++;
+    clearTimeout(this.#searchTimer);
+    this.#searchTimer = null;
     this.#stopPreview(); // nothing keeps drawing once the browser is closed
     this.#thumbs?.dispose();
     this.#thumbs = null;

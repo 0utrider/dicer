@@ -674,6 +674,9 @@
       "ThrowHint": "Roll one of each die with this theme on the table (only you see it).",
       "Filter": "Show",
       "Filter_all": "All",
+      "Search": "Search",
+      "SearchHint": "Search by name (module dice also by module or dice set)",
+      "SearchEmpty": "Nothing here matches your search.",
       "Source": {
         "builtin": "Built-in",
         "world": "World",

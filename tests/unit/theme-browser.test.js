@@ -834,6 +834,180 @@ describe('the browser actions', () => {
       expect(ctx.detail.canEdit).toBe(true);
     });
 
+    describe('the search box', () => {
+      const colorset = (description, category) => ({ description, category, foreground: '#ffffff', background: '#aa0000', outline: '#000000', edge: '#aa0000' });
+      const withModules = () => {
+        globalThis.game.dice3d = {
+          exports: {
+            COLORSETS: {
+              'fire-red': colorset('Fire Red', 'Pathfinder Dice'),
+              'trs-black': colorset('Black Onyx', 'The Rolling Stones'),
+              'ice-blue': colorset('Ice Blue', 'Pathfinder Dice'),
+            },
+          },
+        };
+      };
+      afterEach(() => {
+        globalThis.game.dice3d = undefined;
+      });
+      const searchDom = (app, value = '') => {
+        const el = document.createElement('div');
+        el.innerHTML = `<label class="dicer-theme-search"><input type="search" value="${value}"></label>`;
+        document.body.replaceChildren(el);
+        app.element = el;
+        return el.querySelector('input');
+      };
+
+      it('matchesQuery: every word, any case, in the name; module dice also by group or set id', () => {
+        expect(mod.matchesQuery({ name: 'Ruby Classic', source: 'builtin' }, '')).toBe(true);
+        expect(mod.matchesQuery({ name: 'Ruby Classic', source: 'builtin' }, '  ')).toBe(true);
+        expect(mod.matchesQuery({ name: 'Ruby Classic', source: 'builtin' }, 'rUBY')).toBe(true);
+        expect(mod.matchesQuery({ name: 'Ruby Classic', source: 'builtin' }, 'classic ruby')).toBe(true);
+        expect(mod.matchesQuery({ name: 'Ruby Classic', source: 'builtin' }, 'ruby gold')).toBe(false);
+        // a theme's category is not searched; a module set's group (its module) and id are
+        expect(mod.matchesQuery({ name: 'Mine', source: 'user', category: 'pathfinder' }, 'pathfinder')).toBe(false);
+        const set = { name: 'Marble', source: 'module', category: 'The Rolling Stones', key: 'trs-marble' };
+        expect(mod.matchesQuery(set, 'rolling marble')).toBe(true);
+        expect(mod.matchesQuery(set, 'TRS-MAR')).toBe(true);
+        expect(mod.matchesQuery(set, 'onyx')).toBe(false);
+        expect(mod.matchesQuery({}, 'x')).toBe(false);
+      });
+
+      it('filters the open tab and counts the matches on every tab', async () => {
+        flags.themes = [raw('user.u1.ruby-copy', 'My ruby'), raw('user.u1.green', 'Green')];
+        const app = make();
+        await app.setQuery('ruby', { now: true });
+        expect(app.render).toHaveBeenCalledTimes(1);
+        let ctx = await app._prepareContext();
+        expect(ctx.query).toBe('ruby');
+        const rubies = BUILTIN_THEMES.filter((t) => /ruby/i.test(t.name)).length;
+        expect(rubies).toBeGreaterThan(0);
+        expect(ctx.cards.map((c) => c.id)).toContain('ruby-classic');
+        expect(ctx.cards.every((c) => /ruby/i.test(c.name))).toBe(true);
+        expect(ctx.filters.map((f) => [f.id, f.count])).toEqual([
+          ['all', rubies + 1],
+          ['builtin', rubies],
+          ['world', 0],
+          ['user', 1],
+        ]);
+        await actions.filter.call(app, {}, { dataset: { filter: 'user' } });
+        ctx = await app._prepareContext();
+        expect(ctx.cards.map((c) => c.id)).toEqual(['user.u1.ruby-copy']); // the query stays on another tab
+        expect(ctx.detail.id).toBe('user.u1.ruby-copy');
+        await app.setQuery('no such dice', { now: true });
+        ctx = await app._prepareContext();
+        expect(ctx).toMatchObject({ hasCards: false, noMatch: true, detail: null });
+        await app.setQuery('', { now: true });
+        ctx = await app._prepareContext();
+        expect(ctx.cards).toHaveLength(2);
+        expect(ctx.noMatch).toBe(false);
+      });
+
+      it('on the Module dice tab it finds sets by name or by module; the tab stays while nothing matches', async () => {
+        withModules();
+        const app = make();
+        await actions.filter.call(app, {}, { dataset: { filter: 'module' } });
+        let ctx = await app._prepareContext();
+        expect(ctx.cards).toHaveLength(3);
+        await app.setQuery('pathfinder', { now: true });
+        ctx = await app._prepareContext();
+        expect(ctx.cards.map((c) => c.name).sort()).toEqual(['Fire Red', 'Ice Blue']);
+        expect(ctx.filters.find((f) => f.id === 'module').count).toBe(2);
+        await app.setQuery('onyx', { now: true });
+        ctx = await app._prepareContext();
+        expect(ctx.cards.map((c) => c.name)).toEqual(['Black Onyx']);
+        expect(ctx.filters.find((f) => f.id === 'all').count).toBe(0);
+        await app.setQuery('zzz', { now: true });
+        ctx = await app._prepareContext();
+        expect(ctx.filters.find((f) => f.id === 'module')).toMatchObject({ count: 0, active: true });
+      });
+
+      it('typing filters after a short pause (one render for a burst of keys)', async () => {
+        vi.useFakeTimers();
+        try {
+          const app = make();
+          await app._prepareContext();
+          const box = searchDom(app);
+          app._onRender();
+          for (const v of ['r', 'ru', 'rub']) {
+            box.value = v;
+            box.dispatchEvent(new Event('input'));
+          }
+          expect(app.render).not.toHaveBeenCalled();
+          await vi.advanceTimersByTimeAsync(200);
+          expect(app.render).toHaveBeenCalledTimes(1);
+          expect(app.query).toBe('rub');
+          await app.setQuery('rub'); // unchanged: no render
+          expect(app.render).toHaveBeenCalledTimes(1);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('a re-render keeps the typed text, the focus and the caret; a box that was not focused is left alone', async () => {
+        const app = make();
+        await app._prepareContext();
+        let box = searchDom(app);
+        app._onRender();
+        box.focus();
+        box.value = 'ruby cl';
+        box.setSelectionRange(4, 4);
+        box.dispatchEvent(new Event('input'));
+        // the render reads the focused box first, then rebuilds it (empty: _onRender fills it in)
+        await app._preRender();
+        box.blur(); // a browser may blur the box as the render removes it
+        box = searchDom(app);
+        app._onRender();
+        expect(box.value).toBe('ruby cl');
+        expect(document.activeElement).toBe(box);
+        expect([box.selectionStart, box.selectionEnd]).toEqual([4, 4]);
+        box.blur();
+        await app._preRender();
+        box = searchDom(app);
+        app._onRender();
+        expect(box.value).toBe('ruby cl');
+        expect(document.activeElement).not.toBe(box);
+        await app.close();
+      });
+
+      it('Escape empties the box (and does not close the window); an empty box lets Escape through', async () => {
+        const app = make();
+        await app._prepareContext();
+        const box = searchDom(app, 'ruby');
+        await app.setQuery('ruby', { now: true });
+        app._onRender();
+        const esc = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+        box.dispatchEvent(esc);
+        expect(esc.defaultPrevented).toBe(true);
+        expect(box.value).toBe('');
+        expect(app.query).toBe('');
+        expect(app.render).toHaveBeenCalledTimes(2);
+        const again = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+        box.dispatchEvent(again);
+        expect(again.defaultPrevented).toBe(false);
+      });
+
+      it('the query is kept while open, but an actor target or a set imported as a theme is never hidden by it', async () => {
+        const app = make();
+        await app.setQuery('ruby', { now: true });
+        await actions.select.call(app, {}, { closest: () => ({ dataset: { theme: 'ruby-classic' } }) });
+        expect(app.query).toBe('ruby');
+        app.focusTarget('actor:mine'); // its theme is verdant
+        expect(app.query).toBe('');
+        expect((await app._prepareContext()).detail.id).toBe('verdant');
+        const fresh = make();
+        expect(fresh.query).toBe(''); // a new window starts empty
+      });
+
+      it('the template has the box and its strings resolve', () => {
+        const hbs = readFileSync('templates/theme-browser.hbs', 'utf8');
+        expect(hbs).toMatch(/class="dicer-theme-search"[\s\S]*<input type="search"[^>]*value="\{\{query\}\}"/);
+        expect(hbs).toContain('DICER.Themes.SearchEmpty');
+        const lang = JSON.parse(readFileSync('lang/en.json', 'utf8')).DICER.Themes;
+        for (const k of ['Search', 'SearchHint', 'SearchEmpty']) expect(typeof lang[k]).toBe('string');
+      });
+    });
+
     it('an assignment chip clears its own slot', async () => {
       const app = make();
       await actions.clear.call(app, {}, { dataset: { target: 'die:d20' } });
