@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.20
+
+- **Other modules' scene-ready code runs again** ([#1](https://github.com/roileaf/dicer/issues/1)). Foundry tells modules a scene is ready one by one, and stops at the first one that answers "no". Dicer answered "no" whenever dice lighting wasn't set to match the scene, so every module after Dicer missed the event. For example, Health Estimate showed nothing on the first scene. Dicer no longer answers at all.
+
 ## 1.3.19
 
 - **Search the theme browser.** A search box in the Dicer themes window filters the open tab as you type, and the tab counts show how many match. Handy on the Module dice tab, which can list hundreds of dice sets.

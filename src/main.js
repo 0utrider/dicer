@@ -682,14 +682,20 @@ Hooks.once('init', () => {
   }
   loadPublicApi();
   // Scene lighting follows the canvas: a new scene, a darkness change, a light colour change.
-  for (const hook of ['canvasReady', 'lightingRefresh']) Hooks.on(hook, () => getSetting('diceLighting') === 'scene' && lightDice());
+  // A block body: Foundry fires canvasReady with Hooks.call, which stops at a listener returning
+  // false, and every module's canvasReady listener after Dicer's would then never run (issue #1).
+  for (const hook of ['canvasReady', 'lightingRefresh'])
+    Hooks.on(hook, () => {
+      if (getSetting('diceLighting') === 'scene') lightDice();
+    });
   // On the author's client, before the message is stored: everyone then skips Foundry's clatter.
-  Hooks.on('preCreateChatMessage', (message) =>
+  // (a block body: a pre-hook listener returning false would cancel the message)
+  Hooks.on('preCreateChatMessage', (message) => {
     dropCoreDiceSound(message, {
       enabled: getSetting('muteCoreDiceSound') !== false,
       coreSound: globalThis.CONFIG?.sounds?.dice,
-    }),
-  );
+    });
+  });
   // Roll stats: counted from every roll message, whether or not its dice are shown here. The
   // recorder is a lazy chunk, loaded at the first roll; messages wait for it in order.
   let recorder = null;
