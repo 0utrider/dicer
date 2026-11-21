@@ -11,6 +11,15 @@
   z-index: 9000;
 }
 
+/* Crit title cards (src/scenes/card.js): over the dice canvas, so over a dice tray too (59 / 8999),
+   and over the windows while the dice are (dicer-above). */
+.dicer-crit-card {
+  z-index: 61;
+}
+:root:has(#dicer-canvas.dicer-above) .dicer-crit-card {
+  z-index: 9001;
+}
+
 /* Dice So Nice compatible: a chat message hidden until its dice land. */
 .dsn-hide {
   display: none !important;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.22
+
+- **Crit scene title cards show over the dice tray.** The big "NAT 1" / "NAT 20" card a crit scene shows was drawn under the table tray, so the tray hid part of it. The card now sits above the tray and the dice, including while the dice are raised above windows.
+
 ## 1.3.21
 
 - **The dragonling's and robot's eyes look right mid-blink.** When either pet nodded at a plain roll, its half-closed eyelids slipped inside its eyes, leaving white, torn-looking patches over the irises. Their eyelids are now rebuilt to stay over the eyes all the way through a blink.

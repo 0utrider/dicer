@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { showCard, seeded, fitPx, freeArea } from '../../src/scenes/card.js';
 import { runScene } from '../../src/scenes/kit.js';
@@ -141,4 +142,29 @@ test('the card fits the visible table: the window minus a docked sidebar and a s
     side.remove();
   }
   expect(freeArea(document, window)).toEqual({ left: 0, top: 0, width: W, height: H });
+});
+
+describe('the title card layer (issue: cards hidden behind the dice tray)', () => {
+  const css = readFileSync('styles/dicer.css', 'utf8');
+  /** The z-index of the first rule whose selector is exactly `sel`. */
+  const zOf = (sel) => {
+    const at = css.indexOf(`${sel} {`);
+    if (at < 0) throw new Error(`no rule for ${sel}`);
+    return Number(/z-index:\s*(\d+)/.exec(css.slice(at, css.indexOf('}', at)))?.[1]);
+  };
+
+  test('the card sits over the dice canvas and the dice tray, raised or not', () => {
+    const card = zOf('.dicer-crit-card');
+    const cardUp = zOf(':root:has(#dicer-canvas.dicer-above) .dicer-crit-card');
+    expect(card).toBeGreaterThan(zOf('#dicer-canvas'));
+    expect(card).toBeGreaterThan(zOf('.dicer-tt'));
+    expect(cardUp).toBeGreaterThan(zOf('#dicer-canvas.dicer-above'));
+    expect(cardUp).toBeGreaterThan(zOf('.dicer-tt.dicer-above'));
+  });
+
+  test('a card sets no inline z-index of its own (the stylesheet decides)', () => {
+    const root = showCard(SPEC, { doc: document, area: { left: 0, top: 0, width: 400, height: 300 } }).root;
+    expect(root?.className).toBe('dicer-crit-card');
+    expect(root?.style.zIndex).toBe('');
+  });
 });

@@ -233,7 +233,7 @@ function drawCard(spec, { host, reduced = false, doc = globalThis.document, area
   const rand = seeded(spec.seed ?? 7);
   const root = doc.createElement('div');
   root.className = 'dicer-crit-card';
-  Object.assign(root.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${W}px`, height: `${H}px`, pointerEvents: 'none', overflow: 'hidden', zIndex: '1', contain: 'strict' });
+  Object.assign(root.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${W}px`, height: `${H}px`, pointerEvents: 'none', overflow: 'hidden', contain: 'strict' }); // its z-index: dicer.css .dicer-crit-card
   const anims = [];
   const timers = [];
   let raf = 0;
