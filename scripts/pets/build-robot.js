@@ -639,8 +639,10 @@ export function build({ texture: N = 1024, triangles = 6200, grid = 0.016 } = {}
   const ao = fieldAO(shape.solid, shell.pos, shell.nor, { min: 0.74 });
 
   // the shutter lids
+  // rUp 1.17: its wide-open eyes (open 54 deg) turn the upper lid about 62 deg to shut, and a linear
+  // shape key cuts that arc's chord, so at 1.1 a half-shut lid sank inside the eyeball (1.17 cos 31 deg > 1).
   const lids = eyelids(shape.eyes, {
-    rUp: 1.1,
+    rUp: 1.17,
     rLo: 1.065,
     meet: -4 * DEG,
     motions: {

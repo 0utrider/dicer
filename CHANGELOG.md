@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.21
+
+- **The dragonling's and robot's eyes look right mid-blink.** When either pet nodded at a plain roll, its half-closed eyelids slipped inside its eyes, leaving white, torn-looking patches over the irises. Their eyelids are now rebuilt to stay over the eyes all the way through a blink.
+
 ## 1.3.20
 
 - **Other modules' scene-ready code runs again** ([#1](https://github.com/roileaf/dicer/issues/1)). Foundry tells modules a scene is ready one by one, and stops at the first one that answers "no". Dicer answered "no" whenever dice lighting wasn't set to match the scene, so every module after Dicer missed the event. For example, Health Estimate showed nothing on the first scene. Dicer no longer answers at all.

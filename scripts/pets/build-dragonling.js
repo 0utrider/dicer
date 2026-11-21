@@ -78,7 +78,7 @@ const { fdir, wf } = HEAD;
 const HC = HEAD.center;
 
 const EYE_R = 0.145;
-const R_SOCK = 1.13;
+const R_SOCK = 1.26; // room for the lid shells (rUp 1.2, see eyelids below)
 const MOUTH_Y = -0.16; // the mouth line on the snout (face-local)
 const NECK_Y = 0.74; // the head/body blend plane (design units)
 
@@ -876,7 +876,11 @@ export function build({ texture: N = 1024, triangles = 5300, grid = 0.016 } = {}
       tongue: [-0.02, 0.045, 0.022, 0.5, 0.008],
     },
   });
-  const parts = [eyelids(shape.eyes), mouth, tongue(face, HEAD, { y: MOUTH_Y, width: 0.036, length: 0.05, depth: 0.1 })];
+  // Lid shells well clear of the eyeball: its wide-open eyes (open 56 deg) turn the upper lid about 65
+  // deg to shut, and a linear shape key cuts that arc's chord, so half shut (a blink's middle) the
+  // default 1.1 radius sank to 0.93 of the eye's and the lid slid inside it (white tears over the iris).
+  // 1.2 keeps the chord outside (1.2 cos 32.5 deg > 1); the socket (R_SOCK) widens to hold it.
+  const parts = [eyelids(shape.eyes, { rUp: 1.2, rLo: 1.17 }), mouth, tongue(face, HEAD, { y: MOUTH_Y, width: 0.036, length: 0.05, depth: 0.1 })];
   const wings = makeWings();
 
   // UVs
