@@ -929,12 +929,53 @@ export function createPetLayer(deps) {
     pet.restChoice !== undefined &&
     pet.restChoice !== restKey(c) &&
     ['hop', 'rest', 'move', 'splat', 'puddle'].includes(pet.state);
-  /** Saves a placed spot (petRestSpot 'placed' and petRestAt `at`); the layer uses it at once. */
-  function savePlaced(at) {
+  // Pets dropped one by one: userId -> its own placed spot (petRestAt.pets), this screen's copy.
+  const own = new Map();
+  /** Where the player dropped `pet` itself (petRestAt.pets[its user]), or null: it rests there alone. */
+  const ownAt = (pet) => {
+    if (own.has(pet.userId)) return own.get(pet.userId);
+    let at = null;
+    try {
+      at = getSetting('petRestAt')?.pets?.[pet.userId];
+    } catch {
+      /* unreadable */
+    }
+    return validAt(at) ? at : null;
+  };
+  /**
+   * The placed slots other standing pets hold for `pet`: their slots, and slot 0 under a pet
+   * dropped right on the placed spot (the first one dropped sets it).
+   */
+  function heldSlots(pet) {
+    const held = new Set();
+    const at = placedAt();
+    for (const o of pets.values()) {
+      if (o === pet || !standing(o)) continue;
+      if (o.slot != null) held.add(o.slot);
+      const mine = ownAt(o);
+      if (mine && at && mine.x === at.x && mine.z === at.z) held.add(0);
+    }
+    return held;
+  }
+  /**
+   * Saves a placed spot (petRestSpot 'placed'); the layer uses it at once. With `userId` it is that
+   * user's pet's own spot (petRestAt.pets), the shared spot (petRestAt x, z) staying where it is, or
+   * set here when there is none yet; without, the shared spot (a 0.2 corner choice).
+   */
+  function savePlaced(at, userId) {
+    let prev = null;
+    try {
+      prev = getSetting('petRestAt');
+    } catch {
+      /* unreadable */
+    }
+    if (userId != null) own.set(userId, at);
+    // the spots this screen holds, saved or not yet (a drop before the last one's save is done)
+    const value = { ...at, pets: { ...prev?.pets, ...Object.fromEntries(own) } };
     dropped = at;
     if (!saveSetting) return; // used on this screen until it reloads
     try {
-      Promise.resolve(saveSetting('petRestAt', at))
+      Promise.resolve(saveSetting('petRestAt', value))
         .then(() => saveSetting('petRestSpot', 'placed'))
         .catch((err) => console.warn('Dicer | pet', err));
     } catch (err) {
@@ -963,8 +1004,12 @@ export function createPetLayer(deps) {
       pet.slot = null;
       return null;
     }
-    const held = new Set();
-    for (const o of pets.values()) if (o !== pet && o.slot != null && standing(o)) held.add(o.slot);
+    const mine = c === 'placed' ? ownAt(pet) : null;
+    if (mine) {
+      pet.slot = null; // its own spot: no slot of the shared one
+      return placedSpot(mine, 0, stage, h);
+    }
+    const held = heldSlots(pet);
     let slot = pet.slot != null && !held.has(pet.slot) ? pet.slot : null;
     for (let k = 0; slot === null && k < MAX_PETS; k++) if (!held.has(k)) slot = k;
     pet.slot = slot ?? 0;
@@ -977,8 +1022,9 @@ export function createPetLayer(deps) {
    */
   function placedWatch(pet, h) {
     if (!stage || current() !== 'placed' || !placedAt()) return null;
-    const held = new Set();
-    for (const o of pets.values()) if (o !== pet && o.slot != null && standing(o)) held.add(o.slot);
+    const mine = pet && ownAt(pet);
+    if (mine) return placedSpot(mine, 0, stage, h);
+    const held = heldSlots(pet);
     let slot = pet?.slot != null && !held.has(pet.slot) ? pet.slot : null;
     for (let k = 0; slot === null && k < MAX_PETS; k++) if (!held.has(k)) slot = k;
     return placedSpot(placedAt(), slot ?? 0, stage, h);
@@ -1789,12 +1835,21 @@ export function createPetLayer(deps) {
     const cz = stage.cz ?? 0;
     const m = EDGE_GAP * h;
     const pin = (v, c, hw) => Math.max(c - hw, Math.min(c + hw, v));
-    savePlaced(toPlaced({ x: pin(at.x, cx, stage.halfWidth - m), z: pin(at.z, cz, stage.halfDepth - m) }, stage));
-    for (const o of pets.values()) if (o !== pet) o.slot = null; // the others line up beside it
-    pet.slot = 0;
+    // its own spot; every other resting pet keeps where it rests now as its own: none of them moves
+    const kept = [];
+    for (const o of pets.values())
+      if (o !== pet && o.state === 'rest' && !o.gone && !ownAt(o)) {
+        own.set(o.userId, toPlaced({ x: o.px ?? spotOf(o).x, z: o.pz ?? spotOf(o).z }, stage));
+        kept.push(o);
+      }
+    savePlaced(toPlaced({ x: pin(at.x, cx, stage.halfWidth - m), z: pin(at.z, cz, stage.halfDepth - m) }, stage), pet.userId);
+    for (const o of kept) {
+      o.restChoice = restKey('placed'); // already where it rests: not moved by the new choice
+      o.slot = null;
+    }
     pet.spot = null;
     restOf(pet, now);
-    restSpotChanged(now); // the others (no-op while a roll flies: update moves them after)
+    restSpotChanged(now); // puddles and pets on their way back (no-op while a roll flies)
   }
 
   /**

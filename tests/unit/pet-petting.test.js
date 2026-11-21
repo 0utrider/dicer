@@ -720,11 +720,13 @@ describe('dragging a pet in the layer', () => {
     expect(group(m).position.x).toBeCloseTo(want.x, 6);
   });
 
-  test('while held it hangs under the pointer, lifted; a second pet rests beside the dropped one', () => {
+  test('while held it hangs under the pointer, lifted; a second pet stays where it rests', () => {
     const m = make({}, { setSetting: () => Promise.resolve() });
     rollToRest(m, 'u1');
     rollToRest(m, 'u2');
     const g1 = group(m, 0);
+    const g2 = group(m, 1);
+    const stay = { x: g2.position.x, z: g2.position.z };
     const from = screenOf(g1);
     m.win.dispatchEvent(ev('pointerdown', from.x, from.y));
     m.win.dispatchEvent(ev('pointermove', 500, 500));
@@ -733,9 +735,55 @@ describe('dragging a pet in the layer', () => {
     expect(g1.position.y).toBeGreaterThan(0);
     m.win.dispatchEvent(ev('pointerup', 500, 500));
     expect(runTo(m, clockNow + 1500)).toBe('rest');
+    expect(g1.position.x).toBeCloseTo(pageToTable({ x: 500, y: 500 }).x, 6);
+    expect(g2.position.x).toBeCloseTo(stay.x, 6);
+    expect(g2.position.z).toBeCloseTo(stay.z, 6);
+  });
+
+  test('a pet arriving after a drop lines up beside the last dropped pet, never on it', () => {
+    const m = make({}, { setSetting: () => Promise.resolve() });
+    rollToRest(m, 'u1');
+    const g1 = group(m, 0);
+    dragAlong(m.win, screenOf(g1), [{ x: screenOf(g1).x + 20, y: screenOf(g1).y }, { x: 500, y: 500 }]);
+    expect(runTo(m, clockNow + 1500)).toBe('rest');
+    rollToRest(m, 'u2');
     const g2 = group(m, 1);
     expect(g2.position.z).toBeCloseTo(g1.position.z, 6);
     expect(Math.abs(g2.position.x - g1.position.x)).toBeGreaterThan(1);
+  });
+
+  test('each pet moves on its own: dropping the second leaves the first where it was put', async () => {
+    const saved = {};
+    const m = make({}, { setSetting: (k, v) => ((saved[k] = v), Promise.resolve()) });
+    rollToRest(m, 'u1');
+    rollToRest(m, 'u2');
+    const g1 = group(m, 0);
+    const g2 = group(m, 1);
+    dragAlong(m.win, screenOf(g1), [{ x: screenOf(g1).x + 20, y: screenOf(g1).y }, { x: 300, y: 250 }]);
+    expect(runTo(m, clockNow + 1500)).toBe('rest');
+    const one = { x: g1.position.x, z: g1.position.z };
+    dragAlong(m.win, screenOf(g2), [{ x: screenOf(g2).x + 20, y: screenOf(g2).y }, { x: 1000, y: 600 }]);
+    expect(runTo(m, clockNow + 1500)).toBe('rest');
+    expect(g1.position.x).toBeCloseTo(one.x, 6); // the first stayed put
+    expect(g1.position.z).toBeCloseTo(one.z, 6);
+    const two = pageToTable({ x: 1000, y: 600 });
+    expect(g2.position.x).toBeCloseTo(two.x, 6);
+    expect(g2.position.z).toBeCloseTo(two.z, 6);
+    await Promise.resolve();
+    await Promise.resolve();
+    // both saved, each under its user
+    expect(saved.petRestAt.pets.u1.x).toBeCloseTo(one.x / STAGE.halfWidth, 6);
+    expect(saved.petRestAt.pets.u2.x).toBeCloseTo(two.x / STAGE.halfWidth, 6);
+  });
+
+  test('after a reload, each pet rests at its own saved spot', () => {
+    const at = { x: -0.6, z: 0.5, pets: { u1: { x: -0.6, z: 0.5 }, u2: { x: 0.5, z: -0.4 } } };
+    const m = make({ petRestSpot: 'placed', petRestAt: at });
+    rollToRest(m, 'u1');
+    rollToRest(m, 'u2');
+    expect(group(m, 0).position.x).toBeCloseTo(-0.6 * STAGE.halfWidth, 6);
+    expect(group(m, 1).position.x).toBeCloseTo(0.5 * STAGE.halfWidth, 6);
+    expect(group(m, 1).position.z).toBeCloseTo(-0.4 * STAGE.halfDepth, 6);
   });
 
   test("a 0.2 corner choice ('bottomRight') becomes a placed spot where its first slot was", async () => {

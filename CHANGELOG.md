@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.17
+
+- **Move each pet on its own.** Dragging a pet used to move every pet: they all lined up beside the one you dropped. Now each pet you drop keeps its own spot and comes back to it after its rolls, even after a reload, and the other pets stay where they are. A pet that arrives later lines up beside the last one you dropped.
+
 ## 1.3.16
 
 - **No false warning from dice sets.** A Dice So Nice dice set that registers a die on its own shape, such as a d20 on the d20 shape, made the console warn that "d20" is a built-in die type. Nothing was wrong, and the warning no longer shows. A set that really tries to turn a built-in die into another shape still warns.
