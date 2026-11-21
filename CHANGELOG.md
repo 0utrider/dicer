@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.18
+
+- **Players no longer change each other's dice.** When one player picked a theme, other connected players could end up with that theme too. Foundry tells every screen about each player's own setting changes, and Dicer took another player's theme pick as its own. Now each screen only acts on its own player's settings. If your theme was changed this way, pick it again once.
+
 ## 1.3.17
 
 - **Move each pet on its own.** Dragging a pet used to move every pet: they all lined up beside the one you dropped. Now each pet you drop keeps its own spot and comes back to it after its rolls, even after a reload, and the other pets stay where they are. A pet that arrives later lines up beside the last one you dropped.

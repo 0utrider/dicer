@@ -449,9 +449,11 @@ describe('build', () => {
     // creatures, models and sounds are lazy): owner approved +64 B (42,260 -> 42,324), 2026-11-20.
     // Previews land in the user's own area or table tray (api/dice3d.js previewOpts): owner
     // approved +45 B (42,324 -> 42,369), 2026-11-20.
+    // Another user's user-scope setting change is ignored (settings.js register): owner approved
+    // +49 B (42,369 -> 42,418), 2026-11-21.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(42_369);
+    expect(growth).toBeLessThanOrEqual(42_418);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

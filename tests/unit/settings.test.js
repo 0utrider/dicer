@@ -157,6 +157,23 @@ test('onChange routes look and feature toggles to onLookChange, quality and qual
   expect(onLookChange).toHaveBeenCalledTimes(5);
 });
 
+test("another user's change of a user-scope setting is ignored here: one player's theme never becomes another's", () => {
+  const onLookChange = vi.fn();
+  const onQualityChange = vi.fn();
+  const r = capture({ onLookChange, onQualityChange });
+  globalThis.game = { user: { id: 'me' } };
+  try {
+    r.theme.onChange('their-theme', {}, 'them'); // Foundry fires it on every client the update reaches
+    expect(onLookChange).not.toHaveBeenCalled();
+    r.theme.onChange('my-theme', {}, 'me');
+    expect(onLookChange).toHaveBeenCalledWith('theme', 'my-theme');
+    r.qualityCap.onChange('medium', {}, 'them'); // a world setting still reaches everyone
+    expect(onQualityChange).toHaveBeenCalledWith('qualityCap', 'medium');
+  } finally {
+    delete globalThis.game;
+  }
+});
+
 test('onChange without callbacks does not throw', () => {
   const r = capture();
   for (const key of [

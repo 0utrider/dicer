@@ -27,9 +27,12 @@ function register(key, cfg) {
   const onChange = cfg.onChange;
   game.settings.register(MODULE_ID, key, {
     ...cfg,
-    onChange: (...args) => {
+    // Foundry calls onChange on every client a Setting update reaches, whoever's it is: another
+    // user's user-scope change is theirs (the theme mirror would copy it into this user's look).
+    onChange: (v, o, by) => {
+      if (by && cfg.scope === 'user' && by !== game.user.id) return;
       cache.delete(key);
-      return onChange?.(...args);
+      return onChange?.(v, o, by);
     },
   });
 }
