@@ -468,9 +468,12 @@ describe('build', () => {
     // The theme API for other modules: module themes in findTheme, default providers and the
     // speaking token's actor in resolve-looks.js (the API object is the lazy theme-api chunk): owner
     // approved +1,015 B (42,977 -> 43,992), 2026-11-22.
+    // PR #3 (lost dice context hidden and asked back, renderer.js) and PR #4 (coins tip off their
+    // rim in the physics worker's sim.js; default sounds by body style): owner approved +1,400 B
+    // (43,992 -> 45,392), 2026-11-22.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(43_992);
+    expect(growth).toBeLessThanOrEqual(45_392);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

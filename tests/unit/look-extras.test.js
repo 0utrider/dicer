@@ -248,16 +248,23 @@ describe('bodies', () => {
     expect(lookExtras.mergePatches).toBe(mergePatches);
   });
 
-  test('iridescent GLSL edges: pow base clamped, fwidth hoisted out of the ternary', () => {
+  test('iridescent GLSL edges: pow base clamped, derivatives taken outside any ternary', () => {
     const fs = patched(bodyMat({ type: 'iridescent', preset: 'opal', color: '#1a9e8f', color2: '#6a2bd1' })).fragmentShader;
     const opal = fs.split('\n').find((l) => l.includes('dcOfl ='));
     expect(opal).toContain('pow( max( 0.5 + 0.5 * cos( dcOph ), 0.0 ), 4.0 )');
-    const slope = fs.split('\n').find((l) => l.includes('dcSslope ='));
-    expect(slope).not.toContain('fwidth');
-    expect(fs).toMatch(/float dcSfu = fwidth\( dcSu \);/);
-    expect(fs.indexOf('dcSfu = fwidth')).toBeLessThan(fs.indexOf('dcSslope ='));
     const seg = fs.slice(fs.indexOf('float dcSu ='), fs.indexOf('float dcSl ='));
-    expect(seg.match(/fwidth\(/g).length).toBe(2); // the float and the vec3, each once, outside the ternary
+    for (const line of seg.split('\n').filter((l) => l.includes('?'))) expect(line).not.toMatch(/fwidth|dFd[xy]/);
+    expect(seg).toMatch(/vec3 dcSn = cross\( dFdx\( vLocalPos \), dFdy\( vLocalPos \) \);/);
+    expect(seg).toMatch(/float dcSw = max\( fwidth\( dcSu \), 1e-5 \);/);
+  });
+
+  test('dichroic streaks (issue #2): gated by the die-local face normal, not a screen-space slope; off the bevels', () => {
+    const fs = patched(bodyMat({ type: 'iridescent', preset: 'dichroic', color: '#102030', color2: '#ff6a3d' })).fragmentShader;
+    expect(fs).not.toContain('dcSslope');
+    const dcSl = fs.slice(fs.indexOf('float dcSl ='), fs.indexOf('vec3 dcScol'));
+    expect(dcSl).toContain('smoothstep( 0.44, 0.67, dcSsurf )');
+    expect(dcSl).toContain('step( - 0.5, vFaceId )');
+    expect(dcSl).toMatch(/smoothstep\( 0\.026 - dcSw, 0\.026 \+ dcSw/);
   });
 
   test('iridescent: one program for all three presets (same key), uBodyPreset differs, params set, fragment compiles the DICER_IRIDESCENT chunk once', () => {

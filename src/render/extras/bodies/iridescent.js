@@ -110,16 +110,24 @@ const COLOR = /* glsl */ `
 			// sliding with the view angle. Straight: the band coordinate is linear in die-local space,
 			// so on a flat face every streak is a straight line. On a face nearly parallel to the band
 			// planes the coordinate barely changes and a line would widen into a contour blob, so the
-			// streaks fade out where its slope along the surface is low.
-			float dcSu = dot( vLocalPos, vec3( 0.62, 0.28, 0.73 ) ) * 4.5;
-			float dcSfu = fwidth( dcSu );
-				float dcSfp = length( fwidth( vLocalPos ) );
-				float dcSslope = dcSfp > 0.0 ? dcSfu / dcSfp : 0.0;
-			// thin lines on about one band in three, each broken into runs by a slow noise
-			float dcSl = ( 1.0 - smoothstep( 0.012, 0.04, abs( fract( dcSu ) - 0.5 ) ) )
+			// streaks fade out where the band direction is nearly the face's normal. That test uses the
+			// die-local face normal (from the derivatives of the die-local position), so it stays put
+			// as the die turns; a screen-space slope (issue #2) snapped streaks on and off with the view.
+			vec3 dcSd = vec3( 0.62, 0.28, 0.73 );
+			float dcSu = dot( vLocalPos, dcSd ) * 4.5;
+			vec3 dcSn = cross( dFdx( vLocalPos ), dFdy( vLocalPos ) );
+			float dcSnl = length( dcSn );
+			float dcSnd = dcSnl > 0.0 ? abs( dot( dcSn / dcSnl, normalize( dcSd ) ) ) : 1.0;
+			float dcSsurf = sqrt( max( 1.0 - dcSnd * dcSnd, 0.0 ) ); // the band slope along the face, 0..1
+			float dcSw = max( fwidth( dcSu ), 1e-5 ); // band units per pixel: about one pixel of edge
+			// thin lines on about one band in three, each broken into runs by a slow noise, anti-aliased,
+			// faded where they would crowd closer than a few pixels, and kept off the bevels
+			float dcSl = ( 1.0 - smoothstep( 0.026 - dcSw, 0.026 + dcSw, abs( fract( dcSu ) - 0.5 ) ) )
+				* ( 1.0 - smoothstep( 0.15, 0.35, dcSw ) )
 				* step( 0.62, dcHash13( vec3( floor( dcSu ), 3.7, 1.1 ) ) )
 				* smoothstep( 0.4, 0.55, dcNoise3( vLocalPos * 1.6 + 2.0 ) )
-				* smoothstep( 2.0, 3.0, dcSslope );
+				* smoothstep( 0.44, 0.67, dcSsurf )
+				* step( - 0.5, vFaceId );
 			vec3 dcScol = dcHueTurn( diffuseColor.rgb, uBodyColor2, 1.0 - min( dcIrT, 1.0 ) + 0.35 * dcIcos );
 			dcIc = mix( dcIc, min( dcScol * 1.3, 1.0 ), uBodyPreset.w * dcSl );
 		}
