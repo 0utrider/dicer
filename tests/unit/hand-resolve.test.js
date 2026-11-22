@@ -1132,6 +1132,27 @@ describe('follow-up rolls', () => {
     expect(skill.terms[0].results).toEqual([{ result: 6, active: true }]);
   });
 
+  test('physics decides, but the roll filters hide initiative: an initiative roll is not thrown; others are', async () => {
+    settings.handRolls = 'off';
+    settings.physicsResults = true;
+    settings.rollFilters = { initiative: 'skip' };
+    const pf2e = await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(pf2e.options.dicerHand.fallback).toBe('auto');
+    const core = await rollD20((r) => (r.options = { dicerInitiative: true }));
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(core.options.dicerHand.fallback).toBe('auto');
+    boxValues = [9];
+    const check = await rollD20((r) => (r.options = { type: 'skill-check' }));
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(check.terms[0].results).toEqual([{ result: 9, active: true }]);
+    // a GM's required hand roll is still thrown
+    settings.handRollsRequired = true;
+    overlay.values = [4];
+    await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+  });
+
   test('without physics decides, Ask answered automatically is the random of Foundry', async () => {
     settings.handRolls = 'ask';
     deps.ask = vi.fn(async () => false);

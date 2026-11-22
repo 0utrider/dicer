@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.25
+
+- **Rolls you've hidden skip the physics throw.** With "Physics decides the result" on, every roll was thrown first, even ones your roll filters say not to show, such as initiative. A combat's initiative rolls queued up one throw after another. Now a roll your filters hide isn't thrown, by physics or by hand, and gets its result instantly. A hand roll the GM requires is still thrown.
+- **Loader add-ons show under Installed dice.** A Dice So Nice add-on that loads its dice from another installed module, such as the SF2e Playtest Dice Wrapper, wasn't offered because its own script has no dice in it. It's now listed as an add-on to run in full.
+
 ## 1.3.24
 
 - **Imported module dice show their faces in the editor and thumbnails.** A theme imported from a module dice set rolled with the set's faces, but the appearance editor's preview and the theme thumbnails showed plain numbers or shrunken pictures. They now show the set's own faces at full size, as a roll does.

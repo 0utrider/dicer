@@ -20,6 +20,40 @@ import { normalizeAppearance } from '../../look/appearance.js';
 import { shapeTypeFor } from '../../core/dice-shapes.js';
 import { modelRotationFor } from '../../compat/dsn-orientation.js';
 import { workbenchCancels } from '../../compat/workbench.js';
+import { filtered } from '../../foundry/roll-filters.js';
+
+/**
+ * An initiative roll, while it is still being evaluated (its chat message's core.initiativeRoll
+ * flag comes after): PF2e and SF2e mark their checks `type: 'initiative'`; Foundry's own
+ * (Combatant#getInitiativeRoll, a plain Roll) is tagged here, the first time this chunk loads.
+ */
+const isInitiative = (roll) => roll.options?.type === 'initiative' || roll.options?.dicerInitiative === true;
+try {
+  const proto = globalThis.CONFIG?.Combatant?.documentClass?.prototype;
+  const own = proto?.getInitiativeRoll;
+  if (typeof own === 'function' && !own.dicer) {
+    const tagged = function (...args) {
+      const roll = own.apply(this, args);
+      if (roll?.options) roll.options.dicerInitiative = true;
+      return roll;
+    };
+    tagged.dicer = true;
+    proto.getInitiativeRoll = tagged;
+  }
+} catch {
+  /* no Combatant class: initiative rolls are known by their system's check type only */
+}
+
+/**
+ * Whether this player's roll filters keep `roll`'s dice off the screen (initiative, damage, big
+ * rolls... set to "don't show"): then nothing is thrown for it, by physics or by hand, and Foundry's
+ * random answers at once, so a combat's many initiative rolls do not queue throw after throw.
+ */
+function hiddenHere(roll, getSetting) {
+  const message = isInitiative(roll) ? { flags: { core: { initiativeRoll: true } } } : null;
+  const ctx = { mine: true, combat: !!globalThis.game?.combat?.started };
+  return filtered(roll, message, ctx, getSetting('rollFilters'), getSetting('rollFiltersDefault'));
+}
 
 /** id (roll.options.dicerHand.id) -> {recording, handle, specs} of the thrower's hand throw (Task 8). */
 export const handThrows = new Map();
@@ -455,6 +489,8 @@ async function throwByHand(resolver, terms) {
   if (!handAllowed(me, d.getSetting)) return fallback('auto');
   // An untargeted attack PF2e Workbench is about to cancel: no throw, Foundry's random, no message.
   if (workbenchCancels(roll, globalThis.game?.user)) return fallback('auto');
+  // A roll this player's filters do not show: no throw (a GM's required hand roll still is one).
+  if (d.getSetting('handRollsRequired') !== true && hiddenHere(roll, d.getSetting)) return fallback('auto');
   if (!specs.length) return notePartial(resolver, dropped);
   // Queued behind any throw in progress (another roll's prompt or overlay, a tray throw); its
   // timeout starts when shown.

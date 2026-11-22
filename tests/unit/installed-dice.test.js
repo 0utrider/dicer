@@ -67,6 +67,27 @@ test('the scan offers inactive modules that may hold dice, with what each one is
   expect(fetchText).not.toHaveBeenCalledWith('modules/on-dice/x.js');
 });
 
+test("a loader add-on (it imports another module's script, which adds the dice) is offered to run in full", async () => {
+  // the SF2e Playtest Dice Wrapper: an init hook importing the installed, inactive adventure pack's index.js
+  const wrapper = `const PREMIUM_MODULE_ID = 'sf2e-playtest-deluxe-adventure-pack';
+const PREMIUM_SCRIPT_PATH = \`modules/\${PREMIUM_MODULE_ID}/index.js\`;
+Hooks.once('init', async () => {
+  if (!(await foundry.utils.srcExists(PREMIUM_SCRIPT_PATH))) return;
+  try { await import(\`/\${PREMIUM_SCRIPT_PATH}\`); } catch (e) { console.error(e); }
+});`;
+  const dsn = { requires: new Set([{ id: 'dice-so-nice' }]) };
+  const modules = new Map([
+    ['sf2e-playtest-dice-wrapper', { id: 'sf2e-playtest-dice-wrapper', title: 'SF2e Playtest Dice Wrapper', active: false, relationships: dsn, esmodules: new Set(['modules/sf2e-playtest-dice-wrapper/src/index.js']) }],
+    // an import of something that is no module script, from a module that does not need Dice So Nice: not offered
+    ['tool-dice', { id: 'tool-dice', title: 'Tool Dice', active: false, esmodules: new Set(['modules/tool-dice/x.js']) }],
+  ]);
+  const files = { 'modules/sf2e-playtest-dice-wrapper/src/index.js': wrapper, 'modules/tool-dice/x.js': `await import('modules/other/y.js');` };
+  const found = await scanInstalled({ modules, fetchText: async (p) => files[p] ?? '' });
+  expect(found).toEqual([
+    { id: 'sf2e-playtest-dice-wrapper', title: 'SF2e Playtest Dice Wrapper', scripts: ['modules/sf2e-playtest-dice-wrapper/src/index.js'], status: 'bundle', addon: true },
+  ]);
+});
+
 test('running a dice set calls only its Dice So Nice hooks, init first, with the api', async () => {
   const calls = [];
   const api = { addSystem: (s) => calls.push(['system', s.id]), addDicePreset: (p) => calls.push(['preset', p.type]) };

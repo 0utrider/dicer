@@ -453,9 +453,11 @@ describe('build', () => {
     // +49 B (42,369 -> 42,418), 2026-11-21.
     // An imported module set's own face images keep its tile size (faces.js lookFacesFor): owner
     // approved +84 B (42,418 -> 42,502), 2026-11-21.
+    // The roll filters shared with the hand chunk (no throw for a roll the filters hide): owner
+    // approved +9 B (42,502 -> 42,511), 2026-11-22.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(42_502);
+    expect(growth).toBeLessThanOrEqual(42_511);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

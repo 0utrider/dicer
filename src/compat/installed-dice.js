@@ -23,7 +23,10 @@ const DSN_ID = 'dice-so-nice';
 const SKIP = new Set(['dicer', DSN_ID]);
 // an ES module that imports its own files (an add-on's dice may be added there, not in its entry)
 const IMPORTS_OWN = /(?:^|[;\n])\s*import\s[^;]*?from\s*(['"])\.{1,2}\//;
-const SAFE_PATH = /^modules\/[\w.-]+\/[^:?#]+\.m?js$/i;
+// a dynamic import of another module's script (`import(\`/modules/<id>/index.js\`)`, or a path constant)
+const LOADS_OTHER = /\bimport\s*\(/;
+const NAMES_MODULE_SCRIPT = /modules\/[\w.${}-]+\/[\w./-]*\.m?js/;
+const SAFE_PATH =/^modules\/[\w.-]+\/[^:?#]+\.m?js$/i;
 
 const loaded = new Set(); // module ids whose dice this page has loaded
 
@@ -99,6 +102,9 @@ export async function scanInstalled({ modules, fetchText }) {
         // the dice): Dicer cannot read it apart, but can run it in full (loadDsnAddons)
         const all = texts.join('\n;\n');
         if (status === 'none' && needsDsn(m) && MENTIONS.test(all) && IMPORTS_OWN.test(all)) status = 'bundle';
+        // a loader add-on: it imports another module's script that adds the dice (the SF2e Playtest
+        // Dice Wrapper loads an installed, inactive adventure pack's index.js); run in full too
+        if (status === 'none' && needsDsn(m) && LOADS_OTHER.test(all) && NAMES_MODULE_SCRIPT.test(all)) status = 'bundle';
         if (status === 'none') return null;
         const found = { id: m.id, title: m.title || m.id, scripts, status };
         return needsDsn(m) ? { ...found, addon: true } : found;
