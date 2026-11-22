@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.2
+
+- **No more freeze on another player's first roll.** Dicer prepared only your own dice look and the damage themes ahead of time, so the first time each other player's dice showed on your screen, the whole canvas froze for up to a second and a half while their look was prepared. Every player's look is now prepared in the background after the world loads, and again when someone changes their dice.
+
 ## 1.4.1
 
 - **Pick one dice tray.** When another module's dice tray is on (Dice Tray, or PF2e HUD's dice panel), Dicer's chat dice bar now stays hidden, so there are never two under the chat box. Each player is asked once, and again after each Dicer update unless they tick "Don't show this again", which tray they want: "Use Dicer's chat dice bar" turns the other off, and "Keep …" turns Dicer's off. Nothing changes until they choose. With Force Client Settings active, the GM can apply the choice to everyone, as a default players can change or locked. (Dicer used to look for Dice Tray under the wrong module id, so both trays showed.)
