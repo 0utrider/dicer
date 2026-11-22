@@ -4,11 +4,11 @@ import { DiceRenderer, configureRenderer } from '../../src/render/renderer.js';
 import { buildScene } from '../../src/render/scene.js';
 import { TIERS } from '../../src/render/quality.js';
 
-function setup() {
+function setup(extra = {}) {
   const frames = [];
   const raf = (cb) => (frames.push(cb), frames.length);
   const caf = vi.fn();
-  const fake = { setSize: vi.fn(), setPixelRatio: vi.fn(), render: vi.fn(), dispose: vi.fn(), debug: {} };
+  const fake = { setSize: vi.fn(), setPixelRatio: vi.fn(), render: vi.fn(), dispose: vi.fn(), debug: {}, ...extra };
   const createRenderer = vi.fn(() => fake);
   const container = document.createElement('div');
   const r = new DiceRenderer({ container, createRenderer, raf, caf });
@@ -112,6 +112,13 @@ test('a lost context: the canvas is hidden, never shown by a roll, and asked bac
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('WEBGL_lose_context is fetched up front (a lost context hands out none)', () => {
+  const get = vi.fn(() => ({}));
+  const { r } = setup({ extensions: { get } });
+  expect(get).toHaveBeenCalledWith('WEBGL_lose_context');
+  r.dispose();
 });
 
 test('camera fit: the floor rectangle exactly fills the view', () => {

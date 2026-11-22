@@ -73,6 +73,13 @@ export class DiceRenderer {
           powerPreference: 'high-performance',
         }));
     this.#renderer = configureRenderer(make(canvas));
+    // three gets WEBGL_lose_context on first ask and caches the answer; a lost context answers
+    // null, so ask now, or forceContextRestore after a loss would do nothing.
+    try {
+      this.#renderer.extensions?.get?.('WEBGL_lose_context');
+    } catch {
+      /* no extension: a lost context waits for the browser */
+    }
     this.#sceneApi = buildScene();
 
     this.#onLost = (e) => {
