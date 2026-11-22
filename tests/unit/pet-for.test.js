@@ -16,6 +16,21 @@ test('no user, none view, either switch off, kind none -> null', () => {
   expect(petFor({ user: user({ kind: 'none', color: '#ffffff' }), view: 'real', getSetting: on })).toBeNull();
 });
 
+test("showOthersPets off: another player's roll brings no pet; this player's own still does", () => {
+  const prev = globalThis.game;
+  globalThis.game = { user: { id: 'me' } };
+  try {
+    const off = (k) => (k === 'showOthersPets' ? false : undefined);
+    const other = { id: 'u1', getFlag: () => ({ kind: 'cat' }) };
+    const mine = { id: 'me', getFlag: () => ({ kind: 'cat' }) };
+    expect(petFor({ user: other, view: 'real', getSetting: off })).toBeNull();
+    expect(petFor({ user: mine, view: 'real', getSetting: off })).toMatchObject({ userId: 'me', kind: 'cat' });
+    expect(petFor({ user: other, view: 'real', getSetting: on })).toMatchObject({ userId: 'u1' });
+  } finally {
+    globalThis.game = prev;
+  }
+});
+
 test('a real view gives the spec; a ghost view sets ghost true', () => {
   const u = user({ kind: 'slime', color: '#00ff00' });
   expect(petFor({ user: u, view: 'real', getSetting: on })).toEqual({ userId: 'u1', kind: 'slime', color: '#00ff00', ghost: false });

@@ -457,9 +457,11 @@ describe('build', () => {
     // approved +9 B (42,502 -> 42,511), 2026-11-22.
     // Roll filters applied to chat messages (message-gate.js viewsOf) and the hidden physics
     // roll's tooltip (gate-hand.js markFor): owner approved +211 B (42,511 -> 42,722), 2026-11-22.
+    // The showOthersPets setting (settings.js, pet-for.js): owner approved +255 B (42,722 -> 42,977),
+    // 2026-11-22.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(42_722);
+    expect(growth).toBeLessThanOrEqual(42_977);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

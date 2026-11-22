@@ -155,6 +155,10 @@
         "Name": "Show dice pets",
         "Hint": "See your own and other players' pets when they roll."
       },
+      "showOthersPets": {
+        "Name": "Show other players' pets",
+        "Hint": "Off: only your own pet comes to your rolls. Other players' pets stay off your screen, and any already resting leave."
+      },
       "petSounds": {
         "Name": "Pet sounds",
         "Hint": "The pets' voices: their oohs, cheers and sulks, and their reactions."

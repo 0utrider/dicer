@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.28
+
+- **A pet set to None leaves.** With pets set to stay always, choosing None in the pet window left the old pet sitting on the table. It now leaves at once, on every screen, whether the player or a GM made the change.
+- **Hide other players' pets.** A new pet window setting, "Show other players' pets", is on by default. Turn it off to see only your own pet: other players' rolls bring no pet to your screen, and their pets already resting there leave.
+
 ## 1.3.27
 
 - **Roll filters now work on chat rolls.** The roll filters (initiative, damage, other players' rolls, big rolls and so on) were only checked for rolls other modules sent to Dicer, not for ordinary chat messages. So hiding initiative still showed the dice for Roll NPCs and every other chat roll. Every chat roll now follows your filters: a hidden roll isn't thrown, and its message shows straight away.

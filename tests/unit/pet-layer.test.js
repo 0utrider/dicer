@@ -776,6 +776,41 @@ test('userGone hops that pet off and the layer ends empty', () => {
   m.layer.userGone('nobody'); // harmless
 });
 
+test('a pet set to None leaves at once, even one set to stay for good; another pet change does not', () => {
+  const handlers = new Map();
+  const hooks = { on: vi.fn((name, fn) => (handlers.set(name, fn), 9)), off: vi.fn() };
+  const m = make({ petStay: -1 }, { hooks });
+  rollToRest(m, 'u1');
+  const user = (kind) => ({ id: 'u1', getFlag: (s, k) => (k === 'pet' ? { kind } : undefined) });
+  handlers.get('updateUser')(user('cat'), { flags: { dicer: { pet: { kind: 'cat' } } } }); // a new kind: it stays
+  handlers.get('updateUser')(user('none'), { name: 'x' }); // not a pet change
+  expect(ids(m)).toEqual(['u1']);
+  handlers.get('updateUser')(user('none'), { flags: { dicer: { pet: { kind: 'none' } } } });
+  expect(ids(m)).toHaveLength(0);
+  runTo(m, clockNow + 1000);
+  expect(pets(m.scene)).toHaveLength(0);
+  m.layer.dispose();
+  expect(hooks.off).toHaveBeenCalledWith('updateUser', 9);
+});
+
+test("showOthersPets turned off: the other players' resting pets leave; this player's own stays", () => {
+  const prev = globalThis.game;
+  globalThis.game = { ...prev, user: { id: 'u1' } };
+  try {
+    const m = make({ petStay: -1 });
+    rollToRest(m, 'u1');
+    rollToRest(m, 'u2');
+    expect(ids(m)).toEqual(['u1', 'u2']);
+    m.settings.showOthersPets = false;
+    m.layer.update((clockNow += 16)); // the setting's change wakes the loop
+    expect(ids(m)).toEqual(['u1']);
+    runTo(m, clockNow + 1000);
+    expect(pets(m.scene)).toHaveLength(1);
+  } finally {
+    globalThis.game = prev;
+  }
+});
+
 test('areaChanged re-places resting pets validly', () => {
   const m = make({ petStay: 60 });
   rollToRest(m, 'u1');

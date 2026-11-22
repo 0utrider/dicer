@@ -21,6 +21,8 @@ export function readPet(user) {
 /** The PetSpec for a roll, or null: no roller, no view, either switch off, or the kind 'none'. Color null: the kind's natural colours (the pet chunk's). */
 export function petFor({ user, view, getSetting }) {
   if (!user || view === 'none' || getSetting('petsAllowed') === false || getSetting('showPets') === false) return null;
+  // showOthersPets off: only this player's own pet comes
+  if (getSetting('showOthersPets') === false && user.id !== globalThis.game?.user?.id) return null;
   const { kind, color, natural } = readPet(user);
   return kind === 'none' ? null : { userId: user.id, kind, color: natural ? null : color, ghost: view === 'ghost' };
 }

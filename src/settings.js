@@ -354,6 +354,15 @@ export function registerSettings({
     default: true,
     onChange: () => onPetChange?.(),
   });
+  register('showOthersPets', {
+    name: t('showOthersPets.Name'),
+    hint: t('showOthersPets.Hint'),
+    scope: 'user',
+    config: false,
+    type: Boolean,
+    default: true,
+    onChange: () => onPetChange?.(),
+  });
   register('petSounds', {
     name: t('petSounds.Name'),
     hint: t('petSounds.Hint'),

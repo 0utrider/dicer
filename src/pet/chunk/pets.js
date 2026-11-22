@@ -2326,6 +2326,14 @@ export function createPetLayer(deps) {
       arm(Infinity);
       return false;
     }
+    // showOthersPets turned off: the other players' pets leave (the setting's change wakes this)
+    try {
+      const self = globalThis.game?.user?.id;
+      if (self && getSetting('showOthersPets') === false)
+        for (const pet of pets.values()) if (pet.userId !== self && !pet.gone) userGone(pet.userId);
+    } catch {
+      /* unreadable: they stay */
+    }
     let shadows = true;
     try {
       shadows = getSetting('shadows') !== false; // once per frame, not per pet
@@ -2689,6 +2697,14 @@ export function createPetLayer(deps) {
     }
   }
   const areasHook = hooks?.on?.(AREAS_HOOK, onAreas);
+  // A player whose pet becomes None (the pet window, theirs or a GM's): their pet leaves now, even
+  // one set to stay for good (petStay -1), as when they disconnect (userGone).
+  const onUser = (user, changes) => {
+    if (disposed || changes?.flags?.dicer?.pet === undefined || readPet(user).kind !== 'none') return;
+    userGone(user.id);
+    wake();
+  };
+  const userHook = hooks?.on?.('updateUser', onUser);
 
   // One of each creature, plus a shadow and a sparkle, compiled up front so the first pet costs no
   // programs mid-roll. They stay alive (never in the scene) until dispose(): freeing their
@@ -2731,6 +2747,7 @@ export function createPetLayer(deps) {
     syncPetting(); // the click listeners go
     try {
       hooks?.off?.(AREAS_HOOK, areasHook);
+      hooks?.off?.('updateUser', userHook);
     } catch {
       /* Foundry is gone */
     }
