@@ -178,6 +178,9 @@ const landedFx = createLandedFx({
  */
 const idle = (run) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 200));
 
+/** The modules in other-trays.js OTHER_TRAYS (a copy, so world start stays without it; a test checks). */
+const TRAY_MODULE_IDS = ['dice-calculator', 'pf2e-hud'];
+
 /** Renders the sounds in an idle callback (never on a roll's frames). */
 function preloadSounds() {
   if (!soundEngine || getSetting('sounds') === false) return;
@@ -1077,4 +1080,7 @@ Hooks.once('ready', async () => {
   preloadEditors();
   idle(() => prefetchHand(diceBox, () => wantsHand(game.user, getSetting, getCore()))); // H-20, M8
   idle(() => syncGrab(diceBox, getSetting('grabDice')));
+  // Another module's dice tray is active: the picker chunk asks which to keep (issue #5).
+  if (TRAY_MODULE_IDS.some((id) => game.modules.get(id)?.active))
+    idle(() => import('./ui/tray-pick.js').then((m) => m.askTrayPick()).catch(() => {}));
 });

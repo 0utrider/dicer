@@ -23,6 +23,7 @@ import {
 } from '../hand/chunk/tray-dice.js';
 import { handAllowed, handDeps } from '../hand/shell.js';
 import { BUILTIN_THEMES, DIE_TYPES } from '../themes/themes.js';
+import { activeOtherTrays, OTHER_TRAYS } from './other-trays.js';
 
 // --- the dice bag -------------------------------------------------------------------------------
 const BAG_GROUPS = { Favorites: 'DICER.ChatTray.BagGroupFavorites', Mine: 'DICER.ChatTray.BagGroupMine', World: 'DICER.ChatTray.BagGroupWorld', Builtin: 'DICER.ChatTray.BagGroupBuiltin' };
@@ -281,13 +282,14 @@ export async function rollDuality(adv = 0) {
   return true;
 }
 
-/** Shown: the client setting on and the Dice Tray module not active. Never throws. */
+/**
+ * Shown: the user setting on and no other module's tray showing (other-trays.js: Dice Tray, PF2e
+ * HUD's dice panel), so there are never two. The tray picker (tray-pick.js) switches between them.
+ * Never throws.
+ */
 export function chatTrayShown() {
   try {
-    return (
-      globalThis.game.settings.get('dicer', 'chatTray') === true &&
-      !globalThis.game.modules?.get('dice-tray')?.active
-    );
+    return globalThis.game.settings.get('dicer', 'chatTray') === true && activeOtherTrays().length === 0;
   } catch {
     return false; // not registered (Dice So Nice active)
   }
@@ -1029,10 +1031,12 @@ export function dock(els, loadHand) {
         if (PREFS_FLAG in f || `-=${PREFS_FLAG}` in f) rebuild();
         else tint();
       });
-      // The chatTray setting docks or undocks at once (kept out of world start's settings.js).
-      // a user setting: its document is created on the first change, then updated
+      // The chatTray setting, or another module's tray setting (it hides this one), docks or
+      // undocks at once (kept out of world start's settings.js). A user setting: its document is
+      // created on the first change, then updated.
+      const keys = new Set(['dicer.chatTray', ...OTHER_TRAYS.map((t) => `${t.id}.${t.setting}`)]);
       for (const hook of ['createSetting', 'updateSetting'])
-        globalThis.Hooks?.on?.(hook, (doc) => doc?.key === 'dicer.chatTray' && dock());
+        globalThis.Hooks?.on?.(hook, (doc) => keys.has(doc?.key) && dock());
     }
     const ta = textareaOf(els);
     if (!chatTrayShown()) return (undock(), null);

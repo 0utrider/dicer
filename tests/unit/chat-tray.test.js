@@ -34,6 +34,7 @@ import { setHandDeps } from '../../src/hand/shell.js';
 
 let settings;
 let modules;
+let others;
 let user;
 let made;
 let hooks;
@@ -53,6 +54,7 @@ FakeRoll.nextTotal = 10;
 
 beforeEach(() => {
   settings = { chatTray: true, handRollsAllowed: 'all' };
+  others = {}; // other modules' settings, 'id.key'
   modules = new Map();
   user = {
     id: 'u1',
@@ -80,7 +82,9 @@ beforeEach(() => {
       format: (k, d) => `${k}:${Object.values(d ?? {}).join(',')}`,
     },
     settings: {
+      settings: { has: (key) => key in others },
       get: (ns, k) => {
+        if (`${ns}.${k}` in others) return others[`${ns}.${k}`];
         if (ns === 'core') return k === 'messageMode' ? 'gm' : undefined;
         if (!(k in settings)) throw new Error('not registered');
         return settings[k];
@@ -203,14 +207,22 @@ describe('theme tint', () => {
 });
 
 describe('shown', () => {
-  test('on by default; off with the setting, with the Dice Tray module active, or unregistered', () => {
+  test('on by default; off with the setting, while another tray shows, or unregistered', () => {
     expect(chatTrayShown()).toBe(true);
     settings.chatTray = false;
     expect(chatTrayShown()).toBe(false);
     settings.chatTray = true;
-    modules.set('dice-tray', { active: true });
+    // Dice Tray (dice-calculator) active with its tray on hides the bar; its tray off, it shows
+    modules.set('dice-calculator', { active: true, title: 'Dice Tray' });
+    others['dice-calculator.enableDiceTray'] = true;
     expect(chatTrayShown()).toBe(false);
-    modules.set('dice-tray', { active: false });
+    others['dice-calculator.enableDiceTray'] = false;
+    expect(chatTrayShown()).toBe(true);
+    // PF2e HUD's dice panel, the same way; an inactive module never counts
+    modules.set('pf2e-hud', { active: true, title: 'PF2e HUD' });
+    others['pf2e-hud.dice.enabled'] = true;
+    expect(chatTrayShown()).toBe(false);
+    modules.set('pf2e-hud', { active: false });
     expect(chatTrayShown()).toBe(true);
     delete settings.chatTray;
     expect(chatTrayShown()).toBe(false);
@@ -246,11 +258,15 @@ describe('dock', () => {
     settings.chatTray = false;
     dockTray(undefined, vi.fn());
     expect(dock()).toBeNull();
-    // the Dice Tray module active: never docked
+    // the Dice Tray module's tray on: never docked; switched off, the bar docks at once
     settings.chatTray = true;
-    modules.set('dice-tray', { active: true });
+    modules.set('dice-calculator', { active: true });
+    others['dice-calculator.enableDiceTray'] = true;
     dockTray({ '#chat-message': textarea() }, vi.fn());
     expect(dock()).toBeNull();
+    others['dice-calculator.enableDiceTray'] = false;
+    onUpdate[0][1]({ key: 'dice-calculator.enableDiceTray' });
+    expect(dock()).toBeTruthy();
   });
 
   test('no chat textarea: nothing, never a throw', () => {

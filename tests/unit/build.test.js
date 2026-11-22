@@ -132,6 +132,12 @@ describe('build', () => {
     expect(themeApi).toBeTruthy();
     expect(readFileSync(themeApi, 'utf8')).toContain('registerDefaultProvider');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('registerDefaultProvider');
+    // the tray picker (issue #5) and the other trays' list it shares with the chat dice tray
+    const trayPick = lazy.find((p) => /^dist\/tray-pick-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    const otherTrays = lazy.find((p) => /^dist\/other-trays-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(trayPick && otherTrays).toBeTruthy();
+    expect(readFileSync(otherTrays, 'utf8')).toContain('enableDiceTray');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('enableDiceTray');
     // roll stats: the window, the pet moods it shares with the pet chunk, the recorder (first roll)
     const rollStats = lazy.find((p) => /^dist\/roll-stats-[A-Za-z0-9_-]{8}\.js$/.test(p));
     const moods = lazy.find((p) => /^dist\/moods-[A-Za-z0-9_-]{8}\.js$/.test(p));
@@ -231,6 +237,8 @@ describe('build', () => {
         scenes,
         sceneCatalog,
         themeApi,
+        trayPick,
+        otherTrays,
         ...geometries,
         hand,
         grab,
@@ -471,9 +479,11 @@ describe('build', () => {
     // PR #3 (lost dice context hidden and asked back, renderer.js) and PR #4 (coins tip off their
     // rim in the physics worker's sim.js; default sounds by body style): owner approved +1,400 B
     // (43,992 -> 45,392), 2026-11-22.
+    // The tray picker's check at ready (main.js TRAY_MODULE_IDS; the picker is the lazy tray-pick
+    // chunk): owner approved +188 B (45,392 -> 45,580), 2026-11-22.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(45_392);
+    expect(growth).toBeLessThanOrEqual(45_580);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

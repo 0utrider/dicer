@@ -415,7 +415,10 @@ describe('the chat dice tray', () => {
       modules,
       i18n: { localize: (k) => k, format: (k) => k },
       user: { id: 'u1', role: 1, isGM: false },
-      settings: { get: (ns, k) => (ns === 'dicer' ? s[k] : undefined) },
+      settings: {
+        settings: { has: (key) => key in s },
+        get: (ns, k) => (ns === 'dicer' ? s[k] : s[`${ns}.${k}`]),
+      },
     };
   };
   const docked = () => new Promise((r) => setTimeout(r, 0)).then(() => document.querySelector('.dicer-chat-tray'));
@@ -433,13 +436,13 @@ describe('the chat dice tray', () => {
     expect(document.querySelectorAll('.dicer-chat-tray')).toHaveLength(1);
   });
 
-  test('not docked with chatTray off or the Dice Tray module active', async () => {
+  test('not docked with chatTray off or the Dice Tray module tray on', async () => {
     const input = hooks.on.find(([n]) => n === 'renderChatInput')[1];
     document.body.innerHTML = '<textarea id="chat-message"></textarea>';
     withSettings({ chatTray: false });
     await input({}, {});
     expect(await docked()).toBeNull();
-    withSettings({ chatTray: true }, new Map([['dice-tray', { active: true }]]));
+    withSettings({ chatTray: true, 'dice-calculator.enableDiceTray': true }, new Map([['dice-calculator', { active: true }]]));
     await input({}, {});
     expect(await docked()).toBeNull();
   });
