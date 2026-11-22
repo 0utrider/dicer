@@ -84,6 +84,36 @@ test('context loss stops the loop; restore notifies', () => {
   expect(restored).toHaveBeenCalled();
 });
 
+test('a lost context: the canvas is hidden, never shown by a roll, and asked back', () => {
+  vi.useFakeTimers();
+  try {
+    const { r, fake, container, frames } = setup();
+    let lost = false;
+    fake.getContext = () => ({ isContextLost: () => lost });
+    fake.forceContextRestore = vi.fn(() => {
+      lost = false;
+    });
+    const canvas = container.querySelector('#dicer-canvas');
+    r.startLoop(() => true);
+    expect(canvas.style.display).not.toBe('none');
+    lost = true;
+    canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
+    expect(canvas.style.display).toBe('none');
+    // a roll while lost (Chrome evicted the context): no white sheet, no frame
+    frames.length = 0;
+    r.startLoop(() => true);
+    expect(canvas.style.display).toBe('none');
+    expect(frames.length).toBe(0);
+    vi.advanceTimersByTime(300);
+    expect(fake.forceContextRestore).toHaveBeenCalledTimes(1);
+    r.startLoop(() => true);
+    expect(canvas.style.display).not.toBe('none');
+    r.dispose();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test('camera fit: the floor rectangle exactly fills the view', () => {
   const { camera, fitArea } = buildScene();
   fitArea({ halfWidth: 8, halfDepth: 5 });

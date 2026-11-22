@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: a white screen during rolls after editing themes.** After opening the dice editors a number of times, rolls could turn the whole screen white with the browser's crash icon until the dice faded. Each editor now gives its WebGL context back when it closes, and the dice canvas recovers if the browser takes its context anyway.
+
 ## 1.4.0
 
 - **A theme API for other modules.** Other modules can now ship dice themes and give actors default dice through `game.modules.get('dicer').api`, which the `dicer.ready` hook hands over. See [THEME-API.md](THEME-API.md).

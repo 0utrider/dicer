@@ -67,6 +67,7 @@ function fakeRig({ blobKind = 'toBlob' } = {}) {
     setClearColor: vi.fn(),
     render: vi.fn((scene) => renders.push(scene.children.filter((c) => c.isMesh && c.visible && c.material.userData?.uniforms).length)),
     dispose: vi.fn(),
+    forceContextLoss: vi.fn(),
   };
   return { canvas, renderer, renders, listeners, blobs };
 }
@@ -232,6 +233,8 @@ test('dispose revokes every URL and disposes the renderer; later calls resolve n
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:t1');
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:t2');
   expect(rig.renderer.dispose).toHaveBeenCalledTimes(1);
+  // the WebGL context is given back at once, not left for the garbage collector
+  expect(rig.renderer.forceContextLoss).toHaveBeenCalledTimes(1);
   expect(await t.thumbnail(theme(), 'd20')).toBeNull();
 });
 

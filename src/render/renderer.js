@@ -6,6 +6,8 @@ import { compileGuarded, COMPILE_TIMEOUT_MS } from './compile-guard.js';
 const CANVAS_ID = 'dicer-canvas';
 /** Unresolved GPU timer queries kept at most; the next frames go unmeasured past it. */
 const MAX_PENDING_QUERIES = 8;
+/** After a context loss, how long to wait before asking the browser to give it back. */
+const RESTORE_DELAY_MS = 250;
 
 /** Product-photo tone mapping; split out so it is testable without WebGL. */
 export function configureRenderer(renderer) {
@@ -75,8 +77,11 @@ export class DiceRenderer {
 
     this.#onLost = (e) => {
       e.preventDefault();
-      this.#stop();
+      this.hide(); // a lost canvas shows as a white sheet with the browser's crash icon
       this.#lost.forEach((cb) => cb());
+      // The browser restores a context lost to a GPU reset by itself, but not one it evicted for
+      // having too many (Chrome keeps 16): that one comes back only on request.
+      this.#restoreSoon();
     };
     this.#onRestored = () => {
       this.#gpu = undefined; // extensions must be fetched again on the restored context
@@ -280,6 +285,11 @@ export class DiceRenderer {
    * tick; calling while held resumes.
    */
   startLoop(tick) {
+    if (this.isContextLost) {
+      // Never show a lost canvas; ask for it back (onRestored wakes the box).
+      this.#restoreSoon();
+      return;
+    }
     this.#tick = tick;
     if (this.#handle !== null) return;
     this.#holding = false;
@@ -418,6 +428,33 @@ export class DiceRenderer {
     this.#canvas.style.display = 'none';
   }
 
+  /** True while the WebGL context is lost (false for a renderer without a context, as in tests). */
+  get isContextLost() {
+    try {
+      return !!this.#renderer.getContext?.()?.isContextLost?.();
+    } catch {
+      return false;
+    }
+  }
+
+  #restoreTimer = null;
+  #restoreSoon() {
+    if (this.#restoreTimer !== null) return;
+    this.#restoreTimer = setTimeout(() => {
+      this.#restoreTimer = null;
+      // three keeps WEBGL_lose_context from before the loss (a lost context hands out no
+      // extensions); restoring a context that is not lost, or one the browser will not give
+      // back, is a no-op or a GL error, never a throw we need.
+      if (this.isContextLost) {
+        try {
+          this.#renderer.forceContextRestore?.();
+        } catch {
+          /* the browser keeps it lost; the next roll asks again */
+        }
+      }
+    }, RESTORE_DELAY_MS);
+  }
+
   onContextLost(cb) {
     this.#lost.push(cb);
   }
@@ -426,6 +463,8 @@ export class DiceRenderer {
   }
 
   dispose() {
+    clearTimeout(this.#restoreTimer);
+    this.#restoreTimer = null;
     this.hide();
     this.#canvas.removeEventListener('webglcontextlost', this.#onLost);
     this.#canvas.removeEventListener('webglcontextrestored', this.#onRestored);
