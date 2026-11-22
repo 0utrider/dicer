@@ -245,6 +245,10 @@ export function createThumbnailer({
       if (canvas && onLost) canvas.removeEventListener?.('webglcontextlost', onLost);
       sceneApi?.dispose();
       renderer?.dispose();
+      // dispose() frees three's GPU objects but leaves the WebGL context alive until the canvas is
+      // garbage-collected. Chrome keeps 16 contexts and evicts the least recently used one, which is
+      // the dice canvas: every editor or browser that opens a thumbnailer must give its context back.
+      renderer?.forceContextLoss?.();
     } catch {
       /* already gone */
     }
