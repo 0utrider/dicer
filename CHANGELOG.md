@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- **A theme API for other modules.** Other modules can now ship dice themes and give actors default dice through `game.modules.get('dicer').api`, which the `dicer.ready` hook hands over. See [THEME-API.md](THEME-API.md).
+  - **Module themes:** a module registers read-only themes that every player sees, with no GM involved. They show in the theme browser, tagged with the module's name; players can duplicate one to change it, and the GM can make one the world default.
+  - **Default dice:** a module can name a default theme for actors nobody has picked dice for, such as a necromancer and their thralls. It's never saved to the actor, so a player's or GM's choice always wins, and removing the module leaves nothing behind.
+  - **Actor helpers:** a module can check whether anyone has chosen dice for an actor, read the theme an actor uses, and set or clear an actor's theme.
+- **Dice follow the rolling token.** A roll from a token now uses that token's own dice choice, so a choice set on one unlinked token, such as a summoned creature, works for that token's rolls.
+
 ## 1.3.28
 
 - **A pet set to None leaves.** With pets set to stay always, choosing None in the pet window left the old pet sitting on the table. It now leaves at once, on every screen, whether the player or a GM made the change.

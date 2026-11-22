@@ -127,6 +127,11 @@ describe('build', () => {
     expect(readFileSync(scenes, 'utf8')).toContain('dicer-scenes-chunk');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-scenes-chunk');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('Shadow Thief');
+    // the theme API for other modules (src/api/theme-api.js): loaded in Dicer's ready hook
+    const themeApi = lazy.find((p) => /^dist\/theme-api-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(themeApi).toBeTruthy();
+    expect(readFileSync(themeApi, 'utf8')).toContain('registerDefaultProvider');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('registerDefaultProvider');
     // roll stats: the window, the pet moods it shares with the pet chunk, the recorder (first roll)
     const rollStats = lazy.find((p) => /^dist\/roll-stats-[A-Za-z0-9_-]{8}\.js$/.test(p));
     const moods = lazy.find((p) => /^dist\/moods-[A-Za-z0-9_-]{8}\.js$/.test(p));
@@ -225,6 +230,7 @@ describe('build', () => {
         dsnReport,
         scenes,
         sceneCatalog,
+        themeApi,
         ...geometries,
         hand,
         grab,
@@ -459,9 +465,12 @@ describe('build', () => {
     // roll's tooltip (gate-hand.js markFor): owner approved +211 B (42,511 -> 42,722), 2026-11-22.
     // The showOthersPets setting (settings.js, pet-for.js): owner approved +255 B (42,722 -> 42,977),
     // 2026-11-22.
+    // The theme API for other modules: module themes in findTheme, default providers and the
+    // speaking token's actor in resolve-looks.js (the API object is the lazy theme-api chunk): owner
+    // approved +1,015 B (42,977 -> 43,992), 2026-11-22.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(42_977);
+    expect(growth).toBeLessThanOrEqual(43_992);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

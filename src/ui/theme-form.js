@@ -14,6 +14,7 @@ import {
   SOUND_MATERIALS,
   KNOWN_EFFECTS,
   BUILTIN_THEMES,
+  ADDON_THEMES,
   normalizeTheme,
   readThemeList,
 } from '../themes/themes.js';
@@ -119,7 +120,8 @@ export function unreadableOf(list, source) {
 /** What the gallery shows: built-in + world + the user's own, and the entries it cannot read. */
 export function galleryEntries({ worldList, userList, warn = noop } = {}) {
   return {
-    themes: [...BUILTIN_THEMES, ...readThemeList(worldList, 'world', warn), ...readThemeList(userList, 'user', warn)],
+    // other modules' registered themes (read-only, source 'addon') follow the built-ins
+    themes: [...BUILTIN_THEMES, ...ADDON_THEMES.values(), ...readThemeList(worldList, 'world', warn), ...readThemeList(userList, 'user', warn)],
     unreadable: [
       ...unreadableOf(worldList, 'world').map((raw) => ({ source: 'world', raw })),
       ...unreadableOf(userList, 'user').map((raw) => ({ source: 'user', raw })),

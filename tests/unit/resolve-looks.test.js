@@ -1,4 +1,5 @@
 import { createLookResolver } from '../../src/compat/resolve-looks.js';
+import { PROVIDERS } from '../../src/api/theme-registry.js';
 import { facesFor } from '../../src/compat/faces.js';
 import { createRegistry } from '../../src/compat/registry.js';
 import { LOOKS } from '../../src/look/looks.js';
@@ -632,5 +633,47 @@ describe('GM controls: world default theme and the player lock (P7-D4)', () => {
   test('a locked player with a throwing user lookup still gets a look', () => {
     const { resolver } = make({ users: {}, worldDefault: 'verdant', lock: true });
     expect(look(resolver, plain, 'nobody').themeId).toBe('verdant');
+  });
+});
+
+describe('module default providers (theme-registry.js)', () => {
+  afterEach(() => PROVIDERS.clear());
+
+  test("an actor nobody picked dice for wears a provider's theme; an actor's own choice wins; nothing is written", () => {
+    PROVIDERS.set('necromancer-thrall-helper', (a) => (a.necro ? 'ruby-classic' : null));
+    const necro = { necro: true, flags: { dicer: {} } };
+    const chose = { necro: true, flags: { dicer: { appearance: { global: themeRef('sharp-crystal') } } } };
+    const plain = { flags: { dicer: {} } };
+    const { resolver } = make({ actors: { necro, chose, plain } });
+    const roll = (id) => look(resolver, term(20, { options: { dsnActorId: id } }), 'u');
+    expect(roll('necro').appearance).toEqual(RUBY);
+    expect(roll('chose').appearance).toEqual(CRYSTAL);
+    expect(roll('plain').appearance).toEqual(DEFAULT_APPEARANCE);
+    expect(necro.flags.dicer).toEqual({}); // never written
+  });
+});
+
+describe('the speaking token (an unlinked thrall token)', () => {
+  afterEach(() => PROVIDERS.clear());
+
+  test("a provider sees the token's own actor; a choice set on that token alone wins; a term's own actor still goes first", () => {
+    // the base actor has no flags; the token's synthetic actor carries the thrall mark (or a choice)
+    const base = { flags: { dicer: {} } };
+    const thrallToken = { thrall: true, flags: { dicer: {} } };
+    const chosenToken = { thrall: true, flags: { dicer: { appearance: { global: themeRef('sharp-crystal') } } } };
+    const tokens = { t1: thrallToken, t2: chosenToken };
+    PROVIDERS.set('necromancer-thrall-helper', (a) => (a.thrall ? 'ruby-classic' : null));
+    const resolver = createLookResolver({
+      registry: createRegistry({ warn: () => {} }),
+      getUser: () => undefined,
+      getActor: (id) => (id === 'base' ? base : undefined),
+      getTokenActor: (scene, token) => (scene === 's' ? tokens[token] : null),
+      warn: () => {},
+    });
+    const roll = (token, options = {}) =>
+      resolver.decorate(null, {}, 'u', { actor: 'base', scene: 's', token })(term(20, { options }), RES, 0).appearance;
+    expect(roll('t1')).toEqual(RUBY); // the provider saw the thrall token
+    expect(roll('t2')).toEqual(CRYSTAL); // the token's own choice
+    expect(roll('t1', { dsnActorId: 'base' })).toEqual(DEFAULT_APPEARANCE); // the term names the base actor
   });
 });

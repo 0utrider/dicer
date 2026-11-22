@@ -25,6 +25,7 @@ import {
   colorsetNameToAppearance,
 } from './user-looks.js';
 import { readThemeList, findTheme } from '../themes/themes.js';
+import { PROVIDERS, flagChoice, providedTheme } from '../api/theme-registry.js';
 import { roleOf } from '../effects/roll-context.js';
 import { dsnTypeOf } from '../core/dice-shapes.js';
 
@@ -57,6 +58,9 @@ export function createLookResolver({
   registry,
   getUser,
   getActor = () => undefined,
+  // the speaking token's actor (an unlinked token's synthetic actor carries its own changes: a
+  // summoned thrall's flags, a choice set on that token only)
+  getTokenActor = (scene, token) => globalThis.game?.scenes?.get?.(scene)?.tokens?.get?.(token)?.actor ?? null,
   facesFor = () => undefined,
   damageThemeFor = null,
   getWorldThemes = () => [],
@@ -136,12 +140,15 @@ export function createLookResolver({
     return colorsetNameToAppearance(cs, registry, index);
   }
 
-  function resolve(term, ctx, index, themeOf, role, speakerActorId) {
+  function resolve(term, ctx, index, themeOf, role, speakerActorId, tokenActor) {
     const type = dsnTypeOf(term);
     const options = isPlainObject(term?.options) ? term.options : {};
     // The term's own actor, else the speaker's (showForRoll / animateRoll, which have no message).
-    // A token-linked speaker names its base actor, whose flags getActor returns.
-    const actorId = typeof options.dsnActorId === 'string' ? options.dsnActorId : speakerActorId;
+    // A token-linked speaker names its base actor, whose flags getActor returns; the speaking
+    // token's own actor (tokenActor: an unlinked token's synthetic one) goes first when the term
+    // names none.
+    const ownId = typeof options.dsnActorId === 'string';
+    const actorId = ownId ? options.dsnActorId : speakerActorId;
     let appearance = null;
     let system = null;
 
@@ -170,7 +177,13 @@ export function createLookResolver({
     if (!ctx.locked && !Object.hasOwn(looks, 'global')) refs.push(FALLBACK_REF);
     // The theme browser writes {global: {theme}}; DSN-migrated flags are a flat LookRef. A
     // global slot takes precedence over flat keys left on the same actor.
-    const stored = !ctx.locked && typeof actorId === 'string' ? getActor(actorId)?.flags?.dicer?.appearance : undefined;
+    const actor = ctx.locked ? null : (!ownId && tokenActor) || (typeof actorId === 'string' ? getActor(actorId) : null);
+    let stored = actor?.flags?.dicer?.appearance;
+    // an actor nobody picked dice for: a module's default (theme-registry.js providers), never written
+    if (actor && PROVIDERS.size && !flagChoice(stored)) {
+      const id = providedTheme(actor);
+      if (id) stored = { global: { theme: id } };
+    }
     const actorRef = isPlainObject(stored) && isPlainObject(stored.global) ? stored.global : stored;
     // the theme the die would wear (the actor's, else the author's first ref): its own damage looks
     const ownRef = [actorRef, ...refs].find(isPlainObject);
@@ -261,8 +274,15 @@ export function createLookResolver({
     decorate(message, roll, authorId, speaker = null) {
       const author = authorId ?? message?.author?.id;
       // the speaker showForRoll / animateRoll hand over, else the chat message's own (a sheet roll)
+      const sp = speaker ?? message?.speaker;
       const who = speaker?.actor ?? message?.speaker?.actor;
       const speakerActorId = typeof who === 'string' ? who : undefined;
+      let tokenActor = null;
+      try {
+        if (typeof sp?.token === 'string' && typeof sp.scene === 'string') tokenActor = getTokenActor(sp.scene, sp.token);
+      } catch {
+        /* no token: the base actor */
+      }
       let role = null;
       try {
         role = roleOf(message); // null on the showForRoll path (no message)
@@ -279,7 +299,7 @@ export function createLookResolver({
       return (term, result, termIndex = 0) => {
         try {
           ctx ??= themeContext(author);
-          return resolve(term, ctx, termIndex, themeOf, role, speakerActorId);
+          return resolve(term, ctx, termIndex, themeOf, role, speakerActorId, tokenActor);
         } catch (err) {
           warnOnce(err);
           return { appearance: DEFAULT_APPEARANCE };

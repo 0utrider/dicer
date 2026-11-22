@@ -742,6 +742,15 @@ Hooks.once('ready', async () => {
     }
     return;
   }
+  // The theme API for other modules (a lazy chunk): game.modules.get('dicer').api, handed over by
+  // the `dicer.ready` hook, where modules register their themes and default providers.
+  try {
+    const api = (await import('./api/theme-api.js')).createThemeApi();
+    game.modules.get('dicer').api = api;
+    Hooks.callAll('dicer.ready', api);
+  } catch (err) {
+    console.warn('dicer: cannot load the theme API', err);
+  }
   // personal settings left the browser for the user settings (1.0.18): this browser's values are
   // copied first, so everything below reads them
   try {

@@ -266,9 +266,15 @@ export function readThemeList(list, source, warn = console.warn) {
   return out;
 }
 
-/** Built-in, else the world list, else the roller's own list. */
+/**
+ * Themes other modules registered this session (api.registerTheme, src/api/theme-api.js): id ->
+ * theme (source 'addon', moduleId). Every client registers them itself, so they resolve for all.
+ */
+export const ADDON_THEMES = new Map();
+
+/** Built-in, else a module's, else the world list, else the roller's own list. */
 export function findTheme(id, { worldThemes, userThemes } = {}) {
   if (!isStr(id)) return null;
   const hit = (list) => (Array.isArray(list) ? list.find((t) => t && t.id === id) : undefined);
-  return BUILTIN_THEMES.find((t) => t.id === id) ?? hit(worldThemes) ?? hit(userThemes) ?? null;
+  return BUILTIN_THEMES.find((t) => t.id === id) ?? ADDON_THEMES.get(id) ?? hit(worldThemes) ?? hit(userThemes) ?? null;
 }

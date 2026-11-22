@@ -665,7 +665,11 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         id: t.id,
         name: t.name,
         source: t.source,
-        sourceLabel: (isModule && t.category) || loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
+        // a module's registered theme (api.registerTheme) is named by its module: read-only, duplicable
+        sourceLabel:
+          (isModule && t.category) ||
+          (t.source === 'addon' && (globalThis.game?.modules?.get?.(t.moduleId)?.title ?? t.moduleId)) ||
+          loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
         showBadge: t.source !== 'builtin', // cards name only world, own and module sets; the detail panel always does
         isModule,
         credit: t.author ? loc('DICER.Themes.By').replace('{name}', t.author) : '', // who designed it
@@ -686,8 +690,9 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         canPush: theme && isGM && t.source !== 'user',
         canDelete: t.source === 'user' || (t.source === 'world' && isGM),
         // the world default: a theme every player has (built-in or world), set by the GM
-        canWorldDefault: isGM && (t.source === 'builtin' || t.source === 'world'),
-        isWorldDefault: (t.source === 'builtin' || t.source === 'world') && isWorldDefault(t.id),
+        // (a module's registered theme too: every client registers it)
+        canWorldDefault: isGM && ['builtin', 'world', 'addon'].includes(t.source),
+        isWorldDefault: ['builtin', 'world', 'addon'].includes(t.source) && isWorldDefault(t.id),
       };
     };
     const cards = visible.map(view);
