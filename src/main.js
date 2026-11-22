@@ -19,6 +19,7 @@ import {
 import { createFontAtlases, createFontWorker } from './fonts/font-atlas.js';
 import { createQualityController } from './render/quality-controller.js';
 import { createWarmup, createAppearanceRewarm } from './render/warmup.js';
+import { userWarmupLooks } from './render/user-looks.js';
 import { DiceBox } from './throw/dice-box.js';
 import { planThrow } from './throw/throw-planner.js';
 import { createMessageGate } from './foundry/message-gate.js';
@@ -384,13 +385,24 @@ function resizeDice() {
  */
 /** The damage themes' looks, warmed after the own look (set once the damage themer exists). */
 let damageLooks = () => [];
+/** The other users' looks (set once the look resolver exists): their first roll here froze the canvas. */
+let userLooks = () => [];
 
 const warmUp = createWarmup({
   getBox: () => diceBox,
   getRenderer: () => diceRenderer,
   onWarmed: () => quality?.warmedUp(), // P2-R10: fresh adaptive window once the new programs exist
-  getLooks: () => damageLooks(),
+  // Players' looks first: someone rolls every turn, a damage theme only on its damage type.
+  getLooks: () => [...userLooks(), ...damageLooks()],
 });
+
+/** Another user's dice flags changed: warm their look (debounced), so their next roll here doesn't freeze. */
+let otherLookTimer = null;
+function onOtherUserLook(user, changes) {
+  if (user?.id === game.user?.id || !changes?.flags?.dicer) return;
+  clearTimeout(otherLookTimer);
+  otherLookTimer = setTimeout(warmUp, 1000);
+}
 
 /**
  * The look, a feature flag or the tier changed: new rolls get rebuilt materials, rolls in
@@ -722,9 +734,10 @@ Hooks.once('init', () => {
     countRoll(message);
   });
   Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
-  updateUserHook = Hooks.on('updateUser', (user, changes) =>
-    appearanceRewarm.onUpdateUser(user, changes),
-  );
+  updateUserHook = Hooks.on('updateUser', (user, changes) => {
+    appearanceRewarm.onUpdateUser(user, changes);
+    onOtherUserLook(user, changes);
+  });
   Hooks.on('updateChatMessage', (message, changes) => {
     handlers().onUpdate(message, changes);
     sendHand(message); // appended hand rolls (sent ones are no longer stored)
@@ -906,6 +919,12 @@ Hooks.once('ready', async () => {
         // Preset faces the digit atlas cannot draw become image / text face layers.
         facesFor: presetFaces,
       });
+      userLooks = () =>
+        userWarmupLooks({
+          users: game.users?.contents ?? [],
+          viewerId: game.user?.id,
+          lookOf: (id, term) => resolver.decorate(null, null, id)(term, null, 0)?.appearance,
+        });
       const plan = (roll, opts) => planThrow(roll, { shapeFor: resolver.shapeFor, ...opts });
       // Trigger effects ride the same decorator, which the gate and showForRoll call for real
       // views only (ghosts use the ghost decorator, 'none' is not planned): privacy-first.
@@ -1035,6 +1054,8 @@ Hooks.once('ready', async () => {
   });
   if (!started) {
     appearanceRewarm.dispose();
+    clearTimeout(otherLookTimer);
+    userLooks = () => [];
     if (updateUserHook !== null) Hooks.off('updateUser', updateUserHook);
     updateUserHook = null;
     quality?.dispose();
