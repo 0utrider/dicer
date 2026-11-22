@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Coins no longer stay on their rim.** A coin that landed standing on its rim, or propped on a wall or a die, used to stay that way on a normal roll. After a short beat it now tips over, for every throw, and the result still matches the chat card.
+- **Better default sounds by material and style.** A theme with no sound of its own now picks one from its body style as well as its type: clear resin sounds like plastic, pearl like glass, chameleon and opal like metal, fossil like stone, and jelly gets a new soft squishy sound. Themes with an explicit sound are unchanged, but resin, pearl, iridescent, fossil and jelly dice without one will sound different.
+
 ## 1.4.0
 
 - **A theme API for other modules.** Other modules can now ship dice themes and give actors default dice through `game.modules.get('dicer').api`, which the `dicer.ready` hook hands over. See [THEME-API.md](THEME-API.md).

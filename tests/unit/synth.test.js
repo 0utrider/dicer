@@ -98,16 +98,17 @@ describe('renderImpact', () => {
     }
   });
 
-  it('spectral centroid order: metal > glass > stone > plastic > wood', () => {
+  it('spectral centroid order: metal > glass > stone > plastic > wood > squishy', () => {
     const c = Object.fromEntries(SOUND_MATERIALS.map((m) => [m, centroid(renderImpact(m, 0, SR))]));
     expect(c.metal).toBeGreaterThan(c.glass);
     expect(c.glass).toBeGreaterThan(c.stone);
     expect(c.stone).toBeGreaterThan(c.plastic);
     expect(c.plastic).toBeGreaterThan(c.wood);
+    expect(c.wood).toBeGreaterThan(c.squishy);
   });
 
   it('plastic and wood decay', () => {
-    for (const m of ['plastic', 'wood']) {
+    for (const m of ['plastic', 'wood', 'squishy']) {
       const a = renderImpact(m, 0, SR);
       const n = Math.floor(a.length / 10);
       expect(rms(a, a.length - n, a.length)).toBeLessThan(0.1 * rms(a, 0, n));

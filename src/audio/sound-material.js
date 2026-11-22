@@ -13,10 +13,13 @@ const HINTS = {
   stone: 'stone',
 };
 
-const BODY = { metal: 'metal', marble: 'stone', resin: 'glass', opaque: 'plastic', pearl: 'plastic', wood: 'wood', gem: 'stone', iridescent: 'glass', stone: 'stone', bone: 'wood', jelly: 'plastic' };
+const BODY = { metal: 'metal', marble: 'stone', resin: 'plastic', opaque: 'plastic', pearl: 'glass', wood: 'wood', gem: 'stone', iridescent: 'metal', stone: 'stone', bone: 'wood', jelly: 'squishy' };
+// A body style that sounds unlike its type ('type:style', the body's preset): it wins over BODY.
+const STYLE = { 'iridescent:dichroic': 'glass', 'bone:fossil': 'stone' };
 
 export function soundMaterialOf(appearance, preset) {
   const hint = preset?.material ?? appearance?.material;
   if (typeof hint === 'string' && hint) return HINTS[hint] ?? 'plastic';
-  return BODY[appearance?.body?.type] ?? 'plastic';
+  const body = appearance?.body;
+  return STYLE[`${body?.type}:${body?.preset}`] ?? BODY[body?.type] ?? 'plastic';
 }

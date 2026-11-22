@@ -669,9 +669,10 @@ test('a throw without free or launch is byte-identical to before (hash, with and
     '8796fab',
   );
   const pet = [{ x: 0, z: 0, r: 0.8, h: 2 }];
+  // Re-recorded for the coin tip (sim.js tipCoins): this throw's d2 ended standing on its rim.
   expect(
     framesHash(runHand(['d2', 'd4crystal', 'd16', 'd14'], 99, { obstacles: pet }).chunks),
-  ).toBe('51df8e65');
+  ).toBe('e67bed3f');
   expect(runHand(['d6', 'd6'], 7).res.nudges).toEqual([0, 0]);
 });
 
@@ -720,18 +721,36 @@ test('a free throw with a die launched outside the area ends inside it', () => {
   });
 });
 
-test('a coin launched on its rim ends flat', () => {
+test('a coin launched on its rim stands a beat, then tips flat (free or not)', () => {
   const shape = getShape('d2');
   const rim = [L([0, 1, 0], aboutX(Math.PI / 2))];
-  const plain = runHand(['d2'], 5, { launch: rim });
-  expect(
-    isCocked(shape, posesOf(plain.chunks, 1).at(-1)[0].q),
-    'without free it stays on its rim',
-  ).toBe(true);
-  const { res, chunks } = runHand(['d2'], 5, { free: true, launch: rim });
-  expect(res.nudges[0]).toBeGreaterThanOrEqual(1);
-  const last = posesOf(chunks, 1).at(-1)[0];
-  expect(topFaceClearance(shape, last.q)).toBeGreaterThan(0.9);
+  for (const extra of [{}, { free: true }]) {
+    const { res, chunks } = runHand(['d2'], 5, { ...extra, launch: rim });
+    const poses = posesOf(chunks, 1).map((f) => f[0]);
+    // the beat: a run of frames standing still on its rim before the tip
+    let run = 0;
+    let longest = 0;
+    for (let i = 1; i < poses.length; i++) {
+      const still = moved(poses[i].p, poses[i - 1].p) < 0.005 && isCocked(shape, poses[i].q);
+      run = still ? run + 1 : 0;
+      longest = Math.max(longest, run);
+    }
+    expect(longest, `${JSON.stringify(extra)}: stands on its rim for a moment`).toBeGreaterThanOrEqual(40);
+    expect(topFaceClearance(shape, poses.at(-1).q), `${JSON.stringify(extra)}: ends flat`).toBeGreaterThan(0.9);
+    expect(res.nudges[0], 'a coin on its rim is tipped, not nudged').toBe(0);
+    expect(res.settledStep).toBeLessThan(extra.free ? MAX_FREE_STEPS : MAX_STEPS);
+  }
+});
+
+test('a coin still on its rim after a throw is rare (seeds 1..200)', () => {
+  const shape = getShape('d2');
+  let rim = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const { chunks } = runHand(['d2'], seed);
+    if (isCocked(shape, posesOf(chunks, 1).at(-1)[0].q)) rim++;
+  }
+  // before the tip: about 1 coin in 6 finished standing on its rim
+  expect(rim).toBeLessThanOrEqual(4);
 });
 
 test('same seed + same launch -> identical frames and nudges', () => {

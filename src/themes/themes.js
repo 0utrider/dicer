@@ -8,7 +8,7 @@ import { EFFECT_IDS } from '../effects/effect-ids.js';
 export const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 /** perType keys a theme may carry: the editor's DIE_TYPES plus the dice it has no tab for yet. */
 const THEME_TYPES = [...DIE_TYPES, 'd3', 'd5', 'd7', 'd14', 'd16', 'df'];
-export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
+export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone', 'squishy'];
 /** Effect catalogue ids (world start's own list: the library chunk is lazy); 'dsn:' ids are also allowed. */
 export const KNOWN_EFFECTS = [...EFFECT_IDS];
 

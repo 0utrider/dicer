@@ -7,15 +7,33 @@ describe('soundMaterialOf', () => {
   it.each([
     ['metal', 'metal'],
     ['marble', 'stone'],
-    ['resin', 'glass'],
+    ['resin', 'plastic'],
     ['opaque', 'plastic'],
-    ['pearl', 'plastic'],
+    ['pearl', 'glass'],
     ['wood', 'wood'],
     ['gem', 'stone'],
-    ['iridescent', 'glass'],
+    ['iridescent', 'metal'],
+    ['stone', 'stone'],
+    ['bone', 'wood'],
+    ['jelly', 'squishy'],
     ['mystery', 'plastic'],
   ])('body %s -> %s', (type, want) => {
     expect(soundMaterialOf(look(type))).toBe(want);
+  });
+
+  it.each([
+    ['iridescent', 'dichroic', 'glass'],
+    ['iridescent', 'chameleon', 'metal'],
+    ['iridescent', 'opal', 'metal'],
+    ['bone', 'fossil', 'stone'],
+    ['bone', 'ivory', 'wood'],
+    ['gem', 'obsidian', 'stone'],
+  ])('body %s, style %s -> %s', (type, preset, want) => {
+    expect(soundMaterialOf({ body: { type, preset } })).toBe(want);
+  });
+
+  it('a DSN material hint still wins over the body style', () => {
+    expect(soundMaterialOf({ body: { type: 'iridescent', preset: 'dichroic' } }, { material: 'wood' })).toBe('wood');
   });
 
   it.each([
