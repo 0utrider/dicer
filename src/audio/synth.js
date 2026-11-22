@@ -10,7 +10,7 @@ import { mulberry32 } from '../core/rng.js';
 import { RESULT_SOUNDS, PET_SOUNDS } from './sound-names.js';
 import { PET_TIMBRES } from './pet-timbre.js';
 
-export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
+export const SOUND_MATERIALS = ['plastic', 'metal', 'wood', 'glass', 'stone', 'squishy'];
 export const SURFACES = ['felt', 'wood', 'stone', 'metal'];
 export const VARIANTS = 4;
 export { RESULT_SOUNDS };
@@ -82,6 +82,8 @@ const IMPACT = {
   wood: { dur: 0.25, modes: [[340, 0.02, 1], [700, 0.014, 0.7], [1150, 0.009, 0.4]], noise: { gain: 0.3, tau: 0.003, bright: 0.15 } },
   glass: { dur: 0.5, modes: [[3000, 0.12, 1], [5300, 0.08, 0.8], [7700, 0.06, 0.6], [4100, 0.1, 0.5]], noise: { gain: 0.3, tau: 0.002, bright: 0.7 } },
   stone: { dur: 0.2, modes: [[1900, 0.016, 1], [3200, 0.01, 0.8], [4600, 0.006, 0.5]], noise: { gain: 0.5, tau: 0.003, bright: 0.6 } },
+  // a soft, damped thud with a dull slap: no ring at all
+  squishy: { dur: 0.18, jitter: 0.5, modes: [[150, 0.02, 0.6], [260, 0.015, 0.5], [410, 0.01, 0.4], [620, 0.006, 0.3]], noise: { gain: 0.8, tau: 0.01, bright: 0.03 } },
 };
 
 function* impactGen(material, variant, sampleRate) {
@@ -90,7 +92,7 @@ function* impactGen(material, variant, sampleRate) {
   const rand = mulberry32(hash(`${material}:${variant}`));
   const buf = new Float32Array(Math.floor(spec.dur * sampleRate));
   const modes = spec.modes.map(([f, tau, g]) => [
-    f * (1 + (rand() - 0.5) * 0.12),
+    f * (1 + (rand() - 0.5) * (spec.jitter ?? 0.12)),
     tau * (1 + (rand() - 0.5) * 0.3),
     g * (1 + (rand() - 0.5) * 0.5),
   ]);

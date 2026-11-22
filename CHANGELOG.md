@@ -3,6 +3,8 @@
 ## Unreleased
 
 - **Fixed: a white screen during rolls after editing themes.** After opening the dice editors a number of times, rolls could turn the whole screen white with the browser's crash icon until the dice faded. Each editor now gives its WebGL context back when it closes, and the dice canvas recovers if the browser takes its context anyway.
+- **Coins no longer stay on their rim.** A coin that landed standing on its rim, or propped on a wall or a die, used to stay that way on a normal roll. After a short beat it now tips over, for every throw, and the result still matches the chat card.
+- **Better default sounds by material and style.** A theme with no sound of its own now picks one from its body style as well as its type: clear resin sounds like plastic, pearl like glass, chameleon and opal like metal, fossil like stone, and jelly gets a new soft squishy sound. Themes with an explicit sound are unchanged, but resin, pearl, iridescent, fossil and jelly dice without one will sound different.
 
 ## 1.4.0
 

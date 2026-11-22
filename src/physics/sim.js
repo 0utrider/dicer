@@ -55,6 +55,13 @@ const NUDGE_POP = 1.5; // ... and a cocked die pops up (units/s) so it can tip o
 const NUDGE_GROW = 0.75; // each further nudge is this much (of the first) stronger
 const NUDGE_HOP = 6; // an outside die hops (units/s) towards the area centre ...
 const NUDGE_REACH = 12; // ... at up to this speed
+// A coin that comes to rest standing on its rim (any throw, free or not) stands there for a beat,
+// then is tipped over onto the cap it already leans towards, so the throw never ends on one.
+const COIN_RIM_UP = 0.8; // not lying flat: its cap normal's world Y is under this (on its rim, or propped on a wall or die)
+const COIN_RIM_HOLD = 45; // steps it stands at rest on its rim before the tip (0.75 s)
+const COIN_TIP_SPIN = 4; // rad/s about its horizontal axis (a seeded 1..1.5 x, growing per tip)
+const COIN_TIP_POP = 0.6; // units/s up, so the rim lifts off its friction
+const COIN_MAX_TIPS = 3;
 
 let initialised = null;
 
@@ -620,8 +627,9 @@ export function createSim(initialArea, hulls, readers) {
             const out = Math.abs(dx) > hw || Math.abs(dz) > hd;
             const type = req.dice[d].type;
             const rd = readers[type];
+            // A coin on its rim is tipCoins' (after its beat); here only when it lies outside.
             const cocked =
-              rd && clearanceOf(rd, b.rotation(), isCoin(type)) < COCKED_FRACTION * rd.gap;
+              !isCoin(type) && rd && clearanceOf(rd, b.rotation(), false) < COCKED_FRACTION * rd.gap;
             if (nudges[d] >= MAX_NUDGES || !(out || cocked)) return;
             const grow = 1 + NUDGE_GROW * nudges[d];
             nudges[d]++;
@@ -642,6 +650,39 @@ export function createSim(initialArea, hulls, readers) {
             b.applyImpulse({ x: k * dx, y: m * (out ? NUDGE_HOP : NUDGE_POP * grow), z: k * dz }, true);
           });
           return any;
+        };
+        const rimSteps = new Int32Array(n); // steps each coin has stood at rest on its rim
+        const coinTips = new Int32Array(n);
+        /**
+         * Tip each coin that has stood at rest on its rim for COIN_RIM_HOLD steps, towards the cap it
+         * leans to (a seeded side when it stands dead upright). True while a coin with tips left is
+         * on its rim and there is still time to tip it: the throw is not done yet.
+         */
+        const tipCoins = (step) => {
+          if (step + NUDGE_STEPS > maxSteps) return false;
+          let pending = false;
+          bodies.forEach((b, d) => {
+            if (!isCoin(req.dice[d].type) || coinTips[d] >= COIN_MAX_TIPS) return;
+            const [ax, ay, az] = rotate(b.rotation(), 0, 1, 0);
+            if (Math.abs(ay) >= COIN_RIM_UP) {
+              rimSteps[d] = 0;
+              return;
+            }
+            pending = true;
+            if (dieRest[d] < SETTLE_STEPS || ++rimSteps[d] < COIN_RIM_HOLD) return;
+            rimSteps[d] = 0;
+            dieRest[d] = 0;
+            coinTips[d]++;
+            const side = ay > 0 ? 1 : ay < 0 ? -1 : nudgeRand() < 0.5 ? 1 : -1;
+            const h = Math.hypot(ax, az);
+            // turning about (-z, 0, x)/h brings that cap's normal up to +Y (as tipOf)
+            const [tx, tz] = h > 1e-6 ? [(-side * az) / h, (side * ax) / h] : [1, 0];
+            const w = COIN_TIP_SPIN * (1 + NUDGE_GROW * (coinTips[d] - 1)) * (1 + nudgeRand() / 2);
+            const av = b.angvel();
+            b.setAngvel({ x: av.x + tx * w, y: av.y, z: av.z + tz * w }, true);
+            b.applyImpulse({ x: 0, y: b.mass() * COIN_TIP_POP, z: 0 }, true);
+          });
+          return pending;
         };
         // Linear velocities just before each step (the impact speed is read from these).
         const preVel = new Float64Array(n * 3);
@@ -748,7 +789,8 @@ export function createSim(initialArea, hulls, readers) {
             wallClosed = true;
           }
 
-          restSteps = wallClosed && !shapeOpen && allAtRest ? restSteps + 1 : 0;
+          const coinOnRim = wallClosed && !shapeOpen && tipCoins(step);
+          restSteps = wallClosed && !shapeOpen && allAtRest && !coinOnRim ? restSteps + 1 : 0;
           let finished = step === maxSteps;
           // A free throw nudges each cocked or outside die as soon as it rests (while a nudge still
           // has time to settle), and runs on after it.

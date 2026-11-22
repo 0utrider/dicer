@@ -40,6 +40,8 @@ export const MATERIAL_COLOUR = {
   metal: { rate: 1.15, filters: [{ type: 'highshelf', frequency: 4000, gain: 4 }] },
   wood: { rate: 0.9, filters: [{ type: 'lowpass', frequency: 3500 }] },
   stone: { rate: 1.05, filters: [{ type: 'highshelf', frequency: 4000, gain: 2 }] },
+  // jelly: the hard recordings pitched down, their click and ring taken off, a soft low body added
+  squishy: { rate: 0.7, filters: [{ type: 'lowpass', frequency: 900, Q: 0.7 }, { type: 'peaking', frequency: 220, Q: 1, gain: 4 }] },
 };
 export const SURFACE_COLOUR = {
   // Only when the felt recordings are unavailable: a strongly muffled hard-table hit.
