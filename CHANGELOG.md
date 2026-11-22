@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1
 
 - **Pick one dice tray.** When another module's dice tray is on (Dice Tray, or PF2e HUD's dice panel), Dicer's chat dice bar now stays hidden, so there are never two under the chat box. Each player is asked once, and again after each Dicer update unless they tick "Don't show this again", which tray they want: "Use Dicer's chat dice bar" turns the other off, and "Keep …" turns Dicer's off. Nothing changes until they choose. With Force Client Settings active, the GM can apply the choice to everyone, as a default players can change or locked. (Dicer used to look for Dice Tray under the wrong module id, so both trays showed.)
 - **Fixed: a white screen during rolls after editing themes.** After opening the dice editors a number of times, rolls could turn the whole screen white with the browser's crash icon until the dice faded. Each editor now gives its WebGL context back when it closes, and the dice canvas recovers if the browser takes its context anyway.
