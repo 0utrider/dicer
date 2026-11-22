@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { faceNormals } from '../../core/face-reader.js';
 import { readFace, readResult, combineD100 } from '../../core/physical-read.js';
-import { resultOf } from '../../core/dice-shapes.js';
+import { resultOf, getShape } from '../../core/dice-shapes.js';
 import { computeReaders } from '../../physics/readers.js';
 import { FLOATS_PER_DIE } from '../../physics/protocol.js';
 
@@ -52,6 +52,41 @@ export function handFor(box) {
     box._physics.setReaders?.((readers ??= computeReaders()));
   }
   return box.hand;
+}
+
+/**
+ * A free throw nobody sees (a roll this player's filters hide): the physics worker runs it to its
+ * end, as fast as it can, and the final pose is read as a hand throw's is (nudged off cocked faces
+ * first). Nothing is drawn and nothing waits for a turn, so many run side by side. `specs` are the
+ * planned dice ({shapeType, variant}). Resolves the values in spec order (a d100 in its ones-die
+ * slot, its tens slot null), or null when the physics failed.
+ */
+export async function throwUnseen(box, specs, seed = [...globalThis.crypto.getRandomValues(new Uint32Array(4))]) {
+  handFor(box); // the worker's face readers, ahead of the throw
+  const physics = box._physics;
+  const dice = specs.map((s) => ({ shape: getShape(s.shapeType ?? s.type), variant: s.variant }));
+  let last = null;
+  const stream = physics.throw({ dice: specs.map((s) => ({ type: s.shapeType ?? s.type, splat: false })), seed, free: true });
+  stream.onChunk((c) => {
+    if (c.done) last = c;
+    else physics.recycle(c.data, c.events);
+  });
+  try {
+    await stream.done;
+  } catch {
+    return null;
+  }
+  if (!last) return null;
+  const at = (last.steps - 1) * dice.length * FLOATS_PER_DIE;
+  const read = dice.map((d, i) => {
+    const o = at + i * FLOATS_PER_DIE;
+    const q = { x: last.data[o + 3], y: last.data[o + 4], z: last.data[o + 5], w: last.data[o + 6] };
+    return readResult(d.shape, q, d.variant);
+  });
+  physics.recycle(last.data, last.events);
+  return dice.map((d, i) =>
+    d.variant === 'd100tens' ? null : dice[i - 1]?.variant === 'd100tens' ? combineD100(read[i - 1], read[i]) : read[i],
+  );
 }
 
 /**

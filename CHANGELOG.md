@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.26
+
+- **Hidden rolls still get physics results.** With "Physics decides the result" on, a roll your roll filters hide, such as initiative, now runs through physics in the background instead of falling back to Foundry's random result. Nothing is shown and nothing queues, so a combat's initiative rolls are all worked out at once. Players whose filters show those rolls see them land on the physics result.
+
 ## 1.3.25
 
 - **Rolls you've hidden skip the physics throw.** With "Physics decides the result" on, every roll was thrown first, even ones your roll filters say not to show, such as initiative. A combat's initiative rolls queued up one throw after another. Now a roll your filters hide isn't thrown, by physics or by hand, and gets its result instantly. A hand roll the GM requires is still thrown.

@@ -1132,20 +1132,37 @@ describe('follow-up rolls', () => {
     expect(skill.terms[0].results).toEqual([{ result: 6, active: true }]);
   });
 
-  test('physics decides, but the roll filters hide initiative: an initiative roll is not thrown; others are', async () => {
+  test('physics decides, but the roll filters hide initiative: physics decides it unseen, at once; others are thrown', async () => {
     settings.handRolls = 'off';
     settings.physicsResults = true;
     settings.rollFilters = { initiative: 'skip' };
+    deps.throwUnseen = vi.fn(async (box, specs) => specs.map(() => 13));
     const pf2e = await rollD20((r) => (r.options = { type: 'initiative' }));
-    expect(deps.diceBox.roll).not.toHaveBeenCalled();
-    expect(pf2e.options.dicerHand.fallback).toBe('auto');
+    expect(deps.diceBox.roll).not.toHaveBeenCalled(); // nothing on screen
+    expect(deps.throwUnseen).toHaveBeenCalledWith(deps.diceBox, [expect.objectContaining({ type: 'd20' })]);
+    expect(pf2e.terms[0].results).toEqual([{ result: 13, active: true }]);
+    // physics decided; no throw for the others' screens to wait for
+    expect(pf2e.options.dicerHand).toMatchObject({ physics: true, n: 0 });
+    expect(pf2e.options.dicerHand.fallback).toBeUndefined();
     const core = await rollD20((r) => (r.options = { dicerInitiative: true }));
     expect(deps.diceBox.roll).not.toHaveBeenCalled();
-    expect(core.options.dicerHand.fallback).toBe('auto');
+    expect(core.terms[0].results).toEqual([{ result: 13, active: true }]);
+    // the unseen throw failing: Foundry's random
+    deps.throwUnseen = vi.fn(async () => null);
+    const failed = await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(failed.options.dicerHand.fallback).toBe('auto');
     boxValues = [9];
     const check = await rollD20((r) => (r.options = { type: 'skill-check' }));
     expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
     expect(check.terms[0].results).toEqual([{ result: 9, active: true }]);
+    // without physics deciding, a hidden roll is Foundry's random (no throw at all)
+    settings.physicsResults = false;
+    settings.handRolls = 'always';
+    deps.throwUnseen = vi.fn();
+    const random = await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(deps.throwUnseen).not.toHaveBeenCalled();
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(random.options.dicerHand.fallback).toBe('auto');
     // a GM's required hand roll is still thrown
     settings.handRollsRequired = true;
     overlay.values = [4];

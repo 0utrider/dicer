@@ -13,7 +13,7 @@
  *   renders its form for the manual ones only, and their addTerm / resolveResult go to the base (R9).
  */
 import { openThrowOverlay } from './overlay.js';
-import { handFor } from './box.js';
+import { handFor, throwUnseen } from './box.js';
 import { HAND_UNFAIR } from '../unfair.js';
 import { handAllowed } from '../shell.js';
 import { normalizeAppearance } from '../../look/appearance.js';
@@ -46,8 +46,8 @@ try {
 
 /**
  * Whether this player's roll filters keep `roll`'s dice off the screen (initiative, damage, big
- * rolls... set to "don't show"): then nothing is thrown for it, by physics or by hand, and Foundry's
- * random answers at once, so a combat's many initiative rolls do not queue throw after throw.
+ * rolls... set to "don't show"): then nothing is thrown on screen for it; physics decides it unseen
+ * (throwUnseen), so a combat's many initiative rolls do not queue throw after throw.
  */
 function hiddenHere(roll, getSetting) {
   const message = isInitiative(roll) ? { flags: { core: { initiativeRoll: true } } } : null;
@@ -489,8 +489,24 @@ async function throwByHand(resolver, terms) {
   if (!handAllowed(me, d.getSetting)) return fallback('auto');
   // An untargeted attack PF2e Workbench is about to cancel: no throw, Foundry's random, no message.
   if (workbenchCancels(roll, globalThis.game?.user)) return fallback('auto');
-  // A roll this player's filters do not show: no throw (a GM's required hand roll still is one).
-  if (d.getSetting('handRollsRequired') !== true && hiddenHere(roll, d.getSetting)) return fallback('auto');
+  // A roll this player's filters do not show (a GM's required hand roll still is thrown): with
+  // physics deciding, physics still does, unseen and at once (no turn in the throw queue); else
+  // Foundry's random, as for any roll answered automatically.
+  if (d.getSetting('handRollsRequired') !== true && hiddenHere(roll, d.getSetting)) {
+    if (d.getSetting('physicsResults') !== true || !specs.length) return fallback('auto');
+    let values = null;
+    try {
+      values = await within((d.throwUnseen ?? throwUnseen)(d.diceBox, specs), HAND_GRACE_MS);
+    } catch {
+      /* the physics failed: Foundry's random */
+    }
+    if (!values || resolver._closed) return fallback(values ? 'cancel' : 'auto');
+    // physics decided; n 0: no throw to replay, the others' screens show it as any roll
+    hand.physics = true;
+    hand.n = 0;
+    const n = push(specs, owners, values);
+    return notePartial(resolver, dropped + owners.filter(Boolean).length - n);
+  }
   if (!specs.length) return notePartial(resolver, dropped);
   // Queued behind any throw in progress (another roll's prompt or overlay, a tray throw); its
   // timeout starts when shown.
