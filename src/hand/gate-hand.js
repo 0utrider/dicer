@@ -34,8 +34,9 @@ export const markFor = (roll) => {
   return h
     ? {
         icon: h.physics === true && !h.fallback ? 'fa-atom' : 'fa-hand',
+        // (physics with n 0: decided unseen, a roll the filters hide; physics still decided it)
         tip:
-          h.fallback || !h.n
+          h.fallback || (!h.n && h.physics !== true)
             ? i.localize('DICER.Hand.MarkAuto')
             : n
               ? i.format('DICER.Hand.MarkPartial', { n })

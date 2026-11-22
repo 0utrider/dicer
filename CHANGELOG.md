@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.27
+
+- **Roll filters now work on chat rolls.** The roll filters (initiative, damage, other players' rolls, big rolls and so on) were only checked for rolls other modules sent to Dicer, not for ordinary chat messages. So hiding initiative still showed the dice for Roll NPCs and every other chat roll. Every chat roll now follows your filters: a hidden roll isn't thrown, and its message shows straight away.
+- **Hidden physics rolls say so.** A hidden roll that physics decided now has a chat card tooltip saying physics decided it, not "Rolled automatically".
+
 ## 1.3.26
 
 - **Hidden rolls still get physics results.** With "Physics decides the result" on, a roll your roll filters hide, such as initiative, now runs through physics in the background instead of falling back to Foundry's random result. Nothing is shown and nothing queues, so a combat's initiative rolls are all worked out at once. Players whose filters show those rolls see them land on the physics result.

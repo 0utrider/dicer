@@ -1040,6 +1040,26 @@ describe('Task 8 review carry-overs', () => {
     expect(diceBox.rolls[2].specs).toEqual([{ type: 'd20', value: 1, ghost: true }]);
   });
 
+  test('the roll filters apply to chat messages: an initiative roll set to skip is never thrown', () => {
+    settings.rollFiltersDefault = { initiative: 'skip' };
+    const g = makeGate({ currentUser: () => player });
+    const init = message('m1', { rolls: [d20Roll(7)] });
+    init.flags = { ...init.flags, core: { initiativeRoll: true } };
+    g.onCreate(init);
+    expect(diceBox.rolls).toHaveLength(0);
+    expect(hooks.named('diceSoNiceRollStart')).toEqual([]);
+    // the player's own choice wins over the world default
+    settings.rollFilters = { initiative: 'show' };
+    const again = message('m2', { rolls: [d20Roll(8)] });
+    again.flags = { ...again.flags, core: { initiativeRoll: true } };
+    g.onCreate(again);
+    expect(diceBox.rolls).toHaveLength(1);
+    // a roll of another kind is shown
+    settings.rollFilters = {};
+    g.onCreate(message('m3', { rolls: [d20Roll(9)] }));
+    expect(diceBox.rolls).toHaveLength(2);
+  });
+
   test('immediatelyDisplayChatMessages keeps the ghost and none views', () => {
     settings.immediatelyDisplayChatMessages = true;
     const el = li('m1');

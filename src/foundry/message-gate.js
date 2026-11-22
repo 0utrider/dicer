@@ -4,6 +4,7 @@ import { isGmOnly } from '../areas/gm-only.js';
 import { petFor } from '../pet/pet-for.js';
 import { HIDE, pinCard, refreshCard, matchesIn, hiddenIn, isSelector } from './chat-hiding.js';
 import { HAND_REPLAY_WAIT_MS } from '../hand/gate-hand.js';
+import { filtered } from './roll-filters.js';
 
 /**
  * The longest one rollOrder group may take to land, measured from that group's start (each
@@ -223,6 +224,8 @@ export function createMessageGate({
       whispered: (message.whisper?.length ?? 0) > 0,
       showGhostDice: getSetting('showGhostDice') === true,
     };
+    // Roll filters (initiative, damage, others' rolls...): a roll this player hides is not shown
+    const ctx = { mine: base.isAuthor, secret: base.blind || base.whispered, combat: !!globalThis.game?.combat?.started };
     return message.rolls.map((roll, i) => {
       // Flags are OR-ed: a flag seen before RollStart is never dropped by a later change.
       const view = viewFor({
@@ -230,7 +233,8 @@ export function createMessageGate({
         rollGhost: Boolean(roll?.ghost || before?.[i]?.ghost),
         rollSecret: secretAll || Boolean(roll?.secret || before?.[i]?.secret),
       });
-      return ghostAll && view !== 'none' ? 'ghost' : view;
+      if (view === 'none' || filtered(roll, message, ctx, getSetting('rollFilters'), getSetting('rollFiltersDefault'))) return 'none';
+      return ghostAll ? 'ghost' : view;
     });
   }
 

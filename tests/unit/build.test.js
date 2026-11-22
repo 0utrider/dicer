@@ -455,9 +455,11 @@ describe('build', () => {
     // approved +84 B (42,418 -> 42,502), 2026-11-21.
     // The roll filters shared with the hand chunk (no throw for a roll the filters hide): owner
     // approved +9 B (42,502 -> 42,511), 2026-11-22.
+    // Roll filters applied to chat messages (message-gate.js viewsOf) and the hidden physics
+    // roll's tooltip (gate-hand.js markFor): owner approved +211 B (42,511 -> 42,722), 2026-11-22.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(42_511);
+    expect(growth).toBeLessThanOrEqual(42_722);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
