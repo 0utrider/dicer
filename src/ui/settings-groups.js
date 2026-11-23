@@ -11,7 +11,7 @@ export const GROUPS = [
   ['Effects', ['effects', 'showOthersEffects', 'slowMotion', 'screenShake', 'impactEffects', 'jb2aEffects', 'insideFlare', 'elementalTrails', 'elementalCritBursts', 'triggerMacros']],
   ['Damage', ['damagePresets', 'damageOverDiceSet', 'elementalDamageInsides']],
   ['Pets', ['petsAllowed']],
-  ['Hand', ['handRolls', 'handRollsAllowed', 'handRollsRequired', 'handRollTimeout', 'handReplay', 'handFollowUps', 'handLiveShare']],
+  ['Hand', ['handRollsAllowed', 'handRollsRequired', 'handRollTimeout', 'handReplay', 'handFollowUps', 'handLiveShare']],
   ['Areas', ['perPlayerAreas', 'areaScale', 'gmPrivateCorner']],
   ['Chat', ['chatTray', 'diceTray']],
 ];

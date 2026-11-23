@@ -108,6 +108,28 @@ describe('H-20: the chunk is prefetched at idle after ready', () => {
     expect(wantsHand(player, get({ handRollsRequired: true, handRollsAllowed: 'none' }), {})).toBe(false);
   });
 
+  test('diceOnDicer: "All rolls" or any kind by hand (the player’s choice over the world’s), required, or physics', async () => {
+    const { diceOnDicer } = await import('../../src/hand/shell.js');
+    const get = (s) => (k) => ({ handRolls: '', handRollsRequired: false, physicsResults: false, rollFilters: {}, rollFiltersDefault: {}, ...s })[k];
+    expect(diceOnDicer(get({}))).toBe(false);
+    expect(diceOnDicer(get({ handRolls: 'off' }))).toBe(false);
+    expect(diceOnDicer(get({ handRolls: 'ask' }))).toBe(true);
+    expect(diceOnDicer(get({ handRollsRequired: true }))).toBe(true);
+    expect(diceOnDicer(get({ physicsResults: true }))).toBe(true);
+    // "All rolls" off, one kind by hand
+    expect(diceOnDicer(get({ handRolls: 'off', rollFilters: { hand: { initiative: 'always' } } }))).toBe(true);
+    expect(diceOnDicer(get({ handRolls: 'off', rollFilters: { hand: { initiative: 'off' } } }))).toBe(false);
+    // the world's "All rolls" where the player left the default; the player's own off wins
+    expect(diceOnDicer(get({ rollFiltersDefault: { hand: { all: 'always' } } }))).toBe(true);
+    expect(diceOnDicer(get({ handRolls: 'off', rollFiltersDefault: { hand: { all: 'always' } } }))).toBe(false);
+    // the world's kind, unless the player turned that kind off
+    expect(diceOnDicer(get({ handRolls: 'off', rollFiltersDefault: { hand: { damage: 'ask' } } }))).toBe(true);
+    expect(diceOnDicer(get({ handRolls: 'off', rollFilters: { hand: { damage: 'off' } }, rollFiltersDefault: { hand: { damage: 'ask' } } }))).toBe(false);
+    // junk and missing settings: off
+    expect(diceOnDicer(get({ rollFilters: 'junk', rollFiltersDefault: null }))).toBe(false);
+    expect(diceOnDicer(get({ rollFilters: undefined, rollFiltersDefault: undefined, handRolls: undefined }))).toBe(false);
+  });
+
   test('main.js prefetches in an idle callback at ready, and the pets read DiceBox.holding', () => {
     const src = readFileSync('src/main.js', 'utf8');
     const ready = src.slice(src.indexOf("Hooks.once('ready'"));

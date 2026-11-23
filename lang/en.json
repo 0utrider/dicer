@@ -219,15 +219,6 @@
         "Name": "Pets cheer for others",
         "Hint": "Your pets cheer when other players roll well."
       },
-      "handRolls": {
-        "Name": "Roll by hand",
-        "Hint": "Grab, shake and throw your own dice: the face that lands up is the result. Ask lets you choose for each roll. To throw only some dice, set them to \"Dicer: roll by hand\" in Foundry's Dice settings (Core). Off removes only the dice Dicer set for you.",
-        "Choices": {
-          "off": "Off",
-          "ask": "Ask each time",
-          "always": "Always"
-        }
-      },
       "handRollTypes": {
         "Name": "Dice rolled by hand",
         "Hint": "The dice types Dicer sets to its method for you (console only). None chosen: all, unless you set dice to Dicer in Foundry's Dice settings yourself."
@@ -244,7 +235,7 @@
       },
       "handRollsRequired": {
         "Name": "Require rolling by hand",
-        "Hint": "Players allowed to roll by hand always do, whatever their own setting."
+        "Hint": "Players allowed to roll by hand always do, whatever they chose under Roll filters. A kind of roll the world default there sets to Off is exempt."
       },
       "handRollTimeout": {
         "Name": "Hand roll time limit (seconds)",
@@ -460,7 +451,7 @@
       "rollFilters": {
         "Name": "Roll filters",
         "Label": "Roll filters",
-        "Hint": "Choose which rolls you see as 3D dice: initiative, roll tables, rolls during combat, damage, other players' rolls, blind and private rolls, and big rolls. Each can show, show only your own, or skip. The GM sets the world default."
+        "Hint": "Choose which rolls you see as 3D dice, and which you roll by hand: grab, shake and throw your own dice, for all rolls or only some kinds (initiative, rolls during combat, damage, big rolls). The GM sets the world default."
       },
       "physicsResults": {
         "Name": "Physics decides the result",
@@ -1410,10 +1401,12 @@
       "World": "World default (GM)",
       "Dice": "3D dice",
       "Hand": "Roll by hand",
-      "HandIntro": "Roll by hand: for those who roll by hand, a kind set to \"No\" rolls automatically instead (no prompt, no throw screen); its 3D dice still show. A roll of several kinds rolls automatically when any of them says \"No\". It applies to rolls recognized while they are made, so roll tables and private rolls have no choice here. A GM's \"Require rolling by hand\" still asks for the throw.",
+      "HandIntro": "Roll by hand: grab, shake and throw your own dice; the face that lands up is the result. \"All rolls\" sets it for every roll you make: Off, Ask each time (you choose for each roll) or Always. A kind of roll can have its own choice, which wins over \"All rolls\" (initiative Off while everything else is thrown, say). A roll of several kinds takes the most cautious choice made for them: Off, then Ask. A roll that is Off rolls automatically, and its 3D dice still show. Roll tables and private rolls have no choice of their own: they are recognized only after the roll. To throw only some dice, set them to \"Dicer: roll by hand\" in Foundry's Dice settings (Core). While the GM requires rolling by hand, every roll is thrown, except the kinds the world default sets to Off.",
+      "HandAsAll": "As \"All rolls\"",
       "HandMode": {
-        "yes": "Yes",
-        "no": "No"
+        "off": "Off",
+        "ask": "Ask each time",
+        "always": "Always"
       },
       "Default": "Default ({mode})",
       "BigDice": "A big roll has more dice than",
@@ -1424,6 +1417,10 @@
         "skip": "Skip"
       },
       "Kind": {
+        "all": {
+          "Name": "All rolls",
+          "Hint": "Roll by hand for every roll you make. The kinds below can differ."
+        },
         "initiative": {
           "Name": "Initiative",
           "Hint": "Initiative rolls from the combat tracker or a sheet."

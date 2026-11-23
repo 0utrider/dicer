@@ -47,10 +47,10 @@ describe('groupSettings', () => {
   afterEach(() => delete globalThis.game);
 
   test('moves each row under its heading, in section order; menus and other modules stay put', () => {
-    const root = windowOf(['chatTray', 'enabled', 'sounds', 'handRolls', 'somethingNew', 'quality']);
+    const root = windowOf(['chatTray', 'enabled', 'sounds', 'handRollsAllowed', 'somethingNew', 'quality']);
     groupSettings(root);
     const order = [...root.children].map((el) => (el.matches('h3') ? `# ${el.dataset.group}` : (el.dataset.k ?? 'menu')));
-    expect(order).toEqual(['menu', '# General', 'enabled', '# Graphics', 'quality', '# Sound', 'sounds', '# Hand', 'handRolls', '# Chat', 'chatTray', '# Other', 'somethingNew', 'core']);
+    expect(order).toEqual(['menu', '# General', 'enabled', '# Graphics', 'quality', '# Sound', 'sounds', '# Hand', 'handRollsAllowed', '# Chat', 'chatTray', '# Other', 'somethingNew', 'core']);
     expect(root.querySelector('h3').textContent).toBe('DICER.SettingsGroup.General');
   });
 

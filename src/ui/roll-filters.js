@@ -8,15 +8,16 @@ import { FILTER_KINDS, BIG_DICE } from '../foundry/roll-filters.js';
 const MODULE = 'dicer';
 const MODES = ['show', 'mine', 'skip'];
 /**
- * The kinds with a "Roll by hand" choice: the ones known while a roll is still evaluated. The hand
- * chunk's list (hand/chunk/hand-kinds.js, which reads the choice); a test keeps the two equal.
+ * "Roll by hand": which rolls this player throws by hand (hand/chunk/hand-kinds.js reads it).
+ * "All rolls" (the player's: the handRolls setting, '' following the world's `hand.all`) and, for
+ * the kinds known while a roll is still evaluated, a choice of their own in `hand[kind]`. The hand
+ * chunk's lists; a test keeps the two equal.
  */
 export const HAND_KINDS = ['initiative', 'combat', 'damage', 'big'];
-const handChoice = (filters, kind) => {
-  const v = filters?.hand?.[kind];
-  return typeof v === 'boolean' ? v : undefined;
-};
-const yesNo = (on) => (on ? 'yes' : 'no');
+export const HAND_MODES = ['off', 'ask', 'always'];
+/** A saved choice as a mode (1.4.4's "No", false, is 'off'), or undefined. */
+const handNorm = (v) => (v === false ? 'off' : HAND_MODES.includes(v) ? v : undefined);
+const handChoice = (filters, key) => handNorm(filters?.hand?.[key]);
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const fmt = (key, data) => {
   const f = globalThis.game?.i18n?.format;
@@ -53,35 +54,49 @@ function select(name, value, first, modes = MODES, labels = 'Mode') {
   );
 }
 
-/** The "Roll by hand" cells of a kind's row: the player's choice and (for a GM) the world's. */
-function handCells(kind, mine, world, isGM) {
-  if (!HAND_KINDS.includes(kind)) return [h('td', {}), ...(isGM ? [h('td', {})] : [])];
-  const own = handChoice(mine, kind);
-  const def = handChoice(world, kind) ?? true;
-  const pick = (name, value, first) => h('td', {}, [select(name, value, first, ['yes', 'no'], 'HandMode')]);
+/**
+ * The "Roll by hand" cells of a row: the player's choice and (for a GM) the world's. `key` is
+ * 'all' ("All rolls"; `all` is the player's own, '' following the world) or a kind; a kind with
+ * no choice (not known while rolling) gets empty cells. "Default" names what it follows: for a
+ * kind the world's choice for it, else this player's "All rolls".
+ */
+function handCells(key, mine, world, isGM, all) {
+  const blank = () => [h('td', {}), ...(isGM ? [h('td', {})] : [])];
+  if (key !== 'all' && !HAND_KINDS.includes(key)) return blank();
+  const worldAll = handChoice(world, 'all') ?? 'off';
+  const worldOwn = key === 'all' ? worldAll : handChoice(world, key);
+  const own = key === 'all' ? handNorm(all) : handChoice(mine, key);
+  const follows = worldOwn ?? handNorm(all) ?? worldAll;
+  const pick = (name, value, first) => h('td', {}, [select(name, value, first, HAND_MODES, 'HandMode')]);
   return [
-    pick(`mine.hand.${kind}`, own === undefined ? '' : yesNo(own), {
-      value: '',
-      label: fmt('DICER.RollFilters.Default', { mode: loc(`DICER.RollFilters.HandMode.${yesNo(def)}`) }),
-    }),
-    ...(isGM ? [pick(`world.hand.${kind}`, yesNo(def))] : []),
+    pick(`mine.hand.${key}`, own ?? '', { value: '', label: fmt('DICER.RollFilters.Default', { mode: loc(`DICER.RollFilters.HandMode.${follows}`) }) }),
+    // the world's "All rolls" is always a mode; a kind may follow it
+    ...(isGM ? [pick(`world.hand.${key}`, worldOwn ?? '', key === 'all' ? null : { value: '', label: loc('DICER.RollFilters.HandAsAll') })] : []),
   ];
 }
 
-/** The form's rows: one per kind, the player's select and (for a GM) the world default's. */
-export function buildForm(mine, world, isGM) {
+/**
+ * The form's rows: "All rolls" (Roll by hand only), then one per kind, with the player's selects
+ * and (for a GM) the world default's. `all`: the player's own "All rolls" (the handRolls setting).
+ */
+export function buildForm(mine, world, isGM, all = '') {
   const def = (k) => loc(`DICER.RollFilters.Mode.${world[k] ?? 'show'}`);
-  const rows = FILTER_KINDS.map((kind) =>
-    h('tr', {}, [
-      h('th', { scope: 'row' }, [
-        h('span', { text: loc(`DICER.RollFilters.Kind.${kind}.Name`) }),
-        h('small', { class: 'dicer-hint', text: loc(`DICER.RollFilters.Kind.${kind}.Hint`) }),
+  const head = (kind) =>
+    h('th', { scope: 'row' }, [
+      h('span', { text: loc(`DICER.RollFilters.Kind.${kind}.Name`) }),
+      h('small', { class: 'dicer-hint', text: loc(`DICER.RollFilters.Kind.${kind}.Hint`) }),
+    ]);
+  const rows = [
+    h('tr', {}, [head('all'), h('td', {}), ...(isGM ? [h('td', {})] : []), ...handCells('all', mine, world, isGM, all)]),
+    ...FILTER_KINDS.map((kind) =>
+      h('tr', {}, [
+        head(kind),
+        h('td', {}, [select(`mine.${kind}`, mine[kind] ?? '', { value: '', label: fmt('DICER.RollFilters.Default', { mode: def(kind) }) })]),
+        ...(isGM ? [h('td', {}, [select(`world.${kind}`, world[kind] ?? 'show')])] : []),
+        ...handCells(kind, mine, world, isGM, all),
       ]),
-      h('td', {}, [select(`mine.${kind}`, mine[kind] ?? '', { value: '', label: fmt('DICER.RollFilters.Default', { mode: def(kind) }) })]),
-      ...(isGM ? [h('td', {}, [select(`world.${kind}`, world[kind] ?? 'show')])] : []),
-      ...handCells(kind, mine, world, isGM),
-    ]),
-  );
+    ),
+  ];
   const span = isGM ? '2' : false;
   const who = () => [h('th', { text: loc('DICER.RollFilters.Mine') }), ...(isGM ? [h('th', { text: loc('DICER.RollFilters.World') })] : [])];
   const big = (scope, value) => h('input', { type: 'number', name: `${scope}.bigDice`, min: '1', max: '200', step: '1', value: String(value ?? ''), placeholder: String(world.bigDice ?? BIG_DICE) });
@@ -108,17 +123,25 @@ export function buildForm(mine, world, isGM) {
   ]);
 }
 
-/** A change in the form, as the next {mine, world} objects (only what changed). */
+/**
+ * A change in the form, as the next {mine, world} objects (only what changed). The player's own
+ * "All rolls" (mine.hand.all) is the handRolls setting: its next value comes back as `handRolls`
+ * ('' follows the world), with mine and world as they were.
+ */
 export function applyChange(name, value, mine, world) {
   const [scope, key, sub, ...rest] = String(name).split('.');
   const target = scope === 'world' ? { ...world } : { ...mine };
   if (key === 'hand') {
-    if (!HAND_KINDS.includes(sub) || rest.length) return null;
-    const hand = target.hand && typeof target.hand === 'object' ? { ...target.hand } : {};
-    // The player: Yes, No, or "Default" (follow the world). The world: only No is kept (Yes is the default).
-    if (value === 'no') hand[sub] = false;
-    else if (value === 'yes' && scope !== 'world') hand[sub] = true;
-    else delete hand[sub];
+    if ((sub !== 'all' && !HAND_KINDS.includes(sub)) || rest.length) return null;
+    const mode = HAND_MODES.includes(value) ? value : undefined;
+    if (sub === 'all' && scope !== 'world') return { mine, world, handRolls: mode ?? '' };
+    // Rewritten whole: only real choices are kept (1.4.4's "No" as 'off', its "Yes" as none).
+    const hand = {};
+    for (const k of ['all', ...HAND_KINDS]) {
+      const saved = k === 'all' && scope !== 'world' ? undefined : handChoice(target, k);
+      const next = k === sub ? mode : saved; // no mode: "Default", follow what is above it
+      if (next) hand[k] = next;
+    }
     if (Object.keys(hand).length) target.hand = hand;
     else delete target.hand;
   } else if (sub !== undefined) return null;
@@ -146,7 +169,13 @@ export function openRollFilters() {
       position: { width: 780, height: 'auto' },
     };
     async _renderHTML() {
-      return buildForm(read('rollFilters'), read('rollFiltersDefault'), globalThis.game.user?.isGM === true);
+      let all = '';
+      try {
+        all = settings().get(MODULE, 'handRolls');
+      } catch {
+        /* not registered: follows the world */
+      }
+      return buildForm(read('rollFilters'), read('rollFiltersDefault'), globalThis.game.user?.isGM === true, all);
     }
     _replaceHTML(result, content) {
       content.replaceChildren(result);
@@ -156,13 +185,15 @@ export function openRollFilters() {
       const next = applyChange(el.name, el.value, read('rollFilters'), read('rollFiltersDefault'));
       if (!next) return;
       try {
-        if (el.name.startsWith('world.')) await settings().set(MODULE, 'rollFiltersDefault', next.world);
+        if (next.handRolls !== undefined) await settings().set(MODULE, 'handRolls', next.handRolls);
+        else if (el.name.startsWith('world.')) await settings().set(MODULE, 'rollFiltersDefault', next.world);
         else await settings().set(MODULE, 'rollFilters', next.mine);
       } catch (err) {
         console.warn('dicer: cannot save the roll filters', err);
         globalThis.ui?.notifications?.warn(loc('DICER.RollFilters.SaveFailed'));
       }
-      if (el.name.startsWith('world.')) this.render(); // the "Default (…)" labels follow
+      // the "Default (…)" labels follow the world's choices and "All rolls"
+      if (el.name.startsWith('world.') || el.name.includes('.hand.')) this.render();
     }
   }
   if (!app?.rendered) app = new RollFilters();

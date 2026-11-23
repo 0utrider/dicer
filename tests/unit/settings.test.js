@@ -298,7 +298,8 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
   const onHandChange = vi.fn();
   const r = capture({ onHandChange });
   const want = {
-    handRolls: { scope: 'user', type: String, default: 'off', config: true },
+    // "All rolls" of the Roll filters window: '' follows the world default
+    handRolls: { scope: 'user', type: String, default: '', config: false },
     physicsResults: { scope: 'user', type: Boolean, default: false, config: true },
     handRollTypes: { scope: 'user', type: Array, default: [], config: false },
     handRollsAllowed: { scope: 'world', type: String, default: 'all', config: true },
@@ -315,7 +316,11 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
   expect(r.handRollStash).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Object, default: {} });
   // and the record of the dice configuration entries Dicer wrote itself (I2: only those are removed)
   expect(r.handRollMapped).toMatchObject({ ns: 'dicer', scope: 'client', config: false, type: Array, default: [] });
-  expect(Object.keys(r.handRolls.choices)).toEqual(['off', 'ask', 'always']);
+  expect(r.handRolls.choices).toBeUndefined();
+  // the roll filters hold the kinds' "Roll by hand" choices: they decide the dice configuration too
+  for (const key of ['rollFilters', 'rollFiltersDefault']) r[key].onChange({});
+  expect(onHandChange).toHaveBeenCalledTimes(2);
+  onHandChange.mockClear();
   expect(Object.keys(r.handRollsAllowed.choices)).toEqual(['all', 'trusted', 'gm', 'none']);
   expect(r.handRollTimeout.range).toMatchObject({ min: 10, max: 300 });
   for (const key of ['handRolls', 'physicsResults', 'handRollTypes', 'handRollsAllowed', 'handRollsRequired']) r[key].onChange('x');
@@ -340,7 +345,7 @@ test('rolling by hand: the 8 keys with their defaults; the four that decide the 
     expect(typeof en.Settings[key]?.Name).toBe('string');
     expect(typeof en.Settings[key]?.Hint).toBe('string');
   }
-  for (const k of ['off', 'ask', 'always']) expect(typeof en.Settings.handRolls.Choices[k]).toBe('string');
+  for (const k of ['off', 'ask', 'always']) expect(typeof en.RollFilters.HandMode[k]).toBe('string');
   for (const k of ['all', 'trusted', 'gm', 'none']) expect(typeof en.Settings.handRollsAllowed.Choices[k]).toBe('string');
   for (const k of ['Method', 'AskTitle', 'AskText', 'ThrowByHand', 'RollAuto']) expect(typeof en.Hand[k]).toBe('string');
 });

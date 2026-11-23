@@ -1177,10 +1177,10 @@ describe('follow-up rolls', () => {
     const auto = await rollD20(init);
     expect(overlay.open).not.toHaveBeenCalled();
     expect(deps.diceBox.roll).not.toHaveBeenCalled();
-    expect(auto.options.dicerHand.fallback).toBe('auto');
+    expect(auto.options.dicerHand).toBeUndefined();
     // Foundry's own initiative roll too
     const core = await rollD20((r) => (r.options = { dicerInitiative: true }));
-    expect(core.options.dicerHand.fallback).toBe('auto');
+    expect(core.options.dicerHand).toBeUndefined();
     expect(overlay.open).not.toHaveBeenCalled();
     // another kind of roll is still thrown by hand
     overlay.values = [7];
@@ -1208,18 +1208,94 @@ describe('follow-up rolls', () => {
     expect(roll.options.dicerHand).toMatchObject({ physics: true });
   });
 
-  test('not by hand: the player’s Yes wins over the world’s No, and a required hand roll is thrown', async () => {
+  test('not by hand: the player’s choice for a kind wins over the world’s', async () => {
     settings.handRolls = 'always';
-    settings.rollFiltersDefault = { hand: { initiative: false } };
-    settings.rollFilters = { hand: { initiative: true } };
+    settings.rollFiltersDefault = { hand: { initiative: 'off' } };
+    settings.rollFilters = { hand: { initiative: 'always' } };
     overlay.values = [5];
     await rollD20((r) => (r.options = { type: 'initiative' }));
     expect(overlay.open).toHaveBeenCalledTimes(1);
+  });
+
+  test('"All rolls" off, one kind by hand: only that kind is thrown; the rest roll automatically, unmarked by a throw', async () => {
+    settings.handRolls = 'off';
+    settings.rollFilters = { hand: { initiative: 'always' } };
+    const check = await rollD20((r) => (r.options = { type: 'skill-check' }));
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(check.options.dicerHand).toBeUndefined();
+    overlay.values = [9];
+    const init = await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(init.terms[0].results).toEqual([{ result: 9, active: true }]);
     await vi.advanceTimersByTimeAsync(10000);
-    settings.rollFilters = {};
+    // a kind set to Ask asks, whatever "All rolls" says
+    settings.rollFilters = { hand: { initiative: 'ask' } };
+    deps.ask = vi.fn(async () => false);
+    const asked = await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(deps.ask).toHaveBeenCalledTimes(1);
+    expect(asked.options.dicerHand.fallback).toBe('auto');
+  });
+
+  test('"All rolls": unset follows the world default; the player’s own wins', async () => {
+    settings.handRolls = '';
+    settings.rollFiltersDefault = { hand: { all: 'always' } };
+    overlay.values = [3];
+    await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10000);
+    settings.handRolls = 'off';
+    const auto = await rollD20();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(auto.options.dicerHand).toBeUndefined();
+  });
+
+  test('required hand rolls: a player’s own No is ignored, the world’s No exempts the kind for everyone', async () => {
+    const init = (r) => (r.options = { type: 'initiative' });
+    settings.handRolls = 'off';
     settings.handRollsRequired = true;
-    await rollD20((r) => (r.options = { type: 'initiative' }));
+    // the player cannot opt out alone
+    settings.rollFilters = { hand: { initiative: false } };
+    overlay.values = [5];
+    await rollD20(init);
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10000);
+    // the GM's world default does, whatever the player chose
+    settings.rollFilters = { hand: { initiative: true } };
+    settings.rollFiltersDefault = { hand: { initiative: false } };
+    const auto = await rollD20(init);
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(auto.options.dicerHand).toBeUndefined();
+    // the other kinds are still required
+    await rollD20((r) => (r.options = { type: 'skill-check' }));
     expect(overlay.open).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10000);
+    // the exempt kind with physics deciding: thrown for the roller
+    settings.physicsResults = true;
+    boxValues = [14];
+    const phys = await rollD20(init);
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(phys.terms[0].results).toEqual([{ result: 14, active: true }]);
+    expect(phys.options.dicerHand).toMatchObject({ physics: true });
+  });
+
+  test('required hand rolls, an exempt kind the filters hide: decided unseen, as without the requirement', async () => {
+    settings.handRollsRequired = true;
+    settings.physicsResults = true;
+    settings.rollFiltersDefault = { hand: { initiative: 'off' } };
+    settings.rollFilters = { initiative: 'skip' };
+    deps.throwUnseen = vi.fn(async (box, specs) => specs.map(() => 13));
+    const hidden = await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(deps.throwUnseen).toHaveBeenCalledTimes(1);
+    expect(deps.diceBox.roll).not.toHaveBeenCalled(); // nothing on screen
+    expect(hidden.terms[0].results).toEqual([{ result: 13, active: true }]);
+    // a kind that is not exempt is still thrown, hidden or not
+    settings.rollFiltersDefault = {};
+    overlay.values = [4];
+    await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(overlay.open).toHaveBeenCalledTimes(1);
   });
 
   test('without physics decides, Ask answered automatically is the random of Foundry', async () => {

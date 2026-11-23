@@ -21,7 +21,7 @@ import { shapeTypeFor } from '../../core/dice-shapes.js';
 import { modelRotationFor } from '../../compat/dsn-orientation.js';
 import { workbenchCancels } from '../../compat/workbench.js';
 import { filtered } from '../../foundry/roll-filters.js';
-import { handSkipped } from './hand-kinds.js';
+import { handMode, handExempt } from './hand-kinds.js';
 
 /**
  * An initiative roll, while it is still being evaluated (its chat message's core.initiativeRoll
@@ -59,11 +59,16 @@ const kindArgs = (roll) => [
   { mine: true, combat: !!globalThis.game?.combat?.started },
 ];
 /**
- * Whether this player (or the GM's world default) chose not to roll `roll`'s kind by hand (the
- * Roll filters window's "Roll by hand": hand-kinds.js): it is answered automatically, dice shown.
+ * How `roll` is rolled here: 'off' (automatically, its dice shown as any roll's), 'ask' or
+ * 'always' (by hand). The Roll filters window's "Roll by hand" (hand-kinds.js): "All rolls" and
+ * the kinds' own choices. While the GM requires hand rolls (`required`) every roll is 'always',
+ * but for the kinds the world default sets to off: so the GM can exempt a kind (the NPCs'
+ * initiative, say), and a player cannot opt out alone.
  */
-function notByHand(roll, getSetting) {
-  return handSkipped(roll, ...kindArgs(roll), getSetting('rollFilters'), getSetting('rollFiltersDefault'));
+function modeFor(roll, getSetting, required) {
+  const world = getSetting('rollFiltersDefault');
+  if (required) return handExempt(roll, ...kindArgs(roll), world) ? 'off' : 'always';
+  return handMode(roll, ...kindArgs(roll), getSetting('rollFilters'), world, getSetting('handRolls'));
 }
 
 /** id (roll.options.dicerHand.id) -> {recording, handle, specs} of the thrower's hand throw (Task 8). */
@@ -500,10 +505,13 @@ async function throwByHand(resolver, terms) {
   if (!handAllowed(me, d.getSetting)) return fallback('auto');
   // An untargeted attack PF2e Workbench is about to cancel: no throw, Foundry's random, no message.
   if (workbenchCancels(roll, globalThis.game?.user)) return fallback('auto');
-  // A roll this player's filters do not show (a GM's required hand roll still is thrown): with
-  // physics deciding, physics still does, unseen and at once (no turn in the throw queue); else
-  // Foundry's random, as for any roll answered automatically.
-  if (d.getSetting('handRollsRequired') !== true && hiddenHere(roll, d.getSetting)) {
+  // How this roll is rolled (modeFor): off, ask or always.
+  const required = d.getSetting('handRollsRequired') === true;
+  const mode = modeFor(roll, d.getSetting, required);
+  // A roll this player's filters do not show (a GM's required hand roll still is thrown, but for
+  // a kind the GM exempts): with physics deciding, physics still does, unseen and at once (no turn
+  // in the throw queue); else Foundry's random, as for any roll answered automatically.
+  if ((!required || mode === 'off') && hiddenHere(roll, d.getSetting)) {
     if (d.getSetting('physicsResults') !== true || !specs.length) return fallback('auto');
     let values = null;
     try {
@@ -525,16 +533,17 @@ async function throwByHand(resolver, terms) {
   // Live hand throws: the roll resolves when physics reads the values, seconds before this
   // screen's dice land, so its message (and the trajectory for the others) goes out at once.
   const early = d.getSetting('handLiveShare') !== false;
-  // physicsResults: a roll not thrown by hand is thrown for the roller, and the faces physics lands
-  // up are its result (a required hand throw is still a real one): with Roll by hand off, every
-  // roll; with Ask, the rolls answered "automatically".
-  const required = d.getSetting('handRollsRequired') === true;
-  const physics = !required && d.getSetting('physicsResults') === true;
-  const mode = d.getSetting('handRolls');
-  // A kind of roll set not to be rolled by hand (a GM's required hand roll still is): answered
-  // automatically. Without physics deciding that is Foundry's random, at once (nothing to queue).
-  const skipHand = !required && notByHand(roll, d.getSetting);
-  if (skipHand && !physics) return fallback('auto');
+  // physicsResults: a roll not thrown by hand is thrown for the roller, and the faces physics
+  // lands up are its result: every roll that is off, and with Ask the rolls answered
+  // "automatically". A roll that is off without physics deciding is Foundry's random, at once
+  // (nothing to queue), and no hand roll at all: it carries no dicerHand, so its card has no hand
+  // mark (with one kind thrown by hand, every other roll comes through here).
+  const physics = d.getSetting('physicsResults') === true;
+  if (mode === 'off' && !physics) {
+    fallback('auto');
+    delete roll.options.dicerHand;
+    return;
+  }
   return queued(ms, async (hold) => {
     if (resolver._closed) return fallback('cancel');
     // A free throw (no screen): a follow-up, or one physics decides. Its read faces are the result.
@@ -551,10 +560,10 @@ async function throwByHand(resolver, terms) {
     };
     if (isFollowUp(d.getSetting, startedAt)) return thrownFor('follow');
     // Physics decides and no hand throw is wanted: thrown for the roller.
-    if (physics && (skipHand || (mode !== 'ask' && mode !== 'always'))) return thrownFor('physics');
+    if (mode === 'off') return thrownFor('physics');
     // "automatically": physics decides when it is on, else Foundry's random
     const auto = () => (physics ? thrownFor('physics') : fallback('auto'));
-    if (!required && mode === 'ask') {
+    if (mode === 'ask') {
       const burst = inBurst();
       if (!burst) resting = false; // a new burst asks again
       if (resting) return auto();

@@ -26,9 +26,16 @@ export function handAllowed(user, getSetting) {
   return !!user && min !== undefined && (user.isGM === true || (user.role ?? 0) >= min);
 }
 
-/** Dicer fulfils this user's dice: hand rolls on or required, or physics decides the results. */
-export const diceOnDicer = (get) =>
-  get('handRollsRequired') === true || get('handRolls') !== 'off' || get('physicsResults') === true;
+/**
+ * Dicer fulfils this user's dice: hand rolls required, physics decides the results, or "Roll by
+ * hand" (the Roll filters window: chunk/hand-kinds.js) is ask or always for "All rolls" or a kind,
+ * the player's choice over the world default's.
+ */
+export const diceOnDicer = (get, world = get('rollFiltersDefault')?.hand) =>
+  get('handRollsRequired') === true ||
+  get('physicsResults') === true ||
+  // a value "ask" or "always" among the choices (no key is spelled so)
+  /"a(sk|lways)"/.test(JSON.stringify({ ...world, ...get('rollFilters')?.hand, all: get('handRolls') || world?.all }));
 
 /**
  * Could `user` throw by hand (M8: the idle prefetch)? Allowed, and hand rolls on (or required) or

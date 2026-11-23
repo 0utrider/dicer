@@ -486,9 +486,13 @@ describe('build', () => {
     // Warming the actors' and module providers' looks (the hook-up only: render/actor-looks.js rides
     // the lazy theme API chunk) and themed ghost dice (the themedGhostDice setting, compat/ghost-look.js,
     // DiceBox's ghostLook): owner approved +755 B (46,342 -> 47,097), 2026-11-23.
+    // Roll by hand moved into the Roll filters window ("All rolls" and a choice per kind): whether a
+    // user's dice go to Dicer now reads those choices too (hand/shell.js diceOnDicer), and a change
+    // of the filters re-syncs the dice configuration (settings.js): owner approved +120 B
+    // (47,097 -> 47,217), 2026-11-23.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(47_097);
+    expect(growth).toBeLessThanOrEqual(47_217);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

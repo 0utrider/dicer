@@ -678,8 +678,9 @@ export function registerSettings({
   );
   // The theme gallery: everyone browses, assigns and edits their own; the GM also publishes.
   // Roll filters (foundry/roll-filters.js): the player's choices, and the GM's world default.
-  register('rollFilters', { scope: 'user', config: false, type: Object, default: {} });
-  register('rollFiltersDefault', { scope: 'world', config: false, type: Object, default: {} });
+  // They hold the kinds' "Roll by hand" choices too, which decide the core dice configuration.
+  for (const [key, scope] of [['rollFilters', 'user'], ['rollFiltersDefault', 'world']])
+    register(key, { scope, config: false, type: Object, default: {}, onChange: () => onHandChange?.() });
   registerEditorMenu(t, 'rollFilters', 'fa-solid fa-filter', () =>
     import('./ui/roll-filters.js').then((m) => () => m.openRollFilters()),
   );
@@ -772,7 +773,8 @@ export function registerSettings({
   // core dice configuration re-sync it on change (handRollsAllowed and -Required fire on every client).
   const choices = (key, keys) => Object.fromEntries(keys.map((k) => [k, t(`${key}.Choices.${k}`)]));
   const hand = [
-    ['handRolls', 'user', String, 'off', { choices: choices('handRolls', ['off', 'ask', 'always']) }],
+    // "All rolls" of the Roll filters window's "Roll by hand" ('' follows the world default)
+    ['handRolls', 'user', String, '', { config: false }],
     // the faces physics lands up are every roll's result (thrown for the roller when not by hand)
     ['physicsResults', 'user', Boolean, false],
     ['handRollTypes', 'user', Array, [], { config: false }], // Foundry denominations; empty: all
