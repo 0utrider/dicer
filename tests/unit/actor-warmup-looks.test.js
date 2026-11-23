@@ -251,4 +251,12 @@ describe('aheadLooks', () => {
     on[3][1]();
     expect(rewarm).toHaveBeenCalledTimes(4);
   });
+
+  it('its listeners never return false: Foundry fires canvasReady with Hooks.call, which stops there', () => {
+    const { on, rewarm, game } = setup();
+    rewarm.mockReturnValue(false);
+    const args = { updateActor: [{}, { flags: { dicer: {} } }], createToken: [{ parent: game.scenes.viewed }] };
+    for (const [name, fn] of on) expect(fn(...(args[name] ?? [])), name).toBeUndefined();
+    expect(rewarm).toHaveBeenCalledTimes(4);
+  });
 });

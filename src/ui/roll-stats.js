@@ -383,19 +383,19 @@ export function openRollStats() {
           'updateUser',
           Hooks.on(
             'updateUser',
-            (user, changes) =>
-              changes?.flags?.dicer &&
-              (FLAG in changes.flags.dicer || `-=${FLAG}` in changes.flags.dicer) &&
-              soon(),
+            // a block body, as every listener here: one that returns false can stop the others
+            (user, changes) => {
+              if (changes?.flags?.dicer && (FLAG in changes.flags.dicer || `-=${FLAG}` in changes.flags.dicer)) soon();
+            },
           ),
         ],
         [
           'updateSetting',
-          Hooks.on('updateSetting', (s) => s?.key === 'dicer.rollStatsSession' && soon()),
+          Hooks.on('updateSetting', (s) => void (s?.key === 'dicer.rollStatsSession' && soon())), // never false
         ],
         [
           'clientSettingChanged',
-          Hooks.on('clientSettingChanged', (key) => key === `dicer.${HIDDEN}` && soon()),
+          Hooks.on('clientSettingChanged', (key) => void (key === `dicer.${HIDDEN}` && soon())),
         ],
       ];
     }

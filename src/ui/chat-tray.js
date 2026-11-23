@@ -1036,7 +1036,9 @@ export function dock(els, loadHand) {
       // created on the first change, then updated.
       const keys = new Set(['dicer.chatTray', ...OTHER_TRAYS.map((t) => `${t.id}.${t.setting}`)]);
       for (const hook of ['createSetting', 'updateSetting'])
-        globalThis.Hooks?.on?.(hook, (doc) => keys.has(doc?.key) && dock());
+        globalThis.Hooks?.on?.(hook, (doc) => {
+          if (keys.has(doc?.key)) dock(); // a block body: a listener must never return false
+        });
     }
     const ta = textareaOf(els);
     if (!chatTrayShown()) return (undock(), null);

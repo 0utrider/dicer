@@ -102,7 +102,12 @@ export function aheadLooks({ resolver, registry, getSetting, rewarm, known = () 
   hooks?.on?.('createToken', (token) => {
     if (token?.parent === game()?.scenes?.viewed) rewarm(); // only a token on the scene in view
   });
-  for (const hook of ['canvasReady', 'dicer.themesChanged']) hooks?.on?.(hook, () => rewarm());
+  // Block bodies: Foundry fires canvasReady with Hooks.call, which stops at a listener returning
+  // false, and every other module's canvasReady listener after it would then never run.
+  for (const hook of ['canvasReady', 'dicer.themesChanged'])
+    hooks?.on?.(hook, () => {
+      rewarm();
+    });
   /** The looks compiled without this list: the other users', and the viewer's own. */
   const compiled = (looks, g) => {
     const out = [...(known() ?? [])];
