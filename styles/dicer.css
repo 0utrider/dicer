@@ -5,6 +5,16 @@
   pointer-events: none;
   z-index: 60; /* above the scene, below Foundry UI apps; placed right after #board */
 }
+/* Monk's Common Display, "Hide UI": it hides every child of <body> that is not on its list (Dice
+   So Nice's canvas is; Dicer's layer is not) with `display: none !important` behind some thirty
+   `:not(#id)`, which no selector outweighs. An !important rule in a cascade layer does win over an
+   unlayered one, and over one in the layer this file is loaded in (Foundry's `modules`), so the
+   dice, their effects and the crit cards stay on the shared screen. The layer has only this rule. */
+@layer dicer-shown {
+  body.hide-ui > #dicer-layer {
+    display: block !important;
+  }
+}
 /* diceAboveWindows: over windows and sheets (they climb from ~100 as they are focused), still
    below tooltips; the canvas never takes the pointer. */
 #dicer-canvas.dicer-above {
