@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.4
+
+- **Roll by hand, per kind of roll.** The **Roll filters** window has a new **Roll by hand** choice for initiative, rolls during combat, damage and big rolls. Set a kind to **No** and those rolls are no longer thrown by hand: no prompt and no throw screen, they roll automatically (thrown for you when **Physics decides the result** is on), and their 3D dice still show. Your choice wins over the world default the GM picks; the GM's **Require rolling by hand** still asks for the throw. Roll tables and private rolls have no such choice: they are only recognized once their chat message exists.
+
 ## 1.4.3
 
 - **Dice from adventure packs, without activating the pack.** A module that comes with its own dice but does more than add them (Paizo's adventure packs with The Rollsmith's dice, such as the SF2e Playtest Deluxe Adventure Pack or Seven Dooms for Sandpoint) could only be used by activating it. The GM can now tick it under **Installed dice** in the theme browser: Dicer loads only its dice, and the rest of the module stays off. No wrapper add-on is needed.
