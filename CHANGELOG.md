@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.6
+
+- **Dice show on a Monk's Common Display screen with "Hide UI" on.** Common Display hides everything on the shared screen that is not on its own list, and Dicer's dice were not on it (Dice So Nice's are), so the display showed no dice. Dicer now keeps its dice, their effects and the crit cards visible there. Nothing to set.
+
 ## 1.4.5
 
 - **Roll by hand now lives in one place: the Roll filters window.** The separate **Roll by hand** setting is gone from the settings list. In **Roll filters**, the new **All rolls** row is that setting (Off, Ask each time or Always), and initiative, rolls during combat, damage and big rolls can each have their own choice, which wins over **All rolls** in either direction: throw everything but initiative, or throw only your damage. Your current choice is kept as your **All rolls**. The GM can set a world default for all of it.
