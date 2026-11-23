@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.4.3
 
 - **Dice from adventure packs, without activating the pack.** A module that comes with its own dice but does more than add them (Paizo's adventure packs with The Rollsmith's dice, such as the SF2e Playtest Deluxe Adventure Pack or Seven Dooms for Sandpoint) could only be used by activating it. The GM can now tick it under **Installed dice** in the theme browser: Dicer loads only its dice, and the rest of the module stays off. No wrapper add-on is needed.
+- **No more freeze on the first roll of an actor's dice.** Dice that come from an actor (a theme picked on the character sheet, or a default another module provides, like Necromancer Thrall Helper's) are now prepared ahead of time too: each player's character, the actors players own and the tokens on the scene you are viewing. Only the looks actually in use are prepared.
+- **For module authors: `api.warmThemes(ids)`.** Prepares themes you apply some other way than through an actor. Actor themes and default providers need nothing. See THEME-API.md.
+- **New: themed ghost dice** (world setting, off by default). With "Show ghost dice for hidden rolls" on, the ghost dice of a roll you cannot read can wear the roller's own dice look instead of neutral grey. The numbers stay blank, and the look never follows the actor or the damage type, so it gives nothing away about what was rolled (it does show who rolled). Dice thrown by hand keep the grey ghosts.
 
 ## 1.4.2
 
