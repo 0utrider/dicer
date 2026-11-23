@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.5
+
+- **Roll by hand now lives in one place: the Roll filters window.** The separate **Roll by hand** setting is gone from the settings list. In **Roll filters**, the new **All rolls** row is that setting (Off, Ask each time or Always), and initiative, rolls during combat, damage and big rolls can each have their own choice, which wins over **All rolls** in either direction: throw everything but initiative, or throw only your damage. Your current choice is kept as your **All rolls**. The GM can set a world default for all of it.
+- **Off means off.** A roll whose choice is Off always rolls automatically, with no hand mark on its chat card. To throw only some dice, set them to "Dicer: roll by hand" in Foundry's Dice settings and choose Ask each time or Always.
+- **Require rolling by hand can have exceptions.** A kind of roll the world default sets to Off is exempt for everyone, the GM included: require hand rolls, and still let the NPCs' initiative roll itself.
+
 ## 1.4.4
 
 - **Roll by hand, per kind of roll.** The **Roll filters** window has a new **Roll by hand** choice for initiative, rolls during combat, damage and big rolls. Set a kind to **No** and those rolls are no longer thrown by hand: no prompt and no throw screen, they roll automatically (thrown for you when **Physics decides the result** is on), and their 3D dice still show. Your choice wins over the world default the GM picks; the GM's **Require rolling by hand** still asks for the throw. Roll tables and private rolls have no such choice: they are only recognized once their chat message exists.
