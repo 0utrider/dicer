@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.7
+
+- **Dicer's hook listeners can no longer stop other modules'.** Foundry stops a hook such as `canvasReady` at the first listener that returns false, and the listeners other modules registered after it then never run. Dicer's own scene-lighting listener did that until 1.3.20 (Health Estimate and others stopped working: update if you are on an older version). The remaining listeners that could return false are fixed too, and a test now refuses any new one. No change in behaviour.
+
 ## 1.4.6
 
 - **Dice show on a Monk's Common Display screen with "Hide UI" on.** Common Display hides everything on the shared screen that is not on its own list, and Dicer's dice were not on it (Dice So Nice's are), so the display showed no dice. Dicer now keeps its dice, their effects and the crit cards visible there. Nothing to set.
