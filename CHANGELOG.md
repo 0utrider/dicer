@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Dice from adventure packs, without activating the pack.** A module that comes with its own dice but does more than add them (Paizo's adventure packs with The Rollsmith's dice, such as the SF2e Playtest Deluxe Adventure Pack or Seven Dooms for Sandpoint) could only be used by activating it. The GM can now tick it under **Installed dice** in the theme browser: Dicer loads only its dice, and the rest of the module stays off. No wrapper add-on is needed.
+
 ## 1.4.2
 
 - **No more freeze on another player's first roll.** Dicer prepared only your own dice look and the damage themes ahead of time, so the first time each other player's dice showed on your screen, the whole canvas froze for up to a second and a half while their look was prepared. Every player's look is now prepared in the background after the world loads, and again when someone changes their dice.

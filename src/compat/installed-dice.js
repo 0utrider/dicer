@@ -3,8 +3,9 @@
  * registers its dice in a `diceSoNiceReady` hook, which only runs when the module is active; this
  * runs such a module's scripts with a stand-in `Hooks` that keeps only the Dice So Nice hooks, then
  * calls those with game.dice3d. Only modules whose scripts do nothing else are offered (a module that
- * also registers settings, other hooks, wrappers or globals is not run: its other work would happen
- * while it is off). The GM picks them (ui/installed-dice.js); the world setting `installedDice`
+ * also registers settings, other hooks, wrappers or globals is not run unasked: its other work would
+ * happen while it is off; the GM can pick such a module as dice only, and its other hooks are then
+ * never called, though its top-level code runs). The GM picks them (ui/installed-dice.js); the world setting `installedDice`
  * holds each pick's id, title and script paths, so every client loads the same scripts.
  */
 import { BufferAttribute, Quaternion } from 'three';
@@ -137,7 +138,8 @@ export async function runDice(texts, api, name = 'module') {
 /**
  * Loads the dice of the picked modules (the `installedDice` setting) not loaded on this page yet,
  * and not active (`isActive(id)`). Each is re-read and re-checked (it may have been updated since
- * it was picked). Returns the ids loaded now.
+ * it was picked). A pick made as dice only (`diceOnly`: an adventure pack with dice, say) may do
+ * more than add dice: only its Dice So Nice hooks are called. Returns the ids loaded now.
  */
 export async function loadInstalledDice(list, { api, fetchText: read = fetchText, isActive = activeNow, warn = (...a) => console.warn(...a) }) {
   const done = [];
@@ -150,7 +152,8 @@ export async function loadInstalledDice(list, { api, fetchText: read = fetchText
     loaded.add(id);
     try {
       const texts = await Promise.all(scripts.map(read));
-      if (classify(texts) !== 'ok') {
+      const status = classify(texts);
+      if (status !== 'ok' && !(status === 'other' && pick.diceOnly === true)) {
         warn(`dicer: the dice of "${pick.title ?? id}" were not loaded (the module now does more than add dice)`);
         continue;
       }

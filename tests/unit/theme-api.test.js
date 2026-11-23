@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createThemeApi } from '../../src/api/theme-api.js';
-import { PROVIDERS, flagChoice, providedTheme } from '../../src/api/theme-registry.js';
+import { PROVIDERS, WARM_THEMES, flagChoice, providedTheme } from '../../src/api/theme-registry.js';
 import { ADDON_THEMES, findTheme } from '../../src/themes/themes.js';
 import { galleryEntries } from '../../src/ui/theme-form.js';
 
@@ -116,5 +116,38 @@ describe('the registry rolls use', () => {
     PROVIDERS.set('c', () => 'verdant');
     expect(providedTheme({})).toBe('verdant');
     expect(flagChoice(undefined)).toBe(false);
+  });
+});
+
+test('registering a default provider fires dicer.themesChanged (its looks are warmed)', () => {
+  const { api, hooks } = make();
+  expect(api.registerDefaultProvider(MOD, () => null)).toBe(true);
+  expect(hooks.callAll).toHaveBeenCalledWith('dicer.themesChanged');
+});
+
+describe('warmThemes', () => {
+  afterEach(() => WARM_THEMES.clear());
+
+  test('queues known ids, ignores unknown ones and returns the count', () => {
+    const { api } = make();
+    api.registerTheme(theme('blood'), { moduleId: MOD });
+    expect(api.warmThemes([`${MOD}.blood`, `${MOD}.missing`, 42, 'obsidian'])).toBe(2);
+    expect([...WARM_THEMES]).toEqual([`${MOD}.blood`, 'obsidian']);
+  });
+
+  test('fires dicer.themesChanged only when an id is new', () => {
+    const { api, hooks } = make();
+    api.warmThemes(['obsidian']);
+    expect(hooks.callAll).toHaveBeenCalledTimes(1);
+    expect(api.warmThemes(['obsidian'])).toBe(1);
+    expect(hooks.callAll).toHaveBeenCalledTimes(1);
+  });
+
+  test('a non-array queues nothing', () => {
+    const { api, hooks } = make();
+    expect(api.warmThemes('obsidian')).toBe(0);
+    expect(api.warmThemes()).toBe(0);
+    expect(WARM_THEMES.size).toBe(0);
+    expect(hooks.callAll).not.toHaveBeenCalled();
   });
 });

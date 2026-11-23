@@ -110,7 +110,6 @@ export function createDebugCounters() {
   return { ...counters, countFx: bump(counters.fxPlays), countSound: bump(counters.resultSounds) };
 }
 
-const ghostDecorator = () => ({ ghost: true });
 
 /**
  * Who may receive a roll's real payload (P3-R12/R14; the server honours `recipients` for module
@@ -164,6 +163,8 @@ export function createDice3dApi({
   getSetting,
   renderer = null,
   decorateFor = () => undefined,
+  // a ghost view's per-die decorator (compat/ghost-look.js: themed ghost dice); never sees the roll
+  ghostDecorateFor = () => () => ({ ghost: true }),
   hooks = globalThis.Hooks,
   socket = null,
   currentUser = () => globalThis.game?.user,
@@ -410,7 +411,8 @@ export function createDice3dApi({
       const { dice } = planThrow(ghost ? ghostRoll(toThrow) : toThrow, {
         maxDice: Number(getSetting('maxDice')) || 20,
         showExtra: getSetting('showExtraDice') !== false,
-        decorate: ghost ? () => ghostDecorator() : decoratorFor(toThrow, s.authorId, s.senderId, s.speaker),
+        // the verified sender's own look, never the caller's `user`: whom a hidden roll is "for" stays hidden
+        decorate: ghost ? ghostDecorateFor(s.senderId ?? s.authorId) : decoratorFor(toThrow, s.authorId, s.senderId, s.speaker),
       });
       if (!dice.length) return false;
       const area = areaHere(s, view);

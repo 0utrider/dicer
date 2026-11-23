@@ -566,6 +566,23 @@ describe('Task 11: showForRoll privacy, hooks, show and animateRoll', () => {
     expect(diceBox.roll).not.toHaveBeenCalled();
   });
 
+  test('a ghost showForRoll is planned with ghostDecorateFor(the author id): themed ghost dice', async () => {
+    settings.showGhostDice = true;
+    const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'real' } }));
+    const ghostDecorateFor = vi.fn(() => () => ({ ghost: true, ghostLook: { tag: 'user-look' } }));
+    a = make({ decorateFor, ghostDecorateFor });
+    // the look is the verified sender's, never the `user` the caller names: a GM module rolling a
+    // secret check "for" a player must not show that player's dice (whose roll it was about)
+    const p = a.showForRoll(roll(20, 12), { id: 'someone-else' }, false, null, true);
+    await Promise.resolve();
+    expect(ghostDecorateFor).toHaveBeenCalledTimes(1);
+    expect(ghostDecorateFor).toHaveBeenCalledWith('p1');
+    expect(decorateFor).not.toHaveBeenCalled();
+    expect(diceBox.roll).toHaveBeenCalledWith([{ type: 'd20', value: 1, ghost: true, ghostLook: { tag: 'user-look' } }]);
+    diceBox.rolls[0].resolve();
+    await p;
+  });
+
   test('a blind showForRoll on a player client throws ghosts when showGhostDice is on', async () => {
     settings.showGhostDice = true;
     const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'real' } }));

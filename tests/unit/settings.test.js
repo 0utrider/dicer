@@ -30,6 +30,13 @@ test('showGhostDice is a world Boolean, default off (ghost dice reveal that a hi
   expect(cfg.hint).toBe('DICER.Settings.showGhostDice.Hint');
 });
 
+test('themedGhostDice is a world Boolean, off by default (privacy first)', () => {
+  const cfg = capture().themedGhostDice;
+  expect([cfg.scope, cfg.type, cfg.default, cfg.config]).toEqual(['world', Boolean, false, true]);
+  expect(cfg.name).toBe('DICER.Settings.themedGhostDice.Name');
+  expect(cfg.hint).toBe('DICER.Settings.themedGhostDice.Hint');
+});
+
 test('showExtraDice is a client Boolean, default on', () => {
   const cfg = capture().showExtraDice;
   expect(cfg).toMatchObject({ ns: 'dicer', scope: 'user', config: true, type: Boolean, default: true });

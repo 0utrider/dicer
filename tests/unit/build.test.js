@@ -483,9 +483,12 @@ describe('build', () => {
     // chunk): owner approved +188 B (45,392 -> 45,580), 2026-11-22.
     // Warming the other players' dice looks (render/user-looks.js; their first roll on another
     // screen froze the canvas compiling shaders): owner approved +762 B (45,580 -> 46,342), 2026-11-22.
+    // Warming the actors' and module providers' looks (the hook-up only: render/actor-looks.js rides
+    // the lazy theme API chunk) and themed ghost dice (the themedGhostDice setting, compat/ghost-look.js,
+    // DiceBox's ghostLook): owner approved +755 B (46,342 -> 47,097), 2026-11-23.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(46_342);
+    expect(growth).toBeLessThanOrEqual(47_097);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

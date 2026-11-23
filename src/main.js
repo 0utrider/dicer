@@ -33,6 +33,7 @@ import { startEngine, announceReady } from './foundry/startup.js';
 import { createDice3dApi, createDebugCounters, materialReadyNotifier } from './api/dice3d.js';
 import { createRegistry } from './compat/registry.js';
 import { createLookResolver } from './compat/resolve-looks.js';
+import { createGhostDecorate } from './compat/ghost-look.js';
 import { facesFor, atlasGlyphTest } from './compat/faces.js';
 import { createFaceTextures, FACE_FONT_FAMILY } from './render/face-textures.js';
 import {
@@ -387,21 +388,26 @@ function resizeDice() {
 let damageLooks = () => [];
 /** The other users' looks (set once the look resolver exists): their first roll here froze the canvas. */
 let userLooks = () => [];
+/** The actors' looks and the themes a module named (render/actor-looks.js, in the lazy theme API chunk). */
+let moreLooks = () => [];
+let lookResolver = null;
 
 const warmUp = createWarmup({
   getBox: () => diceBox,
   getRenderer: () => diceRenderer,
   onWarmed: () => quality?.warmedUp(), // P2-R10: fresh adaptive window once the new programs exist
   // Players' looks first: someone rolls every turn, a damage theme only on its damage type.
-  getLooks: () => [...userLooks(), ...damageLooks()],
+  getLooks: () => [...userLooks(), ...moreLooks(), ...damageLooks()],
 });
 
 /** Another user's dice flags changed: warm their look (debounced), so their next roll here doesn't freeze. */
 let otherLookTimer = null;
-function onOtherUserLook(user, changes) {
-  if (user?.id === game.user?.id || !changes?.flags?.dicer) return;
+function rewarmSoon() {
   clearTimeout(otherLookTimer);
   otherLookTimer = setTimeout(warmUp, 1000);
+}
+function onOtherUserLook(user, changes) {
+  if (user?.id !== game.user?.id && changes?.flags?.dicer) rewarmSoon();
 }
 
 /**
@@ -761,9 +767,12 @@ Hooks.once('ready', async () => {
   // The theme API for other modules (a lazy chunk): game.modules.get('dicer').api, handed over by
   // the `dicer.ready` hook, where modules register their themes and default providers.
   try {
-    const api = (await import('./api/theme-api.js')).createThemeApi();
+    const chunk = await import('./api/theme-api.js');
+    const api = chunk.createThemeApi();
     game.modules.get('dicer').api = api;
     Hooks.callAll('dicer.ready', api);
+    moreLooks = chunk.aheadLooks({ resolver: () => lookResolver, registry: () => registry, getSetting, rewarm: rewarmSoon, known: () => userLooks() });
+    rewarmSoon();
   } catch (err) {
     console.warn('dicer: cannot load the theme API', err);
   }
@@ -919,12 +928,11 @@ Hooks.once('ready', async () => {
         // Preset faces the digit atlas cannot draw become image / text face layers.
         facesFor: presetFaces,
       });
-      userLooks = () =>
-        userWarmupLooks({
-          users: game.users?.contents ?? [],
-          viewerId: game.user?.id,
-          lookOf: (id, term) => resolver.decorate(null, null, id)(term, null, 0)?.appearance,
-        });
+      lookResolver = resolver;
+      // a user's own look for a die: no message, roll, actor or damage theme
+      const userLook = (id, term) => resolver.decorate(null, null, id)(term, null, 0)?.appearance;
+      userLooks = () => userWarmupLooks({ users: game.users?.contents ?? [], viewerId: game.user?.id, lookOf: userLook });
+      const ghostDecorateFor = createGhostDecorate({ getSetting, lookOf: userLook });
       const plan = (roll, opts) => planThrow(roll, { shapeFor: resolver.shapeFor, ...opts });
       // Trigger effects ride the same decorator, which the gate and showForRoll call for real
       // views only (ghosts use the ghost decorator, 'none' is not planned): privacy-first.
@@ -979,6 +987,7 @@ Hooks.once('ready', async () => {
         diceBox: box,
         planThrow: plan,
         decorateFor,
+        ghostDecorateFor,
         hooks: Hooks,
         getSetting,
         areaFor,
@@ -996,6 +1005,7 @@ Hooks.once('ready', async () => {
         gate,
         planThrow: plan,
         decorateFor,
+        ghostDecorateFor,
         getSetting,
         renderer,
         hooks: Hooks,
@@ -1056,6 +1066,7 @@ Hooks.once('ready', async () => {
     appearanceRewarm.dispose();
     clearTimeout(otherLookTimer);
     userLooks = () => [];
+    lookResolver = null;
     if (updateUserHook !== null) Hooks.off('updateUser', updateUserHook);
     updateUserHook = null;
     quality?.dispose();

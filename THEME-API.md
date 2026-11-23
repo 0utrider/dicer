@@ -56,6 +56,21 @@ flags behind. A choice made by a player or the GM always wins.
 When a roll comes from a token, Dicer passes the provider that token's actor (an unlinked token's
 synthetic actor, with its own flags), so a provider can tell a summoned thrall token apart.
 
+## Preloading
+
+The first roll of a look compiles its shaders, which can freeze the canvas for a moment. Dicer
+compiles ahead the looks it expects: every player's, and those of the actors likely to roll (each
+player's character, the actors players own, the tokens on the viewed scene). That covers an actor's
+theme and a provider's default, and only the themes in use: a provider that hands out one of eight
+themes per actor gets the ones its actors resolve to, not all eight. Nothing to do on your side.
+
+```js
+api.warmThemes([themeId, ...]); // -> how many of the ids name a theme
+```
+
+Call it only for themes you apply some other way (a roll's own `appearance`, a theme you set just
+before rolling). Be selective: each theme is a compile on every client. Nothing is stored.
+
 ## Example: necromancer and thralls (Necromancer Thrall Helper)
 
 ```js

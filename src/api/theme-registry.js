@@ -9,6 +9,8 @@ import { isNeverChose } from '../compat/user-looks.js';
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 /** moduleId -> fn(actor) -> theme id | null, in registration order (api.registerDefaultProvider). */
 export const PROVIDERS = new Map();
+/** Theme ids a module asked to have compiled ahead (api.warmThemes); this session only. */
+export const WARM_THEMES = new Set();
 
 /** A stored slot that names dice: a theme, a look other than the default, an appearance, a colorset or a system. */
 export const named = (r) =>

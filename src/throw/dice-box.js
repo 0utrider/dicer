@@ -1155,8 +1155,12 @@ export class DiceBox {
 
   #makeDie(spec, roll, flags, rollLook) {
     const ghost = spec.ghost === true;
-    const look = spec.appearance ? normalizeAppearance(spec.appearance) : rollLook;
-    const appearance = ghost ? GHOST_APPEARANCE : look;
+    // Themed ghost dice (the themedGhostDice setting, compat/ghost-look.js): a ghost wears the
+    // look its `ghostLook` names, the roller's own dice, never one that depends on the roll. Only
+    // the look changes: no numbers, faces, system, model, effects or value, like any ghost.
+    const themed = ghost && spec.ghostLook ? normalizeAppearance(spec.ghostLook) : null;
+    const look = themed ?? (spec.appearance ? normalizeAppearance(spec.appearance) : rollLook);
+    const appearance = ghost ? (themed ?? GHOST_APPEARANCE) : look;
     // The look's own face images over a preset's faces (a coin, Fate or d100 tens die by its own key).
     const own = lookFacesFor(spec.type, look, spec.faces, spec.variant);
     // A d4 with the crystal look is a d4crystal (a d6 with the bullet look a d6bullet ...: the look's

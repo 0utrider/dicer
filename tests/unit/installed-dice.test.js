@@ -126,3 +126,28 @@ test('loading the picks runs each once, skips active modules and ones that chang
   expect(await loadInstalledDice(list, deps)).toEqual([]); // once per page
   expect(api.addSystem).toHaveBeenCalledTimes(2);
 });
+
+test("a pick made as dice only runs a module that does more than add dice: its Dice So Nice hooks, nothing else", async () => {
+  // an adventure pack (Paizo's, with The Rollsmith's dice): init and ready hooks beside its dice
+  const other = vi.fn();
+  globalThis.__dicerOther = other;
+  const pack = `Hooks.once('init', () => globalThis.__dicerOther('init'));
+Hooks.on('ready', () => { game.settings.register('pack', 'x', {}); globalThis.__dicerOther('ready'); });
+${DICE_SET}`;
+  const api = { addSystem: vi.fn(), addDicePreset: vi.fn() };
+  const warn = vi.fn();
+  const files = { 'modules/pack/dist/index.js': pack, 'modules/esm/index.js': `import x from './y.js';\n${pack}` };
+  const list = [
+    { id: 'pack', title: 'Pack', scripts: ['modules/pack/dist/index.js'], diceOnly: true },
+    { id: 'esm', title: 'Esm', scripts: ['modules/esm/index.js'], diceOnly: true }, // cannot run apart
+  ];
+  try {
+    expect(await loadInstalledDice(list, { api, fetchText: async (p) => files[p], isActive: () => false, warn })).toEqual(['pack']);
+  } finally {
+    delete globalThis.__dicerOther;
+  }
+  expect(api.addSystem).toHaveBeenCalledTimes(1);
+  expect(api.addDicePreset).toHaveBeenCalledTimes(1);
+  expect(other).not.toHaveBeenCalled();
+  expect(warn).toHaveBeenCalledTimes(1); // esm
+});

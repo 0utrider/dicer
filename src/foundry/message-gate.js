@@ -95,6 +95,8 @@ const onlyFrom = (views, from) => views.map((v, i) => (i >= from ? v : 'none'));
  * @param {(roll, opts: { maxDice: number, decorate?: Function }) => { dice: object[] }} deps.planThrow
  * @param {(message, roll) => Function | undefined} [deps.decorateFor] the per-die decorator for a
  *   roll of this message (its author's looks); a throwing one is ignored
+ * @param {(authorId?: string) => Function} [deps.ghostDecorateFor] the per-die decorator of a ghost
+ *   view (compat/ghost-look.js: themed ghost dice); it never sees the roll
  * @param {{ callAll(name: string, ...args): void }} deps.hooks
  * @param {(key: string) => any} deps.getSetting
  * @param {{ isAtBottom: boolean, scrollBottom(opts): Promise<void> } | null} [deps.chatUi]
@@ -114,6 +116,7 @@ export function createMessageGate({
   diceBox,
   planThrow,
   decorateFor = () => undefined,
+  ghostDecorateFor = () => () => ({ ghost: true }),
   hooks,
   getSetting,
   chatUi,
@@ -255,8 +258,6 @@ export function createMessageGate({
     return out;
   }
 
-  const ghostDecorator = () => () => ({ ghost: true });
-
   /** Only GMs can see the message (blind or whispered to GMs only), or the group is all secret. */
   function gmOnly(message, group) {
     return isGmOnly({
@@ -297,7 +298,7 @@ export function createMessageGate({
       const whole = view === 'real' && hand?.isHand(roll) && getSetting('handReplay') !== false;
       if (view === 'none' || (budget <= 0 && !whole)) return [];
       const ghost = view === 'ghost';
-      const decorate = ghost ? ghostDecorator() : decoratorFor(message, roll);
+      const decorate = ghost ? ghostDecorateFor(message.author?.id) : decoratorFor(message, roll);
       const { dice } = planThrow(ghost ? ghostRoll(roll) : roll, {
         maxDice: whole ? 100 : budget,
         showExtra,

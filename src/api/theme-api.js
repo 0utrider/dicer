@@ -9,10 +9,14 @@
  *   flags.dicer.appearance, as the actor or token sees it).
  * - registerDefaultProvider(moduleId, fn): fn(actor) -> theme id | null, asked (in registration
  *   order) for an actor with no dice choice; its answer is never written to the actor.
+ * - warmThemes(ids): compile these themes' shaders ahead (themes applied outside actors).
  */
 import { ADDON_THEMES, findTheme, normalizeTheme } from '../themes/themes.js';
 import { chosenRef } from '../compat/user-looks.js';
-import { PROVIDERS, named, flagChoice, providedTheme } from './theme-registry.js';
+import { PROVIDERS, WARM_THEMES, named, flagChoice, providedTheme } from './theme-registry.js';
+
+// the looks compiled ahead for actors and named themes ride this chunk: main.js hooks them up at ready
+export { aheadLooks } from '../render/actor-looks.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -85,7 +89,21 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
     registerDefaultProvider(moduleId, fn) {
       if (!isModule(moduleId) || typeof fn !== 'function') return false;
       PROVIDERS.set(moduleId, fn);
+      changed(); // the looks it hands out are compiled ahead (render/actor-looks.js)
       return true;
+    },
+    /**
+     * Asks for these themes' shaders to be compiled ahead, so their first roll does not freeze the
+     * canvas. Only for themes applied outside actors: an actor's theme and a provider's default
+     * are warmed already. Returns how many ids name a theme; nothing is stored.
+     */
+    warmThemes(ids) {
+      if (!Array.isArray(ids)) return 0;
+      const known = ids.filter((id) => typeof id === 'string' && findTheme(id));
+      const before = WARM_THEMES.size;
+      for (const id of known) WARM_THEMES.add(id);
+      if (WARM_THEMES.size > before) changed();
+      return known.length;
     },
   };
 }

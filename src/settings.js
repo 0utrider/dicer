@@ -328,6 +328,15 @@ export function registerSettings({
     type: Boolean,
     default: false,
   });
+  // Ghosts in the roller's own dice look; still no numbers, and never the actor's or a damage look.
+  register('themedGhostDice', {
+    name: t('themedGhostDice.Name'),
+    hint: t('themedGhostDice.Hint'),
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false,
+  });
   register('showExtraDice', {
     name: t('showExtraDice.Name'),
     hint: t('showExtraDice.Hint'),

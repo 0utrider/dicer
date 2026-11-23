@@ -371,6 +371,16 @@ describe('privacy matrix', () => {
     expect(hooks.named(COMPLETE)).toEqual([]);
   });
 
+  test('a ghost view is planned with ghostDecorateFor(the author id): themed ghost dice', () => {
+    settings.showGhostDice = true;
+    const decorateFor = vi.fn(() => () => ({ appearance: { tag: 'real-look' } }));
+    const ghostDecorateFor = vi.fn(() => () => ({ ghost: true, ghostLook: { tag: 'user-look' } }));
+    priv(player, { decorateFor, ghostDecorateFor }).onCreate(message('m1', { isContentVisible: false, whisper: ['x'], author: { id: 'x' } }));
+    expect(ghostDecorateFor).toHaveBeenCalledWith('x');
+    expect(decorateFor).not.toHaveBeenCalled();
+    expect(diceBox.rolls[0].specs).toEqual([{ type: 'd20', value: 1, ghost: true, ghostLook: { tag: 'user-look' } }]);
+  });
+
   test('the same with showGhostDice true: all ghosts, hidden until landing, RollComplete once', async () => {
     settings.showGhostDice = true;
     const el = li('m1');

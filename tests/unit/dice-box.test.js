@@ -20,7 +20,7 @@ import { buildDieGeometry } from '../../src/core/chamfer.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
-import { DEFAULT_APPEARANCE } from '../../src/look/appearance.js';
+import { DEFAULT_APPEARANCE, normalizeAppearance } from '../../src/look/appearance.js';
 import { dsnModelRotation, dsnFaceNormal } from '../../src/compat/dsn-layouts.js';
 import { followFor } from '../../src/render/model-loader.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
@@ -1112,6 +1112,29 @@ describe('per-die looks', () => {
       ),
     ).not.toContain('17');
     expect(JSON.stringify(group.userData)).not.toContain('17');
+  });
+
+  test('a ghost die with a ghostLook wears that look, still blank and thrown as a 1 (themed ghost dice)', () => {
+    const { renderer, box } = setup();
+    box.roll([{ type: 'd20', value: 17, ghost: true, ghostLook: red, system: 'pf2e', dsnType: 'd20', model: 'm/d20.glb', faces: { key: 'k', labels: [] } }]);
+    const [group] = dieGroups(renderer);
+    const [app, , , labels] = createDiceMaterial.mock.calls[0];
+    expect(app).toEqual(normalizeAppearance(red));
+    expect(labels.every((l) => l === '')).toBe(true);
+    const die = box._rolls.values().next().value.dice[0];
+    expect([die.ghost, die.targetValue, die.value, die.system, die.modelUrl, die.faces]).toEqual([true, 1, undefined, null, null, undefined]);
+    expect(JSON.stringify(group.userData)).not.toContain('17');
+    // rebuilt materials keep the themed look
+    box.invalidateMaterials({ replaceInFlight: true });
+    expect(createDiceMaterial.mock.calls.at(-1)[0]).toEqual(normalizeAppearance(red));
+  });
+
+  test('a ghostLook is only read on a ghost, and an appearance never themes a ghost', () => {
+    const { box } = setup();
+    box.roll([{ type: 'd6', value: 3, ghostLook: red }]);
+    expect(createDiceMaterial.mock.calls[0][0]).not.toEqual(normalizeAppearance(red));
+    box.roll([{ type: 'd6', value: 3, ghost: true, appearance: red }]);
+    expect(createDiceMaterial.mock.calls.at(-1)[0]).toBe(GHOST_APPEARANCE);
   });
 
   test('rematerialize keeps each die on its own look', () => {

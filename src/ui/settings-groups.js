@@ -5,7 +5,7 @@
  * listed keeps its place, after the sections, under "Other".
  */
 export const GROUPS = [
-  ['General', ['enabled', 'physicsResults', 'diceScale', 'diceAboveWindows', 'diceLighting', 'diceLight', 'trayMode', 'trayShow', 'petTray', 'timeBeforeHide', 'grabDice', 'showExtraDice', 'physicalDice', 'diceLookButton', 'maxDice', 'showGhostDice', 'immediatelyDisplayChatMessages', 'hideInitiative', 'lockPlayerLooks', 'rollStats', 'statsTool', 'migrateFromDsn']],
+  ['General', ['enabled', 'physicsResults', 'diceScale', 'diceAboveWindows', 'diceLighting', 'diceLight', 'trayMode', 'trayShow', 'petTray', 'timeBeforeHide', 'grabDice', 'showExtraDice', 'physicalDice', 'diceLookButton', 'maxDice', 'showGhostDice', 'themedGhostDice', 'immediatelyDisplayChatMessages', 'hideInitiative', 'lockPlayerLooks', 'rollStats', 'statsTool', 'migrateFromDsn']],
   ['Graphics', ['quality', 'qualityCap', 'pixelRatioCap', 'interiors', 'insideMotion', 'engraving', 'shadows', 'glow', 'presetFaces', 'presetModels']],
   ['Sound', ['sounds', 'soundVolume', 'effectSounds', 'effectsVolume', 'quietWhenUnfocused', 'soundSurface', 'soundSurfaceOverride', 'muteCoreDiceSound']],
   ['Effects', ['effects', 'showOthersEffects', 'slowMotion', 'screenShake', 'impactEffects', 'jb2aEffects', 'insideFlare', 'elementalTrails', 'elementalCritBursts', 'triggerMacros']],
