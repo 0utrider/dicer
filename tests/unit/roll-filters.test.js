@@ -4,7 +4,7 @@
  * and the window's form.
  */
 import { kindsOf, modeOf, filtered, FILTER_KINDS, BIG_DICE } from '../../src/foundry/roll-filters.js';
-import { buildForm, applyChange } from '../../src/ui/roll-filters.js';
+import { buildForm, applyChange, HAND_KINDS } from '../../src/ui/roll-filters.js';
 
 class DamageRoll {
   constructor(n = 2) {
@@ -88,5 +88,46 @@ describe('the window', () => {
     expect(applyChange('mine.bigDice', '', { bigDice: 6 }, {}).mine).toEqual({});
     expect(applyChange('mine.nope', 'skip', {}, {})).toBeNull();
     expect(applyChange('mine.damage', 'bogus', { damage: 'skip' }, {}).mine).toEqual({});
+  });
+
+  test('Roll by hand: a choice per kind known while rolling, the GM a world default too', () => {
+    const player = buildForm({ hand: { damage: false, combat: true } }, { hand: { initiative: false } }, false);
+    for (const kind of HAND_KINDS) expect(player.querySelector(`[name="mine.hand.${kind}"]`)).not.toBeNull();
+    for (const kind of FILTER_KINDS.filter((k) => !HAND_KINDS.includes(k))) expect(player.querySelector(`[name="mine.hand.${kind}"]`)).toBeNull();
+    expect(player.querySelector('[name="mine.hand.damage"]').value).toBe('no');
+    expect(player.querySelector('[name="mine.hand.combat"]').value).toBe('yes');
+    expect(player.querySelector('[name="mine.hand.big"]').value).toBe('');
+    // "Default" names the world's choice
+    expect(player.querySelector('[name="mine.hand.initiative"] option').textContent).toBe('DICER.RollFilters.Default:DICER.RollFilters.HandMode.no');
+    expect(player.querySelector('[name="mine.hand.big"] option').textContent).toBe('DICER.RollFilters.Default:DICER.RollFilters.HandMode.yes');
+    expect(player.querySelector('[name^="world.hand."]')).toBeNull();
+    // every row has as many cells as the header
+    for (const tr of player.querySelectorAll('tbody tr')) expect(tr.children).toHaveLength(3);
+    const gm = buildForm({}, { hand: { initiative: false } }, true);
+    expect(gm.querySelector('[name="world.hand.initiative"]').value).toBe('no');
+    expect(gm.querySelector('[name="world.hand.damage"]').value).toBe('yes');
+    for (const tr of gm.querySelectorAll('tbody tr')) expect(tr.children).toHaveLength(5);
+    // junk saved choices read as the default
+    expect(buildForm({ hand: 'junk' }, { hand: { big: 'no' } }, true).querySelector('[name="world.hand.big"]').value).toBe('yes');
+  });
+
+  test('applyChange, Roll by hand: Yes and No set, Default clears; the world keeps only No', () => {
+    expect(applyChange('mine.hand.damage', 'no', { damage: 'skip' }, {}).mine).toEqual({ damage: 'skip', hand: { damage: false } });
+    expect(applyChange('mine.hand.damage', 'yes', { hand: { big: false } }, {}).mine).toEqual({ hand: { big: false, damage: true } });
+    expect(applyChange('mine.hand.damage', '', { hand: { damage: false } }, {}).mine).toEqual({});
+    expect(applyChange('mine.hand.damage', '', { hand: { damage: false, big: false } }, {}).mine).toEqual({ hand: { big: false } });
+    expect(applyChange('world.hand.combat', 'no', {}, { combat: 'mine' }).world).toEqual({ combat: 'mine', hand: { combat: false } });
+    expect(applyChange('world.hand.combat', 'yes', {}, { hand: { combat: false } }).world).toEqual({});
+    // a saved hand that is not an object is replaced; the caller's objects are left alone
+    const mine = { hand: { damage: false } };
+    expect(applyChange('mine.hand.big', 'no', { hand: 'junk' }, {}).mine).toEqual({ hand: { big: false } });
+    applyChange('mine.hand.big', 'no', mine, {});
+    expect(mine).toEqual({ hand: { damage: false } });
+    // kinds without the choice, and the hand key as a mode, change nothing
+    expect(applyChange('mine.hand.table', 'no', {}, {})).toBeNull();
+    expect(applyChange('mine.hand.others', 'no', {}, {})).toBeNull();
+    expect(applyChange('mine.hand', 'skip', {}, {})).toBeNull();
+    expect(applyChange('mine.damage.x', 'skip', {}, {})).toBeNull();
+    expect(applyChange('mine.hand.damage', 'bogus', { hand: { damage: false } }, {}).mine).toEqual({});
   });
 });

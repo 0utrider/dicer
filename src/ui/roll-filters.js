@@ -7,6 +7,16 @@ import { FILTER_KINDS, BIG_DICE } from '../foundry/roll-filters.js';
 
 const MODULE = 'dicer';
 const MODES = ['show', 'mine', 'skip'];
+/**
+ * The kinds with a "Roll by hand" choice: the ones known while a roll is still evaluated. The hand
+ * chunk's list (hand/chunk/hand-kinds.js, which reads the choice); a test keeps the two equal.
+ */
+export const HAND_KINDS = ['initiative', 'combat', 'damage', 'big'];
+const handChoice = (filters, kind) => {
+  const v = filters?.hand?.[kind];
+  return typeof v === 'boolean' ? v : undefined;
+};
+const yesNo = (on) => (on ? 'yes' : 'no');
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const fmt = (key, data) => {
   const f = globalThis.game?.i18n?.format;
@@ -33,14 +43,29 @@ function h(tag, attrs = {}, kids = []) {
   return el;
 }
 
-/** A select of `modes` (labels: DICER.RollFilters.Mode.<m>), `first` an extra first option. */
-function select(name, value, first) {
-  const options = [...(first ? [first] : []), ...MODES.map((m) => ({ value: m, label: loc(`DICER.RollFilters.Mode.${m}`) }))];
+/** A select of `modes` (labels: DICER.RollFilters.<labels>.<m>), `first` an extra first option. */
+function select(name, value, first, modes = MODES, labels = 'Mode') {
+  const options = [...(first ? [first] : []), ...modes.map((m) => ({ value: m, label: loc(`DICER.RollFilters.${labels}.${m}`) }))];
   return h(
     'select',
     { name },
     options.map((o) => h('option', { value: o.value, selected: o.value === value, text: o.label })),
   );
+}
+
+/** The "Roll by hand" cells of a kind's row: the player's choice and (for a GM) the world's. */
+function handCells(kind, mine, world, isGM) {
+  if (!HAND_KINDS.includes(kind)) return [h('td', {}), ...(isGM ? [h('td', {})] : [])];
+  const own = handChoice(mine, kind);
+  const def = handChoice(world, kind) ?? true;
+  const pick = (name, value, first) => h('td', {}, [select(name, value, first, ['yes', 'no'], 'HandMode')]);
+  return [
+    pick(`mine.hand.${kind}`, own === undefined ? '' : yesNo(own), {
+      value: '',
+      label: fmt('DICER.RollFilters.Default', { mode: loc(`DICER.RollFilters.HandMode.${yesNo(def)}`) }),
+    }),
+    ...(isGM ? [pick(`world.hand.${kind}`, yesNo(def))] : []),
+  ];
 }
 
 /** The form's rows: one per kind, the player's select and (for a GM) the world default's. */
@@ -54,18 +79,24 @@ export function buildForm(mine, world, isGM) {
       ]),
       h('td', {}, [select(`mine.${kind}`, mine[kind] ?? '', { value: '', label: fmt('DICER.RollFilters.Default', { mode: def(kind) }) })]),
       ...(isGM ? [h('td', {}, [select(`world.${kind}`, world[kind] ?? 'show')])] : []),
+      ...handCells(kind, mine, world, isGM),
     ]),
   );
+  const span = isGM ? '2' : false;
+  const who = () => [h('th', { text: loc('DICER.RollFilters.Mine') }), ...(isGM ? [h('th', { text: loc('DICER.RollFilters.World') })] : [])];
   const big = (scope, value) => h('input', { type: 'number', name: `${scope}.bigDice`, min: '1', max: '200', step: '1', value: String(value ?? ''), placeholder: String(world.bigDice ?? BIG_DICE) });
   return h('form', { class: 'dicer-roll-filters' }, [
     h('p', { class: 'dicer-hint', text: loc('DICER.RollFilters.Intro') }),
+    h('p', { class: 'dicer-hint', text: loc('DICER.RollFilters.HandIntro') }),
     h('table', {}, [
       h('thead', {}, [
         h('tr', {}, [
           h('th', {}),
-          h('th', { text: loc('DICER.RollFilters.Mine') }),
-          ...(isGM ? [h('th', { text: loc('DICER.RollFilters.World') })] : []),
+          // centred over its columns, here and not in the stylesheet (a world-start download)
+          h('th', { colspan: span, style: 'text-align:center', text: loc('DICER.RollFilters.Dice') }),
+          h('th', { colspan: span, style: 'text-align:center', text: loc('DICER.RollFilters.Hand') }),
         ]),
+        h('tr', {}, [h('th', {}), ...who(), ...who()]),
       ]),
       h('tbody', {}, rows),
     ]),
@@ -79,9 +110,19 @@ export function buildForm(mine, world, isGM) {
 
 /** A change in the form, as the next {mine, world} objects (only what changed). */
 export function applyChange(name, value, mine, world) {
-  const [scope, key] = String(name).split('.');
+  const [scope, key, sub, ...rest] = String(name).split('.');
   const target = scope === 'world' ? { ...world } : { ...mine };
-  if (key === 'bigDice') {
+  if (key === 'hand') {
+    if (!HAND_KINDS.includes(sub) || rest.length) return null;
+    const hand = target.hand && typeof target.hand === 'object' ? { ...target.hand } : {};
+    // The player: Yes, No, or "Default" (follow the world). The world: only No is kept (Yes is the default).
+    if (value === 'no') hand[sub] = false;
+    else if (value === 'yes' && scope !== 'world') hand[sub] = true;
+    else delete hand[sub];
+    if (Object.keys(hand).length) target.hand = hand;
+    else delete target.hand;
+  } else if (sub !== undefined) return null;
+  else if (key === 'bigDice') {
     const n = Math.trunc(Number(value));
     if (n >= 1) target.bigDice = Math.min(200, n);
     else delete target.bigDice;
@@ -102,7 +143,7 @@ export function openRollFilters() {
       id: 'dicer-roll-filters',
       classes: ['dicer-roll-filters-app'],
       window: { title: 'DICER.RollFilters.Title', icon: 'fa-solid fa-filter', resizable: true },
-      position: { width: 660, height: 'auto' },
+      position: { width: 780, height: 'auto' },
     };
     async _renderHTML() {
       return buildForm(read('rollFilters'), read('rollFiltersDefault'), globalThis.game.user?.isGM === true);

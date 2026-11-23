@@ -1408,6 +1408,13 @@
       "Intro": "Which rolls you see as 3D dice. A skipped roll posts its chat card at once, as with 3D dice off. Your choice wins; \"Default\" follows the world setting the GM picks.",
       "Mine": "You",
       "World": "World default (GM)",
+      "Dice": "3D dice",
+      "Hand": "Roll by hand",
+      "HandIntro": "Roll by hand: for those who roll by hand, a kind set to \"No\" rolls automatically instead (no prompt, no throw screen); its 3D dice still show. A roll of several kinds rolls automatically when any of them says \"No\". It applies to rolls recognized while they are made, so roll tables and private rolls have no choice here. A GM's \"Require rolling by hand\" still asks for the throw.",
+      "HandMode": {
+        "yes": "Yes",
+        "no": "No"
+      },
       "Default": "Default ({mode})",
       "BigDice": "A big roll has more dice than",
       "SaveFailed": "Your roll filters could not be saved.",

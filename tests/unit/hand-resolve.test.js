@@ -1170,6 +1170,58 @@ describe('follow-up rolls', () => {
     expect(overlay.open).toHaveBeenCalledTimes(1);
   });
 
+  test('a kind set not to be rolled by hand: answered automatically, at once; the other kinds are thrown', async () => {
+    settings.handRolls = 'always';
+    settings.rollFilters = { hand: { initiative: false } };
+    const init = (r) => (r.options = { type: 'initiative' });
+    const auto = await rollD20(init);
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(auto.options.dicerHand.fallback).toBe('auto');
+    // Foundry's own initiative roll too
+    const core = await rollD20((r) => (r.options = { dicerInitiative: true }));
+    expect(core.options.dicerHand.fallback).toBe('auto');
+    expect(overlay.open).not.toHaveBeenCalled();
+    // another kind of roll is still thrown by hand
+    overlay.values = [7];
+    const check = await rollD20((r) => (r.options = { type: 'skill-check' }));
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(check.options.dicerHand.fallback).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(10000);
+    // Ask: no prompt for it
+    settings.handRolls = 'ask';
+    deps.ask = vi.fn(async () => true);
+    await rollD20(init);
+    expect(deps.ask).not.toHaveBeenCalled();
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+  });
+
+  test('not by hand, with physics deciding: thrown for the roller, on screen', async () => {
+    settings.handRolls = 'always';
+    settings.physicsResults = true;
+    settings.rollFiltersDefault = { hand: { initiative: false } };
+    boxValues = [12];
+    const roll = await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(overlay.open).not.toHaveBeenCalled();
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(roll.terms[0].results).toEqual([{ result: 12, active: true }]);
+    expect(roll.options.dicerHand).toMatchObject({ physics: true });
+  });
+
+  test('not by hand: the player’s Yes wins over the world’s No, and a required hand roll is thrown', async () => {
+    settings.handRolls = 'always';
+    settings.rollFiltersDefault = { hand: { initiative: false } };
+    settings.rollFilters = { hand: { initiative: true } };
+    overlay.values = [5];
+    await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10000);
+    settings.rollFilters = {};
+    settings.handRollsRequired = true;
+    await rollD20((r) => (r.options = { type: 'initiative' }));
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+  });
+
   test('without physics decides, Ask answered automatically is the random of Foundry', async () => {
     settings.handRolls = 'ask';
     deps.ask = vi.fn(async () => false);
