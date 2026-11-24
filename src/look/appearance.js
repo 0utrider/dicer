@@ -39,7 +39,7 @@ function deepFreeze(o) {
 export const DEFAULT_APPEARANCE = deepFreeze({
   body: { type: 'resin', color: '#1f5fd1', color2: '#0b1f4a', finish: 'polished', roughness: 0.05, preset: null },
   interior: { type: 'nebula', colors: ['#8a4dff', '#22d3ee'], density: 0.6, shape: 'star', inclusion: 'flower', bubble: false, sand: false, motion: true, extra: 'none', extraColor: '#ffffff', extraDensity: 0.5 },
-  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', contrast: true, inkGlow: 1, depth: 0.5, font: 'serif', pips: false, coin: 'numbers', size: 1, weight: 0 },
+  numbers: { fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#e2b04a', contrast: true, inkGlow: 1, depth: 0.5, font: 'serif', pips: false, coin: 'numbers', size: 1, weight: 0, offsetY: 0 },
   edges: { radius: 0.5, style: 'rounded', strip: { style: 'body', color: '#e2b04a', strength: 1 } },
   glow: { color: '#ffffff', intensity: 0 },
   shapes: { d4: 'classic' },
@@ -193,6 +193,7 @@ export function normalizeAppearance(input) {
         // glyph scale and stroke weight (engrave.js uNum); the defaults draw exactly as before
         size: num(n.size, 0.6, 1.4, 1),
         weight: num(n.weight, -1, 1, 0),
+        offsetY: num(n.offsetY, -0.5, 0.5, 0), // vertical shift in face units, positive up (engrave.js uNum)
       },
       edges: {
         radius,

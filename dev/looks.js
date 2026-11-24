@@ -39,6 +39,9 @@ const VARIANTS = [
   ['dwarven-brass~raised', 'dwarven-brass', 'raised numbers', {}, { relief: 'raised' }],
   ['default~outline', 'default', 'outline numbers', {}, { fill: 'outline' }],
   ['default~holo', 'default', 'holographic numbers', {}, { fill: 'holo' }],
+  // numbers.offsetY: positive moves the numbers up along their own up (toward the face's first vertex), negative down
+  ['default~offset-up', 'default', 'numbers up 0.2', {}, { offsetY: 0.2 }],
+  ['default~offset-down', 'default', 'numbers down 0.2', {}, { offsetY: -0.2 }],
   ['default~glow', 'default', 'glow-ink numbers', {}, { fill: 'glow' }],
   ['void-star~glow', 'void-star', 'glow-ink raised numbers', {}, { fill: 'glow', relief: 'raised' }],
   // crit icons: only the d20 column shows one (on its 20); other dice keep their numbers

@@ -23,6 +23,7 @@ api.listThemes(moduleId); // copies of a module's registered themes
 - `theme` is the same shape as an entry of Dicer's world theme list:
   `{ id, name, appearance, perType?, rules?, soundMaterial?, damage? }`. Export a theme from
   Dicer's theme browser to get one.
+- `appearance.numbers.offsetY` moves the numbers (and the icons, pips and coin motifs drawn with them) up or down on the face, in face units from -0.5 to 0.5, positive up, 0 by default. It is applied after `numbers.size`, so scaling the numbers does not change it. Use it for a font whose glyphs hang below or float above the baseline (a dripping display face, say) so its numbers sit in the middle of the face.
 - The id must start with `<moduleId>.` (for example `necromancer-thrall-helper.necromancer`).
 - Registered themes live for the session only and are read-only. Register them every load: every
   player's client runs your module, so every player sees them, with no GM involved.

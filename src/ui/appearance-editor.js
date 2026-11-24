@@ -360,6 +360,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         depth: pct(form.numbers.depth),
         size: pct(form.numbers.size),
         weight: pct(form.numbers.weight),
+        offsetY: pct(form.numbers.offsetY),
         intensity: pct(form.glow.intensity),
         inkGlow: pct(form.numbers.inkGlow ?? 1),
         stripStrength: pct(form.edges.stripStrength),

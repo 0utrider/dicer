@@ -215,7 +215,7 @@ test('number size and weight reach the uNum uniform, not the program', async () 
   const plain = createDiceMaterial(opaque(), atlas, s, labels, FLAGS);
   const big = createDiceMaterial(opaque({ numbers: { size: 1.3, weight: 0.75 } }), atlas, s, labels, FLAGS);
   // an old look (no fields) gets the identity: size 1, no shift
-  expect(plain.userData.uniforms.uNum.value.toArray()).toEqual([1, 0]);
+  expect(plain.userData.uniforms.uNum.value.toArray()).toEqual([1, 0, 0]);
   expect(big.userData.uniforms.uNum.value.x).toBeCloseTo(1.3);
   expect(big.userData.uniforms.uNum.value.y).toBeCloseTo(0.75 * WEIGHT_SHIFT);
   // the safe tier keeps them (the colour mask still draws the numbers)
@@ -225,11 +225,24 @@ test('number size and weight reach the uNum uniform, not the program', async () 
   // the patched shader declares and reads it; isolate copies it
   const sh = patched(big);
   expect(sh.uniforms.uNum).toBe(big.userData.uniforms.uNum);
-  expect(sh.fragmentShader).toContain('uniform vec2 uNum;');
-  expect(sh.fragmentShader).toContain('vFaceUV / uNum.x');
+  expect(sh.fragmentShader).toContain('uniform vec3 uNum;');
+  expect(sh.fragmentShader).toContain('( vFaceUV - vec2( 0.0, uNum.z ) ) / uNum.x');
   const iso = isolateMaterial(big);
   expect(iso.userData.uniforms.uNum.value).not.toBe(big.userData.uniforms.uNum.value);
   expect(iso.userData.uniforms.uNum.value.toArray()).toEqual(big.userData.uniforms.uNum.value.toArray());
+});
+
+test('numbers.offsetY reaches uNum.z, not the program, and the shader shifts the sample point after the size scaling', async () => {
+  const { ENGRAVE_COLOR } = await import('../../src/render/shaders/engrave.js');
+  const plain = createDiceMaterial(opaque(), atlas, s, labels, FLAGS);
+  const low = createDiceMaterial(opaque({ numbers: { offsetY: -0.2 } }), atlas, s, labels, FLAGS);
+  expect(low.userData.uniforms.uNum.value.z).toBeCloseTo(-0.2);
+  expect(plain.userData.uniforms.uNum.value.z).toBe(0);
+  expect(low.customProgramCacheKey()).toBe(plain.customProgramCacheKey());
+  expect(ENGRAVE_COLOR).toContain('vec2 dcP = ( vFaceUV - vec2( 0.0, uNum.z ) ) / uNum.x;');
+  expect(ENGRAVE_COLOR).not.toContain('vFaceUV / uNum.x');
+  // the isolated copy keeps the offset
+  expect(isolateMaterial(low).userData.uniforms.uNum.value.z).toBeCloseTo(-0.2);
 });
 
 test('weight shifts the glyph distance within the field band; size scales it back to face units', async () => {
