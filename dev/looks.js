@@ -49,6 +49,11 @@ const VARIANTS = [
   ['default~number-outline-small-bold', 'default', 'number outline, size 0.6 weight 1 width 1', {}, { size: 0.6, weight: 1, outline: '#000000', outlineWidth: 1 }],
   ['default~number-outline-large', 'default', 'number outline, size 1.4 width 1', {}, { size: 1.4, outline: '#000000', outlineWidth: 1 }],
   ['default~number-outline-hollow', 'default', 'number outline, outline fill', {}, { fill: 'outline', outline: '#000000', outlineWidth: 0.5 }],
+  // roughness at the top of the slider: does a rough body look rough (matte), not polished under a clear coat
+  ['default~rough-wood', 'default', 'wood, roughness 1', {}, {}, { type: 'wood', preset: 'oak', color: '#d59662', color2: '#6d4217', roughness: 1 }],
+  ['default~mid-wood', 'default', 'wood, roughness 0.5', {}, {}, { type: 'wood', preset: 'oak', color: '#d59662', color2: '#6d4217', roughness: 0.5 }],
+  ['ruby-classic~rough', 'ruby-classic', 'opaque, roughness 1', {}, {}, { roughness: 1 }],
+  ['default~rough-pearl', 'default', 'pearl, roughness 1', {}, {}, { type: 'pearl', color: '#fffdfb', color2: '#f3dbe9', roughness: 1 }],
   ['default~glow', 'default', 'glow-ink numbers', {}, { fill: 'glow' }],
   ['void-star~glow', 'void-star', 'glow-ink raised numbers', {}, { fill: 'glow', relief: 'raised' }],
   // crit icons: only the d20 column shows one (on its 20); other dice keep their numbers

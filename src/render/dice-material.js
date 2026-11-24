@@ -60,6 +60,25 @@ export const DEFAULT_FLAGS = Object.freeze({
 const METAL_COAT = 0.001;
 
 /**
+ * Roughness above this takes the clear coat away. Every body but metal sits under a coat (opaque 0.6,
+ * marble 0.4, pearl and resin 1, wood 0.5), and a coat is mirror-sharp whatever body.roughness says, so a
+ * roughness of 1 still looked polished. From here to 1 the coat fades out (smoothly) and its own
+ * roughness rises and the specular reflection weakens, so the top of the slider reads matte. At or below
+ * it nothing changes. Metal and resin are left out: metal has no coat, and a rough resin die would lose
+ * the bright rim that its edges have always had.
+ */
+export const MATTE_FROM = 0.7;
+/** How much of the specular reflection a fully matte body loses (a rough surface also reflects less, not only blurrier). */
+const MATTE_SPECULAR = 0.55;
+/** The coat never reaches 0: three.js keys USE_CLEARCOAT on it, so a matte die keeps the same program. */
+const MATTE_COAT_MIN = 0.001;
+/** How matte a roughness is: 0 at or below MATTE_FROM, 1 at 1 (a smooth curve between). */
+export function matteOf(roughness) {
+  const k = Math.min(1, Math.max(0, (roughness - MATTE_FROM) / (1 - MATTE_FROM)));
+  return k * k * (3 - 2 * k);
+}
+
+/**
  * Body presets: MeshPhysicalMaterial parameters per body type (b: normalized body; color,
  * color2: THREE.Color). The shader side of each body lives in ./shaders/bodies.js.
  * P2-R8: every body honours b.roughness (the curated looks carry the per-finish values).
@@ -363,6 +382,12 @@ ${interior.pars}`;
   Object.assign(material.defines, p.defines);
   Object.assign(uniforms, p.uniforms);
   if (p.params) material.setValues(p.params);
+  const matte = body === 'metal' || body === 'resin' ? 0 : matteOf(a.body.roughness);
+  if (matte > 0) {
+    material.clearcoat = Math.max(material.clearcoat * (1 - matte), MATTE_COAT_MIN);
+    material.clearcoatRoughness = Math.max(material.clearcoatRoughness, matte);
+    material.specularIntensity *= 1 - MATTE_SPECULAR * matte;
+  }
   for (const k in p.chunks) chunks[k] += `\n${p.chunks[k]}`;
   // The colour-shift tint runs after the extras' colour code (patina / worn) so it tints their result.
   if (f.effects) {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { parseAtlas, layoutLabel } from '../../src/render/sdf-atlas.js';
 import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
-import { createDiceMaterial, updateLabels, isolateMaterial } from '../../src/render/dice-material.js';
+import { createDiceMaterial, updateLabels, isolateMaterial, matteOf, MATTE_FROM } from '../../src/render/dice-material.js';
 import { ENGRAVE_PARS, ENGRAVE_NORMAL, ENGRAVE_COLOR } from '../../src/render/shaders/engrave.js';
 import { NOISE_GLSL } from '../../src/render/shaders/noise.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
@@ -1018,4 +1018,69 @@ test('interiorChunk output is unchanged', async () => {
   }
   expect(interiorChunk('liquid').main).toBe(INTERIOR_MARCH);
   expect(interiorChunk('liquid').pars).toContain(INTERIOR_PARS);
+});
+
+describe('rough bodies read matte (the clear coat gives way above MATTE_FROM)', () => {
+  const body = (type, roughness, extra = {}) =>
+    createDiceMaterial(look({ body: { type, color: '#c08040', color2: '#402010', roughness, ...extra } }), atlas, s, labels, FLAGS);
+
+  test('matteOf: 0 up to the threshold, 1 at roughness 1, smooth and rising between', () => {
+    expect(MATTE_FROM).toBe(0.7);
+    for (const r of [0, 0.3, 0.5, 0.7]) expect(matteOf(r)).toBe(0);
+    expect(matteOf(1)).toBe(1);
+    expect(matteOf(0.85)).toBeCloseTo(0.5);
+    let prev = 0;
+    for (let r = 0.7; r <= 1.0001; r += 0.05) {
+      expect(matteOf(r)).toBeGreaterThanOrEqual(prev);
+      prev = matteOf(r);
+    }
+    expect(matteOf(1.5)).toBe(1); // out-of-range input stays a share
+  });
+
+  test.each([
+    ['opaque', 0.6],
+    ['marble', 0.4],
+    ['pearl', 1],
+  ])('%s: untouched at and below the threshold; at roughness 1 the coat is gone (not zero) and rougher, the specular weaker', (type, coat) => {
+    for (const r of [0, 0.3, 0.7]) {
+      const m = body(type, r);
+      expect(m.clearcoat).toBeCloseTo(coat);
+      expect(m.specularIntensity).toBe(1);
+    }
+    const rough = body(type, 1);
+    expect(rough.clearcoat).toBeCloseTo(0.001); // not 0: USE_CLEARCOAT stays defined, one program
+    expect(rough.clearcoatRoughness).toBeCloseTo(1);
+    expect(rough.specularIntensity).toBeCloseTo(0.45);
+    const mid = body(type, 0.85);
+    expect(mid.clearcoat).toBeLessThan(coat);
+    expect(mid.clearcoat).toBeGreaterThan(0.001);
+    expect(mid.specularIntensity).toBeLessThan(1);
+    expect(mid.specularIntensity).toBeGreaterThan(0.45);
+  });
+
+  test('metal and resin are never touched; roughness is not part of the program', () => {
+    const smooth = body('metal', 0.2);
+    const rough = body('metal', 1);
+    expect(rough.clearcoat).toBe(smooth.clearcoat);
+    expect(rough.specularIntensity).toBe(1);
+    const resin = body('resin', 1);
+    expect(resin.clearcoat).toBeCloseTo(1);
+    expect(resin.clearcoatRoughness).toBe(body('resin', 0.3).clearcoatRoughness);
+    expect(resin.specularIntensity).toBe(1);
+    const a = body('opaque', 0.3);
+    const b = body('opaque', 1);
+    expect(b.customProgramCacheKey()).toBe(a.customProgramCacheKey());
+    expect(b.userData.programKey).toBe(a.userData.programKey);
+    expect(b.clearcoat).toBeGreaterThan(0); // the same compiled program (three keys it on clearcoat > 0)
+  });
+
+  test('a look with the extras chunk loaded (wood) takes the same curve', async () => {
+    _setLookExtrasImport(() => import('../../src/render/extras/look-extras.js'));
+    await requestLookExtras();
+    const smooth = body('wood', 0.5, { preset: 'oak' });
+    const rough = body('wood', 1, { preset: 'oak' });
+    expect(smooth.clearcoat).toBeCloseTo(0.5);
+    expect(rough.clearcoat).toBeCloseTo(0.001);
+    expect(rough.specularIntensity).toBeCloseTo(0.45);
+  });
 });

@@ -43,6 +43,11 @@ const SHOTS = [
   // the widest outline where the field reaches least (small, bold) and most (large): the band must not be cut square
   ['default~number-outline-small-bold', 'd20'],
   ['default~number-outline-large', 'd20'],
+  // roughness 1 (matte) beside a mid roughness
+  ['default~rough-wood', 'd20'],
+  ['default~mid-wood', 'd20'],
+  ['ruby-classic~rough', 'd20'],
+  ['default~rough-pearl', 'd20'],
 ];
 const server = spawn(
   process.execPath,
