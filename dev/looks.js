@@ -42,6 +42,13 @@ const VARIANTS = [
   // numbers.offsetY: positive moves the numbers up along their own up (toward the face's first vertex), negative down
   ['default~offset-up', 'default', 'numbers up 0.2', {}, { offsetY: 0.2 }],
   ['default~offset-down', 'default', 'numbers down 0.2', {}, { offsetY: -0.2 }],
+  // number outline (numbers.outline): on a flat body, on a see-through resin with a busy inside, with the hollow fill and raised relief
+  ['default~number-outline', 'default', 'number outline', {}, { color: '#e2b04a', outline: '#000000', outlineWidth: 0.6 }],
+  ['galaxy-nebula~number-outline', 'galaxy-nebula', 'number outline on resin', {}, { color: '#8a4dff', outline: '#000000', outlineWidth: 0.7 }],
+  ['smoke-swirl~number-outline-raised', 'smoke-swirl', 'number outline, raised', {}, { relief: 'raised', outline: '#ffffff', outlineWidth: 0.5 }],
+  ['default~number-outline-small-bold', 'default', 'number outline, size 0.6 weight 1 width 1', {}, { size: 0.6, weight: 1, outline: '#000000', outlineWidth: 1 }],
+  ['default~number-outline-large', 'default', 'number outline, size 1.4 width 1', {}, { size: 1.4, outline: '#000000', outlineWidth: 1 }],
+  ['default~number-outline-hollow', 'default', 'number outline, outline fill', {}, { fill: 'outline', outline: '#000000', outlineWidth: 0.5 }],
   ['default~glow', 'default', 'glow-ink numbers', {}, { fill: 'glow' }],
   ['void-star~glow', 'void-star', 'glow-ink raised numbers', {}, { fill: 'glow', relief: 'raised' }],
   // crit icons: only the d20 column shows one (on its 20); other dice keep their numbers

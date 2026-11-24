@@ -34,6 +34,15 @@ const SHOTS = [
   ['default~offset-down', 'd20'],
   ['default~offset-up', 'd4'],
   ['default~offset-up', 'd10'],
+  // number outline (numbers.outline): flat body, resin with a busy inside (and without, for comparison), raised, hollow fill
+  ['default~number-outline', 'd20'],
+  ['galaxy-nebula', 'd20'],
+  ['galaxy-nebula~number-outline', 'd20'],
+  ['smoke-swirl~number-outline-raised', 'd20'],
+  ['default~number-outline-hollow', 'd20'],
+  // the widest outline where the field reaches least (small, bold) and most (large): the band must not be cut square
+  ['default~number-outline-small-bold', 'd20'],
+  ['default~number-outline-large', 'd20'],
 ];
 const server = spawn(
   process.execPath,

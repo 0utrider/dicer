@@ -6,6 +6,7 @@ import {
   FONT_IDS_BUILTIN,
   appearanceKey,
   fallbackLook,
+  hasOutline,
   needsLookExtras,
   normalizeAppearance,
   programKey,
@@ -675,6 +676,38 @@ describe('numbers.offsetY', () => {
     expect(appearanceKey(b)).not.toBe(appearanceKey(a));
     expect(needsLookExtras(b)).toBe(false);
     expect(fallbackLook(b).numbers.offsetY).toBe(-0.2);
+  });
+});
+
+describe('numbers.outline and numbers.outlineWidth', () => {
+  test('stored only with a colour: hex and short hex are kept (lower-cased), anything else is no outline; width 0..1, default 0.8', () => {
+    expect(normalizeAppearance({}).numbers).not.toHaveProperty('outline');
+    expect(normalizeAppearance({}).numbers).not.toHaveProperty('outlineWidth');
+    expect(normalizeAppearance({ numbers: { outline: '#FF0000' } }).numbers).toMatchObject({ outline: '#ff0000', outlineWidth: 0.8 });
+    expect(normalizeAppearance({ numbers: { outline: '#0f0', outlineWidth: 1 } }).numbers).toMatchObject({ outline: '#00ff00', outlineWidth: 1 });
+    for (const bad of [null, undefined, '', 'red', '#12', 5, true, {}])
+      expect(normalizeAppearance({ numbers: { outline: bad, outlineWidth: 0.9 } }).numbers).not.toHaveProperty('outline');
+    for (const bad of [-0.1, 1.1, NaN, '0.5', null]) expect(normalizeAppearance({ numbers: { outline: '#000000', outlineWidth: bad } }).numbers.outlineWidth).toBe(0.8);
+    expect(normalizeAppearance({ numbers: { outline: '#000000', outlineWidth: 0 } }).numbers.outlineWidth).toBe(0);
+  });
+  test('an outline needs the look-extras chunk and adds a program part; its colour and width are uniforms; the fallback look drops it', () => {
+    const a = normalizeAppearance({});
+    const b = normalizeAppearance({ numbers: { outline: '#000000' } });
+    const flags = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32 };
+    expect(needsLookExtras(b)).toBe(true);
+    expect(programKey(b, flags)).toBe(`${programKey(a, flags)}|ol`);
+    expect(programKey(normalizeAppearance({ numbers: { outline: '#ffffff', outlineWidth: 0.9 } }), flags)).toBe(programKey(b, flags));
+    // width 0 is no outline everywhere: the key, the extras need and (in look-extras.test.js) the patch
+    const zero = normalizeAppearance({ numbers: { outline: '#000000', outlineWidth: 0 } });
+    expect(programKey(zero, flags)).toBe(programKey(a, flags));
+    expect(needsLookExtras(zero)).toBe(false);
+    expect(hasOutline(zero.numbers)).toBe(false);
+    expect(hasOutline(b.numbers)).toBe(true);
+    // the fallback look drops both keys, keeping the "stored only with a colour" shape
+    expect(fallbackLook(b).numbers).not.toHaveProperty('outline');
+    expect(fallbackLook(b).numbers).not.toHaveProperty('outlineWidth');
+    expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'holo' } })).numbers).not.toHaveProperty('outline');
+    expect(appearanceKey(b)).not.toBe(appearanceKey(a));
   });
 });
 

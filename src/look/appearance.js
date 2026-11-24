@@ -176,6 +176,7 @@ export function normalizeAppearance(input) {
     };
     if (body.type !== 'resin') interior.type = 'none';
     const radius = edgeRadius(e, D.edges.radius);
+    const outline = color(n.outline, null);
     return {
       body,
       interior,
@@ -194,6 +195,8 @@ export function normalizeAppearance(input) {
         size: num(n.size, 0.6, 1.4, 1),
         weight: num(n.weight, -1, 1, 0),
         offsetY: num(n.offsetY, -0.5, 0.5, 0), // vertical shift in face units, positive up (engrave.js uNum)
+        // an outline around the numbers (extras/outline.js): stored only with a colour, width 0..1 of the widest
+        ...(outline && { outline, outlineWidth: num(n.outlineWidth, 0, 1, 0.8) }),
       },
       edges: {
         radius,
@@ -233,6 +236,9 @@ export function appearanceKey(a) {
  * so every safe look shares one key. edges.style is not part of it: no define depends on it
  * (it only selects the geometry).
  */
+/** Whether the numbers have an outline to draw: a colour and a width above 0 (one rule for the program key, the extras need and the patch). */
+export const hasOutline = (n) => !!n.outline && n.outlineWidth > 0;
+
 export function programKey(a, flags) {
   if (flags.safe) return ['opaque', '-', 'none', 'eng0', 'glow0', 'fx0', 'safe1'].join('|');
   const steps = flags.interiorSteps;
@@ -248,6 +254,7 @@ export function programKey(a, flags) {
   if (active && flags.insideMotion && motion && (type !== 'shape' || SHAPES.indexOf(shape) > 3)) parts.push('mo'); // living insides (the look-extras chunk's)
   const { fill, relief } = a.numbers;
   if (FILLS.indexOf(fill) > 3 || relief === 'raised') parts.push(`n:${fill}${relief === 'raised' ? '+r' : ''}`);
+  if (hasOutline(a.numbers)) parts.push('ol'); // the number outline (its colour and width are uniforms)
   if (stripActive(a)) parts.push(a.edges.strip.style == 'glow' ? 'e:glow' : 'e'); // paint and metal: same GLSL
   return parts.join('|');
 }
@@ -263,12 +270,21 @@ export const needsLookExtras = (a) =>
   a.numbers.relief === 'raised' ||
   !!(a.numbers.icons.crit || a.numbers.icons.fumble || a.numbers.pips) ||
   a.numbers.coin !== 'numbers' ||
+  hasOutline(a.numbers) ||
   !!BODY_PRESETS[a.body.type] ||
   a.body.type === 'jelly' ||
   (a.body.type === 'metal' && AGED.includes(a.body.finish)) ||
   stripActive(a) ||
   !!a.bodyImage ||
   (a.body.type === 'resin' && (a.interior.type in NEW_INSIDES || INSIDE_EXTRA(a) !== '' || (a.interior.type === 'shape' && SHAPES.indexOf(a.interior.shape) > 3)));
+
+/** The numbers without their outline (the look-extras chunk draws it): both keys go, so it keeps the "stored only with a colour" shape. */
+const withoutOutline = (n) => {
+  const c = { ...n };
+  delete c.outline;
+  delete c.outlineWidth;
+  return c;
+};
 
 /** The look a die draws while the chunk is missing (and for safe flags): today's body, plain fill, engraved, numbers. */
 export const fallbackLook = (a) =>
@@ -291,7 +307,7 @@ export const fallbackLook = (a) =>
         },
         edges: { ...a.edges, strip: { ...a.edges.strip, style: 'body' } },
         numbers: {
-          ...a.numbers,
+          ...withoutOutline(a.numbers),
           fill: { outline: 'paint', holo: 'gold', glow: 'paint' }[a.numbers.fill] || a.numbers.fill,
           relief: 'engraved',
           icons: { crit: null, fumble: null },

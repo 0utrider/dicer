@@ -3,9 +3,10 @@ import * as THREE from 'three';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
 import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras-loader.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
-import { ENGRAVE_COLOR, RIM_WIDTH } from '../../src/render/shaders/engrave.js';
+import { ENGRAVE_COLOR, RIM_WIDTH, WEIGHT_SHIFT } from '../../src/render/shaders/engrave.js';
 import { RAISED_REPLACE } from '../../src/render/extras/relief.js';
 import { OUTLINE_WIDTH, GLOW_INK } from '../../src/render/extras/fills.js';
+import { OUTLINE_MAX, fieldReach, outlineBand, outlinePatch } from '../../src/render/extras/outline.js';
 import { stripGlslParts } from '../../build/glsl-minify-plugin.js';
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { normalizeAppearance, programKey } from '../../src/look/appearance.js';
@@ -14,7 +15,7 @@ import { PRESET_PARAMS, iridescentPatch } from '../../src/render/extras/bodies/i
 import { PRESET_PARAMS as GEM_PARAMS, gemPatch } from '../../src/render/extras/bodies/gem.js';
 import { PRESET_PARAMS as WOOD_PARAMS, woodPatch } from '../../src/render/extras/bodies/wood.js';
 import { LIP, metalFinishPatch } from '../../src/render/extras/bodies/metal-finishes.js';
-import { BORDER, FX_COLOR } from '../../src/render/shaders/bodies.js';
+import { BORDER, FX_COLOR, RESIN_REFRACTION } from '../../src/render/shaders/bodies.js';
 import { mergePatches } from '../../src/render/extras/merge.js';
 import * as lookExtras from '../../src/render/extras/look-extras.js';
 import { insidePatch, INSIDE_TINT, marchWithUp, MODULES } from '../../src/render/extras/insides/index.js';
@@ -255,6 +256,73 @@ describe('bodies', () => {
     expect(off.chunks.coat).not.toContain('uDcLines');
     // the other presets never take the switch
     expect(iridescentPatch(look({ body: { type: 'iridescent', preset: 'opal', streaks: false } })).uniforms.uDcLines.value).toBe(1); // not kept on other styles
+  });
+
+  test('number outline: no patch without a colour or at width 0; a uniform of colour and width, a colour chunk, and the resin replacement', () => {
+    expect(outlinePatch(look({}))).toEqual({});
+    expect(outlinePatch(look({ numbers: { outline: '#000000', outlineWidth: 0 } }))).toEqual({});
+    const p = outlinePatch(look({ numbers: { outline: '#ff0000', outlineWidth: 0.5 } }));
+    const v = p.uniforms.uOutline.value;
+    expect(v.w).toBeCloseTo(OUTLINE_MAX * 0.5);
+    expect(v.x).toBeCloseTo(new THREE.Color('#ff0000').r);
+    expect(v.y).toBeCloseTo(0);
+    expect(p.chunks.pars).toContain('uniform vec4 uOutline;');
+    expect(p.chunks.colorPost).toContain('float dcOutl = ( 1.0 - smoothstep( - dcAA, dcAA, dcD ) )');
+    // the band is outside the glyph: it never reads dcMask, so it works with every fill
+    expect(p.chunks.colorPost).not.toContain('dcMask');
+  });
+
+  test('number outline band: scaled by outlineWidth, clamped to the field reach at small sizes and thick weights', () => {
+    const num = (o) => look({ numbers: { outline: '#000000', ...o } }).numbers;
+    // a die's atlas gives the reach: pad px times the face units one px spans (0.62 / digitHeight)
+    const atlas = { pad: 4, digitHeight: 45 };
+    expect(fieldReach(atlas)).toBeCloseTo((4 * 0.62) / 45);
+    expect(fieldReach(undefined)).toBeGreaterThan(0.04); // no atlas: a default
+    expect(fieldReach({ pad: 0, digitHeight: 0 })).toBe(fieldReach(undefined));
+    // normal size and weight: the full range is available
+    expect(outlineBand(num({ outlineWidth: 1 }), atlas)).toBeCloseTo(OUTLINE_MAX);
+    expect(outlineBand(num({ outlineWidth: 0.4 }), atlas)).toBeCloseTo(OUTLINE_MAX * 0.4);
+    // the reviewer's case: size 0.6, weight 1, widest band wants 0.035 but the field gives less there
+    const small = outlineBand(num({ outlineWidth: 1, size: 0.6, weight: 1 }), atlas);
+    expect(small).toBeLessThan(OUTLINE_MAX);
+    expect(small).toBeLessThanOrEqual(0.6 * (fieldReach(atlas) - WEIGHT_SHIFT)); // inside the field at that size and weight
+    expect(small).toBeGreaterThan(0);
+    // a thin stroke (negative weight) has the field to itself; a larger number has more reach
+    expect(outlineBand(num({ outlineWidth: 1, size: 0.6, weight: -1 }), atlas)).toBeGreaterThanOrEqual(outlineBand(num({ outlineWidth: 1, size: 0.6, weight: 0 }), atlas));
+    expect(outlineBand(num({ outlineWidth: 1, size: 1.4, weight: 1 }), atlas)).toBeCloseTo(OUTLINE_MAX);
+    // monotonic in width, never negative, and a small width is untouched by the clamp
+    expect(outlineBand(num({ outlineWidth: 0.1, size: 0.6, weight: 1 }), atlas)).toBeCloseTo(OUTLINE_MAX * 0.1);
+    // the patch hands the clamped band to the uniform, from the die's atlas
+    const p = outlinePatch(look({ numbers: { outline: '#000000', outlineWidth: 1, size: 0.6, weight: 1 } }), { atlas });
+    expect(p.uniforms.uOutline.value.w).toBeCloseTo(small);
+    expect(outlinePatch(look({ numbers: { outline: '#000000', outlineWidth: 0 } }))).toEqual({});
+  });
+
+  test('number outline on resin: the replacement matches the real resin lighting (also after GLSL stripping) and makes the band count as covered', () => {
+    const [from, to] = outlinePatch(look({ numbers: { outline: '#000000' } })).replace[0];
+    expect(count(RESIN_REFRACTION, from)).toBe(1);
+    expect(stripGlslParts([RESIN_REFRACTION]).join('')).toContain(from);
+    expect(RESIN_REFRACTION.replace(from, to)).toContain('1.0 - max( dcMask, dcOutl )');
+  });
+
+  test('number outline in a material: a program part and a uniform; the shader has the band, and only resin takes the lighting change', () => {
+    const plainKey = createDiceMaterial(look({ body: { type: 'opaque' } }), atlas, s, labels, FLAGS).userData.programKey;
+    const flat = createDiceMaterial(look({ body: { type: 'opaque' }, numbers: { outline: '#000000', outlineWidth: 0.4 } }), atlas, s, labels, FLAGS);
+    const resin = createDiceMaterial(look({ body: { type: 'resin' }, numbers: { outline: '#000000' } }), atlas, s, labels, FLAGS);
+    const resinPlain = createDiceMaterial(look({ body: { type: 'resin' } }), atlas, s, labels, FLAGS);
+    expect(flat.userData.programKey).toBe(`${plainKey}|ol`);
+    expect(flat.userData.uniforms.uOutline.value.w).toBeCloseTo(OUTLINE_MAX * 0.4);
+    const fs = patched(flat).fragmentShader;
+    expect(count(fs, 'float dcOutl')).toBe(1);
+    expect(count(fs, 'uniform vec4 uOutline;')).toBe(1);
+    expect(fs.indexOf('float dcOutl')).toBeGreaterThan(fs.indexOf(ENGRAVE_COLOR.trim().split('\n')[0]));
+    expect(fs).not.toContain('max( dcMask, dcOutl )');
+    expect(patched(resin).fragmentShader).toContain('1.0 - max( dcMask, dcOutl )');
+    expect(patched(resinPlain).fragmentShader).not.toContain('dcOutl');
+    expect(resinPlain.userData.uniforms.uOutline).toBeUndefined();
+    // changing the colour or width changes the uniform, not the program
+    const wide = createDiceMaterial(look({ body: { type: 'opaque' }, numbers: { outline: '#ffffff', outlineWidth: 1 } }), atlas, s, labels, FLAGS);
+    expect(wide.userData.programKey).toBe(flat.userData.programKey);
   });
 
   test('body modules check their own type; an unknown preset draws as the first; mergePatches lives in merge.js', () => {
