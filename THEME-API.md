@@ -31,6 +31,21 @@ api.listThemes(moduleId); // copies of a module's registered themes
 - In Dicer's theme browser they show among all themes, tagged with your module's title. Players can
   duplicate one into their own themes to change it; the GM can make one the world default.
 
+## Fonts
+
+```js
+api.registerFont(moduleId, { id: 'my-module.lexend', label: 'Lexend', file: 'modules/my-module/fonts/Lexend-Bold.woff2' });
+api.unregisterFont(id);
+api.listFonts(moduleId); // copies of a module's registered fonts
+```
+
+Registered fonts show in the appearance editor's **Numbers** section as a row of buttons under the
+module's title. Picking one sets the font to `file:<file>`, the same value a theme can already store
+in `numbers.font`, so a theme made from it works without the module's registration (as long as the
+file is served). `id` starts with `<moduleId>.`; `file` follows the rules of a `file:` font (a
+relative path, no `..`, a font file extension). Registering an id again replaces it, and
+`dicer.fontsChanged` fires on every change.
+
 ## Actors
 
 ```js

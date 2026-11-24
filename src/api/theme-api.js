@@ -5,6 +5,8 @@
  * - registerTheme(theme, {moduleId}): a read-only theme for this session, id `<moduleId>.<slug>`.
  *   Every client runs the registering module, so it resolves for every player with no GM involved.
  *   Re-registering an id replaces it. Fires `dicer.themesChanged`.
+ * - registerFont(moduleId, {id, label, file}): a number font in the appearance editor, under the
+ *   module's name. It is the `file:<file>` font a theme can already name.
  * - hasActorChoice / getActorTheme / setActorTheme / clearActorTheme: an actor's dice choice (its
  *   flags.dicer.appearance, as the actor or token sees it).
  * - registerDefaultProvider(moduleId, fn): fn(actor) -> theme id | null, asked (in registration
@@ -12,6 +14,8 @@
  * - warmThemes(ids): compile these themes' shaders ahead (themes applied outside actors).
  */
 import { ADDON_THEMES, findTheme, normalizeTheme } from '../themes/themes.js';
+import { normalizeAppearance } from '../look/appearance.js';
+import { ADDON_FONTS } from './addon-fonts.js';
 import { chosenRef } from '../compat/user-looks.js';
 import { PROVIDERS, WARM_THEMES, named, flagChoice, providedTheme } from './theme-registry.js';
 
@@ -38,6 +42,13 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       /* a listener's error is its own */
     }
   };
+  const fontsChanged = () => {
+    try {
+      hooks?.callAll?.('dicer.fontsChanged');
+    } catch {
+      /* a listener's error is its own */
+    }
+  };
   const isModule = (id) => typeof id === 'string' && !!modules()?.get?.(id);
   return {
     /** Registers (or replaces) a module's read-only theme; true when it is in. */
@@ -51,6 +62,41 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       ADDON_THEMES.set(t.id, Object.freeze({ ...t, moduleId }));
       changed();
       return true;
+    },
+    /**
+     * Offers a number font (a font file served by a module) in the appearance editor, under the
+     * module's name: `{ id, label, file }`. `id` starts with `<moduleId>.`; `file` is the path
+     * a theme's `numbers.font: "file:<path>"` takes (under the same rules). Registering an id
+     * again replaces it. Fires `dicer.fontsChanged`.
+     */
+    registerFont(moduleId, font) {
+      const file = font?.file;
+      const usable =
+        isModule(moduleId) &&
+        isObj(font) &&
+        typeof font.id === 'string' &&
+        font.id.startsWith(`${moduleId}.`) &&
+        typeof font.label === 'string' &&
+        font.label.trim() &&
+        typeof file === 'string' &&
+        normalizeAppearance({ numbers: { font: `file:${file}` } }).numbers.font === `file:${file}`;
+      if (!usable) {
+        console.warn('Dicer | registerFont: needs an installed moduleId, an id starting with "<moduleId>.", a label and a usable font file path', font?.id);
+        return false;
+      }
+      ADDON_FONTS.set(font.id, { id: font.id, moduleId, label: font.label.trim(), file });
+      fontsChanged();
+      return true;
+    },
+    /** Removes a registered font (true when there was one). */
+    unregisterFont(id) {
+      const had = ADDON_FONTS.delete(id);
+      if (had) fontsChanged();
+      return had;
+    },
+    /** The registered fonts (copies), all or one module's. */
+    listFonts(moduleId) {
+      return [...ADDON_FONTS.values()].filter((f) => !moduleId || f.moduleId === moduleId).map((f) => ({ ...f }));
     },
     /** Removes a module's theme (true when there was one). */
     unregisterTheme(id) {

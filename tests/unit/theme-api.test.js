@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createThemeApi } from '../../src/api/theme-api.js';
 import { PROVIDERS, WARM_THEMES, flagChoice, providedTheme } from '../../src/api/theme-registry.js';
 import { ADDON_THEMES, findTheme } from '../../src/themes/themes.js';
+import { ADDON_FONTS, fontGroups } from '../../src/api/addon-fonts.js';
 import { galleryEntries } from '../../src/ui/theme-form.js';
 
 const MOD = 'necromancer-thrall-helper';
@@ -24,6 +25,7 @@ const actor = (flag, isOwner = true) => {
 };
 
 afterEach(() => {
+  ADDON_FONTS.clear();
   ADDON_THEMES.clear();
   PROVIDERS.clear();
 });
@@ -149,5 +151,43 @@ describe('warmThemes', () => {
     expect(api.warmThemes()).toBe(0);
     expect(WARM_THEMES.size).toBe(0);
     expect(hooks.callAll).not.toHaveBeenCalled();
+  });
+});
+
+describe('registerFont', () => {
+  const font = (slug, extra = {}) => ({ id: `${MOD}.${slug}`, label: 'Lexend', file: 'modules/necromancer-thrall-helper/fonts/Lexend-Bold.woff2', ...extra });
+
+  test('registers, replaces, lists copies, fires dicer.fontsChanged and unregisters', () => {
+    const { api, hooks } = make();
+    expect(api.registerFont(MOD, font('lexend'))).toBe(true);
+    expect(hooks.callAll).toHaveBeenCalledWith('dicer.fontsChanged');
+    expect(api.registerFont(MOD, font('lexend', { label: ' Lexend Bold ' }))).toBe(true);
+    expect(api.listFonts(MOD)).toEqual([{ id: `${MOD}.lexend`, moduleId: MOD, label: 'Lexend Bold', file: font('x').file }]);
+    api.listFonts(MOD)[0].label = 'changed';
+    expect(api.listFonts()[0].label).toBe('Lexend Bold'); // copies
+    expect(api.unregisterFont(`${MOD}.lexend`)).toBe(true);
+    expect(api.unregisterFont(`${MOD}.lexend`)).toBe(false);
+  });
+
+  test('needs an installed module, a namespaced id, a label and a file path a theme could name', () => {
+    const { api } = make();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(api.registerFont('missing', font('x'))).toBe(false);
+    expect(api.registerFont(MOD, font('x', { id: 'other.x' }))).toBe(false);
+    expect(api.registerFont(MOD, font('x', { label: '  ' }))).toBe(false);
+    expect(api.registerFont(MOD, font('x', { file: '/etc/passwd' }))).toBe(false); // absolute
+    expect(api.registerFont(MOD, font('x', { file: 'fonts/../secret.woff2' }))).toBe(false);
+    expect(api.registerFont(MOD, font('x', { file: 'fonts/readme.txt' }))).toBe(false); // not a font file
+    expect(api.registerFont(MOD)).toBe(false);
+    expect(ADDON_FONTS.size).toBe(0);
+    warn.mockRestore();
+  });
+
+  test('fontGroups lists the fonts by module, in registration order', () => {
+    const { api } = make();
+    api.registerFont(MOD, font('a', { label: 'A' }));
+    api.registerFont('other', { id: 'other.b', label: 'B', file: 'modules/other/b.woff2' });
+    api.registerFont(MOD, font('c', { label: 'C' }));
+    expect(fontGroups().map((g) => [g.moduleId, g.fonts.map((f) => f.label)])).toEqual([[MOD, ['A', 'C']], ['other', ['B']]]);
   });
 });

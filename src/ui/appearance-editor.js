@@ -47,6 +47,7 @@ function damageRows(chosen = {}) {
 /** A scene's own title card lines (['', ''] for none). */
 const sceneCardOf = (id) => SCENE_CATALOG.find((s) => s.id === id)?.card ?? ['', ''];
 import { jb2aSource } from '../jb2a/source.js';
+import { fontGroups } from '../api/addon-fonts.js';
 import { pickJb2a, sequencerDatabase } from './jb2a-picker.js';
 import {
   BODY_TYPES,
@@ -186,6 +187,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       editType: AppearanceEditor.#onEditType,
       sameAsDefault: AppearanceEditor.#onSameAsDefault,
       pickFont: AppearanceEditor.#onPickFont,
+      addonFont: AppearanceEditor.#onAddonFont,
       pickFace: AppearanceEditor.#onPickFace,
       pickBodyImage: AppearanceEditor.#onPickBodyImage,
       clearBodyImage: AppearanceEditor.#onClearBodyImage,
@@ -336,6 +338,11 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       strips: active(STRIP_STYLES, form.edges.strip, 'DICER.Appearance.Strip.'),
       fontKinds: active(FONT_KINDS, form.numbers.fontKind, 'DICER.Appearance.FontKind.'),
       fontSuggestions: FONT_SUGGESTIONS,
+      // fonts add-on modules registered (api.registerFont): one row of chips per module
+      addonFonts: fontGroups().map((g) => ({
+        title: globalThis.game?.modules?.get?.(g.moduleId)?.title ?? g.moduleId,
+        fonts: g.fonts.map((f) => ({ ...f, active: form.numbers.fontKind === 'file' && form.numbers.fontFile === f.file })),
+      })),
       fontMessage,
       canBrowse: Boolean(globalThis.foundry?.applications?.apps?.FilePicker),
       ...this.#faceContext(form),
@@ -785,6 +792,15 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         this.render();
       },
     }).render({ force: true });
+  }
+
+  /** An add-on module's font (api.registerFont): the same as naming its file. */
+  static #onAddonFont(event, target) {
+    const file = String(target.dataset.file ?? '');
+    if (!file) return;
+    this.#form = setField(setField(this.#form, 'numbers.fontKind', 'file'), 'numbers.fontFile', file);
+    this.#scheduler.schedule(this.#previewTheme());
+    this.render();
   }
 
   static async #onCopyLook() {
