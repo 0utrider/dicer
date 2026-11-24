@@ -637,6 +637,26 @@ describe('numbers.size and numbers.weight', () => {
   });
 });
 
+describe('body.streaks (Dichroic glass layer lines)', () => {
+  test('only a false value on a Dichroic glass body is kept; every other look has no such field', () => {
+    expect(normalizeAppearance({ body: { type: 'iridescent', preset: 'dichroic', streaks: false } }).body.streaks).toBe(false);
+    // the other iridescent styles never keep it, so Dichroic to Opal and back starts with the lines on
+    for (const preset of ['opal', 'chameleon']) expect(normalizeAppearance({ body: { type: 'iridescent', preset, streaks: false } }).body).not.toHaveProperty('streaks');
+    for (const v of [true, undefined, null, 0, 'false'])
+      expect(normalizeAppearance({ body: { type: 'iridescent', preset: 'dichroic', streaks: v } }).body).not.toHaveProperty('streaks');
+    for (const type of ['opaque', 'resin', 'metal', 'pearl', 'gem'])
+      expect(normalizeAppearance({ body: { type, streaks: false } }).body).not.toHaveProperty('streaks');
+    expect(normalizeAppearance({}).body).not.toHaveProperty('streaks');
+  });
+  test('the material key follows it (a uniform, not a define: the program key does not)', () => {
+    const a = normalizeAppearance({ body: { type: 'iridescent', preset: 'dichroic' } });
+    const b = normalizeAppearance({ body: { type: 'iridescent', preset: 'dichroic', streaks: false } });
+    const flags = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32 };
+    expect(programKey(b, flags)).toBe(programKey(a, flags));
+    expect(appearanceKey(b)).not.toBe(appearanceKey(a));
+  });
+});
+
 describe('face images (appearance.faces)', () => {
   test('valid entries kept per die type; bad types, values and paths dropped', () => {
     const a = normalizeAppearance({

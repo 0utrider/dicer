@@ -60,6 +60,7 @@ const VARIANTS = [
   ['iridescent~chameleon', 'default', 'chameleon', {}, {}, { type: 'iridescent', preset: 'chameleon', ...PRESET_COLORS.chameleon }],
   ['iridescent~opal', 'default', 'opal', {}, {}, { type: 'iridescent', preset: 'opal', ...PRESET_COLORS.opal }],
   ['iridescent~dichroic', 'default', 'dichroic glass', {}, {}, { type: 'iridescent', preset: 'dichroic', ...PRESET_COLORS.dichroic }],
+  ['iridescent~dichroic-smooth', 'default', 'dichroic glass, layer lines off', {}, {}, { type: 'iridescent', preset: 'dichroic', streaks: false, ...PRESET_COLORS.dichroic }],
   // gem bodies
   ['gem~amethyst', 'default', 'amethyst', {}, {}, { type: 'gem', preset: 'amethyst', ...PRESET_COLORS.amethyst }],
   ['gem~malachite', 'default', 'malachite', {}, {}, { type: 'gem', preset: 'malachite', ...PRESET_COLORS.malachite }],

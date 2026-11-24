@@ -862,7 +862,9 @@
         "SecondColor": "Second colour",
         "Finish": "Finish",
         "Roughness": "Roughness",
-        "Preset": "Style"
+        "Preset": "Style",
+        "LayerLines": "Layer lines",
+        "LayerLinesHint": "The thin bright lines across Dichroic glass. Off: smooth glass, with the same colour turn."
       },
       "BodyType": {
         "opaque": "Opaque",

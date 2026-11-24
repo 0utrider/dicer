@@ -23,6 +23,11 @@ const SHOTS = [
   ['smoke-swirl', 'd12'],
   ['ember-core', 'd8'],
   ['default', 'd2'],
+  // Dichroic glass with and without its layer lines (body.streaks)
+  ['iridescent~dichroic', 'd6'],
+  ['iridescent~dichroic-smooth', 'd6'],
+  ['iridescent~dichroic', 'd20'],
+  ['iridescent~dichroic-smooth', 'd20'],
 ];
 const server = spawn(
   process.execPath,

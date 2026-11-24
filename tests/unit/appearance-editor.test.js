@@ -1294,6 +1294,24 @@ describe('number size and weight in the form', () => {
     expect(f.numbers).toMatchObject({ size: 0.75, weight: 0.6 });
     expect(appearanceFromForm(f).numbers).toMatchObject({ size: 0.75, weight: 0.6 });
   });
+  it('the Layer lines switch shows for Dichroic glass only, defaults on, and a false value round-trips', () => {
+    expect(visibleSections({ body: { type: 'iridescent', preset: 'dichroic' } }).layerLines).toBe(true);
+    for (const body of [{ type: 'iridescent', preset: 'opal' }, { type: 'iridescent', preset: 'chameleon' }, { type: 'pearl' }, { type: 'resin' }])
+      expect(visibleSections({ body }).layerLines).toBe(false);
+    const on = formFromAppearance({ body: { type: 'iridescent', preset: 'dichroic' } });
+    expect(on.body.streaks).toBe(true);
+    expect(appearanceFromForm(on).body).not.toHaveProperty('streaks');
+    const off = setField(on, 'body.streaks', false);
+    expect(off.body.streaks).toBe(false);
+    expect(appearanceFromForm(off).body.streaks).toBe(false);
+    expect(formFromAppearance({ body: { type: 'iridescent', preset: 'dichroic', streaks: false } }).body.streaks).toBe(false);
+    const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+    expect(resolve(lang, 'DICER.Appearance.Body.LayerLines')).toBeTypeOf('string');
+    expect(resolve(lang, 'DICER.Appearance.Body.LayerLinesHint')).toBeTypeOf('string');
+    const hbs = readFileSync('templates/appearance-editor.hbs', 'utf8');
+    expect(hbs).toContain('{{#if show.layerLines}}');
+    expect(hbs).toContain('<input type="checkbox" name="body.streaks" {{#if form.body.streaks}}checked{{/if}}>');
+  });
   it('the numbers section has both sliders, with live outputs and labels', () => {
     const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
     expect(resolve(lang, 'DICER.Appearance.Numbers.Size')).toBeTypeOf('string');
