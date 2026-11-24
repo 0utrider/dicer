@@ -110,6 +110,7 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       preloadReferencedStubs();
     });
   };
+  let revisions = 0; // never resets, so a re-registered hook is never mistaken for a cached one
   /**
    * Registers an animated material for dice: `{ beforeShaderCompile(shader, material, { themeId,
    * dieType }), cacheKey }`. `cacheKey` (starting with `<moduleId>-` or `<moduleId>.`) names it: a look
@@ -135,7 +136,7 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       shader.fragmentShader = `uniform float uTime;\n#define vDicerPosition vLocalPos\n${shader.fragmentShader}`;
       run(shader, mat, { themeId, dieType });
     };
-    const rev = (MATERIALS.get(id)?.rev ?? 0) + 1;
+    const rev = ++revisions;
     // key: the cache key part of dice and programs; the revision makes a re-registered hook a new material
     MATERIALS.set(id, { hook, cacheKey: id, rev, key: `${id}@${rev}`, moduleId, themeId });
     return id;
@@ -152,6 +153,8 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       if (material !== undefined) {
         const id = registerMaterial(moduleId, material, theme.id);
         if (!id) return false;
+        // a different cacheKey than the theme's earlier one: the old entry goes
+        for (const [key, m] of MATERIALS) if (m.themeId === theme.id && key !== id) MATERIALS.delete(key);
         const tag = (a) => (isObj(a) ? { ...a, material: id } : a);
         named = { ...theme, appearance: tag(theme.appearance) };
         if (isObj(theme.perType)) named.perType = Object.fromEntries(Object.entries(theme.perType).map(([k, a]) => [k, tag(a)]));

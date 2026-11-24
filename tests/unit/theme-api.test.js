@@ -552,12 +552,25 @@ describe('review fixes: stubs, ids, materials', () => {
     const first = MATERIALS.get(`${MOD}-r`);
     api.registerMaterial(MOD, { cacheKey: `${MOD}-r`, beforeShaderCompile: hooks[1] });
     const second = MATERIALS.get(`${MOD}-r`);
-    expect([first.rev, second.rev]).toEqual([1, 2]);
-    expect(first.key).toBe(`${MOD}-r@1`);
-    expect(second.key).toBe(`${MOD}-r@2`);
+    expect(second.rev).toBe(first.rev + 1);
+    expect(first.key).toBe(`${MOD}-r@${first.rev}`);
+    expect(second.key).toBe(`${MOD}-r@${second.rev}`);
     second.hook('d20')({ uniforms: {}, fragmentShader: '' }, {});
     expect(hooks[1]).toHaveBeenCalledTimes(1);
     expect(hooks[0]).not.toHaveBeenCalled();
+  });
+
+  test('a revision is never reused after the entry is deleted, and a new cacheKey drops the theme\'s old entry', () => {
+    const { api } = make();
+    const mat = (cacheKey) => ({ cacheKey, beforeShaderCompile() {} });
+    api.registerTheme(theme('rv'), { moduleId: MOD, material: mat(`${MOD}-rv`) });
+    const first = MATERIALS.get(`${MOD}-rv`).key;
+    api.unregisterTheme(`${MOD}.rv`);
+    api.registerTheme(theme('rv'), { moduleId: MOD, material: mat(`${MOD}-rv`) });
+    expect(MATERIALS.get(`${MOD}-rv`).key).not.toBe(first);
+    api.registerTheme(theme('rv'), { moduleId: MOD, material: mat(`${MOD}-rv2`) });
+    expect(MATERIALS.has(`${MOD}-rv`)).toBe(false);
+    expect(MATERIALS.has(`${MOD}-rv2`)).toBe(true);
   });
 
   test('a stub takes showInAll, keeps it after it loads, and a stub registered without one has none', async () => {
