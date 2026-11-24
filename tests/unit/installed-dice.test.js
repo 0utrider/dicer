@@ -151,3 +151,22 @@ ${DICE_SET}`;
   expect(other).not.toHaveBeenCalled();
   expect(warn).toHaveBeenCalledTimes(1); // esm
 });
+
+// A script that only adds dice is loaded here (not as an add-on run in full), after game.dice3d was
+// announced: Ember's moons are followed on this path too, from the moment the dice have registered.
+test("Ember Lunar Dice loaded as a plain dice set follow Ember's moons too: at once, then at each phase change", async () => {
+  const events = {};
+  const hooks = { on: (h, fn) => (events[h] ??= []).push(fn), once: (h, fn) => (events[h] ??= []).push(fn) };
+  const api = { addSystem: vi.fn(), uniforms: {} };
+  const lunar = `Hooks.once('diceSoNiceReady', (d) => {
+  d.addSystem({ id: 'lunar', name: 'Lunar' });
+  d.uniforms.moonPhase = { ignis: { value: false }, aqua: { value: true } };
+});`;
+  const calendar = { moons: { ignis: { id: 'ignis', phase: 'full' }, aqua: { id: 'aqua', phase: 'waning' } } };
+  const list = [{ id: 'ember-lunar-dice', title: 'Ember Lunar Dice', scripts: ['modules/ember-lunar-dice/ember-lunar-dice.mjs'] }];
+  const deps = { api, fetchText: async () => lunar, isActive: () => false, hooks, calendar: () => calendar };
+  expect(await loadInstalledDice(list, deps)).toEqual(['ember-lunar-dice']);
+  expect(api.uniforms.moonPhase).toEqual({ ignis: { value: true }, aqua: { value: false } });
+  for (const fn of events['ember.lunarPhaseChange'] ?? []) fn({ changed: ['ignis', 'aqua'], phases: { ignis: 'waning', aqua: 'full' } });
+  expect(api.uniforms.moonPhase).toEqual({ ignis: { value: false }, aqua: { value: true } });
+});

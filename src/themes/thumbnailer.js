@@ -346,7 +346,13 @@ export function createThumbnailer({
       const radius = held.geometry.boundingSphere.radius;
       held.release();
       const model = await m.loadDieModel(url, { radius });
-      return model?.geometry && model.material ? { ...model, quat: new THREE.Quaternion(...rotation), shapeType } : null;
+      if (!model?.geometry || !model.material) return null;
+      // its dice system's shader callback on the model's own materials, as on a thrown die
+      const id = systemIdOf(theme);
+      const inst = id && !flags?.safe ? systemFor(id) : null;
+      const dressed = typeof inst?.beforeShaderCompile === 'function';
+      if (dressed) m.dressModel(model, { systemInstance: inst, system: id, type: dieType, appearance }, warn);
+      return { ...model, quat: new THREE.Quaternion(...rotation), shapeType, dressed };
     } catch (err) {
       warn(`dicer: theme thumbnail model failed (${err?.message ?? err})`);
       return null;
@@ -418,7 +424,8 @@ export function createThumbnailer({
       }
       // a module dice set's per-frame hooks (installed-dice.js dsnPose) set the die up on its first
       // draw: that one is thrown away, the image is the second
-      if (Object.hasOwn(material, 'onBeforeRender')) rnd.render(api.scene, cam);
+      // (a dressed model too: a Dice So Nice system keys its program anew once its callback has run)
+      if (Object.hasOwn(material, 'onBeforeRender') || model?.dressed) rnd.render(api.scene, cam);
       rnd.render(api.scene, cam);
       return await canvasToBlob(cvs);
     } finally {

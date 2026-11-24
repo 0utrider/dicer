@@ -719,3 +719,21 @@ test("an add-on theme's material hook dresses its thumbnail and keys its program
   MATERIALS.clear();
   t.dispose();
 });
+
+// Ember Lunar Dice: models whose surfaces their dice system's shader callback draws
+test("a module system's model is dressed by its shader callback, and drawn twice (the callback's program is the second)", async () => {
+  const list = [new THREE.MeshStandardMaterial({ name: 'BODY' }), new THREE.MeshStandardMaterial({ name: 'LABELS' })];
+  modelChunk.load = vi.fn(async () => ({ geometry: new THREE.BoxGeometry(1, 1, 1), material: list }));
+  const inst = { id: 'lunar', getCacheString: () => 'c', processMaterial: vi.fn(), beforeShaderCompile: vi.fn() };
+  const { t, rig } = make({ opts: { systemFor: (id) => (id === 'lunar' ? inst : null) } });
+  const entry = { ...theme(), kind: 'system', key: 'lunar', perType: {}, models: { d20: 'modules/lunar/dice_20.glb' } };
+  await t.thumbnail(entry, 'd20');
+  expect(rig.renderer.render).toHaveBeenCalledTimes(2);
+  expect(inst.processMaterial).not.toHaveBeenCalled(); // that is for Dicer's own material
+  for (const m of list) {
+    expect(m.userData).toMatchObject({ diceType: 'd20', system: 'lunar' });
+    m.onBeforeCompile({ uniforms: {}, vertexShader: '', fragmentShader: '' });
+  }
+  expect(inst.beforeShaderCompile).toHaveBeenCalledTimes(2);
+  t.dispose();
+});

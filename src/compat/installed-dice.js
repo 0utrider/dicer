@@ -22,6 +22,7 @@ const OTHER_WORK =
   /game\s*\.\s*(?:settings|keybindings)\s*\.\s*register|libWrapper|\bCONFIG\s*(?:\.\s*[\w$]+|\[[^\]]*\])+\s*=(?!=)|\bimport\s*\(|\bglobalThis\b|\bwindow\s*\.|\bdocument\s*\.|\bfetch\s*\(|\beval\s*\(/;
 const DSN_ID = 'dice-so-nice';
 const SKIP = new Set(['dicer', DSN_ID]);
+const LUNAR_DICE = 'ember-lunar-dice';
 // an ES module that imports its own files (an add-on's dice may be added there, not in its entry)
 const IMPORTS_OWN = /(?:^|[;\n])\s*import\s[^;]*?from\s*(['"])\.{1,2}\//;
 // a dynamic import of another module's script (`import(\`/modules/<id>/index.js\`)`, or a path constant)
@@ -141,7 +142,10 @@ export async function runDice(texts, api, name = 'module') {
  * it was picked). A pick made as dice only (`diceOnly`: an adventure pack with dice, say) may do
  * more than add dice: only its Dice So Nice hooks are called. Returns the ids loaded now.
  */
-export async function loadInstalledDice(list, { api, fetchText: read = fetchText, isActive = activeNow, warn = (...a) => console.warn(...a) }) {
+export async function loadInstalledDice(
+  list,
+  { api, fetchText: read = fetchText, isActive = activeNow, warn = (...a) => console.warn(...a), hooks = globalThis.Hooks, calendar },
+) {
   const done = [];
   for (const pick of Array.isArray(list) ? list : []) {
     const id = pick?.id;
@@ -159,6 +163,7 @@ export async function loadInstalledDice(list, { api, fetchText: read = fetchText
       }
       await runDice(texts, api, id);
       done.push(id);
+      if (id === LUNAR_DICE) followEmberMoons({ hooks, dice3d: api, calendar });
     } catch (err) {
       warn(`dicer: cannot load the dice of "${pick.title ?? id}"`, err);
     }
@@ -607,26 +612,28 @@ export function shimDsn(dice3d) {
   }
 }
 
-const LUNAR_DICE = 'ember-lunar-dice';
-
 /**
  * Keeps Ember Lunar Dice's moon uniforms in step with Ember's moons. The dice add
  * `game.dice3d.uniforms.moonPhase` (`{<moon id>: {value}}`, true while that moon is full) and Ember
  * sets it, but only while both that module and Dice So Nice read as active, which neither does
- * under Dicer. Set here as Ember does: once the dice have registered (the announcement), then at
- * each `ember.lunarPhaseChange`. Without Ember (`calendar()` has no moons) nothing is set.
+ * under Dicer. Set here as Ember does: once the dice have registered (now, when they already have:
+ * a plain dice set loads after the announcement; else at the announcement), then at each
+ * `ember.lunarPhaseChange`. Without Ember (`calendar()` has no moons) nothing is set.
  */
-export function followEmberMoons({ hooks, dice3d, calendar = () => globalThis.game?.time?.calendar }) {
+export function followEmberMoons({ hooks, dice3d, calendar }) {
+  const cal = calendar ?? (() => globalThis.ember?.calendar ?? globalThis.game?.time?.calendar);
   const set = (phases) => {
     const mp = dice3d?.uniforms?.moonPhase;
     if (!mp || typeof mp !== 'object' || !phases || typeof phases !== 'object') return;
     for (const [id, phase] of Object.entries(phases)) if (mp[id] && typeof mp[id] === 'object') mp[id].value = phase === 'full';
   };
-  hooks.once('diceSoNiceReady', () => {
-    const moons = calendar()?.moons;
+  const now = () => {
+    const moons = cal()?.moons;
     if (moons && typeof moons === 'object') set(Object.fromEntries(Object.values(moons).map((m) => [m?.id, m?.phase])));
-  });
-  hooks.on('ember.lunarPhaseChange', (change) => set(change?.phases));
+  };
+  now();
+  hooks?.once?.('diceSoNiceReady', now);
+  hooks?.on?.('ember.lunarPhaseChange', (change) => set(change?.phases));
 }
 
 /**

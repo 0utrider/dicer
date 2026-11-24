@@ -22,7 +22,7 @@ import { _setLookExtrasImport, requestLookExtras } from '../../src/render/extras
 import { getShape, labelFor } from '../../src/core/dice-shapes.js';
 import { DEFAULT_APPEARANCE, normalizeAppearance } from '../../src/look/appearance.js';
 import { dsnModelRotation, dsnFaceNormal } from '../../src/compat/dsn-layouts.js';
-import { followFor } from '../../src/render/model-loader.js';
+import { followFor, materialList } from '../../src/render/model-loader.js';
 import { GHOST_APPEARANCE } from '../../src/compat/colorset-map.js';
 import { createFaceTextures } from '../../src/render/face-textures.js';
 import { FATE_FACES } from '../../src/compat/faces.js';
@@ -1448,6 +1448,40 @@ describe('model presets', () => {
     box.clear();
     await r.finished;
     expect(liveRefs(box)).toBe(0);
+  });
+
+  // Ember Lunar Dice: a body and its labels (two materials), drawn by the set's own shader callback
+  test("a model with several materials is dressed by its dice system, fades as a list and frees its clones", async () => {
+    const instance = { id: 'lunar', beforeShaderCompile: vi.fn() };
+    const list = materialList([new THREE.MeshStandardMaterial(), new THREE.MeshStandardMaterial()]);
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const dress = vi.fn();
+    const model = { geometry, material: list, dress };
+    const { renderer, physics, box } = setup({ loadModel: vi.fn(async () => model), systemFor: (id) => (id === 'lunar' ? instance : null) });
+    const r = box.roll([{ type: 'd6', value: 5, dsnType: 'd6', model: 'm/dice_6.glb', system: 'lunar' }]);
+    await flushMicrotasks();
+    physics.flush();
+    expect(meshes(renderer)[0].material).toBe(list);
+    expect(dress).toHaveBeenCalledTimes(1);
+    expect(dress.mock.calls[0][0]).toBe(model);
+    expect(dress.mock.calls[0][1]).toMatchObject({ systemInstance: instance, system: 'lunar', dsnType: 'd6' });
+    expect(await landRoll(renderer, r)).toBe(true);
+    // a shader on the clock (the loader marks the list): the resting die keeps drawing
+    expect(renderer.tick(20050)).not.toBe(true);
+    list[1].mixer = { animated: true };
+    expect(renderer.tick(20060)).toBe(true);
+    vi.advanceTimersByTime(2000);
+    renderer.tick(20100);
+    renderer.tick(20100 + 150);
+    const fade = meshes(renderer)[0].material;
+    expect(Array.isArray(fade)).toBe(true);
+    expect(fade[0]).not.toBe(list[0]);
+    expect(fade.every((m) => m.transparent && m.opacity < 1)).toBe(true);
+    expect(list.every((m) => !m.transparent)).toBe(true);
+    const disposed = fade.map((m) => vi.spyOn(m, 'dispose'));
+    box.clear();
+    await r.finished;
+    for (const d of disposed) expect(d).toHaveBeenCalledTimes(1);
   });
 
   test('a model that loads before the results arrive still gets the rotation', async () => {

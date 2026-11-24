@@ -73,9 +73,7 @@ export function cloneForFade(material) {
 
 /** GLTF loading lives in its own chunk, fetched the first time a roll shows a model. */
 const importModel = (url, options) =>
-  import('../render/model-loader.js').then((m) =>
-    m.loadDieModel(url, options).then((model) => model && { ...model, rotationFor: m.dsnModelRotation, followFor: m.followFor }),
-  );
+  import('../render/model-loader.js').then((m) => m.loadForBox(url, options));
 
 /** True when a face set has image or text faces (drawn from face layers). */
 /**
@@ -1428,6 +1426,8 @@ export class DiceBox {
       if (!Array.isArray(rot)) continue;
       if (follows) die.follow = follows.follow;
       const old = die.inner.material;
+      // its dice system's shader callback on the model's own materials (the model chunk's dressModel)
+      if (die.systemInstance) model.dress?.(model, die);
       die.model = model;
       die.modelQuat = new THREE.Quaternion(...rot);
       die.inner.geometry = model.geometry;
