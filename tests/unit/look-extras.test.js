@@ -253,8 +253,8 @@ describe('bodies', () => {
     expect(off.chunks.colorPre).toContain('if ( uBodyPreset.w > 0.0 && uDcLines > 0.0 ) {');
     expect(off.chunks.coat).toContain('clamp( dcIrT, 0.0, 1.0 ), uBodyPreset.w );'); // the sheen still follows the preset, not the switch
     expect(off.chunks.coat).not.toContain('uDcLines');
-    // the other presets draw as before
-    expect(iridescentPatch(look({ body: { type: 'iridescent', preset: 'opal', streaks: false } })).uniforms.uDcLines.value).toBe(0);
+    // the other presets never take the switch
+    expect(iridescentPatch(look({ body: { type: 'iridescent', preset: 'opal', streaks: false } })).uniforms.uDcLines.value).toBe(1); // not kept on other styles
   });
 
   test('body modules check their own type; an unknown preset draws as the first; mergePatches lives in merge.js', () => {

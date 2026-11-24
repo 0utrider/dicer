@@ -638,8 +638,10 @@ describe('numbers.size and numbers.weight', () => {
 });
 
 describe('body.streaks (Dichroic glass layer lines)', () => {
-  test('only a false value on an iridescent body is kept; every other look has no such field', () => {
+  test('only a false value on a Dichroic glass body is kept; every other look has no such field', () => {
     expect(normalizeAppearance({ body: { type: 'iridescent', preset: 'dichroic', streaks: false } }).body.streaks).toBe(false);
+    // the other iridescent styles never keep it, so Dichroic to Opal and back starts with the lines on
+    for (const preset of ['opal', 'chameleon']) expect(normalizeAppearance({ body: { type: 'iridescent', preset, streaks: false } }).body).not.toHaveProperty('streaks');
     for (const v of [true, undefined, null, 0, 'false'])
       expect(normalizeAppearance({ body: { type: 'iridescent', preset: 'dichroic', streaks: v } }).body).not.toHaveProperty('streaks');
     for (const type of ['opaque', 'resin', 'metal', 'pearl', 'gem'])
