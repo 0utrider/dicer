@@ -104,11 +104,7 @@ test('legacy flat input still builds', () => {
   expect(m.defines).toHaveProperty('DICER_RESIN');
   expect(m.color.getHexString()).toBe(new THREE.Color('#28f').getHexString());
   const u = m.userData.uniforms;
-  // the nebula's two colours count for the contrast check, so the gold may lighten a little to read; it stays gold
-  const want = new THREE.Color('#fc0').getHSL({});
-  const got = u.uFillColor.value.getHSL({});
-  expect(Math.abs(got.h - want.h)).toBeLessThan(0.03);
-  expect(got.l).toBeGreaterThanOrEqual(want.l - 0.001);
+  expect(u.uFillColor.value.getHexString()).toBe(new THREE.Color('#fc0').getHexString());
   expect(u.uFillPBR.value.x).toBe(1); // fillMetallic -> gold
   expect(u.uEngrave.value).toBeCloseTo(0.8);
 });

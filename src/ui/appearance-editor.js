@@ -572,8 +572,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     const note = this.element?.querySelector?.('.dicer-ae-contrast-note');
     if (!note) return;
     const { state, text } = contrastNote(appearanceFromForm(this.#form));
-    note.dataset.state = state;
     const span = note.querySelector('span');
+    if (note.dataset.state === state && span?.textContent === text) return;
+    note.dataset.state = state;
     if (span) span.textContent = text;
   }
 

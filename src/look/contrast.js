@@ -30,6 +30,8 @@ const SECOND_SEEN = { stone: 0.3, marble: 0.3, wood: 0.3, bone: 0.15, gem: 0.3, 
 const METAL_SECOND = { patina: 0.3, worn: 0.3 };
 /** How bright translucent resin looks next to its colour: the table shows through it. */
 const RESIN_SEEN = 0.7;
+/** How bright jelly looks next to its colours: light shines through it and leaves a darker, richer face. */
+const JELLY_SEEN = 0.5;
 // Insides that are flecks or one object: the body shows all around them, so they lean little.
 const SPARSE = new Set(['glitter', 'foil', 'frost', 'shape', 'eye', 'botanical']);
 /**
@@ -68,7 +70,8 @@ function bodyRgb(a, only) {
     return mixRgb(b, inside, SPARSE.has(interior.type) ? 0.3 * d : 0.3 + 0.3 * d);
   }
   const second = body.type === 'metal' ? (METAL_SECOND[body.finish] ?? 0) : (SECOND_SEEN[body.type] ?? 0);
-  return second ? mixRgb(c, rgb(body.color2), second) : c;
+  const base = body.type === 'jelly' ? c.map((v) => v * JELLY_SEEN) : c;
+  return second ? mixRgb(base, body.type === 'jelly' ? rgb(body.color2).map((v) => v * JELLY_SEEN) : rgb(body.color2), second) : base;
 }
 
 /** The coat's veil for a look. */
@@ -157,13 +160,12 @@ export function readableNumbers(a) {
   let lo = l0;
   let hi = lighter ? 1 : 0;
   let g = glow;
-  if (!lighter) {
-    // A number darker than the body: a glow only washes it out, so turn the glow down first, and
-    // darken the fill only if the glow gone is not enough.
-    while (g > 0 && !okAt(l0, g)) g = Math.max(0, g - 0.05);
-    if (okAt(l0, g)) return { fill: a.numbers.color, glow: g };
+  if (!okAt(hi, g)) {
+    if (lighter) return { fill: hex(fromHsl([h, s, hi])), glow: g };
+    // Darker alone cannot get there: the glow brightens the number too, so turn it down only as far as needed.
+    while (g > 0 && !okAt(hi, g)) g = Math.max(0, g - 0.05);
+    if (!okAt(hi, g)) return { fill: hex(fromHsl([h, s, hi])), glow: g };
   }
-  if (!okAt(hi, g)) return { fill: hex(fromHsl([h, s, hi])), glow: g };
   for (let n = 0; n < 24; n++) {
     const mid = (lo + hi) / 2;
     if (okAt(mid, g)) hi = mid;

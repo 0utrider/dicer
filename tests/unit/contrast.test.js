@@ -119,7 +119,7 @@ describe('number contrast that sees the material', () => {
   test('a coat lays a veil over the dark ink of a pearl die, so the check asks more of it than of a plain body', () => {
     const plain = look({ body: { type: 'opaque', color: '#fffdfb' }, numbers: { fill: 'enamel', color: '#9a8a96' } });
     const coated = look({ body: { type: 'pearl', color: '#fffdfb', color2: '#fffdfb' }, numbers: { fill: 'enamel', color: '#9a8a96' } });
-    // the same ink on the same body colour: the pearl coat's veil (0.22) asks it to move further than an opaque body's (0.08)
+    // the same ink on the same body colour: the pearl coat's veil (0.15) asks it to move further than an opaque body's (0.08)
     expect(lumOf(readableNumbers(coated).fill)).toBeLessThan(lumOf(readableNumbers(plain).fill));
     expect(lumOf(readableNumbers(coated).fill)).toBeLessThan(lumOf('#9a8a96'));
   });
@@ -169,8 +169,8 @@ describe('number contrast that sees the material', () => {
     const ok = numbersReport(look({ body: { type: 'opaque', color: '#000000' }, numbers: { fill: 'paint', color: '#ffffff' } }));
     expect(ok.state).toBe('ok');
     expect(ok.ratio).toBeGreaterThan(ok.need);
-    const close = numbersReport(look({ body: { type: 'opaque', color: '#777777' }, numbers: { fill: 'paint', color: '#000000', minContrast: 4 } }));
-    expect(['close', 'ok']).toContain(close.state);
+    const close = numbersReport(look({ body: { type: 'opaque', color: '#777777' }, numbers: { fill: 'paint', color: '#000000', minContrast: 4.5 } }));
+    expect(close.state).toBe('close');
   });
 
   test('numbers.minContrast: stored from 1.5 to 7 only, so old looks keep their keys', () => {
@@ -182,14 +182,20 @@ describe('number contrast that sees the material', () => {
 
   test('the reference case: pearl with dark enamel ink passes when it is dark enough and the report says so', () => {
     expect(pearl().numbers.fill).toBe('enamel');
-    expect(['ok', 'close', 'adjusted']).toContain(numbersReport(pearl()).state);
+    expect(numbersReport(pearl()).state).toBe('ok');
   });
 
-  test('a dark number on a glowing pearl die loses its glow before its colour', () => {
+  test('a dark number under a glow is darkened first and keeps its glow when that is enough', () => {
+    const base = { body: { type: 'opaque', color: '#888888' }, numbers: { fill: 'paint', color: '#555555' }, glow: { color: '#3050ff', intensity: 0.2 } };
+    const r = readableNumbers(look(base));
+    expect(r.glow).toBe(0.2);
+    expect(lumOf(r.fill)).toBeLessThan(lumOf('#555555'));
+  });
+
+  test('the glow is turned down only when darkening alone cannot reach the contrast', () => {
     const pearlGlow = { body: { type: 'pearl', color: '#f4dff0', color2: '#e8c8e0' }, numbers: { fill: 'paint', color: '#3a1030' }, glow: { color: '#fff0f8', intensity: 0.3 } };
     const r = readableNumbers(look(pearlGlow));
     expect(r.glow).toBeLessThan(0.3);
-    if (r.glow > 0) expect(r.fill).toBe('#3a1030');
     const fixed = look({ ...pearlGlow, numbers: { ...pearlGlow.numbers, color: r.fill }, glow: { ...pearlGlow.glow, intensity: r.glow } });
     expect(numbersReport(fixed).state).not.toBe('adjusted');
   });
