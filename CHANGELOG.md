@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.10
+
+- **Roll All and Roll NPCs stay one throw in Pathfinder 2e.** PF2e posts one initiative card per combatant, and on a busy machine they could come far enough apart that one Roll NPCs was shown as two throws. Dicer now waits a little longer (250 ms instead of 100) for the next card before it throws. With PF2e's check dialog shown, each roll you confirm by hand is still its own throw.
+- **An outline around the numbers.** The appearance editor has an **Outline** switch under Size and Thickness, with a colour and a width. A number can now share the die's colour and still read, and it stays readable on see-through dice. In a theme: `numbers.outline` (a colour) and `numbers.outlineWidth` (0 to 1).
+- **Vertical position for the numbers.** A **Vertical position** slider moves the numbers up or down on the face, for fonts that sit off centre. In a theme: `numbers.offsetY` (-0.5 to 0.5, positive is up).
+- **Dichroic glass without its layer lines.** The Dichroic style of the iridescent body has a **Layer lines** checkbox, on by default. Off, the glass keeps its colour turn and sheen without the thin lines across the faces. In a theme: `body.streaks: false`.
+- **For module authors: add-on fonts.** `api.registerFont(moduleId, { id, label, file })` puts a module's fonts in the appearance editor's **Numbers** section, with `unregisterFont` and `listFonts`.
+- **For module authors: more extension points for theme packs.** Tabs of your own in the theme browser (`registerBrowserTab`), a choice of which themes show under **All** (`showInAll`), a badge, category and static preview image on a theme, themes that load only when picked (`registerThemeStub`), add-on themes in the damage map lists, `getUserDefault` and `setUserDefault`, and shader hooks for a look (`registerMaterial`). `THEME-API.md` describes each. Nothing changes for a module that uses none of them.
+
+Not yet tried in a live Foundry world, except the first: the new editor controls and the API additions are covered by unit tests and software renders. Please report what you see.
+
 ## 1.4.9
 
 - **Roll All and Roll NPCs roll every combatant's initiative as one throw.** The dice of all those initiative rolls now appear together and tumble against each other, on every screen that sees them, instead of one roll per combatant. With **Physics decides the result** on, the GM no longer waits for one throw after the other: physics decides each combatant's result at once, unseen, and the dice shown land on those results. A roll for a single combatant, and initiative thrown by hand, are as before. A GM with a private roll area sees the hidden combatants' dice there, as a second throw. Nothing to set.
