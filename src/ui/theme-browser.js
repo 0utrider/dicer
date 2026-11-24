@@ -103,7 +103,8 @@ export async function assignTarget(target, themeId) {
   const user = me();
   if (!t || !user) return false;
   const id = typeof themeId === 'string' && themeId ? themeId : null;
-  if (id && STUBS.has(id)) await loadStub(id, { retry: true }); // a stub becomes its theme before anything stores it
+  // a stub becomes its theme before anything stores it; a failed load stores nothing
+  if (id && STUBS.has(id) && !(await loadStub(id, { retry: true }))) return false;
   switch (t.kind) {
     case 'default':
       if (id) {
@@ -709,6 +710,13 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       };
     };
     const cards = visible.map(view);
+    // a section heading shows once, above the first card of its run, not above every card
+    let lastSection = '';
+    for (const c of cards) {
+      const own = c.section;
+      c.section = own !== lastSection ? own : '';
+      lastSection = own;
+    }
     return {
       locked: this.#locked,
       isGM: globalThis.game?.user?.isGM === true,

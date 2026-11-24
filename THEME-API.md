@@ -52,7 +52,7 @@ Options on `registerTheme(theme, { moduleId, showInAll, material })`:
 
 ```js
 api.registerBrowserTab(moduleId, {
-  id: 'my-module-holidays',        // unique, starts with the module id
+  id: 'my-module-holidays',        // unique, starts with `<moduleId>-` or `<moduleId>.`
   label: 'Holidays',               // text or an i18n key
   icon: 'fa-solid fa-gift',        // a Font Awesome class, or an image path
   filter: (theme) => boolean,      // which themes the tab shows
@@ -70,14 +70,14 @@ and "no heading". Registering an id again replaces the tab.
 ## Themes on demand
 
 ```js
-api.registerThemeStub(moduleId, { id, name, badge?, preview?, category?, load: async () => theme });
+api.registerThemeStub(moduleId, { id, name, badge?, preview?, category?, showInAll?, load: async () => theme });
 ```
 
 A stub shows as a normal card (with its `preview`). Selecting it in the browser, assigning it anywhere
 there, or a stored reference to it (default, damage map, actor) calls `load()` once and swaps the
 stub for the theme it returns, which must have the same id. `dicer.themesChanged` fires then. If
 `load()` fails, Dicer warns once and keeps the stub; selecting it again retries. A roll that reaches
-an unloaded stub (a stored reference) starts the load and uses the default look for that roll.
+an unloaded stub (a stored reference) starts the load and uses the default look for that roll. To make that rare, a stub that a stored default, a world default, a damage map, a user's choice or an actor's choice names is loaded as soon as it is registered (right after the registering code finishes), before any roll. `showInAll` works as in `registerTheme` and carries over to the theme once it loads. Registering a full theme with a stub's id replaces the stub, and `setUserDefault` loads a stub first.
 `unregisterTheme(id)` removes a stub too.
 
 ## Damage type map
@@ -110,7 +110,7 @@ api.registerMaterial(moduleId, { cacheKey: 'my-module-lights', beforeShaderCompi
 // theme: { appearance: { ..., material: 'my-module-lights' } }
 ```
 
-`cacheKey` names the material and must start with the module id. A look whose `material` field names
+`cacheKey` names the material and must start with `<moduleId>-` or `<moduleId>.` (a separator, so one module cannot claim another's keys). A look whose `material` field names
 it draws with the hook, wherever it is drawn: rolled dice, the browser's thumbnails and live
 preview, and the tray (dice with no registered material draw as usual).
 
@@ -119,10 +119,11 @@ preview, and the tray (dice with no registered material draw as usual).
 - The fragment shader starts with `uniform float uTime;` (seconds, shared by all dice, wrapping
   every 3600 so a looped effect should use a period that divides it) and `#define vDicerPosition vLocalPos`,
   the die's object-space position, so a pattern stays fixed to the die as it tumbles.
+- Registering a `cacheKey` again replaces the hook for dice made afterwards: each registration is a revision that is part of the keys, so cached materials and programs are never reused with the old hook.
 - `cacheKey` is part of the material and shader program keys: dice with and without the hook never
   share a compiled program.
 - A hook that throws is undone (the shader compiles as Dicer's own) and warns once.
-- A die whose look also comes from a Dice So Nice system preset uses that system's hooks, not this one.
+- A die whose look also comes from a Dice So Nice system preset uses that system's hooks, not this one. The browser's thumbnails and previews follow the same rule.
 
 ## Fonts
 

@@ -2,15 +2,16 @@
  * Dicer's theme API for other modules (a lazy chunk): main.js loads it at ready, sets it as
  * game.modules.get('dicer').api and calls the `dicer.ready` hook with it.
  *
- * - registerTheme(theme, {moduleId, showInAll}): a read-only theme for this session, id
- *   `<moduleId>.<slug>`. `showInAll` (boolean or (theme, date) -> boolean) keeps it out of the
- *   browser's All tab while false. A theme may carry `badge`, `category` and `preview`.
- * - registerThemeStub(moduleId, {id, name, badge, preview, load}): a card now, the theme from
- *   `load()` when it is first selected, assigned or used by a roll.
+ * - registerTheme(theme, {moduleId, showInAll, material}): a read-only theme for this session, id
+ *   `<moduleId>.<slug>`. Every client runs the registering module, so it resolves for every player
+ *   with no GM involved. Re-registering an id replaces it. Fires `dicer.themesChanged`. `showInAll`
+ *   (boolean or (theme, date) -> boolean) keeps it out of the browser's All tab while false. A theme
+ *   may carry `badge`, `category` and `preview`; `material` gives its dice an animated surface.
+ * - registerMaterial(moduleId, {cacheKey, beforeShaderCompile}): an animated material a look names.
+ * - registerThemeStub(moduleId, {id, name, badge, preview, showInAll, load}): a card now, the theme
+ *   from `load()` when it is first selected, assigned, used by a roll or named by a stored default.
  * - registerBrowserTab(moduleId, tab): a tab in the theme browser after Dicer's own.
  * - getUserDefault / setUserDefault: a user's default theme, as "Use as my default" sets it.
- *   Every client runs the registering module, so it resolves for every player with no GM involved.
- *   Re-registering an id replaces it. Fires `dicer.themesChanged`.
  * - registerFont(moduleId, {id, label, file}): a number font in the appearance editor, under the
  *   module's name. It is the `file:<file>` font a theme can already name.
  * - hasActorChoice / getActorTheme / setActorTheme / clearActorTheme: an actor's dice choice (its
@@ -51,9 +52,33 @@ const readSetting = (key) => {
 
 /** Whether a theme id names a built-in, add-on, world or (for `user`) personal theme. */
 function themeExists(id, user = globalThis.game?.user) {
+  if (STUBS.has(id)) return true; // a registered stub is a theme (findTheme would start its load as a side effect)
   const world = readThemeList(readSetting('worldThemes'), 'world', () => {});
   const mine = readThemeList(user?.getFlag?.('dicer', 'themes'), 'user', () => {});
   return !!findTheme(id, { worldThemes: world, userThemes: mine });
+}
+
+/** Theme ids the stored settings, flags and damage maps name that are registered stubs. */
+function referencedStubIds() {
+  if (!STUBS.size) return [];
+  const g = globalThis.game;
+  const out = new Set();
+  const add = (v) => typeof v === 'string' && STUBS.has(v) && out.add(v);
+  const slots = (flag) => isObj(flag) && Object.values(flag).forEach((slot) => add(slot?.theme));
+  add(readSetting('theme'));
+  add(readSetting('worldDefaultTheme'));
+  for (const key of ['damageTypeMap', 'damageThemeOverrides']) {
+    const map = readSetting(key);
+    if (isObj(map)) Object.values(map).forEach(add);
+  }
+  for (const user of g?.users ?? []) slots(user?.flags?.dicer?.appearance);
+  for (const actor of g?.actors ?? []) slots(actor?.flags?.dicer?.appearance);
+  return [...out];
+}
+
+/** Loads every stub a stored default, a user's or an actor's choice or a damage map names, so no roll meets one unloaded. */
+export function preloadReferencedStubs() {
+  return Promise.all(referencedStubIds().map((id) => loadStub(id)));
 }
 
 /** The API object; `hooks` (Hooks) and `modules` (game.modules) are seams for tests. */
@@ -73,6 +98,48 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
     }
   };
   const isModule = (id) => typeof id === 'string' && !!modules()?.get?.(id);
+  /** `id` is `<moduleId>-...` or `<moduleId>.…`: a separator, so a module "dice" cannot claim "dicer-..." keys. */
+  const hasPrefix = (id, moduleId) => typeof id === 'string' && (id.startsWith(`${moduleId}-`) || id.startsWith(`${moduleId}.`)) && id.length > moduleId.length + 1;
+  /** One refresh of the stubs the stored settings name, however many are registered in a row. */
+  let preloadQueued = false;
+  const queuePreload = () => {
+    if (preloadQueued || !globalThis.game?.users) return; // the users (and so their flags) exist whenever a module can call the API
+    preloadQueued = true;
+    queueMicrotask(() => {
+      preloadQueued = false;
+      preloadReferencedStubs();
+    });
+  };
+  /**
+   * Registers an animated material for dice: `{ beforeShaderCompile(shader, material, { themeId,
+   * dieType }), cacheKey }`. `cacheKey` (starting with `<moduleId>-` or `<moduleId>.`) names it: a look
+   * with `material: "<cacheKey>"` uses it, so does a theme registered with `{ material }`. The hook runs
+   * after Dicer's own shader patch, wherever the look is drawn (rolled dice, browser thumbnails and
+   * live preview, tray), and gets `uniform float uTime` (seconds, wrapping at 3600) and
+   * `vDicerPosition` (object-space position) in the fragment shader. Registering a cacheKey again
+   * replaces the hook for dice made afterwards (each registration is a revision that is part of the
+   * material and program keys). Returns the id, or null. `themeId` is the theme that registered it
+   * (the module id when registered alone).
+   */
+  const registerMaterial = (moduleId, material, themeId = moduleId) => {
+    const id = isObj(material) ? material.cacheKey : null;
+    if (!isModule(moduleId) || !hasPrefix(id, moduleId) || id.length > 64 || typeof material.beforeShaderCompile !== 'function') {
+      console.warn('Dicer | registerMaterial: needs an installed moduleId, a cacheKey starting with "<moduleId>-" or "<moduleId>." (64 characters at most) and a beforeShaderCompile function', id);
+      return null;
+    }
+    // hook(dieType) is a shader hook for chainShaderHook (dice-material.js), run after Dicer's own patch:
+    // the fragment shader gets `uniform float uTime` and `vDicerPosition` (object space) ahead of its code
+    const run = material.beforeShaderCompile;
+    const hook = (dieType) => (shader, mat) => {
+      shader.uniforms.uTime = DICER_TIME;
+      shader.fragmentShader = `uniform float uTime;\n#define vDicerPosition vLocalPos\n${shader.fragmentShader}`;
+      run(shader, mat, { themeId, dieType });
+    };
+    const rev = (MATERIALS.get(id)?.rev ?? 0) + 1;
+    // key: the cache key part of dice and programs; the revision makes a re-registered hook a new material
+    MATERIALS.set(id, { hook, cacheKey: id, rev, key: `${id}@${rev}`, moduleId, themeId });
+    return id;
+  };
   return {
     /** Registers (or replaces) a module's read-only theme; true when it is in. */
     registerTheme(theme, { moduleId, showInAll, material } = {}) {
@@ -83,7 +150,7 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       // a material hook: the look names it (its `material` field) so every place that draws the look finds it
       let named = theme;
       if (material !== undefined) {
-        const id = this.registerMaterial(moduleId, material, theme.id);
+        const id = registerMaterial(moduleId, material, theme.id);
         if (!id) return false;
         const tag = (a) => (isObj(a) ? { ...a, material: id } : a);
         named = { ...theme, appearance: tag(theme.appearance) };
@@ -91,6 +158,10 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       }
       const t = normalizeTheme(named, 'addon');
       if (!t) return false;
+      // a theme registered over its own stub replaces it (one card, and a later load cannot overwrite the theme)
+      STUBS.delete(t.id);
+      // registered again without a material: its old hook goes (a look that still names it draws plain)
+      if (material === undefined) for (const [key, m] of MATERIALS) if (m.themeId === t.id) MATERIALS.delete(key);
       ADDON_THEMES.set(t.id, Object.freeze({ ...t, ...metaOf(theme), moduleId }));
       if (typeof showInAll === 'boolean' || typeof showInAll === 'function') SHOW_IN_ALL.set(t.id, showInAll);
       else SHOW_IN_ALL.delete(t.id);
@@ -134,7 +205,7 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
     },
     /**
      * Adds (or replaces) a tab in the theme browser, after Dicer's own: `{ id, label, icon, filter,
-     * sort?, sections? }`. `id` starts with the module id; `label` is text or an i18n key; `icon` is
+     * sort?, sections? }`. `id` starts with `<moduleId>-` or `<moduleId>.`; `label` is text or an i18n key; `icon` is
      * a Font Awesome class or an image path; `filter(theme)` says which themes it shows;
      * `sort(a, b)` orders them; `sections(theme)` names the heading a theme sits under.
      */
@@ -143,14 +214,13 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
         isModule(moduleId) &&
         isObj(tab) &&
         typeof tab.id === 'string' &&
-        tab.id.startsWith(moduleId) &&
-        tab.id.length > moduleId.length &&
+        hasPrefix(tab.id, moduleId) &&
         !tab.id.includes(' ') &&
         typeof tab.label === 'string' &&
         tab.label &&
         typeof tab.filter === 'function';
       if (!ok) {
-        console.warn('Dicer | registerBrowserTab: needs an installed moduleId, an id starting with it, a label and a filter function', tab?.id);
+        console.warn('Dicer | registerBrowserTab: needs an installed moduleId, an id starting with "<moduleId>-" or "<moduleId>.", a label and a filter function', tab?.id);
         return false;
       }
       const fn = (f) => (typeof f === 'function' ? f : undefined);
@@ -172,38 +242,15 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       if (had) changed();
       return had;
     },
-    /**
-     * Registers an animated material for dice: `{ beforeShaderCompile(shader, material, { themeId,
-     * dieType }), cacheKey }`. `cacheKey` (starting with the module id) names it: a look with
-     * `material: "<cacheKey>"` uses it, so does a theme registered with `{ material }`. The hook runs
-     * after Dicer's own shader patch, wherever the look is drawn (rolled dice, browser thumbnails and
-     * live preview, tray), and gets `uniform float uTime` (seconds, wrapping at 3600) and
-     * `vDicerPosition` (object-space position) in the fragment shader. Returns the id, or null.
-     * `themeId` is the theme that registered it (the module id when registered alone).
-     */
-    registerMaterial(moduleId, material, themeId = moduleId) {
-      const id = isObj(material) ? material.cacheKey : null;
-      if (!isModule(moduleId) || typeof id !== 'string' || !id.startsWith(moduleId) || id.length > 64 || typeof material.beforeShaderCompile !== 'function') {
-        console.warn('Dicer | registerMaterial: needs an installed moduleId, a cacheKey starting with it (64 characters at most) and a beforeShaderCompile function', id);
-        return null;
-      }
-      // hook(dieType) is a shader hook for chainShaderHook (dice-material.js), run after Dicer's own patch:
-      // the fragment shader gets `uniform float uTime` and `vDicerPosition` (object space) ahead of its code
-      const run = material.beforeShaderCompile;
-      const hook = (dieType) => (shader, mat) => {
-        shader.uniforms.uTime = DICER_TIME;
-        shader.fragmentShader = `uniform float uTime;\n#define vDicerPosition vLocalPos\n${shader.fragmentShader}`;
-        run(shader, mat, { themeId, dieType });
-      };
-      MATERIALS.set(id, { hook, cacheKey: id, moduleId, themeId });
-      return id;
-    },
+    registerMaterial,
     /**
      * A theme that loads on demand: `{ id, name, badge?, preview?, category?, load }`, `load()`
      * resolving to the full theme (same id). It shows as a card with its static preview. Selecting
      * it, assigning it, or a roll that reaches a stored reference to it loads it and swaps it in
      * (then `dicer.themesChanged` fires). A roll that reaches an unloaded stub first uses the
-     * default look.
+     * default look, so stubs a stored default, an actor or the damage map names are also loaded as soon as
+     * they are registered (the load starts right after the registering code finishes), before any roll needs them.
+     * `showInAll` (boolean or (card, date) -> boolean) works as in registerTheme and carries over to the theme.
      */
     registerThemeStub(moduleId, stub) {
       const ok =
@@ -231,15 +278,17 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
         loading: null,
         failed: false,
       });
+      if (typeof stub.showInAll === 'boolean' || typeof stub.showInAll === 'function') SHOW_IN_ALL.set(stub.id, stub.showInAll);
+      else SHOW_IN_ALL.delete(stub.id);
       MISSING.hook = (id) => {
         if (STUBS.has(id)) loadStub(id);
       };
       changed();
+      queuePreload();
       return true;
     },
     /** Removes a module's theme or stub (true when there was one). */
     unregisterTheme(id) {
-      
       for (const [key, m] of MATERIALS) if (m.themeId === id) MATERIALS.delete(key);
       const stubbed = STUBS.delete(id);
       const had = ADDON_THEMES.delete(id) || stubbed;
@@ -274,6 +323,8 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       if (user !== me && !me.isGM) return false;
       if (!me.isGM && readSetting('lockPlayerLooks') && readSetting('worldDefaultTheme')) return false;
       const clear = themeId === 'default';
+      // a stub becomes its theme first (the default is stored by id, and a failed load stores nothing)
+      if (STUBS.has(themeId) && !(await loadStub(themeId, { retry: true }))) return false;
       if (!clear && !themeExists(themeId, user)) return false;
       const settings = globalThis.game.settings;
       if (clear) {

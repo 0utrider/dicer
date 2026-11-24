@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { createThemeApi } from '../../src/api/theme-api.js';
+import { createThemeApi, preloadReferencedStubs } from '../../src/api/theme-api.js';
 import { MATERIALS, PROVIDERS, WARM_THEMES, flagChoice, providedTheme } from '../../src/api/theme-registry.js';
 import { ADDON_THEMES, MISSING, findTheme } from '../../src/themes/themes.js';
 import { ADDON_FONTS, fontGroups } from '../../src/api/addon-fonts.js';
-import { BROWSER_TABS, STUBS, loadStub, tabEntries } from '../../src/api/addon-registry.js';
+import { BROWSER_TABS, SHOW_IN_ALL, STUBS, inAll, loadStub, stubView, tabEntries } from '../../src/api/addon-registry.js';
 import { galleryEntries } from '../../src/ui/theme-form.js';
 
 const MOD = 'necromancer-thrall-helper';
@@ -490,5 +490,172 @@ describe('theme materials', () => {
     expect(api.registerTheme(theme('bad'), { moduleId: MOD, material: { cacheKey: 'nope' } })).toBe(false);
     expect(ADDON_THEMES.has(`${MOD}.bad`)).toBe(false);
     warn.mockRestore();
+  });
+});
+
+describe('review fixes: stubs, ids, materials', () => {
+  const stubOf = (slug, load = async () => theme(slug), extra = {}) => ({ id: `${MOD}.${slug}`, name: slug, load, ...extra });
+  afterEach(() => delete globalThis.game);
+
+  test('registerTheme over a stub replaces it: one card, and a later load cannot overwrite the theme', async () => {
+    const { api } = make();
+    const load = vi.fn(async () => theme('x', { name: 'FromStub' }));
+    api.registerThemeStub(MOD, stubOf('x', load));
+    expect(api.registerTheme(theme('x', { name: 'Real' }), { moduleId: MOD })).toBe(true);
+    expect(STUBS.has(`${MOD}.x`)).toBe(false);
+    expect(galleryEntries({}).themes.filter((t) => t.id === `${MOD}.x`)).toHaveLength(1);
+    expect(await loadStub(`${MOD}.x`)).toMatchObject({ name: 'Real' });
+    expect(load).not.toHaveBeenCalled();
+    expect(findTheme(`${MOD}.x`).name).toBe('Real');
+  });
+
+  test('registerTheme and the other registrars work destructured from the api', () => {
+    const { api } = make();
+    const { registerTheme, registerMaterial } = api;
+    expect(registerTheme(theme('d'), { moduleId: MOD, material: { cacheKey: `${MOD}-d`, beforeShaderCompile() {} } })).toBe(true);
+    expect(MATERIALS.has(`${MOD}-d`)).toBe(true);
+    expect(registerMaterial(MOD, { cacheKey: `${MOD}-e`, beforeShaderCompile() {} })).toBe(`${MOD}-e`);
+  });
+
+  test('registering a theme again without a material drops its old hook', () => {
+    const { api } = make();
+    api.registerTheme(theme('m'), { moduleId: MOD, material: { cacheKey: `${MOD}-m`, beforeShaderCompile() {} } });
+    expect(MATERIALS.has(`${MOD}-m`)).toBe(true);
+    api.registerMaterial(MOD, { cacheKey: `${MOD}-shared`, beforeShaderCompile() {} }); // another, registered alone: kept
+    api.registerTheme(theme('m'), { moduleId: MOD });
+    expect(MATERIALS.has(`${MOD}-m`)).toBe(false);
+    expect(MATERIALS.has(`${MOD}-shared`)).toBe(true);
+  });
+
+  test('ids need a separator after the module id, so one module cannot claim another one\'s keys', () => {
+    const modules = () => ({ get: (id) => (['dice', 'dicer', MOD].includes(id) ? { id } : undefined) });
+    const api = createThemeApi({ hooks: { callAll: vi.fn() }, modules });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const tab = (id) => ({ id, label: 'T', filter: () => true });
+    expect(api.registerBrowserTab('dice', tab('dicer-holidays'))).toBe(false); // "dice" is not "dicer"
+    expect(api.registerBrowserTab('dicer', tab('dicer-holidays'))).toBe(true);
+    expect(api.registerBrowserTab('dice', tab('dice.holidays'))).toBe(true); // a dot works too
+    expect(api.registerBrowserTab('dice', tab('dice'))).toBe(false);
+    expect(api.registerBrowserTab('dice', tab('dice-'))).toBe(false); // nothing after the separator
+    const mat = (cacheKey) => ({ cacheKey, beforeShaderCompile() {} });
+    expect(api.registerMaterial('dice', mat('dicer-lights'))).toBeNull();
+    expect(api.registerMaterial('dice', mat('dice-lights'))).toBe('dice-lights');
+    expect(api.registerMaterial('dice', mat('dice.lights'))).toBe('dice.lights');
+    expect(api.registerMaterial('dice', mat('diceX'))).toBeNull();
+    warn.mockRestore();
+  });
+
+  test('each registration of a cacheKey is a revision, part of the key dice and programs use', () => {
+    const { api } = make();
+    const hooks = [vi.fn(), vi.fn()];
+    api.registerMaterial(MOD, { cacheKey: `${MOD}-r`, beforeShaderCompile: hooks[0] });
+    const first = MATERIALS.get(`${MOD}-r`);
+    api.registerMaterial(MOD, { cacheKey: `${MOD}-r`, beforeShaderCompile: hooks[1] });
+    const second = MATERIALS.get(`${MOD}-r`);
+    expect([first.rev, second.rev]).toEqual([1, 2]);
+    expect(first.key).toBe(`${MOD}-r@1`);
+    expect(second.key).toBe(`${MOD}-r@2`);
+    second.hook('d20')({ uniforms: {}, fragmentShader: '' }, {});
+    expect(hooks[1]).toHaveBeenCalledTimes(1);
+    expect(hooks[0]).not.toHaveBeenCalled();
+  });
+
+  test('a stub takes showInAll, keeps it after it loads, and a stub registered without one has none', async () => {
+    const { api } = make();
+    api.registerThemeStub(MOD, stubOf('s', undefined, { showInAll: false }));
+    expect(inAll(stubView(STUBS.get(`${MOD}.s`)))).toBe(false);
+    await loadStub(`${MOD}.s`);
+    expect(inAll(findTheme(`${MOD}.s`))).toBe(false); // still out of All once loaded
+    const rule = vi.fn((t, date) => date.getMonth() === 11);
+    api.registerThemeStub(MOD, stubOf('t', undefined, { showInAll: rule }));
+    expect(inAll(stubView(STUBS.get(`${MOD}.t`)), new Date(2026, 11, 1))).toBe(true);
+    expect(inAll(stubView(STUBS.get(`${MOD}.t`)), new Date(2026, 5, 1))).toBe(false);
+    api.registerThemeStub(MOD, stubOf('u', undefined, { showInAll: false }));
+    api.registerThemeStub(MOD, stubOf('u'));
+    expect(SHOW_IN_ALL.has(`${MOD}.u`)).toBe(false);
+  });
+
+  describe('a default that is a stub', () => {
+    const store = (extra = {}) => {
+      const values = { theme: 'default', worldDefaultTheme: '', lockPlayerLooks: false, worldThemes: [], ...extra };
+      return { values, get: (m, k) => values[k], set: vi.fn(async (m, k, v) => (values[k] = v)) };
+    };
+    const userOf = () => {
+      const u = { isGM: false, flags: { dicer: {} }, getFlag: (s, k) => u.flags.dicer[k], setFlag: vi.fn(async (s, k, v) => (u.flags.dicer[k] = { ...(u.flags.dicer[k] ?? {}), ...v })) };
+      return u;
+    };
+
+    test('setUserDefault loads the stub first and succeeds on the first call; a failed load stores nothing', async () => {
+      const { api } = make();
+      const me = userOf();
+      const settings = store();
+      globalThis.game = { user: me, settings };
+      const load = vi.fn(async () => theme('d'));
+      api.registerThemeStub(MOD, stubOf('d', load));
+      expect(await api.setUserDefault(`${MOD}.d`)).toBe(true);
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(me.flags.dicer.appearance.global.theme).toBe(`${MOD}.d`);
+      expect(settings.set).toHaveBeenCalledWith('dicer', 'theme', `${MOD}.d`);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const me2 = userOf();
+      globalThis.game = { user: me2, settings: store() };
+      api.registerThemeStub(MOD, stubOf('bad', async () => { throw new Error('offline'); }));
+      expect(await api.setUserDefault(`${MOD}.bad`)).toBe(false);
+      expect(me2.setFlag).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    test('getUserDefault returns a world default that is a stub without starting its load', () => {
+      const { api } = make();
+      const load = vi.fn(async () => theme('w'));
+      api.registerThemeStub(MOD, stubOf('w', load));
+      globalThis.game = { user: userOf(), settings: store({ worldDefaultTheme: `${MOD}.w` }) };
+      expect(api.getUserDefault()).toBe(`${MOD}.w`);
+      expect(load).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stubs named by stored choices load before a roll needs them', () => {
+    const wait = () => new Promise((r) => setTimeout(r, 5));
+    test('preloadReferencedStubs loads the ones the default, the world default, damage maps, users and actors name, and no others', async () => {
+      const { api } = make();
+      const loads = {};
+      for (const slug of ['own', 'world', 'map', 'over', 'user', 'actor', 'idle']) {
+        loads[slug] = vi.fn(async () => theme(slug));
+        api.registerThemeStub(MOD, stubOf(slug, loads[slug]));
+      }
+      const values = { theme: `${MOD}.own`, worldDefaultTheme: `${MOD}.world`, damageTypeMap: { fire: `${MOD}.map` }, damageThemeOverrides: { cold: `${MOD}.over` } };
+      globalThis.game = {
+        settings: { get: (m, k) => values[k] },
+        users: [{ flags: { dicer: { appearance: { global: { theme: `${MOD}.user` }, d20: { theme: 'ruby-classic' } } } } }],
+        actors: [{ flags: { dicer: { appearance: { global: { theme: `${MOD}.actor` } } } } }, { flags: {} }],
+      };
+      await preloadReferencedStubs();
+      for (const slug of ['own', 'world', 'map', 'over', 'user', 'actor']) expect(loads[slug]).toHaveBeenCalledTimes(1);
+      expect(loads.idle).not.toHaveBeenCalled();
+      expect(STUBS.has(`${MOD}.idle`)).toBe(true);
+    });
+
+    test('registering stubs starts one preload after the registering code, not one per stub', async () => {
+      const { api } = make();
+      const get = vi.fn((m, k) => (k === 'theme' ? `${MOD}.s1` : null));
+      globalThis.game = { settings: { get }, users: [], actors: [] };
+      const load = vi.fn(async () => theme('s1'));
+      api.registerThemeStub(MOD, stubOf('s1', load));
+      for (let i = 2; i <= 6; i++) api.registerThemeStub(MOD, stubOf(`s${i}`));
+      expect(load).not.toHaveBeenCalled(); // not yet: after the code that registers them
+      await wait();
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(get.mock.calls.filter(([, k]) => k === 'theme')).toHaveLength(1); // one scan for six stubs
+    });
+
+    test('without a game (a bare test or an early call) nothing is scanned', async () => {
+      const { api } = make();
+      const load = vi.fn(async () => theme('z'));
+      api.registerThemeStub(MOD, stubOf('z', load));
+      await wait();
+      expect(load).not.toHaveBeenCalled();
+      expect(await preloadReferencedStubs()).toEqual([]);
+    });
   });
 });

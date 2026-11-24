@@ -466,6 +466,27 @@ describe('DiceBox applies a registered DiceSystem', () => {
       box.clear();
     });
 
+    test('registering the cacheKey again is a new revision: dice made afterwards get the new hook, not a cached material or program', () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      const mod = api();
+      mod.registerMaterial('mod', { cacheKey: 'mod-lights', beforeShaderCompile: first });
+      const { renderer, box } = setup();
+      roll(box, 'mod-lights');
+      const a = meshes(renderer)[0].material;
+      expect(a.customProgramCacheKey()).toContain('mat:mod-lights@1');
+      mod.registerMaterial('mod', { cacheKey: 'mod-lights', beforeShaderCompile: second });
+      roll(box, 'mod-lights');
+      const b = meshes(renderer).map((m) => m.material).find((m) => m !== a);
+      expect(b).toBeDefined();
+      expect(b.customProgramCacheKey()).toContain('mat:mod-lights@2');
+      expect(b.customProgramCacheKey()).not.toBe(a.customProgramCacheKey()); // three.js compiles it as a new program
+      b.onBeforeCompile(shaderStub(), null);
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(first).not.toHaveBeenCalled();
+      box.clear();
+    });
+
     test('a look naming a material nobody registered draws as a plain die', () => {
       const { renderer, box } = setup();
       roll(box, 'gone-lights');

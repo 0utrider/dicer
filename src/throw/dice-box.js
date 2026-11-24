@@ -976,7 +976,7 @@ export class DiceBox {
     const systemKey = custom ? `|sys:${custom}` : '';
     // an add-on's material hook (a look's `material`): never on a ghost, nor under the safe flags
     const addon = !ghost && !flags.safe && !custom && appearance.material ? MATERIALS.get(appearance.material) : null;
-    const addonKey = addon ? `|am:${addon.cacheKey}` : '';
+    const addonKey = addon ? `|am:${addon.key}` : ''; // key = cacheKey@revision: a re-registered hook never meets cached dice
     const hooks = custom ? this.#materialHooks(custom, appearance) : null;
     const hookKey = hooks ? `|sc:${hooks.cacheString}` : '';
     const font = this.#fontAtlas(ghost ? 'serif' : appearance.numbers?.font);
@@ -1006,7 +1006,7 @@ export class DiceBox {
       if (hooks)
         mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
       if (addon)
-        chainShaderHook(mat, `mat:${addon.cacheKey}`, addon.cacheKey, addon.hook(type), (err) =>
+        chainShaderHook(mat, `mat:${addon.key}`, addon.key, addon.hook(type), (err) =>
           this.#systemWarn(`material:${addon.cacheKey}`, 'material', 'a material callback threw; its dice use Dicer’s material', err),
         );
       this._materials.set(key, mat);
