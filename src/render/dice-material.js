@@ -64,7 +64,8 @@ const METAL_COAT = 0.001;
  * marble 0.4, pearl and resin 1, wood 0.5), and a coat is mirror-sharp whatever body.roughness says, so a
  * roughness of 1 still looked polished. From here to 1 the coat fades out (smoothly) and its own
  * roughness rises and the specular reflection weakens, so the top of the slider reads matte. At or below
- * it nothing changes.
+ * it nothing changes. Metal and resin are left out: metal has no coat, and a rough resin die would lose
+ * the bright rim that its edges have always had.
  */
 export const MATTE_FROM = 0.7;
 /** How much of the specular reflection a fully matte body loses (a rough surface also reflects less, not only blurrier). */
@@ -381,7 +382,7 @@ ${interior.pars}`;
   Object.assign(material.defines, p.defines);
   Object.assign(uniforms, p.uniforms);
   if (p.params) material.setValues(p.params);
-  const matte = body === 'metal' ? 0 : matteOf(a.body.roughness);
+  const matte = body === 'metal' || body === 'resin' ? 0 : matteOf(a.body.roughness);
   if (matte > 0) {
     material.clearcoat = Math.max(material.clearcoat * (1 - matte), MATTE_COAT_MIN);
     material.clearcoatRoughness = Math.max(material.clearcoatRoughness, matte);

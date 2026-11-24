@@ -1041,7 +1041,6 @@ describe('rough bodies read matte (the clear coat gives way above MATTE_FROM)', 
     ['opaque', 0.6],
     ['marble', 0.4],
     ['pearl', 1],
-    ['resin', 1],
   ])('%s: untouched at and below the threshold; at roughness 1 the coat is gone (not zero) and rougher, the specular weaker', (type, coat) => {
     for (const r of [0, 0.3, 0.7]) {
       const m = body(type, r);
@@ -1059,11 +1058,15 @@ describe('rough bodies read matte (the clear coat gives way above MATTE_FROM)', 
     expect(mid.specularIntensity).toBeGreaterThan(0.45);
   });
 
-  test('metal is never touched; roughness is not part of the program', () => {
+  test('metal and resin are never touched; roughness is not part of the program', () => {
     const smooth = body('metal', 0.2);
     const rough = body('metal', 1);
     expect(rough.clearcoat).toBe(smooth.clearcoat);
     expect(rough.specularIntensity).toBe(1);
+    const resin = body('resin', 1);
+    expect(resin.clearcoat).toBeCloseTo(1);
+    expect(resin.clearcoatRoughness).toBe(body('resin', 0.3).clearcoatRoughness);
+    expect(resin.specularIntensity).toBe(1);
     const a = body('opaque', 0.3);
     const b = body('opaque', 1);
     expect(b.customProgramCacheKey()).toBe(a.customProgramCacheKey());
