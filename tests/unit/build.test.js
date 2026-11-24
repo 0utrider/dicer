@@ -515,9 +515,12 @@ describe('build', () => {
     // PR #8 (api.registerFont: the font id check takes add-on font ids), PR #9 (numbers.offsetY: the
     // look field and the uNum uniform's third component) and PR #10 (body.streaks in the look):
     // owner approved +165 B (47,384 -> 47,549), 2026-11-24.
+    // PR #11 (numbers.outline: the look fields and the check that a look needs the extras chunk, +247 B)
+    // and PR #7 (extension points for add-on theme modules: stubs, materials, user defaults and the
+    // damage map on the api, +492 B): owner approved +739 B (47,549 -> 48,288), 2026-11-24.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(47_549);
+    expect(growth).toBeLessThanOrEqual(48_288);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
