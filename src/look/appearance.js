@@ -197,6 +197,8 @@ export function normalizeAppearance(input) {
         offsetY: num(n.offsetY, -0.5, 0.5, 0), // vertical shift in face units, positive up (engrave.js uNum)
         // an outline around the numbers (extras/outline.js): stored only with a colour, width 0..1 of the widest
         ...(outline && { outline, outlineWidth: num(n.outlineWidth, 0, 1, 0.8) }),
+        // the contrast ratio the numbers must reach (contrast.js): stored only from 1.5 up, else automatic
+        ...(num(n.minContrast, 0, 7, 0) >= 1.5 && { minContrast: num(n.minContrast, 0, 7, 0) }),
       },
       edges: {
         radius,

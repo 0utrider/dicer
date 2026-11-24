@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { contrastRatio, readableNumbers, visibleBodyColor, MIN_CONTRAST } from '../../src/look/contrast.js';
+import { contrastRatio, numbersReport, readableNumbers, requiredContrast, visibleBodyColor, MIN_CONTRAST } from '../../src/look/contrast.js';
 import { normalizeAppearance } from '../../src/look/appearance.js';
 
 const look = (o) => normalizeAppearance(o);
@@ -110,5 +110,106 @@ describe('number contrast against the die colour', () => {
     const r = readableNumbers(look({ body: { type: 'opaque', color: '#cccccc' }, numbers: { color: '#bbbbbb' } }));
     expect(r.glow).toBe(0);
     expect(r.fill).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe('number contrast that sees the material', () => {
+  const pearl = (n = {}, b = {}) => look({ body: { type: 'pearl', color: '#fffdfb', color2: '#f3dbe9', ...b }, numbers: { fill: 'enamel', color: '#4a0f45', ...n } });
+
+  test('a coat lays a veil over the dark ink of a pearl die, so the check asks more of it than of a plain body', () => {
+    const plain = look({ body: { type: 'opaque', color: '#fffdfb' }, numbers: { fill: 'enamel', color: '#9a8a96' } });
+    const coated = look({ body: { type: 'pearl', color: '#fffdfb', color2: '#fffdfb' }, numbers: { fill: 'enamel', color: '#9a8a96' } });
+    // the same ink on the same body colour: the pearl coat's veil (0.15) asks it to move further than an opaque body's (0.08)
+    expect(lumOf(readableNumbers(coated).fill)).toBeLessThan(lumOf(readableNumbers(plain).fill));
+    expect(lumOf(readableNumbers(coated).fill)).toBeLessThan(lumOf('#9a8a96'));
+  });
+
+  test('a metallic fill takes half the veil, a paint or enamel one all of it', () => {
+    const a = (fill) => look({ body: { type: 'pearl', color: '#fffdfb', color2: '#fffdfb' }, numbers: { fill, color: '#7a6a76' } });
+    expect(lumOf(readableNumbers(a('enamel')).fill)).toBeLessThanOrEqual(lumOf(readableNumbers(a('gold')).fill));
+  });
+
+  test("the second colour counts where the material shows it, and both inside colours count on resin", () => {
+    const iridescent = (c2) => look({ body: { type: 'iridescent', color: '#202020', color2: c2 }, numbers: { fill: 'paint', color: '#9a9a9a' } });
+    expect(readableNumbers(iridescent('#202020')).fill).not.toBe(readableNumbers(iridescent('#ffffff')).fill);
+    const nebula = (c2) => look({ body: { type: 'resin', color: '#101828' }, interior: { type: 'nebula', colors: ['#202040', c2], density: 1 }, numbers: { fill: 'paint', color: '#aaaaaa' } });
+    expect(readableNumbers(nebula('#202040')).fill).not.toBe(readableNumbers(nebula('#ffffff')).fill);
+  });
+
+  test('a metal finish that is dull shows its second colour; a mirror finish lays a veil', () => {
+    const metal = (finish, c2) => look({ body: { type: 'metal', color: '#808080', color2: c2, finish }, numbers: { fill: 'paint', color: '#a0a0a0' } });
+    expect(readableNumbers(metal('patina', '#000000')).fill).not.toBe(readableNumbers(metal('polished', '#000000')).fill);
+  });
+
+  test('thin built-in faces ask for more contrast, a heavier weight for less, and numbers.minContrast overrides both', () => {
+    const need = (n) => requiredContrast(look({ numbers: { fill: 'paint', ...n } }));
+    expect(need({})).toBe(MIN_CONTRAST);
+    expect(need({ font: 'handwritten' })).toBeGreaterThan(MIN_CONTRAST);
+    expect(need({ font: 'blackletter' })).toBeGreaterThan(MIN_CONTRAST);
+    expect(need({ weight: 1 })).toBeLessThan(MIN_CONTRAST);
+    expect(need({ weight: -1 })).toBeGreaterThan(MIN_CONTRAST);
+    expect(need({ font: 'handwritten', minContrast: 4 })).toBe(4);
+    expect(need({ minContrast: 7 })).toBe(7);
+    expect(need({ fill: 'gold' })).toBeLessThan(MIN_CONTRAST);
+  });
+
+  test('a stricter numbers.minContrast moves a colour that passes the default', () => {
+    const base = { body: { type: 'opaque', color: '#777777' }, numbers: { fill: 'paint', color: '#f2f2f2' } };
+    expect(readableNumbers(look(base)).fill).toBe('#f2f2f2');
+    const strict = readableNumbers(look({ ...base, numbers: { ...base.numbers, minContrast: 7 } })).fill;
+    expect(strict).not.toBe('#f2f2f2');
+    expect(contrastRatio('#777777', strict)).toBeGreaterThan(contrastRatio('#777777', '#f2f2f2') - 0.001);
+  });
+
+  test('numbersReport: off, adjusted, close and ok', () => {
+    expect(numbersReport(look({ body: { type: 'opaque', color: '#777777' }, numbers: { fill: 'paint', color: '#7a7a7a', contrast: false } })).state).toBe('off');
+    const adjusted = numbersReport(look({ body: { type: 'opaque', color: '#777777' }, numbers: { fill: 'paint', color: '#7a7a7a' } }));
+    expect(adjusted.state).toBe('adjusted');
+    expect(adjusted.fill).toMatch(/^#[0-9a-f]{6}$/);
+    const ok = numbersReport(look({ body: { type: 'opaque', color: '#000000' }, numbers: { fill: 'paint', color: '#ffffff' } }));
+    expect(ok.state).toBe('ok');
+    expect(ok.ratio).toBeGreaterThan(ok.need);
+    const close = numbersReport(look({ body: { type: 'opaque', color: '#777777' }, numbers: { fill: 'paint', color: '#000000', minContrast: 4.5 } }));
+    expect(close.state).toBe('close');
+  });
+
+  test('numbers.minContrast: stored from 1.5 to 7 only, so old looks keep their keys', () => {
+    expect(look({}).numbers).not.toHaveProperty('minContrast');
+    expect(look({ numbers: { minContrast: 4 } }).numbers.minContrast).toBe(4);
+    expect(look({ numbers: { minContrast: 7 } }).numbers.minContrast).toBe(7);
+    for (const bad of [0, 1, 1.4, -2, 12, NaN, '4', null]) expect(look({ numbers: { minContrast: bad } }).numbers).not.toHaveProperty('minContrast');
+  });
+
+  test('the reference case: pearl with dark enamel ink passes when it is dark enough and the report says so', () => {
+    expect(pearl().numbers.fill).toBe('enamel');
+    expect(numbersReport(pearl()).state).toBe('ok');
+  });
+
+  test('a dark number under a glow is darkened first and keeps its glow when that is enough', () => {
+    const base = { body: { type: 'opaque', color: '#888888' }, numbers: { fill: 'paint', color: '#555555' }, glow: { color: '#3050ff', intensity: 0.2 } };
+    const r = readableNumbers(look(base));
+    expect(r.glow).toBe(0.2);
+    expect(lumOf(r.fill)).toBeLessThan(lumOf('#555555'));
+  });
+
+  test('the glow is turned down only when darkening alone cannot reach the contrast', () => {
+    const pearlGlow = { body: { type: 'pearl', color: '#f4dff0', color2: '#e8c8e0' }, numbers: { fill: 'paint', color: '#3a1030' }, glow: { color: '#fff0f8', intensity: 0.3 } };
+    const r = readableNumbers(look(pearlGlow));
+    expect(r.glow).toBeLessThan(0.3);
+    const fixed = look({ ...pearlGlow, numbers: { ...pearlGlow.numbers, color: r.fill }, glow: { ...pearlGlow.glow, intensity: r.glow } });
+    expect(numbersReport(fixed).state).not.toBe('adjusted');
+  });
+
+  test('jelly shows its second colour', () => {
+    const jelly = { body: { type: 'jelly', color: '#e0a910', color2: '#ff00c8' } };
+    expect(visibleBodyColor(look(jelly))).not.toBe('#e0a910');
+  });
+
+  test('a two colour swirl is checked against each colour, so the ink reads on both', () => {
+    const swirl = { body: { type: 'resin', color: '#d8202f' }, interior: { type: 'swirl', colors: ['#d8202f', '#ffffff'], density: 1 }, numbers: { fill: 'paint', color: '#d8202f', weight: 0 } };
+    const r = readableNumbers(look(swirl));
+    const after = numbersReport(look({ ...swirl, numbers: { ...swirl.numbers, color: r.fill } }));
+    expect(after.state).not.toBe('adjusted');
+    expect(after.ratio).toBeGreaterThanOrEqual(after.need - 0.05); // the ink is rounded to #rrggbb
   });
 });

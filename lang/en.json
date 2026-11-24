@@ -992,7 +992,14 @@
         "FontFailed": "This font could not be loaded, so the serif is shown instead. Check the name or the file.",
         "InkGlow": "Glow ink brightness",
         "Contrast": "Keep numbers readable",
-        "ContrastHint": "Lightens or darkens the number colour where it would be hard to read on the die. Picking a colour turns this off, so the numbers keep the colour you chose."
+        "ContrastHint": "Lightens or darkens the number colour where it would be hard to read on the die. Picking a colour turns this off, so the numbers keep the colour you chose.",
+        "MinContrast": "Minimum contrast",
+        "MinContrastHint": "How strongly the numbers must stand out from the die (a ratio from 1.5 to 7). Auto asks for 3, a little more for thin fonts and a little less for bold numbers.",
+        "MinContrastAuto": "Auto",
+        "ContrastOk": "The numbers read well on this die (contrast {ratio}:1, asks for {need}:1).",
+        "ContrastClose": "The numbers read, but only just (contrast {ratio}:1, asks for {need}:1).",
+        "ContrastAdjusted": "The number colour is adjusted to {fill} so it reads on this die (asks for {need}:1).",
+        "ContrastOff": "Keep numbers readable is off, so the numbers are drawn in the colour you picked."
       },
       "Fill": {
         "paint": "Paint",

@@ -3375,3 +3375,21 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   min-width: 0;
   width: 100%;
 }
+
+.dicer-appearance-editor .dicer-ae-contrast-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--font-size-12, 12px);
+  line-height: 1.4;
+  opacity: 0.8;
+}
+.dicer-appearance-editor .dicer-ae-contrast-note > i {
+  margin-top: 2px;
+}
+.dicer-appearance-editor .dicer-ae-contrast-note[data-state="close"],
+.dicer-appearance-editor .dicer-ae-contrast-note[data-state="adjusted"] {
+  color: var(--color-level-warning, #ee9b3a);
+  opacity: 1;
+}
