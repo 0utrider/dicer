@@ -507,9 +507,12 @@ describe('build', () => {
     // Roll All / Roll NPCs as one throw: the gate hands a marked message's throw to the lazy
     // initiative-batch chunk, which main.js loads when a combat tracker renders with a combat:
     // owner approved +178 B, 2026-11-24.
+    // PR #8 (api.registerFont: the font id check takes add-on font ids), PR #9 (numbers.offsetY: the
+    // look field and the uNum uniform's third component) and PR #10 (body.streaks in the look):
+    // owner approved +165 B (47,384 -> 47,549), 2026-11-24.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(47_384);
+    expect(growth).toBeLessThanOrEqual(47_549);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
