@@ -754,8 +754,11 @@ export function createDice3dApi({
     get canvas() {
       return renderer?.canvas ?? null;
     },
-    /** Accepts any write; the shaders ignore them (survey tier 2 only sets custom glow). */
-    uniforms: { moonPhase: 0 },
+    /**
+     * Accepts any write; Dicer's own shaders ignore them. Empty, as Dice So Nice presets no
+     * `moonPhase`: Ember Lunar Dice adds its own here (a preset one of another shape is in its way).
+     */
+    uniforms: {},
     /** A live, read-only view of the settings integrations read (midi-qol: dice3d.config). */
     get config() {
       return config;

@@ -607,6 +607,28 @@ export function shimDsn(dice3d) {
   }
 }
 
+const LUNAR_DICE = 'ember-lunar-dice';
+
+/**
+ * Keeps Ember Lunar Dice's moon uniforms in step with Ember's moons. The dice add
+ * `game.dice3d.uniforms.moonPhase` (`{<moon id>: {value}}`, true while that moon is full) and Ember
+ * sets it, but only while both that module and Dice So Nice read as active, which neither does
+ * under Dicer. Set here as Ember does: once the dice have registered (the announcement), then at
+ * each `ember.lunarPhaseChange`. Without Ember (`calendar()` has no moons) nothing is set.
+ */
+export function followEmberMoons({ hooks, dice3d, calendar = () => globalThis.game?.time?.calendar }) {
+  const set = (phases) => {
+    const mp = dice3d?.uniforms?.moonPhase;
+    if (!mp || typeof mp !== 'object' || !phases || typeof phases !== 'object') return;
+    for (const [id, phase] of Object.entries(phases)) if (mp[id] && typeof mp[id] === 'object') mp[id].value = phase === 'full';
+  };
+  hooks.once('diceSoNiceReady', () => {
+    const moons = calendar()?.moons;
+    if (moons && typeof moons === 'object') set(Object.fromEntries(Object.values(moons).map((m) => [m?.id, m?.phase])));
+  });
+  hooks.on('ember.lunarPhaseChange', (change) => set(change?.phases));
+}
+
 /**
  * Runs the picked Dice So Nice add-ons (the `dsnAddons` setting: module ids) in full while they
  * stay inactive: such a module needs Dice So Nice, which must stay off, so Foundry will not
@@ -631,6 +653,7 @@ export async function loadDsnAddons(
     dice3d = globalThis.game?.dice3d,
     warn = (...a) => console.warn(...a),
     fonts = globalThis.CONFIG?.fontDefinitions,
+    calendar,
     loadFont = (family, def) => globalThis.foundry?.applications?.settings?.menus?.FontConfig?.loadFont?.(family, def),
   } = {},
 ) {
@@ -678,6 +701,7 @@ export async function loadDsnAddons(
   if (done.length) {
     shimDsn(dice3d);
     await readSetRules(done, { route, esmodule });
+    if (done.includes(LUNAR_DICE)) followEmberMoons({ hooks, dice3d, calendar });
   }
   for (const { id, hook, fn } of caught) {
     try {

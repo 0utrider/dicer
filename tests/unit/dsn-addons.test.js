@@ -171,3 +171,35 @@ test("fonts an add-on defines in its init hook (CONFIG.fontDefinitions, as Lordu
   expect(loadFont).toHaveBeenCalledTimes(1);
   expect(loadFont).toHaveBeenCalledWith('Metamorphous', fonts.Metamorphous);
 });
+
+// Ember sets the Lunar Dice moon uniforms itself only while both that module and Dice So Nice
+// read as active; under Dicer neither does, so Dicer keeps them in step.
+test("Ember Lunar Dice run as an add-on follow Ember's moons: full ones glow, from the announcement and at each phase change", async () => {
+  const { hooks } = fakeHooks();
+  const dice3d = { uniforms: {} };
+  const loaders = files({
+    '/modules/ember-lunar-dice/ember-lunar-dice.mjs': () =>
+      hooks.once('diceSoNiceReady', (api) => {
+        api.uniforms.moonPhase = { ignis: { value: false }, aqua: { value: true } };
+      }),
+  });
+  const modules = mods({ id: 'ember-lunar-dice', esmodules: new Set(['modules/ember-lunar-dice/ember-lunar-dice.mjs']) });
+  const calendar = { moons: { ignis: { id: 'ignis', phase: 'full' }, aqua: { id: 'aqua', phase: 'new' }, terra: { id: 'terra', phase: 'full' } } };
+  await loadDsnAddons(['ember-lunar-dice'], { hooks, modules, route, ...loaders, dice3d, calendar: () => calendar });
+  hooks.callAll('diceSoNiceReady', dice3d);
+  // a moon the dice have no uniform for is left out
+  expect(dice3d.uniforms.moonPhase).toEqual({ ignis: { value: true }, aqua: { value: false } });
+  hooks.callAll('ember.lunarPhaseChange', { changed: ['ignis', 'aqua'], phases: { ignis: 'waning', aqua: 'full' } });
+  expect(dice3d.uniforms.moonPhase).toEqual({ ignis: { value: false }, aqua: { value: true } });
+});
+
+test('without Ember (no moons) or without the moon uniforms, the Lunar Dice load and nothing throws', async () => {
+  const { hooks } = fakeHooks();
+  const dice3d = { uniforms: {} };
+  const loaders = files({ '/modules/ember-lunar-dice/ember-lunar-dice.mjs': () => {} });
+  const modules = mods({ id: 'ember-lunar-dice', esmodules: new Set(['modules/ember-lunar-dice/ember-lunar-dice.mjs']) });
+  expect(await loadDsnAddons(['ember-lunar-dice'], { hooks, modules, route, ...loaders, dice3d, calendar: () => undefined })).toEqual(['ember-lunar-dice']);
+  expect(() => hooks.callAll('diceSoNiceReady', dice3d)).not.toThrow();
+  expect(() => hooks.callAll('ember.lunarPhaseChange', { phases: { ignis: 'full' } })).not.toThrow();
+  expect(dice3d.uniforms.moonPhase).toBeUndefined();
+});

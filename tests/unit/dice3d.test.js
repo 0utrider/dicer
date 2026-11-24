@@ -306,8 +306,8 @@ describe('Task 12: the full game.dice3d surface', () => {
     expect(a.config.enabled).toBe(false);
   });
 
-  test('uniforms accepts any write; moonPhase defaults to 0', () => {
-    expect(a.uniforms.moonPhase).toBe(0);
+  test('uniforms accepts any write; moonPhase is not preset (Dice So Nice has none: Ember Lunar Dice adds it)', () => {
+    expect('moonPhase' in a.uniforms).toBe(false);
     expect(() => (a.uniforms.foo = 1)).not.toThrow();
     expect(a.uniforms.foo).toBe(1);
     expect(a.box).toEqual({});
