@@ -70,6 +70,7 @@ import {
   appearanceFromForm,
   visibleSections,
   fontInvalid,
+  outlineInvalid,
   setField,
   setFaceImage,
   addOverride,
@@ -302,6 +303,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       list.map((id) => ({ id, label: loc(prefix + id), active: id === value, icon: icons?.[id] }));
     const edgeIndex = EDGE_STEPS.indexOf(look.edges.radius);
     const fontId = look.numbers.font;
+    const outlineMessage = outlineInvalid(form) ? loc('DICER.Appearance.Numbers.OutlineInvalid') : '';
     const fontMessage = fontInvalid(form)
       ? loc('DICER.Appearance.Numbers.FontInvalid')
       : this.#fontFailed && this.#fontFailed === fontId
@@ -338,6 +340,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       fumbleIcons: active(ICON_CHOICES, form.numbers.fumbleIcon, 'DICER.Appearance.Icon.'),
       strips: active(STRIP_STYLES, form.edges.strip, 'DICER.Appearance.Strip.'),
       fontKinds: active(FONT_KINDS, form.numbers.fontKind, 'DICER.Appearance.FontKind.'),
+      outlineMessage,
       fontSuggestions: FONT_SUGGESTIONS,
       // fonts add-on modules registered (api.registerFont): one row of chips per module
       addonFonts: fontGroups().map((g) => ({
@@ -361,6 +364,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         size: pct(form.numbers.size),
         weight: pct(form.numbers.weight),
         offsetY: pct(form.numbers.offsetY),
+        outlineWidth: pct(form.numbers.outlineWidth),
         intensity: pct(form.glow.intensity),
         inkGlow: pct(form.numbers.inkGlow ?? 1),
         stripStrength: pct(form.edges.stripStrength),
@@ -573,6 +577,12 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     const out = this.element.querySelector(`output[data-for="${path}"]`);
     if (out) out.textContent = pct(value);
     if (path.startsWith('numbers.font')) this.#paintFontMessage();
+    // the outline's colour and width show only while its switch is on: draw the window again
+    if (path === 'numbers.outlineOn' && committed) {
+      this.#scheduler.schedule(this.#previewTheme());
+      this.render();
+      return;
+    }
     if (committed || el.type !== 'text' || !path.startsWith('numbers.font')) this.#scheduler.schedule(this.#previewTheme());
   }
 

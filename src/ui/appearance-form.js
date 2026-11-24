@@ -99,6 +99,10 @@ export function formFromAppearance(raw) {
       size: a.numbers.size,
       weight: a.numbers.weight,
       offsetY: a.numbers.offsetY,
+      // the outline: a switch, its colour (black until one is picked) and width
+      outlineOn: !!a.numbers.outline,
+      outline: a.numbers.outline ?? '#000000',
+      outlineWidth: a.numbers.outlineWidth ?? 0.8,
       ...fontParts(a.numbers.font),
     },
     edges: { radius: a.edges.radius, strip: a.edges.strip.style, stripColor: a.edges.strip.color, stripStrength: a.edges.strip.strength },
@@ -155,6 +159,8 @@ export function appearanceFromForm(form) {
       size: n(num.size),
       weight: n(num.weight),
       offsetY: n(num.offsetY),
+      outline: num.outlineOn === true ? num.outline : null,
+      outlineWidth: n(num.outlineWidth),
     },
     edges: { radius: n(e.radius), strip: { style: e.strip, color: e.stripColor, strength: n(e.stripStrength) } },
     shapes: isObj(f.shapes) ? Object.fromEntries(Object.keys(DIE_SHAPES).map((t) => [t, f.shapes[t]])) : {},
@@ -165,6 +171,12 @@ export function appearanceFromForm(form) {
       ? { ...f.bodyImage, scale: n(f.bodyImage.scale), rotation: n(f.bodyImage.rotation), blend: n(f.bodyImage.blend), tint: f.bodyImage.tint === true }
       : undefined,
   });
+}
+
+/** True when the outline switch is on but its colour is not a #rrggbb: no outline is drawn until it is. */
+export function outlineInvalid(form) {
+  const n = form?.numbers;
+  return n?.outlineOn === true && !/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(n.outline ?? '').trim());
 }
 
 /** True when the form names a computer font / font file that is not a usable id (it would fall back to the serif). */
@@ -206,6 +218,9 @@ export function visibleSections(look) {
     strip: radius > 0,
     stripDetails: radius > 0 && stripStyle !== undefined && stripStyle !== 'body',
     inkGlow: fill === 'glow',
+    // the outline's colour and width show while its switch is on
+    // (a form's switch wins; a bare appearance has an outline when it names a colour)
+    outlineOptions: look?.numbers?.outlineOn === undefined ? typeof look?.numbers?.outline === 'string' && look.numbers.outline !== '' : look.numbers.outlineOn === true,
     fontFamily: kind === 'css',
     fontFile: kind === 'file',
   };
@@ -241,7 +256,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'offsetY', 'inkGlow', 'extraDensity', 'scale', 'rotation', 'blend'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'offsetY', 'outlineWidth', 'inkGlow', 'extraDensity', 'scale', 'rotation', 'blend'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};
