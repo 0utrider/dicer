@@ -111,6 +111,8 @@ const onlyFrom = (views, from) => views.map((v, i) => (i >= from ? v : 'none'));
  *   their thrower's trajectory here, and the thrower's own lingering throw is decorated (H-9)
  * @param {(message, start) => void} [deps.onStarted] after each RollStart (and the own lingering
  *   throws were read): main.js sends the thrower's hand throws then (sendHand)
+ * @param {(id, specs, opts, cast) => Promise<void>} [deps.join] the throw of a roll whose message
+ *   carries a `batch` flag (Roll All: foundry/initiative-batch.js): the batch's rolls share a throw
  */
 export function createMessageGate({
   diceBox,
@@ -130,6 +132,7 @@ export function createMessageGate({
   now = () => globalThis.performance.now(),
   hand = null,
   onStarted = () => {},
+  join,
 }) {
   /** message id -> {blind, ghostAll, secretAll, count} of its last RollStart (count: rolls covered). */
   const starts = new Map();
@@ -482,6 +485,7 @@ export function createMessageGate({
    * remaining groups are never thrown.
    */
   function throwGroups(id, entry, groups, message, owned = []) {
+    const batch = join && flagOf(message, 'batch');
     const next = (i) => {
       if (animating.get(id) !== entry) return; // revealed meanwhile (watchdog, delete)
       if (i >= groups.length) {
@@ -533,7 +537,9 @@ export function createMessageGate({
             !entry.own &&
             getSetting('handReplay') !== false
             ? replayHand(id, entry, message, roll, specs, opts, cast)
-            : cast();
+            : batch
+              ? join(batch, specs, opts, cast)
+              : cast();
         });
       } catch (err) {
         console.error('dicer: roll failed', err);

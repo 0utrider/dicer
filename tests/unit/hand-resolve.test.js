@@ -1434,3 +1434,180 @@ describe('follow-up rolls', () => {
     expect(specs.every((s) => s.ghost === true)).toBe(true);
   });
 });
+
+describe('initiative for several combatants at once (Roll All, Roll NPCs)', () => {
+  let t0 = Date.now() + 90 * 3600e3;
+  let lands;
+  let Combat;
+  let watchRollInitiative;
+  let unseen; // the values the unseen physics decides, in order
+  const init = (r) => (r.options = { type: 'initiative' });
+  const rollD20 = async (prep) => {
+    const roll = rollOf(new Die({ faces: 20 }));
+    prep?.(roll);
+    await fulfill(new Resolver(roll, deps));
+    return roll;
+  };
+  /** Every pending landing, and the queue's bookkeeping after them. */
+  const landAll = async () => {
+    for (const land of lands.splice(0)) land();
+    await vi.advanceTimersByTimeAsync(0);
+  };
+  const sideBySide = () => {
+    Combat.prototype.rollInitiative = async function (ids) {
+      this.rolls = await Promise.all(ids.map(() => rollD20(init)));
+      return this;
+    };
+    watchRollInitiative(Combat.prototype);
+  };
+
+  beforeEach(async () => {
+    t0 += 3600e3; // clear of every earlier throw's window
+    vi.useFakeTimers({ now: t0 });
+    settings.handRolls = 'off';
+    settings.physicsResults = true;
+    lands = [];
+    unseen = [];
+    deps.throwUnseen = vi.fn(async (box, specs) => specs.map(() => unseen.shift()));
+    // DiceBox as it is live: the values are read at physics done, the dice land later.
+    deps.diceBox.roll.mockImplementation((specs, opts) => {
+      opts?.record?.({ rec: specs.length });
+      return {
+        read: Promise.resolve(specs.map(() => boxValues.shift())),
+        values: new Promise(() => {}),
+        handle: {},
+        landed: new Promise((r) => lands.push(r)),
+        finished: new Promise(() => {}),
+      };
+    });
+    // Foundry's Combat#rollInitiative: one roll after the other, each awaited.
+    Combat = class {
+      rolls = [];
+      async rollInitiative(ids, prep = init) {
+        for (const id of typeof ids === 'string' ? [ids] : ids) this.rolls.push(await rollD20(prep));
+        return this;
+      }
+    };
+    ({ watchRollInitiative } = await import('../../src/hand/chunk/resolve.js'));
+    watchRollInitiative(Combat.prototype);
+  });
+  afterEach(async () => {
+    await landAll(); // frees the module-level queue for the next test
+    vi.useRealTimers();
+  });
+
+  test('physics decides: every combatant is decided unseen, at once; nothing is thrown here, the messages show the dice', async () => {
+    unseen = [3, 11, 19];
+    const combat = new Combat();
+    expect(await combat.rollInitiative(['a', 'b', 'c'])).toBe(combat);
+    expect(deps.throwUnseen).toHaveBeenCalledTimes(3);
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(combat.rolls.map((r) => r.terms[0].results[0].result)).toEqual([3, 11, 19]);
+    for (const r of combat.rolls) {
+      // n 0: no hand throw to replay, every screen shows the roll from its message
+      expect(r.options.dicerHand).toMatchObject({ physics: true, n: 0 });
+      expect(r.options.dicerHand.fallback).toBeUndefined();
+      expect(handThrows.has(r.options.dicerHand.id)).toBe(false);
+    }
+  });
+
+  test('rolls started side by side (PF2e) are decided unseen too', async () => {
+    unseen = [5, 6, 7];
+    sideBySide();
+    const combat = await new Combat().rollInitiative(['a', 'b', 'c']);
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(combat.rolls.map((r) => r.terms[0].results[0].result).sort()).toEqual([5, 6, 7]);
+  });
+
+  test('the unseen physics failing: Foundry rolls that combatant', async () => {
+    deps.throwUnseen = vi.fn(async () => null);
+    const combat = await new Combat().rollInitiative(['a', 'b']);
+    expect(combat.rolls.map((r) => r.options.dicerHand.fallback)).toEqual(['auto', 'auto']);
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+  });
+
+  test('one combatant alone is rolled as before: thrown for the roller, a second single roll once the first has landed', async () => {
+    boxValues = [3, 11];
+    const combat = new Combat();
+    await combat.rollInitiative(['a']);
+    expect(deps.throwUnseen).not.toHaveBeenCalled();
+    expect(combat.rolls[0].options.dicerHand).toMatchObject({ physics: true, n: 1 });
+    let done = false;
+    combat.rollInitiative('b').then(() => (done = true)); // a single id, as the tracker's die button sends
+    await vi.advanceTimersByTimeAsync(100);
+    expect(done).toBe(false);
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+    await landAll();
+    expect(done).toBe(true);
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(2);
+  });
+
+  test('other rolls made while the initiative is rolled are thrown as ever', async () => {
+    unseen = [3];
+    boxValues = [9];
+    let i = 0;
+    const combat = await new Combat().rollInitiative(['a', 'b'], (r) => (r.options = { type: i++ ? 'skill-check' : 'initiative' }));
+    expect(deps.throwUnseen).toHaveBeenCalledTimes(1);
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(combat.rolls[1].options.dicerHand).toMatchObject({ physics: true, n: 1 });
+  });
+
+  test('without physics deciding nothing changes: Foundry rolls, no unseen throw', async () => {
+    settings.physicsResults = false;
+    settings.handRolls = 'always';
+    settings.rollFilters = { hand: { initiative: 'off' } };
+    const combat = await new Combat().rollInitiative(['a', 'b']);
+    expect(deps.throwUnseen).not.toHaveBeenCalled();
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(combat.rolls.map((r) => r.options.dicerHand)).toEqual([undefined, undefined]);
+  });
+
+  test('thrown by hand: still one throw screen at a time', async () => {
+    settings.handRolls = 'always';
+    let land;
+    overlay.open = vi.fn(
+      ({ specs }) => new Promise((res) => (land = () => res({ values: specs.map(() => 2), handle: {}, recording: {} }))),
+    );
+    sideBySide();
+    const p = new Combat().rollInitiative(['a', 'b']);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    land();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.open).toHaveBeenCalledTimes(2);
+    land();
+    await p;
+    expect(deps.throwUnseen).not.toHaveBeenCalled();
+  });
+
+  test('Ask: answered "automatically" or "the rest automatically", they are decided unseen; by hand, the throw screen', async () => {
+    settings.handRolls = 'ask';
+    const answers = ['yes', 'rest'];
+    deps.ask = vi.fn(async () => answers.shift());
+    overlay.values = [4];
+    unseen = [8, 15];
+    sideBySide();
+    const combat = await new Combat().rollInitiative(['a', 'b', 'c']);
+    expect(overlay.open).toHaveBeenCalledTimes(1);
+    expect(deps.ask).toHaveBeenCalledTimes(2); // the third rolls with the rest
+    expect(deps.throwUnseen).toHaveBeenCalledTimes(2);
+    expect(deps.diceBox.roll).not.toHaveBeenCalled();
+    expect(combat.rolls.map((r) => r.terms[0].results[0].result)).toEqual([4, 8, 15]);
+  });
+
+  test('the watch is set once per class and keeps the answer and a failure of the roll', async () => {
+    const own = Combat.prototype.rollInitiative;
+    watchRollInitiative(Combat.prototype);
+    expect(Combat.prototype.rollInitiative).toBe(own);
+    Combat.prototype.rollInitiative = async () => {
+      throw new Error('no combat');
+    };
+    watchRollInitiative(Combat.prototype);
+    await expect(new Combat().rollInitiative(['a', 'b'])).rejects.toThrow('no combat');
+    // the failed call is over: a single roll after it is thrown for the roller as before
+    boxValues = [3];
+    await rollD20(init);
+    expect(deps.diceBox.roll).toHaveBeenCalledTimes(1);
+    expect(deps.throwUnseen).not.toHaveBeenCalled();
+  });
+});

@@ -146,6 +146,11 @@ describe('build', () => {
     expect(readFileSync(rollStats, 'utf8')).toContain('dicer-roll-stats');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-roll-stats');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('cannot save roll stats');
+    // Roll All as one throw (src/foundry/initiative-batch.js): loaded with a combat's tracker, and by the hand chunk
+    const initiativeBatch = lazy.find((p) => /^dist\/initiative-batch-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(initiativeBatch).toBeTruthy();
+    expect(readFileSync(initiativeBatch, 'utf8')).toContain('cannot mark an initiative roll');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('cannot mark an initiative roll');
     // lazy for real too: no world-start file names it
     for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
       expect(readFileSync(f, 'utf8')).not.toContain(elementOf.slice('dist/'.length));
@@ -251,6 +256,7 @@ describe('build', () => {
         rollStats,
         moods,
         recorder,
+        initiativeBatch,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),
@@ -490,9 +496,12 @@ describe('build', () => {
     // user's dice go to Dicer now reads those choices too (hand/shell.js diceOnDicer), and a change
     // of the filters re-syncs the dice configuration (settings.js): owner approved +120 B
     // (47,097 -> 47,217), 2026-11-23.
+    // Roll All / Roll NPCs as one throw: the gate hands a marked message's throw to the lazy
+    // initiative-batch chunk, which main.js loads when a combat tracker renders with a combat:
+    // owner approved +178 B, 2026-11-24.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(47_217);
+    expect(growth).toBeLessThanOrEqual(47_384);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

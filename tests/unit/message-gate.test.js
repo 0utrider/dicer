@@ -2671,3 +2671,60 @@ describe('Task 8: hand rolls in the gate', () => {
     });
   });
 });
+
+describe('Roll All: the rolls of one batch share a throw (deps.join)', () => {
+  const batched = (id, extra = {}) => message(id, { flags: { dicer: { batch: 'b1' } }, ...extra });
+
+  test('a message with a batch flag hands its throw to join; its card waits for that throw', async () => {
+    const landed = deferred();
+    const join = vi.fn(() => landed.promise);
+    gate = makeGate({ join });
+    gate.onCreate(batched('m1'));
+    expect(diceBox.roll).not.toHaveBeenCalled();
+    const [id, specs, opts, cast] = join.mock.calls[0];
+    expect(id).toBe('b1');
+    expect(specs).toMatchObject([{ type: 'd20', value: 17 }]);
+    expect(opts).toBeNull();
+    expect(gate.isAnimating('m1')).toBe(true);
+    // cast throws what it is given (the whole batch), or the roll's own dice
+    cast(
+      [
+        { type: 'd20', value: 3 },
+        { type: 'd20', value: 4 },
+      ],
+      null,
+    );
+    expect(diceBox.rolls[0].specs).toHaveLength(2);
+    landed.resolve();
+    await flush();
+    expect(gate.isAnimating('m1')).toBe(false);
+    expect(hooks.named(COMPLETE)).toHaveLength(1);
+  });
+
+  test('a join that fails reveals the message', async () => {
+    gate = makeGate({ join: () => Promise.reject(new Error('no chunk')) });
+    gate.onCreate(batched('m1'));
+    await flush();
+    expect(gate.isAnimating('m1')).toBe(false);
+  });
+
+  test('no flag, or no join: thrown at once as ever', () => {
+    const join = vi.fn();
+    gate = makeGate({ join });
+    gate.onCreate(message('m1', { flags: { core: { initiativeRoll: true } } }));
+    expect(join).not.toHaveBeenCalled();
+    expect(diceBox.roll).toHaveBeenCalledTimes(1);
+    gate = makeGate();
+    gate.onCreate(batched('m2'));
+    expect(diceBox.roll).toHaveBeenCalledTimes(2);
+  });
+
+  test('a roll the filters hide is not thrown at all', () => {
+    const join = vi.fn();
+    settings.rollFilters = { initiative: 'skip' };
+    gate = makeGate({ join });
+    gate.onCreate(batched('m1', { flags: { core: { initiativeRoll: true }, dicer: { batch: 'b1' } } }));
+    expect(join).not.toHaveBeenCalled();
+    expect(gate.isAnimating('m1')).toBe(false);
+  });
+});

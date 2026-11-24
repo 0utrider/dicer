@@ -64,6 +64,8 @@ import { watchStaleCopy } from './foundry/stale-copy.js';
 let dormant = false;
 let gate = null;
 let initiative = null; // hides rolled initiative in the combat tracker while its dice fly
+// Roll All / Roll NPCs as one throw (lazy chunk)
+const batchChunk = () => import('./foundry/initiative-batch.js');
 let diceBox = null;
 let diceRenderer = null;
 let quality = null;
@@ -739,7 +741,11 @@ Hooks.once('init', () => {
     sendHand(message); // what the gate did not send from its RollStart (not animated here)
     countRoll(message);
   });
-  Hooks.on('renderCombatTracker', (app, html) => initiative?.onRenderTracker(app, html));
+  Hooks.on('renderCombatTracker', (app, html) => {
+    initiative?.onRenderTracker(app, html);
+    // a combat: the rolls of a Roll All are marked from now on (a failed load: thrown one by one)
+    if (game.combat) batchChunk().then((m) => m.watchRollInitiative(), () => {});
+  });
   updateUserHook = Hooks.on('updateUser', (user, changes) => {
     appearanceRewarm.onUpdateUser(user, changes);
     onOtherUserLook(user, changes);
@@ -993,6 +999,7 @@ Hooks.once('ready', async () => {
         areaFor,
         hand,
         onStarted: sendHand,
+        join: (...a) => batchChunk().then((m) => m.join(...a), () => a[3]()),
       });
       initiative = createInitiativeHider({
         gate,

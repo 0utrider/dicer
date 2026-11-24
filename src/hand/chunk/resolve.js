@@ -22,6 +22,7 @@ import { modelRotationFor } from '../../compat/dsn-orientation.js';
 import { workbenchCancels } from '../../compat/workbench.js';
 import { filtered } from '../../foundry/roll-filters.js';
 import { handMode, handExempt } from './hand-kinds.js';
+import { watchRollInitiative, rollingMany } from '../../foundry/initiative-batch.js';
 
 /**
  * An initiative roll, while it is still being evaluated (its chat message's core.initiativeRoll
@@ -44,6 +45,17 @@ try {
 } catch {
   /* no Combatant class: initiative rolls are known by their system's check type only */
 }
+// The rollInitiative calls for several combatants (Roll All, Roll NPCs) are counted while they run
+// (foundry/initiative-batch.js): the initiative rolls physics decides in one are decided unseen,
+// and their messages show them as one throw (throwByHand).
+export { watchRollInitiative };
+try {
+  watchRollInitiative();
+} catch {
+  /* no Combat class: every initiative roll is thrown in its own turn */
+}
+/** An initiative roll made while the initiative of several combatants is rolled. */
+const inRollAll = (roll) => rollingMany() > 0 && isInitiative(roll);
 
 /**
  * Whether this player's roll filters keep `roll`'s dice off the screen (initiative, damage, big
@@ -511,8 +523,7 @@ async function throwByHand(resolver, terms) {
   // A roll this player's filters do not show (a GM's required hand roll still is thrown, but for
   // a kind the GM exempts): with physics deciding, physics still does, unseen and at once (no turn
   // in the throw queue); else Foundry's random, as for any roll answered automatically.
-  if ((!required || mode === 'off') && hiddenHere(roll, d.getSetting)) {
-    if (d.getSetting('physicsResults') !== true || !specs.length) return fallback('auto');
+  const unseen = async () => {
     let values = null;
     try {
       values = await within((d.throwUnseen ?? throwUnseen)(d.diceBox, specs), HAND_GRACE_MS);
@@ -525,6 +536,10 @@ async function throwByHand(resolver, terms) {
     hand.n = 0;
     const n = push(specs, owners, values);
     return notePartial(resolver, dropped + owners.filter(Boolean).length - n);
+  };
+  if ((!required || mode === 'off') && hiddenHere(roll, d.getSetting)) {
+    if (d.getSetting('physicsResults') !== true || !specs.length) return fallback('auto');
+    return unseen();
   }
   if (!specs.length) return notePartial(resolver, dropped);
   // Queued behind any throw in progress (another roll's prompt or overlay, a tray throw); its
@@ -544,6 +559,12 @@ async function throwByHand(resolver, terms) {
     delete roll.options.dicerHand;
     return;
   }
+  // Roll All / Roll NPCs with physics deciding: the initiative of several combatants is decided
+  // unseen and at once, like a hidden roll (no turn in the throw queue: one throw after the other
+  // would take seconds per combatant). Its dice are shown from the messages, which every screen
+  // throws together as one throw (the gate's join), this one included.
+  const together = physics && inRollAll(roll);
+  if (mode === 'off' && together) return unseen();
   return queued(ms, async (hold) => {
     if (resolver._closed) return fallback('cancel');
     // A free throw (no screen): a follow-up, or one physics decides. Its read faces are the result.
@@ -562,7 +583,7 @@ async function throwByHand(resolver, terms) {
     // Physics decides and no hand throw is wanted: thrown for the roller.
     if (mode === 'off') return thrownFor('physics');
     // "automatically": physics decides when it is on, else Foundry's random
-    const auto = () => (physics ? thrownFor('physics') : fallback('auto'));
+    const auto = () => (together ? unseen() : physics ? thrownFor('physics') : fallback('auto'));
     if (mode === 'ask') {
       const burst = inBurst();
       if (!burst) resting = false; // a new burst asks again
