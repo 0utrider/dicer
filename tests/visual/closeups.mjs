@@ -23,6 +23,12 @@ const SHOTS = [
   ['smoke-swirl', 'd12'],
   ['ember-core', 'd8'],
   ['default', 'd2'],
+  // numbers.offsetY: none, up 0.2 and down 0.2 on a d20, and up on a d4 and a d10 (a label's own up on every die)
+  ['default', 'd20'],
+  ['default~offset-up', 'd20'],
+  ['default~offset-down', 'd20'],
+  ['default~offset-up', 'd4'],
+  ['default~offset-up', 'd10'],
 ];
 const server = spawn(
   process.execPath,
