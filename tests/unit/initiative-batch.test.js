@@ -44,6 +44,16 @@ describe('join', () => {
     expect(cast).toHaveBeenCalledWith([d20(1), d20(2)], null); // no area: the whole stage
   });
 
+  test('PF2e posts its cards one by one, up to 150 ms apart on a busy machine: still one throw', async () => {
+    const cast = vi.fn(() => Promise.resolve());
+    join('b2b', [d20(1)], null, cast);
+    await vi.advanceTimersByTimeAsync(150);
+    join('b2b', [d20(2)], null, cast);
+    await vi.advanceTimersByTimeAsync(GAP_MS);
+    expect(cast).toHaveBeenCalledTimes(1);
+    expect(cast).toHaveBeenCalledWith([d20(1), d20(2)], null);
+  });
+
   test('one roll alone is thrown as the gate would have', async () => {
     const cast = vi.fn(() => Promise.resolve('own'));
     const wait = join('b3', [d20(9)], { area: AREA }, cast);

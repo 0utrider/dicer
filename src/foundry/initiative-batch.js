@@ -12,8 +12,11 @@
  * came in (Foundry creates the messages in one request; PF2e and SF2e one request each).
  */
 
-/** A batch is thrown this long after its last message came in. */
-export const GAP_MS = 100;
+/**
+ * A batch is thrown this long after its last message came in. PF2e's cards were seen up to 150 ms
+ * apart in a live world (2026-11-24), so 100 could split one Roll NPCs into two throws.
+ */
+export const GAP_MS = 250;
 /** One throw holds at most this many dice; a larger batch is thrown in several, side by side. */
 export const MAX_DICE = 60;
 
