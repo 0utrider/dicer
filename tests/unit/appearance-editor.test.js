@@ -655,6 +655,36 @@ describe('the appearance editor', () => {
     await app.close();
   });
 
+  it('add-on fonts: a row of radio chips per module that sets the font, refreshed when a module registers another while the editor is open', async () => {
+    const { ADDON_FONTS } = await import('../../src/api/addon-fonts.js');
+    const hooks = new Map();
+    let n = 0;
+    globalThis.Hooks = { on: (name, fn) => (hooks.set(++n, [name, fn]), n), off: (name, id) => hooks.delete(id) };
+    ADDON_FONTS.set('m.a', { id: 'm.a', moduleId: 'm', label: 'Alpha', file: 'modules/m/a.woff2' });
+    const app = await open({});
+    try {
+      const group = app.element.querySelector('[role="radiogroup"] [data-action="addonFont"]').closest('[role="radiogroup"]');
+      expect(group).not.toBeNull();
+      const chip = () => app.element.querySelector('[data-action="addonFont"]');
+      expect(chip().getAttribute('role')).toBe('radio');
+      expect(chip().getAttribute('aria-checked')).toBe('false');
+      expect(chip().hasAttribute('aria-pressed')).toBe(false);
+      // the listener is registered once and re-renders the window with a font registered later
+      const ours = [...hooks.values()].filter(([name]) => name === 'dicer.fontsChanged');
+      expect(ours).toHaveLength(1);
+      ADDON_FONTS.set('m.b', { id: 'm.b', moduleId: 'm', label: 'Beta', file: 'modules/m/b.woff2' });
+      ours[0][1]();
+      const labels = () => [...app.element.querySelectorAll('[data-action="addonFont"]')].map((b) => b.textContent.trim());
+      for (let i = 0; i < 100 && labels().length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+      expect(labels()).toEqual(['Alpha', 'Beta']);
+    } finally {
+      await app.close();
+      ADDON_FONTS.clear();
+    }
+    expect([...hooks.values()].filter(([name]) => name === 'dicer.fontsChanged')).toHaveLength(0); // removed on close
+    delete globalThis.Hooks;
+  });
+
   it('the shape chips list nine shapes with their labels', async () => {
     const L = (k) => localize(`DICER.Appearance.${k}`);
     const app = await open({ base: { id: 't', name: 'T', appearance: { body: { type: 'resin' }, interior: { type: 'shape', shape: 'sword' } }, perType: {}, rules: [] } });
