@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.9
+
+- **Roll All and Roll NPCs roll every combatant's initiative as one throw.** The dice of all those initiative rolls now appear together and tumble against each other, on every screen that sees them, instead of one roll per combatant. With **Physics decides the result** on, the GM no longer waits for one throw after the other: physics decides each combatant's result at once, unseen, and the dice shown land on those results. A roll for a single combatant, and initiative thrown by hand, are as before. A GM with a private roll area sees the hidden combatants' dice there, as a second throw. Nothing to set.
+
 ## 1.4.8
 
 - **Ember Lunar Dice follow Ember's moons under Dicer.** Ember Lunar Dice need Dice So Nice, so Foundry will not turn them on in a Dicer world: tick them in the theme browser's **Installed dice** window instead (GM, then reload). Ember only told the dice which moons are full while Dice So Nice was on; Dicer now does that itself, at load and at every phase change. Not yet tried with the real (paid) module: please report what you see.
