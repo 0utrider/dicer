@@ -256,6 +256,8 @@ describe('bodies', () => {
     expect(off.chunks.coat).not.toContain('uDcLines');
     // the other presets never take the switch
     expect(iridescentPatch(look({ body: { type: 'iridescent', preset: 'opal', streaks: false } })).uniforms.uDcLines.value).toBe(1); // not kept on other styles
+  });
+
   test('number outline: no patch without a colour or at width 0; a uniform of colour and width, a colour chunk, and the resin replacement', () => {
     expect(outlinePatch(look({}))).toEqual({});
     expect(outlinePatch(look({ numbers: { outline: '#000000', outlineWidth: 0 } }))).toEqual({});

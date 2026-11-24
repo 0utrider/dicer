@@ -1,9 +1,8 @@
 import * as THREE from 'three';
+import { WEIGHT_SHIFT } from '../shaders/engrave.js';
 
 /** The widest number outline (numbers.outlineWidth 1), in face units, where the glyph's distance field reaches far enough. */
 export const OUTLINE_MAX = 0.035;
-/** WEIGHT_SHIFT (shaders/engrave.js): the glyph distance a unit of numbers.weight moves, in face units at size 1. A test pins it. */
-const WEIGHT_SHIFT = 0.016;
 /** Face units one atlas pixel spans when no atlas says (the digits are laid out 0.62 of a face tall and about 45 px). */
 const DEFAULT_REACH = 0.055;
 /** The share of the field's reach the band may use: its last bit is the edge's anti-aliasing and the rect's clip. */

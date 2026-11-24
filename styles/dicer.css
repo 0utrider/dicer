@@ -1435,7 +1435,8 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   display: flex;
   gap: 6px;
 }
-.dicer-appearance-editor .dicer-ae-font-msg {
+.dicer-appearance-editor .dicer-ae-font-msg,
+.dicer-appearance-editor .dicer-ae-outline-msg {
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -1447,10 +1448,12 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   font-size: var(--font-size-12, 12px);
   line-height: 1.4;
 }
-.dicer-appearance-editor .dicer-ae-font-msg > i {
+.dicer-appearance-editor .dicer-ae-font-msg > i,
+.dicer-appearance-editor .dicer-ae-outline-msg > i {
   margin-top: 2px;
 }
-.dicer-appearance-editor .dicer-ae-font-msg[hidden] {
+.dicer-appearance-editor .dicer-ae-font-msg[hidden],
+.dicer-appearance-editor .dicer-ae-outline-msg[hidden] {
   display: none;
 }
 .dicer-appearance-editor .dicer-ae-note {

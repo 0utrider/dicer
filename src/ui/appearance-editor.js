@@ -540,6 +540,15 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     if (span) span.textContent = text;
   }
 
+  #paintOutlineMessage() {
+    const msg = this.element?.querySelector?.('.dicer-ae-outline-msg');
+    if (!msg) return;
+    const text = outlineInvalid(this.#form) ? loc('DICER.Appearance.Numbers.OutlineInvalid') : '';
+    msg.hidden = !text;
+    const span = msg.querySelector('span');
+    if (span) span.textContent = text;
+  }
+
   /** A typed / dragged value: the form changes in place (no re-render, focus stays), then the preview. */
   #onInput(event, committed = false) {
     const el = event.target;
@@ -577,6 +586,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     const out = this.element.querySelector(`output[data-for="${path}"]`);
     if (out) out.textContent = pct(value);
     if (path.startsWith('numbers.font')) this.#paintFontMessage();
+    if (path.startsWith('numbers.outline')) this.#paintOutlineMessage();
     // the outline's colour and width show only while its switch is on: draw the window again
     if (path === 'numbers.outlineOn' && committed) {
       this.#scheduler.schedule(this.#previewTheme());

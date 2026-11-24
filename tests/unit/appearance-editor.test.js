@@ -684,6 +684,8 @@ describe('the appearance editor', () => {
     }
     expect([...hooks.values()].filter(([name]) => name === 'dicer.fontsChanged')).toHaveLength(0); // removed on close
     delete globalThis.Hooks;
+  });
+
   it('ticking Outline shows its colour and width at once', async () => {
     const app = await open({});
     try {
@@ -694,6 +696,13 @@ describe('the appearance editor', () => {
       for (let i = 0; i < 100 && !q(app, '[name="numbers.outline"]'); i++) await new Promise((r) => setTimeout(r, 10));
       expect(q(app, '[name="numbers.outline"]')).not.toBeNull();
       expect(q(app, '[name="numbers.outlineWidth"]')).not.toBeNull();
+      // the message is a hidden line that a valid colour keeps hidden (half-typed values are ignored until they are a colour)
+      const msg = q(app, '.dicer-ae-outline-msg');
+      expect(msg.hidden).toBe(true);
+      const colour = q(app, '[name="numbers.outline"]');
+      colour.value = '#123456';
+      colour.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(msg.hidden).toBe(true);
     } finally {
       await app.close({ discard: true });
     }
@@ -1366,6 +1375,8 @@ describe('number size and weight in the form', () => {
     const hbs = readFileSync('templates/appearance-editor.hbs', 'utf8');
     expect(hbs).toMatch(/<input type="range" name="numbers\.offsetY" min="-0\.5" max="0\.5" step="0\.01" value="\{\{form\.numbers\.offsetY\}\}">/);
     expect(hbs).toContain('<output data-for="numbers.offsetY">{{pct.offsetY}}</output>');
+  });
+
   it('the outline: a switch, a colour and a width that round-trip; the options show while it is on', () => {
     let f = formFromAppearance({});
     expect(f.numbers).toMatchObject({ outlineOn: false, outline: '#000000', outlineWidth: 0.8 });
@@ -1396,7 +1407,7 @@ describe('number size and weight in the form', () => {
     expect(outlineInvalid(undefined)).toBe(false);
     const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
     expect(resolve(lang, 'DICER.Appearance.Numbers.OutlineInvalid')).toBeTypeOf('string');
-    expect(readFileSync('templates/appearance-editor.hbs', 'utf8')).toContain('{{#if outlineMessage}}');
+    expect(readFileSync('templates/appearance-editor.hbs', 'utf8')).toContain('{{#unless outlineMessage}}hidden{{/unless}}');
   });
   it('the numbers section has both sliders, with live outputs and labels', () => {
     const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));

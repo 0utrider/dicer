@@ -676,8 +676,11 @@ describe('numbers.offsetY', () => {
     expect(appearanceKey(b)).not.toBe(appearanceKey(a));
     expect(needsLookExtras(b)).toBe(false);
     expect(fallbackLook(b).numbers.offsetY).toBe(-0.2);
+  });
+});
+
 describe('numbers.outline and numbers.outlineWidth', () => {
-  test('stored only with a colour: hex and short hex are kept (lower-cased), anything else is no outline; width 0..1, default 0.5', () => {
+  test('stored only with a colour: hex and short hex are kept (lower-cased), anything else is no outline; width 0..1, default 0.8', () => {
     expect(normalizeAppearance({}).numbers).not.toHaveProperty('outline');
     expect(normalizeAppearance({}).numbers).not.toHaveProperty('outlineWidth');
     expect(normalizeAppearance({ numbers: { outline: '#FF0000' } }).numbers).toMatchObject({ outline: '#ff0000', outlineWidth: 0.8 });
