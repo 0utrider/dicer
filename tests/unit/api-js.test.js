@@ -5,6 +5,9 @@ import { createRegistry } from '../../src/compat/registry.js';
 import { DiceBox } from '../../src/throw/dice-box.js';
 import { buildScene } from '../../src/render/scene.js';
 import { parseAtlas } from '../../src/render/sdf-atlas.js';
+import { createThemeApi } from '../../src/api/theme-api.js';
+import { MATERIALS } from '../../src/api/theme-registry.js';
+import { DICER_TIME, setDicerTime } from '../../src/render/dice-material.js';
 
 describe('DiceSystem constants', () => {
   test('match the DSN public values', () => {
@@ -421,6 +424,84 @@ describe('DiceBox applies a registered DiceSystem', () => {
     expect(seen[0].patched).toBe(true);
     expect(seen[0].material).toBe(mat);
     box.clear();
+  });
+
+  describe('a theme material hook (api.registerMaterial)', () => {
+    const modules = () => ({ get: (id) => (id === 'mod' ? { id } : undefined) });
+    const api = () => createThemeApi({ hooks: { callAll() {} }, modules });
+    const shaderStub = () => ({
+      uniforms: {},
+      vertexShader: THREE.ShaderLib.physical.vertexShader,
+      fragmentShader: THREE.ShaderLib.physical.fragmentShader,
+    });
+    const roll = (box, material) =>
+      box.roll([{ type: 'd20', value: 3, appearance: { body: { type: 'opaque', color: '#203020' }, ...(material && { material }) } }]);
+    afterEach(() => MATERIALS.clear());
+
+    test('runs after Dicer’s patch with the die type; the fragment shader gets uTime and vDicerPosition', () => {
+      const seen = [];
+      api().registerMaterial('mod', { cacheKey: 'mod-lights', beforeShaderCompile: (shader, material, info) => seen.push({ patched: shader.fragmentShader.includes('uFillColor'), info, material }) }, 'mod.lights');
+      const { renderer, box } = setup();
+      roll(box, 'mod-lights');
+      const mat = meshes(renderer)[0].material;
+      const shader = shaderStub();
+      mat.onBeforeCompile(shader, null);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ patched: true, info: { themeId: 'mod.lights', dieType: 'd20' } });
+      expect(seen[0].material).toBe(mat);
+      expect(shader.fragmentShader.startsWith('uniform float uTime;\n#define vDicerPosition vLocalPos\n')).toBe(true);
+      expect(shader.uniforms.uTime).toBe(DICER_TIME);
+      box.clear();
+    });
+
+    test('its cacheKey keys the program and the material: a plain die with the same colours does not share them', () => {
+      api().registerMaterial('mod', { cacheKey: 'mod-lights', beforeShaderCompile() {} });
+      const { renderer, box } = setup();
+      roll(box, 'mod-lights');
+      roll(box, undefined);
+      const [a, b] = meshes(renderer).map((m) => m.material);
+      expect(a).not.toBe(b);
+      expect(a.customProgramCacheKey()).toContain('mat:mod-lights');
+      expect(b.customProgramCacheKey()).not.toContain('mat:');
+      box.clear();
+    });
+
+    test('a look naming a material nobody registered draws as a plain die', () => {
+      const { renderer, box } = setup();
+      roll(box, 'gone-lights');
+      expect(meshes(renderer)[0].material.customProgramCacheKey()).not.toContain('mat:');
+      box.clear();
+    });
+
+    test('a throwing hook leaves Dicer’s shader as it was and warns once', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      api().registerMaterial('mod', {
+        cacheKey: 'mod-lights',
+        beforeShaderCompile(shader) {
+          shader.fragmentShader = 'broken';
+          throw new Error('bad hook');
+        },
+      });
+      const { renderer, box } = setup();
+      roll(box, 'mod-lights');
+      const mat = meshes(renderer)[0].material;
+      const shader = shaderStub();
+      mat.onBeforeCompile(shader, null);
+      mat.onBeforeCompile(shaderStub(), null);
+      expect(shader.fragmentShader).not.toContain('broken');
+      expect(shader.fragmentShader.includes('uFillColor')).toBe(true);
+      expect(shader.fragmentShader.startsWith('uniform float uTime')).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+      box.clear();
+    });
+
+    test('the shared time wraps every hour', () => {
+      setDicerTime(1500);
+      expect(DICER_TIME.value).toBe(1.5);
+      setDicerTime((3600 + 2) * 1000);
+      expect(DICER_TIME.value).toBeCloseTo(2, 5);
+    });
   });
 
   test('a throwing processMaterial falls back to the plain material and warns once', () => {

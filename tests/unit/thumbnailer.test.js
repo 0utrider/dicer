@@ -6,6 +6,7 @@ import { createThumbnailer } from '../../src/themes/thumbnailer.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
+import { MATERIALS } from '../../src/api/theme-registry.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
 import { _setLookExtrasImport } from '../../src/render/extras-loader.js';
@@ -677,5 +678,21 @@ test('a module entry with a model draws the model, its shown face on top, and ne
   await t.thumbnail({ ...theme(), perType: {}, models: { d4: 'd4.gltf' } }, 'd4');
   await t.thumbnail({ ...theme(), perType: {}, models: { d100: 'd100.gltf' } }, 'd100');
   expect(modelChunk.load.mock.calls.map((c) => c[0])).toEqual(['d4.gltf', 'd100.gltf']);
+  t.dispose();
+});
+
+test("an add-on theme's material hook dresses its thumbnail and keys its program", async () => {
+  const hook = vi.fn();
+  MATERIALS.set('mod-lights', { cacheKey: 'mod-lights', hook: (dieType) => (shader, mat) => hook(dieType, mat) });
+  const seen = [];
+  const rig = fakeRig();
+  rig.renderer.render.mockImplementation((scene) => seen.push(scene.children.find((c) => c.isMesh && c.material.userData?.uniforms)?.material));
+  const { t } = make({ rig });
+  const lit = { ...theme(), id: 'mod.lights', perType: {}, appearance: { ...theme().appearance, material: 'mod-lights' } };
+  await t.thumbnail(lit, 'd20');
+  expect(seen[0].customProgramCacheKey()).toContain('mat:mod-lights');
+  seen[0].onBeforeCompile({ uniforms: {}, vertexShader: '', fragmentShader: '' }, null);
+  expect(hook).toHaveBeenCalledWith('d20', seen[0]);
+  MATERIALS.clear();
   t.dispose();
 });

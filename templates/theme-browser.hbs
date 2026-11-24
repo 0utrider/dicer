@@ -3,7 +3,7 @@
     <nav class="dicer-segmented" aria-label="{{localize "DICER.Themes.Filter"}}">
       {{#each filters}}
         <button type="button" class="{{#if active}}active{{/if}}" data-action="filter" data-filter="{{id}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}">
-          {{label}} <span class="dicer-count">{{count}}</span>
+          {{#if iconClass}}<i class="{{iconClass}}" aria-hidden="true"></i> {{/if}}{{#if iconSrc}}<img class="dicer-tab-icon" src="{{iconSrc}}" alt="" aria-hidden="true"> {{/if}}{{label}} <span class="dicer-count">{{count}}</span>
         </button>
       {{/each}}
     </nav>
@@ -28,6 +28,7 @@
     <div class="dicer-theme-grid" role="listbox" aria-label="{{localize "DICER.Themes.Title"}}">
       {{#unless hasCards}}<p class="dicer-empty">{{#if noMatch}}{{localize "DICER.Themes.SearchEmpty"}}{{else}}{{localize "DICER.Themes.Empty"}}{{/if}}</p>{{/unless}}
       {{#each cards}}
+        {{#if section}}<h4 class="dicer-theme-section">{{section}}</h4>{{/if}}
         <div class="dicer-theme-card {{#if selected}}is-selected{{/if}}" data-theme="{{id}}" data-action="select" role="option" tabindex="0" aria-selected="{{#if selected}}true{{else}}false{{/if}}">
           <div class="dicer-stage" style="--dicer-swatch: {{swatch}}">
             <i class="dicer-fallback fa-solid fa-dice-d20" aria-hidden="true"></i>

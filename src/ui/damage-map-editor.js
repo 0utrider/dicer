@@ -6,6 +6,8 @@
  */
 import { DAMAGE_THEMES } from '../effects/damage-themes.js';
 import { BUILTIN_COLORSETS } from '../compat/colorset-map.js';
+import { ADDON_THEMES } from '../themes/themes.js';
+import { STUBS } from '../api/addon-registry.js';
 import { DND5E_TYPES, PF2E_TYPES } from '../effects/roll-context.js';
 import {
   DEFAULT_CHOICE,
@@ -55,6 +57,33 @@ export function buildChoices(ctx) {
     user: { ...base, none: loc('DICER.DamageMap.None'), ...themes, ...colorsets },
   };
 }
+
+/**
+ * The dropdown's options as groups: `choices` ({value: label}) with the add-on themes
+ * (api.registerTheme) added. Themes with category "damage" form a group right after the base
+ * entries (Default, None), the built-in themes and colorsets follow, then one group per module
+ * (labelled with its title). A `current` value that no group holds is kept, shown as its id.
+ * Group `label: null` renders without an <optgroup>.
+ */
+export function choiceGroups(choices, current, { themes = [...ADDON_THEMES.values(), ...STUBS.values()], titleOf = (id) => id } = {}) {
+  const taken = new Set(Object.keys(choices));
+  const own = themes.filter((t) => t && typeof t.id === 'string' && !taken.has(t.id));
+  const opt = (value, label) => ({ value, label, selected: value === current });
+  const entries = Object.entries(choices);
+  const baseKeys = new Set([DEFAULT_CHOICE, 'none']);
+  const groups = [{ label: null, options: entries.filter(([k]) => baseKeys.has(k)).map(([k, l]) => opt(k, l)) }];
+  const damage = own.filter((t) => t.category === 'damage');
+  if (damage.length) groups.push({ label: loc('DICER.DamageMap.GroupDamageThemes'), options: damage.map((t) => opt(t.id, t.name)) });
+  groups.push({ label: null, options: entries.filter(([k]) => !baseKeys.has(k)).map(([k, l]) => opt(k, l)) });
+  const byModule = new Map();
+  for (const t of own) if (t.category !== 'damage') (byModule.get(t.moduleId) ?? byModule.set(t.moduleId, []).get(t.moduleId)).push(t);
+  for (const [id, list] of byModule) groups.push({ label: titleOf(id), options: list.map((t) => opt(t.id, t.name)) });
+  const shown = groups.filter((g) => g.options.length);
+  if (current && !shown.some((g) => g.options.some((o) => o.selected))) (shown[0] ?? groups[0]).options.push(opt(current, String(current)));
+  return shown;
+}
+
+const moduleTitle = (id) => globalThis.game?.modules?.get?.(id)?.title ?? id;
 
 const basename = (path) => String(path ?? '').split(/[\\/]/).pop();
 
@@ -175,6 +204,8 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
         if (own.size && index === 0 && mine) group = ownLabel;
         else if (own.size && !mine && (index === 0 || prevMine)) group = loc('DICER.DamageMap.GroupOther');
         const worldChoices = options(choices.world, row.world);
+        const label = (map, value) => map[value] ?? ADDON_THEMES.get(value)?.name ?? STUBS.get(value)?.name ?? value;
+        const groupOpts = { titleOf: moduleTitle };
         return {
           ...row,
           index,
@@ -182,8 +213,9 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
           label: humanize(row.type),
           swatch: swatch(row.type),
           worldChoices,
-          worldLabel: worldChoices[row.world] ?? row.world,
-          userChoices: options(choices.user, row.user),
+          worldLabel: label(worldChoices, row.world),
+          worldGroups: choiceGroups(choices.world, row.world, groupOpts),
+          userGroups: choiceGroups(choices.user, row.user, groupOpts),
           soundName: basename(row.soundSrc),
           canEditWorld: isGM,
           // The volume belongs to a custom sound: shown (and editable by the GM) only with one.

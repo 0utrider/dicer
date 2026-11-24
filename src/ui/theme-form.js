@@ -9,6 +9,7 @@ import { appearanceKey } from '../look/appearance.js';
 import { USER_SOUNDS } from '../audio/sound-names.js';
 import { SCENE_CATALOG, RANDOM_SCENE, sceneText } from '../effects/library/scene-catalog.js';
 import { themeRef } from '../compat/user-looks.js';
+import { STUBS, stubView } from '../api/addon-registry.js';
 import {
   DIE_TYPES,
   SOUND_MATERIALS,
@@ -107,7 +108,8 @@ export function themeAssignments({ defaultId, looks, actors = [], damageOverride
 
 // --- stored lists --------------------------------------------------------------------------
 const stripSource = (theme) => {
-  const { source, ...rest } = plain(theme);
+  // an add-on's badge, category and static preview describe that module's theme, not a copy of it
+  const { source, badge, category, preview, ...rest } = plain(theme);
   return rest;
 };
 
@@ -121,7 +123,7 @@ export function unreadableOf(list, source) {
 export function galleryEntries({ worldList, userList, warn = noop } = {}) {
   return {
     // other modules' registered themes (read-only, source 'addon') follow the built-ins
-    themes: [...BUILTIN_THEMES, ...ADDON_THEMES.values(), ...readThemeList(worldList, 'world', warn), ...readThemeList(userList, 'user', warn)],
+    themes: [...BUILTIN_THEMES, ...ADDON_THEMES.values(), ...[...STUBS.values()].map(stubView), ...readThemeList(worldList, 'world', warn), ...readThemeList(userList, 'user', warn)],
     unreadable: [
       ...unreadableOf(worldList, 'world').map((raw) => ({ source: 'world', raw })),
       ...unreadableOf(userList, 'user').map((raw) => ({ source: 'user', raw })),

@@ -515,6 +515,21 @@ body.theme-light :is(.dicer-theme-browser, .dicer-trigger-editor, .dicer-damage-
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.dicer-theme-browser .dicer-theme-section {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  font-size: var(--font-size-12, 12px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dicer-muted);
+}
+.dicer-theme-browser .dicer-tab-icon {
+  height: 14px;
+  width: 14px;
+  vertical-align: -2px;
+  border: none;
+}
 .dicer-theme-browser .dicer-unreadable {
   grid-column: 1 / -1;
   font-size: var(--font-size-12, 12px);

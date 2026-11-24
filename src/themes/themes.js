@@ -272,9 +272,14 @@ export function readThemeList(list, source, warn = console.warn) {
  */
 export const ADDON_THEMES = new Map();
 
+/** Told of an id findTheme cannot resolve; the API chunk sets it to load a module's theme stub. */
+export const MISSING = { hook: null };
+
 /** Built-in, else a module's, else the world list, else the roller's own list. */
 export function findTheme(id, { worldThemes, userThemes } = {}) {
   if (!isStr(id)) return null;
   const hit = (list) => (Array.isArray(list) ? list.find((t) => t && t.id === id) : undefined);
-  return BUILTIN_THEMES.find((t) => t.id === id) ?? ADDON_THEMES.get(id) ?? hit(worldThemes) ?? hit(userThemes) ?? null;
+  const found = BUILTIN_THEMES.find((t) => t.id === id) ?? ADDON_THEMES.get(id) ?? hit(worldThemes) ?? hit(userThemes);
+  if (!found) MISSING.hook?.(id);
+  return found ?? null;
 }

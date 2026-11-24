@@ -19,6 +19,7 @@ import { setRules } from '../effects/rules.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { lookFromModels as modelLookOf } from '../themes/model-colours.js';
 import { damageTypeList } from './damage-map-form.js';
+import { BROWSER_TABS, STUBS, inAll, loadStub, tabEntries } from '../api/addon-registry.js';
 import {
   ROLL_ROLES,
   roleSlot,
@@ -102,6 +103,7 @@ export async function assignTarget(target, themeId) {
   const user = me();
   if (!t || !user) return false;
   const id = typeof themeId === 'string' && themeId ? themeId : null;
+  if (id && STUBS.has(id)) await loadStub(id, { retry: true }); // a stub becomes its theme before anything stores it
   switch (t.kind) {
     case 'default':
       if (id) {
@@ -640,7 +642,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#modules = null; // a module may have registered more since the last render
     const { themes, unreadable } = this.#entries();
     const modules = this.#moduleEntries();
-    const filter = Object.hasOwn(FILTER_KEYS, this.#filter) ? this.#filter : 'all';
+    const filter = Object.hasOwn(FILTER_KEYS, this.#filter) || BROWSER_TABS.has(this.#filter) ? this.#filter : 'all';
     const isGM = this.#isGM;
     const groups = targetGroups({
       actors: this.#actors(),
@@ -653,7 +655,17 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const query = this.#query;
     const found = themes.filter((t) => matchesQuery(t, query));
     const foundModules = modules.filter((t) => matchesQuery(t, query));
-    const visible = filter === 'module' ? foundModules : found.filter((t) => filter === 'all' || t.source === filter);
+    // All leaves out the add-on themes whose module holds them back (registerTheme's showInAll)
+    const inAllTab = found.filter((t) => t.source !== 'addon' || inAll(t));
+    // a module's tab (api.registerBrowserTab): its filter picks the themes, in its order and sections
+    const tabs = [...BROWSER_TABS.values()].map((tab) => ({ tab, entries: tabEntries(tab, found) }));
+    const sectionOf = new Map();
+    let visible = filter === 'module' ? foundModules : filter === 'all' ? inAllTab : found.filter((t) => t.source === filter);
+    const active = tabs.find((x) => x.tab.id === filter);
+    if (active) {
+      visible = active.entries.map((e) => e.theme);
+      for (const e of active.entries) if (e.section) sectionOf.set(e.theme.id, e.section);
+    }
     const defaultId = [...assignments].find(([, list]) => list.includes('default'))?.[0] ?? 'default';
     this.#selected = pickSelected(visible, this.#selected, defaultId);
     const view = (t) => {
@@ -668,7 +680,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         // a module's registered theme (api.registerTheme) is named by its module: read-only, duplicable
         sourceLabel:
           (isModule && t.category) ||
-          (t.source === 'addon' && (globalThis.game?.modules?.get?.(t.moduleId)?.title ?? t.moduleId)) ||
+          (t.source === 'addon' && (t.badge || (globalThis.game?.modules?.get?.(t.moduleId)?.title ?? t.moduleId))) ||
           loc(SOURCE_LABEL[t.source] ?? SOURCE_LABEL.user),
         showBadge: t.source !== 'builtin', // cards name only world, own and module sets; the detail panel always does
         isModule,
@@ -681,6 +693,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
         setFxOn: isModule && setFxOn(t.key),
         swatch: t.appearance?.body?.color ?? '#444',
         selected: t.id === this.#selected,
+        section: sectionOf.get(t.id) ?? '',
         isDefault: targets.includes('default'),
         slotCount: others.length,
         slotTooltip: others.map(labelOf).join(', '),
@@ -709,8 +722,18 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
           id,
           label: loc(key),
           active: id === filter,
-          count: id === 'all' ? found.length : id === 'module' ? foundModules.length : found.filter((t) => t.source === id).length,
-        })),
+          count: id === 'all' ? inAllTab.length : id === 'module' ? foundModules.length : found.filter((t) => t.source === id).length,
+        }))
+        .concat(
+          tabs.map(({ tab, entries }) => ({
+            id: tab.id,
+            label: loc(tab.label),
+            active: tab.id === filter,
+            count: entries.length,
+            iconClass: tab.icon && !/[/.]/.test(tab.icon) ? tab.icon : '',
+            iconSrc: tab.icon && /[/.]/.test(tab.icon) ? tab.icon : '',
+          })),
+        ),
       targetGroups: groups,
       // a module set: not the damage maps, which hold theme ids
       moduleTargetGroups: groups.filter((g) => !g.options.some((o) => /^(world)?damage:/.test(o.value))),
@@ -834,7 +857,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#stopPreview();
     const canvas = this.element?.querySelector?.('canvas.dicer-live');
     const theme = canvas ? this.#find(this.#selected) : null;
-    const thumbs = theme ? this.#thumbnailer() : null;
+    const thumbs = theme && !theme.preview && !theme.stub ? this.#thumbnailer() : null; // a static preview needs no live die
     if (!thumbs) return;
     const stage = canvas.closest('.dicer-stage');
     const css = Math.round((stage?.clientWidth || 190) * 0.92); // the canvas fills 92% of its stage
@@ -870,16 +893,25 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
       const url = this.#urls.get(card.dataset.theme);
       if (url) this.#show(card.dataset.theme, url);
     }
+    const themes = new Map([...this.#entries().themes, ...this.#moduleEntries()].map((t) => [t.id, t]));
+    // a theme with a static `preview` image shows it, with no 3D render (works without WebGL too)
+    for (const card of cards) {
+      const id = card.dataset.theme;
+      const preview = themes.get(id)?.preview;
+      if (preview && !this.#urls.has(id)) {
+        this.#urls.set(id, preview);
+        this.#show(id, preview);
+      }
+    }
     const thumbs = this.#thumbnailer();
     if (!thumbs) return;
-    const themes = new Map([...this.#entries().themes, ...this.#moduleEntries()].map((t) => [t.id, t]));
     // The selected theme first, so the detail preview fills in at once.
     const first = (card) => (card.dataset.theme === this.#selected ? 0 : 1);
     const order = [...cards].sort((x, y) => first(x) - first(y));
     for (const card of order) {
       const id = card.dataset.theme;
       const theme = themes.get(id);
-      if (!theme || this.#urls.has(id)) continue;
+      if (!theme || theme.stub || this.#urls.has(id)) continue;
       const url = await thumbs.thumbnail(theme, 'd20').catch(() => null);
       if (token !== this.#token || this.#thumbs !== thumbs) return;
       if (!url) continue;
@@ -892,6 +924,14 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     return app.#find(target.dataset.theme);
   }
 
+  /** The theme of a button, loading it first when it is still a module's stub. */
+  static async #themeLoaded(app, target) {
+    const theme = app.#find(target.dataset.theme);
+    if (!theme?.stub) return theme;
+    await loadStub(theme.id, { retry: true });
+    return app.#find(theme.id)?.stub ? null : app.#find(theme.id);
+  }
+
   /** The place an Apply / Clear button acts on: its own data-target (an assignment chip), else the detail panel's select. */
   static #targetOf(target) {
     return target.dataset.target ?? target.closest('.dicer-theme-detail')?.querySelector('.dicer-target')?.value;
@@ -899,7 +939,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /** Rolls one of each die with the theme on the table (local only). */
   static async #onThrowTheme(event, target) {
-    const theme = ThemeBrowser.#themeOf(this, target);
+    const theme = await ThemeBrowser.#themeLoaded(this, target);
     if (!theme) return;
     const api = globalThis.game?.dice3d;
     if (typeof api?._throwLook !== 'function') {
@@ -911,7 +951,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static async #onFilter(event, target) {
     const next = target.dataset.filter;
-    if (!Object.hasOwn(FILTER_KEYS, next) || next === this.#filter) return;
+    if (!(Object.hasOwn(FILTER_KEYS, next) || BROWSER_TABS.has(next)) || next === this.#filter) return;
     this.#filter = next;
     await this.render();
   }
@@ -920,6 +960,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     const id = target.closest('[data-theme]')?.dataset.theme;
     if (!id || id === this.#selected) return;
     this.#selected = id;
+    if (STUBS.has(id)) await loadStub(id, { retry: true }); // the full theme replaces the stub, then the panel shows it
     await this.render();
   }
 
@@ -1043,8 +1084,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /** Duplicate opens the editor on an unsaved copy; it becomes a theme of mine on Save. */
-  static #onDuplicate(event, target) {
-    const theme = ThemeBrowser.#themeOf(this, target);
+  static async #onDuplicate(event, target) {
+    const theme = await ThemeBrowser.#themeLoaded(this, target);
     if (theme) return this.#openEditor({ base: theme });
   }
 
@@ -1059,8 +1100,8 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
     return this.#openEditor({});
   }
 
-  static #onExportOne(event, target) {
-    const theme = ThemeBrowser.#themeOf(this, target);
+  static async #onExportOne(event, target) {
+    const theme = await ThemeBrowser.#themeLoaded(this, target);
     if (theme) exportToFile([theme], `dicer-theme-${slugify(theme.name)}.json`);
   }
 
@@ -1075,7 +1116,7 @@ export class ThemeBrowser extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   static async #onPublish(event, target) {
-    const theme = ThemeBrowser.#themeOf(this, target);
+    const theme = await ThemeBrowser.#themeLoaded(this, target);
     if (!theme) return;
     const res = await publish(theme);
     notify(res.ok ? 'info' : 'warn', loc(res.ok ? 'DICER.Themes.Published' : 'DICER.Themes.NotAllowed'));

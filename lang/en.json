@@ -652,6 +652,7 @@
       "Type": "Damage type",
       "GroupSystem": "This system",
       "GroupOther": "Other damage types",
+      "GroupDamageThemes": "Damage themes",
       "LandingSound": "Landing sound",
       "BuiltinShort": "Built-in",
       "Browse": "Choose a sound file",

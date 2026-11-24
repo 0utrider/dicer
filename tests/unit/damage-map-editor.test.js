@@ -122,6 +122,40 @@ describe('buildChoices', () => {
   });
 });
 
+describe('choiceGroups', () => {
+  const t = (id, name, moduleId, category) => ({ id, name, moduleId, ...(category && { category }) });
+  const themes = [t('dicey.fire', 'Dicey: Fire', 'dicey', 'damage'), t('dicey.yule', 'Yule', 'dicey'), t('other.x', 'X', 'other')];
+  const titleOf = (id) => ({ dicey: 'Things Got Dicey', other: 'Other Mod' })[id] ?? id;
+
+  it('puts damage themes right after Default, then the built-ins, then one group per module', () => {
+    const c = mod.buildChoices({ colorsets: [] });
+    const groups = mod.choiceGroups(c.world, 'default', { themes, titleOf });
+    expect(groups[0]).toMatchObject({ label: null });
+    expect(groups[0].options.map((o) => o.value)).toEqual(['default']);
+    expect(groups[1].label).toBe('DICER.DamageMap.GroupDamageThemes');
+    expect(groups[1].options).toEqual([{ value: 'dicey.fire', label: 'Dicey: Fire', selected: false }]);
+    expect(groups[2]).toMatchObject({ label: null });
+    expect(groups[2].options.map((o) => o.value)).toContain('fire');
+    expect(groups.slice(3).map((g) => g.label)).toEqual(['Things Got Dicey', 'Other Mod']);
+    expect(groups[3].options.map((o) => o.value)).toEqual(['dicey.yule']);
+  });
+
+  it('keeps None with Default for overrides, and marks the current value', () => {
+    const c = mod.buildChoices({ colorsets: [] });
+    const groups = mod.choiceGroups(c.user, 'dicey.yule', { themes, titleOf });
+    expect(groups[0].options.map((o) => o.value)).toEqual(['default', 'none']);
+    const selected = groups.flatMap((g) => g.options).filter((o) => o.selected);
+    expect(selected.map((o) => o.value)).toEqual(['dicey.yule']);
+  });
+
+  it('shows a stored value no group holds (a removed module) as its id; no add-ons gives no extra groups', () => {
+    const c = mod.buildChoices({ colorsets: [] });
+    const none = mod.choiceGroups(c.world, 'gone.theme', { themes: [], titleOf });
+    expect(none.every((g) => g.label === null)).toBe(true);
+    expect(none.flatMap((g) => g.options).find((o) => o.selected)).toMatchObject({ value: 'gone.theme', label: 'gone.theme' });
+  });
+});
+
 describe('previewSpec', () => {
   it('carries the theme look, sound material and landing fx; a custom sound replaces the built-in', () => {
     const theme = DAMAGE_THEMES.fire;

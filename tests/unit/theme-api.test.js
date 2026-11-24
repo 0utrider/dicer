@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createThemeApi } from '../../src/api/theme-api.js';
-import { PROVIDERS, WARM_THEMES, flagChoice, providedTheme } from '../../src/api/theme-registry.js';
-import { ADDON_THEMES, findTheme } from '../../src/themes/themes.js';
+import { MATERIALS, PROVIDERS, WARM_THEMES, flagChoice, providedTheme } from '../../src/api/theme-registry.js';
+import { ADDON_THEMES, MISSING, findTheme } from '../../src/themes/themes.js';
 import { ADDON_FONTS, fontGroups } from '../../src/api/addon-fonts.js';
+import { BROWSER_TABS, STUBS, loadStub, tabEntries } from '../../src/api/addon-registry.js';
 import { galleryEntries } from '../../src/ui/theme-form.js';
 
 const MOD = 'necromancer-thrall-helper';
@@ -26,6 +27,10 @@ const actor = (flag, isOwner = true) => {
 
 afterEach(() => {
   ADDON_FONTS.clear();
+  MATERIALS.clear();
+  STUBS.clear();
+  MISSING.hook = null;
+  BROWSER_TABS.clear();
   ADDON_THEMES.clear();
   PROVIDERS.clear();
 });
@@ -189,5 +194,301 @@ describe('registerFont', () => {
     api.registerFont('other', { id: 'other.b', label: 'B', file: 'modules/other/b.woff2' });
     api.registerFont(MOD, font('c', { label: 'C' }));
     expect(fontGroups().map((g) => [g.moduleId, g.fonts.map((f) => f.label)])).toEqual([[MOD, ['A', 'C']], ['other', ['B']]]);
+  });
+});
+
+describe('theme metadata and showInAll', () => {
+  test('badge, category and preview are kept on a registered theme; blanks and non-strings are dropped', () => {
+    const { api } = make();
+    api.registerTheme(theme('a', { badge: 'Halloween', category: 'damage', preview: 'modules/x/a.webp' }), { moduleId: MOD });
+    api.registerTheme(theme('b', { badge: '', category: 5, preview: null }), { moduleId: MOD });
+    expect(findTheme(`${MOD}.a`)).toMatchObject({ badge: 'Halloween', category: 'damage', preview: 'modules/x/a.webp' });
+    const b = findTheme(`${MOD}.b`);
+    expect(b).not.toHaveProperty('badge');
+    expect(b).not.toHaveProperty('category');
+    expect(b).not.toHaveProperty('preview');
+  });
+
+  test('showInAll takes a boolean or a predicate (theme, date); re-registering resets it', async () => {
+    const { inAll, SHOW_IN_ALL } = await import('../../src/api/addon-registry.js');
+    const { api } = make();
+    const id = `${MOD}.s`;
+    api.registerTheme(theme('s'), { moduleId: MOD });
+    expect(inAll(findTheme(id))).toBe(true); // no rule: in All
+    api.registerTheme(theme('s'), { moduleId: MOD, showInAll: false });
+    expect(inAll(findTheme(id))).toBe(false);
+    const rule = vi.fn((t, date) => date.getMonth() === 9);
+    api.registerTheme(theme('s'), { moduleId: MOD, showInAll: rule });
+    expect(inAll(findTheme(id), new Date(2026, 9, 31))).toBe(true);
+    expect(inAll(findTheme(id), new Date(2026, 10, 1))).toBe(false);
+    expect(rule.mock.calls[0][0].id).toBe(id);
+    api.registerTheme(theme('s'), { moduleId: MOD });
+    expect(inAll(findTheme(id))).toBe(true);
+    api.registerTheme(theme('s'), { moduleId: MOD, showInAll: false });
+    api.unregisterTheme(id);
+    expect(SHOW_IN_ALL.has(id)).toBe(false);
+  });
+
+  test('a throwing showInAll predicate leaves the theme in All', async () => {
+    const { inAll } = await import('../../src/api/addon-registry.js');
+    const { api } = make();
+    api.registerTheme(theme('t'), { moduleId: MOD, showInAll: () => { throw new Error('x'); } });
+    expect(inAll(findTheme(`${MOD}.t`))).toBe(true);
+  });
+
+  test('a duplicate or world copy of a module theme drops its badge, category and preview', async () => {
+    const { duplicateTheme } = await import('../../src/ui/theme-form.js');
+    const { api } = make();
+    api.registerTheme(theme('d', { badge: 'Yule', category: 'x', preview: 'p.webp' }), { moduleId: MOD });
+    const copy = duplicateTheme(findTheme(`${MOD}.d`), 'u1', []);
+    expect(copy).not.toHaveProperty('badge');
+    expect(copy).not.toHaveProperty('category');
+    expect(copy).not.toHaveProperty('preview');
+  });
+});
+
+describe('getUserDefault / setUserDefault', () => {
+  const settingsStore = (init = {}) => {
+    const store = { theme: 'default', worldDefaultTheme: '', lockPlayerLooks: false, worldThemes: [], ...init };
+    return { store, get: (m, k) => store[k], set: vi.fn(async (m, k, v) => (store[k] = v)) };
+  };
+  const userOf = (flags = {}, isGM = false) => {
+    const u = {
+      isGM,
+      flags: { dicer: flags },
+      getFlag: (s, k) => u.flags.dicer[k],
+      setFlag: vi.fn(async (s, k, v) => (u.flags.dicer[k] = { ...(u.flags.dicer[k] ?? {}), ...v })),
+    };
+    return u;
+  };
+  const withGame = (user, settings) => {
+    globalThis.game = { user, settings };
+  };
+  afterEach(() => delete globalThis.game);
+
+  test('the stored global theme wins, then the world default, then the client setting, else "default"', () => {
+    const { api } = make();
+    const me = userOf();
+    const settings = settingsStore();
+    withGame(me, settings);
+    expect(api.getUserDefault()).toBe('default');
+    settings.store.theme = 'ruby-classic';
+    expect(api.getUserDefault()).toBe('ruby-classic');
+    api.registerTheme(theme('w'), { moduleId: MOD });
+    settings.store.worldDefaultTheme = `${MOD}.w`;
+    expect(api.getUserDefault()).toBe(`${MOD}.w`);
+    me.flags.dicer.appearance = { global: { theme: 'abyss-liquid', chosen: true } };
+    expect(api.getUserDefault()).toBe('abyss-liquid');
+    expect(api.getUserDefault(userOf())).toBe(`${MOD}.w`); // another user: no client setting
+  });
+
+  test('set writes the flag and the setting like the browser button, then reads back', async () => {
+    const { api } = make();
+    const me = userOf();
+    const settings = settingsStore();
+    withGame(me, settings);
+    api.registerTheme(theme('h'), { moduleId: MOD });
+    expect(await api.setUserDefault(`${MOD}.h`)).toBe(true);
+    expect(me.flags.dicer.appearance.global).toMatchObject({ theme: `${MOD}.h`, chosen: true });
+    expect(settings.set).toHaveBeenCalledWith('dicer', 'theme', `${MOD}.h`);
+    expect(api.getUserDefault()).toBe(`${MOD}.h`);
+    expect(await api.setUserDefault('default')).toBe(true);
+    expect(settings.set).toHaveBeenLastCalledWith('dicer', 'theme', 'default');
+    expect(api.getUserDefault()).toBe('default');
+  });
+
+  test('an unknown theme, a locked player and another user without a GM are refused', async () => {
+    const { api } = make();
+    const me = userOf();
+    const settings = settingsStore();
+    withGame(me, settings);
+    expect(await api.setUserDefault('nope.nothing')).toBe(false);
+    expect(await api.setUserDefault('ruby-classic', userOf())).toBe(false); // not a GM
+    settings.store.lockPlayerLooks = true;
+    settings.store.worldDefaultTheme = 'ruby-classic';
+    expect(await api.setUserDefault('abyss-liquid')).toBe(false);
+    expect(me.setFlag).not.toHaveBeenCalled();
+  });
+
+  test('a GM sets another user\'s default: the flag only, no client setting', async () => {
+    const { api } = make();
+    const gm = userOf({}, true);
+    const player = userOf();
+    const settings = settingsStore();
+    withGame(gm, settings);
+    expect(await api.setUserDefault('ruby-classic', player)).toBe(true);
+    expect(player.flags.dicer.appearance.global.theme).toBe('ruby-classic');
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+});
+
+describe('registerBrowserTab', () => {
+  const tab = (extra = {}) => ({ id: `${MOD}-holidays`, label: 'Holidays', icon: 'fa-solid fa-gift', filter: (t) => t.category === 'holiday', ...extra });
+
+  test('registers a tab, replaces one of the same id, fires dicer.themesChanged and unregisters', () => {
+    const { api, hooks } = make();
+    expect(api.registerBrowserTab(MOD, tab())).toBe(true);
+    expect(hooks.callAll).toHaveBeenCalledWith('dicer.themesChanged');
+    expect(BROWSER_TABS.get(`${MOD}-holidays`)).toMatchObject({ moduleId: MOD, label: 'Holidays', icon: 'fa-solid fa-gift' });
+    api.registerBrowserTab(MOD, tab({ label: 'Seasons' }));
+    expect(BROWSER_TABS.size).toBe(1);
+    expect(BROWSER_TABS.get(`${MOD}-holidays`).label).toBe('Seasons');
+    expect(api.unregisterBrowserTab(`${MOD}-holidays`)).toBe(true);
+    expect(api.unregisterBrowserTab(`${MOD}-holidays`)).toBe(false);
+  });
+
+  test('needs an installed module, an id with its prefix, a label and a filter function', () => {
+    const { api } = make();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(api.registerBrowserTab('missing', tab({ id: 'missing-x' }))).toBe(false);
+    expect(api.registerBrowserTab(MOD, tab({ id: 'other-holidays' }))).toBe(false);
+    expect(api.registerBrowserTab(MOD, tab({ id: MOD }))).toBe(false);
+    expect(api.registerBrowserTab(MOD, tab({ label: '' }))).toBe(false);
+    expect(api.registerBrowserTab(MOD, tab({ filter: 'nope' }))).toBe(false);
+    expect(api.registerBrowserTab(MOD)).toBe(false);
+    expect(BROWSER_TABS.size).toBe(0);
+    warn.mockRestore();
+  });
+
+  test('tabEntries filters, sorts and groups by section (sections in first-seen order)', () => {
+    const themes = [
+      { id: 'a', name: 'A', category: 'holiday', when: 3 },
+      { id: 'b', name: 'B', category: 'holiday', when: 1 },
+      { id: 'c', name: 'C', category: 'other', when: 2 },
+      { id: 'd', name: 'D', category: 'holiday', when: 2 },
+    ];
+    const { api } = make();
+    api.registerBrowserTab(MOD, tab({ sort: (x, y) => x.when - y.when, sections: (t) => (t.when < 3 ? 'In season' : 'Coming up') }));
+    const entries = tabEntries(BROWSER_TABS.get(`${MOD}-holidays`), themes);
+    expect(entries.map((e) => [e.theme.id, e.section])).toEqual([['b', 'In season'], ['d', 'In season'], ['a', 'Coming up']]);
+  });
+
+  test('without sections there are no headings; throwing callbacks fall back quietly', () => {
+    const themes = [{ id: 'a', category: 'holiday' }, { id: 'b', category: 'holiday' }];
+    const { api } = make();
+    api.registerBrowserTab(MOD, tab());
+    expect(tabEntries(BROWSER_TABS.get(`${MOD}-holidays`), themes).map((e) => e.section)).toEqual([null, null]);
+    api.registerBrowserTab(MOD, tab({ sort: () => { throw new Error('s'); }, sections: () => { throw new Error('h'); } }));
+    expect(tabEntries(BROWSER_TABS.get(`${MOD}-holidays`), themes).map((e) => [e.theme.id, e.section])).toEqual([['a', null], ['b', null]]);
+    api.registerBrowserTab(MOD, tab({ filter: () => { throw new Error('f'); } }));
+    expect(tabEntries(BROWSER_TABS.get(`${MOD}-holidays`), themes)).toEqual([]);
+  });
+});
+
+describe('registerThemeStub', () => {
+  const stub = (slug, load, extra = {}) => ({ id: `${MOD}.${slug}`, name: slug, badge: 'Yule', preview: 'p.webp', load, ...extra });
+
+  test('a stub is a gallery card with its preview and resolves to nothing until loaded', () => {
+    const { api, hooks } = make();
+    expect(api.registerThemeStub(MOD, stub('snow', async () => theme('snow')))).toBe(true);
+    expect(hooks.callAll).toHaveBeenCalledWith('dicer.themesChanged');
+    const card = galleryEntries({}).themes.find((t) => t.id === `${MOD}.snow`);
+    expect(card).toMatchObject({ stub: true, name: 'snow', badge: 'Yule', preview: 'p.webp', source: 'addon', moduleId: MOD });
+    expect(ADDON_THEMES.has(`${MOD}.snow`)).toBe(false);
+  });
+
+  test('loadStub swaps the stub for the full theme, keeps the stub badge and preview, fires themesChanged, loads once', async () => {
+    const { api, hooks } = make();
+    const load = vi.fn(async () => theme('snow'));
+    api.registerThemeStub(MOD, stub('snow', load));
+    hooks.callAll.mockClear();
+    globalThis.Hooks = hooks;
+    const [a, b] = await Promise.all([loadStub(`${MOD}.snow`, { hooks }), loadStub(`${MOD}.snow`, { hooks })]);
+    delete globalThis.Hooks;
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(a).toBe(b);
+    expect(findTheme(`${MOD}.snow`)).toMatchObject({ source: 'addon', moduleId: MOD, badge: 'Yule', preview: 'p.webp' });
+    expect(STUBS.has(`${MOD}.snow`)).toBe(false);
+    expect(hooks.callAll).toHaveBeenCalledWith('dicer.themesChanged');
+    expect(galleryEntries({}).themes.filter((t) => t.id === `${MOD}.snow`)).toHaveLength(1);
+  });
+
+  test('a roll reaching a stored reference (findTheme) starts the load; the roll itself gets nothing yet', async () => {
+    const { api } = make();
+    const load = vi.fn(async () => theme('snow'));
+    api.registerThemeStub(MOD, stub('snow', load));
+    expect(findTheme(`${MOD}.snow`)).toBeNull();
+    expect(load).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(findTheme(`${MOD}.snow`)).toMatchObject({ name: 'snow' });
+    expect(findTheme('nobody.knows')).toBeNull(); // not a stub: nothing loads
+  });
+
+  test('a failing load warns once, keeps the stub, is not retried by rolls and can be retried on request', async () => {
+    const { api } = make();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let ok = false;
+    const load = vi.fn(async () => {
+      if (!ok) throw new Error('offline');
+      return theme('snow');
+    });
+    api.registerThemeStub(MOD, stub('snow', load));
+    expect(await loadStub(`${MOD}.snow`)).toBeNull();
+    expect(await loadStub(`${MOD}.snow`)).toBeNull(); // no retry on its own
+    findTheme(`${MOD}.snow`);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(STUBS.has(`${MOD}.snow`)).toBe(true);
+    ok = true;
+    expect(await loadStub(`${MOD}.snow`, { retry: true })).toMatchObject({ name: 'snow' });
+    warn.mockRestore();
+  });
+
+  test('a load that returns the wrong id or an invalid theme is a failure', async () => {
+    const { api } = make();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    api.registerThemeStub(MOD, stub('a', async () => theme('other')));
+    api.registerThemeStub(MOD, stub('b', async () => ({ id: `${MOD}.b` })));
+    expect(await loadStub(`${MOD}.a`)).toBeNull();
+    expect(await loadStub(`${MOD}.b`)).toBeNull();
+    expect(ADDON_THEMES.size).toBe(0);
+    warn.mockRestore();
+  });
+
+  test('needs a module, a namespaced id, a name and load(); a loaded id is not stubbed again; unregister removes a stub', () => {
+    const { api } = make();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(api.registerThemeStub('missing', stub('x', async () => ({})))).toBe(false);
+    expect(api.registerThemeStub(MOD, { ...stub('x', async () => ({})), id: 'other.x' })).toBe(false);
+    expect(api.registerThemeStub(MOD, { ...stub('x', async () => ({})), name: '' })).toBe(false);
+    expect(api.registerThemeStub(MOD, { ...stub('x'), load: undefined })).toBe(false);
+    api.registerTheme(theme('full'), { moduleId: MOD });
+    expect(api.registerThemeStub(MOD, stub('full', async () => theme('full')))).toBe(false);
+    api.registerThemeStub(MOD, stub('y', async () => theme('y')));
+    expect(api.unregisterTheme(`${MOD}.y`)).toBe(true);
+    expect(STUBS.size).toBe(0);
+    warn.mockRestore();
+  });
+});
+
+describe('theme materials', () => {
+  test("registerTheme's material names a hook in every look of the theme", () => {
+    const { api } = make();
+    const beforeShaderCompile = vi.fn();
+    const t = theme('lights', { perType: { d20: { body: { type: 'opaque', color: '#111111' } } } });
+    expect(api.registerTheme(t, { moduleId: MOD, material: { beforeShaderCompile, cacheKey: `${MOD}-lights` } })).toBe(true);
+    const found = findTheme(`${MOD}.lights`);
+    expect(found.appearance.material).toBe(`${MOD}-lights`);
+    expect(found.perType.d20.material).toBe(`${MOD}-lights`);
+    expect(MATERIALS.get(`${MOD}-lights`)).toMatchObject({ cacheKey: `${MOD}-lights`, moduleId: MOD, themeId: `${MOD}.lights` });
+    expect(api.unregisterTheme(`${MOD}.lights`)).toBe(true);
+    expect(MATERIALS.size).toBe(0);
+  });
+
+  test('a look can name a material registered on its own; bad registrations are refused', () => {
+    const { api } = make();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fn = () => {};
+    expect(api.registerMaterial(MOD, { cacheKey: `${MOD}-snow`, beforeShaderCompile: fn })).toBe(`${MOD}-snow`);
+    api.registerTheme(theme('snow', { appearance: { body: { type: 'opaque', color: '#fff' }, material: `${MOD}-snow` } }), { moduleId: MOD });
+    expect(findTheme(`${MOD}.snow`).appearance.material).toBe(`${MOD}-snow`);
+    expect(api.registerMaterial(MOD, { cacheKey: 'other-snow', beforeShaderCompile: fn })).toBeNull(); // not prefixed
+    expect(api.registerMaterial(MOD, { cacheKey: `${MOD}-x` })).toBeNull(); // no callback
+    expect(api.registerMaterial('missing', { cacheKey: 'missing-x', beforeShaderCompile: fn })).toBeNull();
+    expect(api.registerTheme(theme('bad'), { moduleId: MOD, material: { cacheKey: 'nope' } })).toBe(false);
+    expect(ADDON_THEMES.has(`${MOD}.bad`)).toBe(false);
+    warn.mockRestore();
   });
 });
