@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.11
+
+- **Numbers read better on pearl, jelly, glowing and swirl dice.** The automatic contrast now looks at what the player sees: the coat's veil, the die's second colour, both colours of a swirl and a glow. A number that fails is moved lighter or darker as before, a number that reads is left alone. New **Minimum contrast** slider in the Numbers section of the appearance editor (Auto by default) and a line under it saying whether the numbers read. In a theme: `numbers.minContrast` (1.5 to 7). A few built-in looks change their number colour: Scarborough (dark gold to pale cream), Jelly Belly (dark orange to light salmon), Wonderland (less glow) and small moves on the default, Marble White, Ember Core, Smoke Swirl, Celestial, Verdant, Rare Shiny, Antelope Canyon and Carbon Fiber. Stored looks that failed the old check can move too; **Keep numbers readable** off keeps a number as picked.
+- **A rough die looks rough.** Above 70 % **Roughness** the clear coat now fades out and the reflections weaken, so the top of the slider reads matte instead of polished. Metal and resin dice are as before, and so is every die at 70 % or below. The built-in looks with a roughness above that get a little less shine.
+
+Not yet tried in a live Foundry world: both are covered by unit tests, and the contrast figures were fitted to renders of an earlier version. The matte finish was not rendered on gem, iridescent and jelly bodies. Please report what you see.
+
 ## 1.4.10
 
 - **Roll All and Roll NPCs stay one throw in Pathfinder 2e.** PF2e posts one initiative card per combatant, and on a busy machine they could come far enough apart that one Roll NPCs was shown as two throws. Dicer now waits a little longer (250 ms instead of 100) for the next card before it throws. With PF2e's check dialog shown, each roll you confirm by hand is still its own throw.
