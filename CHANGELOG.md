@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.12
+
+- **Ember Lunar Dice now look and move as they should.** Five of the six sets (Akon, Aura, Cora, Mayis, Orbis) are built from several parts, which Dicer refused: they showed as your own dice instead (Aura as nothing at all). All six now draw as their real models, with their labels and Cora's rings.
+- **Their animation plays, and it strengthens at full moon.** The moving surfaces these dice bring (embers, clouds, drifting stars) were never run on a module's 3D models. They are now, on thrown dice and in the theme browser, and each set changes when its moon is full in Ember (the moon's influence above 75%). Any other Dice So Nice dice set that animates its models gains the same.
+- To use them: Dice So Nice and Ember Lunar Dice stay off; as GM tick **Ember Lunar Dice** in the theme browser's **Installed dice** window and reload. Checked with the real module's models and shaders outside Foundry; please report anything that looks wrong in a game.
+
 ## 1.4.11
 
 - **Numbers read better on pearl, jelly, glowing and swirl dice.** The automatic contrast now looks at what the player sees: the coat's veil, the die's second colour, both colours of a swirl and a glow. A number that fails is moved lighter or darker as before, a number that reads is left alone. New **Minimum contrast** slider in the Numbers section of the appearance editor (Auto by default) and a line under it saying whether the numbers read. In a theme: `numbers.minContrast` (1.5 to 7). A few built-in looks change their number colour: Scarborough (dark gold to pale cream), Jelly Belly (dark orange to light salmon), Wonderland (less glow) and small moves on the default, Marble White, Ember Core, Smoke Swirl, Celestial, Verdant, Rare Shiny, Antelope Canyon and Carbon Fiber. Stored looks that failed the old check can move too; **Keep numbers readable** off keeps a number as picked.
