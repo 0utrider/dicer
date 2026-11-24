@@ -98,6 +98,7 @@ export function formFromAppearance(raw) {
       coin: a.numbers.coin,
       size: a.numbers.size,
       weight: a.numbers.weight,
+      minContrast: a.numbers.minContrast ?? 0,
       offsetY: a.numbers.offsetY,
       // the outline: a switch, its colour (black until one is picked) and width
       outlineOn: !!a.numbers.outline,
@@ -158,6 +159,7 @@ export function appearanceFromForm(form) {
       coin: num.coin,
       size: n(num.size),
       weight: n(num.weight),
+      minContrast: n(num.minContrast),
       offsetY: n(num.offsetY),
       outline: num.outlineOn === true ? num.outline : null,
       outlineWidth: n(num.outlineWidth),
@@ -237,6 +239,8 @@ export function setField(form, path, value) {
   const out = plain(form);
   // A number colour picked by hand is kept as picked (its readability toggle turns off).
   if (path === 'numbers.color') out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), contrast: false };
+  // Asking for a minimum contrast turns readability back on (it does nothing while off).
+  if (path === 'numbers.minContrast' && Number(value) >= 1.5) out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), contrast: true };
   // Only a change of fill sets the colour: re-picking the same metal keeps a saved look's tint.
   if (path === 'numbers.fill' && Object.hasOwn(METAL_FILL_COLORS, value) && out.numbers?.fill !== value) {
     out.numbers = { ...(isObj(out.numbers) ? out.numbers : {}), color: METAL_FILL_COLORS[value] };
@@ -256,7 +260,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'offsetY', 'outlineWidth', 'inkGlow', 'extraDensity', 'scale', 'rotation', 'blend'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'offsetY', 'outlineWidth', 'minContrast', 'inkGlow', 'extraDensity', 'scale', 'rotation', 'blend'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

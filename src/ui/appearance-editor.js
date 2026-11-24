@@ -13,6 +13,7 @@ import { DIE_TYPES, SOUND_MATERIALS, KNOWN_EFFECTS, BUILTIN_THEMES, normalizeThe
 import { USER_SOUNDS } from '../audio/sound-names.js';
 import { LOOKS } from '../look/looks.js';
 import { stripActive } from '../look/appearance.js';
+import { numbersReport } from '../look/contrast.js';
 import { getShape, labelFor } from '../core/dice-shapes.js';
 import { createThumbnailer } from '../themes/thumbnailer.js';
 import { KEEP, SOUND_FILE, celebrationPreview, formFromTheme, themeFromForm, scenesFor } from './theme-form.js';
@@ -106,6 +107,21 @@ const settings = () => globalThis.game?.settings;
 const humanize = (id) => {
   const s = String(id).replace(/[-_]+/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
+};
+/** The slider's text: the ratio asked of the numbers, or Auto below the smallest one numbers.minContrast takes. */
+const ratioText = (v) => (Number(v) >= 1.5 ? `${Math.round(Number(v) * 10) / 10}:1` : loc('DICER.Appearance.Numbers.MinContrastAuto'));
+const CONTRAST_TEXT = {
+  ok: 'DICER.Appearance.Numbers.ContrastOk',
+  close: 'DICER.Appearance.Numbers.ContrastClose',
+  adjusted: 'DICER.Appearance.Numbers.ContrastAdjusted',
+  off: 'DICER.Appearance.Numbers.ContrastOff',
+};
+/** The readout under the slider: how the numbers read on this die, from numbersReport. */
+const contrastNote = (look) => {
+  const r = numbersReport(look);
+  const n = (v) => Math.round(v * 10) / 10;
+  const text = fmt(CONTRAST_TEXT[r.state], { ratio: n(r.ratio ?? 0), need: n(r.need), fill: r.fill ?? '' });
+  return { state: r.state, text };
 };
 const pct = (v, scale = 1) => `${Math.round((Number(v) || 0) * 100 * scale) / scale}%`;
 
@@ -356,7 +372,9 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
         active: i === edgeIndex,
         radius: EDGE_ICON_RADIUS[i],
       })),
+      contrastNote: contrastNote(look),
       pct: {
+        minContrast: ratioText(form.numbers.minContrast),
         roughness: pct(form.body.roughness),
         density: pct(form.interior.density),
         extraDensity: pct(form.interior.extraDensity),
@@ -549,6 +567,16 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     if (span) span.textContent = text;
   }
 
+  /** Repaints the readout under the minimum contrast slider after an edit that does not re-render. */
+  #paintContrastNote() {
+    const note = this.element?.querySelector?.('.dicer-ae-contrast-note');
+    if (!note) return;
+    const { state, text } = contrastNote(appearanceFromForm(this.#form));
+    note.dataset.state = state;
+    const span = note.querySelector('span');
+    if (span) span.textContent = text;
+  }
+
   /** A typed / dragged value: the form changes in place (no re-render, focus stays), then the preview. */
   #onInput(event, committed = false) {
     const el = event.target;
@@ -581,11 +609,12 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     if (!path) return;
     this.#form = setField(this.#form, path, value);
     // a colour picked by hand turns its readability toggle off (setField): the box follows
-    const keep = path === 'numbers.color' && this.element.querySelector('input[name="numbers.contrast"]');
-    if (keep) keep.checked = false;
+    const keep = ['numbers.color', 'numbers.minContrast'].includes(path) && this.element.querySelector('input[name="numbers.contrast"]');
+    if (keep) keep.checked = this.#form.numbers.contrast !== false;
     const out = this.element.querySelector(`output[data-for="${path}"]`);
-    if (out) out.textContent = pct(value);
+    if (out) out.textContent = path === 'numbers.minContrast' ? ratioText(value) : pct(value);
     if (path.startsWith('numbers.font')) this.#paintFontMessage();
+    this.#paintContrastNote();
     if (path.startsWith('numbers.outline')) this.#paintOutlineMessage();
     // the outline's colour and width show only while its switch is on: draw the window again
     if (path === 'numbers.outlineOn' && committed) {

@@ -109,6 +109,12 @@ describe('relief, icons, new fills and fonts in the form', () => {
     // a metal fill's own colour is not a pick: readability stays on
     expect(appearanceFromForm(setField(f0, 'numbers.fill', 'silver')).numbers.contrast).toBe(true);
   });
+  it('asking for a minimum contrast turns readability back on; clearing it does not', () => {
+    const picked = setField(formFromAppearance(normalizeAppearance({})), 'numbers.color', '#336699');
+    expect(appearanceFromForm(picked).numbers.contrast).toBe(false);
+    expect(appearanceFromForm(setField(picked, 'numbers.minContrast', '5')).numbers).toMatchObject({ contrast: true, minContrast: 5 });
+    expect(appearanceFromForm(setField(picked, 'numbers.minContrast', '0')).numbers.contrast).toBe(false);
+  });
   it('the glow ink brightness round-trips through the form; outside 0..200 % it is 100 %', () => {
     const f = setField(formFromAppearance(normalizeAppearance({ numbers: { fill: 'glow' } })), 'numbers.inkGlow', '1.5');
     expect(appearanceFromForm(f).numbers.inkGlow).toBe(1.5);
@@ -1334,6 +1340,18 @@ describe('lang/en.json', () => {
 });
 
 describe('number size and weight in the form', () => {
+  it('the minimum contrast slider round-trips, is Auto at 0 and has a readout, its labels and a place in the template', () => {
+    expect(formFromAppearance({}).numbers.minContrast).toBe(0);
+    expect(appearanceFromForm(setField(formFromAppearance({}), 'numbers.minContrast', '4.5')).numbers.minContrast).toBe(4.5);
+    expect(appearanceFromForm(setField(formFromAppearance({}), 'numbers.minContrast', '0.5')).numbers).not.toHaveProperty('minContrast');
+    expect(formFromAppearance({ numbers: { minContrast: 6 } }).numbers.minContrast).toBe(6);
+    const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+    for (const k of ['MinContrast', 'MinContrastHint', 'MinContrastAuto', 'ContrastOk', 'ContrastClose', 'ContrastAdjusted', 'ContrastOff']) expect(resolve(lang, `DICER.Appearance.Numbers.${k}`)).toBeTypeOf('string');
+    const hbs = readFileSync('templates/appearance-editor.hbs', 'utf8');
+    expect(hbs).toMatch(/<input type="range" name="numbers\.minContrast" min="0" max="7" step="0\.5" value="\{\{form\.numbers\.minContrast\}\}">/);
+    expect(hbs).toContain('<output data-for="numbers.minContrast">{{pct.minContrast}}</output>');
+    expect(hbs).toContain('class="dicer-ae-contrast-note" data-state="{{contrastNote.state}}"');
+  });
   it('round-trips size and weight; old looks get the defaults', () => {
     const a = normalizeAppearance({ numbers: { size: 1.35, weight: -0.4 } });
     const f = formFromAppearance(a);

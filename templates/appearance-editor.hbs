@@ -187,6 +187,8 @@
           {{#if show.outlineOptions}}
             <div class="dicer-ae-row"><div class="dicer-field dicer-ae-color"><span>{{localize "DICER.Appearance.Numbers.OutlineColor"}}</span><span class="dicer-ae-color-pair"><input type="color" value="{{form.numbers.outline}}" data-color-for="numbers.outline" aria-label="{{localize "DICER.Appearance.Numbers.OutlineColor"}}"><input type="text" name="numbers.outline" value="{{form.numbers.outline}}" maxlength="7" spellcheck="false" aria-label="{{localize "DICER.Appearance.Numbers.OutlineColor"}}"></span></div><label class="dicer-field dicer-ae-range"><span>{{localize "DICER.Appearance.Numbers.OutlineWidth"}}<output data-for="numbers.outlineWidth">{{pct.outlineWidth}}</output></span><input type="range" name="numbers.outlineWidth" min="0" max="1" step="0.05" value="{{form.numbers.outlineWidth}}"></label></div>
           {{/if}}
+          <div class="dicer-ae-row"><label class="dicer-field dicer-ae-range" data-tooltip="DICER.Appearance.Numbers.MinContrastHint"><span>{{localize "DICER.Appearance.Numbers.MinContrast"}}<output data-for="numbers.minContrast">{{pct.minContrast}}</output></span><input type="range" name="numbers.minContrast" min="0" max="7" step="0.5" value="{{form.numbers.minContrast}}"></label></div>
+          <p class="dicer-ae-contrast-note" data-state="{{contrastNote.state}}" role="status"><i class="fa-solid fa-circle-half-stroke"></i> <span>{{contrastNote.text}}</span></p>
           <div class="dicer-field">
             <span>{{localize "DICER.Appearance.Numbers.Relief"}}</span>
             <div class="dicer-segmented dicer-ae-seg">
