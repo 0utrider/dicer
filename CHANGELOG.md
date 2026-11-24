@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.8
+
+- **Ember Lunar Dice follow Ember's moons under Dicer.** Ember Lunar Dice need Dice So Nice, so Foundry will not turn them on in a Dicer world: tick them in the theme browser's **Installed dice** window instead (GM, then reload). Ember only told the dice which moons are full while Dice So Nice was on; Dicer now does that itself, at load and at every phase change. Not yet tried with the real (paid) module: please report what you see.
+
 ## 1.4.7
 
 - **Dicer's hook listeners can no longer stop other modules'.** Foundry stops a hook such as `canvasReady` at the first listener that returns false, and the listeners other modules registered after it then never run. Dicer's own scene-lighting listener did that until 1.3.20 (Health Estimate and others stopped working: update if you are on an older version). The remaining listeners that could return false are fixed too, and a test now refuses any new one. No change in behaviour.
