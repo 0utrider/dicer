@@ -522,9 +522,11 @@ describe('build', () => {
     // (48,288 -> 48,289), 2026-11-24.
     // PR #12 (roughness above 0.7 reads matte: the clear coat fades out on every body but metal and
     // resin): owner approved +295 B (48,289 -> 48,584), 2026-11-24.
+    // PR #13 (number contrast that sees the material: the coat's veil, the second colour, both inside
+    // colours, the font and numbers.minContrast): owner approved +1,594 B (48,584 -> 50,178), 2026-11-24.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(48_584);
+    expect(growth).toBeLessThanOrEqual(50_178);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
