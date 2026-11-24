@@ -12,6 +12,12 @@ export const PROVIDERS = new Map();
 /** Theme ids a module asked to have compiled ahead (api.warmThemes); this session only. */
 export const WARM_THEMES = new Set();
 
+/**
+ * Material hooks add-on modules registered (api.registerTheme's `material`, api.registerMaterial):
+ * id (a look's `material` field) -> { hook(dieType) -> shader hook, cacheKey } (built in theme-api.js).
+ */
+export const MATERIALS = new Map();
+
 /** A stored slot that names dice: a theme, a look other than the default, an appearance, a colorset or a system. */
 export const named = (r) =>
   isObj(r) && !isNeverChose(r) && !!(r.theme || (r.look && r.look !== 'default') || r.appearance || r.colorset || r.system);

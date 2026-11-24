@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { buildScene } from '../render/scene.js';
 import { configureRenderer } from '../render/renderer.js';
-import { createDiceMaterial, chainShaderHook } from '../render/dice-material.js';
+import { createDiceMaterial, chainShaderHook, setDicerTime } from '../render/dice-material.js';
+import { MATERIALS } from '../api/theme-registry.js';
 import { TIERS, flagsFor } from '../render/quality.js';
 import { buildDieGeometry, snapEdgeRadius } from '../core/chamfer.js';
 import { getShape, labelFor, shapeTypeFor } from '../core/dice-shapes.js';
@@ -173,6 +174,23 @@ export function createThumbnailer({
     } catch (err) {
       failed(err);
     }
+    return material;
+  }
+  /** Whether a Dice So Nice system's own material callbacks dress this theme (withSystem): then they win, as in DiceBox. */
+  const usesSystem = (theme) => {
+    const id = systemIdOf(theme);
+    const inst = id ? systemFor(id) : null;
+    return !!inst && SYSTEM_HOOKS.every((m) => typeof inst[m] === 'function');
+  };
+  /** An add-on theme's material hook (a look's `material`) on a thumbnail or preview material, as thrown dice get it. */
+  function withAddon(material, theme, dieType, appearance) {
+    const hook = appearance?.material ? MATERIALS.get(appearance.material) : null;
+    if (!hook || flags?.safe || usesSystem(theme)) return material;
+    chainShaderHook(material, `mat:${hook.key}`, hook.key, hook.hook(dieType), (err) => {
+      if (systemWarned.has(hook.cacheKey)) return;
+      systemWarned.add(hook.cacheKey);
+      warn(`dicer: material "${hook.cacheKey}": its callback failed in a preview`, err);
+    });
     return material;
   }
   const fontOf = (appearance) => appearance?.numbers?.font ?? 'serif';
@@ -363,7 +381,7 @@ export function createThumbnailer({
     // A model brings its own (shared) material: nothing of ours to make or free.
     const material = model
       ? model.material
-      : withSystem(createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null, body?.texture ? body : null), theme, dieType, appearance);
+      : withAddon(withSystem(createDiceMaterial(appearance, dieAtlas, shape, labels, flags, tex?.texture ? tex : null, body?.texture ? body : null), theme, dieType, appearance), theme, dieType, appearance);
     const ours = !model;
     const freeMaterial = () => {
       if (!ours) return;
@@ -589,7 +607,7 @@ export function createThumbnailer({
       const dieAtlas = readyAtlas(fontId);
       const material = mdl
         ? mdl.material
-        : withSystem(createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null, bt?.texture ? bt : null), theme, dieType, appearance);
+        : withAddon(withSystem(createDiceMaterial(appearance, dieAtlas ?? atlas, shape, labels, flags, tex?.texture ? tex : null, bt?.texture ? bt : null), theme, dieType, appearance), theme, dieType, appearance);
       const releaseAtlas = holdAtlas(dieAtlas);
       if (!dieAtlas) {
         // the serif stands in: rebuild the die once the font is ready
@@ -678,6 +696,7 @@ export function createThumbnailer({
       if (stopped || !visible()) return; // a hidden document resumes through visibilitychange
       const dt = last === null ? 0 : (ts - last) / 1000;
       last = ts;
+      setDicerTime(ts); // the shared uTime of add-on material hooks
       turn.update(dt);
       frame();
       if (!stopped) handle = raf(tick);

@@ -207,6 +207,8 @@ export function normalizeAppearance(input) {
       shapes: { d4: i.shapes?.d4 === 'crystal' ? 'crystal' : 'classic', ...altShapes(i.shapes) },
       ...faceImages(i.faces, i.facesTint),
       ...bodyImageOf(i.bodyImage),
+      // names an add-on's material hook (api.registerMaterial): a short id; unknown ids draw as plain dice
+      ...(typeof i.material === 'string' && i.material && i.material.length <= 64 && { material: i.material }),
     };
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_APPEARANCE));

@@ -21,13 +21,13 @@
         </span>
         <span role="cell">
           {{#if canEditWorld}}
-            <select name="rows.{{index}}.world" aria-label="{{label}}: {{localize "DICER.DamageMap.World"}}">{{selectOptions worldChoices selected=world}}</select>
+            <select name="rows.{{index}}.world" aria-label="{{label}}: {{localize "DICER.DamageMap.World"}}">{{#each worldGroups}}{{#if label}}<optgroup label="{{label}}">{{/if}}{{#each options}}<option value="{{value}}"{{#if selected}} selected{{/if}}>{{label}}</option>{{/each}}{{#if label}}</optgroup>{{/if}}{{/each}}</select>
           {{else}}
             <span class="dicer-dm-readonly">{{worldLabel}}</span>
           {{/if}}
         </span>
         <span role="cell">
-          <select name="rows.{{index}}.user" aria-label="{{label}}: {{localize "DICER.DamageMap.Mine"}}">{{selectOptions userChoices selected=user}}</select>
+          <select name="rows.{{index}}.user" aria-label="{{label}}: {{localize "DICER.DamageMap.Mine"}}">{{#each userGroups}}{{#if label}}<optgroup label="{{label}}">{{/if}}{{#each options}}<option value="{{value}}"{{#if selected}} selected{{/if}}>{{label}}</option>{{/each}}{{#if label}}</optgroup>{{/if}}{{/each}}</select>
         </span>
         <span class="dicer-dm-sound" role="cell">
           {{#if canEditWorld}}

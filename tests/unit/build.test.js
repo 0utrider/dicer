@@ -139,6 +139,10 @@ describe('build', () => {
     const fontRow = /\{id:\w+,moduleId:\w+,label:\w+,file:\w+\}/;
     expect(readFileSync(addonFonts, 'utf8')).toMatch(fontRow);
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toMatch(fontRow);
+    // what add-ons registered for Dicer's windows (tabs, showInAll, stubs): read by lazy chunks only
+    const addonRegistry = lazy.find((p) => /^dist\/addon-registry-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(addonRegistry).toBeTruthy();
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer.themesChanged');
     // the tray picker (issue #5) and the other trays' list it shares with the chat dice tray
     const trayPick = lazy.find((p) => /^dist\/tray-pick-[A-Za-z0-9_-]{8}\.js$/.test(p));
     const otherTrays = lazy.find((p) => /^dist\/other-trays-[A-Za-z0-9_-]{8}\.js$/.test(p));
@@ -250,6 +254,7 @@ describe('build', () => {
         sceneCatalog,
         themeApi,
         addonFonts,
+        addonRegistry,
         trayPick,
         otherTrays,
         ...geometries,

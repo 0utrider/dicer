@@ -6,6 +6,7 @@ import { createThumbnailer } from '../../src/themes/thumbnailer.js';
 import { BUILTIN_THEMES } from '../../src/themes/themes.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { buildDieGeometry } from '../../src/core/chamfer.js';
+import { MATERIALS } from '../../src/api/theme-registry.js';
 import { createDiceMaterial } from '../../src/render/dice-material.js';
 import { createFontAtlases } from '../../src/fonts/font-atlas.js';
 import { _setLookExtrasImport } from '../../src/render/extras-loader.js';
@@ -677,5 +678,44 @@ test('a module entry with a model draws the model, its shown face on top, and ne
   await t.thumbnail({ ...theme(), perType: {}, models: { d4: 'd4.gltf' } }, 'd4');
   await t.thumbnail({ ...theme(), perType: {}, models: { d100: 'd100.gltf' } }, 'd100');
   expect(modelChunk.load.mock.calls.map((c) => c[0])).toEqual(['d4.gltf', 'd100.gltf']);
+  t.dispose();
+});
+
+test("a Dice So Nice system's callbacks win over an add-on material, as in DiceBox, so the preview matches the roll", async () => {
+  const hook = vi.fn();
+  MATERIALS.set('mod-lights', { cacheKey: 'mod-lights', rev: 1, key: 'mod-lights@1', hook: (dieType) => (shader, mat) => hook(dieType, mat) });
+  const inst = { getCacheString: () => 'raz', processMaterial: vi.fn(), beforeShaderCompile: vi.fn() };
+  const systemFor = (id) => (id === 'irl-raz' ? inst : null);
+  const seen = [];
+  const rig = fakeRig();
+  rig.renderer.render.mockImplementation((scene) => seen.push(scene.children.find((c) => c.isMesh && c.material.userData?.uniforms)?.material));
+  const { t } = make({ rig, opts: { systemFor } });
+  const lit = { ...theme(), id: 'dsn-system:irl-raz', kind: 'system', key: 'irl-raz', perType: {}, appearance: { ...theme().appearance, material: 'mod-lights' } };
+  await t.thumbnail(lit, 'd20');
+  expect(seen[0].customProgramCacheKey()).toMatch(/^sys:irl-raz\|/);
+  expect(seen[0].customProgramCacheKey()).not.toContain('mat:');
+  seen[0].onBeforeCompile({ uniforms: {}, vertexShader: '', fragmentShader: '' }, null);
+  expect(hook).not.toHaveBeenCalled();
+  // without the system the add-on hook applies, keyed by its revision
+  const plain = { ...theme(), id: 'mod.lights', perType: {}, appearance: { ...theme().appearance, material: 'mod-lights' } };
+  await t.thumbnail(plain, 'd20');
+  expect(seen[1].customProgramCacheKey()).toContain('mat:mod-lights@1');
+  MATERIALS.clear();
+  t.dispose();
+});
+
+test("an add-on theme's material hook dresses its thumbnail and keys its program", async () => {
+  const hook = vi.fn();
+  MATERIALS.set('mod-lights', { cacheKey: 'mod-lights', rev: 1, key: 'mod-lights@1', hook: (dieType) => (shader, mat) => hook(dieType, mat) });
+  const seen = [];
+  const rig = fakeRig();
+  rig.renderer.render.mockImplementation((scene) => seen.push(scene.children.find((c) => c.isMesh && c.material.userData?.uniforms)?.material));
+  const { t } = make({ rig });
+  const lit = { ...theme(), id: 'mod.lights', perType: {}, appearance: { ...theme().appearance, material: 'mod-lights' } };
+  await t.thumbnail(lit, 'd20');
+  expect(seen[0].customProgramCacheKey()).toContain('mat:mod-lights');
+  seen[0].onBeforeCompile({ uniforms: {}, vertexShader: '', fragmentShader: '' }, null);
+  expect(hook).toHaveBeenCalledWith('d20', seen[0]);
+  MATERIALS.clear();
   t.dispose();
 });

@@ -15,7 +15,7 @@ check `game.modules.get('dicer')?.api` directly.
 ## Themes
 
 ```js
-api.registerTheme(theme, { moduleId }); // true when registered
+api.registerTheme(theme, { moduleId, showInAll?, material? }); // true when registered
 api.unregisterTheme(themeId);
 api.listThemes(moduleId); // copies of a module's registered themes
 ```
@@ -29,8 +29,101 @@ api.listThemes(moduleId); // copies of a module's registered themes
   player's client runs your module, so every player sees them, with no GM involved.
 - Registering an id again replaces it (a module update can change its theme). Each change fires
   `dicer.themesChanged`.
-- In Dicer's theme browser they show among all themes, tagged with your module's title. Players can
-  duplicate one into their own themes to change it; the GM can make one the world default.
+- In Dicer's theme browser they show among all themes, tagged with your module's title (or the
+  theme's `badge`). Players can duplicate one into their own themes to change it; the GM can make
+  one the world default.
+
+Optional fields on a registered theme:
+
+| Field | Use |
+| --- | --- |
+| `badge` | The tag on the card and the detail panel, instead of the module title. |
+| `category` | A free string for grouping in other windows. `damage` puts the theme in its own group in the damage type map (see below). |
+| `preview` | A static image path. The card and the detail panel show it instead of rendering a 3D die. Useful for large packs. |
+
+Options on `registerTheme(theme, { moduleId, showInAll, material })`:
+
+- `showInAll`: a boolean, or `(theme, date) => boolean`, asked each time the browser draws. While it
+  is false the theme is left out of the **All** tab (and its count) but stays on its module's tabs and
+  everywhere it can be picked. For seasonal sets.
+- `material`: see Animated materials.
+
+## Browser tabs
+
+```js
+api.registerBrowserTab(moduleId, {
+  id: 'my-module-holidays',        // unique, starts with `<moduleId>-` or `<moduleId>.`
+  label: 'Holidays',               // text or an i18n key
+  icon: 'fa-solid fa-gift',        // a Font Awesome class, or an image path
+  filter: (theme) => boolean,      // which themes the tab shows
+  sort: (a, b) => number,          // optional
+  sections: (theme) => string,     // optional: the heading a theme sits under
+});
+api.unregisterBrowserTab(id);
+```
+
+Module tabs come after Dicer's own, with the same count badge and the same search. `filter` gets
+every theme (built-in, add-on, world and the user's own). Themes with the same section stay together,
+sections in the order they first appear. A callback that throws counts as "not shown", "unsorted"
+and "no heading". Registering an id again replaces the tab.
+
+## Themes on demand
+
+```js
+api.registerThemeStub(moduleId, { id, name, badge?, preview?, category?, showInAll?, load: async () => theme });
+```
+
+A stub shows as a normal card (with its `preview`). Selecting it in the browser, assigning it anywhere
+there, or a stored reference to it (default, damage map, actor) calls `load()` once and swaps the
+stub for the theme it returns, which must have the same id. `dicer.themesChanged` fires then. If
+`load()` fails, Dicer warns once and keeps the stub; selecting it again retries. A roll that reaches
+an unloaded stub (a stored reference) starts the load and uses the default look for that roll. To make that rare, a stub that a stored default, a world default, a damage map, a user's choice or an actor's choice names is loaded as soon as it is registered (right after the registering code finishes), before any roll. `showInAll` works as in `registerTheme` and carries over to the theme once it loads. Registering a full theme with a stub's id replaces the stub, and `setUserDefault` loads a stub first.
+`unregisterTheme(id)` removes a stub too.
+
+## Damage type map
+
+Registered themes are listed in the **World choice** and **My override** dropdowns, grouped by module
+(`<optgroup>` labelled with the module's title). Themes with `category: 'damage'` go in a group
+right after Default. Stubs are listed too.
+
+## A user's default
+
+```js
+api.getUserDefault(user = game.user);           // a theme id, or 'default'
+await api.setUserDefault(themeId, user = game.user); // same effect as "Use as my default"; true when set
+```
+
+`getUserDefault` follows what the browser shows as "Your default": the user's stored choice, else the
+GM's world default, else (for the current user) the `theme` setting. `setUserDefault('default')`
+clears the choice. Another user's default needs a GM. A player under the GM's look lock is refused.
+An id that names no built-in, add-on, world or personal theme is refused.
+
+## Animated materials
+
+```js
+api.registerTheme(theme, {
+  moduleId,
+  material: { cacheKey: 'my-module-lights', beforeShaderCompile(shader, material, { themeId, dieType }) {} },
+});
+// or register a material once, and name it from any look:
+api.registerMaterial(moduleId, { cacheKey: 'my-module-lights', beforeShaderCompile() {} });
+// theme: { appearance: { ..., material: 'my-module-lights' } }
+```
+
+`cacheKey` names the material and must start with `<moduleId>-` or `<moduleId>.` (a separator, so one module cannot claim another's keys). A look whose `material` field names
+it draws with the hook, wherever it is drawn: rolled dice, the browser's thumbnails and live
+preview, and the tray (dice with no registered material draw as usual).
+
+- The hook runs after Dicer's own shader patch, not under the "safe" quality tier, and never on ghost
+  dice. `themeId` is the theme that registered the material.
+- The fragment shader starts with `uniform float uTime;` (seconds, shared by all dice, wrapping
+  every 3600 so a looped effect should use a period that divides it) and `#define vDicerPosition vLocalPos`,
+  the die's object-space position, so a pattern stays fixed to the die as it tumbles.
+- Registering a `cacheKey` again replaces the hook for dice made afterwards: each registration is a revision that is part of the keys, so cached materials and programs are never reused with the old hook.
+- `cacheKey` is part of the material and shader program keys: dice with and without the hook never
+  share a compiled program.
+- A hook that throws is undone (the shader compiles as Dicer's own) and warns once.
+- A die whose look also comes from a Dice So Nice system preset uses that system's hooks, not this one. The browser's thumbnails and previews follow the same rule.
 
 ## Fonts
 

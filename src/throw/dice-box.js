@@ -4,9 +4,11 @@ import { buildDieGeometry } from '../core/chamfer.js';
 import {
   createDiceMaterial,
   chainShaderHook,
+  setDicerTime,
   isolateMaterial,
   DEFAULT_FLAGS,
 } from '../render/dice-material.js';
+import { MATERIALS } from '../api/theme-registry.js';
 import { getLookExtras, requestLookExtras } from '../render/extras-loader.js';
 import {
   DEFAULT_APPEARANCE,
@@ -972,12 +974,15 @@ export class DiceBox {
     const found = ghost ? null : this.#presetOf(source, type);
     const custom = found && found.preset.system !== STANDARD_SYSTEM ? found.preset.system : null;
     const systemKey = custom ? `|sys:${custom}` : '';
+    // an add-on's material hook (a look's `material`): never on a ghost, nor under the safe flags
+    const addon = !ghost && !flags.safe && !custom && appearance.material ? MATERIALS.get(appearance.material) : null;
+    const addonKey = addon ? `|am:${addon.key}` : ''; // key = cacheKey@revision: a re-registered hook never meets cached dice
     const hooks = custom ? this.#materialHooks(custom, appearance) : null;
     const hookKey = hooks ? `|sc:${hooks.cacheString}` : '';
     const font = this.#fontAtlas(ghost ? 'serif' : appearance.numbers?.font);
     // The atlas actually used is part of the key: a serif stand-in is never reused once the
     // font is ready.
-    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${bodyKey}${systemKey}${hookKey}|atlas:${font.id}`;
+    const key = `${appearanceKey(appearance)}|${programKey(appearance, flags)}|${type}|${variant ?? ''}|${faces?.key ?? ''}|${ghost ? 1 : 0}${layerKey}${bodyKey}${systemKey}${hookKey}${addonKey}|atlas:${font.id}`;
     let mat = this._materials.get(key);
     if (!mat) {
       const shape = getShape(type);
@@ -1000,6 +1005,10 @@ export class DiceBox {
       mat = build();
       if (hooks)
         mat = this.#applySystem(mat, build, hooks, custom, found.dsnType, appearance, flags);
+      if (addon)
+        chainShaderHook(mat, `mat:${addon.key}`, addon.key, addon.hook(type), (err) =>
+          this.#systemWarn(`material:${addon.cacheKey}`, 'material', 'a material callback threw; its dice use Dicer’s material', err),
+        );
       this._materials.set(key, mat);
       // A layered material lives only while rolls hold it: its texture is theirs.
       // The font layer keeps an evicted atlas's texture until this material lets go of it.
@@ -1681,6 +1690,7 @@ export class DiceBox {
   }
 
   #frame(now) {
+    setDicerTime(now); // the shared uTime of add-on material hooks
     for (const roll of [...this._rolls]) {
       try {
         if (roll.phase === 'playing') {

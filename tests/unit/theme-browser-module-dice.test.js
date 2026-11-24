@@ -5,7 +5,8 @@ import { createLookResolver } from '../../src/compat/resolve-looks.js';
 import { colorsetNameToAppearance, chosenRef } from '../../src/compat/user-looks.js';
 import { LOOKS } from '../../src/look/looks.js';
 import { normalizeAppearance } from '../../src/look/appearance.js';
-import { BUILTIN_THEMES } from '../../src/themes/themes.js';
+import { ADDON_THEMES, BUILTIN_THEMES } from '../../src/themes/themes.js';
+import { BROWSER_TABS, STUBS } from '../../src/api/addon-registry.js';
 import {
   moduleDiceEntries,
   registryView,
@@ -234,6 +235,45 @@ describe('the theme browser with module dice', () => {
   const actions = new Proxy({}, { get: (_, k) => mod.ThemeBrowser.DEFAULT_OPTIONS.actions[k] });
   const button = (id) => ({ dataset: { theme: id } });
   const showModules = async (app) => actions.filter.call(app, {}, { dataset: { filter: 'module' } });
+
+  it('a module tab with sections shows each heading once, above the first card of its run', async () => {
+    const ids = BUILTIN_THEMES.slice(0, 6).map((t) => t.id);
+    const section = new Map(ids.map((id, i) => [id, i < 3 ? 'In season' : i < 5 ? 'Coming up' : 'In season']));
+    BROWSER_TABS.set('m-tab', { id: 'm-tab', moduleId: 'm', label: 'Tab', icon: '', filter: (t) => ids.includes(t.id), sort: undefined, sections: (t) => section.get(t.id) });
+    try {
+      const app = make();
+      await actions.filter.call(app, {}, { dataset: { filter: 'm-tab' } });
+      const ctx = await app._prepareContext();
+      expect(ctx.cards.map((c) => c.id)).toEqual(ids.filter((id) => section.get(id) === 'In season').concat(ids.filter((id) => section.get(id) === 'Coming up')));
+      // the tab groups a section's themes together (in first-seen order), so the headings are In season once, Coming up once
+      expect(ctx.cards.map((c) => c.section)).toEqual(['In season', '', '', '', 'Coming up', '']);
+      expect(ctx.cards.filter((c) => c.section).map((c) => c.section)).toEqual(['In season', 'Coming up']);
+    } finally {
+      BROWSER_TABS.delete('m-tab');
+    }
+  });
+
+  it('assigning a stub loads it first; a failed load stores nothing and returns false', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const good = { id: 'mod.good', moduleId: 'mod', name: 'Good', load: vi.fn(async () => ({ id: 'mod.good', name: 'Good', appearance: { body: { type: 'opaque' } } })), loading: null, failed: false };
+    const bad = { id: 'mod.bad', moduleId: 'mod', name: 'Bad', load: vi.fn(async () => { throw new Error('offline'); }), loading: null, failed: false };
+    STUBS.set('mod.good', good);
+    STUBS.set('mod.bad', bad);
+    try {
+      store.theme = 'default';
+      expect(await mod.assignTarget('default', 'mod.bad')).toBe(false);
+      expect(store.theme).toBe('default');
+      expect(user.setFlag).not.toHaveBeenCalledWith('dicer', 'appearance', expect.anything());
+      expect(bad.load).toHaveBeenCalledTimes(1);
+      expect(await mod.assignTarget('default', 'mod.good')).toBe(true);
+      expect(good.load).toHaveBeenCalledTimes(1);
+      expect(store.theme).toBe('mod.good');
+    } finally {
+      STUBS.clear();
+      ADDON_THEMES.delete('mod.good'); // the loaded stub is a registered theme now
+      warn.mockRestore();
+    }
+  });
 
   it('offers a Module dice filter (only when there are any); All stays the Dicer themes', async () => {
     const app = make();

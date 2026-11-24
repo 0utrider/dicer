@@ -397,6 +397,10 @@ ${FX_COLOR}`;
   return material;
 }
 
+/** The one `uTime` uniform of add-on material hooks (seconds, wrapping every hour); render loops set it. */
+export const DICER_TIME = { value: 0 };
+export const setDicerTime = (ms) => (DICER_TIME.value = (ms / 1000) % 3600);
+
 /** A uniform value copy: textures are shared (never copied), vectors/colours/matrices cloned. */
 function copyValue(v) {
   if (Array.isArray(v)) return v.map(copyValue);
