@@ -286,7 +286,7 @@ test('needsLookExtras and fallbackLook', () => {
   expect(fallbackLook(plain)).toBe(plain);
   const fancy = normalizeAppearance({ numbers: { fill: 'holo', relief: 'raised', icons: { crit: 'crown' }, color: '#123456', depth: 0.7, font: 'sans' } });
   expect(needsLookExtras(fancy)).toBe(true);
-  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', contrast: true, inkGlow: 1, depth: 0.7, font: 'sans', pips: false, coin: 'numbers', size: 1, weight: 0 });
+  expect(fallbackLook(fancy).numbers).toEqual({ fill: 'gold', relief: 'engraved', icons: { crit: null, fumble: null }, color: '#123456', contrast: true, inkGlow: 1, depth: 0.7, font: 'sans', pips: false, coin: 'numbers', size: 1, weight: 0, offsetY: 0 });
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'outline' } })).numbers.fill).toBe('paint');
   expect(fallbackLook(normalizeAppearance({ numbers: { fill: 'glow' } })).numbers.fill).toBe('paint');
   expect(needsLookExtras(normalizeAppearance({ numbers: { icons: { fumble: 'skull' } } }))).toBe(true);
@@ -634,6 +634,27 @@ describe('numbers.size and numbers.weight', () => {
     expect(appearanceKey(b)).not.toBe(appearanceKey(a));
     expect(needsLookExtras(b)).toBe(false);
     expect(fallbackLook(b).numbers).toMatchObject({ size: 1.25, weight: 0.5 });
+  });
+});
+
+describe('numbers.offsetY', () => {
+  test('defaults to 0 (the old path), also for old looks; in-range values are kept; others read as 0', () => {
+    expect(DEFAULT_APPEARANCE.numbers.offsetY).toBe(0);
+    expect(normalizeAppearance({}).numbers.offsetY).toBe(0);
+    for (const l of Object.values(LOOKS)) expect(normalizeAppearance(l.appearance ?? l).numbers.offsetY).toBe(0);
+    expect(normalizeAppearance({ numbers: { offsetY: -0.5 } }).numbers.offsetY).toBe(-0.5);
+    expect(normalizeAppearance({ numbers: { offsetY: 0.18 } }).numbers.offsetY).toBe(0.18);
+    for (const bad of [-0.51, 0.51, NaN, Infinity, '0.1', null, true])
+      expect(normalizeAppearance({ numbers: { offsetY: bad } }).numbers.offsetY).toBe(0);
+  });
+  test('a uniform, not a define: the program key ignores it, the material key does not', () => {
+    const a = normalizeAppearance({});
+    const b = normalizeAppearance({ numbers: { offsetY: -0.2 } });
+    const flags = { interiors: true, engraving: true, glow: true, effects: true, interiorSteps: 32 };
+    expect(programKey(b, flags)).toBe(programKey(a, flags));
+    expect(appearanceKey(b)).not.toBe(appearanceKey(a));
+    expect(needsLookExtras(b)).toBe(false);
+    expect(fallbackLook(b).numbers.offsetY).toBe(-0.2);
   });
 });
 

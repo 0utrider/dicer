@@ -98,6 +98,7 @@ export function formFromAppearance(raw) {
       coin: a.numbers.coin,
       size: a.numbers.size,
       weight: a.numbers.weight,
+      offsetY: a.numbers.offsetY,
       ...fontParts(a.numbers.font),
     },
     edges: { radius: a.edges.radius, strip: a.edges.strip.style, stripColor: a.edges.strip.color, stripStrength: a.edges.strip.strength },
@@ -153,6 +154,7 @@ export function appearanceFromForm(form) {
       coin: num.coin,
       size: n(num.size),
       weight: n(num.weight),
+      offsetY: n(num.offsetY),
     },
     edges: { radius: n(e.radius), strip: { style: e.strip, color: e.stripColor, strength: n(e.stripStrength) } },
     shapes: isObj(f.shapes) ? Object.fromEntries(Object.keys(DIE_SHAPES).map((t) => [t, f.shapes[t]])) : {},
@@ -237,7 +239,7 @@ export function setField(form, path, value) {
     out.body = { ...(isObj(out.body) ? out.body : {}), ...PRESET_COLORS[value] };
   }
   const parts = String(path).split('.');
-  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'inkGlow', 'extraDensity', 'scale', 'rotation', 'blend'];
+  const NUMERIC = ['roughness', 'density', 'depth', 'radius', 'intensity', 'stripStrength', 'size', 'weight', 'offsetY', 'inkGlow', 'extraDensity', 'scale', 'rotation', 'blend'];
   let o = out;
   for (const p of parts.slice(0, -1)) {
     if (!isObj(o[p])) o[p] = {};

@@ -967,6 +967,7 @@
         "Color": "Colour",
         "Depth": "Depth",
         "Size": "Size",
+        "OffsetY": "Vertical position",
         "Weight": "Thickness",
         "Relief": "Relief",
         "CritIcon": "Icon on the 20",

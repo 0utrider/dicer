@@ -314,7 +314,7 @@ export function createDiceMaterial(
     uFillPBR: { value: new THREE.Vector2(fillMetal, fillRough) },
     uFillGloss: { value: fillGloss },
     uEngrave: { value: a.numbers.depth },
-    uNum: { value: new THREE.Vector2(a.numbers.size, a.numbers.weight * WEIGHT_SHIFT) },
+    uNum: { value: new THREE.Vector3(a.numbers.size, a.numbers.weight * WEIGHT_SHIFT, a.numbers.offsetY) },
     uBodyColor2: { value: new THREE.Color(a.body.color2) },
     uVeinScale: { value: VEIN_SCALE },
     uGlowColor: { value: new THREE.Color(a.glow.color) },

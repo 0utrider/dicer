@@ -46,7 +46,7 @@ uniform vec3 uFillColor;
 uniform vec2 uFillPBR;   // fill metalness, fill roughness
 uniform float uFillGloss; // 0..1 clearcoat-like gloss on the fill (enamel)
 uniform float uEngrave;
-uniform vec2 uNum; // numbers.size, numbers.weight * WEIGHT_SHIFT
+uniform vec3 uNum; // numbers.size, numbers.weight * WEIGHT_SHIFT, numbers.offsetY
 varying float vFaceId;
 varying vec2 vFaceUV;
 
@@ -97,9 +97,11 @@ export const ENGRAVE_COLOR = /* glsl */ `
 		vec2 dcG0, dcG1;
 		// Size: sample at p / size, scale the distance back to face units (AA, walls, rim and the
 		// outline keep their widths). Weight: shift the glyph-space distance. Every SDF glyph
-		// (numbers, icons, pips, coin motifs) follows; size 1, weight 0 is exactly the old path.
-		float dcD0 = dcGlyph( dcFace, 0, vFaceUV / uNum.x, dcG0 );
-		float dcD1 = dcGlyph( dcFace, 1, vFaceUV / uNum.x, dcG1 );
+		// (numbers, icons, pips, coin motifs) follows; size 1, weight 0, offset 0 is exactly the old path.
+		// Offset: shift the glyph up by uNum.z face units (after the size scaling), so it does not scale with size.
+		vec2 dcP = ( vFaceUV - vec2( 0.0, uNum.z ) ) / uNum.x;
+		float dcD0 = dcGlyph( dcFace, 0, dcP, dcG0 );
+		float dcD1 = dcGlyph( dcFace, 1, dcP, dcG1 );
 		dcD = ( max( dcD0, dcD1 ) + uNum.y ) * uNum.x;
 		dcGrad = dcD0 >= dcD1 ? dcG0 : dcG1;
 	}

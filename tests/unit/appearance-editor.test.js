@@ -1294,6 +1294,17 @@ describe('number size and weight in the form', () => {
     expect(f.numbers).toMatchObject({ size: 0.75, weight: 0.6 });
     expect(appearanceFromForm(f).numbers).toMatchObject({ size: 0.75, weight: 0.6 });
   });
+  it('the vertical position slider is a number in the form, and the section has it, with its label and output', () => {
+    const f = setField(formFromAppearance({}), 'numbers.offsetY', '-0.18');
+    expect(f.numbers.offsetY).toBe(-0.18);
+    expect(appearanceFromForm(f).numbers.offsetY).toBe(-0.18);
+    expect(formFromAppearance({ numbers: { fill: 'paint' } }).numbers.offsetY).toBe(0);
+    const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
+    expect(resolve(lang, 'DICER.Appearance.Numbers.OffsetY')).toBeTypeOf('string');
+    const hbs = readFileSync('templates/appearance-editor.hbs', 'utf8');
+    expect(hbs).toMatch(/<input type="range" name="numbers\.offsetY" min="-0\.5" max="0\.5" step="0\.01" value="\{\{form\.numbers\.offsetY\}\}">/);
+    expect(hbs).toContain('<output data-for="numbers.offsetY">{{pct.offsetY}}</output>');
+  });
   it('the numbers section has both sliders, with live outputs and labels', () => {
     const lang = JSON.parse(readFileSync('lang/en.json', 'utf8'));
     expect(resolve(lang, 'DICER.Appearance.Numbers.Size')).toBeTypeOf('string');
