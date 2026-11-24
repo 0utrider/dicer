@@ -74,7 +74,7 @@ export function formFromAppearance(raw) {
   const rawInside = isObj(raw) && isObj(raw.interior) ? normalizeAppearance({ body: { type: 'resin' }, interior: raw.interior }).interior : a.interior;
   const inside = a.body.type === 'resin' ? a.interior : rawInside;
   return {
-    body: { ...a.body },
+    body: { ...a.body, streaks: a.body.streaks !== false },
     interior: { type: inside.type, color1: inside.colors[0], color2: inside.colors[1], density: inside.density,
       shape: inside.shape,
       inclusion: inside.inclusion,
@@ -137,7 +137,7 @@ export function appearanceFromForm(form) {
   const e = isObj(f.edges) ? f.edges : {};
   const g = isObj(f.glow) ? f.glow : {};
   return normalizeAppearance({
-    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset },
+    body: { type: b.type, color: b.color, color2: b.color2, finish: b.finish, roughness: n(b.roughness), preset: b.preset, streaks: b.streaks },
     interior: { type: i.type, colors: [i.color1, i.color2], density: n(i.density), shape: i.shape, inclusion: i.inclusion, bubble: i.bubble, sand: i.sand,
       motion: i.motion, extra: i.extra, extraColor: i.extraColor, extraDensity: n(i.extraDensity) },
     numbers: {
@@ -198,6 +198,8 @@ export function visibleSections(look) {
     color2: TWO_TONE.includes(body) || (body === 'metal' && (look?.body?.finish === 'patina' || look?.body?.finish === 'worn')),
     finish: body === 'metal',
     preset: Object.hasOwn(BODY_PRESET_LISTS, body),
+    // Dichroic glass draws thin layer lines; this switch turns them off
+    layerLines: body === 'iridescent' && look?.body?.preset === 'dichroic',
     // edge strips need rounded edges (a sharp die has no edge to paint)
     strip: radius > 0,
     stripDetails: radius > 0 && stripStyle !== undefined && stripStyle !== 'body',

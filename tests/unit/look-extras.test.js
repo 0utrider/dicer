@@ -241,6 +241,22 @@ describe('bodies', () => {
     }
   });
 
+  test('dichroic layer lines: uDcLines is 1 unless the look says body.streaks false; the shader gates only the lines', () => {
+    const on = iridescentPatch(look({ body: { type: 'iridescent', preset: 'dichroic' } }));
+    const off = iridescentPatch(look({ body: { type: 'iridescent', preset: 'dichroic', streaks: false } }));
+    expect(on.uniforms.uDcLines.value).toBe(1);
+    expect(off.uniforms.uDcLines.value).toBe(0);
+    // the preset (and so the sheen on the dark side, which reads uBodyPreset.w) is the same either way
+    expect(off.uniforms.uBodyPreset.value.toArray()).toEqual(on.uniforms.uBodyPreset.value.toArray());
+    expect(off.uniforms.uBodyPreset.value.w).toBe(1);
+    expect(off.chunks.pars).toContain('uniform float uDcLines;');
+    expect(off.chunks.colorPre).toContain('if ( uBodyPreset.w > 0.0 && uDcLines > 0.0 ) {');
+    expect(off.chunks.coat).toContain('clamp( dcIrT, 0.0, 1.0 ), uBodyPreset.w );'); // the sheen still follows the preset, not the switch
+    expect(off.chunks.coat).not.toContain('uDcLines');
+    // the other presets draw as before
+    expect(iridescentPatch(look({ body: { type: 'iridescent', preset: 'opal', streaks: false } })).uniforms.uDcLines.value).toBe(0);
+  });
+
   test('body modules check their own type; an unknown preset draws as the first; mergePatches lives in merge.js', () => {
     for (const body of TODAY) expect(iridescentPatch(look({ body }))).toEqual({});
     const raw = { body: { type: 'iridescent', preset: 'nope', color: '#000000', color2: '#ffffff' } };

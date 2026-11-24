@@ -12,7 +12,8 @@ import * as THREE from 'three';
  * - width: half-width of the colour transition in grazing units (1 - |N.V|): wide is a smooth
  *   turn, narrow a sharp flip;
  * - flash: opal play-of-colour strength (0: off, and its cellular noise is skipped);
- * - streak: dichroic streak strength (0: off, skipped).
+ * - streak: dichroic streak strength (0: off, skipped). Also scales the sheen on the dark side, so
+ *   the look's `body.streaks: false` turns only the lines off, through the uDcLines uniform.
  */
 export const PRESET_PARAMS = {
   chameleon: [1.15, 0.32, 0, 0],
@@ -27,6 +28,7 @@ const params = (color2) => ({ clearcoat: 1, clearcoatRoughness: 0.05, sheen: 0.3
 
 const PARS = /* glsl */ `
 uniform vec4 uBodyPreset;
+uniform float uDcLines; // 0 turns the dichroic layer lines off (the sheen on the dark side stays)
 // rgb <-> YIQ: the hue is the angle of the (I, Q) chroma vector
 const mat3 DC_YIQ = mat3( 0.299, 0.596, 0.211, 0.587, - 0.274, - 0.523, 0.114, - 0.322, 0.312 );
 const mat3 DC_RGB = mat3( 1.0, 1.0, 1.0, 0.956, - 0.272, - 1.106, 0.621, - 0.647, 1.703 );
@@ -105,7 +107,7 @@ const COLOR = /* glsl */ `
 			dcIc = mix( dcIc, mix( dcIc, uBodyColor2, 0.3 ), 0.6 * dcOveil );
 			dcIc = mix( dcIc, dcOcol, uBodyPreset.z * dcOvis );
 		}
-		if ( uBodyPreset.w > 0.0 ) {
+		if ( uBodyPreset.w > 0.0 && uDcLines > 0.0 ) {
 			// Dichroic streaks: a few thin straight bands of the far side of the flip, their hue
 			// sliding with the view angle. Straight: the band coordinate is linear in die-local space,
 			// so on a flat face every streak is a straight line. On a face nearly parallel to the band
@@ -157,7 +159,10 @@ export function iridescentPatch(a) {
   if (a.body?.type !== 'iridescent') return {};
   return {
     defines: { DICER_IRIDESCENT: '' },
-    uniforms: { uBodyPreset: { value: new THREE.Vector4(...(PRESET_PARAMS[a.body.preset] ?? PRESET_PARAMS.chameleon)) } },
+    uniforms: {
+      uBodyPreset: { value: new THREE.Vector4(...(PRESET_PARAMS[a.body.preset] ?? PRESET_PARAMS.chameleon)) },
+      uDcLines: { value: a.body.streaks === false ? 0 : 1 },
+    },
     chunks: { pars: PARS, colorPre: COLOR, roughness: ROUGHNESS, coat: COAT },
     params: params(new THREE.Color(a.body.color2)),
   };

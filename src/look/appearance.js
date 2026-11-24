@@ -159,6 +159,8 @@ export function normalizeAppearance(input) {
       roughness: num(b.roughness, 0, 1, D.body.roughness),
       preset: presets ? pick(b.preset, presets, presets[0]) : null,
     };
+    // Dichroic glass: false turns its thin bright layer lines off (iridescent only; absent means on)
+    if (type === 'iridescent' && b.streaks === false) body.streaks = false;
     const interior = {
       type: pick(it.type, INTERIOR_TYPES, D.interior.type),
       colors: [color(cols[0], D.interior.colors[0]), color(cols[1], D.interior.colors[1])],
