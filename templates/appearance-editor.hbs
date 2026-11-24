@@ -213,8 +213,8 @@
           {{#each addonFonts}}
             <div class="dicer-field">
               <span>{{title}}</span>
-              <div class="dicer-ae-chips">
-                {{#each fonts}}<button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" data-action="addonFont" data-file="{{file}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}">{{label}}</button>{{/each}}
+              <div class="dicer-ae-chips" role="radiogroup" aria-label="{{title}}">
+                {{#each fonts}}<button type="button" class="dicer-ae-chip {{#if active}}active{{/if}}" role="radio" aria-checked="{{#if active}}true{{else}}false{{/if}}" data-action="addonFont" data-file="{{file}}">{{label}}</button>{{/each}}
               </div>
             </div>
           {{/each}}

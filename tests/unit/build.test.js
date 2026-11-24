@@ -135,7 +135,10 @@ describe('build', () => {
     // fonts add-on modules registered (api.registerFont): read by lazy chunks only
     const addonFonts = lazy.find((p) => /^dist\/addon-fonts-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(addonFonts).toBeTruthy();
-    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer.fontsChanged');
+    // the registry's own destructuring of a font ({ id, moduleId, label, file }) lives in the chunk, not in world start
+    const fontRow = /\{id:\w+,moduleId:\w+,label:\w+,file:\w+\}/;
+    expect(readFileSync(addonFonts, 'utf8')).toMatch(fontRow);
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toMatch(fontRow);
     // the tray picker (issue #5) and the other trays' list it shares with the chat dice tray
     const trayPick = lazy.find((p) => /^dist\/tray-pick-[A-Za-z0-9_-]{8}\.js$/.test(p));
     const otherTrays = lazy.find((p) => /^dist\/other-trays-[A-Za-z0-9_-]{8}\.js$/.test(p));

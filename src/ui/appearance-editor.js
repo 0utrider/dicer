@@ -222,6 +222,7 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   #preview = null; // the thumbnailer preview handle
   #canvas = null; // the preview's canvas, moved into every re-render
   #scheduler;
+  #fontsHook = null; // the dicer.fontsChanged listener (add-on fonts registered while the editor is open)
 
   /**
    * @param {object} [o]
@@ -421,6 +422,10 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
 
   _onRender(context, options) {
     super._onRender?.(context, options);
+    // A module that registers a font while the editor is open: its row appears without closing the window.
+    this.#fontsHook ??= globalThis.Hooks?.on?.('dicer.fontsChanged', () => {
+      if (this.rendered !== false) this.render();
+    });
     const root = this.element?.querySelector?.('.dicer-ae-body');
     if (!root) return;
     root.addEventListener('input', (event) => this.#onInput(event));
@@ -907,6 +912,8 @@ export class AppearanceEditor extends HandlebarsApplicationMixin(ApplicationV2) 
       if (!discard) return this;
     }
     if (instance === this) instance = null;
+    if (this.#fontsHook != null) globalThis.Hooks?.off?.('dicer.fontsChanged', this.#fontsHook);
+    this.#fontsHook = null;
     this.#scheduler.cancel();
     this.#stopPreview(); // nothing keeps drawing once the editor is closed
     this.#thumbs?.dispose();
