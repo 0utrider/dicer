@@ -1251,6 +1251,8 @@ export class DiceBox {
           : null,
       damageType: !ghost && typeof spec.damageType === 'string' ? spec.damageType : undefined,
       trail: ghost ? 0 : spec.trail | 0,
+      // A theme's pets.volume (0..1): scales the pets' voices for this roll. Never on a ghost.
+      petVolume: !ghost && typeof spec.petVolume === 'number' ? spec.petVolume : undefined,
       spawned: false,
       faceTex: null,
       // A ghost never shows a model: its numbers would show through.
@@ -1554,7 +1556,7 @@ export class DiceBox {
       ghost: !!d.ghost, // the same truthiness that strips its appearance below
       x: d.outer.position.x,
       z: d.outer.position.z,
-      ...(!d.ghost && { appearance: d.appearance, damageType: d.damageType }),
+      ...(!d.ghost && { appearance: d.appearance, damageType: d.damageType, petVolume: d.petVolume }),
     }));
     this.#petCall((h) => h.landed(roll.pet?.key, dice), roll); // no key: a roll without a pet (or not begun)
     this._fireResults(roll);

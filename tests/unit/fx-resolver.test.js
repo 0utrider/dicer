@@ -705,6 +705,17 @@ describe('theme sounds and celebrations (P5-D4)', () => {
     expect(out.fx).toBeUndefined();
   });
 
+  test("a theme's pets.volume rides on its dice as petVolume, clamped; none without it", () => {
+    const theme = (pets) => ({ id: 'user.q', name: 'Q', appearance: { body: { type: 'opaque', color: '#101010' } }, pets });
+    const dieOf = (pets) =>
+      decor(make({ getUserThemes: (id) => (id === 'alice' ? [theme(pets)] : undefined) }))(term(), res(5), 0, themed('user.q'));
+    expect(dieOf({ volume: 0 }).petVolume).toBe(0);
+    expect(dieOf({ volume: 0.33 }).petVolume).toBe(0.33);
+    expect(dieOf({ volume: 7 }).petVolume).toBe(1);
+    expect(dieOf(undefined).petVolume).toBeUndefined();
+    expect(dieOf({ volume: 'loud' }).petVolume).toBeUndefined();
+  });
+
   test('a theme rule with a new id adds to the world rules and fires after the roller rules', () => {
     const mine = {
       id: 'user.t',

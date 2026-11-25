@@ -192,6 +192,10 @@ export function createFxResolver({
       const themed = new Map();
       // A module dice set's own natural 20 / natural 1 effects (rules.js setRules) count as its
       // theme's rules, over the theme's own of the same id.
+      const themePetVolume = (themeId, rid) => {
+        const v = themeId ? themeById(themeId, rid)?.pets?.volume : undefined;
+        return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : undefined;
+      };
       const rulesOf = (themeId, system) => {
         if (!(fxOn || macros)) return rules;
         const key = themeId + system;
@@ -213,6 +217,9 @@ export function createFxResolver({
 
       return (term, result, termIndex, look) => {
         const out = {};
+        // The theme's pet volume (registerTheme's `pets.volume`), for the roller's pets only.
+        const petVol = themePetVolume(look?.themeSource === 'viewer' ? undefined : look?.themeId, rollerId);
+        if (petVol !== undefined) out.petVolume = petVol;
         const damageType = isObj(term) ? damage.get(term) : undefined;
         if (presets && typeof damageType === 'string') out.damageType = damageType;
         const theme = fxOn && themeOf ? safe(() => themeOf(term, termIndex), null) : null;

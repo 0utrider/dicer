@@ -1203,6 +1203,12 @@ export function createPetLayer(deps) {
    * A roll with a pet begins (PetHook.begin). `hand` (H-5): a hand throw, with no throw pose; its
    * edge is the hand edge. A pet alignFor put at the thrower's spot watches from there.
    */
+  /** The quietest `petVolume` among a roll's dice (a theme's pets.volume), or 1 when none sets one. */
+  const themeVolumeOf = (dice) => {
+    let v = 1;
+    for (const d of dice ?? []) if (typeof d?.petVolume === 'number') v = Math.min(v, d.petVolume);
+    return v;
+  };
   function begin(key, { spec, edge, area, centre: given, dice, hand }) {
     if (disposed) return;
     // where the roll's dice are now, on average (DiceBox sends its live dice)
@@ -1267,6 +1273,7 @@ export function createPetLayer(deps) {
     // The newest roll (pet.current) owns the throw, the place and the leave; each roll keeps its
     // own ghost flag and summary for the merged reaction.
     pet.current = key;
+    pet.themeVolume = themeVolumeOf(dice); // its "ooh?" while the dice fly
     pet.centre = centre;
     // the live dice (it may catch its owner's natural 20); a hand throw or replay is never caught
     releaseCatch(pet);
@@ -1335,6 +1342,10 @@ export function createPetLayer(deps) {
    * and every resting pet's reaction to its elemental dice (a cheering pet only cheers).
    */
   function landed(key, dice) {
+    // every pet that reacts to this roll (its own, the cheering and the elemental ones) voices it at
+    // the roll's theme volume; the next roll sets it again
+    const tv = themeVolumeOf(dice);
+    for (const p of pets.values()) p.themeVolume = tv;
     // a roll with no pet of its own: nobody's roll on screen, so every resting pet may cheer
     if (key == null) return elemental(dice, cheer(dice, { ghost: false }, null));
     const roller = keyRoller.get(key); // gone once the roll has landed: it is cheered for once
@@ -1759,7 +1770,8 @@ export function createPetLayer(deps) {
         name = last[name] = pick[Math.min(pick.length - 1, Math.floor(rand() * pick.length))];
       }
       const v = Number(getSetting('petVolume') ?? 1);
-      const volume = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+      // times the roll's theme (pets.volume): the quietest dice set of the roll that last reached this pet
+      const volume = (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1) * (pet.themeVolume ?? 1);
       if (volume > 0) playSound({ builtin: name, rate: rateOf(pet), voice: voiceFor(pet.kind, name), volume });
     } catch {
       /* no sound */
