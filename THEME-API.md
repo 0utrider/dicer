@@ -21,7 +21,7 @@ api.listThemes(moduleId); // copies of a module's registered themes
 ```
 
 - `theme` is the same shape as an entry of Dicer's world theme list:
-  `{ id, name, appearance, perType?, rules?, soundMaterial?, damage?, pets? }`. Export a theme from
+  `{ id, name, appearance, perType?, rules?, soundMaterial?, damage? }`. Export a theme from
   Dicer's theme browser to get one.
 - `appearance.numbers.offsetY` moves the numbers (and the icons, pips and coin motifs drawn with them) up or down on the face, in face units from -0.5 to 0.5, positive up, 0 by default. It is applied after `numbers.size`, so scaling the numbers does not change it. Use it for a font whose glyphs hang below or float above the baseline (a dripping display face, say) so its numbers sit in the middle of the face.
 - `appearance.numbers.minContrast` (1.5 to 7, unset by default) is the contrast ratio the numbers must reach on the die when `numbers.contrast` is on. Unset, Dicer asks for 3, a little more for thin built-in faces (`handwritten`, `blackletter`) and a little less for a heavier `numbers.weight`. The check compares the number as seen (its fill after the coat's veil and its glow) with the body as seen: the second colour on bodies that show it (pearl, iridescent, jelly, marble, wood, stone, bone, gem, and the aged metal finishes), both inside colours on resin, and a light coat veil that grows from opaque to pearl. A look that fails it has its number colour moved lighter or darker, as before; a look that passes keeps its colour. The appearance editor shows whether the numbers read, are close, or were adjusted.
@@ -42,7 +42,7 @@ Optional fields on a registered theme:
 | `badge` | The tag on the card and the detail panel, instead of the module title. |
 | `category` | A free string for grouping in other windows. `damage` puts the theme in its own group in the damage type map (see below). |
 | `preview` | A static image path. The card and the detail panel show it instead of rendering a 3D die. Useful for large packs. |
-| `pets` | `{ volume }`, 0 to 1. Scales the dice pets' voices (landing, cheer, whimper) for rolls of dice wearing this theme, on top of the player's own pet volume. `0` is silent, `0.33` a third. The pets still move and react. When a roll mixes themes the quietest wins. A player who turned pet sounds off still hears nothing. For sets that play their own sounds on a crit. |
+| `pets` | `{ volume }`, 0 to 1. Scales the dice pets' voices that answer a roll of dice wearing this theme (the "ooh?", the reaction, the cheer, an elemental yelp), on top of the player's own pet volume. `0` is silent, `0.33` a third. Petting and other sounds that answer no roll are unchanged, and the pets still move. When a roll mixes themes the quietest wins. It applies where the viewer gets the theme's effects: with **Effects** off, or **Show others' effects** off for another player's roll, the pets are as usual. Registered themes only; a copy saved as a world or user theme does not keep it. |
 
 Options on `registerTheme(theme, { moduleId, showInAll, material })`:
 

@@ -1761,7 +1761,7 @@ export class DiceBox {
           // wobbles; its own sound covers the contact, so no die click and no dust.
           const id = roll.ids?.[-3 - other];
           // its look and damage type: an elemental die sets the pet off instead (pets.js hit)
-          const die = { appearance: d.appearance, damageType: d.damageType, ghost: d.ghost, type: d.shapeType };
+          const die = { appearance: d.appearance, damageType: d.damageType, ghost: d.ghost, type: d.shapeType, petVolume: d.petVolume };
           if (id !== undefined) this.#hookCall((h) => h.hit?.(id, { speed, position, dieKey, die }), roll.hook);
           continue;
         }
