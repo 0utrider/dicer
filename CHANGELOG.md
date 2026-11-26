@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.13
+
+- **Your dice can follow Ember's moons.** A new switch for each player, off by default: open the theme browser, pick any Ember Lunar Dice set under **Module dice**, and tick **My dice follow Ember's moons**. Your default dice then become the set of whichever moon has the most influence in Ember's sky right now, and change by themselves as the moons move. With no moon up you roll your own default.
+- Your own look still colours anything the set leaves alone, and dice you chose for an actor, a die type or a kind of roll stay as they are. Under the GM's lock on player looks the switch does nothing.
+- Needs Ember, and Ember Lunar Dice ticked in **Installed dice** (GM). The dice tray and the theme previews still show your own default, not the moon's set. Not yet tried in a live game: please report what you see.
+
 ## 1.4.12
 
 - **Ember Lunar Dice now look and move as they should.** Five of the six sets (Akon, Aura, Cora, Mayis, Orbis) are built from several parts, which Dicer refused: they showed as your own dice instead (Aura as nothing at all). All six now draw as their real models, with their labels and Cora's rings.
