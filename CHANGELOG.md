@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.15
+
+- **Four new dice pets.** A raven (blue-black, with a long beak: it flaps up into the air on a natural 20 and hides its head under a wing on a natural 1), a fuzzy jumping spider (one huge leap; it flops over), a floating skull (its flame and glowing eyes take your colour: it chatters its jaw, or sags) and a drone (a white hovering pod with a screen for a face: it spins, or powers down). Each has its own model, voice and reactions, like the other pets. Pick one in **Your pet**.
+- **The drone is offered only in Starfinder 2e worlds.** In other game systems it is not in the list.
+
 ## 1.4.14
 
 - **For module authors: a theme can quiet the dice pets.** A registered theme can set `pets: { volume }` (0 to 1). It scales the pets' voices that answer a roll of dice wearing that theme (the "ooh?", the reaction, the cheer, an elemental yelp), on top of the player's own pet volume, for packs whose sets play their own sounds on a crit. Petting and the other sounds that answer no roll are unchanged, and the pets still move. When a roll mixes themes the quietest wins. It applies only where the viewer gets the theme's effects. Nothing changes for players or for a theme that does not set it.
