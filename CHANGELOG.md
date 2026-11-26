@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.14
+
+- **For module authors: a theme can quiet the dice pets.** A registered theme can set `pets: { volume }` (0 to 1). It scales the pets' voices that answer a roll of dice wearing that theme (the "ooh?", the reaction, the cheer, an elemental yelp), on top of the player's own pet volume, for packs whose sets play their own sounds on a crit. Petting and the other sounds that answer no roll are unchanged, and the pets still move. When a roll mixes themes the quietest wins. It applies only where the viewer gets the theme's effects. Nothing changes for players or for a theme that does not set it.
+- `THEME-API.md` now says that a theme rule whose id matches a world trigger (`dicer.nat20`, `dicer.nat1`) replaces that trigger for dice wearing the theme. This was already so.
+
+Not yet tried with a live pet in Foundry: covered by unit tests. Please report what you hear.
+
 ## 1.4.13
 
 - **Your dice can follow Ember's moons.** A new switch for each player, off by default: open the theme browser, pick any Ember Lunar Dice set under **Module dice**, and tick **My dice follow Ember's moons**. Your default dice then become the set of whichever moon has the most influence in Ember's sky right now, and change by themselves as the moons move. With no moon up you roll your own default.
