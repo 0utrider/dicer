@@ -76,6 +76,9 @@ const IDLE_KINDS = {
   eye: { hover: 0.017 },
   lantern: { hover: 0.015 },
   robot: { steps: 10 },
+  raven: { settle: 0.05 },
+  skull: { hover: 0.017 },
+  drone: { hover: 0.015 },
 };
 const NO_IDLE = {};
 
@@ -105,6 +108,10 @@ const REACT_KINDS = {
   imp: { crit: 'flip', fumble: 'flop' },
   robot: { crit: 'whir', fumble: 'winddown' },
   jester: { crit: 'flip', fumble: 'flop' },
+  raven: { crit: 'flap', fumble: 'hide' },
+  spider: { crit: 'leap', fumble: 'flop' },
+  skull: { crit: 'chomp', fumble: 'sag' },
+  drone: { crit: 'spin', fumble: 'winddown' },
 };
 const NO_REACT = {};
 // Their keyframes ([t, v, ...]).

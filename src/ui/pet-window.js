@@ -26,6 +26,10 @@ const ICONS = {
   imp: 'fa-fire',
   robot: 'fa-robot',
   jester: 'fa-masks-theater',
+  raven: 'fa-raven',
+  spider: 'fa-spider',
+  skull: 'fa-skull',
+  drone: 'fa-drone',
 };
 const LABELS = {
   none: 'None',
@@ -44,7 +48,15 @@ const LABELS = {
   imp: 'Imp',
   robot: 'Robot',
   jester: 'Jester',
+  raven: 'Raven',
+  spider: 'Spider',
+  skull: 'Skull',
+  drone: 'Drone',
 };
+/** Kinds offered only in some game systems: the drone is Starfinder 2e's. A pet already of that kind stays in the list. */
+const SYSTEM_KINDS = { drone: 'sf2e' };
+export const kindsShown = (current) =>
+  PET_KINDS.filter((k) => !SYSTEM_KINDS[k] || k === current || globalThis.game?.system?.id === SYSTEM_KINDS[k]);
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const me = () => globalThis.game?.user;
 const setting = (key) => {
@@ -162,7 +174,7 @@ export function buildPetForm(pet, { allowed = true, hidden = false, players = []
   const chips = h(
     'div',
     { class: 'dicer-pet-kinds', role: 'radiogroup', 'aria-label': loc('DICER.Appearance.Pet.Title') },
-    PET_KINDS.map((id) =>
+    kindsShown(pet.kind).map((id) =>
       h('button', { type: 'button', class: `dicer-pet-kind${id === pet.kind ? ' active' : ''}`, role: 'radio', 'aria-checked': String(id === pet.kind), 'data-kind': id }, [
         h('i', { class: `fa-solid ${ICONS[id]}`, 'aria-hidden': 'true' }),
         h('span', { text: loc(`DICER.Appearance.Pet.${LABELS[id]}`) }),

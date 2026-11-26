@@ -30,6 +30,10 @@ const PETS = {
   imp: 'Imp',
   robot: 'Robot',
   jester: 'Jester',
+  raven: 'Raven',
+  spider: 'Spider',
+  skull: 'Skull',
+  drone: 'Drone',
 };
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
 const fmt = (key, data) => globalThis.game?.i18n?.format?.(key, data) ?? key;

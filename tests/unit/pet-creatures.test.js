@@ -7,7 +7,7 @@ const HEIGHT = 1.5;
 const TOL = 0.15;
 const PHASES = ['enter', 'throw', 'watch', 'react', 'exit', 'wobble', 'reform'];
 const REACTIONS = ['crit', 'fumble', 'mixed', 'plain', null];
-const KINDS = ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester'];
+const KINDS = ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester', 'raven', 'spider', 'skull', 'drone'];
 // The watch pose's measured height. The mimic's height is its closed chest, and its open jaw
 // rises above it (see creatures/index.js), so its open pose may stand up to 2.5.
 const WATCH_MAX = { mimic: 2.5 };

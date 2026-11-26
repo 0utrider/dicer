@@ -53,8 +53,9 @@ If you like 3D dice in Foundry, please consider supporting Dice So Nice too.
 
 ### Pets
 
-- **Fifteen dice pets**: a mimic, slime, dragonling, owl, frog, ghost, mushroom, floating eye, pebble
-  golem, cat, fox, paper lantern, imp, clockwork robot and jester doll, each a textured 3D model with a face that blinks, smiles and sulks.
+- **Eighteen dice pets**: a mimic, slime, dragonling, owl, frog, ghost, mushroom, floating eye, pebble
+  golem, cat, fox, paper lantern, imp, clockwork robot, jester doll, raven, jumping spider and floating skull
+  (and a drone in Starfinder 2e worlds), each a textured 3D model with a face that blinks, smiles and sulks.
 - They throw your dice, cheer natural 20s, sulk at 1s, react to every damage type, grab at dice
   flying past, get splatted by a d20 and pop back, and can be petted, dragged anywhere and given a
   voice pitch.

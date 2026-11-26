@@ -37,10 +37,20 @@ const kinds = (form) => [...form.querySelectorAll('[data-kind]')];
 describe('the form', () => {
   test('one button per kind, the current one active; the colour in both inputs', () => {
     const form = buildPetForm({ kind: 'dragonling', color: '#112233' });
-    expect(kinds(form).map((b) => b.dataset.kind)).toEqual(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester']);
+    expect(kinds(form).map((b) => b.dataset.kind)).toEqual(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester', 'raven', 'spider', 'skull']);
     expect(kinds(form).filter((b) => b.classList.contains('active')).map((b) => b.dataset.kind)).toEqual(['dragonling']);
     expect([...form.querySelectorAll('[data-pet-color]')].map((i) => i.value)).toEqual(['#112233', '#112233']);
     expect(form.querySelector('.dicer-pet-off')).toBeNull();
+  });
+
+  test('the drone is offered only in a Starfinder 2e world, or when it is already the pet', () => {
+    const shown = (pet) => kinds(buildPetForm(pet)).map((b) => b.dataset.kind);
+    expect(shown({ kind: 'owl', color: '#112233' })).not.toContain('drone');
+    globalThis.game.system = { id: 'pf2e' };
+    expect(shown({ kind: 'owl', color: '#112233' })).not.toContain('drone');
+    expect(shown({ kind: 'drone', color: '#112233' }).at(-1)).toBe('drone');
+    globalThis.game.system = { id: 'sf2e' };
+    expect(shown({ kind: 'owl', color: '#112233' }).slice(-4)).toEqual(['raven', 'spider', 'skull', 'drone']);
   });
 
   test('a Natural colours box, ticked when the pet wears its own colours', () => {

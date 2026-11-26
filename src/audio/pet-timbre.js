@@ -139,5 +139,35 @@ export const PET_TIMBRES = {
     vib: [8, 0.025],
     formants: [[1800, 4, 1.2]],
     dry: 0.55,
+  },  // a raven: a harsh, croaking caw
+  raven: {
+    harm: saw(10, 0.9),
+    am: [38, 0.45],
+    formants: [[1300, 5, 1.4], [2400, 5, 0.7]],
+    dry: 0.3,
+    grit: 2.4,
+  },
+  // a spider: a tiny, chittering squeak
+  spider: {
+    harm: saw(6, 1.4),
+    am: [30, 0.25],
+    vib: [9, 0.03],
+    formants: [[2400, 6, 1.3], [3600, 6, 0.6]],
+    dry: 0.4,
+  },
+  // a skull: a hollow voice from inside the bone, echoing
+  skull: {
+    harm: odd(9, 1.4),
+    breath: 0.2,
+    formants: [[420, 4, 1.5], [1100, 5, 0.6]],
+    dry: 0.35,
+    echo: [0.13, 0.4],
+  },
+  // a drone: a clean, two-tone digital chirp
+  drone: {
+    inharm: [[1, 0.7, 0.5], [2.01, 0.3, 0.3]],
+    fm: [2, 0.4],
+    formants: [[1500, 5, 1.1]],
+    dry: 0.6,
   },
 };

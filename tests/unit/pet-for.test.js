@@ -4,7 +4,7 @@ const on = () => undefined;
 const user = (flag, color = '#112233') => ({ id: 'u1', color, getFlag: () => flag });
 
 test('PET_KINDS is frozen', () => {
-  expect(PET_KINDS).toEqual(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester']);
+  expect(PET_KINDS).toEqual(['none', 'mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester', 'raven', 'spider', 'skull', 'drone']);
   expect(Object.isFrozen(PET_KINDS)).toBe(true);
 });
 

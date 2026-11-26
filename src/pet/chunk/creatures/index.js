@@ -13,6 +13,10 @@ import { lantern } from './lantern.js';
 import { imp } from './imp.js';
 import { robot } from './robot.js';
 import { jester } from './jester.js';
+import { raven } from './raven.js';
+import { spider } from './spider.js';
+import { skull } from './skull.js';
+import { drone } from './drone.js';
 import { REFORM_IN, outBack, smooth, span } from './parts.js';
 
 /**
@@ -115,7 +119,7 @@ export const safe = (make) => (color) => {
 export const PET_MODELS = Object.fromEntries(
   // built by scripts/pets/build-<kind>.js; shipped in the module's assets (the release zip has
   // them), fetched through Foundry's route like the sounds and fonts
-  ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester'].map((k) => [k, `modules/dicer/assets/pets/${k}.glb`]),
+  ['mimic', 'slime', 'dragonling', 'owl', 'frog', 'ghost', 'mushroom', 'eye', 'golem', 'cat', 'fox', 'lantern', 'imp', 'robot', 'jester', 'raven', 'spider', 'skull', 'drone'].map((k) => [k, `modules/dicer/assets/pets/${k}.glb`]),
 );
 /** The height a model kind is drawn at, when not the standing 1.5 (the mimic's open lid stands taller). */
 export const MODEL_FIT = { mimic: 2.0 };
@@ -137,6 +141,10 @@ export const NATURAL_COLORS = {
   imp: '#b8322f',
   robot: '#b08d57',
   jester: '#8e44ad',
+  raven: '#40456a',
+  spider: '#6b4f8a',
+  skull: '#6fd08c',
+  drone: '#2fa8c9',
 };
 /** A PetSpec's colour: its own, or its kind's natural one. */
 export const specColor = (spec) => spec?.color ?? NATURAL_COLORS[spec?.kind] ?? '#c9a227';
@@ -157,4 +165,8 @@ export const CREATURES = {
   imp: safe(imp),
   robot: safe(robot),
   jester: safe(jester),
+  raven: safe(raven),
+  spider: safe(spider),
+  skull: safe(skull),
+  drone: safe(drone),
 };
