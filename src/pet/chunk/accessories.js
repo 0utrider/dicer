@@ -1,7 +1,8 @@
 /**
  * What a pet wears (api.registerPetAccessory): one model per slot, hung on the pet's own `head`
- * bone so it follows the animation (a code-built pet has none: it goes on the body). Placed from the
- * pet's standing box: over the head, its base just under the top, sized by the pet's height.
+ * bone so it follows the animation (a code-built pet has none: it goes on the body). Placed in the
+ * creature's rest frame: over the head, its base just under the top, sized by the pet's height. How
+ * the pet stands when it is dressed (tilted, mid-hop, shrunk) does not matter.
  */
 import * as THREE from 'three';
 import { PET_ACCESSORIES } from '../../api/pet-accessories.js';
@@ -28,16 +29,49 @@ export function accessoriesFor(kind, list = PET_ACCESSORIES.values()) {
   return [...slots.values()];
 }
 
+/**
+ * The standing pet in its root's own space: the top of its box, its middle, and the head bone with
+ * its transform. Measured once, so call it before the creature is first posed.
+ */
+export function restFrame(creature) {
+  if (creature.rest) return creature.rest;
+  const root = creature.root;
+  root.updateWorldMatrix(true, true);
+  const toRoot = root.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  const part = new THREE.Box3();
+  const m = new THREE.Matrix4();
+  root.traverse((o) => {
+    if (!o.geometry) return;
+    // a skinned mesh's box follows its bones
+    const of = o.isSkinnedMesh ? o : o.geometry;
+    if (o.isSkinnedMesh || !of.boundingBox) of.computeBoundingBox();
+    box.union(part.copy(of.boundingBox).applyMatrix4(m.multiplyMatrices(toRoot, o.matrixWorld)));
+  });
+  const head = root.getObjectByName('head');
+  const matrix = head ? new THREE.Matrix4().multiplyMatrices(toRoot, head.matrixWorld) : new THREE.Matrix4();
+  const at = head ? new THREE.Vector3().setFromMatrixPosition(matrix) : box.getCenter(new THREE.Vector3());
+  // every named bone as it stands at rest, for an accessory hung on another bone (`bone`)
+  const bones = new Map();
+  root.traverse((o) => {
+    if (o.isBone && o.name && !bones.has(o.name)) bones.set(o.name, { o, matrix: new THREE.Matrix4().multiplyMatrices(toRoot, o.matrixWorld) });
+  });
+  return (creature.rest = { top: box.max.y, at, head, matrix, bones });
+}
+
 /** Hangs a copy of `template` on `creature` (kind `kind`); returns what undress() frees. */
 export function wear(creature, template, accessory, kind) {
   const own = accessory.kinds?.[kind] ?? {};
-  const scale = num(own.scale, accessory.scale);
+  const scale = own.scale > 0 ? num(own.scale, accessory.scale) : accessory.scale;
   const offset = own.offset ?? accessory.offset;
-  const root = creature.root;
-  root.updateWorldMatrix(true, true);
-  const box = new THREE.Box3().setFromObject(root);
-  const head = root.getObjectByName('head');
-  const at = head ? head.getWorldPosition(new THREE.Vector3()) : box.getCenter(new THREE.Vector3());
+  const tilt = own.tilt ?? accessory.tilt;
+  const rest = restFrame(creature);
+  // `bone`: hung on that bone instead of the head (the spider's abdomen), placed over it
+  const other = rest.bones?.get(own.bone ?? accessory.bone ?? 'head');
+  const { top } = rest;
+  const head = other?.o ?? rest.head;
+  const matrix = other?.matrix ?? rest.matrix;
+  const at = other ? new THREE.Vector3().setFromMatrixPosition(other.matrix) : rest.at;
 
   const model = template.clone(true);
   const materials = [];
@@ -56,16 +90,19 @@ export function wear(creature, template, accessory, kind) {
   model.position.y -= bounds.min.y; // its base on the holder's origin
   model.position.z -= middle.z;
 
-  const h = creature.height;
+  const h = creature.height / creature.root.scale.y; // the root carries the pet size setting
   const width = Math.max(size.x, size.z) || 1;
   holder.scale.setScalar((WIDTH * h * scale) / width);
-  root.getWorldQuaternion(holder.quaternion);
-  const shift = new THREE.Vector3(num(offset?.x, 0), num(offset?.y, 0), num(offset?.z, 0))
+  holder.position
+    .set(num(offset?.x, 0), num(offset?.y, 0) - SINK, num(offset?.z, 0))
     .multiplyScalar(h)
-    .applyQuaternion(holder.quaternion);
-  holder.position.set(at.x, box.max.y - SINK * h, at.z).add(shift);
-  holder.updateMatrixWorld(true);
-  (head ?? root).attach(holder); // keeps that place, and follows the bone from now on
+    .add(new THREE.Vector3(at.x, top, at.z));
+  // tilt (degrees) turns it about its base: x leans it forward (back below 0), z to the pet's right, y turns it
+  const deg = (v) => THREE.MathUtils.degToRad(num(v, 0));
+  holder.rotation.set(deg(tilt?.x), deg(tilt?.y), deg(tilt?.z), 'YXZ');
+  // from the root's space into the head bone's, as it stands at rest
+  holder.applyMatrix4(matrix.clone().invert());
+  (head ?? creature.root).add(holder);
   return { holder, materials };
 }
 

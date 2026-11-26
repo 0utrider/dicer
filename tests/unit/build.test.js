@@ -143,6 +143,9 @@ describe('build', () => {
     const addonRegistry = lazy.find((p) => /^dist\/addon-registry-[A-Za-z0-9_-]{8}\.js$/.test(p));
     expect(addonRegistry).toBeTruthy();
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer.themesChanged');
+    // the pet accessory registry (api.registerPetAccessory), shared by the theme API and pet chunks
+    const petAccessories = lazy.find((p) => /^dist\/pet-accessories-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(petAccessories).toBeTruthy();
     // the tray picker (issue #5) and the other trays' list it shares with the chat dice tray
     const trayPick = lazy.find((p) => /^dist\/tray-pick-[A-Za-z0-9_-]{8}\.js$/.test(p));
     const otherTrays = lazy.find((p) => /^dist\/other-trays-[A-Za-z0-9_-]{8}\.js$/.test(p));
@@ -255,6 +258,7 @@ describe('build', () => {
         themeApi,
         addonFonts,
         addonRegistry,
+        petAccessories,
         trayPick,
         otherTrays,
         ...geometries,

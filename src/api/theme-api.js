@@ -210,10 +210,12 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
       return [...ADDON_FONTS.values()].filter((f) => !moduleId || f.moduleId === moduleId).map((f) => ({ ...f }));
     },
     /**
-     * A model the dice pets wear: `{ id, model, slot?, scale?, offset?, kinds?, when? }`. `id` starts
+     * A model the dice pets wear: `{ id, model, slot?, scale?, offset?, tilt?, kinds?, when? }`. `id` starts
      * with `<moduleId>-` or `<moduleId>.`; `model` is a .glb a module serves; `slot` is 'head' (the
-     * only one so far). `scale` and `offset` (in pet heights: x right, y up, z forward) tune the fit,
-     * `kinds: { cat: { scale, offset } }` per pet; `when(kind)` returning false takes it off.
+     * only one so far). `scale`, `offset` (in pet heights: x to the pet's left, y up, z forward)
+     * and `tilt` (degrees: x leans it forward, z to the pet's right, y turns it) tune the fit, `bone`
+     * hangs it on another bone of the pet's model than `head`, `kinds: { cat: { scale, offset, tilt,
+     * bone } }` per pet; `when(kind)` returning false takes it off.
      * Registering an id again replaces it. Fires `dicer.petAccessoriesChanged`.
      */
     registerPetAccessory(moduleId, accessory) {
@@ -238,6 +240,8 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
         model: a.model,
         scale: Number.isFinite(a.scale) && a.scale > 0 ? a.scale : 1,
         offset: isObj(a.offset) ? { ...a.offset } : null,
+        tilt: isObj(a.tilt) ? { ...a.tilt } : null, // degrees
+        bone: typeof a.bone === 'string' && a.bone ? a.bone : null, // another bone than the head
         kinds: isObj(a.kinds) ? { ...a.kinds } : null,
         when: typeof a.when === 'function' ? a.when : null,
       });

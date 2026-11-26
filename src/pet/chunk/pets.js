@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { CREATURES, specColor, safe, PET_MODELS, MODEL_FIT } from './creatures/index.js';
 import { createModelCreature } from './model-pet.js';
-import { accessoriesFor, undress, wear } from './accessories.js';
-import { ACCESSORIES_HOOK } from '../../api/pet-accessories.js';
+import { accessoriesFor, restFrame, undress, wear } from './accessories.js';
+import { ACCESSORIES_HOOK, PET_ACCESSORIES } from '../../api/pet-accessories.js';
 import {
   phaseAt,
   ENTER_MS,
@@ -699,6 +699,24 @@ export function createPetLayer(deps) {
 
   // ---- what the pets wear (api.registerPetAccessory) ----
   const wardrobe = new Map(); // url -> the parsed scene, or 'loading' / 'failed'
+  const unfit = new WeakMap(); // creature -> accessories that could not be put on it (warned once)
+  const freeTemplate = (t) =>
+    t?.traverse?.((o) => {
+      o.geometry?.dispose();
+      for (const m of [o.material].flat()) {
+        for (const v of Object.values(m ?? {})) if (v?.isTexture) v.dispose();
+        m?.dispose();
+      }
+    });
+  /** Frees the models nothing registered names any more. */
+  function freeUnnamed() {
+    const named = new Set([...PET_ACCESSORIES.values()].map((a) => a.model));
+    for (const [url, t] of wardrobe) {
+      if (t === 'loading' || named.has(url)) continue;
+      wardrobe.delete(url);
+      freeTemplate(t);
+    }
+  }
   function loadAccessory(url) {
     wardrobe.set(url, 'loading');
     Promise.resolve()
@@ -727,6 +745,7 @@ export function createPetLayer(deps) {
     const wanted = [];
     for (const a of allowed && !pet.creature.waiting ? accessoriesFor(pet.kind) : []) {
       const template = wardrobe.get(a.model);
+      if (unfit.get(pet.creature)?.has(a)) continue;
       if (template && typeof template === 'object') wanted.push([a, template]);
       else if (!template) loadAccessory(a.model);
     }
@@ -736,14 +755,18 @@ export function createPetLayer(deps) {
       return false;
     takeOff(pet);
     const parts = [];
+    const list = [];
     for (const [a, template] of wanted) {
       try {
         parts.push(wear(pet.creature, template, a, pet.kind));
+        list.push(a);
       } catch (err) {
+        if (!unfit.has(pet.creature)) unfit.set(pet.creature, new Set());
+        unfit.get(pet.creature).add(a);
         console.warn(`Dicer | the pet accessory "${a.id}" cannot be shown`, err);
       }
     }
-    if (parts.length) pet.worn = { creature: pet.creature, list: wanted.map(([a]) => a), parts };
+    if (parts.length) pet.worn = { creature: pet.creature, list, parts };
     return true;
   }
   /** Dresses every pet again (an accessory registered, loaded, or switched off) and redraws held ones. */
@@ -758,13 +781,17 @@ export function createPetLayer(deps) {
     if (changed) wake();
   }
   const wardrobeHook = hooks?.on?.(ACCESSORIES_HOOK, () => {
-    if (!disposed) redress();
+    if (disposed) return;
+    for (const [url, t] of wardrobe) if (t === 'failed') wardrobe.delete(url); // tried again
+    redress();
+    freeUnnamed(); // after redress took them off
   });
 
   /** Puts a new creature in the pet (the first, or a new kind or colour); the old one is freed. */
   function setCreature(pet, creature, spec) {
     pet.spec = spec;
     sizeCreature(creature, size);
+    restFrame(creature); // before anything poses it
     if (pet.creature) {
       takeOff(pet);
       pet.group.remove(pet.creature.root);
@@ -2839,6 +2866,8 @@ export function createPetLayer(deps) {
       hooks?.off?.(AREAS_HOOK, areasHook);
       hooks?.off?.('updateUser', userHook);
       hooks?.off?.(ACCESSORIES_HOOK, wardrobeHook);
+      for (const t of wardrobe.values()) freeTemplate(t);
+      wardrobe.clear();
     } catch {
       /* Foundry is gone */
     }
@@ -2902,6 +2931,17 @@ export function createPetLayer(deps) {
             model: skinned > 0,
             tilt: p.tilt,
             gone: !!p.gone,
+            // what it wears: each holder's bone and its place under it (fixed once dressed)
+            worn: p.worn
+              ? p.worn.parts.map(({ holder }, i) => ({
+                  id: p.worn.list[i]?.id,
+                  on: holder.parent?.name,
+                  at: holder.position.toArray().map((v) => +v.toFixed(4)),
+                  scale: +holder.scale.x.toFixed(4),
+                  rot: [holder.rotation.x, holder.rotation.y, holder.rotation.z].map((v) => +v.toFixed(3)),
+                  visible: holder.visible,
+                }))
+              : null,
           };
         }),
       };

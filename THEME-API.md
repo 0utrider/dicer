@@ -59,8 +59,10 @@ api.registerPetAccessory(moduleId, {
   model: 'modules/my-module/assets/santa-hat.glb',
   slot: 'head',                          // the only slot so far, and the default
   scale: 1,                              // 1: about half the pet's height wide
-  offset: { x: 0, y: 0, z: 0 },          // in pet heights: right, up, forward
-  kinds: { cat: { scale: 0.8 } },        // per pet kind, over scale and offset
+  offset: { x: 0, y: 0, z: 0 },          // in pet heights: x to the pet's left, y up, z forward
+  tilt: { x: 0, y: 0, z: 0 },            // degrees about its base: x leans it forward (back below 0), z to the pet's right, y turns it
+  bone: 'head',                          // the model bone it hangs on (a pet without it: head)
+  kinds: { cat: { scale: 0.8, tilt: { x: -15 } }, spider: { bone: 'tail_1' } }, // per pet kind, over the rest
   when: (kind) => new Date().getMonth() === 11, // false takes it off
 }); // true when registered
 api.unregisterPetAccessory('my-module.santa-hat');
@@ -70,7 +72,8 @@ api.unregisterPetAccessory('my-module.santa-hat');
 - Model the thing upright (+Y), facing +Z, its base at the bottom. Any size: Dicer scales it to the pet.
 - One per slot. When several are registered for one, the last registered whose `when` is not false wins.
 - Every client dresses its own screen, so register on every client. Each player can turn **Pet accessories** off in the pet window.
-- `when` is asked when a pet appears or rolls and when an accessory is registered or removed.
+- `when` is asked when a pet appears or rolls, when an accessory is registered or removed, and when
+  a player switches **Pet accessories**. A `when` that throws counts as false.
 
 ## Browser tabs
 
