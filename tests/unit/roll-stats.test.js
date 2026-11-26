@@ -181,6 +181,18 @@ describe('the recorder', () => {
     ...o,
   });
 
+  test("leaves out a GM's roll flagged noStats, and counts a player's flagged roll all the same", async () => {
+    const flags = { dicer: { noStats: true } };
+    const gm = setup();
+    gm.rec.onCreate(msg({ flags, author: { id: gm.me.id, isGM: true } }));
+    await gm.rec.flush();
+    expect(gm.me.setFlag).not.toHaveBeenCalled();
+    const player = setup();
+    player.rec.onCreate(msg({ flags, author: { id: player.me.id, isGM: false } }));
+    await player.rec.flush();
+    expect(player.me.setFlag).toHaveBeenCalledTimes(1);
+  });
+
   test("a public roll goes to its author's flag, after the delay, added to what is stored", async () => {
     const me = user('p1', addRolls(emptyStats(), [3], { ts: NOW - 1 }));
     const { rec } = setup({ me });
