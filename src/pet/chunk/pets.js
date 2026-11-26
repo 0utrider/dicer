@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { CREATURES, specColor, safe, PET_MODELS, MODEL_FIT } from './creatures/index.js';
 import { createModelCreature } from './model-pet.js';
+import { accessoriesFor, undress, wear } from './accessories.js';
+import { ACCESSORIES_HOOK } from '../../api/pet-accessories.js';
 import {
   phaseAt,
   ENTER_MS,
@@ -552,6 +554,7 @@ export function createPetLayer(deps) {
     for (const k of pet.rolls.keys()) keyOwner.delete(k);
     pet.rolls.clear();
     scene.remove(pet.group);
+    takeOff(pet);
     try {
       pet.creature.dispose();
     } catch {
@@ -684,16 +687,86 @@ export function createPetLayer(deps) {
         models.set(url, 'failed');
         console.warn(`Dicer | the pet model ${url} could not be loaded; the built-in pet shows`, err);
         if (disposed) return;
-        for (const pet of pets.values()) if (PET_MODELS[pet.kind] === url) pet.group.visible = true;
+        for (const pet of pets.values()) {
+          if (PET_MODELS[pet.kind] !== url) continue;
+          pet.group.visible = true;
+          pet.creature.waiting = false; // the stand-in stays: it can be dressed
+          dress(pet);
+        }
         wake();
       });
   }
+
+  // ---- what the pets wear (api.registerPetAccessory) ----
+  const wardrobe = new Map(); // url -> the parsed scene, or 'loading' / 'failed'
+  function loadAccessory(url) {
+    wardrobe.set(url, 'loading');
+    Promise.resolve()
+      .then(() => loadPetModel(url))
+      .then((template) => {
+        wardrobe.set(url, template);
+        if (!disposed) redress();
+      })
+      .catch((err) => {
+        wardrobe.set(url, 'failed');
+        console.warn(`Dicer | the pet accessory model ${url} could not be loaded`, err);
+      });
+  }
+  function takeOff(pet) {
+    undress(pet.worn?.parts);
+    pet.worn = null;
+  }
+  /** Puts on `pet` what it should wear now; true when that changed. A pet whose model loads waits. */
+  function dress(pet) {
+    let allowed = true;
+    try {
+      allowed = getSetting('petAccessories') !== false;
+    } catch {
+      /* unreadable: the default */
+    }
+    const wanted = [];
+    for (const a of allowed && !pet.creature.waiting ? accessoriesFor(pet.kind) : []) {
+      const template = wardrobe.get(a.model);
+      if (template && typeof template === 'object') wanted.push([a, template]);
+      else if (!template) loadAccessory(a.model);
+    }
+    if (!wanted.length && !pet.worn) return false;
+    const old = pet.worn;
+    if (old && old.creature === pet.creature && wanted.length === old.list.length && wanted.every(([a], i) => a === old.list[i]))
+      return false;
+    takeOff(pet);
+    const parts = [];
+    for (const [a, template] of wanted) {
+      try {
+        parts.push(wear(pet.creature, template, a, pet.kind));
+      } catch (err) {
+        console.warn(`Dicer | the pet accessory "${a.id}" cannot be shown`, err);
+      }
+    }
+    if (parts.length) pet.worn = { creature: pet.creature, list: wanted.map(([a]) => a), parts };
+    return true;
+  }
+  /** Dresses every pet again (an accessory registered, loaded, or switched off) and redraws held ones. */
+  function redress() {
+    let changed = false;
+    for (const pet of pets.values()) {
+      if (!dress(pet)) continue;
+      changed = true;
+      tiltPet(pet);
+      if (pet.state === 'rest') show(pet, clock(), pet.mood ?? 'exit', 1, pet.px, pet.pz, 0, true);
+    }
+    if (changed) wake();
+  }
+  const wardrobeHook = hooks?.on?.(ACCESSORIES_HOOK, () => {
+    if (!disposed) redress();
+  });
 
   /** Puts a new creature in the pet (the first, or a new kind or colour); the old one is freed. */
   function setCreature(pet, creature, spec) {
     pet.spec = spec;
     sizeCreature(creature, size);
     if (pet.creature) {
+      takeOff(pet);
       pet.group.remove(pet.creature.root);
       try {
         pet.creature.dispose();
@@ -712,6 +785,7 @@ export function createPetLayer(deps) {
       dropSplat(pet); // a new kind or colour: the puddle is made again in it
       ensureSplat(pet);
     }
+    dress(pet);
   }
 
   function place(pet, edge, area) {
@@ -1240,6 +1314,7 @@ export function createPetLayer(deps) {
     else if (make && (pet.kind !== spec.kind || pet.color !== specColor(spec))) {
       setCreature(pet, creatureFor(spec), spec); // the editor's Throw shows the new pick at once
     }
+    dress(pet); // an accessory's when() may answer differently by now
     const now = clock();
     // resting is on: the pet watches from where it rests (a first appearance hops straight to a new
     // rest spot, the one obstaclesFor sent the physics); otherwise it takes the edge spot.
@@ -2763,6 +2838,7 @@ export function createPetLayer(deps) {
     try {
       hooks?.off?.(AREAS_HOOK, areasHook);
       hooks?.off?.('updateUser', userHook);
+      hooks?.off?.(ACCESSORIES_HOOK, wardrobeHook);
     } catch {
       /* Foundry is gone */
     }

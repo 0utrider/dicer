@@ -163,6 +163,10 @@
         "Name": "Show other players' pets",
         "Hint": "Off: only your own pet comes to your rolls. Other players' pets stay off your screen, and any already resting leave."
       },
+      "petAccessories": {
+        "Name": "Pet accessories",
+        "Hint": "Show the things add-on modules put on pets, a seasonal hat for example."
+      },
       "petSounds": {
         "Name": "Pet sounds",
         "Hint": "The pets' voices: their oohs, cheers and sulks, and their reactions."

@@ -51,6 +51,27 @@ Options on `registerTheme(theme, { moduleId, showInAll, material })`:
   everywhere it can be picked. For seasonal sets.
 - `material`: see Animated materials.
 
+## Pet accessories
+
+```js
+api.registerPetAccessory(moduleId, {
+  id: 'my-module.santa-hat',
+  model: 'modules/my-module/assets/santa-hat.glb',
+  slot: 'head',                          // the only slot so far, and the default
+  scale: 1,                              // 1: about half the pet's height wide
+  offset: { x: 0, y: 0, z: 0 },          // in pet heights: right, up, forward
+  kinds: { cat: { scale: 0.8 } },        // per pet kind, over scale and offset
+  when: (kind) => new Date().getMonth() === 11, // false takes it off
+}); // true when registered
+api.unregisterPetAccessory('my-module.santa-hat');
+```
+
+- The model hangs on the pet's `head` bone and follows its animation. It is placed over the head with its base just under the top of the standing pet, so a pet with tall ears or wings may need an `offset` under `kinds`. The code-built stand-in pets (shown only when a model cannot load) wear it on the body.
+- Model the thing upright (+Y), facing +Z, its base at the bottom. Any size: Dicer scales it to the pet.
+- One per slot. When several are registered for one, the last registered whose `when` is not false wins.
+- Every client dresses its own screen, so register on every client. Each player can turn **Pet accessories** off in the pet window.
+- `when` is asked when a pet appears or rolls and when an accessory is registered or removed.
+
 ## Browser tabs
 
 ```js
