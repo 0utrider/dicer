@@ -524,9 +524,11 @@ describe('build', () => {
     // resin): owner approved +295 B (48,289 -> 48,584), 2026-11-24.
     // PR #13 (number contrast that sees the material: the coat's veil, the second colour, both inside
     // colours, the font and numbers.minContrast): owner approved +1,594 B (48,584 -> 50,178), 2026-11-24.
+    // Dice that follow Ember's moons: the look resolver asks the registry's moonRef (set by the lazy
+    // installed-dice chunk) once per die: owner approved +48 B (50,178 -> 50,226), 2026-11-25.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(50_178);
+    expect(growth).toBeLessThanOrEqual(50_226);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
