@@ -534,9 +534,11 @@ describe('build', () => {
     // and passed on to the pet layer by the dice box): owner approved +469 B (50,226 -> 50,695), 2026-11-26.
     // Four new pet kinds (raven, spider, skull, drone: their names in pet-for.js PET_KINDS; the
     // creatures, models and sounds are lazy): owner approved +33 B (50,695 -> 50,728), 2026-11-26.
+    // PR #15 (pet accessories: the petAccessories setting and its hook call; the registry, the API
+    // and the fitting are lazy): owner approved +232 B (50,728 -> 50,960), 2026-11-27.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(50_728);
+    expect(growth).toBeLessThanOrEqual(50_960);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
