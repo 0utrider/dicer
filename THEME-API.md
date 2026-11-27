@@ -168,6 +168,12 @@ flags behind. A choice made by a player or the GM always wins.
 When a roll comes from a token, Dicer passes the provider that token's actor (an unlinked token's
 synthetic actor, with its own flags), so a provider can tell a summoned thrall token apart.
 
+## Leaving a roll out of roll stats
+
+A module that posts test rolls (fixed results, to show off an effect) can keep them out of **Roll stats**:
+create the message with `flags: { dicer: { noStats: true } }`. It counts only on a GM's message, so a
+player cannot hide a real roll. The dice and effects play as usual.
+
 ## Preloading
 
 The first roll of a look compiles its shaders, which can freeze the canvas for a moment. Dicer

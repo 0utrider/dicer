@@ -6,6 +6,7 @@
  *     rollStatsHidden setting ({userId: record}), which never leaves the GM's computer.
  * Writes wait DELAY ms after the last roll, then read the stored record fresh and add what is
  * pending, so a Clear made meanwhile (by the GM, on another client) is never undone by an old copy.
+ * A GM's message flagged `flags.dicer.noStats` (a module's test roll) is not counted.
  */
 import { addRolls, cleanLabel, d20sOf, isPublicRoll } from './stats.js';
 
@@ -70,6 +71,8 @@ export function createStatsRecorder({
     onCreate(message, ts = now()) {
       try {
         if (getSetting('rollStats') === false || !message?.isRoll) return;
+        // only a GM may leave a roll out, so a player cannot hide a bad one
+        if (message.flags?.dicer?.noStats && message.author?.isGM) return;
         const values = d20sOf(message.rolls);
         if (!values.length) return;
         const me = currentUser();
