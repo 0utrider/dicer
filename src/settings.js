@@ -372,6 +372,15 @@ export function registerSettings({
     default: true,
     onChange: () => onPetChange?.(),
   });
+  register('petAccessories', {
+    name: t('petAccessories.Name'),
+    hint: t('petAccessories.Hint'),
+    scope: 'user',
+    config: false,
+    type: Boolean,
+    default: true,
+    onChange: () => globalThis.Hooks?.callAll('dicer.petAccessoriesChanged'),
+  });
   register('petSounds', {
     name: t('petSounds.Name'),
     hint: t('petSounds.Hint'),

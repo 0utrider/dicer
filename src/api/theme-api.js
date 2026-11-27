@@ -12,6 +12,8 @@
  *   from `load()` when it is first selected, assigned, used by a roll or named by a stored default.
  * - registerBrowserTab(moduleId, tab): a tab in the theme browser after Dicer's own.
  * - getUserDefault / setUserDefault: a user's default theme, as "Use as my default" sets it.
+ * - registerPetAccessory(moduleId, {id, model, slot, scale, offset, kinds, when}): a model the dice
+ *   pets wear.
  * - registerFont(moduleId, {id, label, file}): a number font in the appearance editor, under the
  *   module's name. It is the `file:<file>` font a theme can already name.
  * - hasActorChoice / getActorTheme / setActorTheme / clearActorTheme: an actor's dice choice (its
@@ -26,6 +28,7 @@ import { DICER_TIME } from '../render/dice-material.js';
 import { ADDON_FONTS } from './addon-fonts.js';
 import { chosenRef, isNeverChose, mirrorLookSetting, neverChoseRef } from '../compat/user-looks.js';
 import { BROWSER_TABS, SHOW_IN_ALL, STUBS, loadStub, metaOf } from './addon-registry.js';
+import { ACCESSORIES_HOOK, PET_ACCESSORIES, PET_ACCESSORY_SLOTS } from './pet-accessories.js';
 import { MATERIALS, PROVIDERS, WARM_THEMES, named, flagChoice, providedTheme } from './theme-registry.js';
 
 // the looks compiled ahead for actors and named themes ride this chunk: main.js hooks them up at ready
@@ -205,6 +208,51 @@ export function createThemeApi({ hooks = globalThis.Hooks, modules = () => globa
     /** The registered fonts (copies), all or one module's. */
     listFonts(moduleId) {
       return [...ADDON_FONTS.values()].filter((f) => !moduleId || f.moduleId === moduleId).map((f) => ({ ...f }));
+    },
+    /**
+     * A model the dice pets wear: `{ id, model, slot?, scale?, offset?, tilt?, kinds?, when? }`. `id` starts
+     * with `<moduleId>-` or `<moduleId>.`; `model` is a .glb a module serves; `slot` is 'head' (the
+     * only one so far). `scale`, `offset` (in pet heights: x to the pet's left, y up, z forward)
+     * and `tilt` (degrees: x leans it forward, z to the pet's right, y turns it) tune the fit, `bone`
+     * hangs it on another bone of the pet's model than `head`, `kinds: { cat: { scale, offset, tilt,
+     * bone } }` per pet; `when(kind)` returning false takes it off.
+     * Registering an id again replaces it. Fires `dicer.petAccessoriesChanged`.
+     */
+    registerPetAccessory(moduleId, accessory) {
+      const a = isObj(accessory) ? accessory : {};
+      const slot = a.slot ?? 'head';
+      const ok =
+        isModule(moduleId) &&
+        typeof a.id === 'string' &&
+        hasPrefix(a.id, moduleId) &&
+        typeof a.model === 'string' &&
+        /\.(glb|gltf)$/i.test(a.model) &&
+        PET_ACCESSORY_SLOTS.includes(slot);
+      if (!ok) {
+        console.warn('Dicer | registerPetAccessory: needs an installed moduleId, an id starting with "<moduleId>-" or "<moduleId>.", a .glb model and the slot "head"', a.id);
+        return false;
+      }
+      PET_ACCESSORIES.delete(a.id); // registered again, it is the latest: it wins its slot
+      PET_ACCESSORIES.set(a.id, {
+        id: a.id,
+        moduleId,
+        slot,
+        model: a.model,
+        scale: Number.isFinite(a.scale) && a.scale > 0 ? a.scale : 1,
+        offset: isObj(a.offset) ? { ...a.offset } : null,
+        tilt: isObj(a.tilt) ? { ...a.tilt } : null, // degrees
+        bone: typeof a.bone === 'string' && a.bone ? a.bone : null, // another bone than the head
+        kinds: isObj(a.kinds) ? { ...a.kinds } : null,
+        when: typeof a.when === 'function' ? a.when : null,
+      });
+      hooks?.callAll?.(ACCESSORIES_HOOK);
+      return true;
+    },
+    /** Takes a registered pet accessory away (true when there was one). */
+    unregisterPetAccessory(id) {
+      const had = PET_ACCESSORIES.delete(id);
+      if (had) hooks?.callAll?.(ACCESSORIES_HOOK);
+      return had;
     },
     /**
      * Adds (or replaces) a tab in the theme browser, after Dicer's own: `{ id, label, icon, filter,
