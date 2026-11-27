@@ -36,7 +36,7 @@ export function accessoriesFor(kind, list = PET_ACCESSORIES.values()) {
 export function restFrame(creature) {
   if (creature.rest) return creature.rest;
   const root = creature.root;
-  root.updateWorldMatrix(true, true);
+  root.updateMatrixWorld(true); // not updateWorldMatrix: a skinned mesh refreshes its bind matrix only here
   const toRoot = root.matrixWorld.clone().invert();
   const box = new THREE.Box3();
   const part = new THREE.Box3();

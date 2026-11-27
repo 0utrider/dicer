@@ -87,6 +87,21 @@ describe('wear, on a pet that is not standing still', () => {
   };
   const close = (a, b) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 5));
 
+  test('a skinned model measured with the pet size already on its wrapper', () => {
+    // as the pet layer sizes a creature: a scaled group around the model, the height scaled with it
+    const sized = (k) => {
+      const c = createModelCreature(buildFox(), '#d9682a', { kind: 'fox', clock: () => 0 });
+      const root = new THREE.Group();
+      root.add(c.root);
+      root.scale.setScalar(k);
+      const { holder } = wear({ root, height: c.height * k }, box(1, 1, 1), { scale: 1 }, 'fox');
+      const place = [...holder.position.toArray(), holder.scale.x];
+      c.dispose();
+      return place;
+    };
+    close(sized(2), sized(1));
+  }, 120000);
+
   test('the same place however the pet stands once its rest frame is taken', () => {
     const c = creature();
     const rest = place(c);
