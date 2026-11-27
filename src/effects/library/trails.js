@@ -1139,6 +1139,23 @@ export const TRAIL_RECIPES = Object.freeze({
 
 // --- the emitter ------------------------------------------------------------------------------
 
+/**
+ * One reused stand-in for the pool: every layer a recipe emits takes the look's own two colours
+ * (appearance.trail.colors). The recipe's specs are shared, so theirs are put back after.
+ */
+const tint = {
+  pool: null,
+  colors: null,
+  emit(s) {
+    const { color, colorEnd } = s;
+    s.color = tint.colors[0];
+    s.colorEnd = tint.colors[1];
+    tint.pool.emit(s);
+    s.color = color;
+    s.colorEnd = colorEnd;
+  },
+};
+
 /** A recipe runs at most once per this many seconds per die (frame-rate independent counts). */
 const STEP_S = 0.015;
 /** Its counts are tuned for one 60 Hz frame; a longer step emits proportionally more (capped). */
@@ -1203,8 +1220,10 @@ export function createTrailFx({ getPool, getTier, now, reducedMotion, setting, w
     if (!p) return false;
     let st = states.get(die);
     if (!st) {
-      const element = elementOf(die.appearance, die.damageType);
-      st = { x: 0, y: 0, z: 0, t: NaN, acc: 0, vx: 0, vy: 0, vz: 0, speed: 0, element, radius: 0 };
+      // the look's own trail wins over its inside and damage type ('none' has no recipe: no trail)
+      const own = die.appearance?.trail;
+      const element = own?.element ?? elementOf(die.appearance, die.damageType);
+      st = { colors: own?.colors?.map(C), x: 0, y: 0, z: 0, t: NaN, acc: 0, vx: 0, vy: 0, vz: 0, speed: 0, element, radius: 0 };
       states.set(die, st);
     }
     if (!st.element || !TRAIL_RECIPES[st.element]) return false;
@@ -1279,7 +1298,11 @@ export function createTrailFx({ getPool, getTier, now, reducedMotion, setting, w
           emit.reduced = reduced;
           emit.now = t;
           st.acc = 0;
-          TRAIL_RECIPES[st.element](pool, emit);
+          if (st.colors) {
+            tint.pool = pool;
+            tint.colors = st.colors;
+          }
+          TRAIL_RECIPES[st.element](st.colors ? tint : pool, emit);
         }
       } catch (err) {
         warnOnce?.('trail', 'trail effect failed', err);
