@@ -9,6 +9,7 @@ import { BUILTIN_COLORSETS } from '../compat/colorset-map.js';
 import { ADDON_THEMES } from '../themes/themes.js';
 import { STUBS } from '../api/addon-registry.js';
 import { DND5E_TYPES, PF2E_TYPES } from '../effects/roll-context.js';
+import { isLanding } from '../effects/rules.js';
 import {
   DEFAULT_CHOICE,
   damageTypeList,
@@ -266,7 +267,9 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
     const custom = this.#isGM ? sounds[row.type] : settings.get(MODULE, 'damageTypeSounds')?.[row.type];
-    const { fx, options } = previewSpec(row.type, theme, custom);
+    // A registered theme lands by its rules; the viewer's own override brings none (as at a roll).
+    const rules = theme.themeSource === 'viewer' ? [] : (ADDON_THEMES.get(theme.themeId)?.rules ?? []).filter(isLanding);
+    const { fx, options } = previewSpec(row.type, theme, custom, undefined, rules);
     await api._preview(fx, options);
   }
 

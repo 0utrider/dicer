@@ -247,6 +247,10 @@ function matchFormula(text, formula) {
   return formula.toLowerCase().includes(text.toLowerCase());
 }
 
+/** A rule that fires on every die, whatever it shows: a registered theme's landing. */
+export const isLanding = (r) =>
+  r.die === 'any' && r.result.kind === 'any' && r.outcome === 'any' && !Object.keys(r.context).length;
+
 /** Does `rule` fire for this die? `die` is {type, dsnType, value, faces, min?, max?, label, formula, role, damageType, actorId, userId, outcome}. */
 export function matchRule(rule, die) {
   if (rule.die !== 'any' && rule.die !== die.type && rule.die !== die.dsnType) return false;

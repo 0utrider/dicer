@@ -7,10 +7,10 @@
  * is ever computed for a die the current user may not see. Keep it that way: never call
  * `decorate` from anywhere a ghost or none view could reach.
  */
-import { normalizeRules, matchRule, effectiveRules, dsnDefaultsToRules, setRules } from './rules.js';
+import { normalizeRules, matchRule, effectiveRules, dsnDefaultsToRules, setRules, isLanding } from './rules.js';
 import { outcomeOf, roleOf, damageTypesByTerm, KNOWN_DAMAGE_TYPES } from './roll-context.js';
 import { getShape, dieTypeForFaces, dsnTypeOf } from '../core/dice-shapes.js';
-import { findTheme, readThemeList } from '../themes/themes.js';
+import { ADDON_THEMES, findTheme, readThemeList } from '../themes/themes.js';
 
 /**
  * @typedef {{ ruleId: string, effect: object|null, sound: object|null, macro: string|null,
@@ -235,6 +235,8 @@ export function createFxResolver({
         if (dead) return out;
         // A theme chosen by the viewer's own damage override never brings its rules (the roller's decide).
         const dieRules = rulesOf(look?.themeSource === 'viewer' ? undefined : look?.themeId, look?.system);
+        // A registered theme's landing rules are its landing: a custom damage sound replaces theirs too.
+        const replaced = custom && ADDON_THEMES.has(look?.themeId);
         if (!dieRules.length && !landing && !custom) return out;
         const value = result?.result;
         const faces = term?.faces;
@@ -295,7 +297,7 @@ export function createFxResolver({
           fx.push({
             ruleId: rule.id,
             effect,
-            sound: rule.sound ?? null,
+            sound: replaced && rule.source === 'theme' && isLanding(rule) ? null : (rule.sound ?? null),
             moment: rule.moment ?? null,
             token: speakerToken,
             user: rollerId, // who rolled it (a crit scene's title card names them)

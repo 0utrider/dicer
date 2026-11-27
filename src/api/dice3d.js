@@ -210,7 +210,7 @@ export function createDice3dApi({
     }
     const face = shape.values.includes(value) ? value : Math.max(...shape.values);
     const spec = { type: die, value: face };
-    if (fx) spec.fx = [fx];
+    if (fx) spec.fx = [fx].flat();
     if (appearance) spec.appearance = appearance;
     if (typeof soundMaterial === 'string' && soundMaterial) spec.soundMaterial = soundMaterial;
     return diceBox.roll([spec], previewOpts()); // a preview: above the window it came from

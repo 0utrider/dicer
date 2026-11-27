@@ -167,6 +167,18 @@ describe('previewSpec', () => {
     expect(custom.fx.effect).toEqual({ id: 'embers' });
   });
 
+  it('plays a registered theme\'s landing rules, the custom sound standing in for theirs', () => {
+    const theme = { appearance: {}, landing: null, themeId: 'mod.ember' };
+    const rules = [{ id: 'mod.land', effect: { id: 'embers' }, sound: { src: 'land.ogg' } }];
+    const plain = mod.previewSpec('fire', theme, undefined, undefined, rules);
+    expect(plain.fx).toMatchObject([{ ruleId: 'mod.land', effect: { id: 'embers' }, sound: { src: 'land.ogg' } }]);
+    const custom = mod.previewSpec('fire', theme, { src: 'a.ogg' }, undefined, rules);
+    expect(custom.fx).toMatchObject([
+      { ruleId: 'damage:fire', effect: null, sound: { src: 'a.ogg' } },
+      { ruleId: 'mod.land', effect: { id: 'embers' }, sound: null },
+    ]);
+  });
+
   it('has no fx for a colorset theme without a custom sound', () => {
     expect(mod.previewSpec('goo', { appearance: {} }, undefined).fx).toBeNull();
     expect(mod.previewSpec('goo', { appearance: {} }, { src: 'a.ogg' }).fx.sound).toEqual({ src: 'a.ogg' });

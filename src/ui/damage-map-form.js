@@ -132,14 +132,13 @@ export async function saveMaps(form, { isGM, setWorld, setSounds, setOverrides }
  * plus its landing fx (the custom sound replacing the built-in one). `fx` is null when the theme
  * has neither an effect nor a sound.
  */
-export function previewSpec(type, theme, sound, die = 'd6') {
+export function previewSpec(type, theme, sound, die = 'd6', rules = []) {
   const landing = theme?.landing ?? null;
-  const snd = sound?.src ? { src: sound.src, ...(Number.isFinite(sound.volume) ? { volume: sound.volume } : {}) } : (landing?.sound ?? null);
-  const effect = landing?.effect ?? null;
-  const fx =
+  const custom = sound?.src ? { src: sound.src, ...(Number.isFinite(sound.volume) ? { volume: sound.volume } : {}) } : null;
+  const entry = (ruleId, effect, snd) =>
     effect || snd
       ? {
-          ruleId: `damage:${theme?.id ?? type}`,
+          ruleId,
           effect: effect ? { ...effect } : null,
           sound: snd ? { ...snd } : null,
           macro: null,
@@ -148,6 +147,10 @@ export function previewSpec(type, theme, sound, die = 'd6') {
           type: die,
         }
       : null;
+  const own = entry(`damage:${theme?.id ?? type}`, landing?.effect, custom ?? landing?.sound);
+  // a registered theme's landing rules; the custom sound stands in for theirs
+  const extra = rules.map((r) => entry(r.id, r.effect, custom ? null : r.sound)).filter(Boolean);
+  const fx = extra.length ? [own, ...extra].filter(Boolean) : own;
   return {
     fx,
     options: {
