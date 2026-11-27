@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.16
+
+- **For module authors: the dice pets can wear things.** `api.registerPetAccessory(moduleId, { id, model, ... })` puts a module's `.glb` model on the pets' heads (a hat, say). It follows the pet's head as it moves. `scale`, `offset` and `tilt` tune the fit, `bone` hangs it on another bone of the pet's model, `kinds` sets any of these per pet kind, and `when(kind)` can take it off (outside December, for one). `unregisterPetAccessory(id)` removes it. See `THEME-API.md`. Thanks to 0utrider.
+- **Pet accessories** is a new switch for each player in the pet window, on by default. Off, your screen shows the pets with nothing on. With no module registering an accessory nothing changes.
+- **For module authors: a GM's test roll can stay out of Roll stats.** Create the message with `flags: { dicer: { noStats: true } }` and its d20s are not counted. It works only on a message a GM wrote, so a player cannot hide a roll. The dice and effects play as usual. Thanks to 0utrider.
+
 ## 1.4.15
 
 - **Four new dice pets.** A raven (blue-black, with a long beak: it flaps up into the air on a natural 20 and hides its head under a wing on a natural 1), a fuzzy jumping spider (one huge leap; it flops over), a floating skull (its flame and glowing eyes take your colour: it chatters its jaw, or sags) and a drone (a white hovering pod with a screen for a face: it spins, or powers down). Each has its own model, voice and reactions, like the other pets. Pick one in **Your pet**.
