@@ -167,6 +167,18 @@ describe('previewSpec', () => {
     expect(custom.fx.effect).toEqual({ id: 'embers' });
   });
 
+  it('plays a registered theme\'s landing rules, the custom sound standing in for theirs', () => {
+    const theme = { appearance: {}, landing: null, themeId: 'mod.ember' };
+    const rules = [{ id: 'mod.land', effect: { id: 'embers' }, sound: { src: 'land.ogg' } }];
+    const plain = mod.previewSpec('fire', theme, undefined, undefined, rules);
+    expect(plain.fx).toMatchObject([{ ruleId: 'mod.land', effect: { id: 'embers' }, sound: { src: 'land.ogg' } }]);
+    const custom = mod.previewSpec('fire', theme, { src: 'a.ogg' }, undefined, rules);
+    expect(custom.fx).toMatchObject([
+      { ruleId: 'damage:fire', effect: null, sound: { src: 'a.ogg' } },
+      { ruleId: 'mod.land', effect: { id: 'embers' }, sound: null },
+    ]);
+  });
+
   it('has no fx for a colorset theme without a custom sound', () => {
     expect(mod.previewSpec('goo', { appearance: {} }, undefined).fx).toBeNull();
     expect(mod.previewSpec('goo', { appearance: {} }, { src: 'a.ogg' }).fx.sound).toEqual({ src: 'a.ogg' });
@@ -322,6 +334,26 @@ describe('DamageMapEditor', () => {
       expect(fx).toMatchObject({ ruleId: 'damage:acid', macro: null, slowMotion: false, sound: { src: 'a.ogg' } });
       expect(game.socket.emit).not.toHaveBeenCalled();
       expect(game.settings.set).not.toHaveBeenCalled();
+    });
+
+    it("Preview skips a registered theme's disabled landing rule", async () => {
+      const { ADDON_THEMES, normalizeTheme } = await import('../../src/themes/themes.js');
+      const rules = [
+        { id: 'mod.on', effect: { id: 'embers' } },
+        { id: 'mod.off', enabled: false, effect: { id: 'embers' } },
+      ];
+      ADDON_THEMES.set('mod.ember', normalizeTheme({ id: 'mod.ember', name: 'Ember', appearance: {}, rules }));
+      store.damageTypeSounds = {};
+      game.dice3d._damageContext = () => ({
+        colorsets: [],
+        damageTypeDefaults: {},
+        resolveTheme: () => ({ appearance: {}, landing: null, themeId: 'mod.ember' }),
+      });
+      const { editor, i } = await make();
+      globalThis.__form = tampered(i);
+      await actions.preview.call(editor, {}, { dataset: { index: String(i) } });
+      ADDON_THEMES.delete('mod.ember');
+      expect(game.dice3d._preview.mock.calls[0][0].map((f) => f.ruleId)).toEqual(['mod.on']);
     });
 
     it('the GM draft takes the form values and warns once on open about unreadable entries', async () => {

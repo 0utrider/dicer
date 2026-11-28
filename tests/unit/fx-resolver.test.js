@@ -514,6 +514,57 @@ describe('damageTypeSounds (world custom landing sounds)', () => {
   });
 });
 
+describe('damageTypeSounds with a registered theme', () => {
+  const term = { faces: 6, options: { flavor: 'fire' }, results: [{ result: 3 }] };
+  const fire = { formula: '1d6', dice: [term], terms: [term] };
+  const msg = { author: { id: 'alice' } };
+
+  function run({ damageTheme = 'mod.ember', look = { themeId: 'mod.ember' } } = {}) {
+    ADDON_THEMES.set(
+      'mod.ember',
+      normalizeTheme({
+        id: 'mod.ember',
+        name: 'Ember',
+        appearance: {},
+        rules: [
+          { id: 'mod.land', effect: { id: 'embers' }, sound: { src: 'mod/land.ogg' } },
+          { id: 'mod.six', result: { kind: 'range', from: 1, to: 6 }, sound: { src: 'mod/six.ogg' } },
+        ],
+      }),
+    );
+    onTestFinished(() => ADDON_THEMES.delete('mod.ember'));
+    const resolver = make({ damageThemeFor: () => () => ({ appearance: {}, landing: null, themeId: damageTheme }) });
+    const dec = resolver.decorate(msg, fire);
+    const { fx } = dec(term, term.results[0], 0, look);
+    return Object.fromEntries(fx.map((f) => [f.ruleId, f]));
+  }
+
+  test('replaces the sound of its landing rules, keeping their effect and other rules', () => {
+    settings.damageTypeSounds = { fire: { src: 'sounds/whoosh.ogg' } };
+    const fx = run();
+    expect(fx['damage:fire'].sound).toEqual({ src: 'sounds/whoosh.ogg' });
+    expect(fx['mod.land']).toMatchObject({ effect: { id: 'embers' }, sound: null });
+    expect(fx['mod.six'].sound).toEqual({ src: 'mod/six.ogg' });
+  });
+
+  test('without a custom sound the landing rule plays its own', () => {
+    expect(run()['mod.land'].sound).toEqual({ src: 'mod/land.ogg' });
+  });
+
+  test("a die wearing another registered theme keeps that theme's landing sound", () => {
+    settings.damageTypeSounds = { fire: { src: 'sounds/whoosh.ogg' } };
+    const fx = run({ damageTheme: 'cold' });
+    expect(fx['mod.land'].sound).toEqual({ src: 'mod/land.ogg' });
+  });
+
+  test("the viewer's own override brings no rules; the custom sound still plays", () => {
+    settings.damageTypeSounds = { fire: { src: 'sounds/whoosh.ogg' } };
+    const fx = run({ look: { themeId: 'mod.ember', themeSource: 'viewer' } });
+    expect(fx['damage:fire'].sound).toEqual({ src: 'sounds/whoosh.ogg' });
+    expect(fx['mod.land']).toBeUndefined();
+  });
+});
+
 describe('createLandedFx onSound', () => {
   test('is called with the sound name for each requested result sound, builtin or file', () => {
     const onSound = vi.fn();
