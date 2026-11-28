@@ -848,6 +848,7 @@ function rebuild() {
   dockEl = fresh;
   tint();
   paint();
+  announce();
   if (open) openPanel(open);
 }
 
@@ -1051,6 +1052,7 @@ export function dock(els, loadHand) {
     if (anchor.nextElementSibling !== dockEl) anchor.after(dockEl);
     tint();
     paint();
+    announce();
     return dockEl;
   } catch (err) {
     console.warn('dicer: cannot dock the chat dice tray', err);
@@ -1062,4 +1064,10 @@ function undock() {
   closeMenu();
   closePrefs();
   dockEl?.remove();
+  announce();
+}
+
+/** Tells other parts of Dicer (the typed-in dice button) that the dock is shown (its element) or not (null). */
+function announce() {
+  globalThis.Hooks?.callAll?.('dicerChatTray', dockEl?.isConnected ? dockEl : null);
 }

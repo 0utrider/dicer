@@ -244,6 +244,27 @@ describe('dockToggle', () => {
     expect(c.querySelectorAll('.dicer-manual-toggle')).toHaveLength(1);
   });
 
+  it('sits in the chat dice bar before its eraser while the bar shows, and goes back when it is gone', () => {
+    const c = controls(GM);
+    const b = dockToggle({ '#chat-controls': c });
+    expect(b.classList.contains('ui-control')).toBe(true);
+    const tray = document.createElement('section');
+    tray.className = 'dicer-chat-tray';
+    tray.innerHTML = '<div class="dicer-chat-tray-bar"><span class="dicer-chat-tray-mod"></span><button data-act="clear"></button><button data-act="customize"></button><button data-act="roll"></button></div>';
+    document.body.append(tray);
+    dockToggle();
+    const clear = tray.querySelector('[data-act="clear"]');
+    expect(clear.previousElementSibling).toBe(b);
+    expect(b.classList.contains('ui-control')).toBe(false);
+    expect(b.querySelector('i.fa-keyboard')).toBeTruthy();
+    expect(c.querySelector('.dicer-manual-group')).toBeNull();
+    tray.remove();
+    dockToggle({ '#chat-controls': c });
+    expect(c.querySelector('#message-modes').nextElementSibling).toBe(b.parentElement);
+    expect(b.classList.contains('ui-control')).toBe(true);
+    expect(b.querySelector('i')).toBeNull();
+  });
+
   it('removes the button when the GM turns it off or hand rolls are required', () => {
     const c = controls();
     dockToggle({ '#chat-controls': c });

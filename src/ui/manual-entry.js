@@ -216,6 +216,19 @@ export const MANUAL_CSS = `
   gap: 4px;
   margin-inline: 4px auto;
 }
+.dicer-chat-tray-bar > .dicer-manual-toggle {
+  flex: 0 0 24px;
+  padding: 0;
+  opacity: 0.8;
+}
+.dicer-chat-tray-bar > .dicer-manual-toggle:hover,
+.dicer-chat-tray-bar > .dicer-manual-toggle[aria-pressed="true"] {
+  opacity: 1;
+}
+.dicer-chat-tray-bar > .dicer-manual-toggle[aria-pressed="true"] {
+  border-color: var(--dicer-ct-accent);
+  color: var(--dicer-ct-accent);
+}
 `;
 
 const injectStyle = (doc) => {
@@ -415,13 +428,22 @@ const controlsOf = (els) =>
   (els instanceof Element ? els.querySelector('#chat-controls') : null) ??
   document.getElementById('chat-controls');
 
+/** Dresses the button for where it sits: a chat dice bar button, or one of Foundry's controls. */
+function dress(inBar) {
+  if (button.dataset.place === (inBar ? 'bar' : 'controls')) return;
+  button.dataset.place = inBar ? 'bar' : 'controls';
+  button.className = inBar ? 'dicer-manual-toggle' : 'ui-control icon toggle fa-solid fa-keyboard dicer-manual-toggle';
+  button.innerHTML = inBar ? '<i class="fa-solid fa-keyboard" inert></i>' : '';
+  button.dataset.tooltipDirection = inBar ? 'UP' : '';
+}
+
 /**
- * Puts the typed-in dice button in the chat controls (main.js: renderChatInput, renderChatLog and
- * the manualButton setting's change): right after the message modes, in a group of its own that
- * keeps to them (Foundry spreads the controls apart, and its own buttons wrap to a row of their own
- * in a narrow sidebar); removed when not shown. Never inside Foundry's .control-buttons, which it
- * finds by that class to hide and show. `syncHand`: main.js's dice configuration sync, run after
- * each switch.
+ * Puts the typed-in dice button where it takes no room of its own (main.js: renderChatInput,
+ * renderChatLog and the manualButton setting's change; the chat dice bar's dicerChatTray hook):
+ * in the chat dice bar, before its eraser, while the bar shows; else right after the chat's
+ * message modes, in a group that keeps to them (Foundry spreads the controls apart). Never inside
+ * Foundry's .control-buttons, which it finds by that class to hide and show. Removed when not
+ * shown. `syncHand`: main.js's dice configuration sync, run after each switch.
  */
 export function dockToggle(els, syncHand) {
   try {
@@ -434,29 +456,40 @@ export function dockToggle(els, syncHand) {
       Hooks.on('createSetting', (doc) => {
         if (doc?.key === 'core.diceConfiguration') paint();
       });
+      Hooks.on('dicerChatTray', () => {
+        dockToggle();
+      });
     }
     if (!shown()) {
       button?.remove();
       group?.remove();
       return null;
     }
-    const controls = controlsOf(els);
-    if (!controls) return null;
     if (!button) {
       button = document.createElement('button');
       button.type = 'button';
-      button.className = 'ui-control icon toggle fa-solid fa-keyboard dicer-manual-toggle';
       button.dataset.tooltip = '';
       button.addEventListener('click', () => toggleManual());
       group = document.createElement('div');
       group.className = 'dicer-manual-group';
       injectStyle(document);
     }
-    if (button.parentElement !== group) group.append(button);
-    const modes = controls.querySelector(':scope > #message-modes');
-    if (modes) {
-      if (modes.nextElementSibling !== group) modes.after(group);
-    } else if (group.parentElement !== controls) controls.prepend(group);
+    const bar = document.querySelector('.dicer-chat-tray .dicer-chat-tray-bar');
+    if (bar?.isConnected) {
+      dress(true);
+      const clear = bar.querySelector(':scope > [data-act="clear"]');
+      if (button.parentElement !== bar || (clear && button.nextElementSibling !== clear)) bar.insertBefore(button, clear);
+      group.remove();
+    } else {
+      const controls = controlsOf(els);
+      if (!controls) return null;
+      dress(false);
+      if (button.parentElement !== group) group.append(button);
+      const modes = controls.querySelector(':scope > #message-modes');
+      if (modes) {
+        if (modes.nextElementSibling !== group) modes.after(group);
+      } else if (group.parentElement !== controls) controls.prepend(group);
+    }
     paint();
     return button;
   } catch (err) {
