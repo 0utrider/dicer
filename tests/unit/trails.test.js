@@ -691,3 +691,32 @@ describe('createTrailFx', () => {
     expect(pool.emits.length).toBe(n);
   });
 });
+
+describe("a look's own trail", () => {
+  const own = (trail, interior = 'fire') => ({ ...die(interior), appearance: { interior: { type: interior }, trail } });
+  const emitted = (d) => {
+    const { fx, pool } = setup();
+    fly(fx, [d]);
+    return pool.emits;
+  };
+
+  test('wins over the inside element, and none means no trail', () => {
+    expect(emitted(own({ element: 'void' })).map((e) => e.color.getHexString())).toContain('1c1028');
+    expect(emitted(own({ element: 'none' }))).toEqual([]);
+  });
+
+  test('colors recolour every layer and leave the shared recipe as it was', () => {
+    const tinted = emitted(own({ element: 'void', colors: ['#4a1866', '#1d0628'] }));
+    expect(tinted.length).toBeGreaterThan(0);
+    expect(new Set(tinted.map((e) => `${e.color.getHexString()} ${e.colorEnd.getHexString()}`))).toEqual(new Set(['4a1866 1d0628']));
+    expect(emitted(own({ element: 'void' })).map((e) => e.color.getHexString())).toContain('1c1028');
+  });
+
+  test('a pool that throws leaves the shared recipe untinted', () => {
+    const throwing = { emit: () => { throw new Error('boom'); } };
+    const { fx, warnOnce } = setup({ pool: throwing });
+    fly(fx, [own({ element: 'void', colors: ['#4a1866', '#1d0628'] })]);
+    expect(warnOnce).toHaveBeenCalled();
+    expect(emitted(own({ element: 'void' })).map((e) => e.color.getHexString())).toContain('1c1028');
+  });
+});

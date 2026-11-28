@@ -1,4 +1,7 @@
 // Plain-data Appearance model. Pure and three-free.
+// The ELEMENTS import brings the element list into the world start; elements.js imports nothing.
+
+import { ELEMENTS } from '../effects/elements.js';
 
 /** Body types with named presets (the preset picks a look; its first entry is the default). */
 export const BODY_PRESETS = Object.freeze({
@@ -57,6 +60,14 @@ function color(v, fallback) {
 const num = (v, min, max, fallback) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : fallback;
 const pick = (v, list, fallback) => (list.includes(v) ? v : fallback);
+
+/** A look's own trail: `{ element, colors? }` (an element id or 'none'), stored only when valid. */
+function trailOf(raw) {
+  const t = typeof raw === 'string' ? { element: raw } : raw;
+  if (!isObj(t) || !(t.element === 'none' || ELEMENTS.includes(t.element))) return null;
+  const colors = [color(t.colors?.[0], null), color(t.colors?.[1], null)];
+  return { trail: { element: t.element, ...(colors[0] && colors[1] && { colors }) } };
+}
 
 // The other die types' shapes (dice-shapes ALT_SHAPES): only a chosen one is kept, so a look
 // without one keeps its key.
@@ -211,6 +222,7 @@ export function normalizeAppearance(input) {
       ...bodyImageOf(i.bodyImage),
       // names an add-on's material hook (api.registerMaterial): a short id; unknown ids draw as plain dice
       ...(typeof i.material === 'string' && i.material && i.material.length <= 64 && { material: i.material }),
+      ...trailOf(i.trail),
     };
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_APPEARANCE));

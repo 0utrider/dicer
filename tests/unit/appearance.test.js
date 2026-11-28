@@ -745,3 +745,15 @@ describe('face images (appearance.faces)', () => {
     expect('facesTint' in one).toBe(false);
   });
 });
+
+describe('appearance.trail', () => {
+  test('keeps a valid trail (a name or an object) and drops anything else', () => {
+    expect(normalizeAppearance({ trail: 'void' }).trail).toEqual({ element: 'void' });
+    const full = normalizeAppearance({ trail: { element: 'void', colors: ['#4A1866', '#123'] } });
+    expect(full.trail).toEqual({ element: 'void', colors: ['#4a1866', '#112233'] });
+    expect(normalizeAppearance(full).trail).toEqual(full.trail);
+    expect(normalizeAppearance({ trail: { element: 'none', colors: ['nope'] } }).trail).toEqual({ element: 'none' });
+    for (const bad of [undefined, 'smoke', 7, { colors: ['#000000', '#000000'] }])
+      expect('trail' in normalizeAppearance({ trail: bad })).toBe(false);
+  });
+});
