@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0
+
+- **Typing in the results of real dice.** When your dice are set to be typed in (Foundry's manual entry), the window for entering them now draws each die as a big faceted die: a pyramid for a d4, a cube for a d6, an octahedron for a d8, a d10, a d12 and a d20, and a coin. The number goes on its front face, so new players can see which die to pick up. A die glows while you type in it and once it has a number. Rerolled and exploding dice get their own die too. Each player can turn this off with **Big dice when typing in results**.
+- **Your own colours for typed-in dice.** **Typed-in dice glow colour** sets the dice's outline and glow, and **Typed-in dice number colour** sets the numbers you type, each with a colour picker.
+- **A chat button to switch between typing in and rolling.** The GM can turn on **Typed-in dice button in chat** (off by default). A keyboard button then appears beside the chat's message modes. Press it to type in the results of your real dice, and press it again to go back to rolling, with each die's earlier setting restored (dice on Pixels or other electronic dice keep their own). It is per browser, so at a shared laptop one player can type in their rolls while the next lets them roll. It is hidden while the GM requires rolling by hand.
+- The four new settings are under **Typed-in dice** in Dicer's settings.
+
 ## 1.4.17
 
 - **Fixed: pet accessories sat at the wrong height when Pet size was not 1.** With a larger **Pet size** a hat floated above the pet (at size 2 it could leave the screen on a tall pet), and with a smaller one it sank into the head. It now sits in the same place at every size. Thanks to 0utrider.
