@@ -161,6 +161,7 @@ export const resetControls = () => {
  * @param {() => void} [callbacks.onTrayChange] runs when a dice tray setting changes
  * @param {(value: boolean) => void} [callbacks.onGrabChange] runs when grabDice changes
  * @param {() => void} [callbacks.onInstalledDiceChange] runs when installedDice changes (every client)
+ * @param {() => void} [callbacks.onManualChange] runs when manualButton changes (every client)
  */
 export function registerSettings({
   onAreaChange,
@@ -176,8 +177,11 @@ export function registerSettings({
   onTrayChange,
   onGrabChange,
   onInstalledDiceChange,
+  onManualChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
+  const CF = globalThis.foundry?.data?.fields?.ColorField;
+  const color = (d) => (CF ? new CF({ nullable: false, initial: d }) : String);
   register('enabled', {
     name: t('enabled.Name'),
     hint: t('enabled.Hint'),
@@ -796,6 +800,9 @@ export function registerSettings({
     ['elementalDamageInsides', 'world', Boolean, true], // fire, cold and electricity dice get elemental insides
     ['diceTray', 'user', Boolean, true, { onChange: resetControls }], // its tool
     ['chatTray', 'user', Boolean, true], // its chunk follows it (createSetting, updateSetting)
+    ['manualButton', 'world', Boolean, false, { onChange: () => onManualChange?.() }], // the chat button
+    ['manualDiceForm', 'user', Boolean, true], // typed-in dice drawn as big die shapes
+    ...[['manualGlow', '#ff9f1c'], ['manualText', '#ffffff']].map(([k, d]) => [k, 'user', color(d), d]),
   ];
   hand.forEach(([key, scope, type, def, more], i) =>
     register(key, {
@@ -813,6 +820,8 @@ export function registerSettings({
   register('handRollStash', { scope: 'client', config: false, type: Object, default: {} });
   // The entries Dicer wrote itself: only those are ever removed (a user's own Dicer pick stays).
   register('handRollMapped', { scope: 'client', config: false, type: Array, default: [] });
+  // The dice configuration entries the typed-in dice button replaced, restored when it is pressed again.
+  register('manualStash', { scope: 'client', config: false, type: Object, default: {} });
   register('petRestAt', { scope: 'client', config: false, type: Object, default: null }); // where 'placed' pets rest
   registerNoticeSetting();
 }

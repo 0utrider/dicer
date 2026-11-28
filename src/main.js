@@ -666,6 +666,17 @@ Hooks.on('getSceneControlButtons', (c) => {
 const dockChat = (e) => dormant || import('./ui/chat-tray.js').then((m) => m.dock(e, loadHand));
 for (const h of ['renderChatInput', 'renderChatLog']) Hooks.on(h, (a, e) => dockChat(e));
 
+// Typed-in dice: the chat button (manualButton) and the die shapes in Foundry's dice entry window.
+const manual = () => import('./ui/manual-entry.js');
+const dockManual = (e, force) => {
+  if (!dormant && (force || getSetting('manualButton'))) manual().then((m) => m.dockToggle(e, syncHand));
+};
+for (const h of ['renderChatInput', 'renderChatLog']) Hooks.on(h, (a, e) => dockManual(e));
+Hooks.on('renderRollResolver', (app, el) => {
+  if (!dormant && getSetting('manualDiceForm') && el.querySelector('[data-method="manual"]'))
+    manual().then((m) => m.decorate(app, el));
+});
+
 Hooks.once('init', () => {
   // an old cached dicer.js after an update: fetch the new one and reload, once
   const warnStale = () => ui.notifications.warn(game.i18n.localize('DICER.Notice.Stale'), { permanent: true });
@@ -697,6 +708,7 @@ Hooks.once('init', () => {
     onTrayChange: () => syncTray(),
     onGrabChange: (on) => syncGrab(diceBox, on),
     onInstalledDiceChange: () => loadInstalled(),
+    onManualChange: () => dockManual(null, true),
   });
   try {
     registerHandMethod(); // CONFIG.Dice.fulfillment.methods.dicer with the DicerResolver

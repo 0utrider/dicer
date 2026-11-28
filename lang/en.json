@@ -269,6 +269,22 @@
         "Name": "Chat dice bar",
         "Hint": "A row of dice under the chat box for building a roll (not the dice tray your dice land in): click a die to add it, right-click to remove it, hold for more, then Roll. Where you may roll by hand, drag dice onto the table to throw them. Hidden while another module's dice tray is on (Dice Tray, PF2e HUD)."
       },
+      "manualButton": {
+        "Name": "Typed-in dice button in chat",
+        "Hint": "A keyboard button beside the chat's message modes. Each player (or each browser, at a shared screen) presses it to type in the results of their real dice, and presses it again to go back to rolling. Hidden while rolling by hand is required."
+      },
+      "manualDiceForm": {
+        "Name": "Big dice when typing in results",
+        "Hint": "In Foundry's window for typing in dice results, each die is drawn as its own big shape (a triangle for a d4, a diamond for a d8, and so on) with its number inside, so new players see which die to roll."
+      },
+      "manualGlow": {
+        "Name": "Typed-in dice glow colour",
+        "Hint": "The outline and glow of the big dice when typing in results."
+      },
+      "manualText": {
+        "Name": "Typed-in dice number colour",
+        "Hint": "The colour of the numbers you type into the big dice."
+      },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
         "Hint": "Roll messages appear in the chat at once instead of waiting for the dice to land. The dice still animate."
@@ -1338,6 +1354,12 @@
     "Physical": {
       "Mark": "Rolled with physical dice ({methods})"
     },
+    "Manual": {
+      "ButtonOff": "Type in my dice results (now rolling)",
+      "ButtonOn": "Roll my dice again (now typing in results)",
+      "On": "Your dice are now typed in: roll your real dice and enter what they show.",
+      "Off": "Your dice are rolled again."
+    },
     "SettingsGroup": {
       "General": "General",
       "Graphics": "Graphics",
@@ -1348,6 +1370,7 @@
       "Hand": "Rolling by hand",
       "Areas": "Roll areas",
       "Chat": "Chat and dice trays",
+      "Manual": "Typed-in dice",
       "Other": "Other"
     },
     "PetWindow": {

@@ -165,6 +165,11 @@ describe('build', () => {
     expect(initiativeBatch).toBeTruthy();
     expect(readFileSync(initiativeBatch, 'utf8')).toContain('cannot mark an initiative roll');
     expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('cannot mark an initiative roll');
+    // typed-in dice (src/ui/manual-entry.js): the die shapes and the chat button
+    const manualEntry = lazy.find((p) => /^dist\/manual-entry-[A-Za-z0-9_-]{8}\.js$/.test(p));
+    expect(manualEntry).toBeTruthy();
+    expect(readFileSync(manualEntry, 'utf8')).toContain('dicer-manual-style');
+    expect(readFileSync('dist/dicer.js', 'utf8')).not.toContain('dicer-manual-style');
     // lazy for real too: no world-start file names it
     for (const f of worldStartFiles().filter((p) => p.endsWith('.js')))
       expect(readFileSync(f, 'utf8')).not.toContain(elementOf.slice('dist/'.length));
@@ -274,6 +279,7 @@ describe('build', () => {
         moods,
         recorder,
         initiativeBatch,
+        manualEntry,
         'dist/draco/draco_decoder.wasm',
         'dist/draco/draco_wasm_wrapper.js',
       ].sort(),
@@ -536,9 +542,12 @@ describe('build', () => {
     // creatures, models and sounds are lazy): owner approved +33 B (50,695 -> 50,728), 2026-11-26.
     // PR #15 (pet accessories: the petAccessories setting and its hook call; the registry, the API
     // and the fitting are lazy): owner approved +232 B (50,728 -> 50,960), 2026-11-27.
+    // Typed-in dice (the manualButton, manualDiceForm, manualGlow, manualText and manualStash
+    // settings and main's two hooks; the die shapes and chat button are the lazy manual-entry
+    // chunk): owner approved +793 B (50,960 -> 51,753), 2026-11-28.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(50_960);
+    expect(growth).toBeLessThanOrEqual(51_753);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));

@@ -14,6 +14,7 @@ export const GROUPS = [
   ['Hand', ['handRollsAllowed', 'handRollsRequired', 'handRollTimeout', 'handReplay', 'handFollowUps', 'handLiveShare']],
   ['Areas', ['perPlayerAreas', 'areaScale', 'gmPrivateCorner']],
   ['Chat', ['chatTray', 'diceTray']],
+  ['Manual', ['manualButton', 'manualDiceForm', 'manualGlow', 'manualText']],
 ];
 
 const loc = (key) => globalThis.game?.i18n?.localize?.(key) ?? key;
