@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.17
+
+- **Fixed: pet accessories sat at the wrong height when Pet size was not 1.** With a larger **Pet size** a hat floated above the pet (at size 2 it could leave the screen on a tall pet), and with a smaller one it sank into the head. It now sits in the same place at every size. Thanks to 0utrider.
+
 ## 1.4.16
 
 - **For module authors: the dice pets can wear things.** `api.registerPetAccessory(moduleId, { id, model, ... })` puts a module's `.glb` model on the pets' heads (a hat, say). It follows the pet's head as it moves. `scale`, `offset` and `tilt` tune the fit, `bone` hangs it on another bone of the pet's model, `kinds` sets any of these per pet kind, and `when(kind)` can take it off (outside December, for one). `unregisterPetAccessory(id)` removes it. See `THEME-API.md`. Thanks to 0utrider.
