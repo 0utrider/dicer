@@ -336,6 +336,26 @@ describe('DamageMapEditor', () => {
       expect(game.settings.set).not.toHaveBeenCalled();
     });
 
+    it("Preview skips a registered theme's disabled landing rule", async () => {
+      const { ADDON_THEMES, normalizeTheme } = await import('../../src/themes/themes.js');
+      const rules = [
+        { id: 'mod.on', effect: { id: 'embers' } },
+        { id: 'mod.off', enabled: false, effect: { id: 'embers' } },
+      ];
+      ADDON_THEMES.set('mod.ember', normalizeTheme({ id: 'mod.ember', name: 'Ember', appearance: {}, rules }));
+      store.damageTypeSounds = {};
+      game.dice3d._damageContext = () => ({
+        colorsets: [],
+        damageTypeDefaults: {},
+        resolveTheme: () => ({ appearance: {}, landing: null, themeId: 'mod.ember' }),
+      });
+      const { editor, i } = await make();
+      globalThis.__form = tampered(i);
+      await actions.preview.call(editor, {}, { dataset: { index: String(i) } });
+      ADDON_THEMES.delete('mod.ember');
+      expect(game.dice3d._preview.mock.calls[0][0].map((f) => f.ruleId)).toEqual(['mod.on']);
+    });
+
     it('the GM draft takes the form values and warns once on open about unreadable entries', async () => {
       game.user.isGM = true;
       store.damageTypeMap = { fire: 'cold', acid: 7 };

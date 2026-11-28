@@ -236,7 +236,7 @@ export function createFxResolver({
         // A theme chosen by the viewer's own damage override never brings its rules (the roller's decide).
         const dieRules = rulesOf(look?.themeSource === 'viewer' ? undefined : look?.themeId, look?.system);
         // A registered theme's landing rules are its landing: a custom damage sound replaces theirs too.
-        const replaced = custom && ADDON_THEMES.has(look?.themeId);
+        const replaced = custom && theme.themeId === look?.themeId && ADDON_THEMES.has(theme.themeId);
         if (!dieRules.length && !landing && !custom) return out;
         const value = result?.result;
         const faces = term?.faces;

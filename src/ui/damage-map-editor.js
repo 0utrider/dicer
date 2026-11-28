@@ -268,7 +268,7 @@ export class DamageMapEditor extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     const custom = this.#isGM ? sounds[row.type] : settings.get(MODULE, 'damageTypeSounds')?.[row.type];
     // A registered theme lands by its rules; the viewer's own override brings none (as at a roll).
-    const rules = theme.themeSource === 'viewer' ? [] : (ADDON_THEMES.get(theme.themeId)?.rules ?? []).filter(isLanding);
+    const rules = theme.themeSource === 'viewer' ? [] : (ADDON_THEMES.get(theme.themeId)?.rules ?? []).filter((r) => r.enabled && isLanding(r));
     const { fx, options } = previewSpec(row.type, theme, custom, undefined, rules);
     await api._preview(fx, options);
   }
