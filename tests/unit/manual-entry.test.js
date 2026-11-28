@@ -6,6 +6,7 @@
 import {
   MANUAL_KEYS,
   shapeOf,
+  numberOf,
   decorate,
   manualOn,
   manualConfig,
@@ -61,18 +62,25 @@ afterEach(() => {
 const allManual = () => Object.fromEntries(MANUAL_KEYS.map((k) => [k, 'manual']));
 
 describe('shapeOf', () => {
-  it('draws each die its own outline, and a circle for an unknown one', () => {
-    expect(shapeOf('d4').querySelector('polygon.body').getAttribute('points').split(' ')).toHaveLength(3);
-    expect(shapeOf('d6').querySelector('rect.body')).toBeTruthy();
-    expect(shapeOf('d8').querySelector('polygon.body').getAttribute('points').split(' ')).toHaveLength(4);
-    expect(shapeOf('d12').querySelector('polygon.body').getAttribute('points').split(' ')).toHaveLength(5);
-    expect(shapeOf('d20').querySelector('polygon.body').getAttribute('points').split(' ')).toHaveLength(6);
-    expect(shapeOf('d20').querySelector('polyline.facet')).toBeTruthy();
-    expect(shapeOf('d100').querySelector('polygon.body').getAttribute('points')).toBe(
-      shapeOf('d10').querySelector('polygon.body').getAttribute('points'),
-    );
-    expect(shapeOf('d7').querySelector('circle.body')).toBeTruthy();
-    expect(shapeOf('c').querySelector('circle.body')).toBeTruthy();
+  const faces = (d) => shapeOf(d).querySelectorAll('.face').length;
+  const front = (d) => shapeOf(d).querySelector('polygon.f0')?.getAttribute('points').split(' ').length;
+  it('draws each die as its faces, the front one (last, on top) shaped for the number', () => {
+    expect([faces('d4'), front('d4')]).toEqual([2, 3]);
+    expect([faces('d6'), front('d6')]).toEqual([3, 4]);
+    expect([faces('d8'), front('d8')]).toEqual([4, 3]);
+    expect([faces('d10'), front('d10')]).toEqual([5, 4]);
+    expect([faces('d12'), front('d12')]).toEqual([6, 5]);
+    expect([faces('d20'), front('d20')]).toEqual([10, 3]);
+    expect(shapeOf('d20').lastElementChild.classList.contains('f0')).toBe(true);
+    expect(shapeOf('d100').innerHTML).toBe(shapeOf('d10').innerHTML);
+  });
+  it('draws a coin for the coin and for a die it has no shape for', () => {
+    expect(shapeOf('c').querySelectorAll('circle.face')).toHaveLength(2);
+    expect(shapeOf('d7').querySelectorAll('circle.face')).toHaveLength(2);
+  });
+  it('places each number on its front face', () => {
+    expect(numberOf('d6')).toEqual({ '--dicer-manual-dx': '-10px', '--dicer-manual-dy': '8px', '--dicer-manual-size': '28px' });
+    expect(numberOf('d7')['--dicer-manual-size']).toBe('28px');
   });
 });
 

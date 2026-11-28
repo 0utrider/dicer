@@ -8,21 +8,69 @@ import { HAND_DICE } from '../hand/shell.js';
 
 export const MANUAL_KEYS = [...HAND_DICE, 'default'];
 
-const poly = (n, r = 46, turn = -90) =>
+/** `n` points on a circle of radius `r` around the centre, the first at `turn` degrees. */
+const ring = (n, r, turn = -90) =>
   Array.from({ length: n }, (_, i) => {
     const a = ((turn + (360 / n) * i) * Math.PI) / 180;
     return `${(50 + r * Math.cos(a)).toFixed(1)},${(50 + r * Math.sin(a)).toFixed(1)}`;
-  }).join(' ');
+  });
 
-/** Each denomination's outline and facet lines (viewBox 0 0 100 100). */
+/** The d12: a front pentagon, the five faces around it out to a decagon. */
+function d12() {
+  const p = ring(5, 27);
+  const o = ring(10, 47);
+  const faces = p.map((v, i) => [i === 0 || i === 4 ? 1 : 2, [v, o[2 * i], o[2 * i + 1], o[(2 * i + 2) % 10], p[(i + 1) % 5]]]);
+  return { faces: [...faces, [0, p]], n: [0, 2, 26] };
+}
+
+/** The d20: a front triangle, its three neighbours, and six faces out to a hexagon. */
+function d20() {
+  const [t0, t1, t2] = ring(3, 33);
+  const [h0, h1, h2, h3, h4, h5] = ring(6, 47);
+  return {
+    faces: [
+      [2, [t0, h0, h1]], [2, [t1, h1, h2]], [2, [t1, h2, h3]], [2, [t2, h3, h4]], [2, [t2, h4, h5]], [2, [t0, h5, h0]],
+      [1, [t0, t1, h1]], [1, [t1, t2, h3]], [1, [t2, t0, h5]],
+      [0, [t0, t1, t2]],
+    ],
+    n: [0, 3, 24],
+  };
+}
+
+const split = (s) => s.split(' ');
+
+/**
+ * Each denomination's faces (shade 0: the front face, where the number goes; 1 and 2: the sides,
+ * darker) in a 100 x 100 box, and where its number sits: [dx, dy, font size] in pixels.
+ */
 const SHAPES = {
-  d4: { outline: '50,5 95,88 5,88', facets: [] },
-  d6: { rect: true, facets: [] },
-  d8: { outline: '50,4 94,50 50,96 6,50', facets: ['6,50 94,50'] },
-  d10: { outline: '50,4 95,44 50,96 5,44', facets: ['5,44 50,60 95,44', '50,60 50,96'] },
-  d12: { outline: poly(5), facets: [] },
-  d20: { outline: poly(6, 47), facets: [`${poly(3, 30)} ${poly(3, 30).split(' ')[0]}`] },
-  coin: { circle: true, facets: [] },
+  d4: { faces: [[2, split('50,6 64,90 95,90')], [0, split('50,6 5,90 64,90')]], n: [-10, 13, 24] },
+  d6: {
+    faces: [[1, split('8,26 28,8 92,8 72,26')], [2, split('72,26 92,8 92,72 72,90')], [0, split('8,26 72,26 72,90 8,90')]],
+    n: [-10, 8, 28],
+  },
+  d8: {
+    faces: [
+      [2, split('8,52 16,60 84,60 92,52 50,96')],
+      [1, split('50,4 8,52 16,60')],
+      [1, split('50,4 92,52 84,60')],
+      [0, split('50,4 84,60 16,60')],
+    ],
+    n: [0, -8, 26],
+  },
+  d10: {
+    faces: [
+      [2, split('6,46 24,50 50,64 50,96')],
+      [2, split('94,46 76,50 50,64 50,96')],
+      [1, split('50,4 24,50 6,46')],
+      [1, split('50,4 94,46 76,50')],
+      [0, split('50,4 76,50 50,64 24,50')],
+    ],
+    n: [0, -8, 22],
+  },
+  d12: d12(),
+  d20: d20(),
+  coin: { circles: [[1, 45], [0, 34]], n: [0, 0, 28] },
 };
 SHAPES.d100 = SHAPES.d10;
 SHAPES.d2 = SHAPES.c = SHAPES.coin;
@@ -31,7 +79,7 @@ SHAPES.d3 = SHAPES.d4;
 
 const NS = 'http://www.w3.org/2000/svg';
 
-/** The SVG die shape of `denomination` (a circle for one Dicer has no shape for). */
+/** The SVG die of `denomination` (a coin for one Dicer has no shape for). */
 export function shapeOf(denomination, doc = document) {
   const s = SHAPES[denomination] ?? SHAPES.coin;
   const svg = doc.createElementNS(NS, 'svg');
@@ -42,16 +90,31 @@ export function shapeOf(denomination, doc = document) {
     const el = doc.createElementNS(NS, tag);
     for (const k in attrs) el.setAttribute(k, attrs[k]);
     svg.append(el);
-    return el;
   };
-  if (s.rect) add('rect', { class: 'body', x: 8, y: 8, width: 84, height: 84, rx: 14 });
-  else if (s.circle) add('circle', { class: 'body', cx: 50, cy: 50, r: 44 });
-  else add('polygon', { class: 'body', points: s.outline });
-  for (const f of s.facets) add('polyline', { class: 'facet', points: f });
+  for (const [shade, points] of s.faces ?? []) add('polygon', { class: `face f${shade}`, points: points.join(' ') });
+  for (const [shade, r] of s.circles ?? []) add('circle', { class: `face f${shade}`, cx: 50, cy: 50, r });
   return svg;
 }
 
+/** Where `denomination`'s number sits on its front face, as CSS custom properties. */
+export function numberOf(denomination) {
+  const [dx, dy, size] = (SHAPES[denomination] ?? SHAPES.coin).n;
+  return { '--dicer-manual-dx': `${dx}px`, '--dicer-manual-dy': `${dy}px`, '--dicer-manual-size': `${size}px` };
+}
+
 export const MANUAL_CSS = `
+.application.dicer-manual-form .standard-form {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.application.dicer-manual-form .standard-form > :not(fieldset) {
+  flex: 1 0 100%;
+}
+.application.dicer-manual-form .standard-form > fieldset {
+  flex: 0 1 auto;
+  margin: 0;
+}
 .application.dicer-manual-form .input-grid {
   display: flex;
   flex-direction: row;
@@ -87,21 +150,27 @@ export const MANUAL_CSS = `
   pointer-events: none;
   transition: filter 0.15s;
 }
-.application.dicer-manual-form .dicer-manual-shape .body {
-  fill: rgba(0, 0, 0, 0.35);
+.application.dicer-manual-form .dicer-manual-shape .face {
   stroke: var(--dicer-manual-glow);
-  stroke-width: 3;
+  stroke-width: 2.2;
   stroke-linejoin: round;
+  transition: fill 0.15s;
 }
-.application.dicer-manual-form .dicer-manual-shape .facet {
-  fill: none;
-  stroke: var(--dicer-manual-glow);
-  stroke-width: 1.5;
-  opacity: 0.45;
+.application.dicer-manual-form .dicer-manual-shape .f0 {
+  fill: color-mix(in srgb, var(--dicer-manual-glow) 26%, #14121a);
+}
+.application.dicer-manual-form .dicer-manual-shape .f1 {
+  fill: color-mix(in srgb, var(--dicer-manual-glow) 14%, #0c0b10);
+}
+.application.dicer-manual-form .dicer-manual-shape .f2 {
+  fill: color-mix(in srgb, var(--dicer-manual-glow) 6%, #060509);
 }
 .application.dicer-manual-form label.dicer-manual-die:focus-within .dicer-manual-shape,
 .application.dicer-manual-form label.dicer-manual-die.dicer-manual-filled .dicer-manual-shape {
-  filter: drop-shadow(0 0 6px var(--dicer-manual-glow)) drop-shadow(0 0 12px var(--dicer-manual-glow));
+  filter: drop-shadow(0 0 5px var(--dicer-manual-glow)) drop-shadow(0 0 10px var(--dicer-manual-glow));
+}
+.application.dicer-manual-form label.dicer-manual-die.dicer-manual-filled .dicer-manual-shape .f0 {
+  fill: color-mix(in srgb, var(--dicer-manual-glow) 45%, #14121a);
 }
 .application.dicer-manual-form label.dicer-manual-die > input {
   position: relative;
@@ -113,11 +182,12 @@ export const MANUAL_CSS = `
   background: transparent;
   box-shadow: none;
   outline: none;
+  transform: translate(var(--dicer-manual-dx, 0), var(--dicer-manual-dy, 0));
   color: var(--dicer-manual-text);
-  font-size: 30px;
+  font-size: var(--dicer-manual-size, 28px);
   font-weight: bold;
   text-align: center;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 0 3px #000, 0 0 6px rgba(0, 0, 0, 0.8);
   -moz-appearance: textfield;
 }
 .application.dicer-manual-form label.dicer-manual-die > input::-webkit-inner-spin-button,
@@ -127,8 +197,8 @@ export const MANUAL_CSS = `
 }
 .application.dicer-manual-form label.dicer-manual-die > input::placeholder {
   color: var(--dicer-manual-text);
-  opacity: 0.45;
-  font-size: 20px;
+  opacity: 0.5;
+  font-size: calc(var(--dicer-manual-size, 28px) * 0.62);
 }
 .application.dicer-manual-form label.dicer-manual-die > input:disabled {
   opacity: 0.75;
@@ -156,7 +226,7 @@ const injectStyle = (doc) => {
 
 const setting = (key, fallback) => {
   try {
-    return game.settings.get('dicer', key) || fallback;
+    return game.settings.get('dicer', key) ?? fallback;
   } catch {
     return fallback;
   }
@@ -172,6 +242,7 @@ function decorateLabel(label) {
   if (label.classList.contains('dicer-manual-die')) return;
   label.classList.add('dicer-manual-die');
   label.prepend(shapeOf(label.dataset.denomination, label.ownerDocument));
+  for (const [k, v] of Object.entries(numberOf(label.dataset.denomination))) label.style.setProperty(k, v);
   fill(label);
   label.addEventListener('input', () => fill(label));
   label.addEventListener('change', () => fill(label));
