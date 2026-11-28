@@ -545,9 +545,12 @@ describe('build', () => {
     // Typed-in dice (the manualButton, manualDiceForm, manualGlow, manualText and manualStash
     // settings and main's two hooks; the die shapes and chat button are the lazy manual-entry
     // chunk): owner approved +793 B (50,960 -> 51,753), 2026-11-28.
+    // PR #19 (a registered theme's landing rules: isLanding in rules.js and the resolver's check, +209 B)
+    // and PR #20 (appearance.trail: its normalizer and the element list in appearance.js, +304 B). Main
+    // sat 116 B under the limit: owner approved +397 B (51,753 -> 52,150), 2026-11-28.
     const growth = worldStartBytes() - 4_115_282;
     console.info(`dicer world-start growth since the living-insides base: ${growth} bytes`);
-    expect(growth).toBeLessThanOrEqual(51_753);
+    expect(growth).toBeLessThanOrEqual(52_150);
   });
   it('ships no sourcemaps in dist/ (they are made only for scripts/bundle-report.mjs)', () => {
     const maps = readdirSync('dist', { recursive: true }).filter((f) => String(f).endsWith('.map'));
