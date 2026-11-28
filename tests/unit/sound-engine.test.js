@@ -577,7 +577,40 @@ describe('sound engine', () => {
       expect(ctx.sources.length).toBe(2);
     });
 
-    it('stays within the voice cap, the quietest voice making room', async () => {
+    it('shares one voice between requests that waited for a slow file', async () => {
+      const waiting = [];
+      const slow = () => new Promise((resolve) => waiting.push(resolve));
+      const { engine } = await ready({ fetchSound: slow });
+      const first = engine.result({ src: 'slow.ogg' });
+      now += RESULT_WINDOW_MS * 2;
+      const second = engine.result({ src: 'slow.ogg' });
+      await vi.advanceTimersByTimeAsync(0);
+      for (const resolve of waiting) resolve({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+      await Promise.all([first, second]);
+      expect(ctx.sources.length).toBe(1);
+    });
+
+    it('takes the louder volume of the requests it merges', async () => {
+      const { engine } = await ready();
+      await engine.result({ builtin: 'chime', volume: 0.2 });
+      await engine.result({ builtin: 'chime', volume: 1 });
+      await engine.result({ builtin: 'chime', volume: 0.5 });
+      expect(ctx.sources.length).toBe(1);
+      expect(ctx.sources[0].totalGain).toBeCloseTo(1, 5);
+    });
+
+    it('makes room by stopping impacts first, however loud', async () => {
+      const { engine } = await ready({ fetchSound });
+      await engine.result({ src: 'quiet.ogg', volume: 0.1 });
+      for (let i = 1; i < MAX_VOICES; i++) engine.impact(hit({ dieKey: `d${i}` }));
+      expect(ctx.sources.length).toBe(MAX_VOICES);
+      await engine.result({ src: 'last.ogg' });
+      const stopped = ctx.sources.filter((v) => v.stopped);
+      expect(stopped.length).toBe(1);
+      expect(stopped[0]).not.toBe(ctx.sources[0]);
+    });
+
+    it('stops the quietest landing sound only when no impact is left', async () => {
       const { engine } = await ready({ fetchSound });
       for (let i = 0; i < MAX_VOICES; i++) await engine.result({ src: `f${i}.ogg`, volume: i === 3 ? 0.2 : 1 });
       await engine.result({ src: 'last.ogg', volume: 0.1 });
