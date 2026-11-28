@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1
+
+- **Typed-in dice wear your dice theme.** The big dice in the window for typing in results now take their colours from your own dice look for each die type, the same one your 3D dice use: the body colours on the faces, the numbers in the theme's number colour (made readable, as on the 3D dice), and the theme's glow on the edges. The two colour settings from 1.5.0 are gone.
+- **The typed-in dice button no longer pushes the chat buttons onto a second row.** It now sits in the chat dice bar, beside the eraser, while the bar is shown, and right after the chat's message modes when it is not.
+
 ## 1.5.0
 
 - **Typing in the results of real dice.** When your dice are set to be typed in (Foundry's manual entry), the window for entering them now draws each die as a big faceted die: a pyramid for a d4, a cube for a d6, an octahedron for a d8, a d10, a d12 and a d20, and a coin. The number goes on its front face, so new players can see which die to pick up. A die glows while you type in it and once it has a number. Rerolled and exploding dice get their own die too. Each player can turn this off with **Big dice when typing in results**.
