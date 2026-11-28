@@ -393,6 +393,7 @@ let userLooks = () => [];
 /** The actors' looks and the themes a module named (render/actor-looks.js, in the lazy theme API chunk). */
 let moreLooks = () => [];
 let lookResolver = null;
+let ownLook = null; // this user's own look for a die of `faces` faces (the typed-in dice window)
 
 const warmUp = createWarmup({
   getBox: () => diceBox,
@@ -674,7 +675,7 @@ const dockManual = (e, force) => {
 for (const h of ['renderChatInput', 'renderChatLog']) Hooks.on(h, (a, e) => dockManual(e));
 Hooks.on('renderRollResolver', (app, el) => {
   if (!dormant && getSetting('manualDiceForm') && el.querySelector('[data-method="manual"]'))
-    manual().then((m) => m.decorate(app, el));
+    manual().then((m) => m.decorate(app, el, ownLook));
 });
 
 Hooks.once('init', () => {
@@ -949,6 +950,7 @@ Hooks.once('ready', async () => {
       lookResolver = resolver;
       // a user's own look for a die: no message, roll, actor or damage theme
       const userLook = (id, term) => resolver.decorate(null, null, id)(term, null, 0)?.appearance;
+      ownLook = (faces) => userLook(game.user?.id, { faces, options: {} });
       userLooks = () => userWarmupLooks({ users: game.users?.contents ?? [], viewerId: game.user?.id, lookOf: userLook });
       const ghostDecorateFor = createGhostDecorate({ getSetting, lookOf: userLook });
       const plan = (roll, opts) => planThrow(roll, { shapeFor: resolver.shapeFor, ...opts });

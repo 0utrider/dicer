@@ -13,7 +13,16 @@ import {
   rolledConfig,
   toggleManual,
   dockToggle,
+  colorsOf,
+  PLAIN_COLORS,
 } from '../../src/ui/manual-entry.js';
+import { normalizeAppearance } from '../../src/look/appearance.js';
+
+const RED_INPUT = {
+  body: { type: 'opaque', color: '#b3202a', color2: '#5a0d14', roughness: 0.25 },
+  numbers: { fill: 'paint', color: '#f5f5f5', depth: 0.5 },
+};
+const RED = normalizeAppearance(RED_INPUT);
 
 let store;
 let infos;
@@ -25,8 +34,6 @@ beforeEach(() => {
     'dicer.handRollMapped': [],
     'dicer.manualButton': true,
     'dicer.handRollsRequired': false,
-    'dicer.manualGlow': '#00ff00',
-    'dicer.manualText': '#123456',
   };
   globalThis.CONFIG = {
     Dice: {
@@ -93,18 +100,21 @@ describe('decorate', () => {
     return document.querySelector('form');
   };
 
-  it('draws the manual dice only, in the player colours, and injects the style once', () => {
+  it("draws the manual dice only, each in the player's look for its kind, and injects the style once", () => {
     const el = form();
     const app = { element: el, setPosition: vi.fn() };
-    decorate(app, el);
-    decorate(app, el);
+    const lookOf = vi.fn(() => RED);
+    decorate(app, el, lookOf);
+    decorate(app, el, lookOf);
     const [manual, pixels] = el.querySelectorAll('label');
     expect(manual.classList.contains('dicer-manual-die')).toBe(true);
     expect(manual.querySelectorAll('svg.dicer-manual-shape')).toHaveLength(1);
     expect(pixels.querySelector('svg')).toBeNull();
+    expect(lookOf).toHaveBeenCalledWith(20);
+    expect(lookOf).toHaveBeenCalledTimes(1);
+    expect(manual.style.getPropertyValue('--dicer-manual-body')).toBe('#b3202a');
+    expect(manual.style.getPropertyValue('--dicer-manual-body2')).toBe('#5a0d14');
     expect(el.classList.contains('dicer-manual-form')).toBe(true);
-    expect(el.style.getPropertyValue('--dicer-manual-glow')).toBe('#00ff00');
-    expect(el.style.getPropertyValue('--dicer-manual-text')).toBe('#123456');
     expect(document.querySelectorAll('#dicer-manual-style')).toHaveLength(1);
     expect(app.setPosition).toHaveBeenCalledWith({ height: 'auto' });
   });
@@ -131,13 +141,33 @@ describe('decorate', () => {
     expect(extra.querySelector('svg.dicer-manual-shape')).toBeTruthy();
   });
 
-  it('falls back to the default colours when the settings are not there', () => {
-    game.settings.get = () => {
-      throw new Error('not registered');
-    };
+  it('falls back to the plain colours with no look, or a look that throws', () => {
     const el = form();
-    decorate({ element: el }, el);
-    expect(el.style.getPropertyValue('--dicer-manual-glow')).toBe('#ff9f1c');
+    decorate({ element: el }, el, () => {
+      throw new Error('no resolver');
+    });
+    const label = el.querySelector('label');
+    expect(label.style.getPropertyValue('--dicer-manual-body')).toBe(PLAIN_COLORS.body);
+    expect(label.style.getPropertyValue('--dicer-manual-glow')).toBe(PLAIN_COLORS.glow);
+  });
+});
+
+describe('colorsOf', () => {
+  it("takes the body, second colour and number colour of the look", () => {
+    const c = colorsOf(RED);
+    expect(c).toMatchObject({ body: '#b3202a', body2: '#5a0d14', text: '#f5f5f5' });
+    expect(c.glow).toBe(c.text); // no glow on the look: the number colour
+  });
+  it('uses the look glow colour when it glows', () => {
+    const a = normalizeAppearance({ ...RED_INPUT, glow: { color: '#33ccff', intensity: 1 } });
+    expect(colorsOf(a).glow).toBe('#33ccff');
+  });
+  it('makes unreadable numbers readable, as the 3D dice draw them', () => {
+    const a = normalizeAppearance({ body: { type: 'opaque', color: '#101010', color2: '#000000' }, numbers: { fill: 'paint', color: '#151515' } });
+    expect(colorsOf(a).text).not.toBe('#151515');
+  });
+  it('gives the plain colours for no look', () => {
+    expect(colorsOf(null)).toEqual(PLAIN_COLORS);
   });
 });
 
@@ -184,18 +214,34 @@ describe('the dice configuration', () => {
 });
 
 describe('dockToggle', () => {
-  const controls = () => {
-    document.body.innerHTML = '<div id="chat-controls"><div id="message-modes"></div></div>';
+  const controls = (gm = '') => {
+    document.body.innerHTML = `<div id="chat-controls"><div id="message-modes"></div>${gm}</div>`;
     return document.getElementById('chat-controls');
   };
+  const GM = '<div class="control-buttons"><button class="export"></button><button class="flush"></button></div>';
 
-  it('puts the button after the message modes, pressed when the dice are typed in', () => {
+  it("a player's button: its own control group after the message modes, pressed when the dice are typed in", () => {
     const c = controls();
     store['core.diceConfiguration'] = allManual();
     const b = dockToggle({ '#chat-controls': c });
-    expect(c.querySelector('#message-modes').nextElementSibling).toBe(b);
-    expect(b.querySelector('button').getAttribute('aria-pressed')).toBe('true');
-    expect(b.querySelector('button').getAttribute('aria-label')).toBe('DICER.Manual.ButtonOn');
+    const group = c.querySelector('#message-modes').nextElementSibling;
+    expect(group.classList.contains('dicer-manual-group')).toBe(true);
+    expect(group.classList.contains('control-buttons')).toBe(false); // Foundry finds its own buttons by that class
+    expect(b.parentElement).toBe(group);
+    expect(b.classList.contains('ui-control')).toBe(true);
+    expect(b.getAttribute('aria-pressed')).toBe('true');
+    expect(b.getAttribute('aria-label')).toBe('DICER.Manual.ButtonOn');
+  });
+
+  it("the GM's button stays by the message modes, never inside Foundry's own control buttons", () => {
+    const c = controls(GM);
+    const b = dockToggle({ '#chat-controls': c });
+    const own = c.querySelector('.control-buttons');
+    expect(own.contains(b)).toBe(false);
+    expect(c.querySelector('#message-modes').nextElementSibling).toBe(b.parentElement);
+    expect(b.parentElement.nextElementSibling).toBe(own);
+    dockToggle({ '#chat-controls': c });
+    expect(c.querySelectorAll('.dicer-manual-toggle')).toHaveLength(1);
   });
 
   it('removes the button when the GM turns it off or hand rolls are required', () => {

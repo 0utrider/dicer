@@ -180,8 +180,6 @@ export function registerSettings({
   onManualChange,
 } = {}) {
   const t = (key) => `DICER.Settings.${key}`;
-  const CF = globalThis.foundry?.data?.fields?.ColorField;
-  const color = (d) => (CF ? new CF({ nullable: false, initial: d }) : String);
   register('enabled', {
     name: t('enabled.Name'),
     hint: t('enabled.Hint'),
@@ -802,7 +800,6 @@ export function registerSettings({
     ['chatTray', 'user', Boolean, true], // its chunk follows it (createSetting, updateSetting)
     ['manualButton', 'world', Boolean, false, { onChange: () => onManualChange?.() }], // the chat button
     ['manualDiceForm', 'user', Boolean, true], // typed-in dice drawn as big die shapes
-    ...[['manualGlow', '#ff9f1c'], ['manualText', '#ffffff']].map(([k, d]) => [k, 'user', color(d), d]),
   ];
   hand.forEach(([key, scope, type, def, more], i) =>
     register(key, {

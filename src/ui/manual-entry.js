@@ -1,10 +1,11 @@
 /**
  * Typed-in dice (lazy chunk; main.js loads it when Foundry's dice entry window shows a manual die,
- * or for the chat button): each manual die of the RollResolver drawn as a big die shape with its
- * number field inside, in the player's glow and text colours, and the chat button that switches a
- * player's dice between typing them in (Foundry's `manual` method) and rolling them.
+ * or for the chat button): each manual die of the RollResolver drawn as a big faceted die with its
+ * number field on the front face, in the colours of the player's own dice look, and the chat button
+ * that switches a player's dice between typing them in (Foundry's `manual` method) and rolling them.
  */
 import { HAND_DICE } from '../hand/shell.js';
+import { readableNumbers, visibleBodyColor } from '../look/contrast.js';
 
 export const MANUAL_KEYS = [...HAND_DICE, 'default'];
 
@@ -157,20 +158,20 @@ export const MANUAL_CSS = `
   transition: fill 0.15s;
 }
 .application.dicer-manual-form .dicer-manual-shape .f0 {
-  fill: color-mix(in srgb, var(--dicer-manual-glow) 26%, #14121a);
+  fill: var(--dicer-manual-body);
 }
 .application.dicer-manual-form .dicer-manual-shape .f1 {
-  fill: color-mix(in srgb, var(--dicer-manual-glow) 14%, #0c0b10);
+  fill: color-mix(in srgb, var(--dicer-manual-body) 55%, var(--dicer-manual-body2));
 }
 .application.dicer-manual-form .dicer-manual-shape .f2 {
-  fill: color-mix(in srgb, var(--dicer-manual-glow) 6%, #060509);
+  fill: color-mix(in srgb, var(--dicer-manual-body2) 80%, #000);
 }
 .application.dicer-manual-form label.dicer-manual-die:focus-within .dicer-manual-shape,
 .application.dicer-manual-form label.dicer-manual-die.dicer-manual-filled .dicer-manual-shape {
   filter: drop-shadow(0 0 5px var(--dicer-manual-glow)) drop-shadow(0 0 10px var(--dicer-manual-glow));
 }
 .application.dicer-manual-form label.dicer-manual-die.dicer-manual-filled .dicer-manual-shape .f0 {
-  fill: color-mix(in srgb, var(--dicer-manual-glow) 45%, #14121a);
+  fill: color-mix(in srgb, var(--dicer-manual-body) 75%, var(--dicer-manual-glow));
 }
 .application.dicer-manual-form label.dicer-manual-die > input {
   position: relative;
@@ -187,7 +188,7 @@ export const MANUAL_CSS = `
   font-size: var(--dicer-manual-size, 28px);
   font-weight: bold;
   text-align: center;
-  text-shadow: 0 0 3px #000, 0 0 6px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 0 3px var(--dicer-manual-body), 0 0 6px var(--dicer-manual-body);
   -moz-appearance: textfield;
 }
 .application.dicer-manual-form label.dicer-manual-die > input::-webkit-inner-spin-button,
@@ -210,9 +211,10 @@ export const MANUAL_CSS = `
   z-index: 1;
   color: var(--dicer-manual-glow);
 }
-#chat-controls .dicer-manual-toggle [aria-pressed="true"] {
-  color: var(--color-text-primary, #fff);
-  background: var(--color-warm-2, #c9593f);
+#chat-controls .dicer-manual-group {
+  display: flex;
+  gap: 4px;
+  margin-inline: 4px auto;
 }
 `;
 
@@ -222,6 +224,44 @@ const injectStyle = (doc) => {
   style.id = 'dicer-manual-style';
   style.textContent = MANUAL_CSS;
   doc.head.append(style);
+};
+
+/** The window's colours with no dice look to read (the look resolver not started yet). */
+export const PLAIN_COLORS = Object.freeze({ body: '#2c2833', body2: '#141218', text: '#ffffff', glow: '#ff9f1c' });
+
+const FACES = { c: 2, f: 3 };
+
+/**
+ * A die's colours from its dice look (`appearance`: what the player's own 3D die of that kind is
+ * drawn with): the body and its second colour, the numbers as the 3D dice draw them (made readable
+ * on the body unless the look keeps its own colour), and the glow (the number colour when the look
+ * has none). Anything unreadable falls back to PLAIN_COLORS.
+ */
+export function colorsOf(appearance) {
+  const out = { ...PLAIN_COLORS };
+  try {
+    if (!appearance?.body) return out;
+    const hex = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : null);
+    out.body = hex(visibleBodyColor(appearance)) ?? hex(appearance.body.color) ?? out.body;
+    out.body2 = hex(appearance.body.color2) ?? out.body;
+    out.text = hex(readableNumbers(appearance).fill) ?? hex(appearance.numbers?.color) ?? out.text;
+    out.glow = (appearance.glow?.intensity > 0 && hex(appearance.glow.color)) || out.text;
+  } catch {
+    /* an unreadable look: whatever was read so far */
+  }
+  return out;
+}
+
+/** The CSS custom properties of `colors`. */
+const colorVars = (c) => ({
+  '--dicer-manual-body': c.body,
+  '--dicer-manual-body2': c.body2,
+  '--dicer-manual-text': c.text,
+  '--dicer-manual-glow': c.glow,
+});
+
+const setStyle = (el, vars) => {
+  for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v);
 };
 
 const setting = (key, fallback) => {
@@ -237,12 +277,20 @@ const fill = (label) => {
   label.classList.toggle('dicer-manual-filled', !!input && input.value !== '');
 };
 
-/** Draws one manual die's field inside its die shape (once). */
-function decorateLabel(label) {
+/** Draws one manual die's field inside its die shape (once), in `lookOf`'s colours for its kind. */
+function decorateLabel(label, lookOf) {
   if (label.classList.contains('dicer-manual-die')) return;
   label.classList.add('dicer-manual-die');
-  label.prepend(shapeOf(label.dataset.denomination, label.ownerDocument));
-  for (const [k, v] of Object.entries(numberOf(label.dataset.denomination))) label.style.setProperty(k, v);
+  const den = label.dataset.denomination;
+  label.prepend(shapeOf(den, label.ownerDocument));
+  setStyle(label, numberOf(den));
+  let look = null;
+  try {
+    look = lookOf?.(FACES[den] ?? (parseInt(String(den).slice(1), 10) || 6));
+  } catch {
+    /* no look: the plain colours */
+  }
+  setStyle(label, colorVars(colorsOf(look)));
   fill(label);
   label.addEventListener('input', () => fill(label));
   label.addEventListener('change', () => fill(label));
@@ -253,16 +301,17 @@ const observers = new WeakMap();
 /**
  * Puts the die shapes on every manual die of the resolver window `app` (its element `el`), and on
  * the ones Foundry adds later (rerolls, explosions: resolveResult appends them without a render).
+ * `lookOf(faces)`: this user's own dice look for a die of that many faces (main.js's), or null.
  */
-export function decorate(app, el = app?.element) {
+export function decorate(app, el = app?.element, lookOf = null) {
   try {
     if (!el?.querySelectorAll) return;
     const doc = el.ownerDocument ?? document;
     injectStyle(doc);
     el.classList.add('dicer-manual-form');
-    el.style.setProperty('--dicer-manual-glow', String(setting('manualGlow', '#ff9f1c')));
-    el.style.setProperty('--dicer-manual-text', String(setting('manualText', '#ffffff')));
-    const all = () => el.querySelectorAll('label.die-input[data-method="manual"]').forEach(decorateLabel);
+    setStyle(el, colorVars(colorsOf(null)));
+    const all = () =>
+      el.querySelectorAll('label.die-input[data-method="manual"]').forEach((l) => decorateLabel(l, lookOf));
     all();
     if (!observers.has(el) && globalThis.MutationObserver) {
       const mo = new MutationObserver(all);
@@ -341,11 +390,12 @@ export async function toggleManual() {
 }
 
 let button = null;
+let group = null;
 let hooked = false;
 
 /** The button's pressed state and tooltip, from this browser's dice configuration. */
 function paint() {
-  const b = button?.querySelector('button');
+  const b = button;
   if (!b) return;
   let on = false;
   try {
@@ -366,9 +416,12 @@ const controlsOf = (els) =>
   document.getElementById('chat-controls');
 
 /**
- * Puts the typed-in dice button in the chat controls, after the message modes (main.js:
- * renderChatInput, renderChatLog and the manualButton setting's change); removed when not shown.
- * `syncHand`: main.js's dice configuration sync, run after each switch.
+ * Puts the typed-in dice button in the chat controls (main.js: renderChatInput, renderChatLog and
+ * the manualButton setting's change): right after the message modes, in a group of its own that
+ * keeps to them (Foundry spreads the controls apart, and its own buttons wrap to a row of their own
+ * in a narrow sidebar); removed when not shown. Never inside Foundry's .control-buttons, which it
+ * finds by that class to hide and show. `syncHand`: main.js's dice configuration sync, run after
+ * each switch.
  */
 export function dockToggle(els, syncHand) {
   try {
@@ -384,25 +437,26 @@ export function dockToggle(els, syncHand) {
     }
     if (!shown()) {
       button?.remove();
+      group?.remove();
       return null;
     }
     const controls = controlsOf(els);
     if (!controls) return null;
     if (!button) {
-      button = document.createElement('div');
-      button.className = 'split-button dicer-manual-toggle';
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'ui-control icon fa-solid fa-keyboard';
-      b.dataset.tooltip = '';
-      b.addEventListener('click', () => toggleManual());
-      button.append(b);
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ui-control icon toggle fa-solid fa-keyboard dicer-manual-toggle';
+      button.dataset.tooltip = '';
+      button.addEventListener('click', () => toggleManual());
+      group = document.createElement('div');
+      group.className = 'dicer-manual-group';
       injectStyle(document);
     }
-    const modes = controls.querySelector('#message-modes');
+    if (button.parentElement !== group) group.append(button);
+    const modes = controls.querySelector(':scope > #message-modes');
     if (modes) {
-      if (modes.nextElementSibling !== button) modes.after(button);
-    } else if (button.parentElement !== controls) controls.prepend(button);
+      if (modes.nextElementSibling !== group) modes.after(group);
+    } else if (group.parentElement !== controls) controls.prepend(group);
     paint();
     return button;
   } catch (err) {

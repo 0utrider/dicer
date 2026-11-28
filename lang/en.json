@@ -275,15 +275,7 @@
       },
       "manualDiceForm": {
         "Name": "Big dice when typing in results",
-        "Hint": "In Foundry's window for typing in dice results, each die is drawn as its own big shape (a triangle for a d4, a diamond for a d8, and so on) with its number inside, so new players see which die to roll."
-      },
-      "manualGlow": {
-        "Name": "Typed-in dice glow colour",
-        "Hint": "The outline and glow of the big dice when typing in results."
-      },
-      "manualText": {
-        "Name": "Typed-in dice number colour",
-        "Hint": "The colour of the numbers you type into the big dice."
+        "Hint": "In Foundry's window for typing in dice results, each die is drawn as a big faceted die in your dice theme's colours, with its number on the front face, so new players see which die to roll."
       },
       "immediatelyDisplayChatMessages": {
         "Name": "Show chat messages immediately",
