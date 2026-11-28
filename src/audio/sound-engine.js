@@ -6,6 +6,8 @@ export const LOUD_IMPACT_SPEED = 24; // first floor impact median ~24 is full vo
 export const MIN_GAIN = 0.03;
 export const DIE_DEBOUNCE_MS = 40;
 export const MAX_VOICES = 8;
+/** The same landing sound asked for again within this many ms plays no second voice. */
+export const RESULT_WINDOW_MS = 100;
 export const IDLE_SUSPEND_MS = 30000;
 export const CUSTOM_CACHE_SIZE = 32;
 export const UNFOCUSED_GAIN = 0.25;
@@ -99,6 +101,7 @@ export function createSoundEngine({
   const buffers = new Map(); // key -> AudioBuffer (built once a context exists)
   const cursor = new Map(); // material -> next variant
   const lastHit = new Map(); // dieKey -> time
+  const lastResult = new Map(); // landing sound -> when its voice was asked for
   const custom = new Map(); // src -> AudioBuffer (LRU, insertion order)
   const failed = new Set();
   const inflight = new Map();
@@ -402,6 +405,15 @@ export function createSoundEngine({
       if (sound.src === undefined && sound.builtin === undefined) return;
       vol *= sound.volume ?? 1; // a file's own volume, or the pets' (petVolume)
       if (vol < MIN_GAIN / 10) return;
+      // Dice landing together ask for one sound at once: stacked voices would add up to a louder one.
+      // A pet's voice (its own take or pitch) is left alone.
+      const shared = sound.voice === undefined && sound.rate === undefined;
+      if (shared) {
+        const key = sound.src !== undefined ? `s:${sound.src}` : `b:${sound.builtin}`;
+        const t = now();
+        if (t - lastResult.get(key) < RESULT_WINDOW_MS) return;
+        lastResult.set(key, t);
+      }
       if (sound.builtin !== undefined && !rendered && preloading) await preloading;
       if (disposed || !ensureContext() || !running()) return;
       let buf;
@@ -410,6 +422,8 @@ export function createSoundEngine({
       else buf = own(sound, ctx) || (rendered ? bufferFor(`result:${sound.builtin}`) : null);
       if (!buf || disposed) return;
       if (ctx.state !== 'running') return;
+      // Within the voice cap, but never the one dropped: the quietest voice makes room.
+      if (shared) admit(Infinity, 1);
       // sound.rate: a pet's voice pitch (playback rate, 0.5..2)
       start(buf, vol, sound.rate > 0 ? Math.min(2, Math.max(0.5, sound.rate)) : 1);
     } catch (e) {

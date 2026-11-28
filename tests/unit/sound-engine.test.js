@@ -10,6 +10,7 @@ import {
   HEAVY_GAIN,
   MEDIUM_GAIN,
   hitLevel,
+  RESULT_WINDOW_MS,
 } from '../../src/audio/sound-engine.js';
 
 const MATS = ['plastic', 'metal', 'wood', 'glass', 'stone'];
@@ -489,6 +490,7 @@ describe('sound engine', () => {
     it("a builtin's volume scales it too (the pets' petVolume)", async () => {
       const { engine } = await ready();
       await engine.result({ builtin: 'petHappy' });
+      now += 200;
       await engine.result({ builtin: 'petHappy', volume: 0.5 });
       expect(ctx.sources[1].totalGain).toBeCloseTo(ctx.sources[0].totalGain * 0.5, 5);
     });
@@ -497,6 +499,7 @@ describe('sound engine', () => {
       const fetchSound = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
       const { engine } = await ready({ fetchSound });
       await engine.result({ src: 'a.ogg', volume: 0.5 });
+      now += 200;
       await engine.result({ src: 'a.ogg' });
       expect(fetchSound).toHaveBeenCalledTimes(1);
       expect(ctx.sources.length).toBe(2);
@@ -538,10 +541,48 @@ describe('sound engine', () => {
       const { engine } = await ready({ fetchSound });
       for (let i = 0; i < 33; i++) await engine.result({ src: `f${i}.ogg` });
       expect(fetchSound).toHaveBeenCalledTimes(33);
+      now += 200;
       await engine.result({ src: 'f0.ogg' });
       expect(fetchSound).toHaveBeenCalledTimes(34);
       await engine.result({ src: 'f32.ogg' });
       expect(fetchSound).toHaveBeenCalledTimes(34);
+    });
+  });
+
+  describe('the same landing sound on many dice', () => {
+    const fetchSound = async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+
+    it('plays one voice for requests that arrive together; different sounds each play', async () => {
+      const { engine } = await ready({ fetchSound });
+      const requests = [{ src: 'a.ogg' }, { builtin: 'chime' }];
+      await Promise.all(Array.from({ length: 6 }, () => requests.map((r) => engine.result(r))).flat());
+      expect(ctx.sources.length).toBe(2);
+    });
+
+    it('plays again once the window has passed', async () => {
+      const { engine } = await ready();
+      await engine.result({ builtin: 'chime' });
+      now += RESULT_WINDOW_MS - 1;
+      await engine.result({ builtin: 'chime' });
+      expect(ctx.sources.length).toBe(1);
+      now += 1;
+      await engine.result({ builtin: 'chime' });
+      expect(ctx.sources.length).toBe(2);
+    });
+
+    it("leaves pets' voices alone", async () => {
+      const { engine } = await ready();
+      await engine.result({ builtin: 'petHappy', rate: 1 });
+      await engine.result({ builtin: 'petHappy', rate: 1 });
+      expect(ctx.sources.length).toBe(2);
+    });
+
+    it('stays within the voice cap, the quietest voice making room', async () => {
+      const { engine } = await ready({ fetchSound });
+      for (let i = 0; i < MAX_VOICES; i++) await engine.result({ src: `f${i}.ogg`, volume: i === 3 ? 0.2 : 1 });
+      await engine.result({ src: 'last.ogg', volume: 0.1 });
+      expect(ctx.sources.length).toBe(MAX_VOICES + 1);
+      expect(ctx.sources.filter((v) => v.stopped)).toEqual([ctx.sources[3]]);
     });
   });
 
