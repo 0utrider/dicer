@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2
+
+- **For module authors: a look can set its own trail.** `appearance.trail` gives a look the trail it flies with, instead of the one its inside or damage type picks: `"void"` for that element's trail, `"none"` for no trail, or `{ element: "void", colors: ["#8a4cc0", "#2a0a3d"] }` to recolour it (start and end colour, on every layer of the trail). It follows the look everywhere: damage dice, a picked theme, `perType`. The **Elemental trails** setting still applies, and natural 20 bursts and pet reactions follow the element as before. Very dark colours fade out on a dark map. There is no control for it in the dice editor yet. Thanks to 0utrider.
+- **Fixed: a registered theme mapped to a damage type now previews its landing.** **Preview** in the damage type map showed such a set with no effect and no sound. It now plays the theme's landing: its rules with no `die`, `result`, `outcome` or `context`.
+- **Fixed: a GM's custom damage type sound replaces a registered theme's landing sound**, as it does for a built-in damage theme. Before, both played. The theme's effect stays, and its other rules are untouched. Thanks to 0utrider.
+
 ## 1.5.1
 
 - **Typed-in dice wear your dice theme.** The big dice in the window for typing in results now take their colours from your own dice look for each die type, the same one your 3D dice use: the body colours on the faces, the numbers in the theme's number colour (made readable, as on the 3D dice), and the theme's glow on the edges. The two colour settings from 1.5.0 are gone.
