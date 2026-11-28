@@ -1150,9 +1150,12 @@ const tint = {
     const { color, colorEnd } = s;
     s.color = tint.colors[0];
     s.colorEnd = tint.colors[1];
-    tint.pool.emit(s);
-    s.color = color;
-    s.colorEnd = colorEnd;
+    try {
+      tint.pool.emit(s);
+    } finally {
+      s.color = color;
+      s.colorEnd = colorEnd;
+    }
   },
 };
 

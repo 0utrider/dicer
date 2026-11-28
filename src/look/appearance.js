@@ -1,4 +1,5 @@
 // Plain-data Appearance model. Pure and three-free.
+// The ELEMENTS import brings the element list into the world start; elements.js imports nothing.
 
 import { ELEMENTS } from '../effects/elements.js';
 

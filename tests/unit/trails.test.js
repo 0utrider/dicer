@@ -711,4 +711,12 @@ describe("a look's own trail", () => {
     expect(new Set(tinted.map((e) => `${e.color.getHexString()} ${e.colorEnd.getHexString()}`))).toEqual(new Set(['4a1866 1d0628']));
     expect(emitted(own({ element: 'void' })).map((e) => e.color.getHexString())).toContain('1c1028');
   });
+
+  test('a pool that throws leaves the shared recipe untinted', () => {
+    const throwing = { emit: () => { throw new Error('boom'); } };
+    const { fx, warnOnce } = setup({ pool: throwing });
+    fly(fx, [own({ element: 'void', colors: ['#4a1866', '#1d0628'] })]);
+    expect(warnOnce).toHaveBeenCalled();
+    expect(emitted(own({ element: 'void' })).map((e) => e.color.getHexString())).toContain('1c1028');
+  });
 });
